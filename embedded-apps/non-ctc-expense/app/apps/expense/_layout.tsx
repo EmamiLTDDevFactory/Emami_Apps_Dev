@@ -78,6 +78,9 @@ function RootLayoutNav() {
               style={styles.logoutBtn}
               onPress={() => {
                 logout();
+                // Clear the redirect-dedup guard so the next successful login's
+                // navigation to (tabs) isn't skipped as a "already redirected there" no-op.
+                lastAutoRedirect.current = null;
                 router.replace('/apps/expense/login');
               }}
             >

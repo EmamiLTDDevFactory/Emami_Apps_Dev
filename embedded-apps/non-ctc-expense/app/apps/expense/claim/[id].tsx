@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as WT from '../../../../src/components/WorkflowTimeline';
-import { API_BASE_URL } from '../../../../src/config/api';
+import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 // RESUBMIT_FEATURE: Import useClaim to access setTempClaimForResubmit
 import { useClaim } from '../../../../src/context/ClaimContext';
@@ -26,7 +26,8 @@ export default function ClaimDetailPage() {
     if (!claimId) return null;
     setLoading(true);
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/claim-header/${claimId}?expand=CLAIMNAV,HISTORYNAV`);
+      // ClaimHeaderSet is open for direct anonymous GET (confirmed with Basis).
+      const resp = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet('${claimId}')?$format=json&$expand=${encodeURIComponent('CLAIMNAV,HISTORYNAV')}`);
       if (!resp.ok) {
         const err = await resp.text();
         throw new Error(err || 'Failed to fetch claim');

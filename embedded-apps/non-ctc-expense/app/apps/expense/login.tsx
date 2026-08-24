@@ -4,6 +4,11 @@ import { API_BASE_URL } from '../../../src/config/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import { UserRole } from '../../../src/types';
 
+// Login stays on the backend (unlike GST/claims/expense-types/history, which now call SAP
+// directly) — direct-to-SAP login showed intermittent failures under real testing (13 sequential
+// browser-to-SAP calls per attempt: 1 verify + 12 role-detection guesses), so this reverts to the
+// backend-mediated flow that's been reliable for months, rather than ship something flaky to a
+// live app.
 export default function LoginScreen() {
   const { login } = useAuth();
 
@@ -52,7 +57,6 @@ export default function LoginScreen() {
       // Call the SAP LoginSet via our node server
       const empIdForSAP = numericId.padStart(8, '0');
       const targetUrl = `${API_BASE_URL}/api/send-otp?loginId=${empIdForSAP}`;
-      console.log('[DEBUG OTP FETCH] API_BASE_URL is:', JSON.stringify(API_BASE_URL), 'Target URL:', targetUrl);
       const response = await fetch(targetUrl);
       const rawText = await response.text();
       let data: any = null;

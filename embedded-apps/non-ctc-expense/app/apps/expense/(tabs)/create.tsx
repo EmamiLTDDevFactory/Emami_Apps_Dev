@@ -4,7 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { API_BASE_URL } from '../../../../src/config/api';
+import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { Attachment } from '../../../../src/types';
@@ -311,7 +311,11 @@ export default function CreateClaimScreen() {
       setSelectedGst(null);
 
       try {
-        const res = await fetch(`${API_BASE_URL}/api/get-gst?gstin=${encodeURIComponent(normalizedGstin)}`);
+        // Basis has opened GstSet for direct anonymous GET access, same exception already
+        // granted for MoldHealthCheck's SAP service — so this calls SAP directly instead of
+        // going through our own backend, which stays reserved for login/OTP/claim submission.
+        const filter = encodeURIComponent(`Stcd3 eq '${normalizedGstin}'`);
+        const res = await fetch(`${SAP_BASE_URL}/GstSet?$format=json&$filter=${filter}`);
         if (!res.ok) {
           setGstLookupError('Unable to lookup GSTIN at this time.');
           return;

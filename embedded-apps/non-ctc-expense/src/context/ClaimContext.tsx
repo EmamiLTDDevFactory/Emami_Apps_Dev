@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
 import { ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -125,8 +125,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const fetchExpenseTypes = async () => {
     try {
+      // ExptypeSet is open for direct anonymous GET (confirmed with Basis).
       const loginIdForSAP = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
-      const url = `${API_BASE_URL}/api/get-expense-types${loginIdForSAP ? `?loginId=${loginIdForSAP}` : ''}`;
+      const filter = loginIdForSAP ? `&$filter=${encodeURIComponent(`LoginId eq '${loginIdForSAP}'`)}` : '';
+      const url = `${SAP_BASE_URL}/ExptypeSet?$format=json${filter}`;
       const response = await fetch(url);
       if (!response.ok) return;
       
@@ -153,9 +155,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!currentUser?.employeeId) return;
 
       // Extract numeric PERNR from currentUser
+      // ClaimHeaderSet is open for direct anonymous GET (confirmed with Basis).
       const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
-      
-      const response = await fetch(`${API_BASE_URL}/api/get-data?loginId=${loginIdForSAP}&expand=CLAIMNAV`);
+      const filter = encodeURIComponent(`LoginId eq '${loginIdForSAP}'`);
+      const response = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet?$filter=${filter}&$expand=CLAIMNAV&$format=json`);
       if (!response.ok) return;
       
       const data = await response.json();
@@ -270,8 +273,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       if (!currentUser?.employeeId) return;
 
+      // HistorySet is open for direct anonymous GET (confirmed with Basis).
       const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
-      const response = await fetch(`${API_BASE_URL}/api/history-set?loginId=${loginIdForSAP}`);
+      const filter = encodeURIComponent(`ActionBy eq '${loginIdForSAP}'`);
+      const response = await fetch(`${SAP_BASE_URL}/HistorySet?$filter=${filter}&$format=json`);
       if (!response.ok) return;
 
       const data = await response.json();

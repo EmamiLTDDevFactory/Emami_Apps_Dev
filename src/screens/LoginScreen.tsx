@@ -28,6 +28,14 @@ interface LoginScreenProps {
  */
 const SHOW_MICROSOFT_SIGNIN = true;
 
+/**
+ * LOCAL TESTING ONLY — bypasses the emami_apps.authorized_users check entirely, unlike Sign In/
+ * Microsoft above. Added back temporarily to unblock local testing; a teammate deliberately
+ * removed this exact bypass in the last commit for security reasons, so this must NOT be pushed
+ * or deployed. Flip back to false (or delete this block) before committing anything.
+ */
+const SHOW_TEMP_SIGNIN = true;
+
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
 // Purely decorative accents for this screen only — Login intentionally
@@ -134,6 +142,20 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
     onLogin?.(result.email);
   };
 
+  const continueWithTemporaryAccess = () => {
+    setLocalError('');
+    onDismissError?.();
+    if (!trimmedEmail) {
+      setLocalError('Enter your email to continue.');
+      return;
+    }
+    if (!looksLikeEmail) {
+      setLocalError('Enter a valid email address to continue.');
+      return;
+    }
+    onLogin?.(trimmedEmail);
+  };
+
   const shownError = error || localError;
   const busy = verifying || checkingAccess;
 
@@ -217,6 +239,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
                       <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
                     </Pressable>
                   </>
+                )}
+
+                {SHOW_TEMP_SIGNIN && (
+                  <Pressable onPress={continueWithTemporaryAccess} style={styles.secondaryBtn} disabled={checkingAccess}>
+                    <Text style={styles.secondaryBtnText}>Continue with Temporary Access</Text>
+                  </Pressable>
                 )}
               </>
             )}
