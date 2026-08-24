@@ -2,10 +2,14 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const { pool, testConnection } = require('./db');
+const { pool, testConnection, runMigrations } = require('./db');
 
 const app = express();
 const port = process.env.PORT || 4000;
+
+// Fire-and-forget on module load (covers both `node server.js` and Lambda cold starts, where
+// require.main !== module) — idempotent, so a request racing ahead of it is harmless.
+runMigrations();
 
 // This Lambda previously ran a SAML SP for login, then briefly moved login to OAuth2 on the
 // mouldhealthcheck Azure App Service — that turned out to be Basis-owned infra provisioned for
@@ -27,26 +31,31 @@ app.use('/api', apiRouter);
 apiRouter.use(require('./hub-auth'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALID_ROLES = ['User', 'Admin'];
 
-/** Manage Access — list every authorized user with the app ids granted to them. */
+/** Manage Access — list every authorized user with active status and their per-app roles. */
 apiRouter.get('/access/users', async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT au.email,
-                   COALESCE(array_agg(a.app_id) FILTER (WHERE a.app_id IS NOT NULL), '{}') AS app_ids
+                   au.is_active,
+                   COALESCE(
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                       '[]'
+                   ) AS apps
             FROM emami_apps.authorized_users au
             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
-            GROUP BY au.email, au.created_at
+            GROUP BY au.email, au.is_active, au.created_at
             ORDER BY au.created_at ASC
         `);
-        res.json({ success: true, users: rows.map((r) => ({ email: r.email, appIds: r.app_ids })) });
+        res.json({ success: true, users: rows.map((r) => ({ email: r.email, isActive: r.is_active, apps: r.apps })) });
     } catch (err) {
         console.error('[access] Failed to list authorized users:', err.message);
         res.status(500).json({ success: false, error: 'Could not load authorized users.' });
     }
 });
 
-/** Grant a brand-new email access to the hub (with no apps granted yet). */
+/** Grant a brand-new email access to the hub (active by default, no apps granted yet). */
 apiRouter.post('/access/users', async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) {
@@ -60,7 +69,7 @@ apiRouter.post('/access/users', async (req, res) => {
         if (rows.length === 0) {
             return res.status(409).json({ success: false, error: 'This email already has access.' });
         }
-        res.json({ success: true, email, appIds: [] });
+        res.json({ success: true, email, isActive: true, apps: [] });
     } catch (err) {
         console.error('[access] Failed to add authorized user:', err.message);
         res.status(500).json({ success: false, error: 'Could not add this user.' });
@@ -78,14 +87,38 @@ apiRouter.delete('/access/users/:email', async (req, res) => {
     }
 });
 
-/** Grant one app to an existing authorized user. */
+/** Flip a user active/inactive — inactive users are blocked at login (see hub-auth.js's /auth/db-login) without losing their app grants. */
+apiRouter.patch('/access/users/:email/active', async (req, res) => {
+    const isActive = !!req.body?.isActive;
+    try {
+        const { rowCount } = await pool.query(
+            'UPDATE emami_apps.authorized_users SET is_active = $1 WHERE email = $2',
+            [isActive, req.params.email.toLowerCase()]
+        );
+        if (rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'That user is not authorized.' });
+        }
+        res.json({ success: true, isActive });
+    } catch (err) {
+        console.error('[access] Failed to update active status:', err.message);
+        res.status(500).json({ success: false, error: 'Could not update this user.' });
+    }
+});
+
+/** Grant (or change the role on) one app for an existing authorized user. */
 apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
+    const role = req.body?.role;
+    if (!VALID_ROLES.includes(role)) {
+        return res.status(400).json({ success: false, error: `Role must be one of: ${VALID_ROLES.join(', ')}.` });
+    }
     try {
         await pool.query(
-            'INSERT INTO emami_apps.authorized_user_apps (email, app_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [req.params.email.toLowerCase(), req.params.appId]
+            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role`,
+            [req.params.email.toLowerCase(), req.params.appId, role]
         );
-        res.json({ success: true });
+        res.json({ success: true, role });
     } catch (err) {
         if (err.code === '23503') {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });

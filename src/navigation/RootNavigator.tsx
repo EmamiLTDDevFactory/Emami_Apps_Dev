@@ -13,7 +13,7 @@ import type { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const SSO_ERROR_MESSAGES: Record<string, string> = {
-  domain_not_allowed: 'Please sign in with your @emamigroup.com Microsoft work account.',
+  domain_not_allowed: 'This email does not have access. Contact your admin.',
   invalid_response: 'Sign-in failed. Please try again.',
   not_configured: 'Single sign-on is not set up yet. Please contact IT.',
 };
@@ -41,7 +41,7 @@ export default function RootNavigator() {
       verifySsoToken(token).then((result) => {
         setVerifyingSso(false);
         if (result.ok) {
-          login();
+          login(result.email);
         } else {
           setSsoError(result.error || 'Sign-in could not be verified.');
         }

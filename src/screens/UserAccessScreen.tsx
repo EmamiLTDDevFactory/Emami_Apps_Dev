@@ -1,14 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Mail, Plus, ShieldCheck, Trash2, Info, Check } from 'lucide-react-native';
+import { ArrowLeft, Mail, Plus, ShieldCheck, Trash2, Info, Check, Save } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
-import type { UserAccessEntry } from '../types';
+import type { AppRole, UserAccessEntry } from '../types';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
-import { listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess } from '../lib/accessApi';
+import { listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess, setUserActive } from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Tap cycles a role through this order — None (no access) -> User -> Admin -> back to None. */
+const ROLE_CYCLE: (AppRole | null)[] = [null, 'User', 'Admin'];
+
+/** Local, unsaved edits for one user — undefined fields mean "unchanged from the server copy". */
+type PendingChanges = {
+  isActive?: boolean;
+  roles: Record<string, AppRole | null>;
+};
+
+function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
+  return user.apps.find((a) => a.appId === appId)?.role ?? null;
+}
 
 export default function UserAccessScreen() {
   const [query, setQuery] = useState('');
@@ -18,6 +30,9 @@ export default function UserAccessScreen() {
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState<string | null>(null);
+  // Keyed by email — edits made in the UI that haven't been saved to the server yet.
+  const [pending, setPending] = useState<Record<string, PendingChanges>>({});
 
   useEffect(() => {
     listAuthorizedUsers().then((result) => {
@@ -49,7 +64,7 @@ export default function UserAccessScreen() {
       setError(result.error || 'Could not add this user.');
       return;
     }
-    setUsers((prev) => [...prev, { email: value, appIds: [] }]);
+    setUsers((prev) => [...prev, { email: value, isActive: true, apps: [] }]);
     setInput('');
   };
 
@@ -60,27 +75,79 @@ export default function UserAccessScreen() {
       return;
     }
     setUsers((prev) => prev.filter((u) => u.email !== email));
+    setPending((prev) => {
+      const { [email]: _drop, ...rest } = prev;
+      return rest;
+    });
   };
 
-  const toggleApp = async (email: string, appId: string) => {
-    const user = users.find((u) => u.email === email);
-    if (!user) return;
-    const granted = !user.appIds.includes(appId);
-    const result = await setAppAccess(email, appId, granted);
-    if (!result.ok) {
-      setError(result.error || 'Could not update access.');
-      return;
+  const effectiveActive = (user: UserAccessEntry) => pending[user.email]?.isActive ?? user.isActive;
+  const effectiveRole = (user: UserAccessEntry, appId: string) => {
+    const p = pending[user.email]?.roles[appId];
+    return p !== undefined ? p : roleOf(user, appId);
+  };
+  const isDirty = (user: UserAccessEntry) => {
+    const p = pending[user.email];
+    if (!p) return false;
+    if (p.isActive !== undefined && p.isActive !== user.isActive) return true;
+    return Object.entries(p.roles).some(([appId, role]) => role !== roleOf(user, appId));
+  };
+
+  const cycleRole = (user: UserAccessEntry, appId: string) => {
+    const current = effectiveRole(user, appId);
+    const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
+    setPending((prev) => {
+      const existing = prev[user.email] ?? { roles: {} };
+      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: next } } };
+    });
+  };
+
+  const toggleActivePending = (user: UserAccessEntry) => {
+    const next = !effectiveActive(user);
+    setPending((prev) => {
+      const existing = prev[user.email] ?? { roles: {} };
+      return { ...prev, [user.email]: { ...existing, isActive: next } };
+    });
+  };
+
+  const saveUser = async (user: UserAccessEntry) => {
+    const changes = pending[user.email];
+    if (!changes) return;
+    setError('');
+    setSaving(user.email);
+    try {
+      const calls: Promise<{ ok: boolean; error?: string }>[] = [];
+      if (changes.isActive !== undefined && changes.isActive !== user.isActive) {
+        calls.push(setUserActive(user.email, changes.isActive));
+      }
+      for (const [appId, role] of Object.entries(changes.roles)) {
+        if (role !== roleOf(user, appId)) {
+          calls.push(setAppAccess(user.email, appId, role));
+        }
+      }
+      const results = await Promise.all(calls);
+      const failed = results.find((r) => !r.ok);
+      if (failed) {
+        setError(failed.error || 'Could not save some changes. Please try again.');
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.email !== user.email) return u;
+          const nextApps = u.apps.filter((a) => changes.roles[a.appId] === undefined);
+          for (const [appId, role] of Object.entries(changes.roles)) {
+            if (role) nextApps.push({ appId, role });
+          }
+          return { ...u, isActive: changes.isActive ?? u.isActive, apps: nextApps };
+        })
+      );
+      setPending((prev) => {
+        const { [user.email]: _drop, ...rest } = prev;
+        return rest;
+      });
+    } finally {
+      setSaving(null);
     }
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.email === email
-          ? {
-              ...u,
-              appIds: granted ? [...u.appIds, appId] : u.appIds.filter((id) => id !== appId),
-            }
-          : u
-      )
-    );
   };
 
   return (
@@ -97,8 +164,9 @@ export default function UserAccessScreen() {
         <View style={styles.noticeCard}>
           <Info size={15} color={colors.rust} />
           <Text style={styles.noticeText}>
-            Grants set here are saved to the database. Full role-based permissions, invite
-            emails and enforcement of per-app access elsewhere in the app are still being designed.
+            This list is the source of truth for who can sign in to EmamiApps at all — an email
+            not listed here (or marked inactive) is blocked at login, regardless of sign-in method.
+            Tap an app chip to cycle its role: None → User → Admin. Changes save per-user via Save.
           </Text>
         </View>
 
@@ -109,7 +177,7 @@ export default function UserAccessScreen() {
             </View>
             <View style={styles.flex1}>
               <Text style={styles.cardTitle}>Authorized Users</Text>
-              <Text style={styles.cardSubtitle}>Grant each person access to specific apps</Text>
+              <Text style={styles.cardSubtitle}>Grant each person a role per app, and control who can sign in</Text>
             </View>
           </View>
 
@@ -139,53 +207,84 @@ export default function UserAccessScreen() {
             <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
           ) : (
           <View style={styles.list}>
-            {users.map((user, i) => (
-              <View key={user.email} style={[styles.userRow, i < users.length - 1 && styles.userRowBorder]}>
-                <View style={styles.userHeaderRow}>
-                  <Text style={styles.userEmail}>{user.email}</Text>
-                  <View style={styles.userHeaderRight}>
-                    <Text style={styles.userCount}>{user.appIds.length}/{APPS.length} apps</Text>
-                    <Pressable
-                      onPress={() => removeUser(user.email)}
-                      hitSlop={8}
-                      style={styles.removeBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove ${user.email}`}
-                    >
-                      <Trash2 size={14} color={colors.rust} />
-                    </Pressable>
-                  </View>
-                </View>
-
-                <View style={styles.appChipsRow}>
-                  {APPS.map((app) => {
-                    const granted = user.appIds.includes(app.id);
-                    const accent = appColor(app.id);
-                    const Icon = app.icon;
-                    return (
+            {users.map((user, i) => {
+              const active = effectiveActive(user);
+              const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
+              const dirty = isDirty(user);
+              return (
+                <View key={user.email} style={[styles.userRow, i < users.length - 1 && styles.userRowBorder, !active && styles.userRowInactive]}>
+                  <View style={styles.userHeaderRow}>
+                    <View style={styles.flex1}>
+                      <Text style={styles.userEmail}>{user.email}</Text>
+                      <Text style={styles.userCount}>{grantedCount}/{APPS.length} apps · {active ? 'Active' : 'Inactive'}</Text>
+                    </View>
+                    <View style={styles.userHeaderRight}>
+                      <Switch
+                        value={active}
+                        onValueChange={() => toggleActivePending(user)}
+                        trackColor={{ true: colors.rust, false: colors.border }}
+                        accessibilityLabel={`${active ? 'Deactivate' : 'Activate'} ${user.email}`}
+                      />
                       <Pressable
-                        key={app.id}
-                        onPress={() => toggleApp(user.email, app.id)}
-                        style={[
-                          styles.appChip,
-                          { borderColor: granted ? accent : colors.border },
-                          granted && { backgroundColor: `${accent}14` },
-                        ]}
+                        onPress={() => removeUser(user.email)}
+                        hitSlop={8}
+                        style={styles.removeBtn}
                         accessibilityRole="button"
-                        accessibilityLabel={`${granted ? 'Revoke' : 'Grant'} ${app.name} access for ${user.email}`}
-                        accessibilityState={{ selected: granted }}
+                        accessibilityLabel={`Remove ${user.email}`}
                       >
-                        <Icon size={12.5} color={granted ? accent : colors.inkSoft} />
-                        <Text style={[styles.appChipText, { color: granted ? accent : colors.inkSoft }]}>
-                          {app.name}
-                        </Text>
-                        {granted && <Check size={12} color={accent} />}
+                        <Trash2 size={14} color={colors.rust} />
                       </Pressable>
-                    );
-                  })}
+                    </View>
+                  </View>
+
+                  <View style={styles.appChipsRow}>
+                    {APPS.map((app) => {
+                      const role = effectiveRole(user, app.id);
+                      const accent = appColor(app.id);
+                      const Icon = app.icon;
+                      return (
+                        <Pressable
+                          key={app.id}
+                          onPress={() => cycleRole(user, app.id)}
+                          style={[
+                            styles.appChip,
+                            { borderColor: role ? accent : colors.border },
+                            role && { backgroundColor: `${accent}14` },
+                          ]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${app.name} access for ${user.email}: ${role ?? 'None'}. Tap to change.`}
+                        >
+                          <Icon size={12.5} color={role ? accent : colors.inkSoft} />
+                          <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
+                            {app.name}{role ? ` · ${role}` : ''}
+                          </Text>
+                          {role === 'Admin' && <Check size={12} color={accent} />}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {dirty && (
+                    <Pressable
+                      style={styles.saveBtn}
+                      onPress={() => saveUser(user)}
+                      disabled={saving === user.email}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Save changes for ${user.email}`}
+                    >
+                      {saving === user.email ? (
+                        <ActivityIndicator size="small" color={colors.white} />
+                      ) : (
+                        <>
+                          <Save size={13} color={colors.white} />
+                          <Text style={styles.saveBtnText}>Save changes</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  )}
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
           )}
         </View>
@@ -337,16 +436,21 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  userRowInactive: {
+    backgroundColor: colors.appBg,
+    opacity: 0.7,
+  },
   userHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+    gap: 10,
   },
   userHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   userEmail: {
     fontSize: 13,
@@ -357,6 +461,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: fonts.sansMedium,
     color: colors.inkSoft,
+    marginTop: 2,
   },
   removeBtn: {
     padding: 4,
@@ -379,5 +484,20 @@ const styles = StyleSheet.create({
   appChipText: {
     fontSize: 11.5,
     fontFamily: fonts.sansMedium,
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    borderRadius: radii.lg,
+    paddingVertical: 10,
+    backgroundColor: colors.rust,
+  },
+  saveBtnText: {
+    fontSize: 12.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.white,
   },
 });

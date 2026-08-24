@@ -1,8 +1,8 @@
 // Talks to the Manage Access endpoints on the hub-auth Lambda (backend/server.js) which read/
 // write emami_apps.authorized_users and emami_apps.authorized_user_apps in the dev Postgres
 // database. Same backend + same env var as authApi.ts (login) — both live on this one Lambda,
-// fronted by API Gateway.
-import type { UserAccessEntry } from '../types';
+// fronted by API Gateway. This same table is also what gates login itself (see authApi.ts).
+import type { AppRole, UserAccessEntry } from '../types';
 
 const ACCESS_API_URL = process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
 
@@ -49,12 +49,31 @@ export async function removeAuthorizedUser(email: string): Promise<ApiResult> {
   }
 }
 
-export async function setAppAccess(email: string, appId: string, granted: boolean): Promise<ApiResult> {
+/** Flips a user active/inactive — inactive users keep their app grants but are blocked at login. */
+export async function setUserActive(email: string, isActive: boolean): Promise<ApiResult> {
   try {
-    const res = await fetch(
-      `${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/apps/${encodeURIComponent(appId)}`,
-      { method: granted ? 'POST' : 'DELETE' }
-    );
+    const res = await fetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/active`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive }),
+    });
+    return await parseResult(res);
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
+/** Grants (or changes the role on) one app for a user. Pass role=null to revoke it entirely. */
+export async function setAppAccess(email: string, appId: string, role: AppRole | null): Promise<ApiResult> {
+  try {
+    const url = `${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/apps/${encodeURIComponent(appId)}`;
+    const res = role
+      ? await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role }),
+        })
+      : await fetch(url, { method: 'DELETE' });
     return await parseResult(res);
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };

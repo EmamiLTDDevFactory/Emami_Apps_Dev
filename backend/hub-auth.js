@@ -16,6 +16,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 const crypto = require('crypto');
+const { pool } = require('./db');
 
 const TENANT_ID = 'd016aebd-1f96-4dd1-a22b-eeb0201fb61e';
 const CLIENT_ID = '6225aa6f-d228-4127-8f88-81b08e2aca69';
@@ -24,15 +25,29 @@ const AUTHORIZE_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.
 const TOKEN_URL = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
 const ISSUER = `https://login.microsoftonline.com/${TENANT_ID}/v2.0`;
 const SCOPE = 'openid profile email offline_access';
-const ALLOWED_EMAIL_DOMAIN = (process.env.HUB_AUTH_EMAIL_DOMAIN || 'emamigroup.com').trim().toLowerCase();
 const JWT_SECRET = process.env.HUB_AUTH_JWT_SECRET || '';
 const FRONTEND_REDIRECT_URL = process.env.HUB_AUTH_FRONTEND_URL || 'https://www.emamiapps.in';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 if (!CLIENT_SECRET) {
     console.warn('[hub-auth] CLIENT_SECRET is not set — hub login will fail at the callback step.');
 }
 if (!JWT_SECRET) {
     console.warn('[hub-auth] HUB_AUTH_JWT_SECRET is not set — hub login will fail at the callback step.');
+}
+
+/**
+ * The Manage Access table (emami_apps.authorized_users) is the single source of truth for who
+ * can log in — not a hardcoded email domain. Used by every login path (Microsoft OAuth callback,
+ * direct email login, and session re-verification) so revoking/deactivating someone in Manage
+ * Access takes effect everywhere immediately, not just for new logins.
+ */
+async function isAuthorized(email) {
+    const { rows } = await pool.query(
+        'SELECT is_active FROM emami_apps.authorized_users WHERE email = $1',
+        [email]
+    );
+    return rows.length > 0 && rows[0].is_active === true;
 }
 
 const jwks = jwksClient({
@@ -129,7 +144,7 @@ router.get('/hub-auth/callback', async (req, res) => {
 
         const claims = await verifyIdToken(tokenData.id_token);
         const email = String(claims.email || claims.preferred_username || claims.upn || '').trim().toLowerCase();
-        if (!email || !email.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+        if (!email || !(await isAuthorized(email))) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=domain_not_allowed`);
         }
 
@@ -141,15 +156,39 @@ router.get('/hub-auth/callback', async (req, res) => {
     }
 });
 
-/** Step 3 — the frontend exchanges the token it got back for confirmation before flipping into the logged-in state. */
-router.post('/hub-auth/session/verify', (req, res) => {
+/**
+ * Direct email login — no Microsoft redirect at all. Logs the user straight in if their email
+ * exists and is active in Manage Access. This is what "Continue" on the login screen calls.
+ */
+router.post('/hub-auth/db-login', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+        return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    if (!JWT_SECRET) {
+        return res.status(503).json({ success: false, error: 'Sign-in is not configured yet. Please contact IT.' });
+    }
+    try {
+        if (!(await isAuthorized(email))) {
+            return res.status(403).json({ success: false, error: 'This email does not have access. Contact your admin.' });
+        }
+        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '12h' });
+        return res.json({ success: true, email, token });
+    } catch (err) {
+        console.error('[hub-auth] db-login failed:', err.message);
+        return res.status(500).json({ success: false, error: 'Could not sign in. Please try again.' });
+    }
+});
+
+/** Step 3 (Microsoft path) / session check (direct-login path) — re-checks live Manage Access status, not just JWT validity, so a deactivation takes effect immediately instead of waiting for the token to expire. */
+router.post('/hub-auth/session/verify', async (req, res) => {
     const token = String(req.body?.token || '').trim();
     if (!token || !JWT_SECRET) {
         return res.status(400).json({ success: false, error: 'Invalid session.' });
     }
     try {
         const payload = jwt.verify(token, JWT_SECRET);
-        if (!payload?.email || !String(payload.email).endsWith(`@${ALLOWED_EMAIL_DOMAIN}`)) {
+        if (!payload?.email || !(await isAuthorized(payload.email))) {
             return res.status(401).json({ success: false, error: 'Invalid session.' });
         }
         return res.json({ success: true, email: payload.email });

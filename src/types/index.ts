@@ -35,8 +35,17 @@ export interface NavItem {
 export type SortOption = 'Alphabetical' | 'Most Used' | 'Recently Used';
 export type CategoryFilter = 'All' | Category;
 
+export type AppRole = 'User' | 'Admin';
+
+export interface UserAppGrant {
+  appId: string;
+  role: AppRole;
+}
+
 export interface UserAccessEntry {
   email: string;
-  /** App ids (see AppItem) this user is granted access to. */
-  appIds: string[];
+  /** Inactive users are blocked at login even though their grants are kept. */
+  isActive: boolean;
+  /** Per-app grants (see AppItem for appId) — each with its own role, not just a boolean. */
+  apps: UserAppGrant[];
 }

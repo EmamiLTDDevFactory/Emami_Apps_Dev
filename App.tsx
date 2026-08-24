@@ -37,10 +37,12 @@ export default function App() {
 
   const [authChecked, setAuthChecked] = useState(false);
   const [initialLoggedIn, setInitialLoggedIn] = useState(false);
+  const [initialUserEmail, setInitialUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPersistedLoginState().then((loggedIn) => {
-      setInitialLoggedIn(loggedIn);
+    loadPersistedLoginState().then(({ isLoggedIn, userEmail }) => {
+      setInitialLoggedIn(isLoggedIn);
+      setInitialUserEmail(userEmail);
       setAuthChecked(true);
     });
   }, []);
@@ -139,7 +141,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <SafeAreaProvider>
-        <AuthProvider initialLoggedIn={initialLoggedIn}>
+        <AuthProvider initialLoggedIn={initialLoggedIn} initialUserEmail={initialUserEmail}>
           <FavoritesProvider>
             <NotificationsUIProvider>
               <NavigationContainer linking={linking}>

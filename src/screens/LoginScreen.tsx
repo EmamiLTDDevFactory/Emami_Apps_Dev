@@ -9,29 +9,24 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { colors, fonts, radii } from '../theme/tokens';
 import EmpAppMark from '../components/EmpAppMark';
-import { getMicrosoftSignInUrl } from '../lib/authApi';
+import { getMicrosoftSignInUrl, loginWithEmail } from '../lib/authApi';
 
 interface LoginScreenProps {
   error?: string | null;
   verifying?: boolean;
   onDismissError?: () => void;
-  onLogin?: () => void;
+  onLogin?: (email?: string) => void;
 }
 
 /**
- * TEMPORARY — Microsoft sign-in now goes through OAuth2/OIDC on the mouldhealthcheck Azure App
- * Service (embedded-apps/mouldhealthcheck/backend/server.js, "EMAMIAPPS HUB LOGIN" section),
- * replacing an earlier AWS Lambda + SAML implementation whose Function URL hit an unresolved
- * AWS-account-level 403 (that Lambda code has been removed; this Azure route is the real one
- * going forward). Verified locally (login redirect, token exchange, JWKS signature verification
- * all work), but NOT yet confirmed end-to-end in production — that depends on this backend
- * change actually being deployed to the Azure App Service and HUB_AUTH_JWT_SECRET being set
- * there. Until that's confirmed, both sign-in options stay side by side — "Sign in with
- * Microsoft" for whoever it works for, "Continue with Temporary Access" as a guaranteed
- * fallback. TO REVERT: set this back to false and remove the temporary-access button once
- * Microsoft sign-in is confirmed working end-to-end in production.
+ * Both sign-in paths are gated by the same emami_apps.authorized_users table (Manage Access) —
+ * "Sign in with Microsoft" still needs a redirect URI registered on the Entra app (blocked as of
+ * this writing, pending Infra), so email sign-in is the primary working path for now. Kept as a
+ * toggle rather than deleted the Microsoft button, since it starts working the moment that
+ * redirect URI is added — no code change needed then, just flip SHOW_MICROSOFT_SIGNIN or leave
+ * both visible.
  */
-const SHOW_TEMP_SIGNIN = true;
+const SHOW_MICROSOFT_SIGNIN = true;
 
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
@@ -98,12 +93,13 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [localError, setLocalError] = useState('');
+  const [checkingAccess, setCheckingAccess] = useState(false);
 
   const trimmedEmail = email.trim().toLowerCase();
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
 
   // Independent of the email field — Microsoft's own sign-in page asks for the account, and
-  // backend/server.js's ACS handler enforces the @emamigroup.com domain check server-side.
+  // backend/hub-auth.js's callback checks the same Manage Access table as the email path below.
   const signInWithMicrosoft = () => {
     setLocalError('');
     onDismissError?.();
@@ -117,7 +113,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
     }
   };
 
-  const continueTemporarily = () => {
+  const signInWithEmail = async () => {
     setLocalError('');
     onDismissError?.();
     if (!trimmedEmail) {
@@ -128,10 +124,18 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError('Enter a valid email address to continue.');
       return;
     }
-    onLogin?.();
+    setCheckingAccess(true);
+    const result = await loginWithEmail(trimmedEmail);
+    setCheckingAccess(false);
+    if (!result.ok) {
+      setLocalError(result.error || 'This email does not have access.');
+      return;
+    }
+    onLogin?.(result.email);
   };
 
   const shownError = error || localError;
+  const busy = verifying || checkingAccess;
 
   return (
     <View style={styles.root}>
@@ -168,9 +172,9 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.welcome}>{verifying ? 'Signing you in…' : 'Welcome back'}</Text>
+            <Text style={styles.welcome}>{busy ? 'Signing you in…' : 'Welcome back'}</Text>
             <Text style={styles.subtitle}>
-              {verifying ? 'Verifying your Microsoft sign-in.' : 'Choose how you’d like to sign in'}
+              {verifying ? 'Verifying your Microsoft sign-in.' : checkingAccess ? 'Checking your access.' : 'Sign in with your email'}
             </Text>
 
             {verifying ? (
@@ -179,12 +183,28 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
               <>
                 {!!shownError && <Text style={styles.error}>{shownError}</Text>}
 
-                <Pressable onPress={signInWithMicrosoft} style={styles.primaryBtn}>
-                  <MicrosoftGlyph />
-                  <Text style={styles.primaryBtnText}>Sign in with Microsoft</Text>
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={(v) => { setEmail(v); setLocalError(''); onDismissError?.(); }}
+                  placeholder="you@company.com"
+                  placeholderTextColor={colors.inkSoft}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  editable={!checkingAccess}
+                  onSubmitEditing={signInWithEmail}
+                />
+
+                <Pressable onPress={signInWithEmail} style={styles.primaryBtn} disabled={checkingAccess}>
+                  {checkingAccess ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Sign In</Text>
+                  )}
                 </Pressable>
 
-                {SHOW_TEMP_SIGNIN && (
+                {SHOW_MICROSOFT_SIGNIN && (
                   <>
                     <View style={styles.dividerRow}>
                       <View style={styles.dividerLine} />
@@ -192,31 +212,16 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
                       <View style={styles.dividerLine} />
                     </View>
 
-                    <TextInput
-                      style={styles.input}
-                      value={email}
-                      onChangeText={(v) => { setEmail(v); setLocalError(''); onDismissError?.(); }}
-                      placeholder="you@company.com"
-                      placeholderTextColor={colors.inkSoft}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="email-address"
-                      onSubmitEditing={continueTemporarily}
-                    />
-
-                    <Pressable onPress={continueTemporarily} style={styles.secondaryBtn}>
-                      <Text style={styles.secondaryBtnText}>Continue with Temporary Access</Text>
+                    <Pressable onPress={signInWithMicrosoft} style={styles.secondaryBtn} disabled={checkingAccess}>
+                      <MicrosoftGlyph />
+                      <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
                     </Pressable>
                   </>
                 )}
               </>
             )}
 
-            <Text style={styles.helper}>
-              {SHOW_TEMP_SIGNIN
-                ? 'Microsoft sign-in is being finalized — use Temporary Access if it doesn’t complete.'
-                : 'Only @emamigroup.com accounts can sign in. No access? Contact IT.'}
-            </Text>
+            <Text style={styles.helper}>Only emails added in Manage Access can sign in. No access? Contact your admin.</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -442,8 +447,10 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
     backgroundColor: colors.cream2,
     borderWidth: 1,
     borderColor: colors.border,

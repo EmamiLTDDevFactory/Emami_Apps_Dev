@@ -36,4 +36,25 @@ async function testConnection() {
     }
 }
 
-module.exports = { pool, testConnection };
+/**
+ * Idempotent schema bootstrap for Manage Access — safe to run on every cold start (IF NOT EXISTS
+ * everywhere). Adds per-user active/inactive status and a per-app role on top of the original
+ * plain grant/revoke membership model.
+ */
+async function runMigrations() {
+    try {
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_users
+                ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true
+        `);
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_user_apps
+                ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'User'
+        `);
+        console.log('[postgres] Manage Access schema up to date (is_active, role).');
+    } catch (err) {
+        console.error('[postgres] Migration failed:', err.message);
+    }
+}
+
+module.exports = { pool, testConnection, runMigrations };
