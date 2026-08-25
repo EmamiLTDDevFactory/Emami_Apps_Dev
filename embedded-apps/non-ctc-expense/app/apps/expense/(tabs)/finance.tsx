@@ -5,10 +5,11 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, Touch
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
+import { formatSapErrorMessage } from '../../../../src/utils/sap-error';
 
 export default function FinanceScreen() {
   const router = useRouter();
-  const { filterClaims, validateClaimFinance, releasePayment, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries } = useClaim();
+  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries } = useClaim();
   const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
@@ -56,6 +57,12 @@ export default function FinanceScreen() {
   const [releaseConfirmVisible, setReleaseConfirmVisible] = useState(false);
   const [releaseConfirmClaimId, setReleaseConfirmClaimId] = useState('');
   const [bulkReleaseConfirmVisible, setBulkReleaseConfirmVisible] = useState(false);
+  const [taxModalVisible, setTaxModalVisible] = useState(false);
+  const [availableTaxes, setAvailableTaxes] = useState<any[]>([]);
+  const [selectedTaxCode, setSelectedTaxCode] = useState('');
+  const [selectedTaxDescription, setSelectedTaxDescription] = useState('');
+  const [taxDropdownOpen, setTaxDropdownOpen] = useState(false);
+  const [taxLoading, setTaxLoading] = useState(false);
 
   // Stat card selection — drives history list view
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
@@ -83,26 +90,6 @@ export default function FinanceScreen() {
       : [];
   // When Approved/Rejected/Total selected → show history. Pending → show finance claims.
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
-
-  const formatSapErrorMessage = (message?: string) => {
-    const rawMessage = (message || '').toString().trim();
-    if (!rawMessage) {
-      return 'The finance action could not be completed. Please try again.';
-    }
-
-    if (/error in document/i.test(rawMessage)) {
-      const documentError = rawMessage.split(':').slice(1).join(':').trim();
-      return documentError
-        ? `SAP document posting failed. ${documentError}`
-        : 'SAP document posting failed. Please review the claim and try again.';
-    }
-
-    if (/sap rejected/i.test(rawMessage)) {
-      return 'SAP rejected the request. Please check the claim data and try again.';
-    }
-
-    return rawMessage;
-  };
 
   useFocusEffect(
     useCallback(() => {
@@ -144,22 +131,45 @@ export default function FinanceScreen() {
     );
   };
 
-  const handleRelease = (id: string) => {
-    setReleaseConfirmClaimId(id);
-    setReleaseConfirmVisible(true);
+  const handleRelease = async (id: string) => {
+    const claim = claims.find(c => c.id === id);
+    if (claim && claim.stcd3) {
+      setReleaseConfirmClaimId(id);
+      setTaxModalVisible(true);
+      setTaxLoading(true);
+      const taxes = await fetchTaxes(id);
+      setAvailableTaxes(taxes);
+      setTaxLoading(false);
+    } else {
+      setReleaseConfirmClaimId(id);
+      setReleaseConfirmVisible(true);
+    }
   };
 
   const closeReleaseConfirm = () => {
     setReleaseConfirmVisible(false);
+    setTaxModalVisible(false);
     setReleaseConfirmClaimId('');
+    setSelectedTaxCode('');
+    setSelectedTaxDescription('');
+    setTaxDropdownOpen(false);
+    setAvailableTaxes([]);
   };
 
   const confirmReleasePayment = async () => {
     const id = releaseConfirmClaimId;
     if (!id) return;
 
+    if (taxModalVisible && !selectedTaxCode) {
+      showScreenMessage('Please select a Tax Code before releasing payment.', 'error', 'Selection Required');
+      return;
+    }
+
+    const taxCodeToSend = selectedTaxCode;
+    const taxDescriptionToSend = selectedTaxDescription;
     closeReleaseConfirm();
-    const result = await releasePayment(id);
+
+    const result = await releasePayment(id, taxCodeToSend || undefined, taxDescriptionToSend || undefined);
     if (!result.success) {
       showScreenMessage(
         formatSapErrorMessage(result.error),
@@ -597,6 +607,99 @@ export default function FinanceScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.confirmOkBtn} onPress={confirmReleasePayment}>
                 <Text style={styles.confirmOkText}>Release Payment</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={taxModalVisible} transparent animationType="fade" onRequestClose={closeReleaseConfirm}>
+        <Pressable style={styles.confirmOverlay} onPress={closeReleaseConfirm}>
+          <Pressable style={[styles.confirmBox, { maxHeight: '80%' }]} onPress={() => {}}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="document-text-outline" size={22} color="#059669" />
+            </View>
+            <Text style={styles.confirmTitle}>Select Tax Code</Text>
+            <Text style={styles.confirmText}>
+              This claim has a GSTIN. Please select the applicable tax code to release payment.
+            </Text>
+
+            {taxLoading ? (
+              <Text style={{ marginVertical: 20, textAlign: 'center', color: '#64748B' }}>Loading Tax Codes...</Text>
+            ) : (
+              <View style={{ width: '100%', marginVertical: 15, zIndex: 10 }}>
+                {availableTaxes.length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: '#64748B' }}>No Tax Codes found for this claim.</Text>
+                ) : (
+                  <View>
+                    <TouchableOpacity
+                      style={{
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        backgroundColor: '#F8FAFC',
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => setTaxDropdownOpen(!taxDropdownOpen)}
+                    >
+                      <Text style={{ color: selectedTaxCode ? '#0F172A' : '#64748B' }}>
+                        {selectedTaxCode ? `${selectedTaxCode}${selectedTaxDescription ? ` (${selectedTaxDescription})` : ''}` : 'Select a Tax Code...'}
+                      </Text>
+                      <Ionicons name={taxDropdownOpen ? "chevron-up" : "chevron-down"} size={18} color="#64748B" />
+                    </TouchableOpacity>
+
+                    {taxDropdownOpen && (
+                      <ScrollView
+                        style={{
+                          marginTop: 4,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 8,
+                          maxHeight: 150
+                        }}
+                        nestedScrollEnabled
+                      >
+                        {availableTaxes.map((tax, index) => (
+                          <TouchableOpacity
+                            key={index}
+                            style={{
+                              padding: 12,
+                              borderBottomWidth: index === availableTaxes.length - 1 ? 0 : 1,
+                              borderBottomColor: '#F1F5F9',
+                              backgroundColor: selectedTaxCode === tax.Mwskz ? '#EFF8FF' : '#FFFFFF',
+                            }}
+                            onPress={() => {
+                              setSelectedTaxCode(tax.Mwskz);
+                              setSelectedTaxDescription(tax.Text1 || '');
+                              setTaxDropdownOpen(false);
+                            }}
+                          >
+                            <Text style={{ fontWeight: selectedTaxCode === tax.Mwskz ? 'bold' : 'normal', color: '#0F172A' }}>
+                              {tax.Mwskz}{tax.Text1 ? ` (${tax.Text1})` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity style={styles.confirmCancelBtn} onPress={closeReleaseConfirm}>
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmOkBtn, (!selectedTaxCode && availableTaxes.length > 0) && { opacity: 0.5 }]}
+                onPress={confirmReleasePayment}
+                disabled={!selectedTaxCode && availableTaxes.length > 0}
+              >
+                <Text style={styles.confirmOkText}>Confirm Release</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

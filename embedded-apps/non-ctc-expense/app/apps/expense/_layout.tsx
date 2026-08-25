@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from '../../../src/context/AuthContext';
 import { ClaimProvider } from '../../../src/context/ClaimContext';
 import { ActivityIndicator, Image, LogBox, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -78,6 +79,9 @@ function RootLayoutNav() {
               style={styles.logoutBtn}
               onPress={() => {
                 logout();
+                // Clear the redirect-dedup guard so the next successful login's
+                // navigation to (tabs) isn't skipped as a "already redirected there" no-op.
+                lastAutoRedirect.current = null;
                 router.replace('/apps/expense/login');
               }}
             >
@@ -95,6 +99,20 @@ function RootLayoutNav() {
               headerTitle: "Claim Details & Audit Trail",
               headerStyle: { backgroundColor: '#002E5D' },
               headerTintColor: '#FFFFFF',
+              headerLeft: () => (
+                <TouchableOpacity
+                  onPress={() => {
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace('/apps/expense/(tabs)');
+                    }
+                  }}
+                  style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                >
+                  <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+              ),
             }}
           />
         </Stack>

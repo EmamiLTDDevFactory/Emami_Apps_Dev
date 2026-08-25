@@ -31,4 +31,18 @@ const getBaseUrl = (): string => {
 
 export const API_BASE_URL = getBaseUrl();
 
+// Direct SAP OData gateway base — only for entity sets Basis has explicitly opened for
+// anonymous GET access (currently GstSet, mirroring the exception already granted for
+// MoldHealthCheck's ZMM_MOULD_CARE_SRV). Everything else (login/OTP, claim submission,
+// claim-header lookups) still goes through the backend, since it needs the Azure OAuth
+// token and/or shouldn't be readable by anyone without restriction.
+// Hardcoded (not env-based) on purpose, same convention as MoldHealthCheck's lib/config.ts —
+// this deploys with zero extra configuration, no Amplify Console env var needed.
+// Development (NGD)
+export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFI_EXPCLAIM_SRV";
+// Quality (NGQ)
+// export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZFI_EXPCLAIM_SRV";
+// Production (NWP)
+// export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZFI_EXPCLAIM_SRV";
+
 

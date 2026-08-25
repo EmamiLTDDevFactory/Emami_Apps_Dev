@@ -4,7 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { API_BASE_URL } from '../../../../src/config/api';
+import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { Attachment } from '../../../../src/types';
@@ -32,10 +32,8 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'xls', 'xlsx', 'csv', 'txt']);
 const ALLOWED_ATTACHMENT_LABEL = 'PDF, PNG, JPG, JPEG, XLS, XLSX, CSV, TXT';
 
-// Attachments travel to the backend as base64 (adds ~33% size), and the Lambda Function URL
-// hard-caps the whole request at 6 MB — 4.5 MB of real file content stays safely under that.
-const MAX_ATTACHMENTS_TOTAL_BYTES = 4 * 1024 * 1024;
-const MAX_ATTACHMENTS_TOTAL_LABEL = '4 MB';
+const MAX_ATTACHMENTS_TOTAL_BYTES = 30 * 1024 * 1024;
+const MAX_ATTACHMENTS_TOTAL_LABEL = '30 MB';
 
 export default function CreateClaimScreen() {
   const router = useRouter();
@@ -43,7 +41,7 @@ export default function CreateClaimScreen() {
   const params = useLocalSearchParams();
   const editingClaimId = (params?.claimId as string) || '';
   // RESUBMIT_FEATURE: Add tempClaimForResubmit and setTempClaimForResubmit
-  const { addClaim, policyLimit, autoApprovalThreshold, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims } = useClaim();
+  const { addClaim, policyLimit, autoApprovalThreshold, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas } = useClaim();
 
   // If currentUser is null (e.g. during a page reload before redirecting to login), don't render to prevent crashes
   if (!currentUser) return null;
@@ -113,10 +111,18 @@ export default function CreateClaimScreen() {
   const [gstLookupLoading, setGstLookupLoading] = useState(false);
   const [gstLookupError, setGstLookupError] = useState('');
   const [gstinChoice, setGstinChoice] = useState<'yes' | 'no'>('no');
+  const [availableAreas, setAvailableAreas] = useState<any[]>([]);
+  const [areasLoading, setAreasLoading] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<any | null>(null);
+  const [areaModalVisible, setAreaModalVisible] = useState(false);
+  const [areaSearch, setAreaSearch] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [justification, setJustification] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
+  const filteredAreas = availableAreas.filter(area =>
+    `${area.Bland || ''} ${area.Bezei || ''}`.toLowerCase().includes(areaSearch.toLowerCase())
+  );
   const [amountError, setAmountError] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -311,7 +317,11 @@ export default function CreateClaimScreen() {
       setSelectedGst(null);
 
       try {
-        const res = await fetch(`${API_BASE_URL}/api/get-gst?gstin=${encodeURIComponent(normalizedGstin)}`);
+        // Basis has opened GstSet for direct anonymous GET access, same exception already
+        // granted for MoldHealthCheck's SAP service — so this calls SAP directly instead of
+        // going through our own backend, which stays reserved for login/OTP/claim submission.
+        const filter = encodeURIComponent(`Stcd3 eq '${normalizedGstin}'`);
+        const res = await fetch(`${SAP_BASE_URL}/GstSet?$format=json&$filter=${filter}`);
         if (!res.ok) {
           setGstLookupError('Unable to lookup GSTIN at this time.');
           return;
@@ -446,6 +456,7 @@ export default function CreateClaimScreen() {
       lifnr: gstinChoice === 'yes' ? (selectedGst?.item?.Lifnr || selectedGst?.item?.lifnr || null) : null,
       name1: gstinChoice === 'yes' ? (selectedGst?.item?.Name1 || selectedGst?.item?.name1 || null) : null,
       stcd3: gstinChoice === 'yes' ? (selectedGst?.item?.Stcd3 || selectedGst?.item?.stcd3 || null) : null,
+      bezei: gstinChoice === 'yes' ? (selectedArea?.Bezei || null) : null,
     };
 
     console.log('[CREATE] Submitting claim:', claimData);
@@ -609,11 +620,16 @@ export default function CreateClaimScreen() {
         <View style={styles.choiceRow}>
           <TouchableOpacity
             style={[styles.choiceBtn, gstinChoice === 'yes' && styles.choiceBtnActive]}
-            onPress={() => {
+            onPress={async () => {
               setGstinChoice('yes');
               setGstinInput('');
               setSelectedGst(null);
               setGstLookupError('');
+              setSelectedArea(null);
+              setAreasLoading(true);
+              const areas = await fetchAreas();
+              setAvailableAreas(areas);
+              setAreasLoading(false);
             }}
           >
             <Text style={[styles.choiceBtnText, gstinChoice === 'yes' && styles.choiceBtnTextActive]}>Yes</Text>
@@ -625,6 +641,8 @@ export default function CreateClaimScreen() {
               setGstinInput('');
               setSelectedGst(null);
               setGstLookupError('');
+              setSelectedArea(null);
+              setAvailableAreas([]);
             }}
           >
             <Text style={[styles.choiceBtnText, gstinChoice === 'no' && styles.choiceBtnTextActive]}>No</Text>
@@ -658,6 +676,15 @@ export default function CreateClaimScreen() {
                 <Text style={[styles.selectorBtnText, { color: '#065F46' }]}>{selectedGst.display}</Text>
               </View>
             ) : null}
+
+            <Text style={styles.inputLabel}>Region *</Text>
+            <TouchableOpacity style={styles.selectorBtn} onPress={() => setAreaModalVisible(true)}>
+              <Text style={styles.selectorBtnText}>
+                {selectedArea ? `${selectedArea.Bland}${selectedArea.Bezei ? ` (${selectedArea.Bezei})` : ''}` : 'Select Region...'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#64748B" />
+            </TouchableOpacity>
+            {areasLoading && <Text style={styles.subtext}>Loading regions…</Text>}
           </>
         )}
 
@@ -793,6 +820,44 @@ export default function CreateClaimScreen() {
                   >
                     <Text style={styles.modalOptionText}>{type.name}</Text>
                     {expenseType === type.name && <Ionicons name="checkmark" size={20} color="#005A9E" />}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Region Select Modal */}
+      <Modal visible={areaModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalOverlayBackground} onPress={() => setAreaModalVisible(false)} />
+          <View style={styles.modalBox}>
+            <Text style={styles.modalBoxTitle}>Select Region</Text>
+            <TextInput
+              style={[styles.textInput, { marginBottom: 12 }]}
+              value={areaSearch}
+              onChangeText={setAreaSearch}
+              placeholder="Search regions"
+              placeholderTextColor="#94A3B8"
+            />
+            <ScrollView style={styles.modalOptionList} nestedScrollEnabled>
+              {filteredAreas.length === 0 ? (
+                <View style={styles.modalOption}>
+                  <Text style={styles.modalOptionText}>No matching regions</Text>
+                </View>
+              ) : (
+                filteredAreas.map((area, index) => (
+                  <TouchableOpacity
+                    key={`${area.Bland}-${index}`}
+                    style={styles.modalOption}
+                    onPress={() => {
+                      setSelectedArea(area);
+                      setAreaModalVisible(false);
+                    }}
+                  >
+                    <Text style={styles.modalOptionText}>{area.Bland}{area.Bezei ? ` (${area.Bezei})` : ''}</Text>
+                    {selectedArea?.Bland === area.Bland && <Ionicons name="checkmark" size={20} color="#005A9E" />}
                   </TouchableOpacity>
                 ))
               )}

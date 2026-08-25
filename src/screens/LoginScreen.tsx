@@ -19,29 +19,16 @@ interface LoginScreenProps {
 }
 
 /**
- * Both sign-in paths are gated by the same emami_apps.authorized_users table (Manage Access).
- * "Sign in with Microsoft" is SAML 2.0 (backend/saml-sso.js) — it only works once an admin has
- * uploaded Entra's Federation Metadata XML from the "Configure SSO" screen (linked off Manage
- * Access) and enabled it there; until then the backend redirects back here with
- * ?ssoError=not_configured, which RootNavigator turns into the "not set up yet" message. Kept as
- * a toggle rather than deleted the Microsoft button so it can be hidden entirely if desired
- * without touching backend config.
+ * "Sign in with Microsoft" is SAML 2.0 (backend/saml-sso.js) — it only works once the bundled
+ * Azure IdP metadata (backend/azure-idp-metadata.xml) is present and HUB_AUTH_SAML_ENABLED=true;
+ * until then the backend redirects back here with ?ssoError=not_configured, which RootNavigator
+ * turns into the "not set up yet" message. Kept as a toggle rather than deleted the Microsoft
+ * button so it can be hidden entirely if desired without touching backend config.
+ *
+ * Neither this path nor direct email sign-in currently checks the emami_apps.authorized_users
+ * table — authorizedUsers.js's isAuthorized() is presently a no-op (see that file for why).
  */
 const SHOW_MICROSOFT_SIGNIN = true;
-
-/**
- * TEMPORARY — REMOVE BEFORE SHIPPING.
- *
- * Adds a third, clearly-separate "Continue without signing in" link below the two real sign-in
- * buttons above. Unlike those two (which call the real backend — direct email still enforces the
- * Manage Access DB check, unless authorizedUsers.js's own temporary bypass is on; Microsoft still
- * does a real SAML round trip), this makes no backend call at all: it logs straight in as
- * whatever email is typed (or a placeholder if the field is empty). Exists only so the rest of
- * the app can be exercised right now, independent of whether the hub-auth Lambda has the SAML
- * code deployed yet or Azure SSO is fully wired up. Delete this block (and the button below) once
- * both of those are working end-to-end.
- */
-const TEMP_ACCESS_ENABLED = true;
 
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
@@ -113,10 +100,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   const trimmedEmail = email.trim().toLowerCase();
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
 
-  // Independent of the email field — Microsoft's own sign-in page asks for the account, and
-  // backend/saml-sso.js's ACS callback checks the same Manage Access table as the email path below
-  // (see authorizedUsers.js for a temporary DB-check-only bypass — the SAML redirect/response
-  // itself always happens for real; only the Manage Access gate can be turned off).
+  // Independent of the email field — Microsoft's own sign-in page asks for the account.
   const signInWithMicrosoft = () => {
     setLocalError('');
     onDismissError?.();
@@ -149,12 +133,6 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       return;
     }
     onLogin?.(result.email);
-  };
-
-  const enterTemporarily = () => {
-    setLocalError('');
-    onDismissError?.();
-    onLogin?.(trimmedEmail || 'temp-access@emamiapps.in');
   };
 
   const shownError = error || localError;
@@ -240,12 +218,6 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
                       <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
                     </Pressable>
                   </>
-                )}
-
-                {TEMP_ACCESS_ENABLED && (
-                  <Pressable onPress={enterTemporarily} style={styles.tempAccessBtn} disabled={checkingAccess}>
-                    <Text style={styles.tempAccessBtnText}>Continue without signing in (temporary)</Text>
-                  </Pressable>
                 )}
               </>
             )}
@@ -491,17 +463,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     fontSize: 14.5,
     color: colors.ink,
-  },
-  tempAccessBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  tempAccessBtnText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 12,
-    color: '#B45309',
-    textDecorationLine: 'underline',
   },
   msGlyph: {
     width: 16,

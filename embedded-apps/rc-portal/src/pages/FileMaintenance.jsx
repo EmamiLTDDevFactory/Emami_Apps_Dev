@@ -9,9 +9,9 @@ import {
 import SuccessModal from '../components/SuccessModal';
 import * as XLSX from 'xlsx';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL 
-  ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/?$/, '') 
-  : 'http://localhost:5000';
+// Direct SAP OData gateway base — same anonymous-access door as odataService.js. FileSet is
+// open for direct anonymous GET/POST/DELETE (confirmed with Basis).
+const SAP_BASE_URL = "https://emamiapi.emamigroup.com/api/NGD/ZRCPORTAL_SRV";
 
 const getExcelPreviewRows = (base64Str) => {
   if (!base64Str) return null;
@@ -138,13 +138,20 @@ export default function FileMaintenance() {
     setSelectedFileNos([]);
     try {
       console.log('[FILE-MAINTENANCE] Fetching SAP FileSet entity set...');
-      const response = await fetch(`${API_BASE_URL}/api/files`);
+      // Mirrors backend/server.js's GET /api/files: try FileSet first, fall back to DOCUMENTSet
+      // if the entity set name differs.
+      let response = await fetch(`${SAP_BASE_URL}/FileSet?$format=json`);
+      if (!response.ok) {
+        console.warn('[FILE-MAINTENANCE] FileSet fetch failed, trying DOCUMENTSet...');
+        response = await fetch(`${SAP_BASE_URL}/DOCUMENTSet?$format=json`);
+      }
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('[FILE-MAINTENANCE] SAP FileSet data received:', data);
-      setFiles(Array.isArray(data) ? data : []);
+      const results = data?.d?.results || data?.results || [];
+      console.log('[FILE-MAINTENANCE] SAP FileSet data received:', results);
+      setFiles(Array.isArray(results) ? results : []);
     } catch (err) {
       console.error('[FILE-MAINTENANCE] Error fetching FileSet:', err);
       setFetchError('Failed to fetch file repository from SAP FileSet.');
@@ -257,8 +264,8 @@ export default function FileMaintenance() {
           const resultString = reader.result;
           const base64Content = resultString.split(',')[1] || resultString;
 
-          console.log('[FILE-MAINTENANCE] Submitting POST /api/files (FILESET_CREATE_ENTITY)...');
-          const response = await fetch(`${API_BASE_URL}/api/files`, {
+          console.log('[FILE-MAINTENANCE] Submitting POST /FileSet (FILESET_CREATE_ENTITY) to SAP directly...');
+          const response = await fetch(`${SAP_BASE_URL}/FileSet`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -271,8 +278,10 @@ export default function FileMaintenance() {
           });
 
           const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Failed to upload file to SAP FileSet');
+          const sapErrorType = (data?.d?.Type || data?.Type || '').toString().toUpperCase();
+          if (!response.ok || sapErrorType === 'E') {
+            const errMsg = data?.error?.message?.value || data?.d?.Message || data?.error || 'Failed to upload file to SAP FileSet';
+            throw new Error(errMsg);
           }
 
           console.log('[FILE-MAINTENANCE] Upload successful:', data);
@@ -353,26 +362,31 @@ export default function FileMaintenance() {
       if (deleteConfirm.fileNos.length === 1) {
         const targetFileNo = deleteConfirm.fileNos[0];
         console.log(`[FILE-MAINTENANCE] Deleting single file FileNo: ${targetFileNo}...`);
-        
-        const response = await fetch(`${API_BASE_URL}/api/files/${encodeURIComponent(targetFileNo)}`, {
+
+        const response = await fetch(`${SAP_BASE_URL}/FileSet(FileNo='${encodeURIComponent(targetFileNo)}')`, {
           method: 'DELETE'
         });
-        const data = await response.json();
-        if (!response.ok || data.error) {
-          throw new Error(data.error || 'Failed to delete file from SAP FileSet');
+        if (!response.ok) {
+          let errMsg = 'Failed to delete file from SAP FileSet';
+          try {
+            const data = await response.json();
+            errMsg = data?.error?.message?.value || data?.error || errMsg;
+          } catch (e) {}
+          throw new Error(errMsg);
         }
         setUploadMessage({ type: 'success', text: `File "${deleteConfirm.filenames[0]}" (FileNo: ${targetFileNo}) deleted successfully!` });
       } else {
+        // Mirrors backend/server.js's bulk delete: loop per FileNo, same as the batch-delete
+        // route did server-side — it always reported blanket success regardless of individual
+        // per-file failures, so that's preserved here too.
         console.log(`[FILE-MAINTENANCE] Bulk deleting ${deleteConfirm.fileNos.length} files...`);
-        
-        const response = await fetch(`${API_BASE_URL}/api/files/batch-delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileNos: deleteConfirm.fileNos })
-        });
-        const data = await response.json();
-        if (!response.ok || data.error) {
-          throw new Error(data.error || 'Failed to complete bulk deletion');
+
+        for (const fileNo of deleteConfirm.fileNos) {
+          try {
+            await fetch(`${SAP_BASE_URL}/FileSet(FileNo='${encodeURIComponent(fileNo)}')`, { method: 'DELETE' });
+          } catch (e) {
+            console.error(`[FILE-MAINTENANCE] Error deleting FileNo ${fileNo}:`, e);
+          }
         }
         setUploadMessage({ type: 'success', text: `Successfully deleted ${deleteConfirm.fileNos.length} files from SAP FileSet!` });
       }

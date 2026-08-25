@@ -30,6 +30,12 @@ function sendIndexHtml(res) {
   }
 }
 
+// Folder-based embedded apps (Dispatch Tracker, Non-CTC Expense, MoldHealthCheck) need normal
+// directory-index serving so a bare /apps/<name> (or any restructured route folder under it)
+// resolves to that folder's own index.html — registered ahead of the hub-wide static below,
+// which has index disabled, so this takes precedence for anything under /apps.
+app.use('/apps', express.static(path.join(DIST_DIR, 'apps'), { extensions: ['html'] }));
+
 // Static web build. `extensions: ['html']` lets extensionless URLs like
 // /apps/expense/login match the on-disk login.html — without it, every
 // embedded-app route silently falls through to the hub's own SPA fallback

@@ -1,11 +1,11 @@
 /**
- * Provisions/updates the real backends (Non-CTC-Expense, RC Portal) as AWS
- * Lambda functions with public Function URLs, as part of the SAME build that
- * deploys Emami_Apps' frontend — so one Amplify deploy is genuinely "one app."
+ * Provisions/updates the hub-auth backend (login + Manage Access) as an AWS Lambda function, as
+ * part of the SAME build that deploys Emami_Apps' frontend — so one Amplify deploy is genuinely
+ * "one app." Non-CTC-Expense and RC Portal's backends used to be deployed here too, but both
+ * moved off Lambda onto an always-on internal machine (same model as MoldHealthCheck's backend)
+ * — see the BACKENDS comment below.
  *
- * Runs BEFORE build:embedded in amplify.yml. Each backend's real Function URL
- * is written into that app's own .env so its frontend build bundles the live
- * URL, not localhost.
+ * Runs BEFORE build:embedded in amplify.yml.
  *
  * No-ops (with a warning, not an error) if AWS credentials aren't configured —
  * so local builds and first-time setup never break.
@@ -30,6 +30,12 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://www.emamiapps.in
 // skipFunctionUrl: true below means this entry still updates the Lambda's CODE (useful — keep
 // running this to ship changes), but does NOT touch/create a Function URL or overwrite the
 // frontend .env — that .env value must point at the API Gateway invoke URL, set manually.
+//
+// non-ctc-expense's and rc-portal's backends moved off Lambda entirely — they now run as plain
+// `node server.js` processes on an always-on internal machine (same model as MoldHealthCheck's
+// backend), so this script no longer deploys or manages either of them. Their frontends'
+// EXPO_PUBLIC_API_URL / VITE_API_BASE_URL are set manually to point at wherever those servers
+// actually run, not written by this script anymore.
 //
 // VPC networking (opt-in, off by default): this Lambda's Postgres (10.17.12.4, an on-prem/
 // private address — see backend/db.js) is unreachable from it today because a default Lambda
@@ -60,21 +66,6 @@ const BACKENDS = [
     vpcConfig: (HUB_AUTH_VPC_SUBNET_IDS.length && HUB_AUTH_VPC_SECURITY_GROUP_IDS.length)
       ? { SubnetIds: HUB_AUTH_VPC_SUBNET_IDS, SecurityGroupIds: HUB_AUTH_VPC_SECURITY_GROUP_IDS }
       : undefined,
-  },
-  {
-    name: 'non-ctc-expense',
-    functionName: 'emami-apps-non-ctc-expense',
-    dir: path.join(__dirname, '..', 'embedded-apps', 'non-ctc-expense', 'backend'),
-    frontendEnvFile: path.join(__dirname, '..', 'embedded-apps', 'non-ctc-expense', '.env'),
-    frontendEnvKey: 'EXPO_PUBLIC_API_URL',
-  },
-  {
-    name: 'rc-portal',
-    functionName: 'emami-apps-rc-portal',
-    dir: path.join(__dirname, '..', 'embedded-apps', 'rc-portal', 'backend'),
-    frontendEnvFile: path.join(__dirname, '..', 'embedded-apps', 'rc-portal', '.env'),
-    frontendEnvKey: 'VITE_API_BASE_URL',
-    frontendEnvSuffix: '/api',
   },
 ];
 

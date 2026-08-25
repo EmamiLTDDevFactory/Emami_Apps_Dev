@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, FileText, Download, RefreshCw, Folder, Filter, CheckCircle2, ShieldAlert, UploadCloud, FileSpreadsheet, AlertCircle, Info } from 'lucide-react';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ? import.meta.env.VITE_API_BASE_URL.replace(/\/api\/?$/, '') : 'http://localhost:5000';
+// Direct SAP OData gateway base — same anonymous-access door as odataService.js. FileSet is
+// open for direct anonymous GET/POST (confirmed with Basis).
+const SAP_BASE_URL = "https://emamiapi.emamigroup.com/api/NGD/ZRCPORTAL_SRV";
 
 export default function FilesModal({ isOpen, onClose }) {
   const [files, setFiles] = useState([]);
@@ -34,14 +36,18 @@ export default function FilesModal({ isOpen, onClose }) {
     setLoading(true);
     setFetchError(null);
     try {
-      console.log('[FILES-MODAL] Calling GET /api/files (SAP FileSet)...');
-      const response = await fetch(`${API_BASE_URL}/api/files`);
+      console.log('[FILES-MODAL] Calling SAP FileSet directly...');
+      let response = await fetch(`${SAP_BASE_URL}/FileSet?$format=json`);
+      if (!response.ok) {
+        response = await fetch(`${SAP_BASE_URL}/DOCUMENTSet?$format=json`);
+      }
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('[FILES-MODAL] SAP FileSet data received:', data);
-      setFiles(Array.isArray(data) ? data : []);
+      const results = data?.d?.results || data?.results || [];
+      console.log('[FILES-MODAL] SAP FileSet data received:', results);
+      setFiles(Array.isArray(results) ? results : []);
     } catch (err) {
       console.error('[FILES-MODAL] Error fetching FileSet:', err);
       setFetchError('Failed to fetch files from SAP FileSet.');
@@ -113,8 +119,8 @@ export default function FilesModal({ isOpen, onClose }) {
           const resultString = reader.result;
           const base64Content = resultString.split(',')[1] || resultString;
 
-          console.log('[FILES-MODAL] Submitting POST /api/files (FILESET_CREATE_ENTITY)...');
-          const response = await fetch(`${API_BASE_URL}/api/files`, {
+          console.log('[FILES-MODAL] Submitting POST /FileSet (FILESET_CREATE_ENTITY) to SAP directly...');
+          const response = await fetch(`${SAP_BASE_URL}/FileSet`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -127,8 +133,10 @@ export default function FilesModal({ isOpen, onClose }) {
           });
 
           const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Failed to upload file to SAP FileSet');
+          const sapErrorType = (data?.d?.Type || data?.Type || '').toString().toUpperCase();
+          if (!response.ok || sapErrorType === 'E') {
+            const errMsg = data?.error?.message?.value || data?.d?.Message || data?.error || 'Failed to upload file to SAP FileSet';
+            throw new Error(errMsg);
           }
 
           console.log('[FILES-MODAL] Upload successful:', data);
