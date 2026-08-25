@@ -34,6 +34,10 @@ export interface ExpenseClaim {
   costCenter: string;
   justification: string;
   attachments: Attachment[];
+  lifnr?: string;
+  name1?: string;
+  stcd3?: string;
+  bezei?: string;
   status: ClaimStatus;
   workflowHistory: WorkflowEvent[];
   currentApprover?: string;
@@ -70,4 +74,16 @@ export interface EmployeeProfile {
   department: string;
   designation: string;
   role: UserRole;
+}
+
+export interface TaxCode {
+  Mwskz: string;
+  Text1?: string;
+  [key: string]: any;
+}
+
+export interface AreaCode {
+  Bland: string;
+  Bezei?: string;
+  [key: string]: any;
 }

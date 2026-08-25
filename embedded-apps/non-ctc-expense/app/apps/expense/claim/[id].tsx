@@ -7,6 +7,7 @@ import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 // RESUBMIT_FEATURE: Import useClaim to access setTempClaimForResubmit
 import { useClaim } from '../../../../src/context/ClaimContext';
+import { formatSapErrorMessage } from '../../../../src/utils/sap-error';
 
 export default function ClaimDetailPage() {
   const params = useLocalSearchParams();
@@ -17,10 +18,17 @@ export default function ClaimDetailPage() {
   const [actionModalVisible, setActionModalVisible] = useState(false);
   const [actionRemarks, setActionRemarks] = useState('');
   const [actionMode, setActionMode] = useState<'manager-reject' | 'finance-reject' | ''>('');
+  const [taxModalVisible, setTaxModalVisible] = useState(false);
+  const [availableTaxes, setAvailableTaxes] = useState<any[]>([]);
+  const [selectedTaxCode, setSelectedTaxCode] = useState('');
+  const [selectedTaxDescription, setSelectedTaxDescription] = useState('');
+  const [taxDropdownOpen, setTaxDropdownOpen] = useState(false);
+  const [taxLoading, setTaxLoading] = useState(false);
+  const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const router = useRouter();
   const { currentUser } = useAuth();
   // RESUBMIT_FEATURE: Get setTempClaimForResubmit from context
-  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance } = useClaim();
+  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance, fetchTaxes } = useClaim();
 
   const loadClaim = async () => {
     if (!claimId) return null;
@@ -265,13 +273,42 @@ export default function ClaimDetailPage() {
   };
 
   const handleFinanceRelease = async () => {
-    const result = await releasePayment(claimId);
+    if (header.Stcd3 || header.stcd3 || header.Lifnr || header.lifnr) {
+      setTaxModalVisible(true);
+      setTaxLoading(true);
+      const taxes = await fetchTaxes(claimId);
+      setAvailableTaxes(taxes || []);
+      setTaxLoading(false);
+    } else {
+      await executeReleasePayment();
+    }
+  };
+
+  const executeReleasePayment = async (taxCode?: string, taxDescription?: string) => {
+    const result = await releasePayment(claimId, taxCode, taxDescription);
     if (!result.success) {
-      Alert.alert('Error', result.error || 'Failed to release payment.');
+      setTaxModalVisible(false);
+      setSelectedTaxCode('');
+      setSelectedTaxDescription('');
+      setTaxDropdownOpen(false);
+      setAvailableTaxes([]);
+      setScreenMessage({ title: 'Payment Release Failed', message: formatSapErrorMessage(result.error), type: 'error' });
       return;
     }
+    setTaxModalVisible(false);
+    setSelectedTaxCode('');
+    setSelectedTaxDescription('');
+    setTaxDropdownOpen(false);
     await loadClaim();
     Alert.alert('Success', `Claim ${claimId} has been paid successfully and workflow updated.`);
+  };
+
+  const handleConfirmReleaseWithTax = () => {
+    if (!selectedTaxCode) {
+      Alert.alert('Selection Required', 'Please select a tax code.');
+      return;
+    }
+    executeReleasePayment(selectedTaxCode, selectedTaxDescription);
   };
 
   const handleOpenFinanceReject = () => {
@@ -347,7 +384,8 @@ export default function ClaimDetailPage() {
   const fiscalYear = gjahrRaw && gjahrRaw !== '0000' ? gjahrRaw : '';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>Claim {header.ClaimId}</Text>
@@ -440,6 +478,23 @@ export default function ClaimDetailPage() {
         </View>
       ) : null}
 
+      {screenMessage ? (
+        <View style={[styles.inlineMessageBanner, screenMessage.type === 'error' ? styles.inlineMessageBannerError : styles.inlineMessageBannerSuccess]}>
+          <View style={styles.inlineMessageHeader}>
+            <Ionicons
+              name={screenMessage.type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+              size={18}
+              color={screenMessage.type === 'error' ? '#B91C1C' : '#047857'}
+            />
+            <Text style={styles.inlineMessageTitle}>{screenMessage.title}</Text>
+            <TouchableOpacity onPress={() => setScreenMessage(null)} style={styles.inlineMessageCloseBtn}>
+              <Ionicons name="close" size={16} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.inlineMessageText}>{screenMessage.message}</Text>
+        </View>
+      ) : null}
+
       {/* <Text style={styles.section}>Line Items</Text> */}
       {groupedLines.length === 0 && <Text style={styles.empty}>No line items</Text>}
       {groupedLines.map((ln: any, idx: number) => {
@@ -529,6 +584,7 @@ export default function ClaimDetailPage() {
 
       {/* Workflow Timeline fallback (render only if component exported correctly and no HISTORYNAV) */}
       {historyEntries.length === 0 && TimelineComp ? <TimelineComp events={header.workflowHistory || []} /> : null}
+      </ScrollView>
 
       <Modal visible={actionModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -559,7 +615,111 @@ export default function ClaimDetailPage() {
         </View>
       </Modal>
 
-    </ScrollView>
+      {/* Tax Code Selection Modal */}
+      <Modal visible={taxModalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <Ionicons name="document-text-outline" size={18} color="#10B981" />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0F172A' }}>Select Tax Code</Text>
+            </View>
+            <Text style={{ fontSize: 14, color: '#64748B', marginBottom: 16, lineHeight: 20 }}>
+              This claim has a GSTIN. Please select the applicable tax code to release payment.
+            </Text>
+
+            {taxLoading ? (
+              <Text style={{ marginVertical: 20, textAlign: 'center', color: '#64748B' }}>Loading Tax Codes...</Text>
+            ) : (
+              <View style={{ width: '100%', marginVertical: 15, zIndex: 10 }}>
+                {availableTaxes.length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: '#64748B' }}>No Tax Codes found for this claim.</Text>
+                ) : (
+                  <View>
+                    <TouchableOpacity
+                      style={{
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: '#E2E8F0',
+                        backgroundColor: '#F8FAFC',
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => setTaxDropdownOpen(!taxDropdownOpen)}
+                    >
+                      <Text style={{ color: selectedTaxCode ? '#0F172A' : '#64748B' }}>
+                        {selectedTaxCode ? `${selectedTaxCode}${selectedTaxDescription ? ` (${selectedTaxDescription})` : ''}` : 'Select a Tax Code...'}
+                      </Text>
+                      <Ionicons name={taxDropdownOpen ? "chevron-up" : "chevron-down"} size={18} color="#64748B" />
+                    </TouchableOpacity>
+
+                    {taxDropdownOpen && (
+                      <ScrollView
+                        style={{
+                          marginTop: 4,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 8,
+                          maxHeight: 150
+                        }}
+                        nestedScrollEnabled
+                      >
+                        {availableTaxes.map((tax, index) => (
+                          <TouchableOpacity
+                            key={index}
+                            style={{
+                              padding: 12,
+                              borderBottomWidth: index === availableTaxes.length - 1 ? 0 : 1,
+                              borderBottomColor: '#F1F5F9',
+                              backgroundColor: selectedTaxCode === tax.Mwskz ? '#EFF8FF' : '#FFFFFF',
+                            }}
+                            onPress={() => {
+                              setSelectedTaxCode(tax.Mwskz);
+                              setSelectedTaxDescription(tax.Text1 || '');
+                              setTaxDropdownOpen(false);
+                            }}
+                          >
+                            <Text style={{ fontWeight: selectedTaxCode === tax.Mwskz ? 'bold' : 'normal', color: '#0F172A' }}>
+                              {tax.Mwskz}{tax.Text1 ? ` (${tax.Text1})` : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#F1F5F9', marginRight: 8, alignItems: 'center' }}
+                onPress={() => {
+                  setTaxModalVisible(false);
+                  setSelectedTaxCode('');
+                  setSelectedTaxDescription('');
+                  setTaxDropdownOpen(false);
+                  setAvailableTaxes([]);
+                }}
+              >
+                <Text style={{ color: '#475569', fontWeight: 'bold' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 8, backgroundColor: '#10B981', marginLeft: 8, alignItems: 'center' }}
+                onPress={handleConfirmReleaseWithTax}
+              >
+                <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Confirm Release</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+    </View>
   );
 }
 
@@ -619,6 +779,13 @@ const styles = StyleSheet.create({
   value: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   section: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginTop: 8, marginBottom: 6 },
   empty: { color: '#94A3B8' },
+  inlineMessageBanner: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12 },
+  inlineMessageBannerError: { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5' },
+  inlineMessageBannerSuccess: { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' },
+  inlineMessageHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inlineMessageTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  inlineMessageCloseBtn: { padding: 2 },
+  inlineMessageText: { marginTop: 6, fontSize: 13, color: '#334155', lineHeight: 18 },
   lineRow: { backgroundColor: '#F8FAFF', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#BFDBFE', marginBottom: 8 },
   lineRowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   lineType: { fontWeight: '700', color: '#0F172A' },
@@ -679,7 +846,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 18,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
   },
   modalBox: {
     backgroundColor: '#FFFFFF',

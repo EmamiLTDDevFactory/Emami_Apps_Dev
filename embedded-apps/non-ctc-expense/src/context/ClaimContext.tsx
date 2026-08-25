@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SAP_BASE_URL } from '../config/api';
-import { ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError } from '../types';
+import { AreaCode, ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError, TaxCode } from '../types';
+import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { useAuth } from './AuthContext';
 
 interface ClaimContextType {
@@ -20,7 +21,9 @@ interface ClaimContextType {
   requestClarification: (id: string, remarks: string) => void;
   // Finance Actions
   validateClaimFinance: (id: string) => void;
-  releasePayment: (id: string) => Promise<{ success: boolean; error?: string }>;
+  releasePayment: (id: string, taxCode?: string, taxDescription?: string) => Promise<{ success: boolean; error?: string }>;
+  fetchTaxes: (claimId: string) => Promise<TaxCode[]>;
+  fetchAreas: () => Promise<AreaCode[]>;
   rejectClaimFinance: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
   // Error Management Actions
   retrySAPPosting: (errorId: string) => void;
@@ -259,6 +262,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             currentApprover: sap.CurrentApprover || sap.currentApprover || '',
             status,
             rawStatus: sap.Status || '',
+            stcd3: sap.Stcd3 || '',
+            lifnr: sap.Lifnr || '',
             workflowHistory: []
           };
       });
@@ -395,7 +400,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         Amount: i === 0 ? claimData.amount.toFixed(3) : '0.000',
         Currency: 'INR',
         Description: claimData.justification || 'Expense',
-        VendorName: 'External Vendor'
+        VendorName: claimData.name1 || 'External Vendor'
       });
     }
 
@@ -412,6 +417,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         CostCenter: ccCode || claimData.costCenter,
         Ltext: ccLtext,
         Status: isDraft ? 'D' : 'N',
+        Lifnr: claimData.lifnr || '',
+        Name1: claimData.name1 || '',
+        Stcd3: claimData.stcd3 || '',
+        Bezei: claimData.bezei || '',
         CLAIMNAV: claimNavItems
     };
 
@@ -752,8 +761,39 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
   };
 
+  // TaxSet/AreaSet are open for direct anonymous GET on the same SAP gateway as everything else
+  // above (confirmed with Basis) — same pattern, no backend needed.
+  const fetchTaxes = async (claimId: string): Promise<TaxCode[]> => {
+    try {
+      const filter = encodeURIComponent(`ClaimId eq '${claimId}'`);
+      const response = await fetch(`${SAP_BASE_URL}/TaxSet?$format=json&$filter=${filter}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch taxes');
+      }
+      const data = await response.json();
+      return data?.d?.results || data?.results || [];
+    } catch (err) {
+      console.error('[TAXES] Fetch Error:', err);
+      return [];
+    }
+  };
+
+  const fetchAreas = async (): Promise<AreaCode[]> => {
+    try {
+      const response = await fetch(`${SAP_BASE_URL}/AreaSet?$format=json`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch areas');
+      }
+      const data = await response.json();
+      return data?.d?.results || data?.results || [];
+    } catch (err) {
+      console.error('[AREAS] Fetch Error:', err);
+      return [];
+    }
+  };
+
   // BR-013, BR-014: Finance Release Payment
-  const releasePayment = async (id: string) => {
+  const releasePayment = async (id: string, taxCode?: string, taxDescription?: string) => {
     const claim = claims.find(c => c.id === id);
     if (!claim) {
       return { success: false, error: 'Claim not found' };
@@ -762,7 +802,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const empIdNumeric = (claim.employeeId || '').toString().replace(/\D/g, '').padStart(8, '0');
     const loginIdNumeric = currentUser?.employeeId?.replace(/\D/g, '').padStart(8, '0') || '';
 
-    const putData = {
+    const putData: any = {
       ClaimId: claim.id || id,
       EmpId: empIdNumeric,
       LoginId: loginIdNumeric,
@@ -775,6 +815,13 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       Status: 'P',
       ApprovalRequired: 'A'
     };
+
+    if (taxCode) {
+      putData.Mwskz = taxCode;
+      if (taxDescription) {
+        putData.Text1 = taxDescription;
+      }
+    }
 
     try {
       await postClaimHeaderUpdate(putData, 'SAP rejected the payment release');
@@ -945,7 +992,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       return true;
-    });
+    }).sort((left, right) => getClaimCreatedTimestamp(right) - getClaimCreatedTimestamp(left));
   };
 
   // Automatically load expense types and re-fetch claims whenever the logged-in user changes
@@ -982,6 +1029,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       requestClarification,
       validateClaimFinance,
       releasePayment,
+      fetchTaxes,
+      fetchAreas,
       rejectClaimFinance,
       retrySAPPosting,
       getClaimById,
