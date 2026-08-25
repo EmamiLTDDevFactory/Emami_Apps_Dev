@@ -30,12 +30,36 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://www.emamiapps.in
 // skipFunctionUrl: true below means this entry still updates the Lambda's CODE (useful — keep
 // running this to ship changes), but does NOT touch/create a Function URL or overwrite the
 // frontend .env — that .env value must point at the API Gateway invoke URL, set manually.
+//
+// VPC networking (opt-in, off by default): this Lambda's Postgres (10.17.12.4, an on-prem/
+// private address — see backend/db.js) is unreachable from it today because a default Lambda
+// has only public internet egress, no route into that private network. Fixing that needs two
+// things this script can't provide on its own: (1) Infra provisioning a route from *some* VPC
+// into wherever 10.17.12.4 lives (Site-to-Site VPN, Direct Connect, or peering — a real
+// networking project, not a code change) and (2) that VPC's subnet IDs + a security group
+// allowing egress to Postgres (5432), which only Infra can hand you once (1) exists. Once you
+// have those two IDs, set HUB_AUTH_LAMBDA_SUBNET_IDS and HUB_AUTH_LAMBDA_SECURITY_GROUP_IDS
+// (comma-separated) before running this script and it'll VPC-attach the function automatically —
+// no code change needed at that point. Leave them unset and nothing changes (current behavior).
+// Note: hub-auth's own code makes no outbound calls to Microsoft or anywhere else (SAML
+// signature verification is local crypto against the stored certificate, and API Gateway invokes
+// the Lambda directly regardless of its VPC config) — so unlike a Lambda that calls external
+// HTTPS APIs, this one likely does NOT need a NAT Gateway for internet egress once VPC-attached,
+// only a route to Postgres. Confirm with Infra rather than assuming, though.
+const HUB_AUTH_VPC_SUBNET_IDS = (process.env.HUB_AUTH_LAMBDA_SUBNET_IDS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const HUB_AUTH_VPC_SECURITY_GROUP_IDS = (process.env.HUB_AUTH_LAMBDA_SECURITY_GROUP_IDS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 const BACKENDS = [
   {
     name: 'hub-auth',
     functionName: 'emami-apps-hub-auth',
     dir: path.join(__dirname, '..', 'backend'),
     skipFunctionUrl: true,
+    vpcConfig: (HUB_AUTH_VPC_SUBNET_IDS.length && HUB_AUTH_VPC_SECURITY_GROUP_IDS.length)
+      ? { SubnetIds: HUB_AUTH_VPC_SUBNET_IDS, SecurityGroupIds: HUB_AUTH_VPC_SECURITY_GROUP_IDS }
+      : undefined,
   },
   {
     name: 'non-ctc-expense',
@@ -99,6 +123,10 @@ async function deployBackend(lambda, iam, backend) {
     else throw e;
   }
 
+  if (backend.vpcConfig) {
+    console.log(`[${backend.name}] VPC-attaching: subnets=${backend.vpcConfig.SubnetIds.join(',')} securityGroups=${backend.vpcConfig.SecurityGroupIds.join(',')}`);
+  }
+
   const roleArn = process.env.LAMBDA_EXECUTION_ROLE_ARN;
   if (!exists) {
     if (!roleArn) throw new Error('LAMBDA_EXECUTION_ROLE_ARN is required to create a new function');
@@ -112,6 +140,7 @@ async function deployBackend(lambda, iam, backend) {
       Timeout: 30,
       MemorySize: 512,
       Environment: { Variables: env },
+      ...(backend.vpcConfig ? { VpcConfig: backend.vpcConfig } : {}),
     }));
     await waitUntilFunctionUpdatedV2({ client: lambda, maxWaitTime: 60 }, { FunctionName: backend.functionName });
   } else {
@@ -121,6 +150,7 @@ async function deployBackend(lambda, iam, backend) {
     await lambda.send(new UpdateFunctionConfigurationCommand({
       FunctionName: backend.functionName,
       Environment: { Variables: env },
+      ...(backend.vpcConfig ? { VpcConfig: backend.vpcConfig } : {}),
     }));
     await waitUntilFunctionUpdatedV2({ client: lambda, maxWaitTime: 60 }, { FunctionName: backend.functionName });
   }
