@@ -2,12 +2,14 @@
  * EmamiApps hub login — Microsoft Entra ID via SAML 2.0.
  *
  * This application is the SAML Service Provider (SP); Microsoft Entra ID is the Identity
- * Provider (IdP). Rather than hardcoding the IdP's SSO URL / certificate / entity ID in code —
- * which breaks silently the moment Azure rotates its signing certificate — an admin uploads the
- * IdP's Federation Metadata XML (downloaded from the Entra Enterprise Application) via the
- * "Configure SSO" screen, see the /sso/config routes below. It's parsed once, stored in
- * emami_apps.sso_config, and every login reads from there; re-uploading after a cert rotation is
- * a one-step fix instead of a redeploy.
+ * Provider (IdP). The IdP's Federation Metadata XML (downloaded from the Entra Enterprise
+ * Application) is committed as a static file — see ./idpConfig.js for why: a live "upload via
+ * the app" admin screen would need a runtime-writable store Lambda can share across invocations
+ * (DynamoDB, S3, or Postgres+VPC networking), which isn't worth it for a certificate that
+ * rotates roughly every 3 years. Rotating it now means replacing that file and redeploying via
+ * `npm run deploy:lambdas`, same as any other backend change. GET /api/sso/config below is
+ * read-only — it just reports the currently-bundled config so an admin can verify it without
+ * reading source.
  *
  * One thing still has to be configured by hand, once, on the Azure side: the Enterprise
  * Application's Identifier (Entity ID) and Reply URL (ACS URL) must exactly match SP_ENTITY_ID
@@ -16,13 +18,12 @@
  *
  * Replaces the OAuth2/OIDC Microsoft login this codebase used before (see git history) — that
  * approach hardcoded one Entra app registration's client ID/secret and kept getting blocked on
- * the redirect URI never being finished on the Azure side. Metadata-XML-driven SAML moves that
- * one-time setup to a self-service upload instead of a code change.
+ * the redirect URI never being finished on the Azure side.
  */
 const express = require('express');
 const crypto = require('crypto');
 const samlify = require('samlify');
-const { pool } = require('./db');
+const idpConfig = require('./idpConfig');
 const { isAuthorized } = require('./authorizedUsers');
 const { FRONTEND_REDIRECT_URL, issueSessionToken } = require('./sessionAuth');
 
@@ -58,13 +59,6 @@ function buildServiceProvider(acsUrl) {
 
 function buildIdentityProvider(metadataXml) {
     return samlify.IdentityProvider({ metadata: metadataXml });
-}
-
-async function loadIdpConfig() {
-    const { rows } = await pool.query(
-        'SELECT idp_metadata_xml, is_enabled FROM emami_apps.sso_config WHERE id = 1'
-    );
-    return rows[0] || null;
 }
 
 // CSRF/replay guard for the SAML redirect — mirrors the `state` map the old OAuth2 flow used.
@@ -108,12 +102,12 @@ const router = express.Router();
 /** Step 1 — redirect the browser to Microsoft to sign in. */
 router.get('/hub-auth/saml/login', async (req, res) => {
     try {
-        const idpRow = await loadIdpConfig();
-        if (!idpRow || !idpRow.is_enabled || !idpRow.idp_metadata_xml) {
+        const idpRow = await idpConfig.getConfig();
+        if (!idpRow || !idpRow.isEnabled || !idpRow.idpMetadataXml) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=not_configured`);
         }
         const sp = buildServiceProvider(getAcsUrl(req));
-        const idp = buildIdentityProvider(idpRow.idp_metadata_xml);
+        const idp = buildIdentityProvider(idpRow.idpMetadataXml);
         const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect);
         trackRequest(id);
         return res.redirect(context);
@@ -131,12 +125,12 @@ router.get('/hub-auth/saml/login', async (req, res) => {
  */
 router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async (req, res) => {
     try {
-        const idpRow = await loadIdpConfig();
-        if (!idpRow || !idpRow.is_enabled || !idpRow.idp_metadata_xml) {
+        const idpRow = await idpConfig.getConfig();
+        if (!idpRow || !idpRow.isEnabled || !idpRow.idpMetadataXml) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=not_configured`);
         }
         const sp = buildServiceProvider(getAcsUrl(req));
-        const idp = buildIdentityProvider(idpRow.idp_metadata_xml);
+        const idp = buildIdentityProvider(idpRow.idpMetadataXml);
         const { extract } = await sp.parseLoginResponse(idp, wording.binding.post, req);
 
         const inResponseTo = extract?.response?.inResponseTo;
@@ -157,9 +151,9 @@ router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async 
     }
 });
 
-/* =========================== Admin config ("Configure SSO" screen) =========================== */
+/* =============================== Read-only status ("Configure SSO" screen) =============================== */
 
-/** SHA-256 fingerprint + expiry of the stored signing certificate, for display only — the actual
+/** SHA-256 fingerprint + expiry of the signing certificate, for display only — the actual
  * signature check always re-parses the full IdP metadata (see buildIdentityProvider above), so
  * this never gates login, only warns an admin before it silently breaks. */
 function certDetails(certBase64) {
@@ -173,128 +167,76 @@ function certDetails(certBase64) {
     }
 }
 
-/** Everything an admin needs to finish wiring up the Azure side, plus the current IdP config (if
- * any has been uploaded) so the screen renders its status without a second round trip. */
+/** Last-resort regex fallback when samlify's structured extractor comes up empty — real-world
+ * Federation Metadata XML (Azure's included) varies enough in namespace prefixes and element
+ * ordering that the strict extractor occasionally misses a field a human (or a simple regex) can
+ * still see plainly in the file. Runs a plain, non-negotiable-format read of the raw XML text. */
+function regexFallback(xml, pattern) {
+    const match = xml.match(pattern);
+    return match ? match[1] : null;
+}
+
+/** Parses the bundled metadata XML into the fields the "Configure SSO" screen displays. Not used
+ * by the login/ACS routes above — those hand the raw XML straight to samlify, which does its own
+ * (authoritative) parsing and signature verification. This is display-only. */
+function parseIdpFields(xml) {
+    const idp = buildIdentityProvider(xml);
+
+    const entityId = idp.entityMeta.getEntityID()
+        || regexFallback(xml, /<(?:\w+:)?EntityDescriptor\b[^>]*\bentityID="([^"]+)"/);
+
+    let ssoUrl = idp.entityMeta.getSingleSignOnService(wording.binding.redirect)
+        || idp.entityMeta.getSingleSignOnService(wording.binding.post);
+    if (Array.isArray(ssoUrl)) ssoUrl = ssoUrl[0];
+    if (ssoUrl && typeof ssoUrl === 'object') ssoUrl = ssoUrl.Location || null;
+    if (!ssoUrl) {
+        ssoUrl = regexFallback(
+            xml,
+            /<(?:\w+:)?SingleSignOnService\b[^>]*\bBinding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-(?:Redirect|POST)"[^>]*\bLocation="([^"]+)"/
+        ) || regexFallback(xml, /<(?:\w+:)?SingleSignOnService\b[^>]*\bLocation="([^"]+)"/);
+    }
+
+    let certificate = idp.entityMeta.getX509Certificate(wording.certUse.signing);
+    if (Array.isArray(certificate)) certificate = certificate[0];
+    if (!certificate) {
+        certificate = idp.entityMeta.getX509Certificate(wording.certUse.encrypt);
+        if (Array.isArray(certificate)) certificate = certificate[0];
+    }
+    if (!certificate) {
+        certificate = regexFallback(xml, /<(?:\w+:)?X509Certificate>\s*([\s\S]*?)\s*<\/(?:\w+:)?X509Certificate>/);
+        if (certificate) certificate = certificate.replace(/\s+/g, '');
+    }
+
+    return { entityId, ssoUrl, certificate };
+}
+
+/** Everything an admin needs to finish wiring up the Azure side, plus the currently-bundled IdP
+ * config (if any) so the "Configure SSO" screen renders status without reading source. Read-only
+ * — see idpConfig.js for why this is no longer a live upload/enable/remove API. */
 router.get('/sso/config', async (req, res) => {
     try {
-        const { rows } = await pool.query(
-            'SELECT idp_entity_id, sso_url, certificate, is_enabled, uploaded_by, uploaded_at FROM emami_apps.sso_config WHERE id = 1'
-        );
-        const row = rows[0] || null;
-        const cert = row?.certificate ? certDetails(row.certificate) : null;
+        const row = await idpConfig.getConfig();
+        let idpInfo = { configured: false, isEnabled: false };
+        if (row) {
+            const { entityId, ssoUrl, certificate } = parseIdpFields(row.idpMetadataXml);
+            const cert = certificate ? certDetails(certificate) : null;
+            idpInfo = {
+                configured: true,
+                isEnabled: row.isEnabled,
+                entityId,
+                ssoUrl,
+                certificateFingerprint: cert?.fingerprint || null,
+                certificateExpiresAt: cert?.validTo || null,
+            };
+        }
         res.json({
             success: true,
             sp: { entityId: SP_ENTITY_ID, acsUrl: getAcsUrl(req) },
-            idp: row
-                ? {
-                    configured: true,
-                    entityId: row.idp_entity_id,
-                    ssoUrl: row.sso_url,
-                    isEnabled: row.is_enabled,
-                    uploadedBy: row.uploaded_by,
-                    uploadedAt: row.uploaded_at,
-                    certificateFingerprint: cert?.fingerprint || null,
-                    certificateExpiresAt: cert?.validTo || null,
-                }
-                : { configured: false, isEnabled: false },
+            idp: idpInfo,
         });
     } catch (err) {
         console.error('[saml-sso] Failed to load SSO config:', err.message);
         res.status(500).json({ success: false, error: 'Could not load SSO configuration.' });
-    }
-});
-
-/** Admin uploads the IdP's Federation Metadata XML — parsed here (entity ID, SSO URL, signing
- * certificate) so the raw XML never has to be hand-transcribed into env vars or code. Body
- * parsing (and its size limit) is server.js's global express.json(), not a route-level one here —
- * body-parser won't re-parse (or re-check the limit for) a body it's already consumed. */
-router.post('/sso/config/metadata', async (req, res) => {
-    const xml = String(req.body?.xml || '').trim();
-    const uploadedBy = String(req.body?.uploadedBy || '').trim().toLowerCase() || null;
-    if (!xml) {
-        return res.status(400).json({ success: false, error: 'No metadata XML was provided.' });
-    }
-
-    let idp;
-    try {
-        idp = buildIdentityProvider(xml);
-    } catch {
-        return res.status(400).json({ success: false, error: 'Could not parse this file as SAML metadata XML.' });
-    }
-
-    try {
-        const entityId = idp.entityMeta.getEntityID();
-        const ssoUrl = idp.entityMeta.getSingleSignOnService(wording.binding.redirect)
-            || idp.entityMeta.getSingleSignOnService(wording.binding.post);
-        let certificate = idp.entityMeta.getX509Certificate(wording.certUse.signing);
-        if (Array.isArray(certificate)) certificate = certificate[0];
-        const resolvedSsoUrl = Array.isArray(ssoUrl) ? ssoUrl[0] : ssoUrl;
-
-        if (!entityId || !resolvedSsoUrl || !certificate) {
-            return res.status(400).json({
-                success: false,
-                error: 'This metadata XML is missing an entity ID, SSO URL, or signing certificate.',
-            });
-        }
-
-        await pool.query(
-            `INSERT INTO emami_apps.sso_config (id, idp_metadata_xml, idp_entity_id, sso_url, certificate, uploaded_by, uploaded_at)
-             VALUES (1, $1, $2, $3, $4, $5, now())
-             ON CONFLICT (id) DO UPDATE SET
-                idp_metadata_xml = EXCLUDED.idp_metadata_xml,
-                idp_entity_id = EXCLUDED.idp_entity_id,
-                sso_url = EXCLUDED.sso_url,
-                certificate = EXCLUDED.certificate,
-                uploaded_by = EXCLUDED.uploaded_by,
-                uploaded_at = EXCLUDED.uploaded_at`,
-            [xml, entityId, resolvedSsoUrl, certificate, uploadedBy]
-        );
-
-        const cert = certDetails(certificate);
-        res.json({
-            success: true,
-            idp: {
-                configured: true,
-                entityId,
-                ssoUrl: resolvedSsoUrl,
-                certificateFingerprint: cert.fingerprint,
-                certificateExpiresAt: cert.validTo,
-            },
-        });
-    } catch (err) {
-        console.error('[saml-sso] Failed to save IdP metadata:', err.message);
-        res.status(500).json({ success: false, error: 'Could not save this configuration. Please try again.' });
-    }
-});
-
-/** Flip Microsoft sign-in on/off without touching the stored metadata — lets an admin disable it
- * instantly (e.g. the certificate looks wrong) without losing the uploaded config. */
-router.patch('/sso/config/enabled', async (req, res) => {
-    const isEnabled = !!req.body?.isEnabled;
-    try {
-        const { rowCount } = await pool.query(
-            'UPDATE emami_apps.sso_config SET is_enabled = $1 WHERE id = 1',
-            [isEnabled]
-        );
-        if (rowCount === 0) {
-            return res.status(404).json({ success: false, error: 'Upload IdP metadata before enabling Microsoft sign-in.' });
-        }
-        res.json({ success: true, isEnabled });
-    } catch (err) {
-        console.error('[saml-sso] Failed to update SSO enabled state:', err.message);
-        res.status(500).json({ success: false, error: 'Could not update this setting.' });
-    }
-});
-
-/** Remove the stored IdP config entirely — Microsoft sign-in goes back to "not configured" until
- * metadata is uploaded again. */
-router.delete('/sso/config', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM emami_apps.sso_config WHERE id = 1');
-        res.json({ success: true });
-    } catch (err) {
-        console.error('[saml-sso] Failed to clear SSO config:', err.message);
-        res.status(500).json({ success: false, error: 'Could not clear this configuration.' });
     }
 });
 

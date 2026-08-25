@@ -1,24 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import * as DocumentPicker from 'expo-document-picker';
 import {
-  ArrowLeft, ShieldCheck, Info, UploadCloud, Copy, Check, Trash2, KeyRound, CalendarClock,
+  ArrowLeft, ShieldCheck, Info, Copy, Check, KeyRound, CalendarClock,
 } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { colors, fonts, radii } from '../theme/tokens';
-import { useAuth } from '../context/AuthContext';
-import { getSsoConfig, uploadIdpMetadata, setSsoEnabled, clearSsoConfig } from '../lib/ssoConfigApi';
+import { getSsoConfig } from '../lib/ssoConfigApi';
 import type { SsoConfig } from '../types';
-
-/** Reads the text content of a picked file cross-platform — expo-document-picker's web assets
- * carry a `file` Blob directly; native assets carry a `uri` that `fetch` can read. */
-async function readAssetText(asset: DocumentPicker.DocumentPickerAsset): Promise<string> {
-  const webFile = (asset as unknown as { file?: File }).file;
-  if (webFile) return webFile.text();
-  const response = await fetch(asset.uri);
-  return response.text();
-}
 
 function formatDate(iso?: string | null): string {
   if (!iso) return '—';
@@ -70,80 +59,22 @@ function CopyField({ label, value }: { label: string; value: string }) {
 export default function SsoConfigScreen() {
   const [query, setQuery] = useState('');
   const navigation = useNavigation();
-  const { userEmail } = useAuth();
 
   const [config, setConfig] = useState<SsoConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-
-  const load = async () => {
-    const result = await getSsoConfig();
-    setLoading(false);
-    if (result.ok && result.config) {
-      setConfig(result.config);
-    } else {
-      setError(result.error || 'Could not load SSO configuration.');
-    }
-  };
 
   useEffect(() => {
-    load();
-  }, []);
-
-  const pickAndUpload = async () => {
-    setError('');
-    setNotice('');
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['application/xml', 'text/xml', '*/*'],
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets?.length) return;
-
-    setUploading(true);
-    try {
-      const xml = await readAssetText(result.assets[0]);
-      const uploadResult = await uploadIdpMetadata(xml, userEmail || undefined);
-      if (!uploadResult.ok || !uploadResult.idp) {
-        setError(uploadResult.error || 'Could not save this configuration.');
-        return;
+    (async () => {
+      const result = await getSsoConfig();
+      setLoading(false);
+      if (result.ok && result.config) {
+        setConfig(result.config);
+      } else {
+        setError(result.error || 'Could not load SSO configuration.');
       }
-      await load();
-      setNotice('Metadata uploaded. Turn on "Sign in with Microsoft" below once you\'re ready.');
-    } catch {
-      setError('Could not read this file. Make sure it\'s the Federation Metadata XML from Azure.');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const toggleEnabled = async (next: boolean) => {
-    setError('');
-    setToggling(true);
-    const result = await setSsoEnabled(next);
-    setToggling(false);
-    if (!result.ok) {
-      setError(result.error || 'Could not update this setting.');
-      return;
-    }
-    setConfig((prev) => (prev ? { ...prev, idp: { ...prev.idp, isEnabled: next } } : prev));
-  };
-
-  const removeConfig = async () => {
-    setError('');
-    setRemoving(true);
-    const result = await clearSsoConfig();
-    setRemoving(false);
-    if (!result.ok) {
-      setError(result.error || 'Could not clear this configuration.');
-      return;
-    }
-    setConfig((prev) => (prev ? { ...prev, idp: { configured: false, isEnabled: false } } : prev));
-    setNotice('SSO configuration removed. Microsoft sign-in is off until new metadata is uploaded.');
-  };
+    })();
+  }, []);
 
   const idp = config?.idp;
   const tone = expiryTone(idp?.certificateExpiresAt);
@@ -163,9 +94,10 @@ export default function SsoConfigScreen() {
           <Info size={15} color={colors.rust} />
           <Text style={styles.noticeText}>
             Microsoft is the Identity Provider (IdP); EmamiApps is the Service Provider (SP). Give
-            Azure the SP details below when creating the Enterprise Application, then upload the
-            Federation Metadata XML it generates — no code change needed to rotate certificates or
-            update the SSO URL later, just re-upload here.
+            Azure the SP details below when creating the Enterprise Application. The IdP metadata
+            below is bundled with the backend at deploy time (not uploaded through the app) — to
+            rotate the certificate or change the SSO URL, replace backend/azure-idp-metadata.xml
+            and redeploy.
           </Text>
         </View>
 
@@ -174,7 +106,6 @@ export default function SsoConfigScreen() {
         ) : (
           <>
             {!!error && <Text style={styles.errorText}>{error}</Text>}
-            {!!notice && <Text style={styles.noticeText2}>{notice}</Text>}
 
             <View style={[styles.baseCard, styles.card]}>
               <View style={styles.cardHeaderRow}>
@@ -199,87 +130,51 @@ export default function SsoConfigScreen() {
                   <ShieldCheck size={15} color={colors.rust} />
                 </View>
                 <View style={styles.flex1}>
-                  <Text style={styles.cardTitle}>2. Identity Provider (upload from Azure)</Text>
+                  <Text style={styles.cardTitle}>2. Identity Provider (bundled from Azure)</Text>
                   <Text style={styles.cardSubtitle}>
-                    Download "Federation Metadata XML" from the SAML setup page and upload it here
+                    backend/azure-idp-metadata.xml, deployed with the backend
                   </Text>
                 </View>
               </View>
 
-              <Pressable style={styles.uploadBtn} onPress={pickAndUpload} disabled={uploading}>
-                {uploading ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <>
-                    <UploadCloud size={14} color={colors.white} />
-                    <Text style={styles.uploadBtnText}>{idp?.configured ? 'Replace metadata.xml' : 'Upload metadata.xml'}</Text>
-                  </>
-                )}
-              </Pressable>
+              <View style={styles.statusRow}>
+                <View style={styles.flex1}>
+                  <Text style={styles.statusLabel}>Sign in with Microsoft</Text>
+                  <Text style={styles.statusHelper}>
+                    {!idp?.configured
+                      ? 'Not configured — no metadata file is bundled.'
+                      : idp.isEnabled
+                        ? 'Live — the Login screen shows the Microsoft button.'
+                        : 'Off — email sign-in only. Set HUB_AUTH_SAML_ENABLED=true to turn on.'}
+                  </Text>
+                </View>
+              </View>
 
               {idp?.configured && (
-                <>
-                  <View style={styles.divider} />
-
-                  <View style={styles.statusRow}>
-                    <View style={styles.flex1}>
-                      <Text style={styles.statusLabel}>Sign in with Microsoft</Text>
-                      <Text style={styles.statusHelper}>
-                        {idp.isEnabled ? 'Live — the Login screen shows the Microsoft button.' : 'Off — email sign-in only, until enabled.'}
-                      </Text>
-                    </View>
-                    {toggling ? (
-                      <ActivityIndicator size="small" color={colors.rust} />
-                    ) : (
-                      <Switch
-                        value={idp.isEnabled}
-                        onValueChange={toggleEnabled}
-                        trackColor={{ true: colors.rust, false: colors.border }}
-                        accessibilityLabel={`${idp.isEnabled ? 'Disable' : 'Enable'} Microsoft sign-in`}
-                      />
-                    )}
+                <View style={styles.metaGrid}>
+                  <View style={styles.metaCell}>
+                    <Text style={styles.metaLabel}>IdP Entity ID</Text>
+                    <Text style={styles.metaValue} selectable numberOfLines={2}>{idp.entityId}</Text>
                   </View>
-
-                  <View style={styles.metaGrid}>
-                    <View style={styles.metaCell}>
-                      <Text style={styles.metaLabel}>IdP Entity ID</Text>
-                      <Text style={styles.metaValue} selectable numberOfLines={2}>{idp.entityId}</Text>
-                    </View>
-                    <View style={styles.metaCell}>
-                      <Text style={styles.metaLabel}>SSO URL</Text>
-                      <Text style={styles.metaValue} selectable numberOfLines={2}>{idp.ssoUrl}</Text>
-                    </View>
-                    <View style={styles.metaCell}>
-                      <Text style={styles.metaLabel}>Uploaded</Text>
-                      <Text style={styles.metaValue}>{formatDate(idp.uploadedAt)}{idp.uploadedBy ? ` · ${idp.uploadedBy}` : ''}</Text>
-                    </View>
-                    <View style={styles.metaCell}>
-                      <View style={styles.certLabelRow}>
-                        <CalendarClock size={11} color={colors.inkSoft} />
-                        <Text style={styles.metaLabel}>Certificate expires</Text>
-                      </View>
-                      <Text style={[
-                        styles.metaValue,
-                        tone === 'expired' && styles.metaValueDanger,
-                        tone === 'soon' && styles.metaValueWarn,
-                      ]}>
-                        {formatDate(idp.certificateExpiresAt)}
-                        {tone === 'expired' ? ' · Expired' : tone === 'soon' ? ' · Expiring soon' : ''}
-                      </Text>
-                    </View>
+                  <View style={styles.metaCell}>
+                    <Text style={styles.metaLabel}>SSO URL</Text>
+                    <Text style={styles.metaValue} selectable numberOfLines={2}>{idp.ssoUrl}</Text>
                   </View>
-
-                  <Pressable style={styles.removeBtn} onPress={removeConfig} disabled={removing}>
-                    {removing ? (
-                      <ActivityIndicator size="small" color={colors.rust} />
-                    ) : (
-                      <>
-                        <Trash2 size={13} color={colors.rust} />
-                        <Text style={styles.removeBtnText}>Remove configuration</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </>
+                  <View style={styles.metaCell}>
+                    <View style={styles.certLabelRow}>
+                      <CalendarClock size={11} color={colors.inkSoft} />
+                      <Text style={styles.metaLabel}>Certificate expires</Text>
+                    </View>
+                    <Text style={[
+                      styles.metaValue,
+                      tone === 'expired' && styles.metaValueDanger,
+                      tone === 'soon' && styles.metaValueWarn,
+                    ]}>
+                      {formatDate(idp.certificateExpiresAt)}
+                      {tone === 'expired' ? ' · Expired' : tone === 'soon' ? ' · Expiring soon' : ''}
+                    </Text>
+                  </View>
+                </View>
               )}
             </View>
           </>
@@ -336,12 +231,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansRegular,
     color: colors.ink,
     lineHeight: 17,
-  },
-  noticeText2: {
-    fontSize: 12,
-    fontFamily: fonts.sansMedium,
-    color: colors.green,
-    marginBottom: 12,
   },
   loadingIndicator: {
     marginTop: 18,
@@ -422,25 +311,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  uploadBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: radii.lg,
-    paddingVertical: 12,
-    backgroundColor: colors.rust,
-  },
-  uploadBtnText: {
-    fontSize: 13,
-    fontFamily: fonts.sansSemiBold,
-    color: colors.white,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 18,
-  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -492,21 +362,5 @@ const styles = StyleSheet.create({
   },
   metaValueDanger: {
     color: '#C0392B',
-  },
-  removeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: `${colors.rust}40`,
-    borderRadius: radii.lg,
-    paddingVertical: 10,
-    backgroundColor: `${colors.rust}0d`,
-  },
-  removeBtnText: {
-    fontSize: 12.5,
-    fontFamily: fonts.sansSemiBold,
-    color: colors.rust,
   },
 });
