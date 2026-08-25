@@ -25,7 +25,11 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081'
     .filter(Boolean);
 
 app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'OPTIONS'] }));
-app.use(express.json({ limit: '10kb' }));
+// 2mb (not the old 10kb) because this now also covers saml-sso.js's metadata upload — a real
+// Federation Metadata XML with its signing certificate embedded routinely runs past 10kb, and
+// once this global parser has consumed the body, a route-level express.json() can't raise the
+// limit again (body-parser skips re-parsing a body it already parsed).
+app.use(express.json({ limit: '2mb' }));
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);

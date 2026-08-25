@@ -205,8 +205,10 @@ router.get('/sso/config', async (req, res) => {
 });
 
 /** Admin uploads the IdP's Federation Metadata XML — parsed here (entity ID, SSO URL, signing
- * certificate) so the raw XML never has to be hand-transcribed into env vars or code. */
-router.post('/sso/config/metadata', express.json({ limit: '2mb' }), async (req, res) => {
+ * certificate) so the raw XML never has to be hand-transcribed into env vars or code. Body
+ * parsing (and its size limit) is server.js's global express.json(), not a route-level one here —
+ * body-parser won't re-parse (or re-check the limit for) a body it's already consumed. */
+router.post('/sso/config/metadata', async (req, res) => {
     const xml = String(req.body?.xml || '').trim();
     const uploadedBy = String(req.body?.uploadedBy || '').trim().toLowerCase() || null;
     if (!xml) {
@@ -267,7 +269,7 @@ router.post('/sso/config/metadata', express.json({ limit: '2mb' }), async (req, 
 
 /** Flip Microsoft sign-in on/off without touching the stored metadata — lets an admin disable it
  * instantly (e.g. the certificate looks wrong) without losing the uploaded config. */
-router.patch('/sso/config/enabled', express.json(), async (req, res) => {
+router.patch('/sso/config/enabled', async (req, res) => {
     const isEnabled = !!req.body?.isEnabled;
     try {
         const { rowCount } = await pool.query(

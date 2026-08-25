@@ -29,6 +29,20 @@ interface LoginScreenProps {
  */
 const SHOW_MICROSOFT_SIGNIN = true;
 
+/**
+ * TEMPORARY — REMOVE BEFORE SHIPPING.
+ *
+ * Adds a third, clearly-separate "Continue without signing in" link below the two real sign-in
+ * buttons above. Unlike those two (which call the real backend — direct email still enforces the
+ * Manage Access DB check, unless authorizedUsers.js's own temporary bypass is on; Microsoft still
+ * does a real SAML round trip), this makes no backend call at all: it logs straight in as
+ * whatever email is typed (or a placeholder if the field is empty). Exists only so the rest of
+ * the app can be exercised right now, independent of whether the hub-auth Lambda has the SAML
+ * code deployed yet or Azure SSO is fully wired up. Delete this block (and the button below) once
+ * both of those are working end-to-end.
+ */
+const TEMP_ACCESS_ENABLED = true;
+
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
 // Purely decorative accents for this screen only — Login intentionally
@@ -137,6 +151,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
     onLogin?.(result.email);
   };
 
+  const enterTemporarily = () => {
+    setLocalError('');
+    onDismissError?.();
+    onLogin?.(trimmedEmail || 'temp-access@emamiapps.in');
+  };
+
   const shownError = error || localError;
   const busy = verifying || checkingAccess;
 
@@ -220,6 +240,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
                       <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
                     </Pressable>
                   </>
+                )}
+
+                {TEMP_ACCESS_ENABLED && (
+                  <Pressable onPress={enterTemporarily} style={styles.tempAccessBtn} disabled={checkingAccess}>
+                    <Text style={styles.tempAccessBtnText}>Continue without signing in (temporary)</Text>
+                  </Pressable>
                 )}
               </>
             )}
@@ -465,6 +491,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     fontSize: 14.5,
     color: colors.ink,
+  },
+  tempAccessBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  tempAccessBtnText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 12,
+    color: '#B45309',
+    textDecorationLine: 'underline',
   },
   msGlyph: {
     width: 16,
