@@ -9,6 +9,7 @@ export type DrawerParamList = {
   Help: undefined;
   Settings: undefined;
   UserAccess: undefined;
+  SsoConfig: undefined;
 };
 
 export type RootStackParamList = {

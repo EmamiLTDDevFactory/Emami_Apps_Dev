@@ -19,14 +19,27 @@ interface LoginScreenProps {
 }
 
 /**
- * Both sign-in paths are gated by the same emami_apps.authorized_users table (Manage Access) —
- * "Sign in with Microsoft" still needs a redirect URI registered on the Entra app (blocked as of
- * this writing, pending Infra), so email sign-in is the primary working path for now. Kept as a
- * toggle rather than deleted the Microsoft button, since it starts working the moment that
- * redirect URI is added — no code change needed then, just flip SHOW_MICROSOFT_SIGNIN or leave
- * both visible.
+ * Both sign-in paths are gated by the same emami_apps.authorized_users table (Manage Access).
+ * "Sign in with Microsoft" is SAML 2.0 (backend/saml-sso.js) — it only works once an admin has
+ * uploaded Entra's Federation Metadata XML from the "Configure SSO" screen (linked off Manage
+ * Access) and enabled it there; until then the backend redirects back here with
+ * ?ssoError=not_configured, which RootNavigator turns into the "not set up yet" message. Kept as
+ * a toggle rather than deleted the Microsoft button so it can be hidden entirely if desired
+ * without touching backend config.
  */
 const SHOW_MICROSOFT_SIGNIN = true;
+
+/**
+ * TEMPORARY TEST BYPASS — REMOVE BEFORE SHIPPING.
+ *
+ * When true, neither button calls the backend at all: "Sign In" and "Sign in with Microsoft"
+ * both just log straight in as whatever email is typed in the field below, skipping the
+ * Manage Access DB check (hub-auth.js) and the real Microsoft SAML redirect (saml-sso.js)
+ * entirely — lets the rest of the app be exercised before Manage Access has real rows or Azure
+ * SSO has real metadata uploaded. Backend auth is untouched by this flag; flip it back to false
+ * (or delete this block) to restore real sign-in on both paths.
+ */
+const BYPASS_AUTH_FOR_TESTING = true;
 
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
@@ -99,10 +112,24 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
 
   // Independent of the email field — Microsoft's own sign-in page asks for the account, and
-  // backend/hub-auth.js's callback checks the same Manage Access table as the email path below.
+  // backend/saml-sso.js's ACS callback checks the same Manage Access table as the email path below.
   const signInWithMicrosoft = () => {
     setLocalError('');
     onDismissError?.();
+
+    if (BYPASS_AUTH_FOR_TESTING) {
+      if (!trimmedEmail) {
+        setLocalError('Enter an email above to test with, then tap Sign in with Microsoft.');
+        return;
+      }
+      if (!looksLikeEmail) {
+        setLocalError('Enter a valid email address to test with.');
+        return;
+      }
+      onLogin?.(trimmedEmail);
+      return;
+    }
+
     const url = getMicrosoftSignInUrl();
     if (Platform.OS === 'web') {
       window.location.href = url;
@@ -124,6 +151,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError('Enter a valid email address to continue.');
       return;
     }
+
+    if (BYPASS_AUTH_FOR_TESTING) {
+      onLogin?.(trimmedEmail);
+      return;
+    }
+
     setCheckingAccess(true);
     const result = await loginWithEmail(trimmedEmail);
     setCheckingAccess(false);
@@ -142,6 +175,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       <View style={[styles.blob, styles.blobTop]} pointerEvents="none" />
       <View style={[styles.blob, styles.blobBottom]} pointerEvents="none" />
       <View style={[styles.blob, styles.blobMid]} pointerEvents="none" />
+
+      {BYPASS_AUTH_FOR_TESTING && (
+        <View style={styles.testModeBanner} pointerEvents="none">
+          <Text style={styles.testModeBannerText}>TEST MODE — sign-in checks are bypassed</Text>
+        </View>
+      )}
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
@@ -234,6 +273,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.cream2,
     overflow: 'hidden',
+  },
+  testModeBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+    paddingVertical: 6,
+    backgroundColor: '#B45309',
+  },
+  testModeBannerText: {
+    fontFamily: fonts.sansBold,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    color: colors.white,
   },
   flex: { flex: 1 },
   blob: {

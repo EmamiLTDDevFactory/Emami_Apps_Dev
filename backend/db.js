@@ -55,6 +55,28 @@ async function runMigrations() {
     } catch (err) {
         console.error('[postgres] Migration failed:', err.message);
     }
+
+    // Single-row (id=1) config for the "Configure SSO" screen (see backend/saml-sso.js) — an
+    // admin-uploaded IdP Federation Metadata XML plus the fields parsed out of it for display,
+    // instead of hardcoding the IdP's SSO URL/certificate/entity ID in code or env vars.
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS emami_apps.sso_config (
+                id smallint PRIMARY KEY DEFAULT 1,
+                idp_metadata_xml text NOT NULL,
+                idp_entity_id text NOT NULL,
+                sso_url text NOT NULL,
+                certificate text NOT NULL,
+                is_enabled boolean NOT NULL DEFAULT false,
+                uploaded_by text,
+                uploaded_at timestamptz NOT NULL DEFAULT now(),
+                CONSTRAINT sso_config_singleton CHECK (id = 1)
+            )
+        `);
+        console.log('[postgres] SSO config schema up to date (emami_apps.sso_config).');
+    } catch (err) {
+        console.error('[postgres] SSO config migration failed:', err.message);
+    }
 }
 
 module.exports = { pool, testConnection, runMigrations };

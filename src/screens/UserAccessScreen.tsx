@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Mail, Plus, ShieldCheck, Trash2, Info, Check, Save } from 'lucide-react-native';
+import { ArrowLeft, Mail, Plus, ShieldCheck, Trash2, Info, Check, Save, KeyRound, ChevronRight } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
 import type { AppRole, UserAccessEntry } from '../types';
@@ -160,6 +160,22 @@ export default function UserAccessScreen() {
           </Pressable>
           <Text style={styles.pageTitle}>Manage Access</Text>
         </View>
+
+        <Pressable
+          style={[styles.baseCard, styles.ssoLinkCard]}
+          onPress={() => navigation.navigate('SsoConfig' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Configure SSO"
+        >
+          <View style={styles.cardIconBox}>
+            <KeyRound size={15} color={colors.rust} />
+          </View>
+          <View style={styles.flex1}>
+            <Text style={styles.cardTitle}>Configure SSO</Text>
+            <Text style={styles.cardSubtitle}>Set up "Sign in with Microsoft" by uploading Entra's Federation Metadata XML</Text>
+          </View>
+          <ChevronRight size={16} color={colors.inkSoft} />
+        </Pressable>
 
         <View style={styles.noticeCard}>
           <Info size={15} color={colors.rust} />
@@ -322,6 +338,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: fonts.sansBold,
     color: colors.ink,
+  },
+  ssoLinkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    marginBottom: 16,
   },
   noticeCard: {
     flexDirection: 'row',

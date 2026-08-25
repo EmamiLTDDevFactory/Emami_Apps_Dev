@@ -49,3 +49,28 @@ export interface UserAccessEntry {
   /** Per-app grants (see AppItem for appId) — each with its own role, not just a boolean. */
   apps: UserAppGrant[];
 }
+
+/** What the SP side needs Azure told about — shown on the Configure SSO screen so an admin can
+ * copy these into the Entra Enterprise Application's Identifier / Reply URL fields. */
+export interface SsoServiceProviderInfo {
+  entityId: string;
+  acsUrl: string;
+}
+
+/** Parsed out of the IdP's uploaded Federation Metadata XML (backend/saml-sso.js) — the raw XML
+ * itself isn't sent to the client, only what's needed to show status. */
+export interface SsoIdentityProviderInfo {
+  configured: boolean;
+  isEnabled: boolean;
+  entityId?: string;
+  ssoUrl?: string;
+  uploadedBy?: string | null;
+  uploadedAt?: string | null;
+  certificateFingerprint?: string | null;
+  certificateExpiresAt?: string | null;
+}
+
+export interface SsoConfig {
+  sp: SsoServiceProviderInfo;
+  idp: SsoIdentityProviderInfo;
+}

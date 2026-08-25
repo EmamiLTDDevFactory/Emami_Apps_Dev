@@ -11,12 +11,14 @@ const port = process.env.PORT || 4000;
 // require.main !== module) — idempotent, so a request racing ahead of it is harmless.
 runMigrations();
 
-// This Lambda previously ran a SAML SP for login, then briefly moved login to OAuth2 on the
-// mouldhealthcheck Azure App Service — that turned out to be Basis-owned infra provisioned for
-// Mould's SAP APIs specifically, not something this team can deploy unrelated code onto. Login
-// is back here now (see ./hub-auth.js), fronted by API Gateway instead of a Lambda Function URL
-// (which was blocked by an unresolved AWS-account-level access issue). The Manage Access
-// endpoints below (backed by Postgres) have been here the whole time.
+// This Lambda has run login as SAML, then OAuth2 (briefly, on the mouldhealthcheck Azure App
+// Service — that turned out to be Basis-owned infra provisioned for Mould's SAP APIs
+// specifically, not something this team can deploy unrelated code onto), and is back to SAML
+// now (see ./saml-sso.js) — this time driven by an admin-uploaded IdP metadata XML (Configure
+// SSO screen) instead of hardcoded settings, so a cert rotation or tenant change doesn't need a
+// redeploy. Fronted by API Gateway instead of a Lambda Function URL (which was blocked by an
+// unresolved AWS-account-level access issue). The Manage Access endpoints below (backed by
+// Postgres) have been here the whole time.
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081')
     .split(',')
     .map((o) => o.trim())
@@ -29,6 +31,7 @@ const apiRouter = express.Router();
 app.use('/api', apiRouter);
 
 apiRouter.use(require('./hub-auth'));
+apiRouter.use(require('./saml-sso'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['User', 'Admin'];
