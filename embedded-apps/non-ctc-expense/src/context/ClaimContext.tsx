@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { API_BASE_URL, SAP_BASE_URL } from '../config/api';
+import { SAP_BASE_URL } from '../config/api';
 import { ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -433,13 +433,16 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
         }
 
-        const response = await fetch(`${API_BASE_URL}/api/submit`, {
+        // Calls SAP's ClaimHeaderSet directly (GST/claims/expense-types/history's own pattern) —
+        // Basis has confirmed anonymous POST access here too. Mirrors backend/server.js's
+        // /api/submit exactly: same payload, same ClaimId-extraction fallbacks below. The
+        // separately-computed attachmentsPayload was already inert in the backend flow (it only
+        // merged req.files from a multipart upload, and this has always been sent as JSON), so
+        // it's still computed but not sent here either — unchanged behavior, not a regression.
+        const response = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                claimData: sapPayload,
-                attachments: attachmentsPayload,
-            }),
+            body: JSON.stringify(sapPayload),
         });
 
         let responseData: any = null;
@@ -467,6 +470,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             console.error('[SUBMIT] Error:', sapErrorMessage);
             return { success: false, warning: sapErrorMessage };
+        }
+
+        // Mirror backend/server.js's exact response shape (ClaimId/Status/Message) so nothing
+        // downstream (the newId extraction right below) needs to change.
+        {
+            const sapResponse = responseData.d || responseData;
+            const claimId = sapResponse.ClaimId || sapResponse.ClaimID || sapResponse['ClaimId'] || sapResponse.id;
+            responseData = { ClaimId: claimId, Status: sapResponse.Status, Message: 'Claim submitted successfully' };
         }
 
         // 6. Success! Update local UI state
@@ -563,6 +574,26 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setClaims(prev => prev.filter(c => c.id !== id));
   };
 
+  // Mirrors backend/server.js's /api/approve-claim/:id route: POST (not PUT — SAP Gateway
+  // rejects PUTs with key predicates here) to ClaimHeaderSet with the same putData shape, used
+  // by approve/reject/release/finance-reject below.
+  const postClaimHeaderUpdate = async (putData: any, defaultErrorMessage: string) => {
+    const response = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(putData),
+    });
+
+    if (!response.ok) {
+      let errMsg = defaultErrorMessage;
+      try {
+        const errData = await response.json();
+        errMsg = errData?.error?.message?.value || errData?.error || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
+    }
+  };
+
   // BR-009, BR-011: Manager Approve
   const approveClaim = async (id: string) => {
     const claim = claims.find(c => c.id === id);
@@ -587,20 +618,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ApprovalRequired: 'A' // Action: Approve
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/approve-claim/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ putData })
-      });
-
-      if (!response.ok) {
-        let errMsg = 'SAP Backend rejected the approval';
-        try {
-          const errData = await response.json();
-          if (errData.error) errMsg = errData.error;
-        } catch (e) {}
-        throw new Error(errMsg);
-      }
+      await postClaimHeaderUpdate(putData, 'SAP Backend rejected the approval');
 
       setClaims(prev => prev.map(c => {
         if (c.id === id) {
@@ -659,20 +677,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           RejReason: remarks    // Rejection reason text
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/approve-claim/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ putData })
-      });
-
-      if (!response.ok) {
-        let errMsg = 'SAP Backend rejected the rejection';
-        try {
-          const errData = await response.json();
-          if (errData.error) errMsg = errData.error;
-        } catch (e) {}
-        throw new Error(errMsg);
-      }
+      await postClaimHeaderUpdate(putData, 'SAP Backend rejected the rejection');
 
       setClaims(prev => prev.map(c => {
         if (c.id === id) {
@@ -772,17 +777,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/approve-claim/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ putData })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => null);
-        const errMsg = errData?.error || 'SAP rejected the payment release';
-        return { success: false, error: errMsg };
-      }
+      await postClaimHeaderUpdate(putData, 'SAP rejected the payment release');
 
       setClaims(prev => prev.map(c => {
         if (c.id === id) {
@@ -840,17 +835,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         RejReason: remarks
       };
 
-      const response = await fetch(`${API_BASE_URL}/api/approve-claim/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ putData })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => null);
-        const errMsg = errData?.error || 'SAP rejected the finance rejection';
-        return { success: false, error: errMsg };
-      }
+      await postClaimHeaderUpdate(putData, 'SAP rejected the finance rejection');
 
       setClaims(prev => prev.map(c => {
         if (c.id === id) {

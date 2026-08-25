@@ -1,18 +1,16 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.port === '3000' ? 'http://localhost:5000/api' : '/api');
-
-// Direct SAP OData gateway base — for entity sets Basis has explicitly opened for anonymous
-// access (mirroring the exception already granted for MoldHealthCheck's ZMM_MOULD_CARE_SRV).
-// Hardcoded (not env-based) on purpose, same convention as MoldHealthCheck's lib/config.ts —
-// deploys with zero extra configuration, no Amplify Console env var needed. Also means this app
-// no longer depends on its Lambda-hosted backend at all, not even for login.
+// Direct SAP OData gateway base — Basis has confirmed anonymous access across ZRCPORTAL_SRV
+// (reads AND writes), same as the exception already granted for MoldHealthCheck's
+// ZMM_MOULD_CARE_SRV. This app no longer depends on any backend server (Lambda or otherwise) —
+// every call below goes straight to SAP. Hardcoded (not env-based) on purpose, same convention as
+// MoldHealthCheck's lib/config.ts — deploys with zero extra configuration, no Amplify Console env
+// var needed.
 const SAP_BASE_URL = "https://emamiapi.emamigroup.com/api/NGD/ZRCPORTAL_SRV";
 
 const PARAMS_SERIALIZER = {
-  // Lambda Function URLs reject raw '+' characters in query strings
-  // (InvalidQueryStringException). Axios's default serializer encodes
-  // spaces as '+'; force %20 encoding instead via encodeURIComponent.
+  // Force %20 encoding instead of axios's default '+' for spaces — SAP's OData
+  // gateway expects standard percent-encoding in $filter/$expand query strings.
   serialize: (params) =>
     Object.entries(params)
       .filter(([, value]) => value !== undefined && value !== null)
@@ -20,21 +18,6 @@ const PARAMS_SERIALIZER = {
       .join('&'),
 };
 
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-  },
-  paramsSerializer: PARAMS_SERIALIZER,
-});
-
-// Direct SAP OData calls — only for entity sets Basis has explicitly opened for anonymous
-// access: consultantSet/EmpSet/FeesSet/CLOSURESet (GET) and LoginSet (GET + POST, used below by
-// verifyUser/loginUser). Everything else (roles, closures create/update, agreements, invoices,
-// fee-slab updates) still goes through the backend — either because it's a write Basis hasn't
-// opened up, or because it needs the Azure OAuth token this client doesn't have.
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
   headers: { Accept: 'application/json' },
@@ -74,44 +57,47 @@ export async function getConsultant(id) {
 }
 
 export async function createConsultant(payload) {
-  const response = await apiClient.post('/consultants', payload);
-  return response.data;
+  const response = await sapClient.post('/consultantSet', payload);
+  return response.data?.d || response.data;
 }
 
 export async function getRoles() {
-  const response = await apiClient.get('/roles');
-  return response.data || [];
+  const response = await sapClient.get('/UserSet', { params: { $format: 'json' } });
+  return response.data?.d?.results || response.data?.results || [];
 }
 
 export async function createRole(payload) {
-  const response = await apiClient.post('/roles', payload);
-  return response.data;
+  const response = await sapClient.post('/UserSet', payload);
+  return response.data?.d || response.data;
 }
 
 export async function deleteRole(payload) {
-  const response = await apiClient.post('/roles', payload);
-  return response.data;
+  const response = await sapClient.post('/UserSet', payload);
+  return response.data?.d || response.data;
 }
 
 export async function updateConsultant(id, payload) {
-  const response = await apiClient.put(`/consultants/${id}`, payload);
-  return response.data;
+  const response = await sapClient.put(`/consultantSet('${id}')`, payload);
+  return response.data?.d || response.data;
 }
 
 export async function updateConsultantStatus(id, status) {
+  // Mirrors the backend's own (verification-only, not a real update) query exactly.
   const filter = `ConsultantId eq '${id}' and Status eq '${status}'`;
-  const response = await apiClient.get('/consultants', { params: { $filter: filter } });
-  return response.data;
+  const response = await sapClient.get('/consultantSet', { params: { $filter: filter, $format: 'json' } });
+  return response.data?.d || response.data;
 }
 
 export async function getConsultantDetail(id) {
-  const response = await apiClient.get(`/consultants/${id}/detail`);
-  return response.data || {};
+  const response = await sapClient.get(`/ConsIdSet('${id}')`, {
+    params: { $format: 'json', $expand: 'Nav_ConsIdToClos,NAV_ConsIdToInv' },
+  });
+  return response.data?.d || response.data || {};
 }
 
 export async function createClosure(payload) {
-  const response = await apiClient.post('/closures', payload);
-  return response.data;
+  const response = await sapClient.post('/CLOSURESet', payload);
+  return response.data?.d || response.data;
 }
 
 export async function getClosure(consultantId, closureId) {
@@ -130,13 +116,22 @@ export async function getClosure(consultantId, closureId) {
 }
 
 export async function updateClosure(consultantId, closureId, payload) {
-  const response = await apiClient.put(`/closures/${consultantId}/${closureId}`, payload);
-  return response.data;
+  // Not a real PUT — the backend re-submits via POST /CLOSURESet with the keys folded into the
+  // payload instead of the URL, because SAP Gateway rejects PUTs with key predicates here. Same
+  // shape, ported as-is.
+  const response = await sapClient.post('/CLOSURESet', {
+    ...payload,
+    ConsultantId: consultantId,
+    ClosureId: closureId,
+  });
+  return response.data?.d || response.data;
 }
 
 export async function getAgreementPdf(id) {
-  const response = await apiClient.get(`/agreements/${id}`);
-  return response.data || {};
+  const response = await sapClient.get(`/AgreementPdfSet(ConsultantId='${id}')`, {
+    params: { $format: 'json' },
+  });
+  return response.data?.d || response.data || {};
 }
 
 export async function getEmployees() {
@@ -146,14 +141,16 @@ export async function getEmployees() {
 }
 
 export async function getInvoicePdf(id, invNo) {
-  const response = await apiClient.get(`/invoices/${id}/${invNo}`);
-  return response.data || {};
+  const response = await sapClient.get(`/InvoicePdfSet(ConsultantId='${id}',InvNumber='${invNo}')`, {
+    params: { $format: 'json' },
+  });
+  return response.data?.d || response.data || {};
 }
 
-// Login/OTP now calls SAP's LoginSet directly too — Basis has explicitly approved anonymous
+// Login/OTP calls SAP's LoginSet directly too — Basis has explicitly approved anonymous
 // access to LoginSet (both the GET lookup and the POST verify) for this app, same as the
 // read-only entity sets above. Mirrors backend/server.js's /api/user/:id and /api/login exactly,
-// minus the ALLOW_DUMMY_OTP bypass, which is backend-only and must never ship to the client.
+// minus the ALLOW_DUMMY_OTP bypass, which was backend-only and must never ship to the client.
 export async function verifyUser(loginId) {
   const cleanId = String(loginId).trim();
 
@@ -220,8 +217,8 @@ export async function loginUser(loginId, otp) {
 }
 
 export async function createFeeSlab(payload) {
-  const response = await apiClient.post('/fees', payload);
-  return response.data;
+  const response = await sapClient.post('/FeesSet', payload);
+  return response.data?.d || response.data;
 }
 
 export async function getFeeSlabs(consultantId) {
@@ -232,8 +229,60 @@ export async function getFeeSlabs(consultantId) {
 }
 
 export async function updateFeeSlabs(consultantId, slabs) {
-  const response = await apiClient.put(`/fees/${consultantId}`, { consultantId, slabs });
-  return response.data;
+  // Ported from the backend's FEESSET_UPDATE_ENTITY route as-is, including its 3-tier fallback:
+  // SAP Gateway accepts different key predicate shapes depending on the slab, so each PUT tries
+  // FeesSet('feeId') first, then FeesSet(ConsultantId=..,FeeId=..), then legacy FeeSet('feeId').
+  const cleanConsultantId = String(consultantId || '').padStart(10, '0');
+  const slabList = Array.isArray(slabs) ? slabs : [];
+  const updateResults = [];
+
+  for (const slab of slabList) {
+    const rawFeeId = String(slab.FeeId || slab.feeId || '').trim();
+    const cleanFeeId = rawFeeId ? rawFeeId.padStart(10, '0') : '';
+
+    const numFrom = parseFloat(slab.FromAmount || slab.fromAmount || 0);
+    const numTo = parseFloat(slab.ToAmount || slab.toAmount || 99999999);
+    const numPercent = parseFloat(slab.FeePercent || slab.FeePersent || slab.feePercent || 0);
+
+    const payload = {
+      FeeId: cleanFeeId,
+      ConsultantId: cleanConsultantId,
+      FeePersent: numPercent.toFixed(2),
+      FromAmount: numFrom.toFixed(2),
+      ToAmount: numTo.toFixed(2),
+    };
+
+    const primaryUrl = cleanFeeId
+      ? `/FeesSet('${cleanFeeId}')`
+      : `/FeesSet(ConsultantId='${cleanConsultantId}')`;
+
+    try {
+      const response = await sapClient.put(primaryUrl, payload);
+      updateResults.push({ slab, status: 'SUCCESS', sapData: response.data?.d || response.data });
+    } catch (err1) {
+      try {
+        const secondaryUrl = `/FeesSet(ConsultantId='${cleanConsultantId}',FeeId='${cleanFeeId}')`;
+        const response2 = await sapClient.put(secondaryUrl, payload);
+        updateResults.push({ slab, status: 'SUCCESS', sapData: response2.data?.d || response2.data });
+      } catch (err2) {
+        try {
+          const fallbackUrl = `/FeeSet('${cleanFeeId}')`;
+          const response3 = await sapClient.put(fallbackUrl, payload);
+          updateResults.push({ slab, status: 'SUCCESS', sapData: response3.data?.d || response3.data });
+        } catch (err3) {
+          updateResults.push({
+            slab,
+            status: 'ERROR',
+            error: err3?.response?.data?.error?.message?.value || err3?.message,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    success: true,
+    message: 'CTC Slab Matrix updated successfully in SAP FEESSET_UPDATE_ENTITY',
+    results: updateResults,
+  };
 }
-
-
