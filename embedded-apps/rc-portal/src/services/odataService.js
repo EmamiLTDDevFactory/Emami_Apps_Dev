@@ -2,11 +2,11 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (window.location.port === '3000' ? 'http://localhost:5000/api' : '/api');
 
-// Direct SAP OData gateway base — only for consultantSet, which Basis has explicitly opened for
-// anonymous GET access (mirroring the exception already granted for MoldHealthCheck's
-// ZMM_MOULD_CARE_SRV). Hardcoded (not env-based) on purpose, same convention as
-// MoldHealthCheck's lib/config.ts — deploys with zero extra configuration, no Amplify Console
-// env var needed.
+// Direct SAP OData gateway base — for entity sets Basis has explicitly opened for anonymous
+// access (mirroring the exception already granted for MoldHealthCheck's ZMM_MOULD_CARE_SRV).
+// Hardcoded (not env-based) on purpose, same convention as MoldHealthCheck's lib/config.ts —
+// deploys with zero extra configuration, no Amplify Console env var needed. Also means this app
+// no longer depends on its Lambda-hosted backend at all, not even for login.
 const SAP_BASE_URL = "https://emamiapi.emamigroup.com/api/NGD/ZRCPORTAL_SRV";
 
 const PARAMS_SERIALIZER = {
@@ -30,12 +30,11 @@ const apiClient = axios.create({
   paramsSerializer: PARAMS_SERIALIZER,
 });
 
-// Direct SAP OData calls — only for entity sets Basis has explicitly opened for anonymous GET
-// access (currently consultantSet, mirroring the exception already granted for
-// MoldHealthCheck's ZMM_MOULD_CARE_SRV). Everything else (roles, closures, agreements,
-// employees, invoices, fees, login) still goes through the backend — either because it's a
-// write, or because its data (payment amounts, PII) hasn't been confirmed safe for anonymous
-// access yet.
+// Direct SAP OData calls — only for entity sets Basis has explicitly opened for anonymous
+// access: consultantSet/EmpSet/FeesSet/CLOSURESet (GET) and LoginSet (GET + POST, used below by
+// verifyUser/loginUser). Everything else (roles, closures create/update, agreements, invoices,
+// fee-slab updates) still goes through the backend — either because it's a write Basis hasn't
+// opened up, or because it needs the Azure OAuth token this client doesn't have.
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
   headers: { Accept: 'application/json' },
@@ -151,18 +150,73 @@ export async function getInvoicePdf(id, invNo) {
   return response.data || {};
 }
 
-// Login stays on the backend (unlike consultants/employees/fees/closures, which now call SAP
-// directly) — direct-to-SAP login showed intermittent failures under real testing on the
-// non-ctc-expense equivalent, so this reverts to the backend-mediated flow that's been reliable
-// for months, rather than ship something flaky to a live app.
+// Login/OTP now calls SAP's LoginSet directly too — Basis has explicitly approved anonymous
+// access to LoginSet (both the GET lookup and the POST verify) for this app, same as the
+// read-only entity sets above. Mirrors backend/server.js's /api/user/:id and /api/login exactly,
+// minus the ALLOW_DUMMY_OTP bypass, which is backend-only and must never ship to the client.
 export async function verifyUser(loginId) {
-  const response = await apiClient.get(`/user/${loginId}`);
-  return response.data;
+  const cleanId = String(loginId).trim();
+
+  try {
+    const response = await sapClient.get(`/LoginSet('${cleanId}')`, { params: { $format: 'json' } });
+    const data = response.data?.d || response.data || {};
+    if (data.Type === 'E' || (data.Message && /invalid|error|failed/i.test(data.Message))) {
+      const err = new Error(data.Message || 'Invalid Employee ID');
+      err.response = { status: 400, data: { success: false, error: data.Message || 'Invalid Employee ID' } };
+      throw err;
+    }
+    return {
+      success: true,
+      login_id: data.LoginId || data.login_id || cleanId,
+      email: data.Email || data.email || '',
+    };
+  } catch (e) {
+    if (e?.response?.data?.error) throw e;
+
+    // Fallback: try UserSet(ID), same as the backend used to do
+    try {
+      const response = await sapClient.get(`/UserSet('${cleanId}')`, { params: { $format: 'json' } });
+      const data = response.data?.d || response.data || {};
+      return {
+        success: true,
+        login_id: data.LoginId || data.emp_id || cleanId,
+        email: data.Email || '',
+      };
+    } catch (e2) {
+      const err = new Error('Invalid Employee ID');
+      err.response = { status: 404, data: { success: false, error: 'Invalid Employee ID' } };
+      throw err;
+    }
+  }
 }
 
 export async function loginUser(loginId, otp) {
-  const response = await apiClient.post('/login', { loginId, otp });
-  return response.data;
+  const cleanId = String(loginId).trim();
+  const cleanOtp = String(otp || '').trim();
+
+  const response = await sapClient.post('/LoginSet', { LoginId: cleanId, Otp: cleanOtp }, {
+    headers: { 'Content-Type': 'application/json', 'DataServiceVersion': '2.0' },
+  });
+  const result = response.data?.d || response.data || {};
+
+  if (result.Type === 'E' || (result.Message && /invalid|error|failed/i.test(result.Message))) {
+    const err = new Error(result.Message || 'Invalid OTP code');
+    err.response = { status: 400, data: { success: false, error: result.Message || 'Invalid OTP code' } };
+    throw err;
+  }
+
+  return {
+    success: true,
+    login_id: result.LoginId || result.login_id || cleanId,
+    name: result.Name || result.Ename || `Employee ${cleanId}`,
+    role: result.Role || 'USER',
+    email: result.Email || '',
+    ta: result.Ta || '',
+    tm: result.Tm || '',
+    ld: result.Ld || '',
+    od: result.Od || '',
+    ...result,
+  };
 }
 
 export async function createFeeSlab(payload) {
