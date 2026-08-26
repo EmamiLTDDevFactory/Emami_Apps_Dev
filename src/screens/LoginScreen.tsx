@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView,
   Platform, ScrollView, ActivityIndicator, Linking,
 } from 'react-native';
-import { BadgeCheck } from 'lucide-react-native';
+import { BadgeCheck, Mail, CheckCircle2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -19,20 +19,22 @@ interface LoginScreenProps {
 }
 
 /**
- * "Sign in with Microsoft" is SAML 2.0 (backend/saml-sso.js) — it only works once the bundled
- * Azure IdP metadata (backend/azure-idp-metadata.xml) is present and HUB_AUTH_SAML_ENABLED=true;
- * until then the backend redirects back here with ?ssoError=not_configured, which RootNavigator
- * turns into the "not set up yet" message. Kept as a toggle rather than deleted the Microsoft
- * button so it can be hidden entirely if desired without touching backend config.
+ * One email field, one action button that redraws itself as the user types — mirrors how
+ * Microsoft's own sign-in page (and Entra External ID) resolves an account before showing the
+ * right next step. @emamigroup.com emails turn the button into "Sign in with Microsoft" (SAML
+ * 2.0, backend/saml-sso.js — only works once the bundled Azure IdP metadata is present and
+ * HUB_AUTH_SAML_ENABLED=true; until then the backend redirects back here with
+ * ?ssoError=not_configured, which RootNavigator turns into the "not set up yet" message). Every
+ * other domain keeps the button labeled "Continue" for direct email sign-in.
  *
- * Both this path and direct email sign-in are gated by the emami_apps.authorized_users table
- * (backend/authorizedUsers.js's isAuthorized()) — an email must exist there and be active to log in.
+ * Both paths are gated by the same Manage Access check (authApi.ts's checkStillAuthorized,
+ * backed by emami_apps.authorized_users) — an email must exist there and be active to log in. The
+ * live debounced check below (liveStatus) calls that same function purely for the inline
+ * checkmark/error feedback as you type; the actual submit still re-derives from its result rather
+ * than trusting client state alone (see signInWithEmail).
  */
-const SHOW_MICROSOFT_SIGNIN = true;
-
-/** Corporate domain routed straight to Microsoft SSO instead of direct email sign-in — see
- * signInWithEmail below. */
 const SSO_DOMAIN = '@emamigroup.com';
+const LIVE_CHECK_DEBOUNCE_MS = 500;
 
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
@@ -95,19 +97,51 @@ function MicrosoftGlyph() {
   );
 }
 
+/** Mirrors Microsoft's own account-resolution UX: as the user finishes typing, the field/button
+ * redraw themselves before any click. 'checking'/'authorized'/'unauthorized' only apply to
+ * non-@emamigroup.com addresses — corporate emails go straight to 'sso' since Microsoft (not
+ * Manage Access) is the first gate there; the Manage Access re-check for that path still happens
+ * at submit time (see signInWithEmail), it just isn't reflected in the field live. */
+type LiveStatus = 'idle' | 'checking' | 'sso' | 'authorized' | 'unauthorized';
+
 export default function LoginScreen({ error, verifying, onDismissError, onLogin }: LoginScreenProps) {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [localError, setLocalError] = useState('');
   const [checkingAccess, setCheckingAccess] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<LiveStatus>('idle');
 
   const trimmedEmail = email.trim().toLowerCase();
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
+  const isSsoDomain = trimmedEmail.endsWith(SSO_DOMAIN);
 
-  // Independent of the email field — Microsoft's own sign-in page asks for the account.
+  // Debounced live check — same checkStillAuthorized() call authApi.ts already uses to re-verify
+  // a persisted session (App.tsx) and the post-SSO callback (verifySsoToken). Calling it here too,
+  // on a timer instead of a click, is what lets the field show "not registered" (or a checkmark)
+  // before the user ever presses the button.
+  useEffect(() => {
+    if (!looksLikeEmail) {
+      setLiveStatus('idle');
+      return;
+    }
+    if (isSsoDomain) {
+      setLiveStatus('sso');
+      return;
+    }
+    setLiveStatus('checking');
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const authorized = await checkStillAuthorized(trimmedEmail);
+      if (!cancelled) setLiveStatus(authorized ? 'authorized' : 'unauthorized');
+    }, LIVE_CHECK_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedEmail, looksLikeEmail, isSsoDomain]);
+
   const signInWithMicrosoft = () => {
-    setLocalError('');
-    onDismissError?.();
     const url = getMicrosoftSignInUrl();
     if (Platform.OS === 'web') {
       window.location.href = url;
@@ -121,37 +155,33 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   const signInWithEmail = async () => {
     setLocalError('');
     onDismissError?.();
-    if (!trimmedEmail) {
-      setLocalError('Enter your email to continue.');
-      return;
-    }
-    if (!looksLikeEmail) {
-      setLocalError('Enter a valid email address to continue.');
-      return;
-    }
-    // Emami Group emails go through Microsoft SSO — every other domain signs in directly. Both
-    // paths are gated by the same Manage Access check (checkStillAuthorized), run against the
-    // Postgres-reachable backend rather than the hub-auth Lambda's own isAuthorized() — that
-    // Lambda has no VPC route to Postgres, so its check can't be trusted (see authApi.ts). The
-    // check happens BEFORE the Microsoft redirect / the Lambda's db-login call, not after — a
-    // user who isn't registered never leaves this page or gets a Lambda-issued session at all.
-    // (The standalone "Sign in with Microsoft" button below has no email to check yet at that
-    // point, so it can only be gated on the way back — see authApi.ts's verifySsoToken.)
-    setCheckingAccess(true);
-    const authorized = await checkStillAuthorized(trimmedEmail);
-    setCheckingAccess(false);
-    if (!authorized) {
-      setLocalError('This email-id is not registered. Contact your admin for access.');
-      return;
-    }
-    if (trimmedEmail.endsWith(SSO_DOMAIN)) {
+    if (liveStatus === 'idle' || liveStatus === 'checking') return; // button is disabled here anyway
+
+    if (liveStatus === 'sso') {
+      // The live check above never ran for this domain — Manage Access still has to be checked
+      // before handing off to Microsoft, so a user who isn't registered never leaves this page.
+      setCheckingAccess(true);
+      const authorized = await checkStillAuthorized(trimmedEmail);
+      setCheckingAccess(false);
+      if (!authorized) {
+        setLiveStatus('unauthorized');
+        setLocalError('This email-id is not registered. Contact your admin for access.');
+        return;
+      }
       signInWithMicrosoft();
       return;
     }
+
+    if (liveStatus === 'unauthorized') {
+      setLocalError('This email-id is not registered. Contact your admin for access.');
+      return;
+    }
+
     setCheckingAccess(true);
     const result = await loginWithEmail(trimmedEmail);
     setCheckingAccess(false);
     if (!result.ok) {
+      setLiveStatus('unauthorized');
       setLocalError(result.error || 'This email-id is not registered.');
       return;
     }
@@ -160,6 +190,9 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
 
   const shownError = error || localError;
   const busy = verifying || checkingAccess;
+  const buttonDisabled = checkingAccess || liveStatus === 'idle' || liveStatus === 'checking';
+  const fieldInvalid = liveStatus === 'unauthorized';
+  const fieldValid = liveStatus === 'authorized' || liveStatus === 'sso';
 
   return (
     <View style={styles.root}>
@@ -198,7 +231,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
           <View style={styles.card}>
             <Text style={styles.welcome}>{busy ? 'Signing you in…' : 'Welcome back'}</Text>
             <Text style={styles.subtitle}>
-              {verifying ? 'Verifying your Microsoft sign-in.' : checkingAccess ? 'Checking your access.' : 'Sign in with your email'}
+              {verifying ? 'Verifying your Microsoft sign-in.' : 'Sign in with your Emami work email'}
             </Text>
 
             {verifying ? (
@@ -207,46 +240,61 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
               <>
                 {!!shownError && <Text style={styles.error}>{shownError}</Text>}
 
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={(v) => { setEmail(v); setLocalError(''); onDismissError?.(); }}
-                  placeholder="you@company.com"
-                  placeholderTextColor={colors.inkSoft}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  editable={!checkingAccess}
-                  onSubmitEditing={signInWithEmail}
-                />
+                <View style={styles.inputWrapper}>
+                  <Mail size={16} color={colors.inkSoft} style={styles.inputIconLeft} />
+                  <TextInput
+                    style={[
+                      styles.input,
+                      fieldInvalid && styles.inputInvalid,
+                      fieldValid && styles.inputValid,
+                    ]}
+                    value={email}
+                    onChangeText={(v) => { setEmail(v); setLocalError(''); onDismissError?.(); }}
+                    placeholder="you@company.com"
+                    placeholderTextColor={colors.inkSoft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    editable={!checkingAccess}
+                    onSubmitEditing={signInWithEmail}
+                  />
+                  {liveStatus === 'checking' && (
+                    <ActivityIndicator size="small" color={colors.inkSoft} style={styles.inputIconRight} />
+                  )}
+                  {fieldValid && (
+                    <CheckCircle2 size={18} color={colors.green} style={styles.inputIconRight} />
+                  )}
+                </View>
+                {fieldInvalid && (
+                  <Text style={styles.fieldError}>This email-id is not registered. Contact your admin for access.</Text>
+                )}
 
-                <Pressable onPress={signInWithEmail} style={styles.primaryBtn} disabled={checkingAccess}>
+                <Pressable
+                  onPress={signInWithEmail}
+                  style={[
+                    styles.primaryBtn,
+                    liveStatus === 'sso' && styles.microsoftBtn,
+                    buttonDisabled && styles.primaryBtnDisabled,
+                  ]}
+                  disabled={buttonDisabled}
+                >
                   {checkingAccess ? (
-                    <ActivityIndicator size="small" color={colors.white} />
+                    <ActivityIndicator size="small" color={liveStatus === 'sso' ? colors.ink : colors.white} />
+                  ) : liveStatus === 'sso' ? (
+                    <>
+                      <MicrosoftGlyph />
+                      <Text style={styles.microsoftBtnText}>Sign in with Microsoft</Text>
+                    </>
                   ) : (
-                    <Text style={styles.primaryBtnText}>Sign In</Text>
+                    <Text style={[styles.primaryBtnText, buttonDisabled && styles.primaryBtnTextDisabled]}>Continue →</Text>
                   )}
                 </Pressable>
-
-                {SHOW_MICROSOFT_SIGNIN && (
-                  <>
-                    <View style={styles.dividerRow}>
-                      <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>OR</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-
-                    <Pressable onPress={signInWithMicrosoft} style={styles.secondaryBtn} disabled={checkingAccess}>
-                      <MicrosoftGlyph />
-                      <Text style={styles.secondaryBtnText}>Sign in with Microsoft</Text>
-                    </Pressable>
-                  </>
-                )}
               </>
             )}
 
             <Text style={styles.helper}>
-              @emamigroup.com emails sign in with Microsoft. Other emails must be added in Manage Access to sign in.
+              <Text style={styles.helperAccent}>@emamigroup.com signs in with Microsoft. </Text>
+              <Text>No access? Contact your admin.</Text>
             </Text>
           </View>
         </ScrollView>
@@ -415,18 +463,46 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     textAlign: 'center',
   },
+  inputWrapper: {
+    width: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+  },
   input: {
     width: '100%',
     backgroundColor: colors.cream2,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,
-    paddingHorizontal: 18,
+    paddingLeft: 42,
+    paddingRight: 18,
     paddingVertical: 14,
     fontFamily: fonts.sansMedium,
     fontSize: 14.5,
     color: colors.ink,
-    marginBottom: 8,
+  },
+  inputInvalid: {
+    borderColor: '#DC2626',
+    backgroundColor: '#FEF2F2',
+  },
+  inputValid: {
+    borderColor: colors.rust,
+  },
+  inputIconLeft: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 1,
+  },
+  inputIconRight: {
+    position: 'absolute',
+    right: 16,
+  },
+  fieldError: {
+    width: '100%',
+    fontFamily: fonts.sansMedium,
+    fontSize: 11.5,
+    color: '#DC2626',
+    marginTop: 6,
   },
   error: {
     width: '100%',
@@ -441,50 +517,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.plumDeep,
+    backgroundColor: colors.rust,
     borderRadius: radii.pill,
     paddingVertical: 14,
     gap: 10,
-    marginTop: 10,
+    marginTop: 16,
+  },
+  primaryBtnDisabled: {
+    backgroundColor: colors.border,
   },
   primaryBtnText: {
     fontFamily: fonts.sansSemiBold,
     fontSize: 14.5,
     color: colors.white,
   },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    gap: 10,
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 10.5,
-    letterSpacing: 0.8,
+  primaryBtnTextDisabled: {
     color: colors.inkSoft,
   },
-  secondaryBtn: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: colors.cream2,
+  microsoftBtn: {
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.pill,
-    paddingVertical: 14,
-    marginTop: 10,
   },
-  secondaryBtnText: {
+  microsoftBtnText: {
     fontFamily: fonts.sansSemiBold,
     fontSize: 14.5,
     color: colors.ink,
@@ -506,5 +561,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: colors.inkSoft,
     textAlign: 'center',
+  },
+  helperAccent: {
+    fontFamily: fonts.sansMedium,
+    color: colors.rust,
   },
 });
