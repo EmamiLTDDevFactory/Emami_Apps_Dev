@@ -137,6 +137,27 @@ router.get('/me', async (req, res) => {
     }
 });
 
+/** Records a login from the frontend directly, bypassing the hub-auth Lambda (hub-auth.js,
+ * saml-sso.js) which already calls upsertLoginProfile() server-side but has no VPC route to
+ * Postgres and so silently fails to persist it. Called right after a successful login — direct
+ * email (LoginScreen.tsx) or SSO (RootNavigator.tsx), both funnel through AuthContext's login() —
+ * via EXPO_PUBLIC_ACCESS_API_URL, the backend instance that can actually reach Postgres, instead
+ * of duplicating the write through the Lambda. Login itself still happens on the Lambda; this
+ * only records that it happened. Same "email, no bearer token" auth posture as the rest of this
+ * file. */
+router.post('/me/login', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const name = req.body?.name ? String(req.body.name) : undefined;
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    const user = await upsertLoginProfile(email, name);
+    if (!user) {
+        return res.status(500).json({ success: false, error: 'Could not record login.' });
+    }
+    res.json({ success: true });
+});
+
 /** Logs one activity event (app opened, favorite toggled, logout, etc.) for the ACTIVITY stats on
  * the Settings screen — fire-and-forget from the frontend's point of view, same "email, no bearer
  * token" auth posture as GET /me above. */

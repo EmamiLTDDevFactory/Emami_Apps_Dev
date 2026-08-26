@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getMyProfile, logEvent, type UserProfile } from '../lib/authApi';
+import { getMyProfile, logEvent, recordLogin, type UserProfile } from '../lib/authApi';
 
 const AUTH_STORAGE_KEY = 'emami_apps_is_logged_in';
 const AUTH_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
@@ -59,6 +59,11 @@ export function AuthProvider({
         if (email) {
           setUserEmail(email);
           AsyncStorage.setItem(AUTH_EMAIL_STORAGE_KEY, email).catch(() => {});
+          // Covers both login paths — direct email (LoginScreen.tsx) and SSO (RootNavigator.tsx) —
+          // since both call this function with the authenticated email. See recordLogin's comment
+          // in authApi.ts for why this is needed on top of the Lambda's own (currently failing)
+          // server-side write.
+          recordLogin(email);
         }
       },
       logout: () => {

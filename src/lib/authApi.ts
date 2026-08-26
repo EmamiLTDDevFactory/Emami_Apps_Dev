@@ -104,6 +104,20 @@ export async function getMyProfile(email: string): Promise<UserProfile | null> {
   }
 }
 
+/** Records a login against the Postgres-reachable backend (EXPO_PUBLIC_ACCESS_API_URL), since the
+ * hub-auth Lambda already tries to do this server-side (upsertLoginProfile, in both hub-auth.js's
+ * direct email login and saml-sso.js's SAML callback) but can't reach 10.17.12.4 to persist it.
+ * Call this right after a successful login — either path, direct email or Microsoft SSO — so
+ * "last login"/"logins"/"sessions" on Dashboard/Settings stay accurate regardless of which one was
+ * used. Fire-and-forget, same posture as logEvent: a missed write here shouldn't block sign-in. */
+export function recordLogin(email: string, name?: string): void {
+  fetch(`${ACCESS_API_URL}/me/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, name }),
+  }).catch(() => {});
+}
+
 /** Activity event types the ACTIVITY stats grid (Settings screen) counts — see
  * backend/userProfile.js's CLIENT_EVENT_TYPES for the exact whitelist the backend enforces. */
 export type ActivityEventType = 'APP_OPEN' | 'DOWNLOAD' | 'FAVORITE_ADD' | 'FAVORITE_REMOVE' | 'NOTIFICATION_READ' | 'SESSION_END';
