@@ -403,11 +403,18 @@ export default function Sidebar() {
 
                 <ListItemButton
                     onClick={() => {
+                        // No local logout to speak of any more — Audit & CAPA's own session is
+                        // just a reflection of the still-live Emami Apps hub session (see
+                        // Layout.js). Clearing it here only forces a fresh sign-in exchange next
+                        // time; actually signing out means leaving the hub itself.
                         localStorage.removeItem(
                             "currentUser"
                         );
+                        localStorage.removeItem(
+                            "authToken"
+                        );
 
-                        navigate("/login");
+                        window.location.href = "/";
                     }}
                     sx={{
                         color: "white",

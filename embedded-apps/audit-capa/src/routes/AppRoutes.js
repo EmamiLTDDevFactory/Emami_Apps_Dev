@@ -7,7 +7,6 @@ import CAPAManagement from "../pages/CAPAManagement";
 import Reports from "../pages/Reports";
 import Notifications from "../pages/Notifications";
 import Annexure1 from "../pages/Annexure1";
-import Login from "../pages/Login";
 
 import Layout from "../components/layout/Layout";
 import RoleGuard from "../components/RoleGuard";
@@ -15,11 +14,7 @@ import RoleGuard from "../components/RoleGuard";
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Login Page */}
-      <Route
-        path="/login"
-        element={<Login />}
-      />
+      {/* No login route — Layout signs the user in from their Emami Apps session automatically. */}
 
       {/* Pages with Layout */}
       <Route element={<Layout />}>

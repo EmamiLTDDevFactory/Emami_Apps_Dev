@@ -58,7 +58,7 @@ export async function checkStillAuthorized(email: string): Promise<boolean> {
 }
 
 /** Direct email login — no Microsoft redirect. Succeeds only if the email is active in Manage Access. */
-export async function loginWithEmail(email: string): Promise<{ ok: boolean; email?: string; error?: string }> {
+export async function loginWithEmail(email: string): Promise<{ ok: boolean; email?: string; token?: string; error?: string }> {
   try {
     const res = await fetch(`${AUTH_API_URL}/hub-auth/db-login`, {
       method: 'POST',
@@ -67,7 +67,7 @@ export async function loginWithEmail(email: string): Promise<{ ok: boolean; emai
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'This email-id is not registered.' };
-    return { ok: true, email: data.email };
+    return { ok: true, email: data.email, token: data.token };
   } catch {
     return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
   }

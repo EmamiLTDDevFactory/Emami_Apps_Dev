@@ -1,94 +1,53 @@
-const bcrypt = require("bcryptjs");
 const pool = require("../postgres");
 
-const users = [
-    {
-        userId: "samyak",
-        password: "123",
-        name: "Samyak Srivastava",
-        role: "CQA",
-        depot: null
-    },
-    {
-        userId: "argha",
-        password: "123",
-        name: "Argha Das",
-        role: "CQA",
-        depot: null
-    },
-    {
-        userId: "devraj",
-        password: "123",
-        name: "Devraj Jatav",
-        role: "CQA",
-        depot: null
-    },
-    {
-        userId: "delhi",
-        password: "123",
-        name: "Delhi Depot",
-        role: "Depot",
-        depot: "Delhi Depot"
-    },
-    {
-        userId: "kolkata",
-        password: "123",
-        name: "Kolkata Depot",
-        role: "Depot",
-        depot: "Kolkata Depot"
-    },
-    {
-        userId: "bangalore",
-        password: "123",
-        name: "Bangalore Depot",
-        role: "Depot",
-        depot: "Bangalore Depot"
-    }
-];
-
-async function seedUsers() {
-    try {
-
-        for (const user of users) {
-
-            const hash = await bcrypt.hash(user.password, 10);
-
-            await pool.query(
-                `
-                INSERT INTO audit_capa.users
-                (
-                    user_id,
-                    password_hash,
-                    name,
-                    role,
-                    depot
-                )
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (user_id)
-                DO NOTHING
-                `,
-                [
-                    user.userId,
-                    hash,
-                    user.name,
-                    user.role,
-                    user.depot
-                ]
-            );
-
-            console.log(`Inserted: ${user.userId}`);
-        }
-
-        console.log("User seed completed");
-
-        process.exit(0);
-
-    } catch (error) {
-
-        console.error(error);
-
+/**
+ * Audit & CAPA no longer has its own login — access is granted by inserting a row here for a real
+ * Emami Apps hub email, with the role/depot that person should have inside Audit & CAPA (see
+ * controllers/authController.js and postgres.js's runMigrations for the email-keyed, password-free
+ * schema this now targets). There is no admin screen for this yet, so this script is how an admin
+ * grants (or re-grants) access today.
+ *
+ * Usage:
+ *   node sql/seed-users.js <email> <name> <role> [depot]
+ *
+ * Examples:
+ *   node sql/seed-users.js samyak.srivastava@emamigroup.com "Samyak Srivastava" CQA
+ *   node sql/seed-users.js delhi.depot@emamigroup.com "Delhi Depot" Depot "Delhi Depot"
+ */
+async function seedUser(email, name, role, depot) {
+    if (!email || !name || !role) {
+        console.error("Usage: node sql/seed-users.js <email> <name> <role> [depot]");
         process.exit(1);
     }
+
+    await pool.query(
+        `
+        INSERT INTO audit_capa.users
+        (
+            email,
+            name,
+            role,
+            depot
+        )
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (email)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            role = EXCLUDED.role,
+            depot = EXCLUDED.depot,
+            is_active = TRUE
+        `,
+        [email.trim().toLowerCase(), name, role, depot || null]
+    );
+
+    console.log(`Granted Audit & CAPA access: ${email} (${role}${depot ? `, ${depot}` : ""})`);
 }
 
-seedUsers();
+const [, , email, name, role, depot] = process.argv;
+
+seedUser(email, name, role, depot)
+    .then(() => process.exit(0))
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });

@@ -4,6 +4,15 @@ import { getMyProfile, logEvent, recordLogin, type UserProfile } from '../lib/au
 
 const AUTH_STORAGE_KEY = 'emami_apps_is_logged_in';
 const AUTH_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
+/**
+ * The hub's own session JWT (see backend/sessionAuth.js), persisted so same-origin embedded apps
+ * — e.g. Audit & CAPA at /apps/audit-capa — can read it straight out of localStorage (this is
+ * AsyncStorage's actual backing store on web, same key, no prefix) and use it to establish their
+ * own session for this person without a second login screen. AsyncStorage.setItem, not
+ * plain localStorage.setItem, so this still works identically on native once a native session
+ * flow exists — it's just inert there today since embedded apps aren't merged into a native build.
+ */
+const AUTH_TOKEN_STORAGE_KEY = 'emami_apps_session_token';
 
 interface AuthContextValue {
   isLoggedIn: boolean;
@@ -13,7 +22,7 @@ interface AuthContextValue {
    * until the first fetch resolves, so screens can fall back to a loading state. */
   profile: UserProfile | null;
   refreshProfile: () => void;
-  login: (email?: string) => void;
+  login: (email?: string, token?: string) => void;
   logout: () => void;
 }
 
@@ -53,7 +62,7 @@ export function AuthProvider({
       userEmail,
       profile,
       refreshProfile,
-      login: (email?: string) => {
+      login: (email?: string, token?: string) => {
         setIsLoggedIn(true);
         AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true').catch(() => {});
         if (email) {
@@ -65,13 +74,16 @@ export function AuthProvider({
           // server-side write.
           recordLogin(email);
         }
+        if (token) {
+          AsyncStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token).catch(() => {});
+        }
       },
       logout: () => {
         if (userEmail) logEvent(userEmail, 'SESSION_END');
         setIsLoggedIn(false);
         setUserEmail(null);
         setProfile(null);
-        AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY]).catch(() => {});
+        AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY]).catch(() => {});
       },
     }),
     [isLoggedIn, userEmail, profile, refreshProfile]
@@ -98,7 +110,7 @@ export async function loadPersistedLoginState(): Promise<{ isLoggedIn: boolean; 
  * AuthProvider/logout() to call yet. */
 export async function clearPersistedLoginState(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY]);
+    await AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY]);
   } catch {
     // Best-effort — App.tsx still won't treat the session as logged in either way.
   }

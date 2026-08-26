@@ -15,7 +15,7 @@ interface LoginScreenProps {
   error?: string | null;
   verifying?: boolean;
   onDismissError?: () => void;
-  onLogin?: (email?: string) => void;
+  onLogin?: (email?: string, token?: string) => void;
 }
 
 /**
@@ -154,7 +154,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError(result.error || 'This email-id is not registered.');
       return;
     }
-    onLogin?.(result.email);
+    onLogin?.(result.email, result.token);
   };
 
   const shownError = error || localError;

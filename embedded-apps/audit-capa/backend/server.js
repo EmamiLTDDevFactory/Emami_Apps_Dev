@@ -10,6 +10,9 @@ const notificationRoutes = require("./routes/notifications");
 const authRoutes = require("./routes/auth");
 const pool = require("./postgres");
 
+// Fire-and-forget on module load — idempotent, so a request racing ahead of it is harmless.
+pool.runMigrations();
+
 const app = express();
 
 app.use(express.json());
