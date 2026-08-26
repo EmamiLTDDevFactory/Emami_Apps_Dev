@@ -40,7 +40,7 @@ export default function HomeScreen() {
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <DashboardHero
-          name={(profile?.name || userEmail || '').split(' ')[0]}
+          name={profile?.name || userEmail || ''}
           lastLogin={profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—'}
         />
 

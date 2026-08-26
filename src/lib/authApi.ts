@@ -8,6 +8,12 @@
 // SAML or direct) it comes through.
 const AUTH_API_URL = process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
 
+// Profile/activity (/me, /events — backend/userProfile.js) need the same Postgres-reachable
+// backend as Manage Access (see src/lib/accessApi.ts) — the hub-auth Lambda above has no VPC
+// route to 10.17.12.4, so these two calls use EXPO_PUBLIC_ACCESS_API_URL instead, falling back to
+// AUTH_API_URL so this doesn't break before the env var is set anywhere.
+const ACCESS_API_URL = process.env.EXPO_PUBLIC_ACCESS_API_URL || AUTH_API_URL;
+
 /** Full-page navigation target for "Sign in with Microsoft" — not an XHR call. Microsoft sign-in
  * is SAML 2.0 (backend/saml-sso.js), configured via the "Configure SSO" screen rather than
  * hardcoded — this redirects into that flow, which itself redirects on to Microsoft. */
@@ -68,7 +74,7 @@ export interface UserProfile {
 
 export async function getMyProfile(email: string): Promise<UserProfile | null> {
   try {
-    const res = await fetch(`${AUTH_API_URL}/me?email=${encodeURIComponent(email)}`);
+    const res = await fetch(`${ACCESS_API_URL}/me?email=${encodeURIComponent(email)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return null;
     return data.profile as UserProfile;
@@ -84,7 +90,7 @@ export type ActivityEventType = 'APP_OPEN' | 'DOWNLOAD' | 'FAVORITE_ADD' | 'FAVO
 /** Fire-and-forget activity logging — never throws, since a missed stat shouldn't interrupt
  * whatever the user was actually doing (opening an app, toggling a favorite, signing out). */
 export function logEvent(email: string, eventType: ActivityEventType, appId?: string): void {
-  fetch(`${AUTH_API_URL}/events`, {
+  fetch(`${ACCESS_API_URL}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, eventType, appId }),
