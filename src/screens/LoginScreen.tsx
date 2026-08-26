@@ -129,21 +129,22 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError('Enter a valid email address to continue.');
       return;
     }
-    // Emami Group emails go through Microsoft SSO — every other domain signs in directly,
-    // gated by whether the email is registered in Manage Access (see loginWithEmail). The Manage
-    // Access check happens BEFORE the Microsoft redirect, not after — a user who isn't
-    // registered never leaves this page, instead of authenticating with Microsoft first and
-    // only then finding out. (The standalone "Sign in with Microsoft" button below has no email
-    // to check yet at that point, so it can only be gated on the way back — see authApi.ts's
-    // verifySsoToken.)
+    // Emami Group emails go through Microsoft SSO — every other domain signs in directly. Both
+    // paths are gated by the same Manage Access check (checkStillAuthorized), run against the
+    // Postgres-reachable backend rather than the hub-auth Lambda's own isAuthorized() — that
+    // Lambda has no VPC route to Postgres, so its check can't be trusted (see authApi.ts). The
+    // check happens BEFORE the Microsoft redirect / the Lambda's db-login call, not after — a
+    // user who isn't registered never leaves this page or gets a Lambda-issued session at all.
+    // (The standalone "Sign in with Microsoft" button below has no email to check yet at that
+    // point, so it can only be gated on the way back — see authApi.ts's verifySsoToken.)
+    setCheckingAccess(true);
+    const authorized = await checkStillAuthorized(trimmedEmail);
+    setCheckingAccess(false);
+    if (!authorized) {
+      setLocalError('This email-id is not registered. Contact your admin for access.');
+      return;
+    }
     if (trimmedEmail.endsWith(SSO_DOMAIN)) {
-      setCheckingAccess(true);
-      const authorized = await checkStillAuthorized(trimmedEmail);
-      setCheckingAccess(false);
-      if (!authorized) {
-        setLocalError('This email-id is not registered. Contact your admin for access.');
-        return;
-      }
       signInWithMicrosoft();
       return;
     }
