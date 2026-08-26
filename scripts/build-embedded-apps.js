@@ -10,6 +10,15 @@ const MAIN_DIST = path.join(__dirname, '..', 'dist');
 // hub's own files or another embedded app's.
 const SHARED_FOLDERS = ['_expo', 'assets'];
 
+// Bundler-generated asset directory names to ignore when deciding whether an
+// app is a pure client-side SPA (see isPureSpa below) — distinct from
+// SHARED_FOLDERS, which is only about Expo Router's dist-root merge and just
+// happens to overlap with Vite's default 'assets' output name. CRA's
+// (react-scripts) equivalent output directory is named 'static', not
+// 'assets', so it needs to be recognized here too or a CRA-based embedded app
+// (e.g. Audit & CAPA) gets misclassified as NOT a pure SPA.
+const BUNDLER_ASSET_DIRS = [...SHARED_FOLDERS, 'static'];
+
 function copyRecursive(src, dest) {
   if (fs.statSync(src).isFile()) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -79,7 +88,7 @@ function findDynamicRoutes(dir, routePath, warnings) {
 function isPureSpa(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const htmlFiles = entries.filter((e) => e.isFile() && e.name.endsWith('.html'));
-  const nonSharedDirs = entries.filter((e) => e.isDirectory() && !SHARED_FOLDERS.includes(e.name));
+  const nonSharedDirs = entries.filter((e) => e.isDirectory() && !BUNDLER_ASSET_DIRS.includes(e.name));
   return htmlFiles.length === 1 && htmlFiles[0].name === 'index.html' && nonSharedDirs.length === 0;
 }
 

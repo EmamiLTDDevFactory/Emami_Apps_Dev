@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  Grid3x3, HelpCircle, Settings, ShieldCheck,
+  Grid3x3, HelpCircle, Settings, ShieldCheck, ClipboardCheck,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NotificationItem, NavItem, CategoryFilter } from '../types';
 
@@ -11,16 +11,17 @@ export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations'];
  * Live app URLs. Every real app renders inside a WebView on the launch screen
  * via this URL.
  *
- * On web, all four are now genuinely same-origin: their actual frontends
+ * On web, all five are now genuinely same-origin: their actual frontends
  * (fixed to be base-path aware — see embedded-apps/) are built and served
  * directly by this hub's own server at /apps/expense, /apps/dispatch-tracker,
- * /apps/rc-portal and /apps/mouldhealthcheck — not a proxy, not an iframe to
- * another domain. A relative URL here is the signal AppDetailScreen uses to
- * do a full page navigation instead of rendering a WebView.
+ * /apps/rc-portal, /apps/mouldhealthcheck and /apps/audit-capa — not a proxy,
+ * not an iframe to another domain. A relative URL here is the signal
+ * AppDetailScreen uses to do a full page navigation instead of rendering a
+ * WebView.
  *
- * Their backend/API endpoints are untouched: Non CTC Expense and RC Portal
- * each get their own real backend brought in too (see each app's own
- * backend/ folder under embedded-apps/, real Azure/SAP credentials via its
+ * Their backend/API endpoints are untouched: Non CTC Expense, RC Portal and
+ * Audit & CAPA each get their own real backend brought in too (see each
+ * app's own backend/ folder under embedded-apps/, real credentials via its
  * gitignored backend/.env); Dispatch Tracker and MoldHealthCheck need no
  * backend of their own — each frontend already hardcodes an absolute
  * external API domain that works directly (confirmed by testing it), unaffected
@@ -38,6 +39,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // splash itself redirects to, instead of the bare app root.
   inventory: Platform.OS === 'web' ? '/apps/mouldhealthcheck/welcome' : 'https://mould.emamiapps.in', // MoldHealthCheck
   expense: Platform.OS === 'web' ? '/apps/expense' : 'https://non-ctc-expense.onrender.com/zexpense/', // Non CTC Expense
+  'audit-capa': Platform.OS === 'web' ? '/apps/audit-capa' : 'https://audit.emamiapps.in', // Audit & CAPA
 };
 
 const RAW_APPS: AppItem[] = [
@@ -45,6 +47,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'finance', name: 'RC Portal', desc: 'Manage rate contracts and vendor pricing agreements.', cat: 'Finance', icon: Landmark, uses: 96 },
   { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Operations', icon: Truck, uses: 210 },
   { id: 'inventory', name: 'MoldHealthCheck', desc: 'Monitor mould condition and preventive maintenance health checks.', cat: 'Operations', icon: Activity, uses: 29 },
+  { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'Operations', icon: ClipboardCheck, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

@@ -1,0 +1,9 @@
+node_modules/
+.env
+data/db.json
+npm-debug.log*
+
+# Uploaded CAPA evidence is runtime user data, not code — keep the folder tracked (.gitkeep)
+# but never commit the files themselves.
+uploads/capa-evidence/*
+!uploads/capa-evidence/.gitkeep
