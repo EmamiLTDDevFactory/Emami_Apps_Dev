@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { ChevronRight, LayoutGrid } from 'lucide-react-native';
+import { ChevronRight, LayoutGrid, Lock } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
@@ -10,6 +10,7 @@ import AppGrid from '../components/AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useFilteredApps } from '../hooks/useFilteredApps';
+import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
 import { RECENT, appById } from '../data/mockData';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
@@ -20,6 +21,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { favorites, toggleFavorite } = useFavorites();
   const { userEmail, profile } = useAuth();
+  const unlockedAppIds = useUnlockedAppIds();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('All');
   const [sort, setSort] = useState<SortOption>('Alphabetical');
@@ -27,6 +29,7 @@ export default function HomeScreen() {
   const apps = useFilteredApps({ query, category, sort });
 
   const openApp = (app: AppItem) => {
+    if (!unlockedAppIds.has(app.id)) return; // locked tiles ignore taps — see AppCard's own guard too
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     navigation.navigate('AppDetail', { appId: app.id });
   };
@@ -62,6 +65,7 @@ export default function HomeScreen() {
           onOpenApp={openApp}
           onToggleFavorite={onToggleFavorite}
           scrollEnabled={false}
+          unlockedAppIds={unlockedAppIds}
         />
 
         <Text style={[styles.recentTitle]}>Recently Used</Text>
@@ -71,20 +75,21 @@ export default function HomeScreen() {
             if (!app) return null;
             const Icon = app.icon;
             const accent = appColor(app.id);
+            const locked = !unlockedAppIds.has(app.id);
             return (
               <Pressable
                 key={r.id}
                 onPress={() => openApp(app)}
-                style={[styles.recentRow, i < RECENT.length - 1 && styles.recentRowBorder]}
+                style={[styles.recentRow, i < RECENT.length - 1 && styles.recentRowBorder, locked && styles.recentRowLocked]}
               >
-                <View style={[styles.recentIcon, { backgroundColor: `${accent}1a` }]}>
-                  <Icon size={16} color={accent} />
+                <View style={[styles.recentIcon, { backgroundColor: locked ? colors.border : `${accent}1a` }]}>
+                  {locked ? <Lock size={14} color={colors.inkSoft} /> : <Icon size={16} color={accent} />}
                 </View>
                 <View style={styles.flex1}>
-                  <Text style={styles.recentName}>{app.name}</Text>
-                  <Text style={styles.recentWhen}>{r.when}</Text>
+                  <Text style={[styles.recentName, locked && styles.recentTextLocked]}>{app.name}</Text>
+                  <Text style={styles.recentWhen}>{locked ? 'Locked — contact your admin' : r.when}</Text>
                 </View>
-                <ChevronRight size={15} color={colors.inkSoft} />
+                {!locked && <ChevronRight size={15} color={colors.inkSoft} />}
               </Pressable>
             );
           })}
@@ -147,6 +152,12 @@ const styles = StyleSheet.create({
   recentRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  recentRowLocked: {
+    opacity: 0.65,
+  },
+  recentTextLocked: {
+    color: colors.inkSoft,
   },
   recentIcon: {
     width: 34,

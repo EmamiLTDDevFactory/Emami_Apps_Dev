@@ -5,15 +5,26 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radii, appColor, shadows } from '../theme/tokens';
 import { NAV, APPS } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
+import { useAuth } from '../context/AuthContext';
+import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import EmpAppMark from '../components/EmpAppMark';
+import { Lock } from 'lucide-react-native';
 
 export default function CustomDrawerContent({ state, navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const { favorites } = useFavorites();
+  const { access } = useAuth();
+  const unlockedAppIds = useUnlockedAppIds();
   const favoriteApps = APPS.filter((a) => favorites.has(a.id));
   const activeRoute = state.routeNames[state.index];
-  const onOpenApp = (app: (typeof APPS)[number]) =>
+  const onOpenApp = (app: (typeof APPS)[number]) => {
+    if (!unlockedAppIds.has(app.id)) return;
     (navigation as any).navigate('AppDetail', { appId: app.id });
+  };
+  // Manage Access is only for Super Admin/Admin (see UserAccessScreen.tsx, which enforces the
+  // same rule server-side too — this just keeps the nav item from showing to a Viewer at all).
+  const canManageAccess = access?.accessLevel === 'Super Admin' || access?.accessLevel === 'Admin';
+  const navItems = NAV.filter((item) => item.id !== 'UserAccess' || canManageAccess);
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 16 }]}>
@@ -29,15 +40,17 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
             {favoriteApps.map((app) => {
               const Icon = app.icon;
               const c = appColor(app.id);
+              const locked = !unlockedAppIds.has(app.id);
               return (
                 <Pressable
                   key={app.id}
                   onPress={() => onOpenApp(app)}
-                  style={[styles.quickAccessBtn, { backgroundColor: `${c}2e` }]}
+                  style={[styles.quickAccessBtn, { backgroundColor: locked ? colors.sidebarBorder : `${c}2e` }]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Open ${app.name}`}
+                  accessibilityLabel={locked ? `${app.name} — locked` : `Open ${app.name}`}
+                  accessibilityState={{ disabled: locked }}
                 >
-                  <Icon size={14} color={c} />
+                  {locked ? <Lock size={12} color={colors.sidebarTextSoft} /> : <Icon size={14} color={c} />}
                 </Pressable>
               );
             })}
@@ -46,7 +59,7 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
       )}
 
       <ScrollView style={styles.nav} contentContainerStyle={{ paddingBottom: 12 }}>
-        {NAV.map((item) => {
+        {navItems.map((item) => {
           const active = activeRoute === item.id;
           const Icon = item.icon;
           return (

@@ -3,8 +3,10 @@ import { View, Text, ScrollView, StyleSheet, Platform, ActivityIndicator } from 
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Lock } from 'lucide-react-native';
 import { appById } from '../data/mockData';
 import { colors, fonts, radii } from '../theme/tokens';
+import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import type { RootStackParamList } from '../navigation/types';
 import EmbeddedWebView from '../components/EmbeddedWebView';
 
@@ -22,20 +24,36 @@ function isSameOriginRoute(url: string) {
 export default function AppDetailScreen({ route }: Props) {
   const insets = useSafeAreaInsets();
   const app = appById(route.params.appId);
+  const unlockedAppIds = useUnlockedAppIds();
+  // Tiles already block taps on a locked app (AppCard.tsx), but this guards the route itself too —
+  // a deep link, a stale Recently-Used entry, or a favorite added before access was revoked could
+  // all still land here directly.
+  const locked = !!app && !unlockedAppIds.has(app.id);
 
   useEffect(() => {
-    if (app?.url && isSameOriginRoute(app.url)) {
+    if (app?.url && !locked && isSameOriginRoute(app.url)) {
       // replace, not href: this hub screen shouldn't stay in history as an
       // entry of its own — otherwise browser Back re-mounts it and its
       // redirect fires again, bouncing straight back into the embedded app.
       window.location.replace(app.url);
     }
-  }, [app?.url]);
+  }, [app?.url, locked]);
 
   if (!app) {
     return (
       <View style={styles.notFound}>
         <Text style={styles.notFoundText}>Application not found.</Text>
+      </View>
+    );
+  }
+
+  if (locked) {
+    return (
+      <View style={styles.notFound}>
+        <Lock size={28} color={colors.inkSoft} />
+        <Text style={[styles.notFoundText, { marginTop: 10 }]}>
+          You don't have access to {app.name}. Contact your admin.
+        </Text>
       </View>
     );
   }

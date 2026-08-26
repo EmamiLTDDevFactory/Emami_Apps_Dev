@@ -1,5 +1,10 @@
 const { Pool } = require('pg');
 
+/** The one hub-wide role that can never be reassigned through the app — see
+ * runMigrations' access_level seed below and server.js's access-level route, which both hard-code
+ * this address as the permanent Super Admin. */
+const PERMANENT_SUPER_ADMIN_EMAIL = 'indranil.banerjee@emamigroup.com';
+
 /*
    POSTGRES CONNECTION POOL — Development Environment DB (same instance used by
    embedded-apps/mouldhealthcheck/backend/db.js). Credentials come from
@@ -56,6 +61,44 @@ async function runMigrations() {
         console.error('[postgres] Migration failed:', err.message);
     }
 
+    // Hub-wide role — separate from authorized_user_apps.role above, which is per-app (User/Admin
+    // on one specific app). access_level instead controls the Manage Access screen itself: who can
+    // see it (Super Admin/Admin) and who can grant it (see server.js's PATCH
+    // /access/users/:email/access-level for the actual permission matrix — Super Admin can grant
+    // Admin or Viewer, Admin can only grant Viewer). New users default to Viewer, the least
+    // privileged level, rather than inheriting whatever the adding admin has.
+    try {
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_users
+                ADD COLUMN IF NOT EXISTS access_level text NOT NULL DEFAULT 'Viewer'
+        `);
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'authorized_users_access_level_check' AND conrelid = 'emami_apps.authorized_users'::regclass
+                ) THEN
+                    ALTER TABLE emami_apps.authorized_users
+                        ADD CONSTRAINT authorized_users_access_level_check
+                        CHECK (access_level IN ('Super Admin', 'Admin', 'Viewer'));
+                END IF;
+            END $$;
+        `);
+        // Permanently seeded/re-asserted on every cold start — this is what makes the Super Admin
+        // role un-removable through the app itself: even if a row for this email doesn't exist yet
+        // (first run) or someone edited it directly in the DB, it's forced back to Super Admin here.
+        await pool.query(
+            `INSERT INTO emami_apps.authorized_users (email, is_active, access_level)
+             VALUES ($1, true, 'Super Admin')
+             ON CONFLICT (email) DO UPDATE SET access_level = 'Super Admin', is_active = true`,
+            [PERMANENT_SUPER_ADMIN_EMAIL]
+        );
+        console.log('[postgres] Access-level schema up to date (access_level, permanent Super Admin seeded).');
+    } catch (err) {
+        console.error('[postgres] Access-level migration failed:', err.message);
+    }
+
     // Single-row (id=1) config for the "Configure SSO" screen (see backend/saml-sso.js) — an
     // admin-uploaded IdP Federation Metadata XML plus the fields parsed out of it for display,
     // instead of hardcoding the IdP's SSO URL/certificate/entity ID in code or env vars.
@@ -103,4 +146,4 @@ async function runMigrations() {
     }
 }
 
-module.exports = { pool, testConnection, runMigrations };
+module.exports = { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAIL };

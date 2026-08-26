@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated, AccessibilityInfo, Platform } from 'react-native';
-import { Star } from 'lucide-react-native';
+import { Star, Lock } from 'lucide-react-native';
 import type { AppItem } from '../types';
 import { colors, fonts, radii, appColor, motion, focusRingWeb } from '../theme/tokens';
 
@@ -10,11 +10,14 @@ interface AppCardProps {
   isTopUsed: boolean;
   onPress: (app: AppItem) => void;
   onToggleFavorite: (id: string) => void;
+  /** Not granted to this user (see useUnlockedAppIds) — renders dimmed with a lock badge and
+   * ignores taps instead of opening the app. */
+  locked?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleFavorite }: AppCardProps) {
+export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleFavorite, locked }: AppCardProps) {
   const Icon = app.icon;
   const accent = appColor(app.id);
 
@@ -63,45 +66,62 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
 
   return (
     <AnimatedPressable
-      onPress={() => onPress(app)}
-      onPressIn={() => animate(motion.pressScale, 0.18)}
-      onPressOut={() => animate(hovered ? motion.hoverScale : 1, hovered ? 0.14 : 0.1)}
+      onPress={() => { if (!locked) onPress(app); }}
+      onPressIn={() => !locked && animate(motion.pressScale, 0.18)}
+      onPressOut={() => !locked && animate(hovered ? motion.hoverScale : 1, hovered ? 0.14 : 0.1)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      {...webHoverProps}
-      style={[styles.card, { shadowColor: accent, shadowOpacity, transform: [{ scale }] }, focused && focusRingWeb]}
-      android_ripple={{ color: `${accent}14` }}
+      {...(locked ? {} : webHoverProps)}
+      style={[
+        styles.card,
+        { shadowColor: accent, shadowOpacity, transform: [{ scale }] },
+        focused && !locked && focusRingWeb,
+        locked && styles.cardLocked,
+      ]}
+      android_ripple={locked ? undefined : { color: `${accent}14` }}
       // "link" (not "button") — react-native-web renders accessibilityRole="button"
       // as a literal <button>, and this card wraps another real <button> (the
       // favorite-star toggle below); nesting <button> inside <button> is invalid
       // HTML and was throwing a hydration/nesting error on every app card.
       accessibilityRole="link"
-      accessibilityLabel={`Open ${app.name}`}
+      accessibilityLabel={locked ? `${app.name} — locked. Contact your admin for access.` : `Open ${app.name}`}
+      accessibilityState={{ disabled: !!locked }}
     >
       <View style={styles.headerRow}>
-        <View style={[styles.iconBox, { backgroundColor: `${accent}1f` }]}>
-          <Icon size={19} color={accent} strokeWidth={2.1} />
+        <View style={[styles.iconBox, { backgroundColor: locked ? colors.border : `${accent}1f` }]}>
+          <Icon size={19} color={locked ? colors.inkSoft : accent} strokeWidth={2.1} />
         </View>
-        <Pressable
-          hitSlop={10}
-          onPress={() => onToggleFavorite(app.id)}
-          style={styles.favBtn}
-          accessibilityRole="button"
-          accessibilityLabel={isFavorite ? `Remove ${app.name} from favorites` : `Add ${app.name} to favorites`}
-        >
-          <Star size={16} color={isFavorite ? colors.amber : colors.border} fill={isFavorite ? colors.amber : 'transparent'} strokeWidth={1.8} />
-        </Pressable>
+        {locked ? (
+          <View style={styles.lockBadge}>
+            <Lock size={13} color={colors.inkSoft} strokeWidth={2} />
+          </View>
+        ) : (
+          <Pressable
+            hitSlop={10}
+            onPress={() => onToggleFavorite(app.id)}
+            style={styles.favBtn}
+            accessibilityRole="button"
+            accessibilityLabel={isFavorite ? `Remove ${app.name} from favorites` : `Add ${app.name} to favorites`}
+          >
+            <Star size={16} color={isFavorite ? colors.amber : colors.border} fill={isFavorite ? colors.amber : 'transparent'} strokeWidth={1.8} />
+          </Pressable>
+        )}
       </View>
 
-      <Text style={styles.title} numberOfLines={1}>{app.name}</Text>
+      <Text style={[styles.title, locked && styles.textLocked]} numberOfLines={1}>{app.name}</Text>
 
-      {isTopUsed && (
+      {isTopUsed && !locked && (
         <View style={[styles.miniBadge, { backgroundColor: `${accent}14` }]}>
           <Text style={[styles.miniBadgeText, { color: accent }]}>Most used</Text>
         </View>
       )}
+      {locked && (
+        <View style={styles.miniBadge}>
+          <Text style={styles.lockedBadgeText}>Locked</Text>
+        </View>
+      )}
 
-      <Text style={styles.desc} numberOfLines={2}>{app.desc}</Text>
+      <Text style={[styles.desc, locked && styles.textLocked]} numberOfLines={2}>{app.desc}</Text>
     </AnimatedPressable>
   );
 }
@@ -118,6 +138,28 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
+  },
+  cardLocked: {
+    backgroundColor: colors.appBg,
+    opacity: 0.65,
+  },
+  lockBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: radii.pill,
+    backgroundColor: colors.appBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textLocked: {
+    color: colors.inkSoft,
+  },
+  lockedBadgeText: {
+    fontSize: 9,
+    fontFamily: fonts.sansBold,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: colors.inkSoft,
   },
   headerRow: {
     flexDirection: 'row',

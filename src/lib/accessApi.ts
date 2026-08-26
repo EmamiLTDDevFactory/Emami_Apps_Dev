@@ -10,7 +10,7 @@
 // off the Lambda — which would also require re-registering the SAML Reply URL (ACS URL) with
 // Microsoft Entra, since that's derived from the same base URL. Falls back to
 // EXPO_PUBLIC_AUTH_API_URL so this doesn't break if the new env var isn't set yet.
-import type { AppRole, UserAccessEntry } from '../types';
+import type { AccessLevel, AppRole, MyAccess, UserAccessEntry } from '../types';
 
 const ACCESS_API_URL =
   process.env.EXPO_PUBLIC_ACCESS_API_URL || process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -83,6 +83,37 @@ export async function setAppAccess(email: string, appId: string, role: AppRole |
           body: JSON.stringify({ role }),
         })
       : await fetch(url, { method: 'DELETE' });
+    return await parseResult(res);
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
+/** The signed-in user's own hub-wide access level + personal app grants — used to gate the Manage
+ * Access nav item/screen and to decide which app tiles render unlocked (see AuthContext.tsx). */
+export async function getMyAccess(email: string): Promise<MyAccess | null> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/access/me?email=${encodeURIComponent(email)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return null;
+    return { accessLevel: data.accessLevel, apps: data.apps };
+  } catch {
+    return null;
+  }
+}
+
+/** Changes a user's hub-wide access level. `actingEmail` is the signed-in caller, checked
+ * server-side against the permission matrix (Super Admin grants Admin/Viewer, Admin grants Viewer
+ * only, the permanent Super Admin's own level can never change) — see server.js's PATCH
+ * /access/users/:email/access-level for the authoritative rules; this is not enforced client-side
+ * beyond disabling the controls the caller couldn't use anyway. */
+export async function setAccessLevel(email: string, accessLevel: AccessLevel, actingEmail: string): Promise<ApiResult> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/access-level`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessLevel, actingEmail }),
+    });
     return await parseResult(res);
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };

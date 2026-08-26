@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const { pool, testConnection, runMigrations } = require('./db');
+const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAIL } = require('./db');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -40,6 +40,9 @@ apiRouter.use(require('./userProfile'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['User', 'Admin'];
+/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app VALID_ROLES
+ * above. Order matters for the permission checks in the access-level route below. */
+const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
 
 /**
  * Real-time Manage Access check for one email — used by the frontend right after a Microsoft SSO
@@ -63,29 +66,68 @@ apiRouter.get('/access/authorized/:email', async (req, res) => {
     }
 });
 
-/** Manage Access — list every authorized user with active status and their per-app roles. */
+/** Manage Access — list every authorized user with active status, hub-wide access level, and
+ * their per-app roles. */
 apiRouter.get('/access/users', async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT au.email,
                    au.is_active,
+                   au.access_level,
                    COALESCE(
                        json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps
             FROM emami_apps.authorized_users au
             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
-            GROUP BY au.email, au.is_active, au.created_at
+            GROUP BY au.email, au.is_active, au.access_level, au.created_at
             ORDER BY au.created_at ASC
         `);
-        res.json({ success: true, users: rows.map((r) => ({ email: r.email, isActive: r.is_active, apps: r.apps })) });
+        res.json({
+            success: true,
+            users: rows.map((r) => ({ email: r.email, isActive: r.is_active, accessLevel: r.access_level, apps: r.apps })),
+        });
     } catch (err) {
         console.error('[access] Failed to list authorized users:', err.message);
         res.status(500).json({ success: false, error: 'Could not load authorized users.' });
     }
 });
 
-/** Grant a brand-new email access to the hub (active by default, no apps granted yet). */
+/**
+ * What the CURRENTLY LOGGED IN user themselves is allowed to see/do — their own hub-wide access
+ * level (gates whether the frontend even shows the Manage Access nav item/screen — see
+ * UserAccessScreen.tsx) and their own per-app grants (gates which app tiles render unlocked —
+ * see HomeScreen.tsx/AppListScreen.tsx). Same "email, no bearer token" auth posture as the rest of
+ * this backend. An email with no row here (shouldn't happen for anyone who made it past login, but
+ * defends against a stale/deleted account) comes back as the least-privileged Viewer with no apps.
+ */
+apiRouter.get('/access/me', async (req, res) => {
+    const email = String(req.query?.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT au.access_level,
+                    COALESCE(
+                        json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                        '[]'
+                    ) AS apps
+             FROM emami_apps.authorized_users au
+             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
+             WHERE au.email = $1
+             GROUP BY au.access_level`,
+            [email]
+        );
+        const row = rows[0];
+        res.json({ success: true, accessLevel: row?.access_level || 'Viewer', apps: row?.apps || [] });
+    } catch (err) {
+        console.error('[access] Failed to load own access for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load access.' });
+    }
+});
+
+/** Grant a brand-new email access to the hub (active by default, Viewer access level, no apps granted yet). */
 apiRouter.post('/access/users', async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) {
@@ -93,23 +135,28 @@ apiRouter.post('/access/users', async (req, res) => {
     }
     try {
         const { rows } = await pool.query(
-            'INSERT INTO emami_apps.authorized_users (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING email',
+            'INSERT INTO emami_apps.authorized_users (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING email, access_level',
             [email]
         );
         if (rows.length === 0) {
             return res.status(409).json({ success: false, error: 'This email already has access.' });
         }
-        res.json({ success: true, email, isActive: true, apps: [] });
+        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps: [] });
     } catch (err) {
         console.error('[access] Failed to add authorized user:', err.message);
         res.status(500).json({ success: false, error: 'Could not add this user.' });
     }
 });
 
-/** Revoke a user entirely — cascades to remove all of their app grants too. */
+/** Revoke a user entirely — cascades to remove all of their app grants too. The permanent Super
+ * Admin can't be removed this way either, same reasoning as the active-toggle guard below. */
 apiRouter.delete('/access/users/:email', async (req, res) => {
+    const email = req.params.email.toLowerCase();
+    if (email === PERMANENT_SUPER_ADMIN_EMAIL) {
+        return res.status(403).json({ success: false, error: 'The Super Admin account cannot be removed.' });
+    }
     try {
-        await pool.query('DELETE FROM emami_apps.authorized_users WHERE email = $1', [req.params.email.toLowerCase()]);
+        await pool.query('DELETE FROM emami_apps.authorized_users WHERE email = $1', [email]);
         res.json({ success: true });
     } catch (err) {
         console.error('[access] Failed to remove authorized user:', err.message);
@@ -117,13 +164,20 @@ apiRouter.delete('/access/users/:email', async (req, res) => {
     }
 });
 
-/** Flip a user active/inactive — inactive users are blocked at login (see hub-auth.js's /auth/db-login) without losing their app grants. */
+/** Flip a user active/inactive — inactive users are blocked at login (see hub-auth.js's /auth/db-login)
+ * without losing their app grants. The permanent Super Admin can't be deactivated either — an
+ * "access level can't be changed" guarantee is meaningless if the same account can just be locked
+ * out instead. */
 apiRouter.patch('/access/users/:email/active', async (req, res) => {
+    const email = req.params.email.toLowerCase();
     const isActive = !!req.body?.isActive;
+    if (email === PERMANENT_SUPER_ADMIN_EMAIL && !isActive) {
+        return res.status(403).json({ success: false, error: 'The Super Admin account cannot be deactivated.' });
+    }
     try {
         const { rowCount } = await pool.query(
             'UPDATE emami_apps.authorized_users SET is_active = $1 WHERE email = $2',
-            [isActive, req.params.email.toLowerCase()]
+            [isActive, email]
         );
         if (rowCount === 0) {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
@@ -132,6 +186,64 @@ apiRouter.patch('/access/users/:email/active', async (req, res) => {
     } catch (err) {
         console.error('[access] Failed to update active status:', err.message);
         res.status(500).json({ success: false, error: 'Could not update this user.' });
+    }
+});
+
+/**
+ * Change a user's hub-wide access level — the permission matrix the whole feature hinges on:
+ *   - The permanent Super Admin's own level can never change, by anyone, including themselves.
+ *   - Nobody can grant 'Super Admin' through this route — it only ever exists on the one seeded
+ *     email (see db.js's runMigrations).
+ *   - An acting Super Admin can set any other user to 'Admin' or 'Viewer'.
+ *   - An acting Admin can only set other users to 'Viewer' — granting Admin is Super-Admin-only.
+ *   - Anyone else (Viewer, or an unrecognized acting email) can't change anything.
+ * `actingEmail` identifies the caller — same "email in the body, no bearer token" posture as the
+ * rest of this backend; the frontend passes the signed-in user's own email (AuthContext).
+ */
+apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
+    const targetEmail = req.params.email.toLowerCase();
+    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase();
+    const accessLevel = req.body?.accessLevel;
+
+    if (!ACCESS_LEVELS.includes(accessLevel) || accessLevel === 'Super Admin') {
+        return res.status(400).json({ success: false, error: `Access level must be one of: Admin, Viewer.` });
+    }
+    if (targetEmail === PERMANENT_SUPER_ADMIN_EMAIL) {
+        return res.status(403).json({ success: false, error: 'The Super Admin access level cannot be changed.' });
+    }
+    if (!actingEmail) {
+        return res.status(400).json({ success: false, error: 'actingEmail is required.' });
+    }
+
+    try {
+        const { rows } = await pool.query(
+            'SELECT access_level FROM emami_apps.authorized_users WHERE email = $1',
+            [actingEmail]
+        );
+        const actingLevel = rows[0]?.access_level;
+        const canGrant =
+            actingLevel === 'Super Admin' ||
+            (actingLevel === 'Admin' && accessLevel === 'Viewer');
+        if (!canGrant) {
+            return res.status(403).json({
+                success: false,
+                error: actingLevel === 'Admin'
+                    ? 'Only Super Admin can grant Admin access.'
+                    : 'You do not have permission to change access levels.',
+            });
+        }
+
+        const { rowCount } = await pool.query(
+            'UPDATE emami_apps.authorized_users SET access_level = $1 WHERE email = $2',
+            [accessLevel, targetEmail]
+        );
+        if (rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'That user is not authorized.' });
+        }
+        res.json({ success: true, accessLevel });
+    } catch (err) {
+        console.error('[access] Failed to update access level for', targetEmail, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not update access level.' });
     }
 });
 

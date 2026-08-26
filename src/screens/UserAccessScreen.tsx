@@ -1,20 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Mail, Plus, ShieldCheck, Trash2, Info, Check, Save, KeyRound, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound, ChevronRight, Lock } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
-import type { AppRole, UserAccessEntry } from '../types';
+import { useAuth } from '../context/AuthContext';
+import type { AccessLevel, AppRole, UserAccessEntry } from '../types';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
-import { listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess, setUserActive } from '../lib/accessApi';
+import {
+  listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess, setUserActive, setAccessLevel,
+} from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Tap cycles a role through this order — None (no access) -> User -> Admin -> back to None. */
 const ROLE_CYCLE: (AppRole | null)[] = [null, 'User', 'Admin'];
+/** Hub-wide levels an admin can actually grant through this screen — 'Super Admin' is never
+ * offered here at all, it only ever exists on the one permanently-seeded email (see db.js). */
+const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
 
 /** Local, unsaved edits for one user — undefined fields mean "unchanged from the server copy". */
 type PendingChanges = {
   isActive?: boolean;
+  accessLevel?: AccessLevel;
   roles: Record<string, AppRole | null>;
 };
 
@@ -25,6 +32,12 @@ function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
 export default function UserAccessScreen() {
   const [query, setQuery] = useState('');
   const navigation = useNavigation();
+  const { userEmail, access } = useAuth();
+  const actingLevel = access?.accessLevel;
+  // Same rule CustomDrawerContent uses to hide the nav item — repeated here as a route-level
+  // guard, since a Viewer could otherwise still reach this screen directly (deep link, back
+  // button into a previously-open tab, etc).
+  const canManageAccess = actingLevel === 'Super Admin' || actingLevel === 'Admin';
 
   const [users, setUsers] = useState<UserAccessEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +77,7 @@ export default function UserAccessScreen() {
       setError(result.error || 'Could not add this user.');
       return;
     }
-    setUsers((prev) => [...prev, { email: value, isActive: true, apps: [] }]);
+    setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', apps: [] }]);
     setInput('');
   };
 
@@ -86,11 +99,22 @@ export default function UserAccessScreen() {
     const p = pending[user.email]?.roles[appId];
     return p !== undefined ? p : roleOf(user, appId);
   };
+  const effectiveAccessLevel = (user: UserAccessEntry): AccessLevel =>
+    pending[user.email]?.accessLevel ?? user.accessLevel;
   const isDirty = (user: UserAccessEntry) => {
     const p = pending[user.email];
     if (!p) return false;
     if (p.isActive !== undefined && p.isActive !== user.isActive) return true;
+    if (p.accessLevel !== undefined && p.accessLevel !== user.accessLevel) return true;
     return Object.entries(p.roles).some(([appId, role]) => role !== roleOf(user, appId));
+  };
+
+  // Same matrix server.js's PATCH /access/users/:email/access-level enforces — this only gates
+  // which chips are pressable, the server call is what actually decides whether it's allowed.
+  const canSetAccessLevel = (user: UserAccessEntry, level: AccessLevel) => {
+    if (user.accessLevel === 'Super Admin') return false; // the permanent Super Admin never changes
+    if (actingLevel === 'Super Admin') return true;
+    return actingLevel === 'Admin' && level === 'Viewer';
   };
 
   const cycleRole = (user: UserAccessEntry, appId: string) => {
@@ -99,6 +123,14 @@ export default function UserAccessScreen() {
     setPending((prev) => {
       const existing = prev[user.email] ?? { roles: {} };
       return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: next } } };
+    });
+  };
+
+  const setAccessLevelPending = (user: UserAccessEntry, level: AccessLevel) => {
+    if (!canSetAccessLevel(user, level)) return;
+    setPending((prev) => {
+      const existing = prev[user.email] ?? { roles: {} };
+      return { ...prev, [user.email]: { ...existing, accessLevel: level } };
     });
   };
 
@@ -120,6 +152,9 @@ export default function UserAccessScreen() {
       if (changes.isActive !== undefined && changes.isActive !== user.isActive) {
         calls.push(setUserActive(user.email, changes.isActive));
       }
+      if (changes.accessLevel !== undefined && changes.accessLevel !== user.accessLevel && userEmail) {
+        calls.push(setAccessLevel(user.email, changes.accessLevel, userEmail));
+      }
       for (const [appId, role] of Object.entries(changes.roles)) {
         if (role !== roleOf(user, appId)) {
           calls.push(setAppAccess(user.email, appId, role));
@@ -138,7 +173,7 @@ export default function UserAccessScreen() {
           for (const [appId, role] of Object.entries(changes.roles)) {
             if (role) nextApps.push({ appId, role });
           }
-          return { ...u, isActive: changes.isActive ?? u.isActive, apps: nextApps };
+          return { ...u, isActive: changes.isActive ?? u.isActive, accessLevel: changes.accessLevel ?? u.accessLevel, apps: nextApps };
         })
       );
       setPending((prev) => {
@@ -149,6 +184,26 @@ export default function UserAccessScreen() {
       setSaving(null);
     }
   };
+
+  // Route-level guard — matches CustomDrawerContent's nav-item filter, but this is what actually
+  // stops a Viewer who reaches this screen directly (deep link, browser back/forward, etc). `access`
+  // is null only while AuthContext's fetch is still in flight, not "access denied" — don't flash
+  // the denial message during that brief window.
+  if (access && !canManageAccess) {
+    return (
+      <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
+        <View style={styles.deniedWrap}>
+          <ShieldAlert size={32} color={colors.inkSoft} />
+          <Text style={styles.deniedTitle}>You don't have access to this page</Text>
+          <Text style={styles.deniedText}>Manage Access is only available to Super Admin and Admin users.</Text>
+          <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
+            <ArrowLeft size={13} color={colors.ink} />
+            <Text style={styles.backText}>Back to Hub</Text>
+          </Pressable>
+        </View>
+      </ScreenScaffold>
+    );
+  }
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
@@ -253,6 +308,43 @@ export default function UserAccessScreen() {
                     </View>
                   </View>
 
+                  <View style={styles.accessLevelRow}>
+                    <Text style={styles.accessLevelLabel}>Access level</Text>
+                    {user.accessLevel === 'Super Admin' ? (
+                      <View style={styles.superAdminBadge}>
+                        <ShieldCheck size={12} color={colors.rust} />
+                        <Text style={styles.superAdminBadgeText}>Super Admin · Fixed</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.accessLevelChips}>
+                        {GRANTABLE_LEVELS.map((level) => {
+                          const isCurrent = effectiveAccessLevel(user) === level;
+                          const allowed = canSetAccessLevel(user, level);
+                          return (
+                            <Pressable
+                              key={level}
+                              onPress={() => setAccessLevelPending(user, level)}
+                              disabled={!allowed}
+                              style={[
+                                styles.accessLevelChip,
+                                isCurrent && styles.accessLevelChipActive,
+                                !allowed && !isCurrent && styles.accessLevelChipDisabled,
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Set ${user.email} to ${level}`}
+                              accessibilityState={{ selected: isCurrent, disabled: !allowed }}
+                            >
+                              {!allowed && !isCurrent && <Lock size={10} color={colors.inkSoft} />}
+                              <Text style={[styles.accessLevelChipText, isCurrent && styles.accessLevelChipTextActive]}>
+                                {level}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
                   <View style={styles.appChipsRow}>
                     {APPS.map((app) => {
                       const role = effectiveRole(user, app.id);
@@ -338,6 +430,84 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: fonts.sansBold,
     color: colors.ink,
+  },
+  deniedWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    gap: 8,
+  },
+  deniedTitle: {
+    fontSize: 16,
+    fontFamily: fonts.sansBold,
+    color: colors.ink,
+    marginTop: 6,
+  },
+  deniedText: {
+    fontSize: 13,
+    fontFamily: fonts.sansRegular,
+    color: colors.inkSoft,
+    textAlign: 'center',
+    marginBottom: 14,
+  },
+  accessLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  accessLevelLabel: {
+    fontSize: 11,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  superAdminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: `${colors.rust}14`,
+  },
+  superAdminBadgeText: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.rust,
+  },
+  accessLevelChips: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  accessLevelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.appBg,
+  },
+  accessLevelChipActive: {
+    borderColor: colors.rust,
+    backgroundColor: `${colors.rust}14`,
+  },
+  accessLevelChipDisabled: {
+    opacity: 0.55,
+  },
+  accessLevelChipText: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansMedium,
+    color: colors.inkSoft,
+  },
+  accessLevelChipTextActive: {
+    color: colors.rust,
+    fontFamily: fonts.sansSemiBold,
   },
   ssoLinkCard: {
     flexDirection: 'row',

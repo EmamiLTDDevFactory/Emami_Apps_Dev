@@ -42,11 +42,27 @@ export interface UserAppGrant {
   role: AppRole;
 }
 
+/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from AppRole above, which
+ * is per-app. Controls who can see/use Manage Access (Super Admin + Admin) and who can grant what
+ * (Super Admin can grant Admin or Viewer; Admin can only grant Viewer). Exactly one email is
+ * permanently Super Admin (indranil.banerjee@emamigroup.com, enforced server-side in db.js/server.js)
+ * — 'Super Admin' is never itself grantable through the UI. */
+export type AccessLevel = 'Super Admin' | 'Admin' | 'Viewer';
+
 export interface UserAccessEntry {
   email: string;
   /** Inactive users are blocked at login even though their grants are kept. */
   isActive: boolean;
+  accessLevel: AccessLevel;
   /** Per-app grants (see AppItem for appId) — each with its own role, not just a boolean. */
+  apps: UserAppGrant[];
+}
+
+/** What GET /access/me returns for the currently signed-in user — their own hub-wide role plus
+ * which apps they're personally granted. Drives both the Manage Access nav visibility and which
+ * app tiles render unlocked (see AuthContext.tsx). */
+export interface MyAccess {
+  accessLevel: AccessLevel;
   apps: UserAppGrant[];
 }
 
