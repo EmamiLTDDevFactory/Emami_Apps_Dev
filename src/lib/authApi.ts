@@ -45,3 +45,48 @@ export async function loginWithEmail(email: string): Promise<{ ok: boolean; emai
     return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
   }
 }
+
+/** Real per-user profile + activity stats (backend/userProfile.js) — backs Dashboard's greeting
+ * and the Settings screen's profile card/ACTIVITY grid, replacing the old mock CURRENT_USER /
+ * ACTIVITY_STATS (src/data/mockData.ts). */
+export interface UserProfile {
+  name: string;
+  email: string;
+  mobile: string;
+  role: string;
+  status: string;
+  lastLogin: string | null;
+  sessionsTotal: number;
+  logins: number;
+  timeSpent: string;
+  appsOpened: number;
+  downloads: number;
+  favoritesAdded: number;
+  notificationsRead: number;
+  mostUsedApp: string;
+}
+
+export async function getMyProfile(email: string): Promise<UserProfile | null> {
+  try {
+    const res = await fetch(`${AUTH_API_URL}/me?email=${encodeURIComponent(email)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return null;
+    return data.profile as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+/** Activity event types the ACTIVITY stats grid (Settings screen) counts — see
+ * backend/userProfile.js's CLIENT_EVENT_TYPES for the exact whitelist the backend enforces. */
+export type ActivityEventType = 'APP_OPEN' | 'DOWNLOAD' | 'FAVORITE_ADD' | 'FAVORITE_REMOVE' | 'NOTIFICATION_READ' | 'SESSION_END';
+
+/** Fire-and-forget activity logging — never throws, since a missed stat shouldn't interrupt
+ * whatever the user was actually doing (opening an app, toggling a favorite, signing out). */
+export function logEvent(email: string, eventType: ActivityEventType, appId?: string): void {
+  fetch(`${AUTH_API_URL}/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, eventType, appId }),
+  }).catch(() => {});
+}

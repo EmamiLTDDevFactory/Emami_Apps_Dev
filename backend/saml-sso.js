@@ -26,6 +26,7 @@ const samlify = require('samlify');
 const idpConfig = require('./idpConfig');
 const { isAuthorized } = require('./authorizedUsers');
 const { FRONTEND_REDIRECT_URL, issueSessionToken } = require('./sessionAuth');
+const { upsertLoginProfile } = require('./userProfile');
 
 // Full XSD schema validation needs a native `xmllint` binary samlify doesn't ship — not viable in
 // a Lambda zip. This only skips that structural check; signature validation (the part that
@@ -97,6 +98,29 @@ function extractEmail(extract) {
     return '';
 }
 
+/** Claim URIs Azure AD's default SAML token configuration sends the user's display name under —
+ * falls back to combining given name + surname, then to nothing (userProfile.js derives a display
+ * name from the email itself when this comes back empty). */
+const NAME_ATTRIBUTE_KEYS = [
+    'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name',
+    'http://schemas.microsoft.com/identity/claims/displayname',
+    'name',
+    'displayname',
+];
+const GIVEN_NAME_KEY = 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname';
+const SURNAME_KEY = 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname';
+
+function extractName(extract) {
+    const attrs = extract?.attributes || {};
+    for (const key of NAME_ATTRIBUTE_KEYS) {
+        const value = attrs[key];
+        if (value) return String(value).trim();
+    }
+    const given = attrs[GIVEN_NAME_KEY];
+    const surname = attrs[SURNAME_KEY];
+    return [given, surname].filter(Boolean).join(' ').trim();
+}
+
 const router = express.Router();
 
 /** Step 1 — redirect the browser to Microsoft to sign in. */
@@ -142,6 +166,8 @@ router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async 
         if (!email || !(await isAuthorized(email))) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=domain_not_allowed`);
         }
+
+        await upsertLoginProfile(email, extractName(extract));
 
         const sessionToken = issueSessionToken(email);
         return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoToken=${encodeURIComponent(sessionToken)}`);

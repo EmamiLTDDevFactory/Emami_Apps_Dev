@@ -11,6 +11,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { isAuthorized } = require('./authorizedUsers');
 const { JWT_SECRET, issueSessionToken } = require('./sessionAuth');
+const { upsertLoginProfile } = require('./userProfile');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -32,6 +33,7 @@ router.post('/hub-auth/db-login', async (req, res) => {
         if (!(await isAuthorized(email))) {
             return res.status(403).json({ success: false, error: 'This email does not have access. Contact your admin.' });
         }
+        await upsertLoginProfile(email, null);
         const token = issueSessionToken(email);
         return res.json({ success: true, email, token });
     } catch (err) {

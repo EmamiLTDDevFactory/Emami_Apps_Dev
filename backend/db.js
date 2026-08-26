@@ -77,6 +77,30 @@ async function runMigrations() {
     } catch (err) {
         console.error('[postgres] SSO config migration failed:', err.message);
     }
+
+    // emami_apps.users already existed (provisioned ahead of this feature) but was designed
+    // around a per-device identity (device_id NOT NULL + the only unique column) — that fits a
+    // mobile app tracking phones, not this hub's email-based Microsoft SSO / direct email login,
+    // which never has a device id. Relax device_id and key identity on email instead.
+    // user_profile_stats/user_most_used_app/user_time_spent are views computed from
+    // emami_apps.events (see userProfile.js) — nothing to migrate on those, they're read-only.
+    try {
+        await pool.query(`ALTER TABLE emami_apps.users ALTER COLUMN device_id DROP NOT NULL`);
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'users_email_key' AND conrelid = 'emami_apps.users'::regclass
+                ) THEN
+                    ALTER TABLE emami_apps.users ADD CONSTRAINT users_email_key UNIQUE (email);
+                END IF;
+            END $$;
+        `);
+        console.log('[postgres] User profile schema up to date (users.email unique, device_id optional).');
+    } catch (err) {
+        console.error('[postgres] User profile migration failed:', err.message);
+    }
 }
 
 module.exports = { pool, testConnection, runMigrations };

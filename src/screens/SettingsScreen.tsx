@@ -6,23 +6,36 @@ import ScreenScaffold from '../components/ScreenScaffold';
 import Avatar from '../components/Avatar';
 import Badge from '../components/Badge';
 import { useAuth } from '../context/AuthContext';
-import { CURRENT_USER, ACTIVITY_STATS } from '../data/mockData';
+import { appById } from '../data/mockData';
 import { colors, fonts, radii, categoryColors } from '../theme/tokens';
-
-const STATS = [
-  { label: 'Logins', value: ACTIVITY_STATS.logins },
-  { label: 'Time Spent', value: ACTIVITY_STATS.timeSpent },
-  { label: 'Apps Opened', value: ACTIVITY_STATS.appsOpened },
-  { label: 'Downloads', value: ACTIVITY_STATS.downloads },
-  { label: 'Favorites Added', value: ACTIVITY_STATS.favoritesAdded },
-  { label: 'Notifications Read', value: ACTIVITY_STATS.notificationsRead },
-  { label: 'Most Used App', value: ACTIVITY_STATS.mostUsedApp },
-];
 
 export default function SettingsScreen() {
   const [query, setQuery] = useState('');
-  const { logout } = useAuth();
+  const { logout, userEmail, profile } = useAuth();
   const navigation = useNavigation();
+
+  const mostUsedAppLabel = profile?.mostUsedApp
+    ? appById(profile.mostUsedApp)?.name || profile.mostUsedApp
+    : '—';
+
+  const user = {
+    name: profile?.name || userEmail || '',
+    email: profile?.email || userEmail || '',
+    mobile: profile?.mobile || '—',
+    role: profile?.role || '—',
+    status: profile?.status || '—',
+    lastLogin: profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—',
+  };
+
+  const STATS = [
+    { label: 'Logins', value: profile?.logins ?? '—' },
+    { label: 'Time Spent', value: profile?.timeSpent ?? '—' },
+    { label: 'Apps Opened', value: profile?.appsOpened ?? '—' },
+    { label: 'Downloads', value: profile?.downloads ?? '—' },
+    { label: 'Favorites Added', value: profile?.favoritesAdded ?? '—' },
+    { label: 'Notifications Read', value: profile?.notificationsRead ?? '—' },
+    { label: 'Most Used App', value: mostUsedAppLabel },
+  ];
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
@@ -44,7 +57,7 @@ export default function SettingsScreen() {
           <View style={styles.identityRow}>
             <View style={styles.avatarCol}>
               <View style={styles.avatarRow}>
-                <Avatar name={CURRENT_USER.name} size={56} />
+                <Avatar name={user.name} size={56} />
                 <Pressable style={styles.uploadBtn}>
                   <Camera size={12} color={colors.ink} />
                   <Text style={styles.uploadText}>Upload Photo</Text>
@@ -55,11 +68,11 @@ export default function SettingsScreen() {
 
             <View style={styles.infoCol}>
               <View style={styles.nameRow}>
-                <Text style={styles.name}>{CURRENT_USER.name}</Text>
-                <Badge label={CURRENT_USER.role} color={colors.amber} />
+                <Text style={styles.name}>{user.name}</Text>
+                <Badge label={user.role} color={colors.amber} />
               </View>
-              <Text style={styles.meta}>{CURRENT_USER.mobile}</Text>
-              <Text style={styles.meta}>{CURRENT_USER.email}</Text>
+              <Text style={styles.meta}>{user.mobile}</Text>
+              <Text style={styles.meta}>{user.email}</Text>
             </View>
           </View>
 
@@ -68,19 +81,19 @@ export default function SettingsScreen() {
           <View style={styles.metaGrid}>
             <View style={styles.metaCell}>
               <Text style={styles.metaLabel}>Mobile</Text>
-              <Text style={styles.metaValue}>{CURRENT_USER.mobile}</Text>
+              <Text style={styles.metaValue}>{user.mobile}</Text>
             </View>
             <View style={styles.metaCell}>
               <Text style={styles.metaLabel}>Role</Text>
-              <Text style={styles.metaValue}>{CURRENT_USER.role}</Text>
+              <Text style={styles.metaValue}>{user.role}</Text>
             </View>
             <View style={styles.metaCell}>
               <Text style={styles.metaLabel}>Status</Text>
-              <Text style={[styles.metaValue, { color: colors.green }]}>{CURRENT_USER.status}</Text>
+              <Text style={[styles.metaValue, { color: colors.green }]}>{user.status}</Text>
             </View>
             <View style={styles.metaCell}>
               <Text style={styles.metaLabel}>Last Login</Text>
-              <Text style={styles.metaValue}>{CURRENT_USER.lastLogin}</Text>
+              <Text style={styles.metaValue}>{user.lastLogin}</Text>
             </View>
           </View>
         </View>
@@ -92,10 +105,12 @@ export default function SettingsScreen() {
           <View style={styles.flex1}>
             <Text style={styles.timeTitle}>YOUR TIME ON APP</Text>
             <Text style={styles.timeSubtitle}>
-              This is your first session — keep going, your time will land here next visit.
+              {profile && profile.sessionsTotal <= 1
+                ? 'This is your first session — keep going, your time will land here next visit.'
+                : `Total time spent across all your sessions: ${profile?.timeSpent ?? '—'}.`}
             </Text>
           </View>
-          <Badge label={`${ACTIVITY_STATS.sessionsTotal} session total`} color={colors.inkSoft} />
+          <Badge label={`${profile?.sessionsTotal ?? 0} session total`} color={colors.inkSoft} />
         </View>
 
         <View style={[styles.baseCard, styles.activityCard]}>

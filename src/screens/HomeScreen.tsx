@@ -8,8 +8,10 @@ import DashboardHero from '../components/DashboardHero';
 import FilterBar from '../components/FilterBar';
 import AppGrid from '../components/AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
+import { useAuth } from '../context/AuthContext';
 import { useFilteredApps } from '../hooks/useFilteredApps';
-import { RECENT, appById, CURRENT_USER } from '../data/mockData';
+import { logEvent } from '../lib/authApi';
+import { RECENT, appById } from '../data/mockData';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 import type { AppItem, CategoryFilter, SortOption } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -17,20 +19,29 @@ import type { RootStackParamList } from '../navigation/types';
 export default function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { favorites, toggleFavorite } = useFavorites();
+  const { userEmail, profile } = useAuth();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('All');
   const [sort, setSort] = useState<SortOption>('Alphabetical');
 
   const apps = useFilteredApps({ query, category, sort });
 
-  const openApp = (app: AppItem) => navigation.navigate('AppDetail', { appId: app.id });
+  const openApp = (app: AppItem) => {
+    if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
+    navigation.navigate('AppDetail', { appId: app.id });
+  };
+
+  const onToggleFavorite = (id: string) => {
+    if (userEmail) logEvent(userEmail, favorites.has(id) ? 'FAVORITE_REMOVE' : 'FAVORITE_ADD');
+    toggleFavorite(id);
+  };
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <DashboardHero
-          name={CURRENT_USER.name.split(' ')[0]}
-          lastLogin={CURRENT_USER.lastLogin}
+          name={(profile?.name || userEmail || '').split(' ')[0]}
+          lastLogin={profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—'}
         />
 
         <View style={styles.sectionHeader}>
@@ -49,7 +60,7 @@ export default function HomeScreen() {
           favorites={favorites}
           query={query}
           onOpenApp={openApp}
-          onToggleFavorite={toggleFavorite}
+          onToggleFavorite={onToggleFavorite}
           scrollEnabled={false}
         />
 

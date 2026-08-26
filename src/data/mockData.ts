@@ -81,26 +81,6 @@ export const NAV: NavItem[] = [
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
 ];
 
-export const CURRENT_USER = {
-  name: 'Sudipto Roy',
-  email: 'sudiptoroy@emamigroup.com',
-  mobile: '98300 11234',
-  role: 'Employee',
-  status: 'Active',
-  lastLogin: 'Today, 9:42 AM',
-};
-
-export const ACTIVITY_STATS = {
-  sessionsTotal: 1,
-  logins: 1,
-  timeSpent: '—',
-  appsOpened: 2,
-  downloads: 0,
-  favoritesAdded: 2,
-  notificationsRead: 1,
-  mostUsedApp: 'Dispatch Tracker',
-};
-
 export function appById(id: string) {
   return APPS.find((a) => a.id === id);
 }

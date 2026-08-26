@@ -3,7 +3,8 @@ import { View, Text, TextInput, Pressable, StyleSheet, Modal, Platform } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, Bell, Menu, ChevronDown, User, Settings, LogOut, Download } from 'lucide-react-native';
 import { colors, fonts, radii, shadows } from '../theme/tokens';
-import { NOTIFICATIONS, CURRENT_USER, unreadNotificationsCount } from '../data/mockData';
+import { NOTIFICATIONS, unreadNotificationsCount } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 import { useNotificationsUI } from '../context/NotificationsUIContext';
 import { useIsWideScreen } from '../hooks/useIsWideScreen';
 import { usePwaInstall } from '../hooks/usePwaInstall';
@@ -22,6 +23,8 @@ interface HeaderProps {
 
 export default function Header({ searchValue, onSearchChange, onOpenMenu, onSignOut, onOpenSettings }: HeaderProps) {
   const insets = useSafeAreaInsets();
+  const { userEmail, profile } = useAuth();
+  const currentUser = { name: profile?.name || userEmail || '', email: profile?.email || userEmail || '' };
   const { isOpen: notifOpen, openPanel: openNotifPanel, closePanel: closeNotifPanel } = useNotificationsUI();
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -102,14 +105,14 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
           hitSlop={8}
           style={styles.profileBtn}
           accessibilityRole="button"
-          accessibilityLabel={`Account menu for ${CURRENT_USER.name}`}
+          accessibilityLabel={`Account menu for ${currentUser.name}`}
         >
           <View style={styles.avatarRing}>
-            <Avatar name={CURRENT_USER.name} size={32} />
+            <Avatar name={currentUser.name} size={32} />
             <View style={styles.statusDot} />
           </View>
           <View style={styles.profileTextWrap}>
-            <Text style={styles.profileBtnName} numberOfLines={1}>{CURRENT_USER.name}</Text>
+            <Text style={styles.profileBtnName} numberOfLines={1}>{currentUser.name}</Text>
             <View style={styles.profileBtnSubRow}>
               <Text style={styles.profileBtnSub}>Account</Text>
               <ChevronDown size={12} color={colors.inkSoft} />
@@ -139,8 +142,8 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
         <Pressable style={styles.backdrop} onPress={() => setProfileOpen(false)}>
           <View style={[styles.dropdown, { top: insets.top + 56, right: 16, width: 220 }]}>
             <View style={styles.profileHeader}>
-              <Text style={styles.profileName}>{CURRENT_USER.name}</Text>
-              <Text style={styles.profileEmail}>{CURRENT_USER.email}</Text>
+              <Text style={styles.profileName}>{currentUser.name}</Text>
+              <Text style={styles.profileEmail}>{currentUser.email}</Text>
             </View>
             <Pressable style={styles.menuRow} onPress={() => { setProfileOpen(false); onOpenSettings(); }} accessibilityRole="button" accessibilityLabel="Profile">
               <User size={15} color={colors.inkSoft} />
