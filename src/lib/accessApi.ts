@@ -1,10 +1,19 @@
-// Talks to the Manage Access endpoints on the hub-auth Lambda (backend/server.js) which read/
-// write emami_apps.authorized_users and emami_apps.authorized_user_apps in the dev Postgres
-// database. Same backend + same env var as authApi.ts (login) — both live on this one Lambda,
-// fronted by API Gateway. This same table is also what gates login itself (see authApi.ts).
+// Talks to the Manage Access endpoints, which read/write emami_apps.authorized_users and
+// emami_apps.authorized_user_apps in the Postgres database (10.17.12.4). This same table is also
+// what gates login itself (see authApi.ts).
+//
+// Deliberately its OWN env var (EXPO_PUBLIC_ACCESS_API_URL), separate from authApi.ts's
+// EXPO_PUBLIC_AUTH_API_URL: this backend runs on an always-on server (172.17.2.21, exposed as
+// audit-capa-api.emamiapps.in) that can actually reach Postgres, whereas the hub-auth Lambda
+// (still fronting login + Microsoft SAML) has no VPC route to 10.17.12.4 and can't. Splitting the
+// URL means Manage Access gets a working Postgres connection without moving the SAML/login flow
+// off the Lambda — which would also require re-registering the SAML Reply URL (ACS URL) with
+// Microsoft Entra, since that's derived from the same base URL. Falls back to
+// EXPO_PUBLIC_AUTH_API_URL so this doesn't break if the new env var isn't set yet.
 import type { AppRole, UserAccessEntry } from '../types';
 
-const ACCESS_API_URL = process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
+const ACCESS_API_URL =
+  process.env.EXPO_PUBLIC_ACCESS_API_URL || process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
 
 type ApiResult = { ok: boolean; error?: string };
 
