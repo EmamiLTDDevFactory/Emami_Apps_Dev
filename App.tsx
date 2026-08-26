@@ -17,7 +17,8 @@ import {
   IBMPlexSerif_600SemiBold,
 } from '@expo-google-fonts/ibm-plex-serif';
 
-import { AuthProvider, loadPersistedLoginState } from './src/context/AuthContext';
+import { AuthProvider, loadPersistedLoginState, clearPersistedLoginState } from './src/context/AuthContext';
+import { checkStillAuthorized } from './src/lib/authApi';
 import { FavoritesProvider } from './src/context/FavoritesContext';
 import { NotificationsUIProvider } from './src/context/NotificationsUIContext';
 import RootNavigator from './src/navigation/RootNavigator';
@@ -40,7 +41,18 @@ export default function App() {
   const [initialUserEmail, setInitialUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPersistedLoginState().then(({ isLoggedIn, userEmail }) => {
+    loadPersistedLoginState().then(async ({ isLoggedIn, userEmail }) => {
+      // A persisted "logged in" flag from AsyncStorage is trusted with no server round-trip by
+      // default — re-check it against live Manage Access status here so a session from before an
+      // email was removed/deactivated (or, briefly, from before this DB check even existed)
+      // doesn't stay trusted forever just because it's sitting in local storage.
+      if (isLoggedIn && userEmail && !(await checkStillAuthorized(userEmail))) {
+        await clearPersistedLoginState();
+        setInitialLoggedIn(false);
+        setInitialUserEmail(null);
+        setAuthChecked(true);
+        return;
+      }
       setInitialLoggedIn(isLoggedIn);
       setInitialUserEmail(userEmail);
       setAuthChecked(true);

@@ -87,6 +87,18 @@ export async function loadPersistedLoginState(): Promise<{ isLoggedIn: boolean; 
   }
 }
 
+/** Drops a persisted "logged in" session without going through the provider — used by App.tsx
+ * when it finds a persisted session that no longer checks out against Manage Access (see its
+ * call to authApi.ts's checkStillAuthorized) before the app has even rendered, so there's no
+ * AuthProvider/logout() to call yet. */
+export async function clearPersistedLoginState(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY]);
+  } catch {
+    // Best-effort — App.tsx still won't treat the session as logged in either way.
+  }
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within an AuthProvider');

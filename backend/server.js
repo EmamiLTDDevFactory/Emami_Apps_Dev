@@ -41,6 +41,28 @@ apiRouter.use(require('./userProfile'));
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['User', 'Admin'];
 
+/**
+ * Real-time Manage Access check for one email — used by the frontend right after a Microsoft SSO
+ * login (src/lib/authApi.ts's verifySsoToken) to enforce the DB gate even though the SAML flow
+ * itself still runs on the hub-auth Lambda, which has no route to Postgres and so can't run this
+ * check on its own (see backend/authorizedUsers.js). Same rule as isAuthorized(): the email must
+ * exist in emami_apps.authorized_users AND be marked active.
+ */
+apiRouter.get('/access/authorized/:email', async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    try {
+        const { rows } = await pool.query(
+            'SELECT is_active FROM emami_apps.authorized_users WHERE email = $1',
+            [email]
+        );
+        const authorized = rows.length > 0 && rows[0].is_active === true;
+        res.json({ success: true, authorized });
+    } catch (err) {
+        console.error('[access] Authorization check failed for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not verify access.' });
+    }
+});
+
 /** Manage Access — list every authorized user with active status and their per-app roles. */
 apiRouter.get('/access/users', async (req, res) => {
     try {

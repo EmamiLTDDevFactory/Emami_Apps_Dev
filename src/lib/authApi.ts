@@ -30,9 +30,30 @@ export async function verifySsoToken(token: string): Promise<{ ok: boolean; emai
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Sign-in could not be verified.' };
+    // The Lambda above verifies the JWT's signature/expiry, but its own isAuthorized() check
+    // can't reach Postgres (no VPC route) and is currently a no-op — so this re-checks Manage
+    // Access for real against the Postgres-reachable backend before trusting the SSO login.
+    if (!(await checkStillAuthorized(data.email))) {
+      return { ok: false, error: 'This email-id is not registered. Contact your admin for access.' };
+    }
     return { ok: true, email: data.email };
   } catch {
     return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
+  }
+}
+
+/** Re-checks Manage Access status for an email — used both right after Microsoft SSO login
+ * (verifySsoToken above) and to re-validate an already-persisted "logged in" session on app start
+ * (App.tsx), since that would otherwise trust local storage forever with no server round-trip.
+ * Fails closed (an unreachable check counts as "not authorized"), matching
+ * backend/authorizedUsers.js's isAuthorized() convention. */
+export async function checkStillAuthorized(email: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/access/authorized/${encodeURIComponent(email)}`);
+    const data = await res.json().catch(() => ({}));
+    return !!(res.ok && data?.success && data.authorized);
+  } catch {
+    return false;
   }
 }
 

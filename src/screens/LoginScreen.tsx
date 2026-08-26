@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { colors, fonts, radii } from '../theme/tokens';
 import EmpAppMark from '../components/EmpAppMark';
-import { getMicrosoftSignInUrl, loginWithEmail } from '../lib/authApi';
+import { getMicrosoftSignInUrl, loginWithEmail, checkStillAuthorized } from '../lib/authApi';
 
 interface LoginScreenProps {
   error?: string | null;
@@ -130,8 +130,20 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       return;
     }
     // Emami Group emails go through Microsoft SSO — every other domain signs in directly,
-    // gated by whether the email is registered in Manage Access (see loginWithEmail).
+    // gated by whether the email is registered in Manage Access (see loginWithEmail). The Manage
+    // Access check happens BEFORE the Microsoft redirect, not after — a user who isn't
+    // registered never leaves this page, instead of authenticating with Microsoft first and
+    // only then finding out. (The standalone "Sign in with Microsoft" button below has no email
+    // to check yet at that point, so it can only be gated on the way back — see authApi.ts's
+    // verifySsoToken.)
     if (trimmedEmail.endsWith(SSO_DOMAIN)) {
+      setCheckingAccess(true);
+      const authorized = await checkStillAuthorized(trimmedEmail);
+      setCheckingAccess(false);
+      if (!authorized) {
+        setLocalError('This email-id is not registered. Contact your admin for access.');
+        return;
+      }
       signInWithMicrosoft();
       return;
     }
