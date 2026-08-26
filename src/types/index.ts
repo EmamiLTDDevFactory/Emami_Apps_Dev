@@ -44,8 +44,8 @@ export interface UserAppGrant {
 
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from AppRole above, which
  * is per-app. Controls who can see/use Manage Access (Super Admin + Admin) and who can grant what
- * (Super Admin can grant Admin or Viewer; Admin can only grant Viewer). Exactly one email is
- * permanently Super Admin (indranil.banerjee@emamigroup.com, enforced server-side in db.js/server.js)
+ * (Super Admin can grant Admin or Viewer; Admin can only grant Viewer). A fixed set of emails
+ * (PERMANENT_SUPER_ADMIN_EMAILS in db.js) is permanently Super Admin, enforced server-side
  * — 'Super Admin' is never itself grantable through the UI. */
 export type AccessLevel = 'Super Admin' | 'Admin' | 'Viewer';
 

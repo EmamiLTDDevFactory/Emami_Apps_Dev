@@ -1,9 +1,9 @@
 const { Pool } = require('pg');
 
-/** The one hub-wide role that can never be reassigned through the app — see
- * runMigrations' access_level seed below and server.js's access-level route, which both hard-code
- * this address as the permanent Super Admin. */
-const PERMANENT_SUPER_ADMIN_EMAIL = 'indranil.banerjee@emamigroup.com';
+/** Hub-wide role(s) that can never be reassigned through the app — see runMigrations' access_level
+ * seed below and server.js's access-level route, which both hard-code these addresses as permanent
+ * Super Admins. */
+const PERMANENT_SUPER_ADMIN_EMAILS = ['indranil.banerjee@emamigroup.com', 'sayontan.das@emamigroup.com'];
 
 /*
    POSTGRES CONNECTION POOL — Development Environment DB (same instance used by
@@ -86,15 +86,18 @@ async function runMigrations() {
             END $$;
         `);
         // Permanently seeded/re-asserted on every cold start — this is what makes the Super Admin
-        // role un-removable through the app itself: even if a row for this email doesn't exist yet
-        // (first run) or someone edited it directly in the DB, it's forced back to Super Admin here.
-        await pool.query(
-            `INSERT INTO emami_apps.authorized_users (email, is_active, access_level)
-             VALUES ($1, true, 'Super Admin')
-             ON CONFLICT (email) DO UPDATE SET access_level = 'Super Admin', is_active = true`,
-            [PERMANENT_SUPER_ADMIN_EMAIL]
-        );
-        console.log('[postgres] Access-level schema up to date (access_level, permanent Super Admin seeded).');
+        // role un-removable through the app itself: even if a row for one of these emails doesn't
+        // exist yet (first run) or someone edited it directly in the DB, it's forced back to Super
+        // Admin here.
+        for (const email of PERMANENT_SUPER_ADMIN_EMAILS) {
+            await pool.query(
+                `INSERT INTO emami_apps.authorized_users (email, is_active, access_level)
+                 VALUES ($1, true, 'Super Admin')
+                 ON CONFLICT (email) DO UPDATE SET access_level = 'Super Admin', is_active = true`,
+                [email]
+            );
+        }
+        console.log('[postgres] Access-level schema up to date (access_level, permanent Super Admins seeded).');
     } catch (err) {
         console.error('[postgres] Access-level migration failed:', err.message);
     }
@@ -146,4 +149,4 @@ async function runMigrations() {
     }
 }
 
-module.exports = { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAIL };
+module.exports = { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS };

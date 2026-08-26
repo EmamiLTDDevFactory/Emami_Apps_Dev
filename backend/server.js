@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAIL } = require('./db');
+const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = require('./db');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -24,7 +24,13 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081'
     .map((o) => o.trim())
     .filter(Boolean);
 
-app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'OPTIONS'] }));
+// DELETE (deassigning an app role, removing a user) and PATCH (toggling active, granting/revoking
+// an access level) were missing here — the browser's CORS preflight for those methods got back an
+// Access-Control-Allow-Methods that didn't list them, so it silently blocked the actual request
+// before it ever reached this server. POST-based "assign" always worked; DELETE-based "deassign"
+// never did. curl/server-side testing never catches this — CORS is enforced by the browser, not
+// the server, so a same-machine curl call bypasses it entirely.
+app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
 // 2mb (not the old 10kb) because this now also covers saml-sso.js's metadata upload — a real
 // Federation Metadata XML with its signing certificate embedded routinely runs past 10kb, and
 // once this global parser has consumed the body, a route-level express.json() can't raise the
@@ -152,7 +158,7 @@ apiRouter.post('/access/users', async (req, res) => {
  * Admin can't be removed this way either, same reasoning as the active-toggle guard below. */
 apiRouter.delete('/access/users/:email', async (req, res) => {
     const email = req.params.email.toLowerCase();
-    if (email === PERMANENT_SUPER_ADMIN_EMAIL) {
+    if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email)) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be removed.' });
     }
     try {
@@ -171,7 +177,7 @@ apiRouter.delete('/access/users/:email', async (req, res) => {
 apiRouter.patch('/access/users/:email/active', async (req, res) => {
     const email = req.params.email.toLowerCase();
     const isActive = !!req.body?.isActive;
-    if (email === PERMANENT_SUPER_ADMIN_EMAIL && !isActive) {
+    if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email) && !isActive) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be deactivated.' });
     }
     try {
@@ -191,9 +197,9 @@ apiRouter.patch('/access/users/:email/active', async (req, res) => {
 
 /**
  * Change a user's hub-wide access level — the permission matrix the whole feature hinges on:
- *   - The permanent Super Admin's own level can never change, by anyone, including themselves.
- *   - Nobody can grant 'Super Admin' through this route — it only ever exists on the one seeded
- *     email (see db.js's runMigrations).
+ *   - A permanent Super Admin's own level can never change, by anyone, including themselves.
+ *   - Nobody can grant 'Super Admin' through this route — it only ever exists on the permanently
+ *     seeded emails (see db.js's runMigrations).
  *   - An acting Super Admin can set any other user to 'Admin' or 'Viewer'.
  *   - An acting Admin can only set other users to 'Viewer' — granting Admin is Super-Admin-only.
  *   - Anyone else (Viewer, or an unrecognized acting email) can't change anything.
@@ -208,7 +214,7 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
     if (!ACCESS_LEVELS.includes(accessLevel) || accessLevel === 'Super Admin') {
         return res.status(400).json({ success: false, error: `Access level must be one of: Admin, Viewer.` });
     }
-    if (targetEmail === PERMANENT_SUPER_ADMIN_EMAIL) {
+    if (PERMANENT_SUPER_ADMIN_EMAILS.includes(targetEmail)) {
         return res.status(403).json({ success: false, error: 'The Super Admin access level cannot be changed.' });
     }
     if (!actingEmail) {
