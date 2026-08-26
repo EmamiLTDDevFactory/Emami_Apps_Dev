@@ -98,10 +98,10 @@ function MicrosoftGlyph() {
 }
 
 /** Mirrors Microsoft's own account-resolution UX: as the user finishes typing, the field/button
- * redraw themselves before any click. 'checking'/'authorized'/'unauthorized' only apply to
- * non-@emamigroup.com addresses — corporate emails go straight to 'sso' since Microsoft (not
- * Manage Access) is the first gate there; the Manage Access re-check for that path still happens
- * at submit time (see signInWithEmail), it just isn't reflected in the field live. */
+ * redraw themselves before any click. Manage Access is checked live for every domain, including
+ * @emamigroup.com — an unregistered corporate email never gets a "Sign in with Microsoft" button
+ * at all, just the same 'unauthorized' error every other domain gets. Only an *authorized*
+ * corporate email resolves to 'sso'. */
 type LiveStatus = 'idle' | 'checking' | 'sso' | 'authorized' | 'unauthorized';
 
 export default function LoginScreen({ error, verifying, onDismissError, onLogin }: LoginScreenProps) {
@@ -118,21 +118,23 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   // Debounced live check — same checkStillAuthorized() call authApi.ts already uses to re-verify
   // a persisted session (App.tsx) and the post-SSO callback (verifySsoToken). Calling it here too,
   // on a timer instead of a click, is what lets the field show "not registered" (or a checkmark)
-  // before the user ever presses the button.
+  // before the user ever presses the button — for every domain, @emamigroup.com included, so an
+  // unregistered corporate email never even gets offered the Microsoft button.
   useEffect(() => {
     if (!looksLikeEmail) {
       setLiveStatus('idle');
-      return;
-    }
-    if (isSsoDomain) {
-      setLiveStatus('sso');
       return;
     }
     setLiveStatus('checking');
     let cancelled = false;
     const timer = setTimeout(async () => {
       const authorized = await checkStillAuthorized(trimmedEmail);
-      if (!cancelled) setLiveStatus(authorized ? 'authorized' : 'unauthorized');
+      if (cancelled) return;
+      if (!authorized) {
+        setLiveStatus('unauthorized');
+      } else {
+        setLiveStatus(isSsoDomain ? 'sso' : 'authorized');
+      }
     }, LIVE_CHECK_DEBOUNCE_MS);
     return () => {
       cancelled = true;
@@ -158,16 +160,8 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
     if (liveStatus === 'idle' || liveStatus === 'checking') return; // button is disabled here anyway
 
     if (liveStatus === 'sso') {
-      // The live check above never ran for this domain — Manage Access still has to be checked
-      // before handing off to Microsoft, so a user who isn't registered never leaves this page.
-      setCheckingAccess(true);
-      const authorized = await checkStillAuthorized(trimmedEmail);
-      setCheckingAccess(false);
-      if (!authorized) {
-        setLiveStatus('unauthorized');
-        setLocalError('This email-id is not registered. Contact your admin for access.');
-        return;
-      }
+      // The live check (above) already confirmed this exact email is authorized before the
+      // button ever offered "Sign in with Microsoft" — no need to re-check here.
       signInWithMicrosoft();
       return;
     }
