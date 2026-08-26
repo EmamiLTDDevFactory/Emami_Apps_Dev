@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
 import DashboardHero from '../components/DashboardHero';
+import CompanyPulseCard from '../components/CompanyPulseCard';
 import FilterBar from '../components/FilterBar';
 import AppGrid from '../components/AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
@@ -46,6 +47,8 @@ export default function HomeScreen() {
           name={profile?.name || userEmail || ''}
           lastLogin={profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—'}
         />
+
+        <CompanyPulseCard />
 
         <View style={styles.sectionHeader}>
           <View style={styles.sectionIconBox}>
