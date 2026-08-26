@@ -13,7 +13,7 @@ import type { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const SSO_ERROR_MESSAGES: Record<string, string> = {
-  domain_not_allowed: 'This email does not have access. Contact your admin.',
+  not_registered: 'This email-id is not registered. Contact your admin for access.',
   invalid_response: 'Sign-in failed. Please try again.',
   not_configured: 'Single sign-on is not set up yet. Please contact IT.',
 };

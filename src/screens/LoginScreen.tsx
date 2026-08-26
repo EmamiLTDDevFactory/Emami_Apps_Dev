@@ -25,10 +25,14 @@ interface LoginScreenProps {
  * turns into the "not set up yet" message. Kept as a toggle rather than deleted the Microsoft
  * button so it can be hidden entirely if desired without touching backend config.
  *
- * Neither this path nor direct email sign-in currently checks the emami_apps.authorized_users
- * table — authorizedUsers.js's isAuthorized() is presently a no-op (see that file for why).
+ * Both this path and direct email sign-in are gated by the emami_apps.authorized_users table
+ * (backend/authorizedUsers.js's isAuthorized()) — an email must exist there and be active to log in.
  */
 const SHOW_MICROSOFT_SIGNIN = true;
+
+/** Corporate domain routed straight to Microsoft SSO instead of direct email sign-in — see
+ * signInWithEmail below. */
+const SSO_DOMAIN = '@emamigroup.com';
 
 const APPS_GRADIENT = ['#2563EB', '#7C3AED', '#16A34A', '#F59E0B', '#DB2777'] as const;
 
@@ -125,11 +129,17 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError('Enter a valid email address to continue.');
       return;
     }
+    // Emami Group emails go through Microsoft SSO — every other domain signs in directly,
+    // gated by whether the email is registered in Manage Access (see loginWithEmail).
+    if (trimmedEmail.endsWith(SSO_DOMAIN)) {
+      signInWithMicrosoft();
+      return;
+    }
     setCheckingAccess(true);
     const result = await loginWithEmail(trimmedEmail);
     setCheckingAccess(false);
     if (!result.ok) {
-      setLocalError(result.error || 'This email does not have access.');
+      setLocalError(result.error || 'This email-id is not registered.');
       return;
     }
     onLogin?.(result.email);
@@ -222,7 +232,9 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
               </>
             )}
 
-            <Text style={styles.helper}>Only emails added in Manage Access can sign in. No access? Contact your admin.</Text>
+            <Text style={styles.helper}>
+              @emamigroup.com emails sign in with Microsoft. Other emails must be added in Manage Access to sign in.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

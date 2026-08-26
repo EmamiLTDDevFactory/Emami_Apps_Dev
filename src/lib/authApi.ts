@@ -45,7 +45,7 @@ export async function loginWithEmail(email: string): Promise<{ ok: boolean; emai
       body: JSON.stringify({ email }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'This email does not have access.' };
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'This email-id is not registered.' };
     return { ok: true, email: data.email };
   } catch {
     return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };

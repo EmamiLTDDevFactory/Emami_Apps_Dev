@@ -31,7 +31,7 @@ router.post('/hub-auth/db-login', async (req, res) => {
     }
     try {
         if (!(await isAuthorized(email))) {
-            return res.status(403).json({ success: false, error: 'This email does not have access. Contact your admin.' });
+            return res.status(403).json({ success: false, error: 'This email-id is not registered. Contact your admin for access.' });
         }
         await upsertLoginProfile(email, null);
         const token = issueSessionToken(email);

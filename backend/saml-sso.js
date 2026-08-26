@@ -164,7 +164,7 @@ router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async 
 
         const email = extractEmail(extract);
         if (!email || !(await isAuthorized(email))) {
-            return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=domain_not_allowed`);
+            return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=not_registered`);
         }
 
         await upsertLoginProfile(email, extractName(extract));
