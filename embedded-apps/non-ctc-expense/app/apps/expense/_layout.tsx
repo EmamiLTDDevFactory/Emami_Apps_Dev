@@ -79,10 +79,15 @@ function RootLayoutNav() {
               style={styles.logoutBtn}
               onPress={() => {
                 logout();
-                // Clear the redirect-dedup guard so the next successful login's
-                // navigation to (tabs) isn't skipped as a "already redirected there" no-op.
+                // Clear the redirect-dedup guard so a later fresh login's navigation to (tabs)
+                // isn't skipped as a "already redirected there" no-op.
                 lastAutoRedirect.current = null;
-                router.replace('/apps/expense/login');
+                // Back to the EmamiApps hub Dashboard, not this app's own login page — logout()
+                // above only clears this app's own session (user_session), not the hub's
+                // emami_apps_* keys, so the hub stays logged in.
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/';
+                }
               }}
             >
               <Text style={styles.logoutText}>Logout</Text>

@@ -23,9 +23,19 @@ export default function Layout({ children }) {
   const isSuperadmin = userRole === 'S' || userRole === 'Superadmin';
 
   const handleLogout = () => {
+    // Clear only this app's own session, not the whole origin's localStorage — that would also
+    // wipe the EmamiApps hub's login (emami_apps_* keys), same-origin — and send the user back to
+    // the hub's Dashboard instead of RC Portal's own login page.
     sessionStorage.clear();
-    localStorage.clear();
-    navigate('/login');
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('employeeId');
+    localStorage.removeItem('employeeName');
+    localStorage.removeItem('employeeRole');
+    localStorage.removeItem('employeeTa');
+    localStorage.removeItem('employeeTm');
+    localStorage.removeItem('employeeLd');
+    localStorage.removeItem('employeeOd');
+    window.location.href = '/';
   };
 
   const navItems = [
