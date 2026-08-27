@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  Grid3x3, HelpCircle, Settings, ShieldCheck, ClipboardCheck,
+  Grid3x3, HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NotificationItem, NavItem, CategoryFilter } from '../types';
 
@@ -40,6 +40,10 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   inventory: Platform.OS === 'web' ? '/apps/mouldhealthcheck/welcome' : 'https://mould.emamiapps.in', // MoldHealthCheck
   expense: Platform.OS === 'web' ? '/apps/expense' : 'https://non-ctc-expense.onrender.com/zexpense/', // Non CTC Expense
   'audit-capa': Platform.OS === 'web' ? '/apps/audit-capa' : 'https://audit.emamiapps.in', // Audit & CAPA
+  // Market Rate has no separate native deployment yet (see embedded-apps/market-rate) — same
+  // relative path either way, which only actually resolves on web (isSameOriginRoute in
+  // AppDetailScreen.tsx).
+  'market-rate': '/apps/market-rate', // Market Rate
 };
 
 const RAW_APPS: AppItem[] = [
@@ -48,6 +52,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Operations', icon: Truck, uses: 210 },
   { id: 'inventory', name: 'MoldHealthCheck', desc: 'Monitor mould condition and preventive maintenance health checks.', cat: 'Operations', icon: Activity, uses: 29 },
   { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'Operations', icon: ClipboardCheck, uses: 0 },
+  { id: 'market-rate', name: 'Market Rate', desc: 'Enter material market rates — material code, rate, and valid-from date — for SAP.', cat: 'Finance', icon: TrendingUp, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
