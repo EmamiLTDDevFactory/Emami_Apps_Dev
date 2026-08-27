@@ -96,8 +96,7 @@ async function deployBackend(lambda, iam, backend) {
     AddPermissionCommand, waitUntilFunctionUpdatedV2 } = require('@aws-sdk/client-lambda');
 
   const envFile = path.join(backend.dir, '.env');
-  const env = fs.existsSync(envFile) ? dotenv.parse(fs.readFileSync(envFile)) : {};
-  delete env.PORT; // Lambda controls its own port
+  const localEnv = fs.existsSync(envFile) ? dotenv.parse(fs.readFileSync(envFile)) : {};
 
   console.log(`[${backend.name}] npm install (production deps for Lambda package) ...`);
   execSync('npm install --omit=dev --no-audit --no-fund', { cwd: backend.dir, stdio: 'inherit' });
@@ -106,13 +105,22 @@ async function deployBackend(lambda, iam, backend) {
   const zipPath = await zipDir(backend.dir);
   const zipBuffer = fs.readFileSync(zipPath);
 
+  // UpdateFunctionConfiguration's Environment.Variables REPLACES the whole map, it doesn't merge —
+  // so redeploying from a machine with no local backend/.env must never pass an empty/partial env
+  // straight through, or it silently wipes every var already configured on the live function
+  // (secrets, DB creds, feature flags) with no warning. Always start from what's live on the
+  // function today and let localEnv only ADD to or override specific keys on top of that.
   let exists = true;
+  let existingEnv = {};
   try {
-    await lambda.send(new GetFunctionCommand({ FunctionName: backend.functionName }));
+    const current = await lambda.send(new GetFunctionCommand({ FunctionName: backend.functionName }));
+    existingEnv = current.Configuration?.Environment?.Variables || {};
   } catch (e) {
     if (e.name === 'ResourceNotFoundException') exists = false;
     else throw e;
   }
+  const env = { ...existingEnv, ...localEnv };
+  delete env.PORT; // Lambda controls its own port
 
   if (backend.vpcConfig) {
     console.log(`[${backend.name}] VPC-attaching: subnets=${backend.vpcConfig.SubnetIds.join(',')} securityGroups=${backend.vpcConfig.SecurityGroupIds.join(',')}`);
