@@ -78,10 +78,14 @@ function RootLayoutNav() {
             <TouchableOpacity
               style={styles.logoutBtn}
               onPress={() => {
+                // logout() flips isAuthenticated false, which fires this file's own redirect
+                // effect (line ~23) toward /apps/expense/login — an instant in-app route change
+                // that would otherwise flash briefly before the slower full-page navigation below
+                // replaces it. Pre-marking that target as "already redirected there" makes the
+                // effect's dedup check (line ~35) skip the push entirely — this ref resets fresh
+                // on the next full page load, so it never affects a later login.
+                lastAutoRedirect.current = '/apps/expense/login';
                 logout();
-                // Clear the redirect-dedup guard so a later fresh login's navigation to (tabs)
-                // isn't skipped as a "already redirected there" no-op.
-                lastAutoRedirect.current = null;
                 // Back to the EmamiApps hub Dashboard, not this app's own login page — logout()
                 // above only clears this app's own session (user_session), not the hub's
                 // emami_apps_* keys, so the hub stays logged in.
