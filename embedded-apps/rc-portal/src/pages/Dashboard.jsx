@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Eye, Plus, UserCheck, Users, CreditCard, AlertTriangle, Search, ShieldCheck, FileText, Folder, ChevronLeft, ChevronRight, Calendar, ArrowUpDown } from 'lucide-react';
 import KpiTile from '../components/KpiTile';
+import ConsultantAnalytics from '../components/ConsultantAnalytics';
 import { AppContext } from '../context/AppContext';
 import { getConsultants } from '../services/odataService';
 import { formatCurrency, formatDate, statusColor, statusText } from '../utils/formatters';
@@ -235,6 +236,8 @@ export default function Dashboard() {
           arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#92400E]" 
         />
       </div>
+
+      <ConsultantAnalytics consultants={consultants} />
 
       <div className="rc-card overflow-hidden border border-slate-200/80 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">
