@@ -34,7 +34,10 @@ export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFav
       scrollEnabled={scrollEnabled}
       nestedScrollEnabled
       renderItem={({ item }) => (
-        <View style={styles.cell}>
+        // maxWidth caps a card at what a full row's share would be, so a partial last row (e.g.
+        // one lone app) doesn't stretch that card to fill the whole row width — it stays the same
+        // size as every card above, leaving empty space beside it instead.
+        <View style={[styles.cell, { maxWidth: `${100 / numColumns}%` }]}>
           <AppCard
             app={item}
             isFavorite={favorites.has(item.id)}
