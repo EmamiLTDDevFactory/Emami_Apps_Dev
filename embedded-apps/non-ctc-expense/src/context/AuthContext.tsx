@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getHubEmail, loginWithHubEmail } from '../lib/hubEmailLogin';
 import { EmployeeProfile, UserRole } from '../types';
 
 interface AuthContextType {
@@ -73,6 +74,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const validEmployeeIds = Object.values(PROFILES).map(p => p.employeeId);
 
   useEffect(() => {
+    // Tries logging in via the email the EmamiApps hub already captured (same-origin
+    // localStorage), calling SAP's LoginSet with only that email — skips the Employee ID + OTP
+    // screen entirely when it succeeds. Only reached when there's no existing non-ctc-expense
+    // session to restore, so it never overrides an already-active session in this tab. Returns
+    // false (falls back to the normal login screen, unchanged) if there's no hub email, or the
+    // SAP call fails for any reason — see src/lib/hubEmailLogin.ts.
+    const tryHubEmailLogin = async (): Promise<boolean> => {
+      const hubEmail = getHubEmail();
+      if (!hubEmail) return false;
+      const result = await loginWithHubEmail(hubEmail);
+      if (!result.ok || !result.employeeId || !result.role) {
+        console.warn('[hub-email-login] Falling back to manual login:', result.error);
+        return false;
+      }
+      login(result.employeeId, result.role, result.name, result.info);
+      return true;
+    };
+
     const restoreSession = async () => {
       try {
         let savedSession: string | null = null;
@@ -83,7 +102,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           savedSession = await AsyncStorage.getItem('user_session');
         }
 
-        if (!savedSession) return;
+        if (!savedSession) {
+          await tryHubEmailLogin();
+          return;
+        }
 
         const parsedSession = JSON.parse(savedSession);
         const role = normalizeRole(parsedSession?.role);
@@ -95,6 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             window.sessionStorage.removeItem('user_session');
           }
           await AsyncStorage.removeItem('user_session');
+          await tryHubEmailLogin();
           return;
         }
 
