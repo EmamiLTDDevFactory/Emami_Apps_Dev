@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, Outlet, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +10,52 @@ import Closure from './pages/Closure';
 import RoleMaintenance from './pages/RoleMaintenance';
 import FileMaintenance from './pages/FileMaintenance';
 import Login from './pages/Login';
+import { getHubEmail, loginWithHubEmail } from './lib/hubEmailLogin';
+
+/** Tries logging in via the email the EmamiApps hub already captured (same-origin localStorage)
+ * before any route ever renders — skips the Employee ID + OTP screen entirely when it succeeds.
+ * Only attempted when there's no existing session already, so it never overrides an active login.
+ * Falls back to the normal login screen, unchanged, if there's no hub email or the SAP call
+ * fails — see src/lib/hubEmailLogin.js. */
+function useHubEmailBootstrap() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('isAuthenticated') === 'true') {
+      setReady(true);
+      return;
+    }
+
+    const hubEmail = getHubEmail();
+    if (!hubEmail) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    loginWithHubEmail(hubEmail).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        sessionStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('employeeId', result.loginId);
+        if (result.name) localStorage.setItem('employeeName', result.name);
+        if (result.role) localStorage.setItem('employeeRole', result.role);
+        localStorage.setItem('employeeTa', result.ta || '');
+        localStorage.setItem('employeeTm', result.tm || '');
+        localStorage.setItem('employeeLd', result.ld || '');
+        localStorage.setItem('employeeOd', result.od || '');
+      } else {
+        console.warn('[hub-email-login] Falling back to manual login:', result.error);
+      }
+      setReady(true);
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  return ready;
+}
 
 const ProtectedRoute = () => {
   const isAuthenticated = sessionStorage.getItem('isAuthenticated') === 'true';
@@ -81,6 +128,19 @@ const AppLayout = () => (
 );
 
 export default function App() {
+  const bootstrapped = useHubEmailBootstrap();
+
+  if (!bootstrapped) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs">
+        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-5 shadow-xl">
+          <Loader2 className="h-8 w-8 animate-spin text-rc-teal" />
+          <span className="text-sm font-medium text-slate-600">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <AppProvider>
       <Routes>
