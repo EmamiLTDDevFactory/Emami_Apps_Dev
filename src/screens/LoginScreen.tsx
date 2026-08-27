@@ -10,12 +10,13 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { colors, fonts, radii } from '../theme/tokens';
 import EmpAppMark from '../components/EmpAppMark';
 import { getMicrosoftSignInUrl, loginWithEmail, checkStillAuthorized } from '../lib/authApi';
+import type { LoginMethod } from '../context/AuthContext';
 
 interface LoginScreenProps {
   error?: string | null;
   verifying?: boolean;
   onDismissError?: () => void;
-  onLogin?: (email?: string, token?: string) => void;
+  onLogin?: (email?: string, token?: string, method?: LoginMethod) => void;
 }
 
 /**
@@ -179,7 +180,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
       setLocalError(result.error || 'This email-id is not registered.');
       return;
     }
-    onLogin?.(result.email, result.token);
+    onLogin?.(result.email, result.token, 'direct');
   };
 
   const shownError = error || localError;

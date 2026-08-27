@@ -21,6 +21,13 @@ export function getMicrosoftSignInUrl(): string {
   return `${AUTH_API_URL}/hub-auth/saml/login`;
 }
 
+/** Full-page navigation target for ending a Microsoft-SSO session's Entra ID side too (SAML
+ * Single Logout) — see AuthContext.tsx's logout(), which only navigates here for a session that
+ * actually came in via Microsoft, after already clearing its own local session state. */
+export function getMicrosoftSignOutUrl(email: string): string {
+  return `${AUTH_API_URL}/hub-auth/saml/logout?email=${encodeURIComponent(email)}`;
+}
+
 export async function verifySsoToken(token: string): Promise<{ ok: boolean; email?: string; error?: string }> {
   try {
     const res = await fetch(`${AUTH_API_URL}/hub-auth/session/verify`, {

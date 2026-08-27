@@ -44,7 +44,7 @@ export default function RootNavigator() {
           // `token` here is the same hub JWT verified above — reuse it as-is rather than minting
           // a new one, so it's the identical token same-origin embedded apps (e.g. Audit & CAPA)
           // can trust.
-          login(result.email, token);
+          login(result.email, token, 'sso');
         } else {
           setSsoError(result.error || 'Sign-in could not be verified.');
         }

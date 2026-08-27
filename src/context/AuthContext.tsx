@@ -1,8 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getMyProfile, logEvent, recordLogin, type UserProfile } from '../lib/authApi';
+import { getMyProfile, getMicrosoftSignOutUrl, logEvent, recordLogin, type UserProfile } from '../lib/authApi';
 import { getMyAccess } from '../lib/accessApi';
 import type { MyAccess } from '../types';
+
+export type LoginMethod = 'sso' | 'direct';
 
 const AUTH_STORAGE_KEY = 'emami_apps_is_logged_in';
 const AUTH_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
@@ -15,6 +18,11 @@ const AUTH_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
  * flow exists — it's just inert there today since embedded apps aren't merged into a native build.
  */
 const AUTH_TOKEN_STORAGE_KEY = 'emami_apps_session_token';
+/** Which path the current session came in through — 'sso' vs 'direct' — so logout() knows
+ * whether there's an Entra ID session on this browser that also needs ending (see its call to
+ * getMicrosoftSignOutUrl). Persisted alongside the rest of the session so this still works after
+ * a page reload, not just within the tab that actually logged in. */
+const AUTH_METHOD_STORAGE_KEY = 'emami_apps_login_method';
 
 interface AuthContextValue {
   isLoggedIn: boolean;
@@ -29,7 +37,7 @@ interface AuthContextValue {
    * tiles render unlocked (see CustomDrawerContent.tsx, HomeScreen.tsx, AppListScreen.tsx). */
   access: MyAccess | null;
   refreshAccess: () => void;
-  login: (email?: string, token?: string) => void;
+  login: (email?: string, token?: string, method?: LoginMethod) => void;
   logout: () => void;
 }
 
@@ -39,13 +47,16 @@ export function AuthProvider({
   children,
   initialLoggedIn = false,
   initialUserEmail = null,
+  initialLoginMethod = null,
 }: {
   children: React.ReactNode;
   initialLoggedIn?: boolean;
   initialUserEmail?: string | null;
+  initialLoginMethod?: LoginMethod | null;
 }) {
   const [isLoggedIn, setIsLoggedIn] = useState(initialLoggedIn);
   const [userEmail, setUserEmail] = useState<string | null>(initialUserEmail);
+  const [loginMethod, setLoginMethod] = useState<LoginMethod | null>(initialLoginMethod);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [access, setAccess] = useState<MyAccess | null>(null);
 
@@ -79,7 +90,7 @@ export function AuthProvider({
       refreshProfile,
       access,
       refreshAccess,
-      login: (email?: string, token?: string) => {
+      login: (email?: string, token?: string, method?: LoginMethod) => {
         setIsLoggedIn(true);
         AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true').catch(() => {});
         if (email) {
@@ -94,31 +105,59 @@ export function AuthProvider({
         if (token) {
           AsyncStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token).catch(() => {});
         }
+        if (method) {
+          setLoginMethod(method);
+          AsyncStorage.setItem(AUTH_METHOD_STORAGE_KEY, method).catch(() => {});
+        }
       },
       logout: () => {
         if (userEmail) logEvent(userEmail, 'SESSION_END');
+        const wasSso = loginMethod === 'sso';
+        const ssoEmail = userEmail;
         setIsLoggedIn(false);
         setUserEmail(null);
         setProfile(null);
         setAccess(null);
-        AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY]).catch(() => {});
+        setLoginMethod(null);
+        AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, AUTH_METHOD_STORAGE_KEY]).catch(() => {});
+        // Ends the Entra ID session too (SAML Single Logout) — without this, the browser still had
+        // a live Microsoft session after "signing out" of the app, which is what previously let a
+        // different person on the same browser get silently signed in as whoever logged out last.
+        // Only for SSO sessions — a direct-email login never created a Microsoft session to end.
+        if (wasSso && ssoEmail) {
+          const url = getMicrosoftSignOutUrl(ssoEmail);
+          if (Platform.OS === 'web') {
+            window.location.href = url;
+          } else {
+            Linking.openURL(url).catch(() => {});
+          }
+        }
       },
     }),
-    [isLoggedIn, userEmail, profile, refreshProfile, access, refreshAccess]
+    [isLoggedIn, userEmail, profile, refreshProfile, access, refreshAccess, loginMethod]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export async function loadPersistedLoginState(): Promise<{ isLoggedIn: boolean; userEmail: string | null }> {
+export async function loadPersistedLoginState(): Promise<{
+  isLoggedIn: boolean;
+  userEmail: string | null;
+  loginMethod: LoginMethod | null;
+}> {
   try {
-    const [isLoggedIn, userEmail] = await Promise.all([
+    const [isLoggedIn, userEmail, loginMethod] = await Promise.all([
       AsyncStorage.getItem(AUTH_STORAGE_KEY),
       AsyncStorage.getItem(AUTH_EMAIL_STORAGE_KEY),
+      AsyncStorage.getItem(AUTH_METHOD_STORAGE_KEY),
     ]);
-    return { isLoggedIn: isLoggedIn === 'true', userEmail: userEmail || null };
+    return {
+      isLoggedIn: isLoggedIn === 'true',
+      userEmail: userEmail || null,
+      loginMethod: loginMethod === 'sso' || loginMethod === 'direct' ? loginMethod : null,
+    };
   } catch {
-    return { isLoggedIn: false, userEmail: null };
+    return { isLoggedIn: false, userEmail: null, loginMethod: null };
   }
 }
 
@@ -128,7 +167,7 @@ export async function loadPersistedLoginState(): Promise<{ isLoggedIn: boolean; 
  * AuthProvider/logout() to call yet. */
 export async function clearPersistedLoginState(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY]);
+    await AsyncStorage.multiRemove([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, AUTH_METHOD_STORAGE_KEY]);
   } catch {
     // Best-effort — App.tsx still won't treat the session as logged in either way.
   }

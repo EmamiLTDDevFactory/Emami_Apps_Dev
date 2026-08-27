@@ -50,10 +50,18 @@ function getAcsUrl(req) {
     return `${proto}://${host}${req.baseUrl}/hub-auth/saml/acs`;
 }
 
-function buildServiceProvider(acsUrl) {
+function getSloUrl(req) {
+    if (process.env.HUB_AUTH_SAML_SLO_URL) return process.env.HUB_AUTH_SAML_SLO_URL;
+    const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    return `${proto}://${host}${req.baseUrl}/hub-auth/saml/sls`;
+}
+
+function buildServiceProvider(acsUrl, sloUrl) {
     return samlify.ServiceProvider({
         entityID: SP_ENTITY_ID,
         assertionConsumerService: [{ Binding: namespace.binding.post, Location: acsUrl }],
+        singleLogoutService: [{ Binding: namespace.binding.redirect, Location: sloUrl }],
         wantAssertionsSigned: true,
     });
 }
@@ -130,12 +138,14 @@ router.get('/hub-auth/saml/login', async (req, res) => {
         if (!idpRow || !idpRow.isEnabled || !idpRow.idpMetadataXml) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=not_configured`);
         }
-        const sp = buildServiceProvider(getAcsUrl(req));
+        const sp = buildServiceProvider(getAcsUrl(req), getSloUrl(req));
         const idp = buildIdentityProvider(idpRow.idpMetadataXml);
-        // forceAuthn: without this, Entra ID silently reuses whatever browser session cookie is
-        // already there (e.g. from a previous user who logged out of the app but not of
-        // Microsoft), signing the next person in as that previous user with no credential prompt.
-        const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect, { forceAuthn: true });
+        // No forceAuthn here (deliberately) — that would force Microsoft to re-prompt for
+        // credentials on every single login, defeating SSO's whole point. Instead, app logout
+        // below (/hub-auth/saml/logout) ends the Entra ID session too via SAML Single Logout, so a
+        // *different* person signing in afterwards never inherits a leftover Microsoft session —
+        // that's the actual scenario forceAuthn was originally added to close.
+        const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect);
         trackRequest(id);
         return res.redirect(context);
     } catch (err) {
@@ -156,7 +166,7 @@ router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async 
         if (!idpRow || !idpRow.isEnabled || !idpRow.idpMetadataXml) {
             return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=not_configured`);
         }
-        const sp = buildServiceProvider(getAcsUrl(req));
+        const sp = buildServiceProvider(getAcsUrl(req), getSloUrl(req));
         const idp = buildIdentityProvider(idpRow.idpMetadataXml);
         const { extract } = await sp.parseLoginResponse(idp, wording.binding.post, req);
 
@@ -178,6 +188,54 @@ router.post('/hub-auth/saml/acs', express.urlencoded({ extended: true }), async 
         console.error('[saml-sso] ACS callback failed:', err.message);
         return res.redirect(`${FRONTEND_REDIRECT_URL}/?ssoError=invalid_response`);
     }
+});
+
+/**
+ * Step 3 (SP-initiated Single Logout) — the app's own logout() (AuthContext.tsx) navigates here,
+ * for a session that came in via Microsoft, right after clearing its own local session state.
+ * This redirects on to Entra ID's Single Logout Service so the *browser's* Microsoft session ends
+ * too — without this, forceAuthn was the only thing stopping a different person on the same
+ * browser from silently inheriting the previous person's Microsoft session on their next sign-in
+ * (see /hub-auth/saml/login's comment). Best-effort: any failure here just sends the browser back
+ * to the frontend, since the app-side session is already gone by the time this is called either way.
+ */
+router.get('/hub-auth/saml/logout', async (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    try {
+        const idpRow = await idpConfig.getConfig();
+        if (!idpRow || !idpRow.isEnabled || !idpRow.idpMetadataXml || !email) {
+            return res.redirect(FRONTEND_REDIRECT_URL);
+        }
+        const sp = buildServiceProvider(getAcsUrl(req), getSloUrl(req));
+        const idp = buildIdentityProvider(idpRow.idpMetadataXml);
+        const { context } = sp.createLogoutRequest(idp, wording.binding.redirect, { logoutNameID: email });
+        return res.redirect(context);
+    } catch (err) {
+        console.error('[saml-sso] SP-initiated logout failed:', err.message);
+        return res.redirect(FRONTEND_REDIRECT_URL);
+    }
+});
+
+/**
+ * Step 4 — Entra ID redirects back here once it's finished processing the LogoutRequest above.
+ * Nothing left to verify or clean up by this point (the app-side session was already cleared
+ * before step 3 ever redirected away) — this only exists so the browser lands back on the
+ * frontend instead of on Microsoft's own generic "signed out" page.
+ */
+router.get('/hub-auth/saml/sls', async (req, res) => {
+    try {
+        const idpRow = await idpConfig.getConfig();
+        if (idpRow?.isEnabled && idpRow?.idpMetadataXml) {
+            const sp = buildServiceProvider(getAcsUrl(req), getSloUrl(req));
+            const idp = buildIdentityProvider(idpRow.idpMetadataXml);
+            await sp.parseLogoutResponse(idp, wording.binding.redirect, req).catch((err) => {
+                console.error('[saml-sso] SLS response parse failed (non-fatal):', err.message);
+            });
+        }
+    } catch (err) {
+        console.error('[saml-sso] SLS callback failed:', err.message);
+    }
+    return res.redirect(FRONTEND_REDIRECT_URL);
 });
 
 /* =============================== Read-only status ("Configure SSO" screen) =============================== */

@@ -17,7 +17,7 @@ import {
   IBMPlexSerif_600SemiBold,
 } from '@expo-google-fonts/ibm-plex-serif';
 
-import { AuthProvider, loadPersistedLoginState, clearPersistedLoginState } from './src/context/AuthContext';
+import { AuthProvider, loadPersistedLoginState, clearPersistedLoginState, type LoginMethod } from './src/context/AuthContext';
 import { checkStillAuthorized } from './src/lib/authApi';
 import { FavoritesProvider } from './src/context/FavoritesContext';
 import { NotificationsUIProvider } from './src/context/NotificationsUIContext';
@@ -39,9 +39,10 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [initialLoggedIn, setInitialLoggedIn] = useState(false);
   const [initialUserEmail, setInitialUserEmail] = useState<string | null>(null);
+  const [initialLoginMethod, setInitialLoginMethod] = useState<LoginMethod | null>(null);
 
   useEffect(() => {
-    loadPersistedLoginState().then(async ({ isLoggedIn, userEmail }) => {
+    loadPersistedLoginState().then(async ({ isLoggedIn, userEmail, loginMethod }) => {
       // A persisted "logged in" flag from AsyncStorage is trusted with no server round-trip by
       // default — re-check it against live Manage Access status here so a session from before an
       // email was removed/deactivated (or, briefly, from before this DB check even existed)
@@ -50,11 +51,13 @@ export default function App() {
         await clearPersistedLoginState();
         setInitialLoggedIn(false);
         setInitialUserEmail(null);
+        setInitialLoginMethod(null);
         setAuthChecked(true);
         return;
       }
       setInitialLoggedIn(isLoggedIn);
       setInitialUserEmail(userEmail);
+      setInitialLoginMethod(loginMethod);
       setAuthChecked(true);
     });
   }, []);
@@ -153,7 +156,7 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <SafeAreaProvider>
-        <AuthProvider initialLoggedIn={initialLoggedIn} initialUserEmail={initialUserEmail}>
+        <AuthProvider initialLoggedIn={initialLoggedIn} initialUserEmail={initialUserEmail} initialLoginMethod={initialLoginMethod}>
           <FavoritesProvider>
             <NotificationsUIProvider>
               <NavigationContainer linking={linking}>
