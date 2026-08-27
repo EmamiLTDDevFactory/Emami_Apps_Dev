@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts } from '../theme/tokens';
+import WeatherWidget from './WeatherWidget';
 
 interface DashboardHeroProps {
   name: string;
@@ -21,6 +22,7 @@ export default function DashboardHero({ name, lastLogin }: DashboardHeroProps) {
       </View>
       <View style={styles.rightCol}>
         {lastLogin && <Text style={styles.lastLogin}>Last login: {lastLogin}</Text>}
+        <WeatherWidget />
       </View>
     </View>
   );

@@ -28,10 +28,15 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 16 }]}>
-      <View style={styles.brandRow}>
+      <Pressable
+        style={styles.brandRow}
+        onPress={() => navigation.navigate('Home')}
+        accessibilityRole="button"
+        accessibilityLabel="Go to Home"
+      >
         <EmpAppMark size={30} />
         <Text style={styles.brandText}>EMAMI APPS</Text>
-      </View>
+      </Pressable>
 
       {favoriteApps.length > 0 && (
         <View style={styles.quickAccess}>
