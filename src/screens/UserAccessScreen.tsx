@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound, ChevronRight, Lock } from 'lucide-react-native';
+import { ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound, ChevronRight, Lock, Search, X } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
@@ -42,6 +42,7 @@ export default function UserAccessScreen() {
   const [users, setUsers] = useState<UserAccessEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState('');
+  const [userSearch, setUserSearch] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   // Keyed by email — edits made in the UI that haven't been saved to the server yet.
@@ -94,7 +95,7 @@ export default function UserAccessScreen() {
     });
   };
 
-  const visibleUsers = users.filter((u) => u.email.toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleUsers = users.filter((u) => u.email.toLowerCase().includes(userSearch.trim().toLowerCase()));
 
   const effectiveActive = (user: UserAccessEntry) => pending[user.email]?.isActive ?? user.isActive;
   const effectiveRole = (user: UserAccessEntry, appId: string) => {
@@ -254,6 +255,25 @@ export default function UserAccessScreen() {
             </View>
           </View>
 
+          <View style={[styles.inputWrap, styles.searchUsersWrap]}>
+            <Search size={14} color={colors.inkSoft} />
+            <TextInput
+              value={userSearch}
+              onChangeText={setUserSearch}
+              placeholder="Search by email…"
+              placeholderTextColor={colors.inkSoft}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.input}
+              accessibilityLabel="Search authorized users by email"
+            />
+            {!!userSearch && (
+              <Pressable onPress={() => setUserSearch('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+                <X size={14} color={colors.inkSoft} />
+              </Pressable>
+            )}
+          </View>
+
           <View style={styles.addRow}>
             <View style={styles.inputWrap}>
               <Mail size={14} color={colors.inkSoft} />
@@ -282,7 +302,7 @@ export default function UserAccessScreen() {
           <View style={styles.list}>
             {visibleUsers.length === 0 && (
               <Text style={styles.emptyText}>
-                {query.trim() ? `No authorized users match "${query.trim()}".` : 'No authorized users yet.'}
+                {userSearch.trim() ? `No authorized users match "${userSearch.trim()}".` : 'No authorized users yet.'}
               </Text>
             )}
             {visibleUsers.map((user, i) => {
@@ -574,6 +594,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansRegular,
     color: colors.inkSoft,
     marginTop: 1,
+  },
+  searchUsersWrap: {
+    marginBottom: 10,
   },
   addRow: {
     flexDirection: 'row',

@@ -16,7 +16,6 @@ export default function StockTicker() {
   const [quote, setQuote] = useState<StockQuote | null>(null);
   const [blockWidth, setBlockWidth] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
-  const measuredRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,12 +94,7 @@ export default function StockTicker() {
       <View style={styles.viewport}>
         <Animated.View style={[styles.track, { transform: [{ translateX }] }]}>
           <View
-            onLayout={(e) => {
-              if (!measuredRef.current) {
-                measuredRef.current = true;
-                setBlockWidth(e.nativeEvent.layout.width);
-              }
-            }}
+            onLayout={(e) => setBlockWidth(e.nativeEvent.layout.width)}
             style={styles.blockRow}
           >
             {renderBlock('a')}
