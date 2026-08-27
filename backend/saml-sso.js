@@ -132,7 +132,10 @@ router.get('/hub-auth/saml/login', async (req, res) => {
         }
         const sp = buildServiceProvider(getAcsUrl(req));
         const idp = buildIdentityProvider(idpRow.idpMetadataXml);
-        const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect);
+        // forceAuthn: without this, Entra ID silently reuses whatever browser session cookie is
+        // already there (e.g. from a previous user who logged out of the app but not of
+        // Microsoft), signing the next person in as that previous user with no credential prompt.
+        const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect, { forceAuthn: true });
         trackRequest(id);
         return res.redirect(context);
     } catch (err) {
