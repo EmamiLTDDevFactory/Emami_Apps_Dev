@@ -29,7 +29,7 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 16 }]}>
       <View style={styles.brandRow}>
-        <EmpAppMark size={34} />
+        <EmpAppMark size={30} />
         <Text style={styles.brandText}>EMAMI APPS</Text>
       </View>
 
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 14,
   },
   brandText: {
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   quickAccess: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     borderTopWidth: 1,
     borderBottomWidth: 1,
@@ -129,8 +129,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   quickAccessBtn: {
-    width: 30,
-    height: 30,
+    width: 27,
+    height: 27,
     borderRadius: radii.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -139,14 +139,14 @@ const styles = StyleSheet.create({
   },
   nav: {
     flex: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     marginBottom: 4,
     borderRadius: radii.lg,
     borderLeftWidth: 3,
@@ -157,8 +157,8 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.rust,
   },
   navIconBox: {
-    width: 30,
-    height: 30,
+    width: 27,
+    height: 27,
     borderRadius: radii.sm + 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   footer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.sidebarBorder,

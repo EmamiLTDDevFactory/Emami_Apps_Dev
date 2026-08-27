@@ -19,7 +19,9 @@ export default function DashboardHero({ name, lastLogin }: DashboardHeroProps) {
         <Text style={styles.greeting}>{greeting}, {name}</Text>
         <Text style={styles.subtitle}>Your single place to reach every application you use.</Text>
       </View>
-      {lastLogin && <Text style={styles.lastLogin}>Last login: {lastLogin}</Text>}
+      <View style={styles.rightCol}>
+        {lastLogin && <Text style={styles.lastLogin}>Last login: {lastLogin}</Text>}
+      </View>
     </View>
   );
 }
@@ -37,6 +39,10 @@ const styles = StyleSheet.create({
   },
   flex1: {
     flex: 1,
+  },
+  rightCol: {
+    alignItems: 'flex-end',
+    gap: 8,
   },
   greeting: {
     fontFamily: fonts.sansBold,

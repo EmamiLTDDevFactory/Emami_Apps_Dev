@@ -94,6 +94,8 @@ export default function UserAccessScreen() {
     });
   };
 
+  const visibleUsers = users.filter((u) => u.email.toLowerCase().includes(query.trim().toLowerCase()));
+
   const effectiveActive = (user: UserAccessEntry) => pending[user.email]?.isActive ?? user.isActive;
   const effectiveRole = (user: UserAccessEntry, appId: string) => {
     const p = pending[user.email]?.roles[appId];
@@ -278,12 +280,17 @@ export default function UserAccessScreen() {
             <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
           ) : (
           <View style={styles.list}>
-            {users.map((user, i) => {
+            {visibleUsers.length === 0 && (
+              <Text style={styles.emptyText}>
+                {query.trim() ? `No authorized users match "${query.trim()}".` : 'No authorized users yet.'}
+              </Text>
+            )}
+            {visibleUsers.map((user, i) => {
               const active = effectiveActive(user);
               const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
               const dirty = isDirty(user);
               return (
-                <View key={user.email} style={[styles.userRow, i < users.length - 1 && styles.userRowBorder, !active && styles.userRowInactive]}>
+                <View key={user.email} style={[styles.userRow, i < visibleUsers.length - 1 && styles.userRowBorder, !active && styles.userRowInactive]}>
                   <View style={styles.userHeaderRow}>
                     <View style={styles.flex1}>
                       <Text style={styles.userEmail}>{user.email}</Text>
@@ -621,6 +628,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.lg,
     overflow: 'hidden',
+  },
+  emptyText: {
+    padding: 20,
+    textAlign: 'center',
+    fontSize: 12.5,
+    fontFamily: fonts.sansRegular,
+    color: colors.inkSoft,
   },
   userRow: {
     padding: 14,

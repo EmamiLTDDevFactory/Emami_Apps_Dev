@@ -23,7 +23,7 @@ export default function DrawerNavigator() {
         headerShown: false,
         drawerType: isWideScreen ? 'permanent' : 'front',
         drawerStyle: {
-          width: 260,
+          width: 218,
           backgroundColor: colors.sidebar,
           borderRightWidth: isWideScreen ? 1 : 0,
           borderRightColor: colors.sidebarBorder,

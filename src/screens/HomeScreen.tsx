@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
 import DashboardHero from '../components/DashboardHero';
 import CompanyPulseCard from '../components/CompanyPulseCard';
+import WeatherWidget from '../components/WeatherWidget';
 import FilterBar from '../components/FilterBar';
 import AppGrid from '../components/AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
@@ -49,6 +50,7 @@ export default function HomeScreen() {
         />
 
         <CompanyPulseCard />
+        <WeatherWidget />
 
         <View style={styles.sectionHeader}>
           <View style={styles.sectionIconBox}>
