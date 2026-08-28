@@ -15,7 +15,7 @@ import {
   generateDueDateReminders,
 } from "./utils/reminders";
 // import { useEffect } from "react";
-import axios from "axios";
+import { apiPost } from "./api/client";
 
 function App() {
 
@@ -40,9 +40,9 @@ function App() {
 
       try {
 
-        const response =
-          await axios.post(
-            "/api/auth/login",
+        const data =
+          await apiPost(
+            "/auth/login",
             {
               hubToken
             }
@@ -51,13 +51,13 @@ function App() {
         localStorage.setItem(
           "currentUser",
           JSON.stringify(
-            response.data.user
+            data.user
           )
         );
 
         localStorage.setItem(
-          "auditToken",
-          response.data.token
+          "authToken",
+          data.token
         );
 
       } catch (error) {
