@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, Outlet, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { AppProvider } from './context/AppContext';
@@ -55,6 +55,39 @@ function useHubEmailBootstrap() {
   }, []);
 
   return ready;
+}
+
+/** Browser Back should always exit cleanly to the EmamiApps hub Dashboard once there's no more
+ * in-app history to go back to — never fall through to whatever entry happens to be sitting
+ * behind this app's own screens. React Router doesn't expose a canGoBack() like Expo Router does,
+ * so this tracks in-app navigation depth manually: every real route change (after the first)
+ * increments it, every Back press decrements it — only when depth is already at 0 (nothing left
+ * to go back to inside the app) does Back get redirected to the hub instead. Every other Back
+ * press (real in-app history, e.g. leaving a consultant detail page) is untouched. */
+function useExitToHubOnBack() {
+  const location = useLocation();
+  const isFirstRender = useRef(true);
+  const depthRef = useRef(0);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    depthRef.current += 1;
+  }, [location]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (depthRef.current <= 0) {
+        window.location.replace('/');
+      } else {
+        depthRef.current -= 1;
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 }
 
 const ProtectedRoute = () => {
@@ -129,6 +162,7 @@ const AppLayout = () => (
 
 export default function App() {
   const bootstrapped = useHubEmailBootstrap();
+  useExitToHubOnBack();
 
   if (!bootstrapped) {
     return (
