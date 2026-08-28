@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
-import { saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
+import { fetchSuppliedMaterials, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
+import { getHubEmail } from '../../../src/lib/hubEmailLogin';
 
 function todayIso(): string {
   return new Date().toISOString().split('T')[0];
@@ -26,6 +27,8 @@ function emptyRow(): MarketRateRow {
     validFrom: todayIso(),
   };
 }
+
+const DEFAULT_ROWS = () => [emptyRow(), emptyRow(), emptyRow()];
 
 type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 
@@ -100,9 +103,47 @@ function DateCell({ value, onChange, label }: { value: string; onChange: (v: str
 type SaveStatus = { type: 'success' | 'error'; message: string } | null;
 
 export default function MarketRateScreen() {
-  const [rows, setRows] = useState<MarketRateRow[]>(() => [emptyRow(), emptyRow(), emptyRow()]);
+  const [rows, setRows] = useState<MarketRateRow[]>(DEFAULT_ROWS);
+  const [loadingInitial, setLoadingInitial] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
+
+  // Pre-fills the table with whatever materials this signed-in email is already associated with
+  // (ZMarketSuppDataSet) instead of starting blank — market rate/UOM/GST/valid-from still need to
+  // be filled in per row, those aren't part of that reference data. Falls back to the default
+  // blank rows if nothing comes back (no supplier data yet, or the lookup fails).
+  useEffect(() => {
+    const email = getHubEmail();
+    if (!email) {
+      setLoadingInitial(false);
+      return;
+    }
+    fetchSuppliedMaterials(email).then((materials) => {
+      if (materials.length > 0) {
+        setRows(
+          materials.map((m) => {
+            nextKey += 1;
+            const supplierRef = [m.supplierCode, m.supplierName].filter(Boolean).join(' · ');
+            return {
+              key: `row-${nextKey}`,
+              materialCode: m.materialCode,
+              materialDesc: m.materialDesc,
+              materialType: m.materialType,
+              marketName: '',
+              marketRate: '',
+              ratePer: '',
+              igst: '',
+              sgst: '',
+              cgst: '',
+              validFrom: todayIso(),
+              supplierRef: supplierRef || undefined,
+            };
+          })
+        );
+      }
+      setLoadingInitial(false);
+    });
+  }, []);
 
   const updateCell = (key: string, field: keyof Omit<MarketRateRow, 'key'>, value: string) => {
     setStatus(null);
@@ -138,13 +179,22 @@ export default function MarketRateScreen() {
     try {
       await saveMarketRates(filled);
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
-      setRows([emptyRow(), emptyRow(), emptyRow()]);
+      setRows(DEFAULT_ROWS());
     } catch (err) {
       setStatus({ type: 'error', message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
     } finally {
       setSaving(false);
     }
   };
+
+  if (loadingInitial) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={colors.rust} />
+        <Text style={styles.loadingText}>Loading your materials…</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -171,17 +221,21 @@ export default function MarketRateScreen() {
           {rows.map((row, i) => (
             <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
               {TEXT_COLUMNS.map((col) => (
-                <TextInput
-                  key={col.field}
-                  value={row[col.field]}
-                  onChangeText={(v) => updateCell(row.key, col.field, v)}
-                  placeholder={col.placeholder}
-                  placeholderTextColor={colors.inkSoft}
-                  keyboardType={col.keyboard}
-                  autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
-                  style={[styles.cellInput, { width: col.width }]}
-                  accessibilityLabel={`${col.label}, row ${i + 1}`}
-                />
+                <View key={col.field} style={{ width: col.width }}>
+                  <TextInput
+                    value={row[col.field]}
+                    onChangeText={(v) => updateCell(row.key, col.field, v)}
+                    placeholder={col.placeholder}
+                    placeholderTextColor={colors.inkSoft}
+                    keyboardType={col.keyboard}
+                    autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
+                    style={styles.cellInput}
+                    accessibilityLabel={`${col.label}, row ${i + 1}`}
+                  />
+                  {col.field === 'materialDesc' && !!row.supplierRef && (
+                    <Text style={styles.supplierCaption} numberOfLines={1}>{row.supplierRef}</Text>
+                  )}
+                </View>
               ))}
               <DateCell
                 value={row.validFrom}
@@ -317,10 +371,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.appBg,
   },
   cellInput: {
+    width: '100%',
     fontSize: 12.5,
     color: colors.ink,
     paddingVertical: 12,
     paddingHorizontal: 10,
+  },
+  supplierCaption: {
+    fontSize: 10,
+    color: colors.inkSoft,
+    paddingHorizontal: 10,
+    marginTop: -8,
+    marginBottom: 6,
+  },
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: colors.inkSoft,
   },
   dateBtn: {
     flexDirection: 'row',

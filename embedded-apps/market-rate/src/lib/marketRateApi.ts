@@ -5,6 +5,10 @@ import axios from 'axios';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_MARKET_RATE_SRV';
 const ENTITY_SET = 'ZMarketRateHeaderSet';
+// Materials the signed-in user is already associated with — pre-fills the table on load instead
+// of starting blank. Verified live: entity set is ZMarketSuppDataSet (not ZMarketSuppData), Email
+// is the filter field (not a plain key — this returns a real list of rows per email).
+const SUPPLIER_DATA_ENTITY_SET = 'ZMarketSuppDataSet';
 
 // Not exposed in the form — sent blank per instruction, not defaulted to any particular company.
 const DEFAULT_COMPANY_CODE = '';
@@ -27,6 +31,44 @@ export interface MarketRateRow {
   sgst: string;
   cgst: string;
   validFrom: string; // yyyy-mm-dd
+  /** Read-only context from ZMarketSuppDataSet (supplier code/name, contact, as-of date) — shown
+   * for reference, not sent back to SAP on save (no field for it in the save payload). */
+  supplierRef?: string;
+}
+
+export interface SuppliedMaterial {
+  materialCode: string;
+  materialDesc: string;
+  materialType: string;
+  supplierCode: string;
+  supplierName: string;
+  contact: string;
+  asOfDate: string;
+}
+
+/** Loads the materials already associated with this email (ZMarketSuppDataSet, filtered by
+ * Email) — used to pre-fill the table on page load instead of starting from blank rows.
+ * Best-effort: an empty/failed result just means the table starts blank, same as before this
+ * existed — nothing about saving depends on this succeeding. */
+export async function fetchSuppliedMaterials(email: string): Promise<SuppliedMaterial[]> {
+  try {
+    const { data } = await sapClient.get(`/${SUPPLIER_DATA_ENTITY_SET}`, {
+      params: { '$filter': `Email eq '${email}'`, '$format': 'json' },
+    });
+    const results = data?.d?.results;
+    if (!Array.isArray(results)) return [];
+    return results.map((r: any) => ({
+      materialCode: r.Matnr || '',
+      materialDesc: r.Maktx || '',
+      materialType: r.Mtart || '',
+      supplierCode: r.Lifnr || '',
+      supplierName: r.Name1 || '',
+      contact: r.Contact || '',
+      asOfDate: r.Datum || '',
+    }));
+  } catch {
+    return [];
+  }
 }
 
 function randomRateId(): string {
