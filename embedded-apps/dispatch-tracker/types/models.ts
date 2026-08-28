@@ -145,18 +145,6 @@ export interface CancelledInvoice {
   status: string;
 }
 
-export interface LoginResponse {
-  token: string;
-  email: string;
-  role: Role;
-  name: string;
-  depots: string[];
-  depot_number: string;
-  depot_name: string;
-  sap_kpi: SapKpi;
-  invoices: Invoice[];
-}
-
 /** Any row shape from the 5 status caches, for shared list/filter/format utilities. */
 export type AnyInvoiceRow = Partial<
   Invoice & PendingInvoice & DispatchDetail & CompletedInvoice & ReturnedInvoice & CancelledInvoice

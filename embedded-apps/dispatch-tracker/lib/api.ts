@@ -8,7 +8,6 @@ import {
   CompletedInvoice,
   DispatchDetail,
   Invoice,
-  LoginResponse,
   PendingInvoice,
   ReturnedInvoice,
 } from '@/types/models';
@@ -66,93 +65,6 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
     if (error instanceof ApiError) throw error;
     throw new ApiError('Cannot reach the SAP API. Check your network connection.', 0);
   }
-}
-
-// -------------------------------------------------------------------------
-// Auth
-// -------------------------------------------------------------------------
-
-export async function sendOtp(email: string): Promise<{ sent: boolean }> {
-  await requestSap(`/OtpGenSet(Email='${email}')?$format=json`);
-  return { sent: true };
-}
-
-export async function login(email: string, otp: string): Promise<LoginResponse> {
-  const payload = {
-    Email: email,
-    Otp: otp,
-    Type: "",
-    Message: "",
-    Role: "",
-    Name: "",
-    PendNo: "",
-    RetNo: "",
-    CompNo: "",
-    CancNo: "",
-    DispNo: "",
-    NAV_LoginToDepot: { results: [{ Werks: "" }] },
-    NAV_LoginToInv: {
-      results: [{
-        Vbeln: "", Fkdat: null, Werks: "", Regio: "", Vtweg: "", Spart: "", Kunnr: "", Name1: "",
-        Bzirk: "", OrdErdat: null, OrdErzet: null, PayErdat: null, PayErzet: null,
-        Fkimg: null, Netwr: null, GrossWt: null
-      }]
-    }
-  };
-
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
-  };
-
-  const res = await fetch(`${API_BASE_URL}/LoginSet`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload)
-  });
-
-  const bodyText = await res.text();
-  let raw: any = {};
-  try { raw = JSON.parse(bodyText); } catch { }
-  raw = raw.d || raw;
-
-  if (raw.Type === 'E') {
-    throw new ApiError(raw.Message || 'Invalid OTP', 401);
-  }
-
-  const roleMap: Record<string, any> = { "D": "depot", "H": "hq" };
-  const role = roleMap[raw.Role] || "depot";
-  await setToken(email);
-
-  const invList = (raw.NAV_LoginToInv?.results || []).map(normalizeInvoice);
-  let werksList = (raw.NAV_LoginToDepot?.results || []).map((r: any) => r.Werks).filter(Boolean);
-  if (!werksList.length) {
-    werksList = Array.from(new Set(invList.map((inv: any) => inv.depot).filter(Boolean))).sort();
-  }
-
-  const parseIntSafe = (val: any) => {
-    if (val === null || val === undefined || String(val).trim() === '') return null;
-    const p = parseInt(val, 10);
-    return isNaN(p) ? null : p;
-  };
-
-  return {
-    token: email,
-    role: role,
-    email: email,
-    name: raw.Name || email,
-    depots: werksList,
-    depot_number: werksList[0] || "",
-    depot_name: werksList[0] || "",
-    sap_kpi: {
-      pend_no: parseIntSafe(raw.PendNo),
-      disp_no: parseIntSafe(raw.DispNo),
-      comp_no: parseIntSafe(raw.CompNo),
-      canc_no: parseIntSafe(raw.CancNo),
-      ret_no: parseIntSafe(raw.RetNo)
-    },
-    invoices: invList
-  };
 }
 
 // -------------------------------------------------------------------------

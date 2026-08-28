@@ -1,9 +1,7 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import * as api from '@/lib/api';
-import * as storage from '@/lib/storage';
-import { Invoice, LoginResponse, Role, SapKpi } from '@/types/models';
-
-const SESSION_KEY = 'dis_session_data';
+import { getHubEmail, hasHubSession, hubLogoutUrl } from '@/lib/hubEmailLogin';
+import { Invoice, Role, SapKpi } from '@/types/models';
 
 export interface Session {
   email: string;
@@ -21,13 +19,24 @@ interface AuthState {
   initialInvoices: Invoice[] | null;
   bootstrapping: boolean;
   readOnly: boolean;
-  requestOtp: (email: string) => Promise<void>;
-  verifyOtp: (email: string, otp: string) => Promise<void>;
   signOut: () => Promise<void>;
   consumeInitialInvoices: () => Invoice[] | null;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+/**
+ * No login screen anymore — identity comes entirely from the hub's own already-authenticated
+ * session (see lib/hubEmailLogin.ts). SAP's LoginSet is deliberately never called here: it bundles
+ * real OTP verification into the same call that returns role/depot/KPI data, and a blank Otp value
+ * doesn't fail gracefully — it throws a backend short dump (verified live) — so it can't be reused
+ * as an email-only role lookup the way MoldHealthCheck's ZmoldRoleSet entity can. There's no
+ * separate role/depot lookup entity for this SAP service, so every hub-authenticated user gets the
+ * same full ("depot") access instead of the old hq/depot split; the read-only HQ multi-depot view
+ * this used to unlock is unreachable now (every `readOnly` check in the tab screens simply stays
+ * false).
+ */
+const EMPTY_KPI: SapKpi = { pend_no: null, disp_no: null, comp_no: null, canc_no: null, ret_no: null };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -36,46 +45,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const token = await api.getToken();
-      const raw = await storage.getItem(SESSION_KEY);
-      if (token && raw) {
-        try {
-          setSession(JSON.parse(raw) as Session);
-        } catch {
-          await api.setToken(null);
-          await storage.deleteItem(SESSION_KEY);
-        }
+      const email = getHubEmail();
+      if (hasHubSession() && email) {
+        await api.setToken(email);
+        setSession({
+          email,
+          role: 'depot',
+          name: email,
+          depots: [],
+          depot_number: '',
+          depot_name: '',
+          sap_kpi: EMPTY_KPI,
+        });
+      } else {
+        await api.setToken(null);
       }
       setBootstrapping(false);
     })();
   }, []);
 
-  async function requestOtp(email: string) {
-    await api.sendOtp(email);
-  }
-
-  async function verifyOtp(email: string, otp: string) {
-    const result: LoginResponse = await api.login(email, otp);
-    await api.setToken(result.token);
-    const nextSession: Session = {
-      email: result.email,
-      role: result.role,
-      name: result.name,
-      depots: result.depots,
-      depot_number: result.depot_number,
-      depot_name: result.depot_name,
-      sap_kpi: result.sap_kpi,
-    };
-    await storage.setItem(SESSION_KEY, JSON.stringify(nextSession));
-    setSession(nextSession);
-    setInitialInvoices(result.invoices ?? null);
-  }
-
   async function signOut() {
     await api.setToken(null);
-    await storage.deleteItem(SESSION_KEY);
     setSession(null);
     setInitialInvoices(null);
+    if (typeof window !== 'undefined') window.location.href = hubLogoutUrl();
   }
 
   function consumeInitialInvoices() {
@@ -91,8 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         initialInvoices,
         bootstrapping,
         readOnly: session?.role === 'hq',
-        requestOtp,
-        verifyOtp,
         signOut,
         consumeInitialInvoices,
       }}>

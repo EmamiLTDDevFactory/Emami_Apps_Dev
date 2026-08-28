@@ -11,7 +11,9 @@ import { useAuth } from '@/contexts/AuthContext';
 export function TopBar() {
   const { session, readOnly, signOut } = useAuth();
   const isHq = readOnly;
-  const initials = isHq ? 'HQ' : (session?.depot_number ?? 'D').slice(0, 2).toUpperCase();
+  const initials = isHq
+    ? 'HQ'
+    : (session?.depot_number || session?.email || 'D').slice(0, 2).toUpperCase();
   const avatarGradientStart = isHq ? colors.purple : colors.navy;
 
   return (

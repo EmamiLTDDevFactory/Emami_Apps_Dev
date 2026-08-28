@@ -1,4 +1,4 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -17,20 +17,17 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { session, bootstrapping } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
 
   useEffect(() => {
     if (bootstrapping) return;
-    const inAuthGroup = segments[0] === '(auth)';
-    if (!session && !inAuthGroup) {
-      router.replace('/(auth)/login');
-    } else if (session && inAuthGroup) {
-      router.replace('/(tabs)');
+    // No login screen of its own anymore — a visitor with no real hub session has nothing to sign
+    // into here, so bounce straight back to the hub instead of showing this app's own error state.
+    if (!session && typeof window !== 'undefined') {
+      window.location.href = '/';
     }
-  }, [session, bootstrapping, segments]);
+  }, [session, bootstrapping]);
 
-  if (bootstrapping) {
+  if (bootstrapping || !session) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
         <ActivityIndicator color={colors.teal} size="large" />
@@ -40,7 +37,6 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
     </Stack>
   );
