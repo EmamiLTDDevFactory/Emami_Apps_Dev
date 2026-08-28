@@ -1,24 +1,54 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
-import { getHubEmail } from '../../../src/lib/hubEmailLogin';
 import { saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
 
 let nextKey = 0;
 function emptyRow(): MarketRateRow {
   nextKey += 1;
-  return { key: `row-${nextKey}`, materialCode: '', marketRate: '', validFrom: '' };
+  return {
+    key: `row-${nextKey}`,
+    materialCode: '',
+    materialDesc: '',
+    materialType: '',
+    marketName: '',
+    marketRate: '',
+    ratePer: '',
+    igst: '',
+    sgst: '',
+    cgst: '',
+    validFrom: '',
+  };
 }
+
+type EditableField = Exclude<keyof MarketRateRow, 'key'>;
+
+const COLUMNS: { field: EditableField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
+  { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
+  { field: 'materialDesc', label: 'Material Description', width: 190, placeholder: 'e.g. Light Liquid Paraffin' },
+  { field: 'materialType', label: 'Material Type', width: 100, placeholder: 'e.g. ROH' },
+  { field: 'marketName', label: 'Market', width: 120, placeholder: 'e.g. Kolkata' },
+  { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
+  { field: 'igst', label: 'IGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'sgst', label: 'SGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'cgst', label: 'CGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'validFrom', label: 'Valid From', width: 120, placeholder: 'YYYY-MM-DD' },
+];
+
+const REMOVE_COL_WIDTH = 44;
+const TABLE_WIDTH = COLUMNS.reduce((sum, c) => sum + c.width, 0) + REMOVE_COL_WIDTH;
 
 type SaveStatus = { type: 'success' | 'error'; message: string } | null;
 
 export default function MarketRateScreen() {
+  const [companyCode, setCompanyCode] = useState('1000');
   const [rows, setRows] = useState<MarketRateRow[]>(() => [emptyRow(), emptyRow(), emptyRow()]);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
 
-  const updateCell = (key: string, field: keyof Omit<MarketRateRow, 'key'>, value: string) => {
+  const updateCell = (key: string, field: EditableField, value: string) => {
     setStatus(null);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
@@ -30,19 +60,25 @@ export default function MarketRateScreen() {
 
   const onSave = async () => {
     setStatus(null);
-    const filled = rows.filter((r) => r.materialCode.trim() || r.marketRate.trim() || r.validFrom.trim());
+    if (!companyCode.trim()) {
+      setStatus({ type: 'error', message: 'Company code is required.' });
+      return;
+    }
+    const filled = rows.filter((r) => Object.entries(r).some(([k, v]) => k !== 'key' && v.trim()));
     if (filled.length === 0) {
       setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
       return;
     }
-    const incomplete = filled.find((r) => !r.materialCode.trim() || !r.marketRate.trim() || !r.validFrom.trim());
+    const REQUIRED: EditableField[] = ['materialCode', 'materialDesc', 'materialType', 'marketName', 'marketRate', 'ratePer', 'validFrom'];
+    const incomplete = filled.find((r) => REQUIRED.some((f) => !r[f].trim()));
     if (incomplete) {
-      setStatus({ type: 'error', message: 'Every row needs a material code, market rate, and valid-from date.' });
+      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, market, rate, UOM, and valid-from date. GST fields default to 0 if left blank.' });
       return;
     }
-    const invalidRate = filled.find((r) => Number.isNaN(Number(r.marketRate)));
-    if (invalidRate) {
-      setStatus({ type: 'error', message: `"${invalidRate.marketRate}" isn't a valid market rate.` });
+    const NUMERIC: EditableField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
+    const invalidNumber = filled.find((r) => NUMERIC.some((f) => r[f].trim() && Number.isNaN(Number(r[f]))));
+    if (invalidNumber) {
+      setStatus({ type: 'error', message: 'Market rate and GST fields must be numbers.' });
       return;
     }
     const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -54,7 +90,7 @@ export default function MarketRateScreen() {
 
     setSaving(true);
     try {
-      await saveMarketRates(filled, getHubEmail());
+      await saveMarketRates(filled, companyCode.trim());
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
       setRows([emptyRow(), emptyRow(), emptyRow()]);
     } catch (err) {
@@ -66,59 +102,60 @@ export default function MarketRateScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.card}>
-        <View style={styles.tableHeaderRow}>
-          <Text style={[styles.headerCell, styles.colCode]}>Material Code</Text>
-          <Text style={[styles.headerCell, styles.colRate]}>Market Rate</Text>
-          <Text style={[styles.headerCell, styles.colDate]}>Valid From</Text>
-          <View style={styles.colRemove} />
-        </View>
-
-        {rows.map((row, i) => (
-          <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
-            <TextInput
-              value={row.materialCode}
-              onChangeText={(v) => updateCell(row.key, 'materialCode', v)}
-              placeholder="e.g. RM-10234"
-              placeholderTextColor={colors.inkSoft}
-              autoCapitalize="characters"
-              style={[styles.cellInput, styles.colCode]}
-              accessibilityLabel={`Material code, row ${i + 1}`}
-            />
-            <TextInput
-              value={row.marketRate}
-              onChangeText={(v) => updateCell(row.key, 'marketRate', v)}
-              placeholder="0.00"
-              placeholderTextColor={colors.inkSoft}
-              keyboardType="decimal-pad"
-              style={[styles.cellInput, styles.colRate]}
-              accessibilityLabel={`Market rate, row ${i + 1}`}
-            />
-            <TextInput
-              value={row.validFrom}
-              onChangeText={(v) => updateCell(row.key, 'validFrom', v)}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.inkSoft}
-              style={[styles.cellInput, styles.colDate]}
-              accessibilityLabel={`Valid from date, row ${i + 1}`}
-            />
-            <Pressable
-              onPress={() => removeRow(row.key)}
-              disabled={rows.length === 1}
-              style={[styles.removeBtn, styles.colRemove]}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove row ${i + 1}`}
-            >
-              <Ionicons name="trash-outline" size={16} color={rows.length === 1 ? colors.border : colors.red} />
-            </Pressable>
-          </View>
-        ))}
-
-        <Pressable style={styles.addRowBtn} onPress={addRow} accessibilityRole="button" accessibilityLabel="Add row">
-          <Ionicons name="add" size={16} color={colors.rust} />
-          <Text style={styles.addRowText}>Add row</Text>
-        </Pressable>
+      <View style={styles.companyRow}>
+        <Text style={styles.companyLabel}>Company Code</Text>
+        <TextInput
+          value={companyCode}
+          onChangeText={setCompanyCode}
+          placeholder="e.g. 1000"
+          placeholderTextColor={colors.inkSoft}
+          style={styles.companyInput}
+          accessibilityLabel="Company code"
+        />
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+        <View style={[styles.card, { width: TABLE_WIDTH }]}>
+          <View style={styles.tableHeaderRow}>
+            {COLUMNS.map((col) => (
+              <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
+            ))}
+            <View style={{ width: REMOVE_COL_WIDTH }} />
+          </View>
+
+          {rows.map((row, i) => (
+            <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
+              {COLUMNS.map((col) => (
+                <TextInput
+                  key={col.field}
+                  value={row[col.field]}
+                  onChangeText={(v) => updateCell(row.key, col.field, v)}
+                  placeholder={col.placeholder}
+                  placeholderTextColor={colors.inkSoft}
+                  keyboardType={col.keyboard}
+                  autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
+                  style={[styles.cellInput, { width: col.width }]}
+                  accessibilityLabel={`${col.label}, row ${i + 1}`}
+                />
+              ))}
+              <Pressable
+                onPress={() => removeRow(row.key)}
+                disabled={rows.length === 1}
+                style={[styles.removeBtn, { width: REMOVE_COL_WIDTH }]}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove row ${i + 1}`}
+              >
+                <Ionicons name="trash-outline" size={16} color={rows.length === 1 ? colors.border : colors.red} />
+              </Pressable>
+            </View>
+          ))}
+
+          <Pressable style={styles.addRowBtn} onPress={addRow} accessibilityRole="button" accessibilityLabel="Add row">
+            <Ionicons name="add" size={16} color={colors.rust} />
+            <Text style={styles.addRowText}>Add row</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
 
       {status && (
         <View style={[styles.statusBanner, status.type === 'success' ? styles.statusSuccess : styles.statusError]}>
@@ -157,9 +194,31 @@ const styles = StyleSheet.create({
   scroll: {
     padding: 20,
     paddingBottom: 60,
-    maxWidth: 900,
-    width: '100%',
-    alignSelf: 'center',
+  },
+  companyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  companyLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  companyInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.white,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: colors.ink,
+    width: 120,
+  },
+  tableScroll: {
+    flexGrow: 0,
   },
   card: {
     borderWidth: 1,
@@ -175,13 +234,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   headerCell: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
     color: colors.inkSoft,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   tableRow: {
     flexDirection: 'row',
@@ -192,32 +251,16 @@ const styles = StyleSheet.create({
   tableRowAlt: {
     backgroundColor: colors.appBg,
   },
-  colCode: {
-    flex: 2,
-    minWidth: Platform.OS === 'web' ? 0 : 110,
-  },
-  colRate: {
-    flex: 1.3,
-    minWidth: Platform.OS === 'web' ? 0 : 90,
-  },
-  colDate: {
-    flex: 1.5,
-    minWidth: Platform.OS === 'web' ? 0 : 110,
-  },
-  colRemove: {
-    width: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   cellInput: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.ink,
     paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
   removeBtn: {
     height: '100%',
-    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addRowBtn: {
     flexDirection: 'row',
@@ -239,6 +282,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: 12,
     marginTop: 16,
+    maxWidth: 900,
   },
   statusSuccess: {
     backgroundColor: `${colors.green}14`,
@@ -260,6 +304,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     paddingVertical: 13,
     backgroundColor: colors.rust,
+    maxWidth: 900,
   },
   saveBtnDisabled: {
     opacity: 0.6,
