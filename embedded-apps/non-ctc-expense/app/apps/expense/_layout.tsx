@@ -34,9 +34,30 @@ function RootLayoutNav() {
 
     if (target && lastAutoRedirect.current !== target) {
       lastAutoRedirect.current = target;
-      router.push(target);
+      // replace, not push: this is an automatic bounce (auth state resolving), not something the
+      // user consciously navigated to — pushing would leave e.g. /login in history even though
+      // the user never saw it (auto-login skips past it), so pressing Back later would land back
+      // on it and immediately auto-login again, looking like Back does nothing / goes somewhere
+      // random. replace keeps that transition out of history entirely.
+      router.replace(target);
     }
   }, [isAuthenticated, isInitializing, segments]);
+
+  // Browser Back should always exit cleanly to the EmamiApps hub Dashboard once there's no more
+  // in-app history to go back to — never fall through to whatever entry happens to be sitting
+  // behind this app's own screens (which could be a stale bounce, or nothing at all). Every other
+  // Back press (where canGoBack() is true — e.g. leaving a Claim Details screen) is untouched and
+  // keeps working exactly as it does today.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = () => {
+      if (!router.canGoBack()) {
+        window.location.replace('/');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [router]);
 
   if (isInitializing) {
     return (
