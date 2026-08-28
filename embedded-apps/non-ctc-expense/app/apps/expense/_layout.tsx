@@ -73,22 +73,34 @@ function RootLayoutNav() {
 
   // Browser Back should exit cleanly to the EmamiApps hub Dashboard only once there's no more
   // in-app history to go back to — never fall through to whatever entry happens to be sitting
-  // behind this app's own screens. Checking canGoBack() *inside* the popstate handler is too
-  // late: by then the pop has already happened, so landing on the app's own root screen (e.g.
-  // Claim Details' own back arrow correctly resolving to (tabs)) also reads as "canGoBack() is
-  // now false" and would wrongly get treated as "exit the app" even though that back press was
-  // completely legitimate. wasAtRootRef instead records whether we were ALREADY at the root
-  // *before* this pop — only that case means there's truly nothing left inside the app, so only
-  // that case exits. Every in-app back press that merely arrives at the root is untouched.
-  const wasAtRootRef = useRef(!router.canGoBack());
-  useEffect(() => {
-    wasAtRootRef.current = !router.canGoBack();
-  });
-
+  // behind this app's own screens.
+  //
+  // This used to be decided with router.canGoBack() (via a wasAtRootRef snapshot taken just
+  // before the pop). That signal turned out to be unreliable: Expo Router's own internal
+  // back-stack bookkeeping doesn't always match what the browser actually does, and two very
+  // normal in-app actions could make canGoBack() read "false" right when they shouldn't:
+  //   1. Pressing the Dashboard tab while on another tab — React Navigation resolves "go to a
+  //      tab you've already visited, especially the first one" by popping back through history
+  //      to that earlier entry, not by pushing forward. That pop fires a real popstate.
+  //   2. The Claim Details header back arrow calling router.back() — also a real history pop,
+  //      hence another popstate.
+  // Both of those are 100% legitimate in-app navigations, but the old check couldn't tell them
+  // apart from "the user backed all the way out of the app", so it sometimes force-exited to the
+  // hub in the middle of perfectly normal navigation.
+  //
+  // The reliable signal is simpler: after any pop, look at where the browser actually landed. All
+  // of this app's own screens live under /apps/expense — so if the resulting URL is still inside
+  // that prefix, some in-app screen exists to show and Expo Router will render it normally (no
+  // action needed here). Only when the pop has landed *outside* /apps/expense — the hub's own
+  // page, or a browser-internal page with nothing on it — do we force the clean handoff to the
+  // hub Dashboard.
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const APP_PREFIX = '/apps/expense';
     const handlePopState = () => {
-      if (wasAtRootRef.current) {
+      const path = window.location.pathname;
+      const stillInsideThisApp = path === APP_PREFIX || path.startsWith(`${APP_PREFIX}/`);
+      if (!stillInsideThisApp) {
         window.location.replace('/');
       }
     };
