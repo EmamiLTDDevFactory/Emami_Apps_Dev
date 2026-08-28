@@ -7,7 +7,7 @@ import GradientButton from "@/components/ui/GradientButton";
 import { colors, font } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/config";
-import { getHubEmail } from "@/lib/hubEmailLogin";
+import { getHubEmail, hasHubSession } from "@/lib/hubEmailLogin";
 
 /**
  * Replaces the old (auth)/welcome + (auth)/login screens entirely. There's no credential entry
@@ -64,12 +64,15 @@ export default function MouldEntryGate() {
     setChecking(true);
     setError(null);
 
-    const email = getHubEmail();
-    if (!email) {
-      setError("Could not find your Emami Apps sign-in. Please open MoldHealthCheck from the Emami Apps home page.");
-      setChecking(false);
+    // No login screen of its own (same shape as Audit & CAPA) — this app is only ever valid to be
+    // on because the hub already authenticated the visitor. A direct/typed URL with no real hub
+    // session bounces straight back to the hub to sign in, rather than showing this app's own
+    // error state (there's nothing to "retry" if the visitor was never logged in to begin with).
+    if (!hasHubSession()) {
+      if (typeof window !== "undefined") window.location.href = "/";
       return;
     }
+    const email = getHubEmail() as string;
 
     try {
       // Verified live against SAP: entity set name is ZmoldRoleSet (not ZmoldRole), key is Email

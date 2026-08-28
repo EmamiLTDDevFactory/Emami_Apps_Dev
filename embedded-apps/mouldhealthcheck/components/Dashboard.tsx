@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useMemo, useState } from "react";
+import { hubLogoutUrl } from "@/lib/hubEmailLogin";
 import {
   ActivityIndicator,
   Alert,
@@ -352,7 +353,7 @@ function VendorDashboard() {
                 </View>
               )}
             </View>
-            <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = "/"; }} style={styles.avatar}>
+            <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = hubLogoutUrl(); }} style={styles.avatar}>
               <Icons.SignOut size={24} color={colors.textBody} weight="fill" />
             </TouchableOpacity>
           </View>
@@ -665,7 +666,7 @@ function AdminDashboard() {
               <Text style={styles.greeting}>{greeting()} Admin 👋</Text>
               <Text style={styles.vendorName}>Global Overview</Text>
             </View>
-            <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = "/"; }} style={styles.avatar}>
+            <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = hubLogoutUrl(); }} style={styles.avatar}>
               <Icons.SignOut size={24} color={colors.textBody} weight="fill" />
             </TouchableOpacity>
           </View>

@@ -1,8 +1,7 @@
-// Same-origin localStorage key the hub's own AuthContext.tsx writes on login (see
-// emami_apps_user_email in the main app's src/context/AuthContext.tsx). Reading it here is what
-// lets this app skip its own login screen entirely — anyone who reached /apps/market-rate/ already
-// signed in through the hub.
+// Same-origin localStorage keys the hub's own AuthContext.tsx writes on login (see
+// emami_apps_user_email/emami_apps_session_token in the main app's src/context/AuthContext.tsx).
 const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
+const HUB_TOKEN_STORAGE_KEY = 'emami_apps_session_token';
 
 export function getHubEmail(): string | null {
   if (typeof window === 'undefined' || !window.localStorage) return null;
@@ -10,6 +9,20 @@ export function getHubEmail(): string | null {
     return window.localStorage.getItem(HUB_EMAIL_STORAGE_KEY);
   } catch {
     return null;
+  }
+}
+
+/** This app has no login screen of its own (same shape as Audit & CAPA) — reaching it at all is
+ * only ever valid because the hub already authenticated the visitor. Checking the session token,
+ * not just the presence of an email, matches Audit & CAPA's own guard (src/App.js there): an
+ * email alone could be a stale/cleared-elsewhere localStorage leftover, but the token is what the
+ * hub's own AuthContext actually clears on logout. */
+export function hasHubSession(): boolean {
+  if (typeof window === 'undefined' || !window.localStorage) return false;
+  try {
+    return Boolean(window.localStorage.getItem(HUB_TOKEN_STORAGE_KEY) && getHubEmail());
+  } catch {
+    return false;
   }
 }
 

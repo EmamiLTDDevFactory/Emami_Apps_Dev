@@ -19,7 +19,7 @@ const SSO_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function RootNavigator() {
-  const { isLoggedIn, login } = useAuth();
+  const { isLoggedIn, login, logout } = useAuth();
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [verifyingSso, setVerifyingSso] = useState(false);
 
@@ -52,6 +52,19 @@ export default function RootNavigator() {
     } else if (errorCode) {
       setSsoError(SSO_ERROR_MESSAGES[errorCode] || 'Sign-in failed. Please try again.');
     }
+  }, []);
+
+  // A same-origin embedded app (e.g. MoldHealthCheck's own Logout button) can trigger a REAL hub
+  // logout — not just leaving that sub-app while the hub itself stays signed in — by navigating
+  // here with ?logout=1. Reuses this exact same logout() the hub's own Settings screen calls
+  // (clears emami_apps_* state, and for an SSO session redirects through SAML Single Logout too)
+  // rather than duplicating any of that logic inside the embedded app itself.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('logout') !== '1') return;
+    window.history.replaceState({}, '', window.location.pathname);
+    logout();
   }, []);
 
   return (

@@ -8,7 +8,7 @@ interface EmpAppMarkProps {
 export default function EmpAppMark({ size = 30 }: EmpAppMarkProps) {
   return (
     <Image
-      source={require('../../assets/emami-logo.jpg')}
+      source={require('../../assets/icon.png')}
       style={[styles.mark, { width: size, height: size, borderRadius: size * 0.22 }]}
       resizeMode="cover"
     />

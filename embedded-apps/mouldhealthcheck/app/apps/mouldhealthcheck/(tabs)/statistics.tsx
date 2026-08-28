@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import { hubLogoutUrl } from "@/lib/hubEmailLogin";
 import { StatusBar } from "expo-status-bar";
 import * as Icons from "phosphor-react-native";
 import React, { useCallback, useMemo, useState } from "react";
@@ -199,7 +200,7 @@ function VendorStatistics() {
             <Text style={styles.heroKicker}>VENDOR INSIGHTS</Text>
             <Text style={styles.heroTitle}>Your submission overview</Text>
           </View>
-          <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = "/"; }} style={{ backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, padding: 10, borderRadius: 14 }}>
+          <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = hubLogoutUrl(); }} style={{ backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, padding: 10, borderRadius: 14 }}>
             <Icons.SignOut size={24} color={colors.textBody} weight="bold" />
           </TouchableOpacity>
         </View>
@@ -395,7 +396,7 @@ function AdminStatistics() {
             <Text style={styles.heroKicker}>GLOBAL INSIGHTS</Text>
             <Text style={styles.heroTitle}>Overall Network Status</Text>
           </View>
-          <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = "/"; }} style={{ backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, padding: 10, borderRadius: 14 }}>
+          <TouchableOpacity onPress={() => { handleLogout(); if (typeof window !== "undefined") window.location.href = hubLogoutUrl(); }} style={{ backgroundColor: colors.surfaceAlt, borderWidth: 1, borderColor: colors.border, padding: 10, borderRadius: 14 }}>
             <Icons.SignOut size={24} color={colors.textBody} weight="bold" />
           </TouchableOpacity>
         </View>

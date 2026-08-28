@@ -1,16 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import InfoHeader from '../../../src/components/InfoHeader';
 import { colors, radii } from '../../../src/theme/tokens';
+import { hasHubSession } from '../../../src/lib/hubEmailLogin';
 
 // No login screen here at all — unlike non-ctc-expense, this app has no per-user auth gate of
-// its own. Anyone who reached /apps/market-rate/ already signed in through the hub; InfoHeader's
-// login name is only a label, not a gate.
+// its own. Anyone who reached /apps/market-rate/ is only meant to be here because the hub already
+// signed them in — so on mount, check for a real hub session (not just a stray email left over in
+// localStorage) and bounce straight back to the hub to sign in if there isn't one, rather than
+// ever rendering the form for an unauthenticated visitor who typed the URL directly.
 export default function MarketRateLayout() {
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (hasHubSession()) {
+      setAuthorized(true);
+    } else if (typeof window !== 'undefined') {
+      window.location.href = '/';
+    }
+  }, []);
+
+  if (authorized !== true) {
+    return (
+      <View style={styles.checkingWrap}>
+        <ActivityIndicator size="large" color={colors.rust} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -53,6 +74,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.plum,
+  },
+  checkingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.appBg,
   },
   safeArea: {
     flex: 1,

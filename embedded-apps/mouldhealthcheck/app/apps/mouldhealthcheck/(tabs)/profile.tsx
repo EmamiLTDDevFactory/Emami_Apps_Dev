@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, font, radius, shadow } from "@/constants/theme";
 import { useAuth } from "@/contexts/AuthContext";
 import { APP_DEPT, APP_VERSION } from "@/lib/config";
+import { hubLogoutUrl } from "@/lib/hubEmailLogin";
 import { Platform } from "react-native";
 import { useBreakpoint, SIDEBAR_WIDTH } from "@/utils/responsive";
 // Optional: If you persist user data locally, uncomment the import below
@@ -50,10 +51,11 @@ export default function Profile() {
     Haptics.selectionAsync();
     if (opt.action === "logout") {
       handleLogout();
-      // No login screen exists to send someone back to anymore — role resolution is automatic
-      // and tied to the hub's own session, so "logging out" here means leaving the app entirely,
-      // same as non-ctc-expense/rc-portal's own logout does.
-      if (typeof window !== "undefined") window.location.href = "/";
+      // Unlike non-ctc-expense/rc-portal's own logout (which only ends that one sub-app's
+      // session and leaves the hub signed in), this ends the hub session for real — no login
+      // screen exists here anymore to send someone back to, since role resolution is entirely
+      // tied to the hub's own session.
+      if (typeof window !== "undefined") window.location.href = hubLogoutUrl();
       return;
     }
     if (opt.route) router.push(opt.route as any);
