@@ -41,6 +41,7 @@ const apiRouter = express.Router();
 app.use('/api', apiRouter);
 
 apiRouter.use(require('./hub-auth'));
+apiRouter.use(require('./magicLink'));
 apiRouter.use(require('./saml-sso'));
 apiRouter.use(require('./userProfile'));
 apiRouter.use(require('./stockQuote'));

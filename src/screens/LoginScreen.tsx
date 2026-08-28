@@ -3,10 +3,10 @@ import {
   View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView,
   Platform, ScrollView, ActivityIndicator, Linking, Image,
 } from 'react-native';
-import { Mail, CheckCircle2 } from 'lucide-react-native';
+import { Mail, CheckCircle2, MailCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radii } from '../theme/tokens';
-import { getMicrosoftSignInUrl, loginWithEmail, checkStillAuthorized } from '../lib/authApi';
+import { getMicrosoftSignInUrl, requestMagicLink, checkStillAuthorized } from '../lib/authApi';
 import type { LoginMethod } from '../context/AuthContext';
 
 interface LoginScreenProps {
@@ -72,6 +72,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
   const [localError, setLocalError] = useState('');
   const [checkingAccess, setCheckingAccess] = useState(false);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('idle');
+  // Non-@emamigroup.com sign-in no longer logs the user in directly on submit — it only sends a
+  // magic link (backend/magicLink.js); the actual login happens when they click it and land back
+  // here with ?magicToken=, which RootNavigator.tsx's effect handles the same way it already
+  // handles ?ssoToken=. @emamigroup.com is entirely unaffected — that path still goes straight to
+  // Microsoft via signInWithMicrosoft below.
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
 
   const trimmedEmail = email.trim().toLowerCase();
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
@@ -134,14 +140,14 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
     }
 
     setCheckingAccess(true);
-    const result = await loginWithEmail(trimmedEmail);
+    const result = await requestMagicLink(trimmedEmail);
     setCheckingAccess(false);
     if (!result.ok) {
       setLiveStatus('unauthorized');
       setLocalError(result.error || 'This email-id is not registered.');
       return;
     }
-    onLogin?.(result.email, result.token, 'direct');
+    setLinkSentTo(trimmedEmail);
   };
 
   const shownError = error || localError;
@@ -168,6 +174,26 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
           />
 
           <View style={styles.card}>
+            {linkSentTo ? (
+              <>
+                <View style={styles.linkSentIconBox}>
+                  <MailCheck size={26} color={colors.rust} />
+                </View>
+                <Text style={styles.welcome}>Check your email</Text>
+                <Text style={styles.subtitle}>
+                  We sent a sign-in link to{'\n'}
+                  <Text style={styles.linkSentEmail}>{linkSentTo}</Text>
+                  {'\n'}It expires in 15 minutes.
+                </Text>
+                <Pressable
+                  onPress={() => { setLinkSentTo(null); setEmail(''); setLiveStatus('idle'); }}
+                  style={styles.linkSentBackBtn}
+                >
+                  <Text style={styles.linkSentBackText}>Use a different email</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
             <Text style={styles.welcome}>{busy ? 'Signing you in…' : 'Welcome back'}</Text>
             <Text style={styles.subtitle}>
               {verifying ? 'Verifying your Microsoft sign-in.' : 'Sign in with your Emami work email'}
@@ -225,7 +251,7 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
                       <Text style={styles.microsoftBtnText}>Sign in with Microsoft</Text>
                     </>
                   ) : (
-                    <Text style={[styles.primaryBtnText, buttonDisabled && styles.primaryBtnTextDisabled]}>Continue →</Text>
+                    <Text style={[styles.primaryBtnText, buttonDisabled && styles.primaryBtnTextDisabled]}>Send Sign-In Link →</Text>
                   )}
                 </Pressable>
               </>
@@ -235,6 +261,8 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
               <Text style={styles.helperAccent}>@emamigroup.com signs in with Microsoft. </Text>
               <Text>No access? Contact your admin.</Text>
             </Text>
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -415,6 +443,27 @@ const styles = StyleSheet.create({
   },
   helperAccent: {
     fontFamily: fonts.sansMedium,
+    color: colors.rust,
+  },
+  linkSentIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: `${colors.rust}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  linkSentEmail: {
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
+  linkSentBackBtn: {
+    marginTop: 20,
+  },
+  linkSentBackText: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 13,
     color: colors.rust,
   },
 });

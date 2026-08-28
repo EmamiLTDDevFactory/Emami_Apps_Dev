@@ -80,6 +80,48 @@ export async function loginWithEmail(email: string): Promise<{ ok: boolean; emai
   }
 }
 
+/** Magic-link sign-in for non-@emamigroup.com emails (backend/magicLink.js) — @emamigroup.com
+ * always uses Microsoft SSO instead (getMicrosoftSignInUrl above) and never calls this. Unlike
+ * loginWithEmail/db-login, this doesn't log the user in directly — it only sends an email; the
+ * actual login happens when they click the link and land back here with ?magicToken=, handled by
+ * verifyMagicLink below (see RootNavigator.tsx's effect for ?magicToken, mirroring how it already
+ * handles ?ssoToken).
+ *
+ * Uses ACCESS_API_URL, not AUTH_API_URL — unlike SAML (which has to run on the Lambda, since
+ * that's where Azure's Reply URL points), magic-link has no reason to run there: its only real
+ * dependency is Postgres (via isAuthorized()), so it runs on the same Postgres-reachable
+ * deployment Manage Access already uses instead. */
+export async function requestMagicLink(email: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/hub-auth/magic-link/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not send sign-in link.' };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
+  }
+}
+
+/** Exchanges a clicked magic-link token for a real session — see requestMagicLink above. */
+export async function verifyMagicLink(token: string): Promise<{ ok: boolean; email?: string; token?: string; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/hub-auth/magic-link/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'This link is invalid or has expired.' };
+    return { ok: true, email: data.email, token: data.token };
+  } catch {
+    return { ok: false, error: 'Could not reach the sign-in server. Please try again.' };
+  }
+}
+
 /** Real per-user profile + activity stats (backend/userProfile.js) — backs Dashboard's greeting
  * and the Settings screen's profile card/ACTIVITY grid, replacing the old mock CURRENT_USER /
  * ACTIVITY_STATS (src/data/mockData.ts). */

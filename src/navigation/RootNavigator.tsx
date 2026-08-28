@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme/tokens';
 import { useAuth } from '../context/AuthContext';
 import { appById } from '../data/mockData';
-import { verifySsoToken } from '../lib/authApi';
+import { verifySsoToken, verifyMagicLink } from '../lib/authApi';
 import LoginScreen from '../screens/LoginScreen';
 import AppDetailScreen from '../screens/AppDetailScreen';
 import DrawerNavigator from './DrawerNavigator';
@@ -20,8 +20,10 @@ const SSO_ERROR_MESSAGES: Record<string, string> = {
 
 export default function RootNavigator() {
   const { isLoggedIn, login, logout } = useAuth();
-  const [ssoError, setSsoError] = useState<string | null>(null);
-  const [verifyingSso, setVerifyingSso] = useState(false);
+  // Shared by both SSO and magic-link verification below — both funnel into LoginScreen's same
+  // generic error/verifying props, so one pair of state covers either.
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [verifyingAuth, setVerifyingAuth] = useState(false);
 
   // Microsoft SSO completes with a full-page redirect back to this app's own
   // URL (not a fetch response) — the backend's ACS endpoint appends either
@@ -37,21 +39,42 @@ export default function RootNavigator() {
 
     window.history.replaceState({}, '', window.location.pathname);
     if (token) {
-      setVerifyingSso(true);
+      setVerifyingAuth(true);
       verifySsoToken(token).then((result) => {
-        setVerifyingSso(false);
+        setVerifyingAuth(false);
         if (result.ok) {
           // `token` here is the same hub JWT verified above — reuse it as-is rather than minting
           // a new one, so it's the identical token same-origin embedded apps (e.g. Audit & CAPA)
           // can trust.
           login(result.email, token, 'sso');
         } else {
-          setSsoError(result.error || 'Sign-in could not be verified.');
+          setAuthError(result.error || 'Sign-in could not be verified.');
         }
       });
     } else if (errorCode) {
-      setSsoError(SSO_ERROR_MESSAGES[errorCode] || 'Sign-in failed. Please try again.');
+      setAuthError(SSO_ERROR_MESSAGES[errorCode] || 'Sign-in failed. Please try again.');
     }
+  }, []);
+
+  // Magic-link sign-in for non-@emamigroup.com emails (backend/magicLink.js) — same shape as the
+  // SSO effect above, but the token comes from an emailed link (?magicToken=) instead of a
+  // Microsoft redirect. @emamigroup.com never produces this param, so this can't affect SSO.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const params = new URLSearchParams(window.location.search);
+    const magicToken = params.get('magicToken');
+    if (!magicToken) return;
+
+    window.history.replaceState({}, '', window.location.pathname);
+    setVerifyingAuth(true);
+    verifyMagicLink(magicToken).then((result) => {
+      setVerifyingAuth(false);
+      if (result.ok && result.email && result.token) {
+        login(result.email, result.token, 'direct');
+      } else {
+        setAuthError(result.error || 'This link is invalid or has expired.');
+      }
+    });
   }, []);
 
   // A same-origin embedded app (e.g. MoldHealthCheck's own Logout button) can trigger a REAL hub
@@ -73,9 +96,9 @@ export default function RootNavigator() {
         <Stack.Screen name="Login">
           {() => (
             <LoginScreen
-              error={ssoError}
-              verifying={verifyingSso}
-              onDismissError={() => setSsoError(null)}
+              error={authError}
+              verifying={verifyingAuth}
+              onDismissError={() => setAuthError(null)}
               onLogin={login}
             />
           )}
