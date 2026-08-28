@@ -12,3 +12,16 @@ export function getHubEmail(): string | null {
     return null;
   }
 }
+
+/** Title-cases an email's local part as a display name — this app has no profile lookup of its
+ * own, so this is the same last-resort the hub's own backend/userProfile.js falls back to when no
+ * real name is known. */
+export function nameFromEmail(email: string): string {
+  const local = email.split('@')[0] || '';
+  const name = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+  return name || email;
+}

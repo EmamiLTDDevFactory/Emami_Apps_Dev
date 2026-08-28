@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
@@ -102,6 +102,16 @@ export default function MarketRateScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionIconBox}>
+          <Ionicons name="grid-outline" size={14} color={colors.rust} />
+        </View>
+        <View style={styles.flex1}>
+          <Text style={styles.sectionTitle}>Market Rate Entries</Text>
+          <Text style={styles.sectionSubtitle}>Fill in one row per material, then save the whole batch together</Text>
+        </View>
+      </View>
+
       <View style={styles.companyRow}>
         <Text style={styles.companyLabel}>Company Code</Text>
         <TextInput
@@ -195,6 +205,33 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 60,
   },
+  flex1: {
+    flex: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  sectionIconBox: {
+    width: 30,
+    height: 30,
+    borderRadius: radii.md,
+    backgroundColor: `${colors.rust}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    marginTop: 1,
+  },
   companyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,10 +263,20 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     backgroundColor: colors.white,
     overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 3px rgba(31,27,51,0.06)' },
+      default: {
+        shadowColor: colors.plum,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
+        elevation: 1,
+      },
+    }),
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: colors.appBg,
+    backgroundColor: `${colors.rust}0d`,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },

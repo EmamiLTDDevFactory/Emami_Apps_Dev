@@ -1,22 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { getHubEmail } from '../../../src/lib/hubEmailLogin';
-import { colors } from '../../../src/theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import InfoHeader from '../../../src/components/InfoHeader';
+import { colors, radii } from '../../../src/theme/tokens';
 
 // No login screen here at all — unlike non-ctc-expense, this app has no per-user auth gate of
-// its own. Anyone who reached /apps/market-rate/ already signed in through the hub; getHubEmail()
-// is only used to label who's entering rates (and to send as SAP's "created by" field once wired
-// up — see src/lib/marketRateApi.ts).
+// its own. Anyone who reached /apps/market-rate/ already signed in through the hub; InfoHeader's
+// login name is only a label, not a gate.
 export default function MarketRateLayout() {
-  const [hubEmail, setHubEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    setHubEmail(getHubEmail());
-  }, []);
-
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -31,21 +25,21 @@ export default function MarketRateLayout() {
           accessibilityRole="button"
           accessibilityLabel="Back to Emami Apps"
         >
-          <Text style={styles.backToHubText}>{'←'} Back to Emami Apps</Text>
+          <Ionicons name="arrow-back" size={14} color={colors.white} />
+          <Text style={styles.backToHubText}>Back to Emami Apps</Text>
         </TouchableOpacity>
 
         <View style={styles.titleBar}>
+          <View style={styles.titleIconBox}>
+            <Ionicons name="pricetags-outline" size={18} color={colors.rust} />
+          </View>
           <View style={styles.flex1}>
             <Text style={styles.title}>Market Rate</Text>
             <Text style={styles.subtitle}>Enter material market rates for SAP</Text>
           </View>
-          {hubEmail && (
-            <View style={styles.userChip}>
-              <Text style={styles.userChipLabel}>Signed in as</Text>
-              <Text style={styles.userChipEmail} numberOfLines={1}>{hubEmail}</Text>
-            </View>
-          )}
         </View>
+
+        <InfoHeader />
 
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
@@ -68,6 +62,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backToHubBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: colors.plum,
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -80,16 +77,22 @@ const styles = StyleSheet.create({
   titleBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
     backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  titleIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.md,
+    backgroundColor: `${colors.rust}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     color: colors.ink,
   },
@@ -97,19 +100,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 2,
-  },
-  userChip: {
-    alignItems: 'flex-end',
-    maxWidth: 200,
-  },
-  userChipLabel: {
-    fontSize: 10.5,
-    color: colors.inkSoft,
-  },
-  userChipEmail: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.ink,
-    marginTop: 1,
   },
 });
