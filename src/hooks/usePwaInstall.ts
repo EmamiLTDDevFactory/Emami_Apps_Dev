@@ -24,33 +24,50 @@ export interface PwaInstallState {
   promptInstall: () => Promise<PwaInstallOutcome>;
 }
 
+const isWeb = Platform.OS === 'web';
+
+/**
+ * Module-level singleton, not per-component state: `beforeinstallprompt` is a one-shot event the
+ * browser fires shortly after page load (as soon as it's evaluated the manifest/service-worker),
+ * and if nothing is listening when it fires it's gone for good — the browser never re-sends it.
+ * The only consumer of this hook is Header.tsx, which only mounts once a user is past LoginScreen
+ * (see RootNavigator) — i.e. well after the browser has likely already fired and dropped the event.
+ * Listening here at module scope instead means the listener attaches as soon as this file is
+ * evaluated, which happens at initial bundle load (this is a single, non-code-split bundle),
+ * independent of when/whether any component using the hook has mounted yet.
+ */
+let deferredEvent: any = null;
+let isStandalone = false;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+
+if (isWeb && typeof window !== 'undefined') {
+  isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true;
+
+  window.addEventListener('beforeinstallprompt', (event: Event) => {
+    event.preventDefault();
+    deferredEvent = event;
+    notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredEvent = null;
+    isStandalone = true;
+    notify();
+  });
+}
+
 export function usePwaInstall(): PwaInstallState {
-  const isSupported = Platform.OS === 'web';
-  const [deferredEvent, setDeferredEvent] = useState<any>(null);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const isSupported = isWeb;
+  const [, forceRerender] = useState(0);
 
   useEffect(() => {
     if (!isSupported) return;
-
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true
-    );
-
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredEvent(event);
-    };
-    const onInstalled = () => {
-      setDeferredEvent(null);
-      setIsStandalone(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
-    window.addEventListener('appinstalled', onInstalled);
+    const onChange = () => forceRerender((n) => n + 1);
+    listeners.add(onChange);
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', onInstalled);
+      listeners.delete(onChange);
     };
   }, [isSupported]);
 
@@ -65,7 +82,8 @@ export function usePwaInstall(): PwaInstallState {
     if (!deferredEvent) return 'unavailable';
     deferredEvent.prompt();
     const choice = await deferredEvent.userChoice;
-    setDeferredEvent(null);
+    deferredEvent = null;
+    notify();
     return choice.outcome;
   };
 
