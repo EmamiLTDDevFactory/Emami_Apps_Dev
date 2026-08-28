@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
 import { saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
+
+function todayIso(): string {
+  return new Date().toISOString().split('T')[0];
+}
 
 let nextKey = 0;
 function emptyRow(): MarketRateRow {
@@ -15,40 +20,85 @@ function emptyRow(): MarketRateRow {
     marketName: '',
     marketRate: '',
     ratePer: '',
-    igst: '',
-    sgst: '',
-    cgst: '',
-    validFrom: '',
+    validFrom: todayIso(),
   };
 }
 
-type EditableField = Exclude<keyof MarketRateRow, 'key'>;
+type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 
-const COLUMNS: { field: EditableField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
+const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
   { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
   { field: 'materialDesc', label: 'Material Description', width: 190, placeholder: 'e.g. Light Liquid Paraffin' },
   { field: 'materialType', label: 'Material Type', width: 100, placeholder: 'e.g. ROH' },
   { field: 'marketName', label: 'Market', width: 120, placeholder: 'e.g. Kolkata' },
   { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
-  { field: 'igst', label: 'IGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'sgst', label: 'SGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'cgst', label: 'CGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'validFrom', label: 'Valid From', width: 120, placeholder: 'YYYY-MM-DD' },
 ];
 
+const DATE_COL_WIDTH = 140;
 const REMOVE_COL_WIDTH = 44;
-const TABLE_WIDTH = COLUMNS.reduce((sum, c) => sum + c.width, 0) + REMOVE_COL_WIDTH;
+const TABLE_WIDTH = TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
+
+/** Valid From cell — a real date picker on every platform, not a free-text field: a raw HTML
+ * date input on web (same approach non-ctc-expense's claim date field uses, for consistent
+ * behavior across browsers), the native community picker everywhere else. */
+function DateCell({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === 'web') {
+    return (
+      // @ts-expect-error — raw DOM element, valid under react-native-web
+      <input
+        type="date"
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        aria-label={label}
+        style={{
+          width: DATE_COL_WIDTH - 20,
+          height: 36,
+          padding: '6px 10px',
+          margin: 6,
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          backgroundColor: colors.white,
+          color: colors.ink,
+          fontSize: 12.5,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
+  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View style={{ width: DATE_COL_WIDTH, paddingHorizontal: 6 }}>
+      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
+        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Text style={styles.dateBtnText}>{value}</Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display={Platform.OS === 'android' ? 'spinner' : 'default'}
+          onChange={(_event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (selected) onChange(selected.toISOString().split('T')[0]);
+          }}
+        />
+      )}
+    </View>
+  );
+}
 
 type SaveStatus = { type: 'success' | 'error'; message: string } | null;
 
 export default function MarketRateScreen() {
-  const [companyCode, setCompanyCode] = useState('1000');
   const [rows, setRows] = useState<MarketRateRow[]>(() => [emptyRow(), emptyRow(), emptyRow()]);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
 
-  const updateCell = (key: string, field: EditableField, value: string) => {
+  const updateCell = (key: string, field: keyof Omit<MarketRateRow, 'key'>, value: string) => {
     setStatus(null);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
@@ -60,37 +110,26 @@ export default function MarketRateScreen() {
 
   const onSave = async () => {
     setStatus(null);
-    if (!companyCode.trim()) {
-      setStatus({ type: 'error', message: 'Company code is required.' });
-      return;
-    }
-    const filled = rows.filter((r) => Object.entries(r).some(([k, v]) => k !== 'key' && v.trim()));
+    const filled = rows.filter((r) => TEXT_COLUMNS.some((c) => r[c.field].trim()));
     if (filled.length === 0) {
       setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
       return;
     }
-    const REQUIRED: EditableField[] = ['materialCode', 'materialDesc', 'materialType', 'marketName', 'marketRate', 'ratePer', 'validFrom'];
-    const incomplete = filled.find((r) => REQUIRED.some((f) => !r[f].trim()));
+    const REQUIRED: TextField[] = ['materialCode', 'materialDesc', 'materialType', 'marketName', 'marketRate', 'ratePer'];
+    const incomplete = filled.find((r) => REQUIRED.some((f) => !r[f].trim()) || !r.validFrom.trim());
     if (incomplete) {
-      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, market, rate, UOM, and valid-from date. GST fields default to 0 if left blank.' });
+      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, market, rate, UOM, and valid-from date.' });
       return;
     }
-    const NUMERIC: EditableField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
-    const invalidNumber = filled.find((r) => NUMERIC.some((f) => r[f].trim() && Number.isNaN(Number(r[f]))));
-    if (invalidNumber) {
-      setStatus({ type: 'error', message: 'Market rate and GST fields must be numbers.' });
-      return;
-    }
-    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-    const invalidDate = filled.find((r) => !DATE_RE.test(r.validFrom.trim()));
-    if (invalidDate) {
-      setStatus({ type: 'error', message: `"${invalidDate.validFrom}" isn't a valid date — use YYYY-MM-DD.` });
+    const invalidRate = filled.find((r) => Number.isNaN(Number(r.marketRate)));
+    if (invalidRate) {
+      setStatus({ type: 'error', message: `"${invalidRate.marketRate}" isn't a valid market rate.` });
       return;
     }
 
     setSaving(true);
     try {
-      await saveMarketRates(filled, companyCode.trim());
+      await saveMarketRates(filled);
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
       setRows([emptyRow(), emptyRow(), emptyRow()]);
     } catch (err) {
@@ -112,30 +151,19 @@ export default function MarketRateScreen() {
         </View>
       </View>
 
-      <View style={styles.companyRow}>
-        <Text style={styles.companyLabel}>Company Code</Text>
-        <TextInput
-          value={companyCode}
-          onChangeText={setCompanyCode}
-          placeholder="e.g. 1000"
-          placeholderTextColor={colors.inkSoft}
-          style={styles.companyInput}
-          accessibilityLabel="Company code"
-        />
-      </View>
-
       <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
         <View style={[styles.card, { width: TABLE_WIDTH }]}>
           <View style={styles.tableHeaderRow}>
-            {COLUMNS.map((col) => (
+            {TEXT_COLUMNS.map((col) => (
               <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
             ))}
+            <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
             <View style={{ width: REMOVE_COL_WIDTH }} />
           </View>
 
           {rows.map((row, i) => (
             <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
-              {COLUMNS.map((col) => (
+              {TEXT_COLUMNS.map((col) => (
                 <TextInput
                   key={col.field}
                   value={row[col.field]}
@@ -148,6 +176,11 @@ export default function MarketRateScreen() {
                   accessibilityLabel={`${col.label}, row ${i + 1}`}
                 />
               ))}
+              <DateCell
+                value={row.validFrom}
+                onChange={(v) => updateCell(row.key, 'validFrom', v)}
+                label={`Valid from date, row ${i + 1}`}
+              />
               <Pressable
                 onPress={() => removeRow(row.key)}
                 disabled={rows.length === 1}
@@ -232,28 +265,6 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     marginTop: 1,
   },
-  companyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-  },
-  companyLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  companyInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    backgroundColor: colors.white,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: colors.ink,
-    width: 120,
-  },
   tableScroll: {
     flexGrow: 0,
   },
@@ -303,6 +314,21 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: 12,
     paddingHorizontal: 10,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.white,
+  },
+  dateBtnText: {
+    fontSize: 12.5,
+    color: colors.ink,
   },
   removeBtn: {
     height: '100%',

@@ -6,6 +6,11 @@ import axios from 'axios';
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_MARKET_RATE_SRV';
 const ENTITY_SET = 'ZMarketRateHeaderSet';
 
+// Not exposed in the form — every batch submitted from this app is for the same company, and
+// SAP's schema still requires GST fields per line even though this form doesn't collect them.
+const DEFAULT_COMPANY_CODE = '1000';
+const DEFAULT_GST = '0.00';
+
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
   headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
@@ -20,10 +25,7 @@ export interface MarketRateRow {
   marketName: string;
   marketRate: string;
   ratePer: string;
-  igst: string;
-  sgst: string;
-  cgst: string;
-  validFrom: string; // yyyy-mm-dd, as typed
+  validFrom: string; // yyyy-mm-dd
 }
 
 function randomRateId(): string {
@@ -33,22 +35,18 @@ function randomRateId(): string {
   return `BATCH-${suffix}`;
 }
 
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
 // SAP wants year/month as separate fields alongside the full date, all derived from the one
-// "Valid From" date the user actually types — no reason to ask for three separate inputs.
+// "Valid From" date the user actually picks — no reason to ask for three separate inputs.
 function splitDate(validFrom: string): { zyear: string; zmonth: string; zdate: string } {
   const [y, m] = validFrom.split('-');
   return { zyear: y, zmonth: m, zdate: `${validFrom}T00:00:00` };
 }
 
-function toSapLineItem(row: MarketRateRow, rateId: string, companyCode: string) {
+function toSapLineItem(row: MarketRateRow, rateId: string) {
   const { zyear, zmonth, zdate } = splitDate(row.validFrom);
   return {
     RateId: rateId,
-    CompanyCode: companyCode,
+    CompanyCode: DEFAULT_COMPANY_CODE,
     Zyear: zyear,
     Zmonth: zmonth,
     Zdate: zdate,
@@ -58,18 +56,18 @@ function toSapLineItem(row: MarketRateRow, rateId: string, companyCode: string) 
     Mtart: row.materialType,
     Zrate: row.marketRate,
     ZratePer: row.ratePer,
-    Igst: row.igst || '0.00',
-    Sgst: row.sgst || '0.00',
-    Cgst: row.cgst || '0.00',
+    Igst: DEFAULT_GST,
+    Sgst: DEFAULT_GST,
+    Cgst: DEFAULT_GST,
     ActiveInd: 'X',
   };
 }
 
-export async function saveMarketRates(rows: MarketRateRow[], companyCode: string): Promise<void> {
+export async function saveMarketRates(rows: MarketRateRow[]): Promise<void> {
   const rateId = randomRateId();
   const payload = {
     RateId: rateId,
-    ToMarketRates: rows.map((row) => toSapLineItem(row, rateId, companyCode)),
+    ToMarketRates: rows.map((row) => toSapLineItem(row, rateId)),
   };
   const result = await sapClient.post(`/${ENTITY_SET}`, payload);
   // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
