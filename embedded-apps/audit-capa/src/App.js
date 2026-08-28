@@ -32,7 +32,7 @@ function App() {
     const autoLogin = async () => {
 
       const hubToken =
-        localStorage.getItem("token");
+        localStorage.getItem("emami_apps_session_token");
 
       if (!hubToken) {
         return;
