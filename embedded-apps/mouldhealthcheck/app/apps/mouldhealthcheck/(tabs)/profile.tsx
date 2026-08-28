@@ -48,7 +48,14 @@ export default function Profile() {
 
   const onPress = (opt: Option) => {
     Haptics.selectionAsync();
-    if (opt.action === "logout") return handleLogout();
+    if (opt.action === "logout") {
+      handleLogout();
+      // No login screen exists to send someone back to anymore — role resolution is automatic
+      // and tied to the hub's own session, so "logging out" here means leaving the app entirely,
+      // same as non-ctc-expense/rc-portal's own logout does.
+      if (typeof window !== "undefined") window.location.href = "/";
+      return;
+    }
     if (opt.route) router.push(opt.route as any);
   };
 

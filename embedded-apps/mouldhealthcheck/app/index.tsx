@@ -13,7 +13,7 @@ export default function Splash() {
   const { isPhone } = useBreakpoint();
 
   useEffect(() => {
-    const t = setTimeout(() => router.replace("/apps/mouldhealthcheck/welcome"), 1900);
+    const t = setTimeout(() => router.replace("/apps/mouldhealthcheck"), 1900);
     return () => clearTimeout(t);
   }, []);
 

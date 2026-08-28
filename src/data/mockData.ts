@@ -33,11 +33,10 @@ export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations'];
 export const EMBEDDED_APP_URLS: Record<string, string> = {
   hr: Platform.OS === 'web' ? '/apps/dispatch-tracker' : 'https://main.d24jo2310130zc.amplifyapp.com', // Dispatch Tracker
   finance: Platform.OS === 'web' ? '/apps/rc-portal' : 'https://main.due5mcy3my82.amplifyapp.com', // RC Portal
-  // MoldHealthCheck's auth-check redirect only lives in its own top-level
-  // splash screen (app/index.tsx), which is skipped when navigating straight
-  // to /apps/mouldhealthcheck — so point directly at the same screen that
-  // splash itself redirects to, instead of the bare app root.
-  inventory: Platform.OS === 'web' ? '/apps/mouldhealthcheck/welcome' : 'https://mould.emamiapps.in', // MoldHealthCheck
+  // MoldHealthCheck no longer has its own login/welcome screens — the bare app root
+  // (app/apps/mouldhealthcheck/index.tsx) now resolves the signed-in hub user's role via SAP
+  // automatically and drops them straight into the tabs, so this can point there directly again.
+  inventory: Platform.OS === 'web' ? '/apps/mouldhealthcheck' : 'https://mould.emamiapps.in', // MoldHealthCheck
   expense: Platform.OS === 'web' ? '/apps/expense' : 'https://non-ctc-expense.onrender.com/zexpense/', // Non CTC Expense
   'audit-capa': Platform.OS === 'web' ? '/apps/audit-capa' : 'https://audit.emamiapps.in', // Audit & CAPA
   // Market Rate has no separate native deployment yet (see embedded-apps/market-rate) — same
