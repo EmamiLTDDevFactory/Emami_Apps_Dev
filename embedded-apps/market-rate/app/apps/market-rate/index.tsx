@@ -20,6 +20,9 @@ function emptyRow(): MarketRateRow {
     marketName: '',
     marketRate: '',
     ratePer: '',
+    igst: '',
+    sgst: '',
+    cgst: '',
     validFrom: todayIso(),
   };
 }
@@ -33,6 +36,9 @@ const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholde
   { field: 'marketName', label: 'Market', width: 120, placeholder: 'e.g. Kolkata' },
   { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
+  { field: 'igst', label: 'IGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'sgst', label: 'SGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'cgst', label: 'CGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
 ];
 
 const DATE_COL_WIDTH = 140;
@@ -121,9 +127,10 @@ export default function MarketRateScreen() {
       setStatus({ type: 'error', message: 'Every row needs a material code, description, type, market, rate, UOM, and valid-from date.' });
       return;
     }
-    const invalidRate = filled.find((r) => Number.isNaN(Number(r.marketRate)));
-    if (invalidRate) {
-      setStatus({ type: 'error', message: `"${invalidRate.marketRate}" isn't a valid market rate.` });
+    const NUMERIC: TextField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
+    const invalidNumber = filled.find((r) => NUMERIC.some((f) => r[f].trim() && Number.isNaN(Number(r[f]))));
+    if (invalidNumber) {
+      setStatus({ type: 'error', message: 'Market rate and GST fields must be numbers.' });
       return;
     }
 

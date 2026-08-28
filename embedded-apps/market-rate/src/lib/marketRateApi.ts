@@ -6,10 +6,8 @@ import axios from 'axios';
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_MARKET_RATE_SRV';
 const ENTITY_SET = 'ZMarketRateHeaderSet';
 
-// Not exposed in the form — every batch submitted from this app is for the same company, and
-// SAP's schema still requires GST fields per line even though this form doesn't collect them.
-const DEFAULT_COMPANY_CODE = '1000';
-const DEFAULT_GST = '0.00';
+// Not exposed in the form — sent blank per instruction, not defaulted to any particular company.
+const DEFAULT_COMPANY_CODE = '';
 
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
@@ -25,6 +23,9 @@ export interface MarketRateRow {
   marketName: string;
   marketRate: string;
   ratePer: string;
+  igst: string;
+  sgst: string;
+  cgst: string;
   validFrom: string; // yyyy-mm-dd
 }
 
@@ -56,9 +57,9 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
     Mtart: row.materialType,
     Zrate: row.marketRate,
     ZratePer: row.ratePer,
-    Igst: DEFAULT_GST,
-    Sgst: DEFAULT_GST,
-    Cgst: DEFAULT_GST,
+    Igst: row.igst || '0.00',
+    Sgst: row.sgst || '0.00',
+    Cgst: row.cgst || '0.00',
     ActiveInd: 'X',
   };
 }
