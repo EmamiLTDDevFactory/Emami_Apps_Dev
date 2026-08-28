@@ -54,6 +54,23 @@ function RootLayoutNav() {
     }
   }, [isAuthenticated, isInitializing, segments]);
 
+  // Final safety net: plant one extra history entry, once, right on top of the first real
+  // destination (target from the settle above) — so a long browsing session that's already used
+  // up whatever real pages existed before this one can't send the very first Back press straight
+  // to a browser-internal page (e.g. Chrome's blank/Incognito page), where our JS would be torn
+  // down before it ever got a chance to redirect anywhere. Goes through router.push() — NOT a raw
+  // window.history.pushState() like an earlier version of this fix did — because bypassing Expo
+  // Router's own API desynced its internal navigation stack from the real browser history,
+  // which is what broke Claim Details' back arrow and the Dashboard tab press afterward. Reusing
+  // lastAutoRedirect.current (the exact path just settled on) instead of the raw current URL also
+  // guarantees this can't accidentally duplicate a transient mid-boot screen.
+  const hasAnchoredRef = useRef(false);
+  useEffect(() => {
+    if (hasAnchoredRef.current || !lastAutoRedirect.current) return;
+    hasAnchoredRef.current = true;
+    router.push(lastAutoRedirect.current as Parameters<typeof router.push>[0]);
+  }, [isAuthenticated, isInitializing, segments]);
+
   // Browser Back should exit cleanly to the EmamiApps hub Dashboard only once there's no more
   // in-app history to go back to — never fall through to whatever entry happens to be sitting
   // behind this app's own screens. Checking canGoBack() *inside* the popstate handler is too
@@ -67,20 +84,6 @@ function RootLayoutNav() {
   useEffect(() => {
     wasAtRootRef.current = !router.canGoBack();
   });
-
-  // Final safety net: plant one extra same-document history entry the moment this app loads.
-  // Without it, if a long browsing session has already used up whatever real pages existed
-  // before this one, the very first Back press can jump straight past our app to a browser-
-  // internal page (e.g. Chrome's own blank/Incognito page) — our JS is torn down as part of that
-  // navigation and never gets a chance to run, so it can't redirect anywhere. This anchor entry
-  // duplicates the current URL once, so that first Back press always resolves within our own
-  // page instead (same URL, no reload), where the popstate handler above is guaranteed to run
-  // and can redirect to the hub correctly. Doesn't touch Expo Router's own APIs, so it can't
-  // desync its internal route stack.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.history.pushState(window.history.state, '', window.location.href);
-  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
