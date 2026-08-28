@@ -414,7 +414,7 @@ export default function Sidebar() {
                             "authToken"
                         );
 
-                        window.location.href = "/";
+                        window.location.href = "https://www.emamiapps.in/";
                     }}
                     sx={{
                         color: "white",

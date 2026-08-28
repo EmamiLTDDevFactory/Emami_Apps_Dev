@@ -31,11 +31,18 @@ export default function Layout() {
     const signInFromHubSession = async () => {
       const hubToken = localStorage.getItem(HUB_SESSION_TOKEN_KEY);
 
+      // if (!hubToken) {
+      //   setErrorMessage("Please sign in to Emami Apps first.");
+      //   setStatus("error");
+      //   return;
+      // }
       if (!hubToken) {
-        setErrorMessage("Please sign in to Emami Apps first.");
-        setStatus("error");
+        window.location.replace(
+          "https://www.emamiapps.in/"
+        );
         return;
       }
+
 
       try {
         const data = await apiPost("/auth/login", { hubToken });
@@ -44,12 +51,24 @@ export default function Layout() {
         localStorage.setItem("currentUser", JSON.stringify(data.user));
 
         setStatus("ready");
-      } catch (error) {
-        console.error("Sign-in via Emami Apps session failed:", error);
-        setErrorMessage(
-          error?.message || "Could not sign you in. Please try again from Emami Apps."
+      }
+      // catch (error) {
+      //   console.error("Sign-in via Emami Apps session failed:", error);
+      //   setErrorMessage(
+      //     error?.message || "Could not sign you in. Please try again from Emami Apps."
+      //   );
+      //   setStatus("error");
+      // }
+      catch (error) {
+
+        console.error(
+          "Sign-in via Emami Apps session failed:",
+          error
         );
-        setStatus("error");
+
+        window.location.replace(
+          "https://www.emamiapps.in/"
+        );
       }
     };
 
@@ -96,7 +115,7 @@ export default function Layout() {
         <Typography color="error">{errorMessage}</Typography>
         <Button
           variant="contained"
-          onClick={() => { window.location.href = "/"; }}
+          onClick={() => { window.location.href = "https://www.emamiapps.in"; }}
           sx={{
             borderRadius: 3,
             background: "linear-gradient(135deg,#004A8D,#0077CC)",

@@ -8,12 +8,14 @@ import AppRoutes from "./routes/AppRoutes";
 // import Login from "./pages/Login";
 
 import {
-    useEffect,
+  useEffect,
 } from "react";
 
 import {
-    generateDueDateReminders,
+  generateDueDateReminders,
 } from "./utils/reminders";
+// import { useEffect } from "react";
+import axios from "axios";
 
 function App() {
 
@@ -23,20 +25,66 @@ function App() {
       console.error("Unable to generate reminders:", error)
     );
 
-}, []);
+  }, []);
+
+  useEffect(() => {
+
+    const autoLogin = async () => {
+
+      const hubToken =
+        localStorage.getItem("token");
+
+      if (!hubToken) {
+        return;
+      }
+
+      try {
+
+        const response =
+          await axios.post(
+            "/api/auth/login",
+            {
+              hubToken
+            }
+          );
+
+        localStorage.setItem(
+          "currentUser",
+          JSON.stringify(
+            response.data.user
+          )
+        );
+
+        localStorage.setItem(
+          "auditToken",
+          response.data.token
+        );
+
+      } catch (error) {
+
+        console.error(
+          "Auto login failed",
+          error
+        );
+      }
+    };
+
+    autoLogin();
+
+  }, []);
   return (
     <BrowserRouter basename={process.env.PUBLIC_URL}>
-  
-  {/* { !Login && ( */}
+
+      {/* { !Login && ( */}
       {/* <Box
         sx={{
           display: "flex",
           height: "100vh",
         }}
       > */}
-        {/* <Sidebar /> */}
+      {/* <Sidebar /> */}
 
-        {/* <Box
+      {/* <Box
           sx={{
             flex: 1,
             display: "flex",
@@ -44,22 +92,22 @@ function App() {
             bgcolor: "#F8FAFC",
           }}
         > */}
-          {/* <Navbar /> */}
+      {/* <Navbar /> */}
 
-          
 
-          {/* <Box
+
+      {/* <Box
             sx={{
               p: 3,
               overflow: "auto",
             }}
           > */}
-            <AppRoutes />
-          {/* </Box> */}
-        {/* </Box> */}
+      <AppRoutes />
+      {/* </Box> */}
+      {/* </Box> */}
       {/* </Box> */}
     </BrowserRouter>
-          
+
   );
 }
 
