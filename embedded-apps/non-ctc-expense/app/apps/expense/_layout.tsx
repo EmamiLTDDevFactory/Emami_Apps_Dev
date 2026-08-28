@@ -19,6 +19,14 @@ function RootLayoutNav() {
   // a web navigation) doesn't push a second duplicate history entry — while
   // still firing for real transitions like a successful login or logout.
   const lastAutoRedirect = useRef<string | null>(null);
+  // Whether this effect has resolved once already since the app loaded. AuthContext's
+  // isInitializing already stays true for the entire hub-email auto-login attempt, so by the
+  // time it flips false, isAuthenticated already reflects the real outcome — there's no need to
+  // land on /login first and immediately correct course from there. Landing on the right screen
+  // in one hop (rather than /login then (tabs)) is what avoids stacking an extra, invisible
+  // history entry during boot — same effect as RC Portal's equivalent flow, which never
+  // navigates away from its starting URL at all during auto-login.
+  const hasSettledOnce = useRef(false);
 
   useEffect(() => {
     if (isInitializing) return;
@@ -26,7 +34,10 @@ function RootLayoutNav() {
     const inAuthGroup = segments[0] === 'apps' && segments[1] === 'expense' && segments[2] === 'login';
 
     let target: string | null = null;
-    if (!isAuthenticated && !inAuthGroup) {
+    if (!hasSettledOnce.current) {
+      hasSettledOnce.current = true;
+      target = isAuthenticated ? '/apps/expense/(tabs)' : '/apps/expense/login';
+    } else if (!isAuthenticated && !inAuthGroup) {
       target = '/apps/expense/login';
     } else if (isAuthenticated && inAuthGroup) {
       target = '/apps/expense/(tabs)';
@@ -43,21 +54,44 @@ function RootLayoutNav() {
     }
   }, [isAuthenticated, isInitializing, segments]);
 
-  // Browser Back should always exit cleanly to the EmamiApps hub Dashboard once there's no more
+  // Browser Back should exit cleanly to the EmamiApps hub Dashboard only once there's no more
   // in-app history to go back to — never fall through to whatever entry happens to be sitting
-  // behind this app's own screens (which could be a stale bounce, or nothing at all). Every other
-  // Back press (where canGoBack() is true — e.g. leaving a Claim Details screen) is untouched and
-  // keeps working exactly as it does today.
+  // behind this app's own screens. Checking canGoBack() *inside* the popstate handler is too
+  // late: by then the pop has already happened, so landing on the app's own root screen (e.g.
+  // Claim Details' own back arrow correctly resolving to (tabs)) also reads as "canGoBack() is
+  // now false" and would wrongly get treated as "exit the app" even though that back press was
+  // completely legitimate. wasAtRootRef instead records whether we were ALREADY at the root
+  // *before* this pop — only that case means there's truly nothing left inside the app, so only
+  // that case exits. Every in-app back press that merely arrives at the root is untouched.
+  const wasAtRootRef = useRef(!router.canGoBack());
+  useEffect(() => {
+    wasAtRootRef.current = !router.canGoBack();
+  });
+
+  // Final safety net: plant one extra same-document history entry the moment this app loads.
+  // Without it, if a long browsing session has already used up whatever real pages existed
+  // before this one, the very first Back press can jump straight past our app to a browser-
+  // internal page (e.g. Chrome's own blank/Incognito page) — our JS is torn down as part of that
+  // navigation and never gets a chance to run, so it can't redirect anywhere. This anchor entry
+  // duplicates the current URL once, so that first Back press always resolves within our own
+  // page instead (same URL, no reload), where the popstate handler above is guaranteed to run
+  // and can redirect to the hub correctly. Doesn't touch Expo Router's own APIs, so it can't
+  // desync its internal route stack.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.history.pushState(window.history.state, '', window.location.href);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handlePopState = () => {
-      if (!router.canGoBack()) {
+      if (wasAtRootRef.current) {
         window.location.replace('/');
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [router]);
+  }, []);
 
   if (isInitializing) {
     return (

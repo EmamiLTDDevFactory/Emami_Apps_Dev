@@ -77,6 +77,17 @@ function useExitToHubOnBack() {
     depthRef.current += 1;
   }, [location]);
 
+  // Final safety net: plant one extra same-document history entry the moment this app loads.
+  // Without it, if a long browsing session has already used up whatever real pages existed
+  // before this one, the very first Back press can jump straight past our app to a browser-
+  // internal page (e.g. Chrome's own blank/Incognito page) — our JS is torn down as part of that
+  // navigation and never gets a chance to run, so it can't redirect anywhere. This anchor entry
+  // duplicates the current URL once, so that first Back press always resolves within our own
+  // page instead (same URL, no reload), where the popstate handler below is guaranteed to run.
+  useEffect(() => {
+    window.history.pushState(window.history.state, '', window.location.href);
+  }, []);
+
   useEffect(() => {
     const handlePopState = () => {
       if (depthRef.current <= 0) {
