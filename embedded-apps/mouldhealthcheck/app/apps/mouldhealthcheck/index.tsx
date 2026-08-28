@@ -26,6 +26,34 @@ function mapSapRole(sapRole: unknown): "Admin" | "User" {
   return sapRole === "Approver" || sapRole === "Reviewer" ? "Admin" : "User";
 }
 
+/**
+ * ZmoldRole was only described in terms of its Role values, not vendor details — but
+ * SparePart/PreventiveMaint/InpSum/InspectionChecklist all fall back to user?.matnr /
+ * user?.vendorCode / user?.Vendor when a screen is opened without explicit navigation params.
+ * Dashboard.tsx already knows how to derive that data from just an email (ZMouldDetailsSet
+ * filtered by SmtpAddr) — reusing that exact same call here means every screen's user object has
+ * real vendor info from the moment of entry, not only once Dashboard happens to have loaded.
+ * Best-effort: an Admin/Approver reviewing other people's submissions may have no material record
+ * of their own here at all, and that's fine — it only feeds fallbacks, not the role gate itself.
+ */
+async function fetchVendorDetails(email: string) {
+  try {
+    const { data } = await api.get("/ZMM_MOULD_CARE_SRV/ZMouldDetailsSet", {
+      params: { "$filter": `SmtpAddr eq '${email}'`, "$format": "json" },
+    });
+    const record = data?.d?.results?.[0];
+    if (!record) return {};
+    return {
+      vendorCode: record.Lifnr,
+      vendorName: record.Name1,
+      matnr: record.Matnr,
+      Vendor: record.Lifnr,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export default function MouldEntryGate() {
   const router = useRouter();
   const { setUser } = useAuth();
@@ -61,7 +89,8 @@ export default function MouldEntryGate() {
       }
 
       const role = mapSapRole(record.Role ?? record.role);
-      setUser({ ...record, Email: email, email, Role: role });
+      const vendorDetails = await fetchVendorDetails(email.trim());
+      setUser({ ...vendorDetails, ...record, Email: email, email, Role: role });
       router.replace("/apps/mouldhealthcheck/(tabs)");
     } catch (e: any) {
       setError(e?.message || "Could not verify your MoldHealthCheck access. Please try again.");
