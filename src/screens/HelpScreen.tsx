@@ -8,6 +8,8 @@ import {
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { useAuth } from '../context/AuthContext';
+import { logEvent } from '../lib/authApi';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -126,6 +128,7 @@ export default function HelpScreen() {
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const unlockedAppIds = useUnlockedAppIds();
+  const { userEmail } = useAuth();
 
   const toggleItem = (id: string) => {
     setOpenItems((prev) => {
@@ -149,6 +152,7 @@ export default function HelpScreen() {
 
   const openApp = (appId: string) => {
     if (!unlockedAppIds.has(appId)) return;
+    if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
     navigation.navigate('AppDetail', { appId });
   };
 

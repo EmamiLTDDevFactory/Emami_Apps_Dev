@@ -5,12 +5,23 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { RECENT, appById } from '../data/mockData';
+import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { useAuth } from '../context/AuthContext';
+import { logEvent } from '../lib/authApi';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
 export default function RecentScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const unlockedAppIds = useUnlockedAppIds();
+  const { userEmail } = useAuth();
   const [query, setQuery] = useState('');
+
+  const openApp = (appId: string) => {
+    if (!unlockedAppIds.has(appId)) return; // was missing — this page could open apps a Viewer isn't granted
+    if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
+    navigation.navigate('AppDetail', { appId });
+  };
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
@@ -25,7 +36,7 @@ export default function RecentScreen() {
             return (
               <Pressable
                 key={r.id}
-                onPress={() => navigation.navigate('AppDetail', { appId: app.id })}
+                onPress={() => openApp(app.id)}
                 style={[styles.row, i < RECENT.length - 1 && styles.rowBorder]}
               >
                 <View style={[styles.icon, { backgroundColor: `${accent}1f` }]}>

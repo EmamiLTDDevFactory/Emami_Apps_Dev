@@ -7,18 +7,23 @@ import { NAV, APPS } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { logEvent } from '../lib/authApi';
 import EmpAppMark from '../components/EmpAppMark';
 import { Lock } from 'lucide-react-native';
 
 export default function CustomDrawerContent({ state, navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const { favorites } = useFavorites();
-  const { access } = useAuth();
+  const { access, userEmail } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
   const favoriteApps = APPS.filter((a) => favorites.has(a.id));
   const activeRoute = state.routeNames[state.index];
+  // The always-visible "Quick access" strip below is likely the single most common way a favorite
+  // app gets opened, but it never logged APP_OPEN — undercounting Settings' Apps Opened stat and
+  // per-app bars for exactly the apps a user cares about most.
   const onOpenApp = (app: (typeof APPS)[number]) => {
     if (!unlockedAppIds.has(app.id)) return;
+    if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     (navigation as any).navigate('AppDetail', { appId: app.id });
   };
   // Manage Access is only for Super Admin/Admin (see UserAccessScreen.tsx, which enforces the

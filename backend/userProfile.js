@@ -92,16 +92,16 @@ async function getLastSessionDuration(userId) {
     try {
         const { rows } = await pool.query(
             `WITH last_end AS (
-                 SELECT created_at AS end_at FROM emami_apps.events
+                 SELECT occurred_at AS end_at FROM emami_apps.events
                  WHERE user_id = $1 AND event_type = 'SESSION_END'
-                 ORDER BY created_at DESC LIMIT 1
+                 ORDER BY occurred_at DESC LIMIT 1
              )
              SELECT
                  (SELECT end_at FROM last_end) AS end_at,
-                 (SELECT created_at FROM emami_apps.events, last_end
+                 (SELECT occurred_at FROM emami_apps.events, last_end
                   WHERE user_id = $1 AND event_type IN ('SESSION_START', 'LOGIN')
-                    AND created_at <= last_end.end_at
-                  ORDER BY created_at DESC LIMIT 1) AS start_at`,
+                    AND occurred_at <= last_end.end_at
+                  ORDER BY occurred_at DESC LIMIT 1) AS start_at`,
             [userId]
         );
         const row = rows[0];

@@ -129,7 +129,8 @@ async function runMigrations() {
     // mobile app tracking phones, not this hub's email-based Microsoft SSO / direct email login,
     // which never has a device id. Relax device_id and key identity on email instead.
     // user_profile_stats/user_most_used_app/user_time_spent are views computed from
-    // emami_apps.events (see userProfile.js) — nothing to migrate on those, they're read-only.
+    // emami_apps.events (see userProfile.js) — read-only, but see the user_profile_stats
+    // migration below, which does need to redefine one of its columns.
     try {
         await pool.query(`ALTER TABLE emami_apps.users ALTER COLUMN device_id DROP NOT NULL`);
         await pool.query(`
@@ -146,6 +147,42 @@ async function runMigrations() {
         console.log('[postgres] User profile schema up to date (users.email unique, device_id optional).');
     } catch (err) {
         console.error('[postgres] User profile migration failed:', err.message);
+    }
+
+    // user_profile_stats.favorites_added used to be count(FAVORITE_ADD) - count(FAVORITE_REMOVE) —
+    // a net delta, not what the "Favorites Added" label on Settings actually says. It also went
+    // negative for any user who removed one of FavoritesContext.tsx's two default favorites
+    // ('expense', 'hr'), since those are seeded into client state without ever logging a
+    // FAVORITE_ADD to pair against the eventual REMOVE. CREATE OR REPLACE VIEW is safe here since
+    // this only changes one column's expression, not the column list/order/types.
+    try {
+        await pool.query(`
+            CREATE OR REPLACE VIEW emami_apps.user_profile_stats AS
+             SELECT u.user_id,
+                u.device_id,
+                u.name,
+                u.email,
+                u.mobile,
+                u.role,
+                u.status,
+                u.last_login_at,
+                count(*) FILTER (WHERE (e.event_type = 'SESSION_START'::text)) AS sessions_total,
+                count(*) FILTER (WHERE (e.event_type = 'LOGIN'::text)) AS logins,
+                COALESCE(ts.time_spent, '00:00:00'::interval) AS time_spent,
+                count(*) FILTER (WHERE (e.event_type = 'APP_OPEN'::text)) AS apps_opened,
+                count(*) FILTER (WHERE (e.event_type = 'DOWNLOAD'::text)) AS downloads,
+                count(*) FILTER (WHERE (e.event_type = 'FAVORITE_ADD'::text)) AS favorites_added,
+                count(*) FILTER (WHERE (e.event_type = 'NOTIFICATION_READ'::text)) AS notifications_read,
+                mu.most_used_app
+               FROM (((emami_apps.users u
+                 LEFT JOIN emami_apps.events e ON ((e.user_id = u.user_id)))
+                 LEFT JOIN emami_apps.user_time_spent ts ON ((ts.user_id = u.user_id)))
+                 LEFT JOIN emami_apps.user_most_used_app mu ON ((mu.user_id = u.user_id)))
+              GROUP BY u.user_id, u.device_id, u.name, u.email, u.mobile, u.role, u.status, u.last_login_at, ts.time_spent, mu.most_used_app
+        `);
+        console.log('[postgres] user_profile_stats view up to date (favorites_added is a count, not a net delta).');
+    } catch (err) {
+        console.error('[postgres] user_profile_stats view migration failed:', err.message);
     }
 }
 

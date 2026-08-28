@@ -6,8 +6,10 @@ import ScreenScaffold from '../components/ScreenScaffold';
 import FilterBar from '../components/FilterBar';
 import AppGrid from '../components/AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
+import { useAuth } from '../context/AuthContext';
 import { useFilteredApps } from '../hooks/useFilteredApps';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { logEvent } from '../lib/authApi';
 import { colors, fonts } from '../theme/tokens';
 import type { AppItem, CategoryFilter, SortOption } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -20,6 +22,7 @@ interface AppListScreenProps {
 export default function AppListScreen({ title, onlyFavorites }: AppListScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { favorites, toggleFavorite } = useFavorites();
+  const { userEmail } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CategoryFilter>('All');
@@ -27,9 +30,19 @@ export default function AppListScreen({ title, onlyFavorites }: AppListScreenPro
 
   const apps = useFilteredApps({ query, category, sort, favorites, onlyFavorites });
 
+  // This screen (All Apps and, via onlyFavorites, the dedicated Favorites list) used to navigate/
+  // toggle without logging APP_OPEN or FAVORITE_ADD/REMOVE at all — only HomeScreen's own grid did
+  // — so Settings' Apps Opened count and per-app bars, and Favorites Added, undercounted whatever
+  // usage came through here instead of the Home grid.
   const openApp = (app: AppItem) => {
     if (!unlockedAppIds.has(app.id)) return;
+    if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     navigation.navigate('AppDetail', { appId: app.id });
+  };
+
+  const onToggleFavorite = (id: string) => {
+    if (userEmail) logEvent(userEmail, favorites.has(id) ? 'FAVORITE_REMOVE' : 'FAVORITE_ADD');
+    toggleFavorite(id);
   };
 
   return (
@@ -42,7 +55,7 @@ export default function AppListScreen({ title, onlyFavorites }: AppListScreenPro
           favorites={favorites}
           query={query}
           onOpenApp={openApp}
-          onToggleFavorite={toggleFavorite}
+          onToggleFavorite={onToggleFavorite}
           unlockedAppIds={unlockedAppIds}
         />
       </View>
