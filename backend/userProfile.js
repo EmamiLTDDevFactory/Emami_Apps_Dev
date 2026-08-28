@@ -71,6 +71,71 @@ function formatTimeSpent(interval) {
     return [hours ? `${hours}h` : null, minutes ? `${minutes}m` : null].filter(Boolean).join(' ') || '—';
 }
 
+/** Same idea as formatTimeSpent but for one session's length specifically, which is often under a
+ * minute (formatTimeSpent's hours/minutes granularity would just show "—" for those) — takes a
+ * plain second count instead of a Postgres interval. */
+function formatSeconds(totalSeconds) {
+    if (totalSeconds == null || totalSeconds < 0) return null;
+    const s = Math.round(totalSeconds);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+}
+
+/** The most recently *completed* session's length — the last SESSION_END and whichever
+ * LOGIN/SESSION_START immediately preceded it. Only ever fed by client-side logout()
+ * (AuthContext.tsx fires SESSION_END) — a session with no matching end yet (still open, or the
+ * tab was just closed without an explicit sign-out) is reported as null, not guessed at. */
+async function getLastSessionDuration(userId) {
+    try {
+        const { rows } = await pool.query(
+            `WITH last_end AS (
+                 SELECT created_at AS end_at FROM emami_apps.events
+                 WHERE user_id = $1 AND event_type = 'SESSION_END'
+                 ORDER BY created_at DESC LIMIT 1
+             )
+             SELECT
+                 (SELECT end_at FROM last_end) AS end_at,
+                 (SELECT created_at FROM emami_apps.events, last_end
+                  WHERE user_id = $1 AND event_type IN ('SESSION_START', 'LOGIN')
+                    AND created_at <= last_end.end_at
+                  ORDER BY created_at DESC LIMIT 1) AS start_at`,
+            [userId]
+        );
+        const row = rows[0];
+        if (!row?.start_at || !row?.end_at) return null;
+        const seconds = (new Date(row.end_at).getTime() - new Date(row.start_at).getTime()) / 1000;
+        return formatSeconds(seconds);
+    } catch (err) {
+        console.error('[userProfile] Failed to compute last session duration:', err.message);
+        return null;
+    }
+}
+
+/** Top apps by how many times this user has opened them (APP_OPEN events) — the per-app bars on
+ * the "Your time on app" card. Visit counts, not literal per-app time: nothing today tracks how
+ * long an app stays open (only that it was opened), so this is what's honestly available rather
+ * than a duration figure invented from thin air. */
+async function getTopApps(userId, limit = 3) {
+    try {
+        const { rows } = await pool.query(
+            `SELECT app_id, COUNT(*) AS opens
+             FROM emami_apps.events
+             WHERE user_id = $1 AND event_type = 'APP_OPEN' AND app_id IS NOT NULL
+             GROUP BY app_id
+             ORDER BY opens DESC
+             LIMIT $2`,
+            [userId, limit]
+        );
+        return rows.map((r) => ({ appId: r.app_id, opens: Number(r.opens) }));
+    } catch (err) {
+        console.error('[userProfile] Failed to load top apps:', err.message);
+        return [];
+    }
+}
+
 /** Everything HomeScreen/SettingsScreen need for the logged-in user, in the exact shape the
  * frontend's mock CURRENT_USER/ACTIVITY_STATS used — see src/data/mockData.ts. */
 async function getProfile(email) {
@@ -84,6 +149,11 @@ async function getProfile(email) {
     );
     const row = rows[0];
     if (!row) return null;
+
+    const [lastSessionDuration, topApps] = await Promise.all([
+        getLastSessionDuration(row.user_id),
+        getTopApps(row.user_id),
+    ]);
 
     return {
         name: row.name || nameFromEmail(email),
@@ -100,6 +170,8 @@ async function getProfile(email) {
         favoritesAdded: Number(row.favorites_added || 0),
         notificationsRead: Number(row.notifications_read || 0),
         mostUsedApp: row.most_used_app || '—',
+        lastSessionDuration,
+        topApps,
     };
 }
 

@@ -7,7 +7,7 @@ import Avatar from '../components/Avatar';
 import Badge from '../components/Badge';
 import { useAuth } from '../context/AuthContext';
 import { appById } from '../data/mockData';
-import { colors, fonts, radii, categoryColors } from '../theme/tokens';
+import { colors, fonts, radii, categoryColors, appColor } from '../theme/tokens';
 
 export default function SettingsScreen() {
   const [query, setQuery] = useState('');
@@ -27,6 +27,9 @@ export default function SettingsScreen() {
     lastLogin: profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—',
   };
 
+  // First row matches the reference design's primary tiles (minus chat/token stats, which don't
+  // apply to this hub); the rest are existing tiles this hub already tracked before that redesign
+  // — kept so nothing already working gets dropped just to match the reference more literally.
   const STATS = [
     { label: 'Logins', value: profile?.logins ?? '—' },
     { label: 'Time Spent', value: profile?.timeSpent ?? '—' },
@@ -36,6 +39,9 @@ export default function SettingsScreen() {
     { label: 'Notifications Read', value: profile?.notificationsRead ?? '—' },
     { label: 'Most Used App', value: mostUsedAppLabel },
   ];
+
+  const topApps = profile?.topApps ?? [];
+  const maxOpens = Math.max(1, ...topApps.map((a) => a.opens));
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
@@ -99,18 +105,45 @@ export default function SettingsScreen() {
         </View>
 
         <View style={[styles.baseCard, styles.timeCard]}>
-          <View style={styles.timeIconBox}>
-            <Clock3 size={15} color={colors.white} />
+          <View style={styles.timeHeaderRow}>
+            <View style={styles.timeIconBox}>
+              <Clock3 size={15} color={colors.white} />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.timeTitle}>YOUR TIME ON APP</Text>
+              <Text style={styles.timeSubtitle}>
+                {profile?.lastSessionDuration
+                  ? `Last session · ${profile.timeSpent} all-time`
+                  : profile && profile.sessionsTotal <= 1
+                    ? 'This is your first session — keep going, your time will land here next visit.'
+                    : `Total time spent across all your sessions: ${profile?.timeSpent ?? '—'}.`}
+              </Text>
+            </View>
+            <Badge label={`${profile?.sessionsTotal ?? 0} sessions total`} color={colors.inkSoft} />
           </View>
-          <View style={styles.flex1}>
-            <Text style={styles.timeTitle}>YOUR TIME ON APP</Text>
-            <Text style={styles.timeSubtitle}>
-              {profile && profile.sessionsTotal <= 1
-                ? 'This is your first session — keep going, your time will land here next visit.'
-                : `Total time spent across all your sessions: ${profile?.timeSpent ?? '—'}.`}
-            </Text>
-          </View>
-          <Badge label={`${profile?.sessionsTotal ?? 0} session total`} color={colors.inkSoft} />
+
+          {profile?.lastSessionDuration && (
+            <Text style={styles.lastSessionValue}>{profile.lastSessionDuration}</Text>
+          )}
+
+          {topApps.length > 0 && (
+            <View style={styles.appBars}>
+              {topApps.map((a) => {
+                const app = appById(a.appId);
+                const accent = appColor(a.appId);
+                const pct = Math.max(6, Math.round((a.opens / maxOpens) * 100));
+                return (
+                  <View key={a.appId} style={styles.appBarRow}>
+                    <Text style={styles.appBarLabel} numberOfLines={1}>{app?.name || a.appId}</Text>
+                    <View style={styles.appBarTrack}>
+                      <View style={[styles.appBarFill, { width: `${pct}%`, backgroundColor: accent }]} />
+                    </View>
+                    <Text style={styles.appBarValue}>{a.opens}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <View style={[styles.baseCard, styles.activityCard]}>
@@ -268,13 +301,15 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   timeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
     borderLeftWidth: 3,
     borderLeftColor: categoryColors.Operations,
     padding: 16,
     marginBottom: 16,
+  },
+  timeHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   timeIconBox: {
     width: 32,
@@ -295,6 +330,47 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansRegular,
     color: colors.inkSoft,
     marginTop: 3,
+  },
+  lastSessionValue: {
+    fontSize: 30,
+    fontFamily: fonts.sansBold,
+    color: colors.ink,
+    marginTop: 14,
+    marginLeft: 46,
+  },
+  appBars: {
+    marginTop: 16,
+    marginLeft: 46,
+    gap: 10,
+  },
+  appBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  appBarLabel: {
+    width: 110,
+    fontSize: 12,
+    fontFamily: fonts.sansMedium,
+    color: colors.ink,
+  },
+  appBarTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.appBg,
+    overflow: 'hidden',
+  },
+  appBarFill: {
+    height: '100%',
+    borderRadius: radii.pill,
+  },
+  appBarValue: {
+    width: 24,
+    textAlign: 'right',
+    fontSize: 11.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
   },
   activityCard: {
     padding: 20,

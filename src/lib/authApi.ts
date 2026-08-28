@@ -140,6 +140,12 @@ export interface UserProfile {
   favoritesAdded: number;
   notificationsRead: number;
   mostUsedApp: string;
+  /** Length of the most recently *completed* session (e.g. "2s", "15m") — null if none has ever
+   * closed with an explicit logout yet. */
+  lastSessionDuration: string | null;
+  /** Top apps by open count, most-opened first — visit counts, not literal time-per-app (nothing
+   * tracks how long an app stays open, only that it was opened). */
+  topApps: { appId: string; opens: number }[];
 }
 
 export async function getMyProfile(email: string): Promise<UserProfile | null> {
