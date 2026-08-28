@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView,
-  Platform, ScrollView, ActivityIndicator, Linking,
+  Platform, ScrollView, ActivityIndicator, Linking, Image,
 } from 'react-native';
 import { Mail, CheckCircle2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -161,6 +161,12 @@ export default function LoginScreen({ error, verifying, onDismissError, onLogin 
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 40 }]}
           keyboardShouldPersistTaps="handled"
         >
+          <Image
+            source={require('../../assets/emami-apps-logo.png')}
+            style={styles.heroLogo}
+            resizeMode="contain"
+          />
+
           <View style={styles.card}>
             <Text style={styles.welcome}>{busy ? 'Signing you in…' : 'Welcome back'}</Text>
             <Text style={styles.subtitle}>
@@ -274,6 +280,12 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  // Real aspect ratio of assets/emami-apps-logo.png (2272x1880 ≈ 1.208:1).
+  heroLogo: {
+    width: 240,
+    height: 240 / 1.208,
+    marginBottom: 20,
   },
   card: {
     width: '100%',
