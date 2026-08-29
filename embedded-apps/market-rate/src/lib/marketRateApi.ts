@@ -44,6 +44,7 @@ export interface SuppliedMaterial {
   materialCode: string;
   materialDesc: string;
   materialType: string;
+  rateUom: string;
   supplierCode: string;
   supplierName: string;
   contact: string;
@@ -65,6 +66,7 @@ export async function fetchSuppliedMaterials(email: string): Promise<SuppliedMat
       materialCode: r.Matnr || '',
       materialDesc: r.Maktx || '',
       materialType: r.Mtart || '',
+      rateUom: r.Meins || '',
       supplierCode: r.Lifnr || '',
       supplierName: r.Name1 || '',
       contact: r.Contact || '',

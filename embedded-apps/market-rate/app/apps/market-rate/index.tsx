@@ -116,7 +116,7 @@ export default function MarketRateScreen() {
   const [status, setStatus] = useState<SaveStatus>(null);
 
   // Pre-fills the table with whatever materials this signed-in email is already associated with
-  // (ZMarketSuppDataSet) instead of starting blank — market rate/UOM/GST/valid-from still need to
+  // (ZMarketSuppDataSet) instead of starting blank — market rate/GST/valid-from still need to
   // be filled in per row, those aren't part of that reference data. Falls back to the default
   // blank rows if nothing comes back (no supplier data yet, or the lookup fails).
   useEffect(() => {
@@ -138,7 +138,7 @@ export default function MarketRateScreen() {
               materialType: m.materialType,
               marketName: '',
               marketRate: '',
-              ratePer: '',
+              ratePer: m.rateUom,
               igst: '',
               sgst: '',
               cgst: '',
@@ -168,12 +168,6 @@ export default function MarketRateScreen() {
     const filled = rows.filter((r) => TEXT_COLUMNS.some((c) => r[c.field].trim()));
     if (filled.length === 0) {
       setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
-      return;
-    }
-    const REQUIRED: TextField[] = ['materialCode', 'materialDesc', 'materialType', 'marketRate', 'ratePer'];
-    const incomplete = filled.find((r) => REQUIRED.some((f) => !r[f].trim()) || !r.validFrom.trim());
-    if (incomplete) {
-      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, rate, UOM, and valid-from date.' });
       return;
     }
     const NUMERIC: TextField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
@@ -227,7 +221,7 @@ export default function MarketRateScreen() {
           </View>
 
           {rows.map((row, i) => (
-            <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
+            <View key={row.key} style={styles.tableRow}>
               {TEXT_COLUMNS.map((col) => {
                 const isLocked = !!row.locked && LOCKED_FIELDS.includes(col.field);
                 return (
@@ -382,9 +376,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  tableRowAlt: {
-    backgroundColor: colors.appBg,
   },
   cellInput: {
     width: '100%',
