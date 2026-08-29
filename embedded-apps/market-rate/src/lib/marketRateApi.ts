@@ -78,9 +78,10 @@ export async function fetchSuppliedMaterials(email: string): Promise<SuppliedMat
 }
 
 function randomRateId(): string {
-  // "BATCH-<digits>" mirrors the example payload's shape; the digits just need to be unique
-  // enough that two saves in quick succession don't collide.
-  const suffix = Math.floor(100000 + Math.random() * 900000);
+  // "BATCH-<digits>" mirrors the example payload's shape ("BATCH-001", 9 chars). RateId is a
+  // fixed-length SAP field — a 6-digit suffix (12 chars total) blew past its max length and SAP
+  // rejected the whole save with an EDM facet error, so this stays 3 digits to match the example.
+  const suffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
   return `BATCH-${suffix}`;
 }
 
