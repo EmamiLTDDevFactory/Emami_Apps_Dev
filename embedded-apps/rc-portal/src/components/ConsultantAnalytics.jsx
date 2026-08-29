@@ -240,13 +240,9 @@ export default function ConsultantAnalytics({ consultants }) {
 
   return (
     <div className="rounded-2xl p-4" style={{ backgroundColor: PAGE_DARK }}>
-      <div className="mb-3">
-        <div className="text-lg font-bold" style={{ color: TEXT_LIGHT }}>Analytics</div>
-        <div className="mt-0.5 text-xs font-medium" style={{ color: TEXT_MUTED }}>
-          Visual breakdown of consultant status, engagement, and spend
-        </div>
-      </div>
-
+      {/* The "Analytics / Visual breakdown of consultant status, engagement, and spend" heading
+          block that used to sit here was removed to reclaim its vertical space — each chart card
+          already carries its own title and subtitle, so the section heading was redundant. */}
       <div className="grid gap-4 md:grid-cols-2">
         <ChartCard title="Consultant Status" subtitle="Share of all consultants by current status" value={`${statusData.activeCount}`}>
           {totalConsultants > 0 ? (

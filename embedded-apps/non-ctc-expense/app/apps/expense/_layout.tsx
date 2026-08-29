@@ -19,25 +19,35 @@ function RootLayoutNav() {
   // a web navigation) doesn't push a second duplicate history entry — while
   // still firing for real transitions like a successful login or logout.
   const lastAutoRedirect = useRef<string | null>(null);
-  // Whether this effect has resolved once already since the app loaded. AuthContext's
-  // isInitializing already stays true for the entire hub-email auto-login attempt, so by the
-  // time it flips false, isAuthenticated already reflects the real outcome — there's no need to
-  // land on /login first and immediately correct course from there. Landing on the right screen
-  // in one hop (rather than /login then (tabs)) is what avoids stacking an extra, invisible
-  // history entry during boot — same effect as RC Portal's equivalent flow, which never
-  // navigates away from its starting URL at all during auto-login.
-  const hasSettledOnce = useRef(false);
 
+  // Navigate ONLY when the current screen is actually the wrong one for the resolved auth state.
+  //
+  // There used to be an extra "first settle" branch here that, the first time this effect ran,
+  // unconditionally navigated to (tabs) when authenticated / to login when not — even when the
+  // app was already showing exactly that screen. That redundant self-navigation is what broke
+  // browser Back, and it is unique to this app: /apps/expense has no index route of its own, so
+  // it already renders (tabs)/index.tsx on load, and the branch then "replaced" that route with
+  // itself. Expo Router does not treat replacing a route with the same route as a replace — it
+  // adds a history entry. Measured on the live site: loading /apps/expense left
+  // window.history.length at 2 when a true replace must leave it at 1, so every visit started one
+  // entry deep and Back needed an extra press (and, with the login hop, two or three) before it
+  // could reach the hub — falling through to the stale Microsoft SSO entry instead.
+  //
+  // MoldHealthCheck never hit this because its /apps/mouldhealthcheck URL renders a dedicated
+  // entry-gate index.tsx and it replaces to a genuinely *different* route, which Expo Router does
+  // perform as a real replace — one entry, one Back press.
+  //
+  // The two conditions below already cover every real transition (log in from this app's own
+  // login screen, session lost while inside the app), and they are self-correcting on every run,
+  // so nothing is lost by dropping the first-settle special case. Keep it that way: never
+  // navigate to the screen that is already showing.
   useEffect(() => {
     if (isInitializing) return;
 
     const inAuthGroup = segments[0] === 'apps' && segments[1] === 'expense' && segments[2] === 'login';
 
     let target: string | null = null;
-    if (!hasSettledOnce.current) {
-      hasSettledOnce.current = true;
-      target = isAuthenticated ? '/apps/expense/(tabs)' : '/apps/expense/login';
-    } else if (!isAuthenticated && !inAuthGroup) {
+    if (!isAuthenticated && !inAuthGroup) {
       target = '/apps/expense/login';
     } else if (isAuthenticated && inAuthGroup) {
       target = '/apps/expense/(tabs)';
