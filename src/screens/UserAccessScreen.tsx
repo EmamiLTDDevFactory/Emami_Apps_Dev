@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound, ChevronRight, Lock, Search, X } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
@@ -41,12 +41,19 @@ export default function UserAccessScreen() {
 
   const [users, setUsers] = useState<UserAccessEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [input, setInput] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<string | null>(null);
   // Keyed by email — edits made in the UI that haven't been saved to the server yet.
   const [pending, setPending] = useState<Record<string, PendingChanges>>({});
+
+  // "Add User" dialog — email + per-app roles are picked here, then submitted together via the
+  // same addAuthorizedUser/setAppAccess calls the row-level edit flow below already uses.
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserRoles, setNewUserRoles] = useState<Record<string, AppRole | null>>({});
+  const [dialogError, setDialogError] = useState('');
+  const [addingUser, setAddingUser] = useState(false);
 
   useEffect(() => {
     listAuthorizedUsers().then((result) => {
@@ -59,27 +66,57 @@ export default function UserAccessScreen() {
     });
   }, []);
 
-  const addUser = async () => {
-    const value = input.trim().toLowerCase();
+  const openAddUserModal = () => {
+    setNewUserEmail('');
+    setNewUserRoles({});
+    setDialogError('');
+    setShowAddModal(true);
+  };
+
+  const closeAddUserModal = () => {
+    if (addingUser) return; // don't let a stray tap dismiss mid-save
+    setShowAddModal(false);
+  };
+
+  const cycleNewUserRole = (appId: string) => {
+    setNewUserRoles((prev) => {
+      const current = prev[appId] ?? null;
+      const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
+      return { ...prev, [appId]: next };
+    });
+  };
+
+  const submitNewUser = async () => {
+    const value = newUserEmail.trim().toLowerCase();
     if (!value) return;
     if (!EMAIL_RE.test(value)) {
-      setError('Enter a valid email address.');
+      setDialogError('Enter a valid email address.');
       return;
     }
     if (users.some((u) => u.email === value)) {
-      setError('This email already has access.');
+      setDialogError('This email already has access.');
       return;
     }
-    setError('');
-    // New users start with no modules granted — admin picks exactly which
-    // apps this person should see, rather than defaulting to full access.
-    const result = await addAuthorizedUser(value);
-    if (!result.ok) {
-      setError(result.error || 'Could not add this user.');
-      return;
+    setDialogError('');
+    setAddingUser(true);
+    try {
+      const result = await addAuthorizedUser(value);
+      if (!result.ok) {
+        setDialogError(result.error || 'Could not add this user.');
+        return;
+      }
+      const grantedRoles = Object.entries(newUserRoles).filter((entry): entry is [string, AppRole] => !!entry[1]);
+      const roleResults = await Promise.all(grantedRoles.map(([appId, role]) => setAppAccess(value, appId, role)));
+      const apps = grantedRoles.filter((_, i) => roleResults[i].ok).map(([appId, role]) => ({ appId, role }));
+      setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', apps }]);
+      const failedRole = roleResults.find((r) => !r.ok);
+      setShowAddModal(false);
+      if (failedRole) {
+        setError(failedRole.error || `${value} was added, but one or more app roles couldn't be saved — edit them below.`);
+      }
+    } finally {
+      setAddingUser(false);
     }
-    setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', apps: [] }]);
-    setInput('');
   };
 
   const removeUser = async (email: string) => {
@@ -274,26 +311,10 @@ export default function UserAccessScreen() {
             )}
           </View>
 
-          <View style={styles.addRow}>
-            <View style={styles.inputWrap}>
-              <Mail size={14} color={colors.inkSoft} />
-              <TextInput
-                value={input}
-                onChangeText={(v) => { setInput(v); if (error) setError(''); }}
-                onSubmitEditing={addUser}
-                placeholder="name@emamigroup.com"
-                placeholderTextColor={colors.inkSoft}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                style={styles.input}
-                accessibilityLabel="Email address to grant access"
-              />
-            </View>
-            <Pressable style={styles.addBtn} onPress={addUser} accessibilityRole="button" accessibilityLabel="Add user">
-              <Plus size={14} color={colors.white} />
-              <Text style={styles.addBtnText}>Add</Text>
-            </Pressable>
-          </View>
+          <Pressable style={styles.addTriggerBtn} onPress={openAddUserModal} accessibilityRole="button" accessibilityLabel="Add user">
+            <Plus size={14} color={colors.white} />
+            <Text style={styles.addBtnText}>Add User</Text>
+          </Pressable>
           {!!error && <Text style={styles.errorText}>{error}</Text>}
 
           {loading ? (
@@ -424,6 +445,84 @@ export default function UserAccessScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={closeAddUserModal}>
+        {/* No accessibilityRole="button" here — this wraps other button-role Pressables (close,
+            chips, cancel, save), and react-native-web renders that role as a literal <button>;
+            nesting one inside another is invalid HTML (see AppCard.tsx's own note on this). */}
+        <Pressable style={styles.backdrop} onPress={closeAddUserModal}>
+          {/* Swallow taps on the card itself so they don't bubble to the backdrop's onPress. */}
+          <Pressable style={styles.dialogCard} onPress={() => {}}>
+            <View style={styles.dialogHeaderRow}>
+              <Text style={styles.dialogTitle}>Add User</Text>
+              <Pressable onPress={closeAddUserModal} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                <X size={18} color={colors.inkSoft} />
+              </Pressable>
+            </View>
+
+            <View style={styles.inputWrap}>
+              <Mail size={14} color={colors.inkSoft} />
+              <TextInput
+                value={newUserEmail}
+                onChangeText={(v) => { setNewUserEmail(v); if (dialogError) setDialogError(''); }}
+                placeholder="name@emamigroup.com"
+                placeholderTextColor={colors.inkSoft}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoFocus
+                style={styles.input}
+                accessibilityLabel="Email address to grant access"
+              />
+            </View>
+
+            <Text style={styles.dialogSectionLabel}>Assign app roles</Text>
+            <View style={styles.appChipsRow}>
+              {APPS.map((app) => {
+                const role = newUserRoles[app.id] ?? null;
+                const accent = appColor(app.id);
+                const Icon = app.icon;
+                return (
+                  <Pressable
+                    key={app.id}
+                    onPress={() => cycleNewUserRole(app.id)}
+                    style={[
+                      styles.appChip,
+                      { borderColor: role ? accent : colors.border },
+                      role && { backgroundColor: `${accent}14` },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${app.name} access for new user: ${role ?? 'None'}. Tap to change.`}
+                  >
+                    <Icon size={12.5} color={role ? accent : colors.inkSoft} />
+                    <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
+                      {app.name}{role ? ` · ${role}` : ''}
+                    </Text>
+                    {role === 'Admin' && <Check size={12} color={accent} />}
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {!!dialogError && <Text style={styles.errorText}>{dialogError}</Text>}
+
+            <View style={styles.dialogFooterRow}>
+              <Pressable style={styles.dialogCancelBtn} onPress={closeAddUserModal} disabled={addingUser} accessibilityRole="button" accessibilityLabel="Cancel">
+                <Text style={styles.dialogCancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.saveBtn, styles.dialogSaveBtn]} onPress={submitNewUser} disabled={addingUser} accessibilityRole="button" accessibilityLabel="Save new user">
+                {addingUser ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <>
+                    <Save size={13} color={colors.white} />
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenScaffold>
   );
 }
@@ -598,10 +697,6 @@ const styles = StyleSheet.create({
   searchUsersWrap: {
     marginBottom: 10,
   },
-  addRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
   inputWrap: {
     flex: 1,
     flexDirection: 'row',
@@ -622,9 +717,10 @@ const styles = StyleSheet.create({
     padding: 0,
     height: '100%',
   },
-  addBtn: {
+  addTriggerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     borderRadius: radii.lg,
     paddingHorizontal: 16,
@@ -729,5 +825,63 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontFamily: fonts.sansSemiBold,
     color: colors.white,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(31,27,51,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  dialogCard: {
+    width: '100%',
+    maxWidth: 440,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white,
+    padding: 20,
+  },
+  dialogHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  dialogTitle: {
+    fontSize: 16,
+    fontFamily: fonts.sansBold,
+    color: colors.ink,
+  },
+  dialogSectionLabel: {
+    fontSize: 11,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  dialogFooterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  dialogCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingVertical: 10,
+    backgroundColor: colors.white,
+  },
+  dialogCancelBtnText: {
+    fontSize: 12.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
+  dialogSaveBtn: {
+    flex: 1,
   },
 });
