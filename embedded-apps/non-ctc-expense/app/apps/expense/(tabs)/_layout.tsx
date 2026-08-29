@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Tabs, usePathname, useRouter } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -90,7 +90,6 @@ export default function TabLayout() {
               iconName="view-dashboard"
               gradientColors={['#FFFFFF', '#F0FDF4']}
               accent="#10B981"
-              targetPath="/apps/expense"
             />
           ),
         }}
@@ -108,7 +107,6 @@ export default function TabLayout() {
               iconName="plus-circle"
               gradientColors={['#FFFFFF', '#EFF6FF']}
               accent="#2563EB"
-              targetPath="/apps/expense/create"
             />
           ),
         }}
@@ -126,7 +124,6 @@ export default function TabLayout() {
               iconName="receipt-text"
               gradientColors={['#FFFFFF', '#FFF7ED']}
               accent="#F97316"
-              targetPath="/apps/expense/my-claims"
             />
           ),
         }}
@@ -148,7 +145,6 @@ export default function TabLayout() {
                     gradientColors={['#FFFFFF', '#F5F3FF']}
                     accent="#8B5CF6"
                     badge={approvalsCount > 0 ? approvalsCount : undefined}
-                    targetPath="/apps/expense/approvals"
                   />
                 ),
               }
@@ -175,7 +171,6 @@ export default function TabLayout() {
                     gradientColors={['#FFFFFF', '#F5F3FF']}
                     accent="#8B5CF6"
                     badge={financeCount > 0 ? financeCount : undefined}
-                    targetPath="/apps/expense/finance"
                   />
                 ),
               }
@@ -197,9 +192,8 @@ export default function TabLayout() {
   );
 }
 
-function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconName, gradientColors, accent, badge, compact, style, targetPath }: any) {
+function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconName, gradientColors, accent, badge, compact, style }: any) {
   const pathname = usePathname();
-  const router = useRouter();
 
   // Manually compute selected state for web compatibility
   const selected = accessibilityState?.selected ||
@@ -210,21 +204,11 @@ function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconNam
     (title === 'Finance' && pathname === '/apps/expense/finance');
   const scale = useRef(new Animated.Value(selected ? 1.03 : 1)).current;
 
-  // Switching tabs should behave like clicking a normal link — every switch to a *different* tab
-  // is its own, real, distinct browser-history entry, so Back walks through them one at a time
-  // (exactly like RC Portal). The tab bar's own default onPress doesn't do this: it always returns
-  // to that tab's one persistent slot instead of recording a fresh visit, which is what let
-  // pressing "Dashboard" pop instead of navigate — router.push() here replaces that default with an
-  // explicit, real navigation. Pressing the tab you're already on is a no-op, same as clicking a
-  // link to the page you're already viewing.
-  const handlePress = () => {
-    if (selected) return;
-    if (targetPath) {
-      router.push(targetPath as Parameters<typeof router.push>[0]);
-    } else {
-      onPress?.();
-    }
-  };
+  // Uses the tab bar's own default onPress — do NOT swap this for a router.push(). This is only a
+  // custom-*looking* button (gradient, subtitle, badge); its navigation behaviour must stay exactly
+  // that of a standard Expo Router tab, which is what MoldHealthCheck and Dispatch Tracker use.
+  // Pushing on each tab switch adds a browser history entry every time a tab is pressed, which is
+  // what previously made Back need several presses to get out of this app.
 
   // Active gradient colors map (darker vibrant versions for high text contrast)
   const activeGradients: Record<string, string[]> = {
@@ -250,7 +234,7 @@ function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconNam
   return (
     <Animated.View style={[style, localStyles.btn, selected && localStyles.activeBtn, { transform: [{ scale }] }]}>
       <TouchableOpacity
-        onPress={handlePress}
+        onPress={onPress}
         activeOpacity={0.9}
         style={[localStyles.touchArea, compact && { paddingHorizontal: 4, paddingVertical: 5 }]}
       >

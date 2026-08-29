@@ -54,51 +54,27 @@ function RootLayoutNav() {
     }
   }, [isAuthenticated, isInitializing, segments]);
 
-  // NOTE: this used to also plant one extra "anchor" history entry here (via router.push, right
-  // on top of the settle-replace above) as a safety net against landing on a blank browser-internal
-  // page. Removed — it was a duplicate entry with the *same* URL as the one already produced by the
-  // replace above, and that duplicate is exactly what made Back need one extra press to get out of
-  // this app (RC Portal, which has no such duplicate, only ever needs one). The popstate handler
-  // below is the actual safety net now: it inspects where Back really landed rather than assuming
-  // an extra history entry is needed, so removing the duplicate doesn't reopen the blank-page case
-  // it was guarding against.
-
-  // Browser Back should exit cleanly to the EmamiApps hub Dashboard only once there's no more
-  // in-app history to go back to — never fall through to whatever entry happens to be sitting
-  // behind this app's own screens.
+  // Deliberately NO browser-history handling here — no popstate listener, no "anchor" history
+  // entry, no forced window.location.replace('/') on Back. This matches MoldHealthCheck
+  // (embedded-apps/mouldhealthcheck/app/apps/mouldhealthcheck/_layout.tsx) and Dispatch Tracker
+  // (embedded-apps/dispatch-tracker/app/_layout.tsx), the two other Expo Router apps in this repo,
+  // both of which have correct browser-Back behaviour precisely because they do none of this.
   //
-  // This used to be decided with router.canGoBack() (via a wasAtRootRef snapshot taken just
-  // before the pop). That signal turned out to be unreliable: Expo Router's own internal
-  // back-stack bookkeeping doesn't always match what the browser actually does, and two very
-  // normal in-app actions could make canGoBack() read "false" right when they shouldn't:
-  //   1. Pressing the Dashboard tab while on another tab — React Navigation resolves "go to a
-  //      tab you've already visited, especially the first one" by popping back through history
-  //      to that earlier entry, not by pushing forward. That pop fires a real popstate.
-  //   2. The Claim Details header back arrow calling router.back() — also a real history pop,
-  //      hence another popstate.
-  // Both of those are 100% legitimate in-app navigations, but the old check couldn't tell them
-  // apart from "the user backed all the way out of the app", so it sometimes force-exited to the
-  // hub in the middle of perfectly normal navigation.
+  // Why doing nothing is correct: the hub launches an embedded app with window.location.replace()
+  // (see src/screens/AppDetailScreen.tsx), which *consumes* the /apps/<id> launch entry. So this
+  // app occupies exactly ONE browser history entry, and the entry directly behind it is the real
+  // hub page the user came from. One Back press therefore lands on the hub Dashboard on its own —
+  // there is nothing to intercept or correct.
   //
-  // The reliable signal is simpler: after any pop, look at where the browser actually landed. All
-  // of this app's own screens live under /apps/expense — so if the resulting URL is still inside
-  // that prefix, some in-app screen exists to show and Expo Router will render it normally (no
-  // action needed here). Only when the pop has landed *outside* /apps/expense — the hub's own
-  // page, or a browser-internal page with nothing on it — do we force the clean handoff to the
-  // hub Dashboard.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const APP_PREFIX = '/apps/expense';
-    const handlePopState = () => {
-      const path = window.location.pathname;
-      const stillInsideThisApp = path === APP_PREFIX || path.startsWith(`${APP_PREFIX}/`);
-      if (!stillInsideThisApp) {
-        window.location.replace('/');
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  // Every past attempt to "help" here made it worse, because each one added extra history entries
+  // or tried to intercept a pop that cannot be intercepted:
+  //   - an anchor entry via router.push() — a duplicate entry, so Back needed an extra press;
+  //   - a router.canGoBack() check — Expo Router's back-stack bookkeeping doesn't reliably match
+  //     the browser's, so ordinary in-app navigation was misread as "exit the app";
+  //   - a popstate handler inspecting window.location.pathname — useless at the one boundary that
+  //     mattered: stepping back out of this app is a *cross-document* navigation, so the page is
+  //     torn down and popstate never fires at all.
+  // Keep this section empty.
 
   if (isInitializing) {
     return (
