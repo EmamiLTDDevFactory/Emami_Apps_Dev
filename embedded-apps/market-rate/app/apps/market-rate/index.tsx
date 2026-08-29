@@ -39,9 +39,6 @@ const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholde
   { field: 'materialType', label: 'Material Type', width: 100, placeholder: 'e.g. ROH' },
   { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
-  { field: 'igst', label: 'IGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'sgst', label: 'SGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'cgst', label: 'CGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
 ];
 
 /** Reference data from ZMarketSuppDataSet — locked (not free-typed) once a row is pre-filled from
@@ -170,10 +167,10 @@ export default function MarketRateScreen() {
       setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
       return;
     }
-    const NUMERIC: TextField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
+    const NUMERIC: TextField[] = ['marketRate'];
     const invalidNumber = filled.find((r) => NUMERIC.some((f) => r[f].trim() && Number.isNaN(Number(r[f]))));
     if (invalidNumber) {
-      setStatus({ type: 'error', message: 'Market rate and GST fields must be numbers.' });
+      setStatus({ type: 'error', message: 'Market rate must be a number.' });
       return;
     }
 
