@@ -91,19 +91,14 @@ export function AuthProvider({
       access,
       refreshAccess,
       login: (email?: string, token?: string, method?: LoginMethod) => {
-        // Plant one real, dedicated history entry for "just logged in, on the hub Dashboard" —
-        // this is the entry Back should always be able to return to from any embedded app.
-        // Without this, the Microsoft SSO flow's own entry (LoginScreen.tsx's window.location.href
-        // to login.microsoftonline.com, still sitting in history from before this login) would be
-        // the nearest real entry below the app hand-off, so Back could land back on Microsoft's
-        // sign-in page instead of here — and revisiting that page replays it as a GET instead of
-        // the POST it expects, showing Microsoft's own "AADSTS900561" error. Doing this inside
-        // login() (rather than only in RootNavigator's SSO handler) covers the direct-email login
-        // path too, and only ever runs for a fresh login — a restored/persisted session never calls
-        // login(), so it never adds an entry on a plain page reload.
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.history.pushState({}, '', window.location.pathname);
-        }
+        // Do NOT push a history entry here. An earlier attempt did
+        // window.history.pushState({}, '', window.location.pathname) at this point to "plant a hub
+        // Dashboard checkpoint", but at the moment login() runs the URL is still the login screen's
+        // own ('/login', per navigation/linking.ts). That planted a real /login entry which, once
+        // the user had navigated into an embedded app (a full page navigation), Back would load
+        // fresh from the static host — where /login has no exported page, giving the "Unmatched
+        // Route / Page could not be found" screen. React Navigation already puts the correct URL in
+        // the address bar when the navigator swaps to Home after login; nothing extra is needed.
         setIsLoggedIn(true);
         AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true').catch(() => {});
         if (email) {
