@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Linking } from 'react-native';
 import { ChevronRight, LayoutGrid, Lock } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,6 +32,12 @@ export default function HomeScreen() {
   const openApp = (app: AppItem) => {
     if (!unlockedAppIds.has(app.id)) return; // locked tiles ignore taps — see AppCard's own guard too
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
+    // Web: open the app in its own tab instead of navigating this one away. Native has no tab
+    // concept, so it keeps going through AppDetail's in-app WebView.
+    if (Platform.OS === 'web' && app.url) {
+      Linking.openURL(app.url);
+      return;
+    }
     navigation.navigate('AppDetail', { appId: app.id });
   };
 

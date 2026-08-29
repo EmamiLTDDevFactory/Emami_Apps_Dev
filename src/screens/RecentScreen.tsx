@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Linking } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,6 +20,13 @@ export default function RecentScreen() {
   const openApp = (appId: string) => {
     if (!unlockedAppIds.has(appId)) return; // was missing — this page could open apps a Viewer isn't granted
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
+    // Web: open the app in its own tab instead of navigating this one away. Native has no tab
+    // concept, so it keeps going through AppDetail's in-app WebView.
+    const url = appById(appId)?.url;
+    if (Platform.OS === 'web' && url) {
+      Linking.openURL(url);
+      return;
+    }
     navigation.navigate('AppDetail', { appId });
   };
 

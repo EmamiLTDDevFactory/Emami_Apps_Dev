@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
@@ -37,6 +37,12 @@ export default function AppListScreen({ title, onlyFavorites }: AppListScreenPro
   const openApp = (app: AppItem) => {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
+    // Web: open the app in its own tab instead of navigating this one away. Native has no tab
+    // concept, so it keeps going through AppDetail's in-app WebView.
+    if (Platform.OS === 'web' && app.url) {
+      Linking.openURL(app.url);
+      return;
+    }
     navigation.navigate('AppDetail', { appId: app.id });
   };
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Linking, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -153,6 +153,13 @@ export default function HelpScreen() {
   const openApp = (appId: string) => {
     if (!unlockedAppIds.has(appId)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
+    // Web: open the app in its own tab instead of navigating this one away. Native has no tab
+    // concept, so it keeps going through AppDetail's in-app WebView.
+    const url = APPS.find((a) => a.id === appId)?.url;
+    if (Platform.OS === 'web' && url) {
+      Linking.openURL(url);
+      return;
+    }
     navigation.navigate('AppDetail', { appId });
   };
 

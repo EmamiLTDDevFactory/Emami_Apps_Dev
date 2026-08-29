@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Platform, Linking } from 'react-native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radii, appColor, shadows } from '../theme/tokens';
@@ -24,6 +24,12 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
   const onOpenApp = (app: (typeof APPS)[number]) => {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
+    // Web: open the app in its own tab instead of navigating this one away. Native has no tab
+    // concept, so it keeps going through AppDetail's in-app WebView.
+    if (Platform.OS === 'web' && app.url) {
+      Linking.openURL(app.url);
+      return;
+    }
     (navigation as any).navigate('AppDetail', { appId: app.id });
   };
   // Manage Access is only for Super Admin/Admin (see UserAccessScreen.tsx, which enforces the
