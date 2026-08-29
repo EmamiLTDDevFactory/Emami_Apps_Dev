@@ -45,8 +45,10 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
         accessibilityRole="button"
         accessibilityLabel="Go to Home"
       >
-        <EmpAppMark size={30} />
-        <Text style={styles.brandText}>EMAMI APPS</Text>
+        {/* Logo only — the "EMAMI APPS" wordmark that used to sit beside this was removed, and the
+            mark enlarged to stay clearly legible on its own. accessibilityLabel below still names
+            this control for screen readers now that there is no visible text. */}
+        <EmpAppMark size={46} />
       </Pressable>
 
       {favoriteApps.length > 0 && (
@@ -116,12 +118,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     marginBottom: 14,
-  },
-  brandText: {
-    color: colors.sidebarText,
-    fontFamily: fonts.sansBold,
-    fontSize: 14,
-    letterSpacing: 0.3,
   },
   quickAccess: {
     paddingHorizontal: 16,

@@ -91,6 +91,14 @@ export function AuthProvider({
       access,
       refreshAccess,
       login: (email?: string, token?: string, method?: LoginMethod) => {
+        // Do NOT push a history entry here. An earlier attempt did
+        // window.history.pushState({}, '', window.location.pathname) at this point to "plant a hub
+        // Dashboard checkpoint", but at the moment login() runs the URL is still the login screen's
+        // own ('/login', per navigation/linking.ts). That planted a real /login entry which, once
+        // the user had navigated into an embedded app (a full page navigation), Back would load
+        // fresh from the static host — where /login has no exported page, giving the "Unmatched
+        // Route / Page could not be found" screen. React Navigation already puts the correct URL in
+        // the address bar when the navigator swaps to Home after login; nothing extra is needed.
         setIsLoggedIn(true);
         AsyncStorage.setItem(AUTH_STORAGE_KEY, 'true').catch(() => {});
         if (email) {

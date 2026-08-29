@@ -36,7 +36,7 @@ const pctOfMax = (arr) => { const max = Math.max(1, ...arr); return arr.map((v) 
 // subtitle pair, not a chart element, so it works identically across every chart type below.
 function ChartCard({ title, subtitle, value, children }) {
   return (
-    <div className="rounded-lg p-6" style={{ backgroundColor: CARD_DARK }}>
+    <div className="rounded-lg p-4" style={{ backgroundColor: CARD_DARK }}>
       <div className="mb-1 flex items-start justify-between">
         <div>
           <div className="text-sm font-bold" style={{ color: TEXT_LIGHT }}>{title}</div>
@@ -51,7 +51,7 @@ function ChartCard({ title, subtitle, value, children }) {
 
 function EmptyChartState({ message }) {
   return (
-    <div className="flex h-[260px] items-center justify-center px-6 text-center text-xs font-medium" style={{ color: TEXT_MUTED }}>
+    <div className="flex h-[200px] items-center justify-center px-6 text-center text-xs font-medium" style={{ color: TEXT_MUTED }}>
       {message}
     </div>
   );
@@ -239,25 +239,21 @@ export default function ConsultantAnalytics({ consultants }) {
   };
 
   return (
-    <div className="rounded-2xl p-6" style={{ backgroundColor: PAGE_DARK }}>
-      <div className="mb-4">
-        <div className="text-lg font-bold" style={{ color: TEXT_LIGHT }}>Analytics</div>
-        <div className="mt-0.5 text-xs font-medium" style={{ color: TEXT_MUTED }}>
-          Visual breakdown of consultant status, engagement, and spend
-        </div>
-      </div>
-
+    <div className="rounded-2xl p-4" style={{ backgroundColor: PAGE_DARK }}>
+      {/* The "Analytics / Visual breakdown of consultant status, engagement, and spend" heading
+          block that used to sit here was removed to reclaim its vertical space — each chart card
+          already carries its own title and subtitle, so the section heading was redundant. */}
       <div className="grid gap-4 md:grid-cols-2">
         <ChartCard title="Consultant Status" subtitle="Share of all consultants by current status" value={`${statusData.activeCount}`}>
           {totalConsultants > 0 ? (
-            <Chart options={statusOptions} series={statusData.series} type="radialBar" height={300} />
+            <Chart options={statusOptions} series={statusData.series} type="radialBar" height={200} />
           ) : (
             <EmptyChartState message="No consultant records yet." />
           )}
         </ChartCard>
 
         <ChartCard title="Hires Distribution" subtitle="Consultants grouped by total hires" value={`${hiresData.total}`}>
-          <Chart options={hiresOptions} series={[{ name: 'Consultants', data: hiresData.values }]} type="bar" height={300} />
+          <Chart options={hiresOptions} series={[{ name: 'Consultants', data: hiresData.values }]} type="bar" height={200} />
         </ChartCard>
 
         <ChartCard title="Fees Paid Over Time" subtitle="Total fees & new contracts by month" value={compactCurrency(feesTrendData.totalFees)}>
@@ -269,7 +265,7 @@ export default function ConsultantAnalytics({ consultants }) {
                 { name: 'New Contracts', data: feesTrendData.contractsIndexed },
               ]}
               type="line"
-              height={300}
+              height={200}
             />
           ) : (
             <EmptyChartState message="Not enough contract-date data yet to show a trend." />

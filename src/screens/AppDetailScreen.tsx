@@ -35,6 +35,12 @@ export default function AppDetailScreen({ route }: Props) {
       // replace, not href: this hub screen shouldn't stay in history as an
       // entry of its own — otherwise browser Back re-mounts it and its
       // redirect fires again, bouncing straight back into the embedded app.
+      //
+      // Do NOT add a pushState before this. Replacing the CURRENT entry is the
+      // whole point: it consumes this /apps/<id> launch entry, so the entry
+      // sitting directly behind the embedded app is the real hub page the user
+      // came from (normally Home, "/"). That is exactly what makes one Back
+      // press land on the hub Dashboard.
       window.location.replace(app.url);
     }
   }, [app?.url, locked]);

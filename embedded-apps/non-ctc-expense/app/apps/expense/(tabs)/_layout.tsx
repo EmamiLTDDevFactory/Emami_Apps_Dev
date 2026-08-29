@@ -204,6 +204,12 @@ function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconNam
     (title === 'Finance' && pathname === '/apps/expense/finance');
   const scale = useRef(new Animated.Value(selected ? 1.03 : 1)).current;
 
+  // Uses the tab bar's own default onPress — do NOT swap this for a router.push(). This is only a
+  // custom-*looking* button (gradient, subtitle, badge); its navigation behaviour must stay exactly
+  // that of a standard Expo Router tab, which is what MoldHealthCheck and Dispatch Tracker use.
+  // Pushing on each tab switch adds a browser history entry every time a tab is pressed, which is
+  // what previously made Back need several presses to get out of this app.
+
   // Active gradient colors map (darker vibrant versions for high text contrast)
   const activeGradients: Record<string, string[]> = {
     Dashboard: ['#10B981', '#059669'],    // Vibrant emerald green
@@ -227,9 +233,9 @@ function CustomTabButton({ onPress, accessibilityState, title, subtitle, iconNam
 
   return (
     <Animated.View style={[style, localStyles.btn, selected && localStyles.activeBtn, { transform: [{ scale }] }]}>
-      <TouchableOpacity 
-        onPress={onPress} 
-        activeOpacity={0.9} 
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.9}
         style={[localStyles.touchArea, compact && { paddingHorizontal: 4, paddingVertical: 5 }]}
       >
         <LinearGradient
