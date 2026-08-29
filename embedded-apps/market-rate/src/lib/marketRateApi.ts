@@ -34,6 +34,10 @@ export interface MarketRateRow {
   /** Read-only context from ZMarketSuppDataSet (supplier code/name, contact, as-of date) — shown
    * for reference, not sent back to SAP on save (no field for it in the save payload). */
   supplierRef?: string;
+  /** True for rows pre-filled from ZMarketSuppDataSet — material code/description/type are SAP
+   * reference data there, not something a user should be free to overwrite by hand. Rows added via
+   * "Add row" stay false/editable, since there's no lookup UI to fill those fields any other way. */
+  locked?: boolean;
 }
 
 export interface SuppliedMaterial {

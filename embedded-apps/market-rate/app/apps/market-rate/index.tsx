@@ -25,6 +25,7 @@ function emptyRow(): MarketRateRow {
     sgst: '',
     cgst: '',
     validFrom: todayIso(),
+    locked: false,
   };
 }
 
@@ -34,15 +35,21 @@ type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 
 const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
   { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
-  { field: 'materialDesc', label: 'Material Description', width: 190, placeholder: 'e.g. Light Liquid Paraffin' },
+  { field: 'materialDesc', label: 'Material Description', width: 260, placeholder: 'e.g. Light Liquid Paraffin' },
   { field: 'materialType', label: 'Material Type', width: 100, placeholder: 'e.g. ROH' },
-  { field: 'marketName', label: 'Market', width: 120, placeholder: 'e.g. Kolkata' },
   { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
   { field: 'igst', label: 'IGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'sgst', label: 'SGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'cgst', label: 'CGST %', width: 80, placeholder: '0.00', keyboard: 'decimal-pad' },
 ];
+
+/** Reference data from ZMarketSuppDataSet — locked (not free-typed) once a row is pre-filled from
+ * there, so a typo can't quietly diverge a row from SAP's actual material master. See
+ * MarketRateRow.locked. */
+const LOCKED_FIELDS: TextField[] = ['materialCode', 'materialDesc', 'materialType'];
+/** Bolded for scannability — these are the two fields that identify which material a row is for. */
+const BOLD_FIELDS: TextField[] = ['materialCode', 'materialDesc'];
 
 const DATE_COL_WIDTH = 140;
 const REMOVE_COL_WIDTH = 44;
@@ -137,6 +144,7 @@ export default function MarketRateScreen() {
               cgst: '',
               validFrom: todayIso(),
               supplierRef: supplierRef || undefined,
+              locked: true,
             };
           })
         );
@@ -162,10 +170,10 @@ export default function MarketRateScreen() {
       setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
       return;
     }
-    const REQUIRED: TextField[] = ['materialCode', 'materialDesc', 'materialType', 'marketName', 'marketRate', 'ratePer'];
+    const REQUIRED: TextField[] = ['materialCode', 'materialDesc', 'materialType', 'marketRate', 'ratePer'];
     const incomplete = filled.find((r) => REQUIRED.some((f) => !r[f].trim()) || !r.validFrom.trim());
     if (incomplete) {
-      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, market, rate, UOM, and valid-from date.' });
+      setStatus({ type: 'error', message: 'Every row needs a material code, description, type, rate, UOM, and valid-from date.' });
       return;
     }
     const NUMERIC: TextField[] = ['marketRate', 'igst', 'sgst', 'cgst'];
@@ -220,23 +228,31 @@ export default function MarketRateScreen() {
 
           {rows.map((row, i) => (
             <View key={row.key} style={[styles.tableRow, i % 2 === 1 && styles.tableRowAlt]}>
-              {TEXT_COLUMNS.map((col) => (
-                <View key={col.field} style={{ width: col.width }}>
-                  <TextInput
-                    value={row[col.field]}
-                    onChangeText={(v) => updateCell(row.key, col.field, v)}
-                    placeholder={col.placeholder}
-                    placeholderTextColor={colors.inkSoft}
-                    keyboardType={col.keyboard}
-                    autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
-                    style={styles.cellInput}
-                    accessibilityLabel={`${col.label}, row ${i + 1}`}
-                  />
-                  {col.field === 'materialDesc' && !!row.supplierRef && (
-                    <Text style={styles.supplierCaption} numberOfLines={1}>{row.supplierRef}</Text>
-                  )}
-                </View>
-              ))}
+              {TEXT_COLUMNS.map((col) => {
+                const isLocked = !!row.locked && LOCKED_FIELDS.includes(col.field);
+                return (
+                  <View key={col.field} style={{ width: col.width }}>
+                    <TextInput
+                      value={row[col.field]}
+                      onChangeText={(v) => updateCell(row.key, col.field, v)}
+                      placeholder={col.placeholder}
+                      placeholderTextColor={colors.inkSoft}
+                      keyboardType={col.keyboard}
+                      autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
+                      editable={!isLocked}
+                      style={[
+                        styles.cellInput,
+                        BOLD_FIELDS.includes(col.field) && styles.cellInputBold,
+                        isLocked && styles.cellInputLocked,
+                      ]}
+                      accessibilityLabel={`${col.label}, row ${i + 1}`}
+                    />
+                    {col.field === 'materialDesc' && !!row.supplierRef && (
+                      <Text style={styles.supplierCaption} numberOfLines={1}>{row.supplierRef}</Text>
+                    )}
+                  </View>
+                );
+              })}
               <DateCell
                 value={row.validFrom}
                 onChange={(v) => updateCell(row.key, 'validFrom', v)}
@@ -348,16 +364,16 @@ const styles = StyleSheet.create({
   },
   tableHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: `${colors.rust}0d`,
+    backgroundColor: colors.rust,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.rust,
   },
   headerCell: {
     fontSize: 10.5,
     fontWeight: '700',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
-    color: colors.inkSoft,
+    color: colors.white,
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
@@ -376,6 +392,13 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: 12,
     paddingHorizontal: 10,
+  },
+  cellInputBold: {
+    fontWeight: '700',
+  },
+  cellInputLocked: {
+    backgroundColor: colors.appBg,
+    color: colors.inkSoft,
   },
   supplierCaption: {
     fontSize: 10,
