@@ -194,6 +194,25 @@ export async function uploadProfilePhoto(email: string, imageDataUri: string): P
   }
 }
 
+/** Saves (or replaces) the logged-in user's mobile number — see SettingsScreen.tsx's editable
+ * Mobile field. The backend normalizes/validates it as an Indian mobile number and returns the
+ * canonical "+91XXXXXXXXXX" form; the client-side check in SettingsScreen is just for fast
+ * feedback, this call is the authoritative validation. */
+export async function updateMobile(email: string, mobile: string): Promise<{ ok: boolean; mobile?: string; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/me/mobile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, mobile }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not save mobile number.' };
+    return { ok: true, mobile: data.mobile };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
 /** Activity event types the ACTIVITY stats grid (Settings screen) counts — see
  * backend/userProfile.js's CLIENT_EVENT_TYPES for the exact whitelist the backend enforces. */
 export type ActivityEventType = 'APP_OPEN' | 'DOWNLOAD' | 'FAVORITE_ADD' | 'FAVORITE_REMOVE' | 'NOTIFICATION_READ' | 'SESSION_END';

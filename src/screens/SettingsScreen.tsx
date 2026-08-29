@@ -1,25 +1,74 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ArrowLeft, Camera, Clock3, LogOut } from 'lucide-react-native';
+import { ArrowLeft, Camera, Clock3, LogOut, Pencil, Check, X } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import Avatar from '../components/Avatar';
 import Badge from '../components/Badge';
 import { useAuth } from '../context/AuthContext';
-import { uploadProfilePhoto } from '../lib/authApi';
+import { uploadProfilePhoto, updateMobile } from '../lib/authApi';
 import { appById } from '../data/mockData';
 import { colors, fonts, radii, categoryColors, appColor } from '../theme/tokens';
 
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const PHOTO_SIZE = 512;
 
+/** Mirrors backend/userProfile.js's normalizeIndianMobile — same acceptance rules (with/without
+ * +91, 91 or a leading 0, spaces/dashes ignored, must be a 10-digit number starting with 6-9) so
+ * the user gets instant feedback instead of a round-trip just to learn the format was wrong. The
+ * backend re-validates independently; this is only for a fast Save button state, never trusted
+ * as the real check. */
+function normalizeIndianMobileClient(raw: string): string | null {
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (!/^[6-9]\d{9}$/.test(digits)) return null;
+  return `+91${digits}`;
+}
+
 export default function SettingsScreen() {
   const [query, setQuery] = useState('');
   const { logout, userEmail, profile, refreshProfile } = useAuth();
   const navigation = useNavigation();
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [editingMobile, setEditingMobile] = useState(false);
+  const [mobileInput, setMobileInput] = useState('');
+  const [mobileError, setMobileError] = useState<string | null>(null);
+  const [savingMobile, setSavingMobile] = useState(false);
+
+  const onPressEditMobile = () => {
+    setMobileInput(profile?.mobile ? profile.mobile.replace(/^\+91/, '') : '');
+    setMobileError(null);
+    setEditingMobile(true);
+  };
+
+  const onCancelEditMobile = () => {
+    setEditingMobile(false);
+    setMobileError(null);
+  };
+
+  const onSaveMobile = async () => {
+    if (!userEmail || savingMobile) return;
+    const normalized = normalizeIndianMobileClient(mobileInput);
+    if (!normalized) {
+      setMobileError('Enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    setSavingMobile(true);
+    setMobileError(null);
+    try {
+      const res = await updateMobile(userEmail, normalized);
+      if (!res.ok) throw new Error(res.error || 'Could not save mobile number.');
+      setEditingMobile(false);
+      refreshProfile();
+    } catch (err: any) {
+      setMobileError(err?.message || 'Could not save mobile number.');
+    } finally {
+      setSavingMobile(false);
+    }
+  };
 
   const onPressUploadPhoto = async () => {
     if (!userEmail || uploadingPhoto) return;
@@ -144,9 +193,43 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
 
           <View style={styles.metaGrid}>
-            <View style={styles.metaCell}>
+            <View style={[styles.metaCell, styles.mobileCell]}>
               <Text style={styles.metaLabel}>Mobile</Text>
-              <Text style={styles.metaValue}>{user.mobile}</Text>
+              {editingMobile ? (
+                <View>
+                  <View style={styles.mobileEditRow}>
+                    <TextInput
+                      style={styles.mobileInput}
+                      value={mobileInput}
+                      onChangeText={(t) => { setMobileInput(t); setMobileError(null); }}
+                      placeholder="10-digit number"
+                      placeholderTextColor={colors.inkSoft}
+                      keyboardType="phone-pad"
+                      maxLength={15}
+                      autoFocus
+                      editable={!savingMobile}
+                    />
+                    {savingMobile ? (
+                      <ActivityIndicator size="small" color={colors.ink} />
+                    ) : (
+                      <>
+                        <Pressable style={styles.mobileIconBtn} onPress={onSaveMobile} hitSlop={8}>
+                          <Check size={15} color={colors.green} />
+                        </Pressable>
+                        <Pressable style={styles.mobileIconBtn} onPress={onCancelEditMobile} hitSlop={8}>
+                          <X size={15} color={colors.rust} />
+                        </Pressable>
+                      </>
+                    )}
+                  </View>
+                  {mobileError && <Text style={styles.mobileErrorText}>{mobileError}</Text>}
+                </View>
+              ) : (
+                <Pressable style={styles.mobileEditRow} onPress={onPressEditMobile} hitSlop={4}>
+                  <Text style={styles.metaValue}>{user.mobile}</Text>
+                  <Pencil size={12} color={colors.inkSoft} />
+                </Pressable>
+              )}
             </View>
             <View style={styles.metaCell}>
               <Text style={styles.metaLabel}>Role</Text>
@@ -345,6 +428,33 @@ const styles = StyleSheet.create({
   },
   metaCell: {
     minWidth: 110,
+  },
+  mobileCell: {
+    minWidth: 170,
+  },
+  mobileEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mobileInput: {
+    flex: 1,
+    fontSize: 13.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingVertical: 2,
+    minWidth: 90,
+  },
+  mobileIconBtn: {
+    padding: 2,
+  },
+  mobileErrorText: {
+    fontSize: 10.5,
+    fontFamily: fonts.sansRegular,
+    color: colors.rust,
+    marginTop: 4,
   },
   metaLabel: {
     fontSize: 10,

@@ -176,6 +176,19 @@ async function getProfile(email) {
     };
 }
 
+/** Normalizes an Indian mobile number to a canonical "+91XXXXXXXXXX" form, or returns null if it
+ * doesn't look like one. Accepts common ways people type it — with/without +91, 91 or a leading 0,
+ * spaces or dashes — but the underlying 10 digits must start with 6-9 (India's actual mobile
+ * numbering range; landlines and other ranges are rejected since this field is specifically
+ * "mobile"). */
+function normalizeIndianMobile(raw) {
+    let digits = String(raw || '').replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+    else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+    if (!/^[6-9]\d{9}$/.test(digits)) return null;
+    return `+91${digits}`;
+}
+
 /** Whitelisted image MIME types for the "Upload Photo" data URI — matches the JPG/PNG/WebP copy
  * shown on the Settings screen's upload helper text. */
 const ALLOWED_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -269,6 +282,33 @@ router.post('/me/photo', async (req, res) => {
     } catch (err) {
         console.error('[userProfile] Failed to save photo for', email, ':', err.message);
         res.status(500).json({ success: false, error: 'Could not save photo.' });
+    }
+});
+
+/** Saves the logged-in user's mobile number — the Settings screen's editable Mobile field.
+ * Validates/normalizes to +91XXXXXXXXXX server-side too (never trust client-side validation alone).
+ * Same "email, no bearer token" auth posture as the rest of this file. */
+router.post('/me/mobile', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    const mobile = normalizeIndianMobile(req.body?.mobile);
+    if (!mobile) {
+        return res.status(400).json({ success: false, error: 'Enter a valid 10-digit Indian mobile number.' });
+    }
+    try {
+        const { rowCount } = await pool.query(
+            'UPDATE emami_apps.users SET mobile = $1 WHERE email = $2',
+            [mobile, email]
+        );
+        if (rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Unknown user.' });
+        }
+        res.json({ success: true, mobile });
+    } catch (err) {
+        console.error('[userProfile] Failed to save mobile for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not save mobile number.' });
     }
 });
 
