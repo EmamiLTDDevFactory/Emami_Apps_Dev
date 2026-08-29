@@ -54,22 +54,14 @@ function RootLayoutNav() {
     }
   }, [isAuthenticated, isInitializing, segments]);
 
-  // Final safety net: plant one extra history entry, once, right on top of the first real
-  // destination (target from the settle above) — so a long browsing session that's already used
-  // up whatever real pages existed before this one can't send the very first Back press straight
-  // to a browser-internal page (e.g. Chrome's blank/Incognito page), where our JS would be torn
-  // down before it ever got a chance to redirect anywhere. Goes through router.push() — NOT a raw
-  // window.history.pushState() like an earlier version of this fix did — because bypassing Expo
-  // Router's own API desynced its internal navigation stack from the real browser history,
-  // which is what broke Claim Details' back arrow and the Dashboard tab press afterward. Reusing
-  // lastAutoRedirect.current (the exact path just settled on) instead of the raw current URL also
-  // guarantees this can't accidentally duplicate a transient mid-boot screen.
-  const hasAnchoredRef = useRef(false);
-  useEffect(() => {
-    if (hasAnchoredRef.current || !lastAutoRedirect.current) return;
-    hasAnchoredRef.current = true;
-    router.push(lastAutoRedirect.current as Parameters<typeof router.push>[0]);
-  }, [isAuthenticated, isInitializing, segments]);
+  // NOTE: this used to also plant one extra "anchor" history entry here (via router.push, right
+  // on top of the settle-replace above) as a safety net against landing on a blank browser-internal
+  // page. Removed — it was a duplicate entry with the *same* URL as the one already produced by the
+  // replace above, and that duplicate is exactly what made Back need one extra press to get out of
+  // this app (RC Portal, which has no such duplicate, only ever needs one). The popstate handler
+  // below is the actual safety net now: it inspects where Back really landed rather than assuming
+  // an extra history entry is needed, so removing the duplicate doesn't reopen the blank-page case
+  // it was guarding against.
 
   // Browser Back should exit cleanly to the EmamiApps hub Dashboard only once there's no more
   // in-app history to go back to — never fall through to whatever entry happens to be sitting

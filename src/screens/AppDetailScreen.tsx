@@ -32,9 +32,15 @@ export default function AppDetailScreen({ route }: Props) {
 
   useEffect(() => {
     if (app?.url && !locked && isSameOriginRoute(app.url)) {
-      // replace, not href: this hub screen shouldn't stay in history as an
-      // entry of its own — otherwise browser Back re-mounts it and its
-      // redirect fires again, bouncing straight back into the embedded app.
+      // Push a disposable duplicate of the current entry first, then replace — not href — into
+      // the embedded app. The replace is still needed (this hub screen shouldn't stay in history
+      // as an entry of its own, or Back would re-mount it and its redirect would fire again,
+      // bouncing straight back into the embedded app). But replacing the CURRENT entry directly
+      // would sacrifice whatever that entry actually was — which, right after login, is meant to
+      // be the hub Dashboard checkpoint AuthContext's login() just planted. Pushing this throwaway
+      // copy first means the embedded app's own back-navigation always finds one real hub entry
+      // waiting for it, one press away, instead of skipping past it.
+      window.history.pushState({}, '', window.location.pathname);
       window.location.replace(app.url);
     }
   }, [app?.url, locked]);
