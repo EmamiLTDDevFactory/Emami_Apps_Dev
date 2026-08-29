@@ -1,18 +1,73 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { ArrowLeft, Camera, Clock3, LogOut } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import Avatar from '../components/Avatar';
 import Badge from '../components/Badge';
 import { useAuth } from '../context/AuthContext';
+import { uploadProfilePhoto } from '../lib/authApi';
 import { appById } from '../data/mockData';
 import { colors, fonts, radii, categoryColors, appColor } from '../theme/tokens';
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const PHOTO_SIZE = 512;
+
 export default function SettingsScreen() {
   const [query, setQuery] = useState('');
-  const { logout, userEmail, profile } = useAuth();
+  const { logout, userEmail, profile, refreshProfile } = useAuth();
   const navigation = useNavigation();
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const onPressUploadPhoto = async () => {
+    if (!userEmail || uploadingPhoto) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Photo library access is required to upload a photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    if (asset.fileSize && asset.fileSize > MAX_UPLOAD_BYTES) {
+      Alert.alert('Photo too large', 'Please choose an image 4MB or smaller.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      // Center-crop to square first — a plain resize with independent width/height would stretch
+      // a non-square photo instead of cropping it, distorting the image.
+      const side = Math.min(asset.width, asset.height);
+      const manipulated = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [
+          { crop: { originX: (asset.width - side) / 2, originY: (asset.height - side) / 2, width: side, height: side } },
+          { resize: { width: PHOTO_SIZE, height: PHOTO_SIZE } },
+        ],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      if (!manipulated.base64) throw new Error('Could not process this image.');
+
+      const res = await uploadProfilePhoto(userEmail, `data:image/jpeg;base64,${manipulated.base64}`);
+      if (!res.ok) throw new Error(res.error || 'Could not upload photo.');
+      refreshProfile();
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message || 'Could not upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const mostUsedAppLabel = profile?.mostUsedApp
     ? appById(profile.mostUsedApp)?.name || profile.mostUsedApp
@@ -63,10 +118,14 @@ export default function SettingsScreen() {
           <View style={styles.identityRow}>
             <View style={styles.avatarCol}>
               <View style={styles.avatarRow}>
-                <Avatar name={user.name} size={56} />
-                <Pressable style={styles.uploadBtn}>
-                  <Camera size={12} color={colors.ink} />
-                  <Text style={styles.uploadText}>Upload Photo</Text>
+                <Avatar name={user.name} size={56} photoUrl={profile?.photoUrl} />
+                <Pressable style={styles.uploadBtn} onPress={onPressUploadPhoto} disabled={uploadingPhoto}>
+                  {uploadingPhoto ? (
+                    <ActivityIndicator size="small" color={colors.ink} />
+                  ) : (
+                    <Camera size={12} color={colors.ink} />
+                  )}
+                  <Text style={styles.uploadText}>{uploadingPhoto ? 'Uploading…' : 'Upload Photo'}</Text>
                 </Pressable>
               </View>
               <Text style={styles.uploadHelper}>JPG, PNG or WebP · max 4MB · resized to 512×512</Text>

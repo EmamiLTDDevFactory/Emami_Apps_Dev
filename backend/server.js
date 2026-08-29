@@ -31,11 +31,12 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081'
 // never did. curl/server-side testing never catches this — CORS is enforced by the browser, not
 // the server, so a same-machine curl call bypasses it entirely.
 app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
-// 2mb (not the old 10kb) because this now also covers saml-sso.js's metadata upload — a real
-// Federation Metadata XML with its signing certificate embedded routinely runs past 10kb, and
-// once this global parser has consumed the body, a route-level express.json() can't raise the
-// limit again (body-parser skips re-parsing a body it already parsed).
-app.use(express.json({ limit: '2mb' }));
+// 6mb (not the old 2mb) because this now also covers userProfile.js's profile-photo upload — a
+// 512x512 image encoded as a base64 data URI, plus JSON/base64 overhead, needs more headroom than
+// the earlier 2mb ceiling (itself raised from 10kb for saml-sso.js's metadata upload). Once this
+// global parser has consumed the body, a route-level express.json() can't raise the limit again
+// (body-parser skips re-parsing a body it already parsed).
+app.use(express.json({ limit: '6mb' }));
 
 const apiRouter = express.Router();
 app.use('/api', apiRouter);

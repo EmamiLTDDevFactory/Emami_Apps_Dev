@@ -149,6 +149,22 @@ async function runMigrations() {
         console.error('[postgres] User profile migration failed:', err.message);
     }
 
+    // Profile photo for the Settings screen's "Upload Photo" button — stores a self-describing
+    // data URI (e.g. "data:image/jpeg;base64,...") rather than a bare base64 blob + separate mime
+    // column, since the frontend can then hand it straight to <Image source={{ uri }}> with no
+    // extra bookkeeping. Client resizes to 512x512 and compresses before upload, so this stays
+    // small (well within the request body limit — see server.js). Must run before the
+    // user_profile_stats view migration below, which selects this column.
+    try {
+        await pool.query(`
+            ALTER TABLE emami_apps.users
+                ADD COLUMN IF NOT EXISTS photo_url text
+        `);
+        console.log('[postgres] Profile photo schema up to date (users.photo_url).');
+    } catch (err) {
+        console.error('[postgres] Profile photo migration failed:', err.message);
+    }
+
     // user_profile_stats.favorites_added used to be count(FAVORITE_ADD) - count(FAVORITE_REMOVE) —
     // a net delta, not what the "Favorites Added" label on Settings actually says. It also went
     // negative for any user who removed one of FavoritesContext.tsx's two default favorites
@@ -173,14 +189,15 @@ async function runMigrations() {
                 count(*) FILTER (WHERE (e.event_type = 'DOWNLOAD'::text)) AS downloads,
                 count(*) FILTER (WHERE (e.event_type = 'FAVORITE_ADD'::text)) AS favorites_added,
                 count(*) FILTER (WHERE (e.event_type = 'NOTIFICATION_READ'::text)) AS notifications_read,
-                mu.most_used_app
+                mu.most_used_app,
+                u.photo_url
                FROM (((emami_apps.users u
                  LEFT JOIN emami_apps.events e ON ((e.user_id = u.user_id)))
                  LEFT JOIN emami_apps.user_time_spent ts ON ((ts.user_id = u.user_id)))
                  LEFT JOIN emami_apps.user_most_used_app mu ON ((mu.user_id = u.user_id)))
-              GROUP BY u.user_id, u.device_id, u.name, u.email, u.mobile, u.role, u.status, u.last_login_at, ts.time_spent, mu.most_used_app
+              GROUP BY u.user_id, u.device_id, u.name, u.email, u.mobile, u.role, u.status, u.last_login_at, u.photo_url, ts.time_spent, mu.most_used_app
         `);
-        console.log('[postgres] user_profile_stats view up to date (favorites_added is a count, not a net delta).');
+        console.log('[postgres] user_profile_stats view up to date (favorites_added is a count, not a net delta; photo_url appended).');
     } catch (err) {
         console.error('[postgres] user_profile_stats view migration failed:', err.message);
     }

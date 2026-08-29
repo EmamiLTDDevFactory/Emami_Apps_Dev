@@ -1,19 +1,30 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fonts } from '../theme/tokens';
 
 interface AvatarProps {
   name: string;
   size?: number;
+  /** Data URI or URL of the user's uploaded profile photo — falls back to initials when absent. */
+  photoUrl?: string | null;
 }
 
-export default function Avatar({ name, size = 36 }: AvatarProps) {
+export default function Avatar({ name, size = 36, photoUrl }: AvatarProps) {
   const initials = name
     .split(' ')
     .map((w) => w[0])
     .slice(0, 2)
     .join('');
+
+  if (photoUrl) {
+    return (
+      <Image
+        source={{ uri: photoUrl }}
+        style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}
+      />
+    );
+  }
 
   return (
     <LinearGradient

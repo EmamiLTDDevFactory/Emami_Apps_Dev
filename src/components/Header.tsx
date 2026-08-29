@@ -108,7 +108,7 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
           accessibilityLabel={`Account menu for ${currentUser.name}`}
         >
           <View style={styles.avatarRing}>
-            <Avatar name={currentUser.name} size={32} />
+            <Avatar name={currentUser.name} size={32} photoUrl={profile?.photoUrl} />
             <View style={styles.statusDot} />
           </View>
           <View style={styles.profileTextWrap}>

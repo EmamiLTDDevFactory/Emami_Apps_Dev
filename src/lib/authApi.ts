@@ -146,6 +146,9 @@ export interface UserProfile {
   /** Top apps by open count, most-opened first — visit counts, not literal time-per-app (nothing
    * tracks how long an app stays open, only that it was opened). */
   topApps: { appId: string; opens: number }[];
+  /** Uploaded profile photo as a data URI, ready for <Image source={{ uri }}> — null until the
+   * user uploads one via the Settings screen's "Upload Photo" button (see uploadProfilePhoto). */
+  photoUrl: string | null;
 }
 
 export async function getMyProfile(email: string): Promise<UserProfile | null> {
@@ -171,6 +174,24 @@ export function recordLogin(email: string, name?: string): void {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, name }),
   }).catch(() => {});
+}
+
+/** Uploads (or replaces) the logged-in user's profile photo — imageDataUri is already resized to
+ * 512x512 and compressed by the caller (see SettingsScreen.tsx's onPressUploadPhoto). Same
+ * Postgres-reachable backend as getMyProfile, since this is stored on emami_apps.users. */
+export async function uploadProfilePhoto(email: string, imageDataUri: string): Promise<{ ok: boolean; photoUrl?: string; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/me/photo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, imageDataUri }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not upload photo.' };
+    return { ok: true, photoUrl: data.photoUrl };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
 }
 
 /** Activity event types the ACTIVITY stats grid (Settings screen) counts — see

@@ -142,7 +142,7 @@ async function getProfile(email) {
     const { rows } = await pool.query(
         `SELECT user_id, name, email, mobile, role, status, last_login_at,
                 sessions_total, logins, time_spent, apps_opened, downloads,
-                favorites_added, notifications_read, most_used_app
+                favorites_added, notifications_read, most_used_app, photo_url
          FROM emami_apps.user_profile_stats
          WHERE email = $1`,
         [email]
@@ -172,8 +172,17 @@ async function getProfile(email) {
         mostUsedApp: row.most_used_app || '—',
         lastSessionDuration,
         topApps,
+        photoUrl: row.photo_url || null,
     };
 }
+
+/** Whitelisted image MIME types for the "Upload Photo" data URI — matches the JPG/PNG/WebP copy
+ * shown on the Settings screen's upload helper text. */
+const ALLOWED_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+/** Sanity cap on the stored data URI's length — the client resizes to 512x512 and compresses
+ * before upload, so a legitimate photo is nowhere near this; it only guards against something
+ * malformed or unexpectedly huge slipping through before it hits the DB. */
+const MAX_PHOTO_DATA_URI_LENGTH = 2_000_000;
 
 /** Activity events the frontend is allowed to log via POST /api/events — anything the
  * user_profile_stats/user_most_used_app/user_time_spent views (see db.js) actually count.
@@ -228,6 +237,39 @@ router.post('/me/login', async (req, res) => {
         return res.status(500).json({ success: false, error: 'Could not record login.' });
     }
     res.json({ success: true });
+});
+
+/** Saves the logged-in user's profile photo — the Settings screen's "Upload Photo" button. The
+ * client already resized/compressed the image to 512x512 and encoded it as a data URI
+ * ("data:image/jpeg;base64,...") before calling this, so the only work here is validating it looks
+ * like one of the allowed image types and isn't absurdly large, then storing it as-is. Same "email,
+ * no bearer token" auth posture as the rest of this file. */
+router.post('/me/photo', async (req, res) => {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const imageDataUri = String(req.body?.imageDataUri || '');
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    if (imageDataUri.length > MAX_PHOTO_DATA_URI_LENGTH) {
+        return res.status(413).json({ success: false, error: 'Image is too large.' });
+    }
+    const match = /^data:(image\/[a-zA-Z+.-]+);base64,/.exec(imageDataUri);
+    if (!match || !ALLOWED_PHOTO_MIME_TYPES.includes(match[1].toLowerCase())) {
+        return res.status(400).json({ success: false, error: 'Photo must be a JPG, PNG or WebP image.' });
+    }
+    try {
+        const { rowCount } = await pool.query(
+            'UPDATE emami_apps.users SET photo_url = $1 WHERE email = $2',
+            [imageDataUri, email]
+        );
+        if (rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Unknown user.' });
+        }
+        res.json({ success: true, photoUrl: imageDataUri });
+    } catch (err) {
+        console.error('[userProfile] Failed to save photo for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not save photo.' });
+    }
 });
 
 /** Logs one activity event (app opened, favorite toggled, logout, etc.) for the ACTIVITY stats on
