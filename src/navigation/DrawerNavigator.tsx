@@ -41,9 +41,6 @@ export default function DrawerNavigator() {
         {() => <AppListScreen title="Favorites" onlyFavorites />}
       </Drawer.Screen>
       <Drawer.Screen name="Recent" component={RecentScreen} />
-      <Drawer.Screen name="AllApplications">
-        {() => <AppListScreen title="All Applications" />}
-      </Drawer.Screen>
       <Drawer.Screen name="Help" component={HelpScreen} />
       <Drawer.Screen name="Settings" component={SettingsScreen} />
       <Drawer.Screen name="UserAccess" component={UserAccessScreen} />

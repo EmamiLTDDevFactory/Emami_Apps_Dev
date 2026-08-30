@@ -20,7 +20,6 @@ import {
 import { AuthProvider, loadPersistedLoginState, clearPersistedLoginState, type LoginMethod } from './src/context/AuthContext';
 import { checkStillAuthorized } from './src/lib/authApi';
 import { FavoritesProvider } from './src/context/FavoritesContext';
-import { NotificationsUIProvider } from './src/context/NotificationsUIContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { linking } from './src/navigation/linking';
 
@@ -113,8 +112,8 @@ export default function App() {
     // already added them, so there's no duplicate/conflicting tag either way.
     const SEO_DESCRIPTION =
       "Emami Apps is the single sign-on portal for Emami Group's internal business applications — including Non CTC Expense, RC Portal, Dispatch Tracker, and MoldHealthCheck. Sign in with your Emami Microsoft work account.";
-    if (document.title !== 'Emami Apps – Emami Group Employee Portal') {
-      document.title = 'Emami Apps – Emami Group Employee Portal';
+    if (document.title !== 'Emami Apps') {
+      document.title = 'Emami Apps';
     }
     addTag('meta', { name: 'description', content: SEO_DESCRIPTION });
     addTag('link', { rel: 'canonical', href: 'https://www.emamiapps.in/' });
@@ -158,12 +157,18 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider initialLoggedIn={initialLoggedIn} initialUserEmail={initialUserEmail} initialLoginMethod={initialLoginMethod}>
           <FavoritesProvider>
-            <NotificationsUIProvider>
-              <NavigationContainer linking={linking}>
-                <StatusBar style="dark" />
-                <RootNavigator />
-              </NavigationContainer>
-            </NotificationsUIProvider>
+            <NavigationContainer
+              linking={linking}
+              documentTitle={{
+                // The hub is a single-page portal — keep the browser tab reading "Emami Apps" no
+                // matter which screen or embedded app (e.g. MoldHealthCheck) is open, instead of
+                // React Navigation's default of swapping in each screen's own `title` option.
+                formatter: () => 'Emami Apps',
+              }}
+            >
+              <StatusBar style="dark" />
+              <RootNavigator />
+            </NavigationContainer>
           </FavoritesProvider>
         </AuthProvider>
       </SafeAreaProvider>

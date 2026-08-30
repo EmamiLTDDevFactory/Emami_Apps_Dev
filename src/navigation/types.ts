@@ -5,7 +5,6 @@ export type DrawerParamList = {
   MyApplications: undefined;
   Favorites: undefined;
   Recent: undefined;
-  AllApplications: undefined;
   Help: undefined;
   Settings: undefined;
   UserAccess: undefined;

@@ -19,7 +19,6 @@ export const linking: LinkingOptions<RootStackParamList> = {
           MyApplications: 'my-applications',
           Favorites: 'favorites',
           Recent: 'recent',
-          AllApplications: 'all-applications',
           Help: 'help',
           Settings: 'settings',
           UserAccess: 'manage-access',

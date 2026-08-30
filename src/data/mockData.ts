@@ -1,9 +1,9 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  Grid3x3, HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp,
+  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp,
 } from 'lucide-react-native';
-import type { AppItem, RecentEntry, NotificationItem, NavItem, CategoryFilter } from '../types';
+import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
 export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations'];
 
@@ -66,20 +66,11 @@ export const RECENT: RecentEntry[] = [
   { id: 'inventory', when: 'Yesterday, 11:20 AM' },
 ];
 
-export const NOTIFICATIONS: NotificationItem[] = [
-  { id: 'n1', title: 'Non CTC Expense: August reimbursement processed', when: '10 min ago', unread: true },
-  { id: 'n2', title: 'RC Portal: new rate contract awaiting review', when: '1 hr ago', unread: true },
-  { id: 'n3', title: 'Dispatch Tracker: shipment DT-2291 delivered', when: 'Yesterday', unread: false },
-];
-
-export const unreadNotificationsCount = NOTIFICATIONS.filter((n) => n.unread).length;
-
 export const NAV: NavItem[] = [
   { id: 'Home', label: 'Home', icon: Home },
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Recent', label: 'Recently Used', icon: Clock },
-  { id: 'AllApplications', label: 'All Applications', icon: Grid3x3 },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'Settings', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },

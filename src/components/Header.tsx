@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Modal, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, Bell, Menu, ChevronDown, User, Settings, LogOut, Download } from 'lucide-react-native';
+import { Search, Menu, ChevronDown, User, Settings, LogOut, Download } from 'lucide-react-native';
 import { colors, fonts, radii, shadows } from '../theme/tokens';
-import { NOTIFICATIONS, unreadNotificationsCount } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
-import { useNotificationsUI } from '../context/NotificationsUIContext';
 import { useIsWideScreen } from '../hooks/useIsWideScreen';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useTypewriterPlaceholder } from '../hooks/useTypewriterPlaceholder';
@@ -25,11 +23,9 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
   const insets = useSafeAreaInsets();
   const { userEmail, profile } = useAuth();
   const currentUser = { name: profile?.name || userEmail || '', email: profile?.email || userEmail || '' };
-  const { isOpen: notifOpen, openPanel: openNotifPanel, closePanel: closeNotifPanel } = useNotificationsUI();
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
-  const unread = unreadNotificationsCount;
   const isWideScreen = useIsWideScreen();
   const pwaInstall = usePwaInstall();
 
@@ -75,19 +71,6 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
           </View>
         </View>
 
-        <Pressable
-          onPress={openNotifPanel}
-          hitSlop={10}
-          style={styles.iconBtn}
-          accessibilityRole="button"
-          accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
-        >
-          <View>
-            <Bell size={20} color={colors.inkSoft} />
-            {unread > 0 && <View style={styles.dot} />}
-          </View>
-        </Pressable>
-
         {pwaInstall.isSupported && (
           <Pressable
             onPress={onPressInstall}
@@ -120,23 +103,6 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
           </View>
         </Pressable>
       </View>
-
-      <Modal visible={notifOpen} transparent animationType="fade" onRequestClose={closeNotifPanel}>
-        <Pressable style={styles.backdrop} onPress={closeNotifPanel}>
-          <View style={[styles.dropdown, { top: insets.top + 56, right: 60 }]}>
-            <Text style={styles.dropdownTitle}>Notifications</Text>
-            {NOTIFICATIONS.map((n, i) => (
-              <View key={n.id} style={[styles.notifRow, i < NOTIFICATIONS.length - 1 && styles.rowBorder]}>
-                <View style={[styles.notifDot, { backgroundColor: n.unread ? colors.rust : 'transparent' }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.notifTitle, { fontFamily: n.unread ? fonts.sansSemiBold : fonts.sansMedium }]}>{n.title}</Text>
-                  <Text style={styles.notifWhen}>{n.when}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
 
       <Modal visible={profileOpen} transparent animationType="fade" onRequestClose={() => setProfileOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setProfileOpen(false)}>
@@ -231,17 +197,6 @@ const styles = StyleSheet.create({
     padding: 0,
     height: '100%',
   },
-  dot: {
-    position: 'absolute',
-    top: -1,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.rust,
-    borderWidth: 1.5,
-    borderColor: colors.white,
-  },
   profileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -305,31 +260,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  notifRow: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 14,
-  },
-  rowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  notifDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 6,
-  },
-  notifTitle: {
-    fontSize: 13,
-    color: colors.ink,
-  },
-  notifWhen: {
-    fontSize: 11.5,
-    color: colors.inkSoft,
-    fontFamily: fonts.sansRegular,
-    marginTop: 2,
   },
   profileHeader: {
     padding: 14,

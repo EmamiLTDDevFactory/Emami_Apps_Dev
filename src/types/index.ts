@@ -19,13 +19,6 @@ export interface RecentEntry {
   when: string;
 }
 
-export interface NotificationItem {
-  id: string;
-  title: string;
-  when: string;
-  unread: boolean;
-}
-
 export interface NavItem {
   id: string;
   label: string;
