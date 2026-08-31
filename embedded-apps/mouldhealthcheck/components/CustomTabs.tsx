@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, TouchableOpacity, StyleSheet, Text } from "react-native";
+import { View, TouchableOpacity, StyleSheet, Text, Image } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
@@ -93,7 +93,7 @@ export default function CustomTabs({ state, navigation }: BottomTabBarProps) {
       <View style={[styles.sidebar, { paddingTop: insets.top + 20 }]}>
         <View style={styles.sidebarBrand}>
           <View style={styles.sidebarLogo}>
-            <Icons.Cube size={20} color={colors.brand} weight="fill" />
+            <Image source={require("../assets/logo.png")} style={styles.sidebarLogoImage} resizeMode="contain" />
           </View>
           <Text style={[styles.sidebarBrandText, { fontSize: 14, lineHeight: 17 }]} numberOfLines={2}>Mold Health Inspection</Text>
         </View>
@@ -157,13 +157,14 @@ const styles = StyleSheet.create({
   },
   sidebarBrand: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, marginBottom: 24 },
   sidebarLogo: {
-    width: 34,
+    width: 40,
     height: 34,
     borderRadius: 10,
     backgroundColor: colors.brandSoft,
     alignItems: "center",
     justifyContent: "center",
   },
+  sidebarLogoImage: { width: "80%", height: "80%" },
   sidebarBrandText: { fontSize: font.title, fontWeight: font.black, color: colors.ink },
   sidebarList: { gap: 2 },
   sidebarItem: {

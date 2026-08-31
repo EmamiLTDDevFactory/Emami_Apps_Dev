@@ -18,6 +18,11 @@ export default function Splash() {
   }, []);
 
   const logoSize = isPhone ? 132 : 160;
+  // Hub logo's real aspect ratio is ~1.208:1 (wider than tall); size the image to
+  // that ratio inside the square glass card so "contain" doesn't letterbox it.
+  const LOGO_ASPECT = 1.208;
+  const logoWidth = logoSize * 0.82;
+  const logoHeight = logoWidth / LOGO_ASPECT;
 
   return (
     <LinearGradient colors={gradients.aurora} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.container}>
@@ -28,7 +33,7 @@ export default function Splash() {
 
       <Animated.View entering={ZoomIn.duration(700)}>
         <GlassSurface intensity="hero" tint="dark" borderRadius={radius._32} style={{ width: logoSize, height: logoSize, alignItems: "center", justifyContent: "center" }}>
-          <Image source={require("../assets/logo.png")} style={[styles.logo, { width: logoSize * 0.79, height: logoSize * 0.79 }]} resizeMode="contain" />
+          <Image source={require("../assets/logo.png")} style={[styles.logo, { width: logoWidth, height: logoHeight }]} resizeMode="contain" />
         </GlassSurface>
       </Animated.View>
 
