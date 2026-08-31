@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Linking, Plat
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  Search, Mail, Send, ShieldCheck, ChevronDown, ChevronUp, Lock, LifeBuoy, HelpCircle,
+  Search, Send, ShieldCheck, ChevronDown, ChevronUp, Lock, LifeBuoy, HelpCircle,
 } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
@@ -14,25 +14,20 @@ import { colors, fonts, radii, appColor } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
 /** Swap these for the team's real channels — kept as one block so they're easy to find and change. */
-const SUPPORT_EMAIL = 'support@emamigroup.com';
+const SUPPORT_EMAIL = 'indranil.banerjee@emamigroup.com';
+const SUPPORT_CC = 'sayontan.das@emamigroup.com';
 const CONTACT_CARDS = [
-  {
-    icon: Mail,
-    title: 'Email Support',
-    subtitle: 'General questions about the hub or any application in it',
-    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('EmamiApps Hub — Support request')}`),
-  },
   {
     icon: Send,
     title: 'Report an Issue',
     subtitle: 'Something broken, slow, or not behaving as expected',
-    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('EmamiApps Hub — Bug report')}`),
+    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('EmamiApps Hub — Bug report')}`),
   },
   {
     icon: ShieldCheck,
     title: 'Request App Access',
     subtitle: 'Need a locked application unlocked, or a role changed',
-    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('EmamiApps Hub — Access request')}`),
+    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('EmamiApps Hub — Access request')}`),
   },
 ];
 
@@ -237,7 +232,7 @@ export default function HelpScreen() {
         {filteredGroups.length === 0 ? (
           <View style={[styles.baseCard, styles.emptyCard]}>
             <HelpCircle size={22} color={colors.inkSoft} />
-            <Text style={styles.emptyText}>No FAQs match "{faqQuery}". Try Email Support above.</Text>
+            <Text style={styles.emptyText}>No FAQs match "{faqQuery}". Try Report an Issue above.</Text>
           </View>
         ) : (
           filteredGroups.map((group) => (
