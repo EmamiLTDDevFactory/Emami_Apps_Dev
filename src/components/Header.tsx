@@ -176,8 +176,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: colors.appBg,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radii.pill,
     paddingHorizontal: 14,
     height: 38,

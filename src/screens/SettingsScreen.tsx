@@ -442,8 +442,6 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontFamily: fonts.sansSemiBold,
     color: colors.ink,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     paddingVertical: 2,
     minWidth: 90,
   },

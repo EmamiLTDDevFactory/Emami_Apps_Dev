@@ -304,8 +304,6 @@ const styles = StyleSheet.create({
     gap: 8,
     width: '100%',
     maxWidth: 460,
-    borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: radii.pill,
     paddingHorizontal: 16,
     height: 42,

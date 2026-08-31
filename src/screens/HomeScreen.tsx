@@ -49,12 +49,12 @@ export default function HomeScreen() {
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <CompanyPulseCard />
-
         <DashboardHero
           name={profile?.name || userEmail || ''}
           lastLogin={profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—'}
         />
+
+        <CompanyPulseCard />
 
         <View style={styles.sectionHeader}>
           <View style={styles.sectionIconBox}>
