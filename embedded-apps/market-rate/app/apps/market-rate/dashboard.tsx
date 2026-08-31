@@ -215,21 +215,10 @@ export default function DashboardScreen() {
     setSaving(true);
     setStatus(null);
     try {
-      // Group every row (not just the edited ones) by its original RateId, so a partial re-post
-      // doesn't drop untouched sibling line items that were saved under the same batch.
-      const groups = new Map<string, MarketRateRow[]>();
-      for (const row of rows) {
-        if (!row.rateId) continue;
-        const group = groups.get(row.rateId) ?? [];
-        group.push(row);
-        groups.set(row.rateId, group);
-      }
-      const dirtyRateIds = Array.from(new Set(dirtyRows.map((r) => r.rateId).filter((id): id is string => !!id)));
-      for (const rateId of dirtyRateIds) {
-        const groupRows = groups.get(rateId) ?? [];
-        await saveMarketRates(groupRows, { rateId });
-      }
-      setStatus({ type: 'success', message: `Saved ${dirtyRateIds.length} batch${dirtyRateIds.length === 1 ? '' : 'es'}.` });
+      // Same call Home's Save uses — the edited rows go out as a fresh batch, exactly like a new
+      // Home submission, not an update-in-place of the original header/RateId.
+      await saveMarketRates(dirtyRows);
+      setStatus({ type: 'success', message: `Saved ${dirtyRows.length} row${dirtyRows.length === 1 ? '' : 's'}.` });
       setDirtyKeys(new Set());
       loadYear(year);
     } catch (err) {

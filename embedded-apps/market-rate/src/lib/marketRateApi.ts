@@ -60,10 +60,10 @@ export interface MarketRateRow {
    * reference data there, not something a user should be free to overwrite by hand. Rows added via
    * "Add row" stay false/editable, since there's no lookup UI to fill those fields any other way. */
   locked?: boolean;
-  /** Set only on rows loaded back from SAP (Dashboard's edit flow) — the header RateId this row's
-   * batch was originally saved under. Edited rows are grouped by this and re-posted with the same
-   * RateId so the save reuses/updates the existing batch instead of minting a new one. Absent on
-   * rows created fresh in the Home form. */
+  /** Set only on rows loaded back from SAP (Change History) — the header RateId this row's batch
+   * was originally saved under. Informational/for the row key only: saveMarketRates always mints
+   * a fresh RateId regardless, so editing a row and saving doesn't reuse this one. Absent on rows
+   * created fresh in the Home form. */
   rateId?: string;
   /** Set only on rows loaded back from SAP — the email the batch was originally submitted under.
    * Preserved on save so an Admin editing another user's row doesn't reassign it to themselves. */
@@ -237,15 +237,16 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
   };
 }
 
-/** opts.rateId: pass the row's existing rateId (Dashboard edit flow) to re-save under the same
- * header instead of minting a new batch; omitted (Home's create flow) generates a fresh one.
+/** Used identically by both Home's create flow and Change History's edit-save — every call mints
+ * a fresh RateId batch, so editing existing rows in Change History re-submits them as a new batch
+ * rather than updating the original header/RateId in place.
  *
  * Does NOT send an Email field on the header — confirmed live (HAR capture) that
  * ZMarketRateHeaderSet rejects it with a 400: "Property 'Email' is invalid". Per-user row
  * ownership for the Dashboard's fetch filter must come from wherever FLAT_RATE_ENTITY_SET's own
  * Email actually gets populated server-side, since it can't be this header entity's write path. */
-export async function saveMarketRates(rows: MarketRateRow[], opts: { rateId?: string } = {}): Promise<void> {
-  const rateId = opts.rateId || randomRateId();
+export async function saveMarketRates(rows: MarketRateRow[]): Promise<void> {
+  const rateId = randomRateId();
   const payload: Record<string, unknown> = {
     RateId: rateId,
     ToMarketRates: rows.map((row) => toSapLineItem(row, rateId)),
