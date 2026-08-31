@@ -9,14 +9,13 @@ import { useAuth } from '../context/AuthContext';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
 import EmpAppMark from '../components/EmpAppMark';
-import { Lock } from 'lucide-react-native';
 
 export default function CustomDrawerContent({ state, navigation }: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   const { favorites } = useFavorites();
   const { access, userEmail } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
-  const favoriteApps = APPS.filter((a) => favorites.has(a.id));
+  const favoriteApps = APPS.filter((a) => favorites.has(a.id) && unlockedAppIds.has(a.id));
   const activeRoute = state.routeNames[state.index];
   // The always-visible "Quick access" strip below is likely the single most common way a favorite
   // app gets opened, but it never logged APP_OPEN — undercounting Settings' Apps Opened stat and
@@ -58,17 +57,15 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
             {favoriteApps.map((app) => {
               const Icon = app.icon;
               const c = appColor(app.id);
-              const locked = !unlockedAppIds.has(app.id);
               return (
                 <Pressable
                   key={app.id}
                   onPress={() => onOpenApp(app)}
-                  style={[styles.quickAccessBtn, { backgroundColor: locked ? colors.sidebarBorder : `${c}2e` }]}
+                  style={[styles.quickAccessBtn, { backgroundColor: `${c}2e` }]}
                   accessibilityRole="button"
-                  accessibilityLabel={locked ? `${app.name} — locked` : `Open ${app.name}`}
-                  accessibilityState={{ disabled: locked }}
+                  accessibilityLabel={`Open ${app.name}`}
                 >
-                  {locked ? <Lock size={12} color={colors.sidebarTextSoft} /> : <Icon size={14} color={c} />}
+                  <Icon size={14} color={c} />
                 </Pressable>
               );
             })}

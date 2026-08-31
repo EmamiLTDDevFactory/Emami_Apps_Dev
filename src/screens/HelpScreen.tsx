@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Linking, Plat
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  Search, Send, ShieldCheck, ChevronDown, ChevronUp, Lock, LifeBuoy, HelpCircle,
+  Search, Send, ShieldCheck, ChevronDown, ChevronUp, LifeBuoy, HelpCircle,
 } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
@@ -64,11 +64,11 @@ const FAQ_GROUPS: FaqGroup[] = [
     title: 'Applications & Access',
     items: [
       {
-        q: 'Why is an application tile locked?',
-        a: "Locked tiles stay visible so you know what's available, but only applications an Admin has explicitly granted you open when tapped. A locked tile is dimmed and shows a lock icon.",
+        q: "Why can't I find an application I'm looking for?",
+        a: "Only applications an Admin has explicitly granted you appear on the hub — anything you haven't been given access to simply doesn't show as a tile.",
       },
       {
-        q: 'How do I get access to a locked application?',
+        q: 'How do I get access to an application?',
         a: 'Ask your Admin or Super Admin to grant it to you from Manage Access — see the Request App Access card above.',
       },
       {
@@ -106,7 +106,7 @@ const FAQ_GROUPS: FaqGroup[] = [
         a: "This usually means single sign-on isn't fully configured yet, or your Microsoft account isn't authorized for this hub. Report an Issue above and mention the error message you saw.",
       },
       {
-        q: 'An application I used to have access to is now locked.',
+        q: 'An application I used to have access to has disappeared.',
         a: 'Your access may have been changed by an Admin. Use Request App Access above to confirm or ask for it back.',
       },
     ],
@@ -202,24 +202,23 @@ export default function HelpScreen() {
           })}
         </View>
 
-        {APPS.length > 0 && (
+        {APPS.some((a) => unlockedAppIds.has(a.id)) && (
           <View style={[styles.baseCard, styles.appsCard]}>
             <Text style={styles.sectionTitle}>Need help with a specific application?</Text>
             <View style={styles.appChipsRow}>
-              {APPS.map((app) => {
+              {APPS.filter((a) => unlockedAppIds.has(a.id)).map((app) => {
                 const Icon = app.icon;
                 const accent = appColor(app.id);
-                const locked = !unlockedAppIds.has(app.id);
                 return (
                   <Pressable
                     key={app.id}
                     onPress={() => openApp(app.id)}
-                    style={[styles.appChip, { borderColor: locked ? colors.border : accent }, !locked && { backgroundColor: `${accent}14` }]}
+                    style={[styles.appChip, { borderColor: accent, backgroundColor: `${accent}14` }]}
                     accessibilityRole="button"
-                    accessibilityLabel={locked ? `${app.name} — locked` : `Open ${app.name}`}
+                    accessibilityLabel={`Open ${app.name}`}
                   >
-                    {locked ? <Lock size={12} color={colors.inkSoft} /> : <Icon size={13} color={accent} />}
-                    <Text style={[styles.appChipText, { color: locked ? colors.inkSoft : accent }]}>{app.name}</Text>
+                    <Icon size={13} color={accent} />
+                    <Text style={[styles.appChipText, { color: accent }]}>{app.name}</Text>
                   </Pressable>
                 );
               })}

@@ -35,7 +35,7 @@ export default function RecentScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Recently Used</Text>
         <View style={styles.list}>
-          {RECENT.map((r, i) => {
+          {RECENT.filter((r) => unlockedAppIds.has(r.id)).map((r, i, visible) => {
             const app = appById(r.id);
             if (!app) return null;
             const Icon = app.icon;
@@ -44,7 +44,7 @@ export default function RecentScreen() {
               <Pressable
                 key={r.id}
                 onPress={() => openApp(app.id)}
-                style={[styles.row, i < RECENT.length - 1 && styles.rowBorder]}
+                style={[styles.row, i < visible.length - 1 && styles.rowBorder]}
               >
                 <View style={[styles.icon, { backgroundColor: `${accent}1f` }]}>
                   <Icon size={16} color={accent} />

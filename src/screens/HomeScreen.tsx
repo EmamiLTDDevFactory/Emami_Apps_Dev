@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Platform, Linking } from 'react-native';
-import { ChevronRight, LayoutGrid, Lock } from 'lucide-react-native';
+import { ChevronRight, LayoutGrid } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import ScreenScaffold from '../components/ScreenScaffold';
@@ -30,7 +30,7 @@ export default function HomeScreen() {
   const apps = useFilteredApps({ query, category, sort });
 
   const openApp = (app: AppItem) => {
-    if (!unlockedAppIds.has(app.id)) return; // locked tiles ignore taps — see AppCard's own guard too
+    if (!unlockedAppIds.has(app.id)) return; // defense in depth — locked apps are filtered out of every tile list already
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     // Web: open the app in its own tab instead of navigating this one away. Native has no tab
     // concept, so it keeps going through AppDetail's in-app WebView.
@@ -79,26 +79,25 @@ export default function HomeScreen() {
 
         <Text style={[styles.recentTitle]}>Recently Used</Text>
         <View style={styles.recentList}>
-          {RECENT.map((r, i) => {
+          {RECENT.filter((r) => unlockedAppIds.has(r.id)).map((r, i, visible) => {
             const app = appById(r.id);
             if (!app) return null;
             const Icon = app.icon;
             const accent = appColor(app.id);
-            const locked = !unlockedAppIds.has(app.id);
             return (
               <Pressable
                 key={r.id}
                 onPress={() => openApp(app)}
-                style={[styles.recentRow, i < RECENT.length - 1 && styles.recentRowBorder, locked && styles.recentRowLocked]}
+                style={[styles.recentRow, i < visible.length - 1 && styles.recentRowBorder]}
               >
-                <View style={[styles.recentIcon, { backgroundColor: locked ? colors.border : `${accent}1a` }]}>
-                  {locked ? <Lock size={14} color={colors.inkSoft} /> : <Icon size={16} color={accent} />}
+                <View style={[styles.recentIcon, { backgroundColor: `${accent}1a` }]}>
+                  <Icon size={16} color={accent} />
                 </View>
                 <View style={styles.flex1}>
-                  <Text style={[styles.recentName, locked && styles.recentTextLocked]}>{app.name}</Text>
-                  <Text style={styles.recentWhen}>{locked ? 'Locked — contact your admin' : r.when}</Text>
+                  <Text style={styles.recentName}>{app.name}</Text>
+                  <Text style={styles.recentWhen}>{r.when}</Text>
                 </View>
-                {!locked && <ChevronRight size={15} color={colors.inkSoft} />}
+                <ChevronRight size={15} color={colors.inkSoft} />
               </Pressable>
             );
           })}
@@ -161,12 +160,6 @@ const styles = StyleSheet.create({
   recentRowBorder: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  recentRowLocked: {
-    opacity: 0.65,
-  },
-  recentTextLocked: {
-    color: colors.inkSoft,
   },
   recentIcon: {
     width: 34,

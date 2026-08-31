@@ -14,17 +14,19 @@ interface AppGridProps {
   onToggleFavorite: (id: string) => void;
   ListHeaderComponent?: React.ReactElement;
   scrollEnabled?: boolean;
-  /** App IDs the signed-in user is granted (see useUnlockedAppIds) — anything not in this set
-   * renders locked. Omit to leave every tile unlocked (e.g. a context with no access data yet). */
+  /** App IDs the signed-in user is granted (see useUnlockedAppIds) — anything not in this set is
+   * filtered out of the grid entirely. Omit to leave every app visible (e.g. a context with no
+   * access data yet). */
   unlockedAppIds?: Set<string>;
 }
 
 export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFavorite, ListHeaderComponent, scrollEnabled = true, unlockedAppIds }: AppGridProps) {
   const numColumns = useColumnCount();
+  const visibleApps = unlockedAppIds ? apps.filter((a) => unlockedAppIds.has(a.id)) : apps;
   return (
     <FlatList
       key={`cols-${numColumns}`}
-      data={apps}
+      data={visibleApps}
       keyExtractor={(item) => item.id}
       numColumns={numColumns}
       columnWrapperStyle={styles.row}
@@ -44,7 +46,6 @@ export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFav
             isTopUsed={item.id === topUsedAppId}
             onPress={onOpenApp}
             onToggleFavorite={onToggleFavorite}
-            locked={unlockedAppIds ? !unlockedAppIds.has(item.id) : false}
           />
         </View>
       )}
