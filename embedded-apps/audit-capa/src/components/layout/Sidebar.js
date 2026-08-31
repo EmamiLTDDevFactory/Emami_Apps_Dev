@@ -28,6 +28,8 @@ import {
 
 import LogoutIcon from "@mui/icons-material/Logout";
 
+import emamiAppsLogo from "../../assets/emami-apps-logo.png";
+
 export default function Sidebar() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -217,20 +219,25 @@ export default function Sidebar() {
                     : "Audit & CAPA Digitisation"}
             </Typography> */}
 
-            <Typography
-                variant="h5"
+            <Box
                 sx={{
-                    p: 3,
-                    fontWeight: 700,
-                    textAlign: "center",
-                    letterSpacing: 1,
+                    display: "flex",
+                    justifyContent: "center",
+                    p: collapsed ? 1.5 : 3,
                 }}
             >
-                {collapsed
-                    ? "A&C"
-                    : "AUDIT & CAPA"}
-
-            </Typography>
+                <Box
+                    component="img"
+                    src={emamiAppsLogo}
+                    alt="Emami Apps"
+                    sx={{
+                        width: collapsed ? 48 : 180,
+                        height: collapsed ? 40 : 149,
+                        objectFit: "contain",
+                        transition: "all 0.3s ease",
+                    }}
+                />
+            </Box>
 
             <Typography
                 variant="caption"

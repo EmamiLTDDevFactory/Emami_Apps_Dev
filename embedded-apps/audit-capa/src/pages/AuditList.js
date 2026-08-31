@@ -677,8 +677,9 @@ export default function AuditList() {
                                 src={emamiLogo}
                                 alt="Emami Logo"
                                 sx={{
-                                    width: 90,
+                                    width: 110,
                                     height: 90,
+                                    objectFit: "contain",
                                     background: "#fff",
                                     borderRadius: 2,
                                     p: 1,
