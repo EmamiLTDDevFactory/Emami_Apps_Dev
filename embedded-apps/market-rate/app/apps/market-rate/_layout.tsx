@@ -5,11 +5,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import InfoHeader from '../../../src/components/InfoHeader';
-import { colors, radii } from '../../../src/theme/tokens';
+import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
+import { colors } from '../../../src/theme/tokens';
 import { hasHubSession } from '../../../src/lib/hubEmailLogin';
 import { MarketRateAuthProvider, useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 
-type NavItem = { href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/master-data'; label: string; icon: keyof typeof Ionicons.glyphMap; adminOnly?: boolean };
+type NavItem = SidePaneItem & { href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/master-data'; adminOnly?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline' },
@@ -17,33 +18,30 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 
-/** Home/Dashboard/Master Data switcher — Master Data only appears once the ZMarketRoleSet lookup
- * confirms Admin, so a User never sees it flash in while the role is still loading. */
-function NavBar() {
+/** Home/Dashboard/Master Data switcher, now living in the side pane instead of a top pill bar —
+ * Master Data only appears once the ZMarketRoleSet lookup confirms Admin, so a User never sees it
+ * flash in while the role is still loading. */
+function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { role, roleLoading } = useMarketRateAuth();
   const pathname = usePathname();
   const router = useRouter();
 
   const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && role === 'Admin'));
+  const activeHref = pathname === '/apps/market-rate' ? '/apps/market-rate/' : pathname;
 
   return (
-    <View style={styles.navBar}>
-      {items.map((item) => {
-        const active = pathname === item.href || (item.href === '/apps/market-rate/' && pathname === '/apps/market-rate');
-        return (
-          <Pressable
-            key={item.href}
-            onPress={() => router.push(item.href)}
-            style={[styles.navItem, active && styles.navItemActive]}
-            accessibilityRole="button"
-            accessibilityLabel={item.label}
-          >
-            <Ionicons name={item.icon} size={15} color={active ? colors.rust : colors.inkSoft} />
-            <Text style={[styles.navItemText, active && styles.navItemTextActive]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <SidePane
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Market Rate"
+      subtitle="Enter material market rates for SAP"
+      items={items}
+      activeHref={activeHref}
+      onNavigate={(href) => {
+        router.push(href as any);
+        onClose();
+      }}
+    />
   );
 }
 
@@ -54,6 +52,7 @@ function NavBar() {
 // ever rendering the form for an unauthenticated visitor who typed the URL directly.
 export default function MarketRateLayout() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (hasHubSession()) {
@@ -91,6 +90,14 @@ export default function MarketRateLayout() {
           </TouchableOpacity>
 
           <View style={styles.titleBar}>
+            <TouchableOpacity
+              style={styles.menuBtn}
+              onPress={() => setMenuOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Open menu"
+            >
+              <Ionicons name="menu" size={22} color={colors.ink} />
+            </TouchableOpacity>
             <View style={styles.titleLogoBox}>
               <Image
                 source={require('../../../assets/images/emami-apps-logo.png')}
@@ -105,7 +112,6 @@ export default function MarketRateLayout() {
           </View>
 
           <InfoHeader />
-          <NavBar />
 
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
@@ -113,6 +119,8 @@ export default function MarketRateLayout() {
             <Stack.Screen name="master-data" />
           </Stack>
         </SafeAreaView>
+
+        <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
       </View>
     </MarketRateAuthProvider>
   );
@@ -158,6 +166,12 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 12,
   },
+  menuBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   titleLogoBox: {
     width: 44,
     height: 36,
@@ -177,33 +191,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 2,
-  },
-  navBar: {
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: colors.white,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: radii.pill,
-  },
-  navItemActive: {
-    backgroundColor: `${colors.rust}14`,
-  },
-  navItemText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.inkSoft,
-  },
-  navItemTextActive: {
-    color: colors.rust,
   },
 });
