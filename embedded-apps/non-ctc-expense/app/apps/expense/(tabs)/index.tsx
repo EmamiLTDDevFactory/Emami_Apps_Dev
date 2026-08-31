@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
@@ -10,6 +10,13 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { kpis, claims, fetchClaims } = useClaim();
   const { activeRole } = useAuth();
+  // Desktop-only layout switch. Below this width nothing changes: KPI cards stay 2-up and recent
+  // claims stay one per row, exactly as before. Above it the six KPI cards go 3-up (an even 3+3
+  // instead of two ~660px-wide cards) and recent claims become 3-up cards, so a wide window is
+  // filled with content instead of stretching a single item across it. Purely presentational —
+  // no data, navigation or handler behaviour depends on this.
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideScreen = windowWidth >= 900;
   const recentClaims = [...claims]
     .sort((left, right) => getClaimCreatedTimestamp(right) - getClaimCreatedTimestamp(left))
     .slice(0, 5);
@@ -70,7 +77,7 @@ export default function DashboardScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* KPI Cards Section (BR-001) */}
       <View style={styles.kpiGrid}>
-        <TouchableOpacity style={[styles.kpiCard, styles.cardBlue]} onPress={() => router.push('/apps/expense/my-claims?status=All')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardBlue]} onPress={() => router.push('/apps/expense/my-claims?status=All')}>
           <Text style={styles.kpiCount}>{kpis.total}</Text>
           <Text style={styles.kpiLabel}>Total Claims</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.total }]}> 
@@ -78,7 +85,7 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.kpiCard, styles.cardYellow]} onPress={() => router.push('/apps/expense/my-claims?status=Submitted')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardYellow]} onPress={() => router.push('/apps/expense/my-claims?status=Submitted')}>
           <Text style={styles.kpiCount}>{kpis.pending}</Text>
           <Text style={styles.kpiLabel}>Pending Approval</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.pending }]}> 
@@ -86,7 +93,7 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.kpiCard, styles.cardGreen]} onPress={() => router.push('/apps/expense/my-claims?status=Approved')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardGreen]} onPress={() => router.push('/apps/expense/my-claims?status=Approved')}>
           <Text style={styles.kpiCount}>{kpis.approved}</Text>
           <Text style={styles.kpiLabel}>Approved / Pending Pay</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.approved }]}> 
@@ -94,21 +101,21 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.kpiCard, styles.cardEmerald]} onPress={() => router.push('/apps/expense/my-claims?status=Paid')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardEmerald]} onPress={() => router.push('/apps/expense/my-claims?status=Paid')}>
           <Text style={styles.kpiCount}>{kpis.paid}</Text>
           <Text style={styles.kpiLabel}>Paid Claims</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.paid }]}> 
             <Ionicons name="cash-outline" size={22} color={iconColors.paid} />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.kpiCard, styles.cardRed]} onPress={() => router.push('/apps/expense/my-claims?status=Rejected')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardRed]} onPress={() => router.push('/apps/expense/my-claims?status=Rejected')}>
           <Text style={styles.kpiCount}>{kpis.rejected}</Text>
           <Text style={styles.kpiLabel}>Rejected</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.rejected }]}> 
             <Ionicons name="close-circle-outline" size={22} color={iconColors.rejected} />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.kpiCard, styles.cardEmerald]} onPress={() => router.push('/apps/expense/my-claims?status=Paid&period=last3months')}>
+        <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardEmerald]} onPress={() => router.push('/apps/expense/my-claims?status=Paid&period=last3months')}>
           <Text style={styles.kpiCount}>₹{(kpis.last3MonthsTotal || 0).toFixed(2)}</Text>
           <Text style={styles.kpiLabel}>Last 3 Months Total</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.paid }]}> 
@@ -150,7 +157,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      <View style={styles.recentList}>
+      <View style={[styles.recentList, isWideScreen && styles.recentListWide]}>
         {recentClaims.map(claim => {
           const badge = getStatusBadge(claim.status);
           const accent = accentColors[claim.status] || accentColors.default;
@@ -159,10 +166,14 @@ export default function DashboardScreen() {
           return (
             <TouchableOpacity
               key={claim.id}
-              style={[styles.claimRow, { borderLeftColor: accent, backgroundColor: tint }]}
+              style={[
+                styles.claimRow,
+                isWideScreen && styles.claimCardWide,
+                { borderLeftColor: accent, backgroundColor: tint },
+              ]}
               onPress={() => router.push(`/apps/expense/claim/${claim.id}`)}
             >
-              <View style={styles.claimLeft}>
+              <View style={[styles.claimLeft, isWideScreen && styles.claimLeftWide]}>
                 <View style={styles.claimIdRow}>
                   <Text style={styles.claimId}>{claim.id}</Text>
                   {expenseType ? <Text style={styles.claimType}>{expenseType}</Text> : null}
@@ -170,8 +181,8 @@ export default function DashboardScreen() {
                 <Text style={styles.claimDesc} numberOfLines={1}>{claim.justification}</Text>
                 <Text style={styles.claimMeta}>{claim.employeeName} | Date: {formatClaimDisplayDate(claim)}</Text>
               </View>
-              <View style={styles.claimRight}>
-                <Text style={styles.claimAmount}>₹{claim.amount.toFixed(2)}</Text>
+              <View style={[styles.claimRight, isWideScreen && styles.claimRightWide]}>
+                <Text style={[styles.claimAmount, isWideScreen && styles.claimAmountWide]}>₹{claim.amount.toFixed(2)}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
                   <Text style={[styles.statusText, { color: badge.text }]}>{claim.status}</Text>
                 </View>
@@ -207,7 +218,8 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     flexGrow: 1,
-    width: '46%',
+    width: '46%',   // phones/tablets: 2 per row, unchanged
+
     backgroundColor: 'rgba(255,255,255,0.80)',
     borderRadius: 16,
     padding: 18,
@@ -220,6 +232,11 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 6,
     overflow: 'hidden',
+  },
+  // Desktop only (>=900px): 31% + flexGrow gives an even 3 per row for the six KPI cards, instead
+  // of two ~660px-wide ones. Applied alongside kpiCard, so every other card property is shared.
+  kpiCardWide: {
+    width: '31%',
   },
   cardBlue: { borderBottomWidth: 6, borderBottomColor: '#005A9E' },
   cardYellow: { borderBottomWidth: 6, borderBottomColor: '#D97706' },
@@ -332,6 +349,34 @@ const styles = StyleSheet.create({
   },
   recentList: {
     gap: 10,
+  },
+  // Desktop only (>=900px): lay the recent-claim cards out 3 per row instead of one full-width
+  // row each. A single claim stretched across a wide window is what looked "stretched" — filling
+  // the width with three real cards fixes it without changing any card styling.
+  recentListWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  claimCardWide: {
+    width: '31.5%',
+    flexGrow: 1,
+    // Narrower card, so stack the two halves instead of sitting them side by side.
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  claimLeftWide: {
+    marginRight: 0,
+  },
+  claimRightWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  // The stacked layout drops the amount's bottom spacing so it lines up with the status badge
+  // now sitting beside it rather than under it.
+  claimAmountWide: {
+    marginBottom: 0,
   },
   claimRow: {
     backgroundColor: '#FBFDFF',

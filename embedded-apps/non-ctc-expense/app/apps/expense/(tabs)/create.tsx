@@ -3,7 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
@@ -37,6 +37,11 @@ const MAX_ATTACHMENTS_TOTAL_LABEL = '30 MB';
 
 export default function CreateClaimScreen() {
   const router = useRouter();
+  // Desktop-only: pair related fields side by side so the form isn't one very tall single column
+  // inside a capped width. Below this width every pair falls back to stacked, i.e. exactly the
+  // current mobile form. Layout only — no field, value, validation or handler changes.
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideScreen = windowWidth >= 900;
   const { currentUser } = useAuth();
   const params = useLocalSearchParams();
   const editingClaimId = (params?.claimId as string) || '';
@@ -557,6 +562,8 @@ export default function CreateClaimScreen() {
           </View>
         )}
 
+        <View style={isWideScreen && styles.fieldRow}>
+        <View style={isWideScreen && styles.fieldCol}>
         <Text style={styles.inputLabel}>Claim Date *</Text>
         {Platform.OS === 'web' ? (
           // Use native HTML date input on web for consistent behavior
@@ -614,12 +621,16 @@ export default function CreateClaimScreen() {
             )}
           </>
         )}
+        </View>
 
+        <View style={isWideScreen && styles.fieldCol}>
         <Text style={styles.inputLabel}>Expense Type *</Text>
         <TouchableOpacity style={styles.selectorBtn} onPress={() => setTypeModalVisible(true)}>
           <Text style={styles.selectorBtnText}>{expenseType}</Text>
           <Ionicons name="chevron-down" size={20} color="#64748B" />
         </TouchableOpacity>
+        </View>
+        </View>
 
         <Text style={styles.inputLabel}>GSTIN Available * (Select Yes in Case of Gst)</Text>
         <View style={styles.choiceRow}>
@@ -658,6 +669,8 @@ export default function CreateClaimScreen() {
 
         {gstinChoice === 'yes' && (
           <>
+            <View style={isWideScreen && styles.fieldRow}>
+            <View style={isWideScreen && styles.fieldCol}>
             <Text style={styles.inputLabel}>GSTIN * (For your given Gst System will Determine the Vendor code)</Text>
             <TextInput
               style={styles.textInput}
@@ -683,7 +696,9 @@ export default function CreateClaimScreen() {
                 <Text style={[styles.selectorBtnText, { color: '#065F46' }]}>{selectedGst.display}</Text>
               </View>
             ) : null}
+            </View>
 
+            <View style={isWideScreen && styles.fieldCol}>
             <Text style={styles.inputLabel}>Region *</Text>
             <TouchableOpacity style={styles.selectorBtn} onPress={() => setAreaModalVisible(true)}>
               <Text style={styles.selectorBtnText}>
@@ -692,7 +707,11 @@ export default function CreateClaimScreen() {
               <Ionicons name="chevron-down" size={20} color="#64748B" />
             </TouchableOpacity>
             {areasLoading && <Text style={styles.subtext}>Loading regions…</Text>}
+            </View>
+            </View>
 
+            <View style={isWideScreen && styles.fieldRow}>
+            <View style={isWideScreen && styles.fieldCol}>
             <Text style={styles.inputLabel}>HSN Code</Text>
             <TextInput
               style={styles.textInput}
@@ -703,9 +722,18 @@ export default function CreateClaimScreen() {
               autoCapitalize="characters"
               maxLength={16}
             />
+            </View>
+            {/* Empty second column so HSN keeps the same half-width as the fields above it
+                instead of stretching across the form. */}
+            {isWideScreen ? <View style={styles.fieldCol} /> : null}
+            </View>
           </>
         )}
 
+        <View style={isWideScreen && styles.fieldRow}>
+        {/* Amount keeps its own error banner and the auto-approve notice inside its column, since
+            both describe the amount that was just typed. */}
+        <View style={isWideScreen && styles.fieldCol}>
         <Text style={styles.inputLabel}>Amount (₹) *</Text>
         <TextInput
           style={styles.textInput}
@@ -733,7 +761,9 @@ export default function CreateClaimScreen() {
             </Text>
           </View>
         )}
+        </View>
 
+        <View style={isWideScreen && styles.fieldCol}>
         <Text style={styles.inputLabel}>Cost Center *</Text>
         <TextInput
           style={[styles.textInput, styles.textInputReadonly]}
@@ -742,6 +772,8 @@ export default function CreateClaimScreen() {
           placeholder="Cost Center"
           editable={false}
         />
+        </View>
+        </View>
 
         <Text style={styles.inputLabel}>Business Justification</Text>
         <TextInput
@@ -1027,6 +1059,25 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+    // A form field stretched across a full desktop window is unusable — the eye has to travel the
+    // whole width for every input. Cap and centre the form, same approach login.tsx already uses
+    // for its card (maxWidth 620). Below this width the cap does nothing, so phones/tablets are
+    // completely unaffected.
+    width: '100%',
+    maxWidth: 860,
+    alignSelf: 'center',
+  },
+  // Two-column form pairing, desktop only. Both styles are applied conditionally via
+  // `isWideScreen && …`, so on narrower screens the wrappers carry no style at all and every
+  // field stacks exactly as it always has.
+  fieldRow: {
+    flexDirection: 'row',
+    gap: 18,
+    alignItems: 'flex-start',
+  },
+  fieldCol: {
+    flex: 1,
+    minWidth: 0,
   },
   pageTitle: {
     fontSize: 24,
