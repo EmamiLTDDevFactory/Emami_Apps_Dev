@@ -227,7 +227,7 @@ export default function DashboardScreen() {
       const dirtyRateIds = Array.from(new Set(dirtyRows.map((r) => r.rateId).filter((id): id is string => !!id)));
       for (const rateId of dirtyRateIds) {
         const groupRows = groups.get(rateId) ?? [];
-        await saveMarketRates(groupRows, { rateId, email: groupRows[0]?.email });
+        await saveMarketRates(groupRows, { rateId });
       }
       setStatus({ type: 'success', message: `Saved ${dirtyRateIds.length} batch${dirtyRateIds.length === 1 ? '' : 'es'}.` });
       setDirtyKeys(new Set());

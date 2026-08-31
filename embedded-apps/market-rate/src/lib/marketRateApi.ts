@@ -233,21 +233,26 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
 
 /** opts.rateId: pass the row's existing rateId (Dashboard edit flow) to re-save under the same
  * header instead of minting a new batch; omitted (Home's create flow) generates a fresh one.
- * opts.email: the submitter to record on the header — NOT yet verified live as a real field on
- * ZMarketRateHeaderSet (see ROLE_ENTITY_SET's note above for the same caveat); it's what the
- * Dashboard's Email-based fetch filter depends on, so confirm it against SAP metadata before
- * relying on non-Admin users only seeing their own rows. */
-export async function saveMarketRates(rows: MarketRateRow[], opts: { rateId?: string; email?: string } = {}): Promise<void> {
+ *
+ * Does NOT send an Email field on the header — confirmed live (HAR capture) that
+ * ZMarketRateHeaderSet rejects it with a 400: "Property 'Email' is invalid". Per-user row
+ * ownership for the Dashboard's fetch filter must come from wherever FLAT_RATE_ENTITY_SET's own
+ * Email actually gets populated server-side, since it can't be this header entity's write path. */
+export async function saveMarketRates(rows: MarketRateRow[], opts: { rateId?: string } = {}): Promise<void> {
   const rateId = opts.rateId || randomRateId();
   const payload: Record<string, unknown> = {
     RateId: rateId,
     ToMarketRates: rows.map((row) => toSapLineItem(row, rateId)),
   };
-  if (opts.email) payload.Email = opts.email;
-  const result = await sapClient.post(`/${ENTITY_SET}`, payload);
-  // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
-  const body = result.data?.d || result.data;
-  if (body?.Type === 'E') {
-    throw new Error(body.Message || 'SAP rejected this batch.');
+  try {
+    const result = await sapClient.post(`/${ENTITY_SET}`, payload);
+    // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this batch.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not save this batch.'));
   }
 }

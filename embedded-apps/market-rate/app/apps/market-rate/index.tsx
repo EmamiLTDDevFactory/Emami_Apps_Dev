@@ -36,7 +36,7 @@ type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
   { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
   { field: 'materialDesc', label: 'Material Description', width: 260, placeholder: 'e.g. Light Liquid Paraffin' },
-  { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
+  { field: 'marketRate', label: 'Market rate ( Existing Rate )', width: 160, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
 ];
 
@@ -47,9 +47,11 @@ const LOCKED_FIELDS: TextField[] = ['materialCode', 'materialDesc', 'materialTyp
 /** Bolded for scannability — these are the two fields that identify which material a row is for. */
 const BOLD_FIELDS: TextField[] = ['materialCode', 'materialDesc'];
 
+const VENDOR_COL_WIDTH = 160;
 const DATE_COL_WIDTH = 140;
 const REMOVE_COL_WIDTH = 44;
-const TABLE_WIDTH = TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
+const TABLE_WIDTH =
+  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
 
 /** Valid From cell — a real date picker on every platform, not a free-text field: a raw HTML
  * date input on web (same approach non-ctc-expense's claim date field uses, for consistent
@@ -175,8 +177,7 @@ export default function MarketRateScreen() {
 
     setSaving(true);
     try {
-      const email = getHubEmail();
-      await saveMarketRates(filled, email ? { email } : undefined);
+      await saveMarketRates(filled);
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
       setRows(DEFAULT_ROWS());
     } catch (err) {
@@ -213,6 +214,7 @@ export default function MarketRateScreen() {
             {TEXT_COLUMNS.map((col) => (
               <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
             ))}
+            <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
             <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
             <View style={{ width: REMOVE_COL_WIDTH }} />
           </View>
@@ -238,12 +240,12 @@ export default function MarketRateScreen() {
                       ]}
                       accessibilityLabel={`${col.label}, row ${i + 1}`}
                     />
-                    {col.field === 'materialDesc' && !!row.supplierRef && (
-                      <Text style={styles.supplierCaption} numberOfLines={1}>{row.supplierRef}</Text>
-                    )}
                   </View>
                 );
               })}
+              <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
+                {row.supplierRef || '-'}
+              </Text>
               <DateCell
                 value={row.validFrom}
                 onChange={(v) => updateCell(row.key, 'validFrom', v)}
@@ -384,16 +386,18 @@ const styles = StyleSheet.create({
   cellInputBold: {
     fontWeight: '700',
   },
+  // Locked cells (material code/description pre-filled from SAP) still read as plain, legible
+  // text — not editable, but not washed out either. Non-editability is conveyed by the field
+  // simply not responding to taps, same as the read-only Vendor cell beside it.
   cellInputLocked: {
-    backgroundColor: colors.appBg,
-    color: colors.inkSoft,
+    backgroundColor: colors.white,
+    color: colors.ink,
   },
-  supplierCaption: {
-    fontSize: 10,
+  readonlyCell: {
+    fontSize: 12.5,
     color: colors.inkSoft,
+    paddingVertical: 12,
     paddingHorizontal: 10,
-    marginTop: -8,
-    marginBottom: 6,
   },
   loadingWrap: {
     flex: 1,
