@@ -445,12 +445,24 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
         }
 
+        // Attach each file's base64 payload onto its matching CLAIMNAV line.
+        // backend/server.js used to do exactly this from req.files (Value/Mimetype/Filename)
+        // before the app started POSTing to SAP directly; when that hop was removed this step
+        // was left behind, so SAP's CREATE_DEEP_ENTITY received blank FILENAME/VALUE/MIMETYPE
+        // and stored an empty attachment — which is why claim detail had nothing to download.
+        // claimNavItems is built one row per attachment above, so index i lines up 1:1.
+        attachmentsPayload.forEach((att, i) => {
+            const line: any = sapPayload.CLAIMNAV[i];
+            if (!line) return;
+            line.Value = att.base64;                        // XString  — base64, as server.js sent
+            line.Mimetype = (att.type || '').slice(0, 100); // C(100)
+            line.Filename = (att.name || '').slice(0, 90);  // C(90)
+        });
+
         // Calls SAP's ClaimHeaderSet directly (GST/claims/expense-types/history's own pattern) —
         // Basis has confirmed anonymous POST access here too. Mirrors backend/server.js's
-        // /api/submit exactly: same payload, same ClaimId-extraction fallbacks below. The
-        // separately-computed attachmentsPayload was already inert in the backend flow (it only
-        // merged req.files from a multipart upload, and this has always been sent as JSON), so
-        // it's still computed but not sent here either — unchanged behavior, not a regression.
+        // /api/submit exactly: same payload (attachments now included, per the block above),
+        // same ClaimId-extraction fallbacks below.
         const response = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
