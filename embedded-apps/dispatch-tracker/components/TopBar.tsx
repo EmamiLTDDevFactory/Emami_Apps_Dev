@@ -23,9 +23,6 @@ export function TopBar() {
           <Image source={require('@/assets/images/emami-logo.png')} style={styles.logo} resizeMode="contain" />
         </View>
         <View style={styles.wordmarkBlock}>
-          <Text style={styles.wordmark}>
-            emami <Text style={styles.wordmarkSub}>LIMITED</Text>
-          </Text>
           <Text style={styles.system}>Dispatch Intelligence System</Text>
         </View>
         <View style={styles.panelChip}>
@@ -62,10 +59,8 @@ const styles = StyleSheet.create({
   },
   leftCluster: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
   logoBlock: { paddingRight: 10, borderRightWidth: 1, borderRightColor: colors.g200, height: 32, justifyContent: 'center' },
-  logo: { height: 26, width: 60 },
-  wordmarkBlock: { paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: colors.g200, display: 'none' },
-  wordmark: { fontSize: 13, fontWeight: '900', color: colors.navy, fontStyle: 'italic' },
-  wordmarkSub: { fontSize: 8, fontWeight: '800', color: colors.teal, letterSpacing: 1 },
+  logo: { height: 30, width: 36 },
+  wordmarkBlock: { paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: colors.g200, justifyContent: 'center', display: 'none' },
   system: { fontSize: 7, fontWeight: '600', color: colors.g400, letterSpacing: 0.5, textTransform: 'uppercase' },
   panelChip: { marginLeft: 10, backgroundColor: colors.navyLt, borderWidth: 1, borderColor: colors.navyBd, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   panelChipText: { fontSize: 9, fontWeight: '700', color: colors.navy, letterSpacing: 0.5, textTransform: 'uppercase' },
