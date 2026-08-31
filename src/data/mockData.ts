@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2,
+  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
@@ -48,6 +48,10 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // straight to the production backend (audit-capa-api.emamiapps.in) regardless of where the
   // frontend itself is hosted, since it has no bundler to inject a build-time env var.
   'dev-tracker': '/apps/dev-tracker', // Development Tracker
+  // PO Followup has no separate native deployment either (see embedded-apps/po-followup) — same
+  // relative path either way, same reasoning as Market Rate/Development Tracker above. Calls SAP
+  // (ZMM_PO_FOLLOWUP_SRV) directly from the client, no backend of its own.
+  'po-followup': '/apps/po-followup', // PO Followup
 };
 
 const RAW_APPS: AppItem[] = [
@@ -58,6 +62,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'Operations', icon: ClipboardCheck, uses: 0 },
   { id: 'market-rate', name: 'Market Rate', desc: 'Enter material market rates — material code, rate, and valid-from date — for SAP.', cat: 'Finance', icon: TrendingUp, uses: 0 },
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
+  { id: 'po-followup', name: 'PO Followup', desc: 'Track upcoming and pending delivery purchase orders from SAP.', cat: 'Operations', icon: PackageSearch, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
