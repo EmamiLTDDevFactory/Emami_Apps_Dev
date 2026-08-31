@@ -176,7 +176,8 @@ export default function MarketRateScreen() {
 
     setSaving(true);
     try {
-      await saveMarketRates(filled);
+      const email = getHubEmail();
+      await saveMarketRates(filled, email ? { email } : undefined);
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
       setRows(DEFAULT_ROWS());
     } catch (err) {
