@@ -43,3 +43,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# personal Claude Code settings overrides
+.claude/settings.local.json
