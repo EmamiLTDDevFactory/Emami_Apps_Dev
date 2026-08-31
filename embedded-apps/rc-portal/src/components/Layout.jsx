@@ -269,7 +269,7 @@ export default function Layout({ children }) {
               <div>
                 <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
-                    <TransparentLogo src="/apps/rc-portal/emami-logo-new.jpg" alt="Emami" className="h-7 w-auto" />
+                    <TransparentLogo src="/apps/rc-portal/emami-logo-new.jpg" alt="Emami" className="h-9 w-auto object-contain" />
                     <span className="text-xs font-black tracking-tight text-white">RC Portal Navigation</span>
                   </div>
                   <button 
