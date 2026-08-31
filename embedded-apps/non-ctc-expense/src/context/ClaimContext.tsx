@@ -421,6 +421,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         Name1: claimData.name1 || '',
         Stcd3: claimData.stcd3 || '',
         Bezei: claimData.bezei || '',
+        // HSN/SAC code captured on the Create form when GSTIN = Yes (create.tsx). Optional —
+        // submits as '' when left blank, same as the other GST fields above.
+        HsnSac: claimData.hsnSac || '',
         CLAIMNAV: claimNavItems
     };
 

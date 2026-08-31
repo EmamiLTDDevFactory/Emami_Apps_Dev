@@ -111,6 +111,9 @@ export default function CreateClaimScreen() {
   const [gstLookupLoading, setGstLookupLoading] = useState(false);
   const [gstLookupError, setGstLookupError] = useState('');
   const [gstinChoice, setGstinChoice] = useState<'yes' | 'no'>('no');
+  // HSN/SAC code — only collected when GSTIN = Yes, shown right after Region. Goes to SAP as
+  // HsnSac (Edm.String, max length 16). Optional: left blank it simply submits as ''.
+  const [hsnSac, setHsnSac] = useState('');
   const [availableAreas, setAvailableAreas] = useState<any[]>([]);
   const [areasLoading, setAreasLoading] = useState(false);
   const [selectedArea, setSelectedArea] = useState<any | null>(null);
@@ -140,6 +143,7 @@ export default function CreateClaimScreen() {
     setGstLookupLoading(false);
     setGstLookupError('');
     setGstinChoice('no');
+    setHsnSac('');
     setShowDatePicker(false);
     setJustification('');
     setAttachments([]);
@@ -457,6 +461,7 @@ export default function CreateClaimScreen() {
       name1: gstinChoice === 'yes' ? (selectedGst?.item?.Name1 || selectedGst?.item?.name1 || null) : null,
       stcd3: gstinChoice === 'yes' ? (selectedGst?.item?.Stcd3 || selectedGst?.item?.stcd3 || null) : null,
       bezei: gstinChoice === 'yes' ? (selectedArea?.Bezei || null) : null,
+      hsnSac: gstinChoice === 'yes' ? (hsnSac.trim() || null) : null,
     };
 
     console.log('[CREATE] Submitting claim:', claimData);
@@ -626,6 +631,7 @@ export default function CreateClaimScreen() {
               setSelectedGst(null);
               setGstLookupError('');
               setSelectedArea(null);
+              setHsnSac('');
               setAreasLoading(true);
               const areas = await fetchAreas();
               setAvailableAreas(areas);
@@ -642,6 +648,7 @@ export default function CreateClaimScreen() {
               setSelectedGst(null);
               setGstLookupError('');
               setSelectedArea(null);
+              setHsnSac('');
               setAvailableAreas([]);
             }}
           >
@@ -685,6 +692,17 @@ export default function CreateClaimScreen() {
               <Ionicons name="chevron-down" size={20} color="#64748B" />
             </TouchableOpacity>
             {areasLoading && <Text style={styles.subtext}>Loading regions…</Text>}
+
+            <Text style={styles.inputLabel}>HSN Code</Text>
+            <TextInput
+              style={styles.textInput}
+              value={hsnSac}
+              onChangeText={(text) => setHsnSac(text.replace(/\s+/g, '').toUpperCase())}
+              placeholder="Enter HSN/SAC code"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="characters"
+              maxLength={16}
+            />
           </>
         )}
 
