@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Development Tracker</title>
+  <link rel="stylesheet" href="/apps/dev-tracker/style.css" />
+</head>
+<body>
+  <div id="app">
+    <div class="topbar">
+      <div class="topbar-head">
+        <div class="topbar-title">
+          <a class="back-link" href="/apps/dev-tracker/">&larr; Home</a>
+          <span class="eyebrow">SAP Change &amp; Development Log</span>
+          <h1>Development Tracker</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="module-view" id="moduleView">
+            <button class="module-view-btn" id="moduleViewBtn" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+              <span id="moduleViewLabel">All modules</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="module-view-menu" id="moduleViewMenu"></div>
+          </div>
+          <button class="btn-ghost" id="exportBtn">Export CSV</button>
+          <button class="btn-primary" id="newBtn">+ New Item</button>
+        </div>
+      </div>
+      <div class="chart-row" id="chartRow"></div>
+    </div>
+
+    <div class="scope-banner" id="scopeBanner" style="display:none;"></div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Search development, function, developer, remarks..." />
+      <select id="filterStatus"><option value="">All statuses</option></select>
+      <select id="filterPriority"><option value="">All priorities</option></select>
+      <select id="filterArea"><option value="">All areas</option></select>
+    </div>
+
+    <div class="table-wrap">
+      <table id="trackerTable">
+        <thead><tr id="headRow"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <div class="panel">
+      <div class="panel-header">
+        <h2 id="panelTitle">New Development Item</h2>
+        <button class="panel-close" id="closePanel">&times;</button>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+      <div class="panel-footer">
+        <button class="btn-secondary" id="cancelBtn">Cancel</button>
+        <button class="btn-danger" id="deleteBtn" style="display:none;">Delete</button>
+        <button class="btn-primary" id="saveBtn">Save Item</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/apps/dev-tracker/app.js"></script>
+</body>
+</html>

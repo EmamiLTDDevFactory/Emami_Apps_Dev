@@ -30,7 +30,9 @@ const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGIN || 'http://localhost:8081'
 // before it ever reached this server. POST-based "assign" always worked; DELETE-based "deassign"
 // never did. curl/server-side testing never catches this — CORS is enforced by the browser, not
 // the server, so a same-machine curl call bypasses it entirely.
-app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
+// PUT added for Dev Tracker's item-edit route (devTracker.js) — same class of gap as the
+// DELETE/PATCH one above, additive only, doesn't change any existing route's behavior.
+app.use(cors({ origin: FRONTEND_ORIGINS, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 // 6mb (not the old 2mb) because this now also covers userProfile.js's profile-photo upload — a
 // 512x512 image encoded as a base64 data URI, plus JSON/base64 overhead, needs more headroom than
 // the earlier 2mb ceiling (itself raised from 10kb for saml-sso.js's metadata upload). Once this
@@ -46,6 +48,9 @@ apiRouter.use(require('./magicLink'));
 apiRouter.use(require('./saml-sso'));
 apiRouter.use(require('./userProfile'));
 apiRouter.use(require('./stockQuote'));
+// Development Tracker (SAP ABAP dev item tracking) — own dev_tracker schema, own routes under
+// /dev-tracker, self-contained in devTracker.js. Purely additive: doesn't touch any route above.
+apiRouter.use('/dev-tracker', require('./devTracker'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ROLES = ['User', 'Admin'];

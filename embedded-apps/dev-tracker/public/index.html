@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Development Tracker</title>
+  <link rel="stylesheet" href="/apps/dev-tracker/style.css" />
+  <link rel="stylesheet" href="/apps/dev-tracker/home.css" />
+</head>
+<body class="home-body">
+  <div class="home-wrap">
+
+    <div class="home-topbar">
+      <div>
+        <div class="greeting" id="greeting">Hello</div>
+        <div class="home-date" id="homeDate">&nbsp;</div>
+      </div>
+      <div class="home-clock" id="homeClock">&nbsp;</div>
+    </div>
+
+    <div class="home-header">
+      <span class="eyebrow">SAP Change &amp; Development Log</span>
+      <h1>Development Tracker</h1>
+      <p>Pick a task to get started.</p>
+    </div>
+
+    <div class="quick-stats" id="quickStats">
+      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Total items</div></div>
+      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Active</div></div>
+      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Overdue</div></div>
+      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Completed</div></div>
+    </div>
+
+    <div class="tile-grid">
+      <a class="tile" href="/apps/dev-tracker/dashboard">
+        <div class="tile-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="8" height="10" rx="1.5"></rect>
+            <rect x="13" y="3" width="8" height="6" rx="1.5"></rect>
+            <rect x="13" y="11" width="8" height="10" rx="1.5"></rect>
+            <rect x="3" y="15" width="8" height="6" rx="1.5"></rect>
+          </svg>
+        </div>
+        <div class="tile-body">
+          <h2>Dashboard</h2>
+          <p>View status, charts, and the full development list.</p>
+          <p class="tile-meta" id="tileDashMeta">&nbsp;</p>
+        </div>
+        <span class="tile-arrow" aria-hidden="true">&rarr;</span>
+      </a>
+
+      <a class="tile" href="/apps/dev-tracker/dashboard?action=new">
+        <div class="tile-icon tile-icon-green" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle>
+            <line x1="12" y1="8" x2="12" y2="16"></line>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+        </div>
+        <div class="tile-body">
+          <h2>Add development assignment</h2>
+          <p>Log a new item straight into the tracker.</p>
+          <p class="tile-meta">Takes under a minute</p>
+        </div>
+        <span class="tile-arrow" aria-hidden="true">&rarr;</span>
+      </a>
+    </div>
+
+    <div class="home-footer" id="homeFooter">&nbsp;</div>
+  </div>
+
+  <script src="/apps/dev-tracker/home.js"></script>
+</body>
+</html>
