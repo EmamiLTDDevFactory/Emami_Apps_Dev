@@ -45,10 +45,10 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
         accessibilityRole="button"
         accessibilityLabel="Go to Home"
       >
-        {/* Logo only — the "EMAMI APPS" wordmark that used to sit beside this was removed, and the
-            mark enlarged to stay clearly legible on its own. accessibilityLabel below still names
-            this control for screen readers now that there is no visible text. */}
-        <EmpAppMark size={72} />
+        {/* The one Emami Apps logo used across the whole hub (same asset as LoginScreen's hero
+            logo — see EmpAppMark.tsx) — sized to fill the sidebar width so the "APPS" wordmark
+            stays legible. accessibilityLabel below still names this control for screen readers. */}
+        <EmpAppMark size={172} />
       </Pressable>
 
       {favoriteApps.length > 0 && (
