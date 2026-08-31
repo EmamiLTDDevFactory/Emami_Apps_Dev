@@ -14,7 +14,6 @@ type ReadonlyField = 'materialCode' | 'materialDesc' | 'materialType';
 const READONLY_COLUMNS: { field: ReadonlyField; label: string; width: number }[] = [
   { field: 'materialCode', label: 'Material Code', width: 120 },
   { field: 'materialDesc', label: 'Material Description', width: 220 },
-  { field: 'materialType', label: 'Material Type', width: 90 },
 ];
 
 const EDITABLE_COLUMNS: { field: EditableField; label: string; width: number; keyboard?: 'decimal-pad' }[] = [

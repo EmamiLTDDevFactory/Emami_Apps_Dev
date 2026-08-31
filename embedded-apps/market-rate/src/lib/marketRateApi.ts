@@ -17,10 +17,16 @@ const ROLE_ENTITY_SET = 'ZMarketRoleSet';
 // entity backed by DPC method create_stream, WHEN 'SupplierMatUpload'. Confirmed live from that
 // ABAP: it writes to ZMM_SUPL_MAT_MAP (same table ZMarketSuppDataSet reads from), only accepts
 // .xlsx, and expects the POST body to be the file's raw base64 TEXT (not JSON) — the handler does
-// convert_from → strip a "data:...;base64," prefix if present → decode_x_base64. Only the entity
-// SET name (vs. the confirmed entity TYPE name 'SupplierMatUpload') is inferred here, via this
-// service's own "TypeName + Set" convention (ZMarketRateHeaderSet, ZMarketSuppDataSet, etc.).
-const SUPPLIER_MAT_UPLOAD_ENTITY_SET = 'SupplierMatUploadSet';
+// convert_from → strip a "data:...;base64," prefix if present → decode_x_base64. Entity set name
+// confirmed as FileUploadSet (doesn't follow this service's usual "EntityType + Set" convention —
+// the entity type routed inside create_stream is 'SupplierMatUpload', the set is named separately).
+const SUPPLIER_MAT_UPLOAD_ENTITY_SET = 'FileUploadSet';
+// Flat, per-row rate entity for the Dashboard's read path — distinct from ENTITY_SET
+// (ZMarketRateHeaderSet), which is deep-insert-only: filtering it by $filter=Email eq '...' at the
+// header level is what produced the Dashboard's "bad request" for non-Admins. This is the entity
+// the feature was originally specified against ("fetched from ZmarketRateSet by passing Year and
+// login email").
+const FLAT_RATE_ENTITY_SET = 'ZmarketRateSet';
 
 // Not exposed in the form — sent blank per instruction, not defaulted to any particular company.
 const DEFAULT_COMPANY_CODE = '';
@@ -69,6 +75,9 @@ export interface SuppliedMaterial {
   supplierName: string;
   contact: string;
   asOfDate: string;
+  /** ZMarketSuppDataSet's RatePer field — the latest rate already on file for this material, used
+   * to pre-fill the Home form's Market Rate cell instead of leaving it blank. */
+  latestRate: string;
 }
 
 /** Loads the materials already associated with this email (ZMarketSuppDataSet, filtered by
@@ -91,6 +100,7 @@ export async function fetchSuppliedMaterials(email: string): Promise<SuppliedMat
       supplierName: r.Name1 || '',
       contact: r.Contact || '',
       asOfDate: r.Datum || '',
+      latestRate: r.RatePer != null ? String(r.RatePer) : '',
     }));
   } catch {
     return [];
@@ -112,51 +122,40 @@ export async function fetchUserRole(email: string): Promise<'Admin' | 'User'> {
   }
 }
 
-/** Loads existing market rate entries for the Dashboard's edit flow. Server-side filters by Email
- * (a header-level field — see the save-side note in saveMarketRates) when one is passed; omit it
- * to fetch every submitter's rows, which is how an Admin sees everyone's rates for a year.
- *
- * Year itself is filtered client-side against each line item's Zyear after the fetch, not via
- * server-side $filter: Zyear only exists on line items (ToMarketRates), and SAP's OData v2 gateway
- * doesn't support filtering a parent set by a nested collection's fields. Filtering post-fetch is
- * the safe option that doesn't depend on assuming a header-level Zyear field exists. */
+/** Loads existing market rate entries for the Dashboard's edit flow, from the flat
+ * FLAT_RATE_ENTITY_SET (not the header entity — see its note above). Server-side filters by Email
+ * when one is passed; omit it to fetch every submitter's rows, which is how an Admin sees
+ * everyone's rates. Year is filtered client-side after the fetch rather than via a second
+ * server-side $filter clause — Email alone is the fix for the bug this replaced, and stacking an
+ * unverified Zyear filter on top risks reintroducing the same "bad request" for a different field. */
 export async function fetchMarketRates(year: string, opts: { email?: string } = {}): Promise<MarketRateRow[]> {
-  const params: Record<string, string> = { '$expand': 'ToMarketRates', '$format': 'json' };
+  const params: Record<string, string> = { '$format': 'json' };
   if (opts.email) params['$filter'] = `Email eq '${opts.email}'`;
 
-  const { data } = await sapClient.get(`/${ENTITY_SET}`, { params });
-  const headers = data?.d?.results;
-  if (!Array.isArray(headers)) return [];
+  const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  if (!Array.isArray(results)) return [];
 
-  const rows: MarketRateRow[] = [];
-  for (const header of headers) {
-    const rateId: string = header.RateId;
-    const email: string | undefined = header.Email || undefined;
-    const lineItems = header.ToMarketRates?.results;
-    if (!Array.isArray(lineItems)) continue;
-    for (const li of lineItems) {
-      if (String(li.Zyear ?? '') !== String(year)) continue;
-      rows.push({
-        key: `${rateId}-${li.Matnr}-${li.Zdate}`,
-        rateId,
-        email,
-        materialCode: li.Matnr || '',
-        materialDesc: li.Maktx || '',
-        materialType: li.Mtart || '',
-        marketName: li.ZmarketName || '',
-        marketRate: li.Zrate != null ? String(li.Zrate) : '',
-        ratePer: li.ZratePer || '',
-        igst: li.Igst != null ? String(li.Igst) : '',
-        sgst: li.Sgst != null ? String(li.Sgst) : '',
-        cgst: li.Cgst != null ? String(li.Cgst) : '',
-        validFrom: li.Zdate ? String(li.Zdate).split('T')[0] : '',
-        // Material identity is SAP reference data here too, same as the Home form's pre-filled
-        // rows — only the rate/tax/date fields make sense to hand-edit.
-        locked: true,
-      });
-    }
-  }
-  return rows;
+  return results
+    .filter((li: any) => String(li.Zyear ?? '') === String(year))
+    .map((li: any) => ({
+      key: `${li.RateId}-${li.Matnr}-${li.Zdate}`,
+      rateId: li.RateId,
+      email: li.Email || undefined,
+      materialCode: li.Matnr || '',
+      materialDesc: li.Maktx || '',
+      materialType: li.Mtart || '',
+      marketName: li.ZmarketName || '',
+      marketRate: li.Zrate != null ? String(li.Zrate) : '',
+      ratePer: li.ZratePer || '',
+      igst: li.Igst != null ? String(li.Igst) : '',
+      sgst: li.Sgst != null ? String(li.Sgst) : '',
+      cgst: li.Cgst != null ? String(li.Cgst) : '',
+      validFrom: li.Zdate ? String(li.Zdate).split('T')[0] : '',
+      // Material identity is SAP reference data here too, same as the Home form's pre-filled
+      // rows — only the rate/tax/date fields make sense to hand-edit.
+      locked: true,
+    }));
 }
 
 export interface MasterDataFile {

@@ -36,7 +36,6 @@ type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
   { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
   { field: 'materialDesc', label: 'Material Description', width: 260, placeholder: 'e.g. Light Liquid Paraffin' },
-  { field: 'materialType', label: 'Material Type', width: 100, placeholder: 'e.g. ROH' },
   { field: 'marketRate', label: 'Market Rate', width: 100, placeholder: '0.00', keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
 ];
@@ -134,7 +133,7 @@ export default function MarketRateScreen() {
               materialDesc: m.materialDesc,
               materialType: m.materialType,
               marketName: '',
-              marketRate: '',
+              marketRate: m.latestRate,
               ratePer: m.rateUom,
               igst: '',
               sgst: '',
