@@ -131,6 +131,18 @@ export async function fetchUserRole(email: string): Promise<'Admin' | 'User'> {
  * (always) and Email (when passed — omit it to fetch every submitter's rows, which is how an
  * Admin sees everyone's rates for the year). Re-called with the new year whenever the Dashboard's
  * year selector changes. */
+/** SAP's OData v2 JSON encodes date/datetime values as "/Date(epochMillis)/" literals, not an ISO
+ * string — confirmed live via a corrupted save: Zdate came back as this literal, .split('T')[0]
+ * was a no-op on it (no 'T' in that string), and the raw "/Date(...)/ " string then got fed into
+ * Zyear on the next save, which SAP rejected outright. */
+function parseODataDate(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const match = value.match(/\/Date\((-?\d+)\)\//);
+  if (match) return new Date(Number(match[1])).toISOString().split('T')[0];
+  // Fallback in case the shape ever changes to a plain ISO string.
+  return value.split('T')[0];
+}
+
 export async function fetchMarketRates(year: string, opts: { email?: string } = {}): Promise<MarketRateRow[]> {
   const filterParts = [`Zyear eq '${year}'`];
   if (opts.email) filterParts.push(`Email eq '${opts.email}'`);
@@ -154,7 +166,7 @@ export async function fetchMarketRates(year: string, opts: { email?: string } = 
     igst: li.Igst != null ? String(li.Igst) : '',
     sgst: li.Sgst != null ? String(li.Sgst) : '',
     cgst: li.Cgst != null ? String(li.Cgst) : '',
-    validFrom: li.Zdate ? String(li.Zdate).split('T')[0] : '',
+    validFrom: parseODataDate(li.Zdate),
     // Material identity is SAP reference data here too, same as the Home form's pre-filled
     // rows — only the rate/tax/date fields make sense to hand-edit.
     locked: true,
