@@ -17,8 +17,8 @@ export default function PoFollowupHome() {
   const [tab, setTab] = useState<Tab>('upcoming');
   const [email] = useState(() => getHubEmail());
 
-  // Upcoming Delivery PO — loads automatically (Zaction 'D' — SAP's 'A' is broken server-side, see
-  // poFollowupApi.ts), no selection needed from the user.
+  // Upcoming Delivery PO — loads automatically, no Zaction filter sent (see poFollowupApi.ts),
+  // no selection needed from the user.
   const [upcomingRows, setUpcomingRows] = useState<PoFollowupRow[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [upcomingError, setUpcomingError] = useState<string | null>(null);

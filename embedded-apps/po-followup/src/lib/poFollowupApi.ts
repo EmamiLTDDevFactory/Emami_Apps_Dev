@@ -32,15 +32,15 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<PoFollowupRow[]>
   return Array.isArray(results) ? results : [];
 }
 
-/** Upcoming Delivery PO tab — Zaction 'D' (not the spec's original 'A'), filtered to the signed-in
- * user's email only.
+/** Upcoming Delivery PO tab — filtered to the signed-in user's email only, no Zaction filter at
+ * all per instruction.
  *
- * Zaction eq 'A' is broken server-side — throws SAP Gateway error /IWFND/CM_BEC/029 "RFC Error:
- * Type conflict during a function module call", reproducibly, on every live check (with or without
- * the Email filter alongside it) — while 'P', 'D', and every other value filter fine. Per
- * instruction, this now sends 'D' for the Upcoming tab instead of 'A' as a working substitute. */
+ * Every Zaction value tried for this tab ('A', then 'B', then 'D') threw SAP Gateway error
+ * /IWFND/CM_BEC/029 "RFC Error: Type conflict during a function module call" shortly after being
+ * tried — while Email alone (no Zaction) filters cleanly. See fetchPendingDeliveryPOs for the
+ * still-working Zaction='P' case. */
 export async function fetchUpcomingDeliveryPOs(email: string): Promise<PoFollowupRow[]> {
-  return fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'D'`]);
+  return fetchDelvPendPOs([`Email eq '${email}'`]);
 }
 
 /** Pending Delivery PO tab — Zaction 'P', filtered by the signed-in user's email plus the
