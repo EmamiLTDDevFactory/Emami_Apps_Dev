@@ -36,11 +36,13 @@ const DEFAULT_ROWS = () => [emptyRow(), emptyRow(), emptyRow()];
 
 type TextField = Exclude<keyof MarketRateRow, 'key' | 'validFrom'>;
 
+// No "e.g. ..." example placeholders — a blank starter row with fake-looking sample material
+// data read as mock content sitting in a live production form, not an input hint.
 const TEXT_COLUMNS: { field: TextField; label: string; width: number; placeholder: string; keyboard?: 'decimal-pad' }[] = [
-  { field: 'materialCode', label: 'Material Code', width: 130, placeholder: 'e.g. MAT-1001' },
-  { field: 'materialDesc', label: 'Material Description', width: 260, placeholder: 'e.g. Light Liquid Paraffin' },
-  { field: 'marketRate', label: 'Market rate ( Existing Rate )', width: 160, placeholder: '0.00', keyboard: 'decimal-pad' },
-  { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: 'e.g. L' },
+  { field: 'materialCode', label: 'Material Code', width: 130, placeholder: '' },
+  { field: 'materialDesc', label: 'Material Description', width: 260, placeholder: '' },
+  { field: 'marketRate', label: 'Market rate ( Existing Rate )', width: 160, placeholder: '', keyboard: 'decimal-pad' },
+  { field: 'ratePer', label: 'Rate UOM', width: 90, placeholder: '' },
 ];
 
 /** Reference data from ZMarketSuppDataSet — locked (not free-typed) once a row is pre-filled from
