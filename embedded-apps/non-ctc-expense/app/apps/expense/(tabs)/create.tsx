@@ -1063,8 +1063,11 @@ const styles = StyleSheet.create({
     // whole width for every input. Cap and centre the form, same approach login.tsx already uses
     // for its card (maxWidth 620). Below this width the cap does nothing, so phones/tablets are
     // completely unaffected.
+    //
+    // 1280 is shared by the Dashboard ((tabs)/index.tsx) and My Claims ((tabs)/my-claims.tsx) so
+    // all three pages line up when switching tabs. Keep the three in sync if this is ever changed.
     width: '100%',
-    maxWidth: 860,
+    maxWidth: 1280,
     alignSelf: 'center',
   },
   // Two-column form pairing, desktop only. Both styles are applied conditionally via

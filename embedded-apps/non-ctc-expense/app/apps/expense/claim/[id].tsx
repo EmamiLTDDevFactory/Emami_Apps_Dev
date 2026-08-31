@@ -725,7 +725,16 @@ export default function ClaimDetailPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#EBF4FF' },
-  content: { padding: 16, paddingBottom: 40 },
+  content: {
+    padding: 16,
+    paddingBottom: 40,
+    // Same capped, centred column used across every screen in this app (Dashboard, Create Claim,
+    // My Claims, Approvals, Finance) so the content edges line up whichever tab or role you are
+    // on. Below 1280 the cap does nothing, so phones and tablets are unaffected.
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   err: { color: '#DC2626' },
   title: { fontSize: 20, fontWeight: '800', color: '#0F172A' },

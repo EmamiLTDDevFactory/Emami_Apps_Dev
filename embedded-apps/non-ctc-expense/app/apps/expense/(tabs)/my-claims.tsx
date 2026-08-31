@@ -232,6 +232,9 @@ export default function MyClaimsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
+        {/* The white bar itself still spans the full window; only its contents are capped, so the
+            title/search/filters line up with the claims list below and with the other tabs. */}
+        <View style={styles.topSectionInner}>
         <Text style={styles.pageTitle}>My Submitted Claims</Text>
         
         {/* Search Bar (BR-007) */}
@@ -279,6 +282,7 @@ export default function MyClaimsScreen() {
               <Text style={styles.actionPillExcelLabel}>Export Excel</Text>
             </TouchableOpacity>
           </ScrollView>
+        </View>
         </View>
       </View>
 
@@ -489,6 +493,18 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
     gap: 14,
+    // Same capped, centred column as the Dashboard and Create Claim (both 1280), so a claim row
+    // stops stretching the full window width. Keep the three in sync.
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
+  },
+  // Caps the header contents without capping the white bar itself — see the comment where this
+  // is used, around the page title.
+  topSectionInner: {
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
   },
   emptyState: {
     alignItems: 'center',

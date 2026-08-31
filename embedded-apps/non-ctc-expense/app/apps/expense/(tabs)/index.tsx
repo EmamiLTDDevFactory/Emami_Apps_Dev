@@ -203,6 +203,13 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     paddingBottom: 40,
+    // Same capped, centred column as Create Claim ((tabs)/create.tsx) and My Claims
+    // ((tabs)/my-claims.tsx), so the three pages line up when switching tabs instead of the
+    // Dashboard running edge to edge while the form sits inset. Below 1280 the cap does nothing,
+    // so phones and tablets are unaffected.
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
   },
   sectionTitle: {
     fontSize: 17,

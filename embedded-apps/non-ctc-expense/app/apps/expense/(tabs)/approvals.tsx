@@ -218,6 +218,7 @@ export default function ApprovalsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
+        <View style={styles.topSectionInner}>
         <Text style={styles.pageTitle}>{isBulkReleaseUser ? 'Finance Approvals' : 'Manager Approvals'}</Text>
         {/* <Text style={styles.pageSubtitle}>Review and process pending employee claims (Amount ≥ ₹100)</Text> */}
 
@@ -295,6 +296,7 @@ export default function ApprovalsScreen() {
               <Ionicons name="close-circle" size={18} color="#94A3B8" />
             </TouchableOpacity>
           )}
+        </View>
         </View>
       </View>
 
@@ -622,10 +624,23 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
   },
+  // Caps the header contents without capping the white bar itself, so the bar still spans the
+  // full window while its title/stats/search line up with the list below.
+  topSectionInner: {
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
+  },
   listContent: {
     padding: 16,
     paddingBottom: 40,
     gap: 16,
+    // Same capped, centred column used across every screen in this app (Dashboard, Create Claim,
+    // My Claims, Approvals, Finance, Claim Details) so the content edges line up whichever tab or
+    // role you are on. Below 1280 the cap does nothing, so phones and tablets are unaffected.
+    width: '100%',
+    maxWidth: 1280,
+    alignSelf: 'center',
   },
   // Selected stat header
   selectedStatHeader: {
