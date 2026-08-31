@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchMarketRates, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
@@ -8,7 +9,8 @@ import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => String(CURRENT_YEAR - i));
 
-type EditableField = 'marketRate' | 'ratePer' | 'igst' | 'sgst' | 'cgst' | 'validFrom';
+type NumericTextField = 'marketRate' | 'ratePer';
+type EditableField = NumericTextField | 'validFrom';
 type ReadonlyField = 'materialCode' | 'materialDesc' | 'materialType';
 
 const READONLY_COLUMNS: { field: ReadonlyField; label: string; width: number }[] = [
@@ -16,17 +18,82 @@ const READONLY_COLUMNS: { field: ReadonlyField; label: string; width: number }[]
   { field: 'materialDesc', label: 'Material Description', width: 220 },
 ];
 
-const EDITABLE_COLUMNS: { field: EditableField; label: string; width: number; keyboard?: 'decimal-pad' }[] = [
+// IGST/SGST/CGST are still fetched and re-saved unchanged (see onSaveChanges) — just not editable
+// or shown here.
+const TEXT_EDITABLE_COLUMNS: { field: NumericTextField; label: string; width: number; keyboard?: 'decimal-pad' }[] = [
   { field: 'marketRate', label: 'Market Rate', width: 100, keyboard: 'decimal-pad' },
   { field: 'ratePer', label: 'Rate UOM', width: 90 },
-  { field: 'igst', label: 'IGST', width: 80, keyboard: 'decimal-pad' },
-  { field: 'sgst', label: 'SGST', width: 80, keyboard: 'decimal-pad' },
-  { field: 'cgst', label: 'CGST', width: 80, keyboard: 'decimal-pad' },
-  { field: 'validFrom', label: 'Valid From', width: 130 },
 ];
 
+const DATE_COL_WIDTH = 140;
+
 const TABLE_WIDTH =
-  READONLY_COLUMNS.reduce((sum, c) => sum + c.width, 0) + EDITABLE_COLUMNS.reduce((sum, c) => sum + c.width, 0);
+  READONLY_COLUMNS.reduce((sum, c) => sum + c.width, 0) +
+  TEXT_EDITABLE_COLUMNS.reduce((sum, c) => sum + c.width, 0) +
+  DATE_COL_WIDTH;
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2026-08-31" -> "31 Aug 2026" — the raw yyyy-mm-dd the API uses isn't a friendly read for the
+ * saved value shown before the picker's opened. */
+function formatDateFriendly(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  const monthIdx = Number(m) - 1;
+  if (!y || !d || monthIdx < 0 || monthIdx > 11) return iso;
+  return `${Number(d)} ${MONTH_ABBR[monthIdx]} ${y}`;
+}
+
+/** Valid From cell — same web/native split as the Home form's DateCell: a real calendar picker
+ * everywhere (raw HTML date input on web, the native community picker elsewhere), with the closed
+ * state showing a human-readable date instead of the API's raw yyyy-mm-dd. */
+function ValidFromCell({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === 'web') {
+    return (
+      // @ts-expect-error — raw DOM element, valid under react-native-web
+      <input
+        type="date"
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        aria-label={label}
+        style={{
+          width: DATE_COL_WIDTH - 20,
+          height: 36,
+          padding: '6px 10px',
+          margin: 6,
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          backgroundColor: colors.white,
+          color: colors.ink,
+          fontSize: 12.5,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
+  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View style={{ width: DATE_COL_WIDTH, paddingHorizontal: 6 }}>
+      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
+        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Text style={styles.dateBtnText}>{formatDateFriendly(value)}</Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display={Platform.OS === 'android' ? 'spinner' : 'default'}
+          onChange={(_event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (selected) onChange(selected.toISOString().split('T')[0]);
+          }}
+        />
+      )}
+    </View>
+  );
+}
 
 /** Year picker — a raw <select> on web (simplest, most robust option for a plain string list; no
  * picker dependency is installed in this app), a small inline popover on native. */
@@ -176,7 +243,7 @@ export default function DashboardScreen() {
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}>
         <View style={styles.flex1}>
-          <Text style={styles.sectionTitle}>Market Rate Dashboard</Text>
+          <Text style={styles.sectionTitle}>Change History</Text>
           <Text style={styles.sectionSubtitle}>
             {role === 'Admin' ? 'Showing every submitted rate for the selected year' : 'Showing your submitted rates for the selected year'}
           </Text>
@@ -202,9 +269,10 @@ export default function DashboardScreen() {
                 {READONLY_COLUMNS.map((col) => (
                   <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
                 ))}
-                {EDITABLE_COLUMNS.map((col) => (
+                {TEXT_EDITABLE_COLUMNS.map((col) => (
                   <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
                 ))}
+                <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
               </View>
 
               {rows.map((row, i) => (
@@ -214,19 +282,23 @@ export default function DashboardScreen() {
                       {row[col.field]}
                     </Text>
                   ))}
-                  {EDITABLE_COLUMNS.map((col) => (
+                  {TEXT_EDITABLE_COLUMNS.map((col) => (
                     <View key={col.field} style={{ width: col.width }}>
                       <TextInput
                         value={row[col.field]}
                         onChangeText={(v) => updateCell(row.key, col.field, v)}
                         keyboardType={col.keyboard}
-                        placeholder={col.field === 'validFrom' ? 'yyyy-mm-dd' : ''}
                         placeholderTextColor={colors.inkSoft}
                         style={styles.cellInput}
                         accessibilityLabel={`${col.label}, row ${i + 1}`}
                       />
                     </View>
                   ))}
+                  <ValidFromCell
+                    value={row.validFrom}
+                    onChange={(v) => updateCell(row.key, 'validFrom', v)}
+                    label={`Valid from date, row ${i + 1}`}
+                  />
                 </View>
               ))}
             </View>
@@ -406,6 +478,21 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: 12,
     paddingHorizontal: 10,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.white,
+  },
+  dateBtnText: {
+    fontSize: 12.5,
+    color: colors.ink,
   },
   statusBanner: {
     flexDirection: 'row',

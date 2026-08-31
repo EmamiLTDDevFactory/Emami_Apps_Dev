@@ -13,7 +13,7 @@ type NavItem = { href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline' },
-  { href: '/apps/market-rate/dashboard', label: 'Dashboard', icon: 'grid-outline' },
+  { href: '/apps/market-rate/dashboard', label: 'Change History', icon: 'grid-outline' },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 

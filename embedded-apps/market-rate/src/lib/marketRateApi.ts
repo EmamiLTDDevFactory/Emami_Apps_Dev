@@ -123,39 +123,37 @@ export async function fetchUserRole(email: string): Promise<'Admin' | 'User'> {
 }
 
 /** Loads existing market rate entries for the Dashboard's edit flow, from the flat
- * FLAT_RATE_ENTITY_SET (not the header entity — see its note above). Server-side filters by Email
- * when one is passed; omit it to fetch every submitter's rows, which is how an Admin sees
- * everyone's rates. Year is filtered client-side after the fetch rather than via a second
- * server-side $filter clause — Email alone is the fix for the bug this replaced, and stacking an
- * unverified Zyear filter on top risks reintroducing the same "bad request" for a different field. */
+ * FLAT_RATE_ENTITY_SET (not the header entity — see its note above). Server-side filters by Zyear
+ * (always) and Email (when passed — omit it to fetch every submitter's rows, which is how an
+ * Admin sees everyone's rates for the year). Re-called with the new year whenever the Dashboard's
+ * year selector changes. */
 export async function fetchMarketRates(year: string, opts: { email?: string } = {}): Promise<MarketRateRow[]> {
-  const params: Record<string, string> = { '$format': 'json' };
-  if (opts.email) params['$filter'] = `Email eq '${opts.email}'`;
+  const filterParts = [`Zyear eq '${year}'`];
+  if (opts.email) filterParts.push(`Email eq '${opts.email}'`);
+  const params: Record<string, string> = { '$format': 'json', '$filter': filterParts.join(' and ') };
 
   const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   if (!Array.isArray(results)) return [];
 
-  return results
-    .filter((li: any) => String(li.Zyear ?? '') === String(year))
-    .map((li: any) => ({
-      key: `${li.RateId}-${li.Matnr}-${li.Zdate}`,
-      rateId: li.RateId,
-      email: li.Email || undefined,
-      materialCode: li.Matnr || '',
-      materialDesc: li.Maktx || '',
-      materialType: li.Mtart || '',
-      marketName: li.ZmarketName || '',
-      marketRate: li.Zrate != null ? String(li.Zrate) : '',
-      ratePer: li.ZratePer || '',
-      igst: li.Igst != null ? String(li.Igst) : '',
-      sgst: li.Sgst != null ? String(li.Sgst) : '',
-      cgst: li.Cgst != null ? String(li.Cgst) : '',
-      validFrom: li.Zdate ? String(li.Zdate).split('T')[0] : '',
-      // Material identity is SAP reference data here too, same as the Home form's pre-filled
-      // rows — only the rate/tax/date fields make sense to hand-edit.
-      locked: true,
-    }));
+  return results.map((li: any) => ({
+    key: `${li.RateId}-${li.Matnr}-${li.Zdate}`,
+    rateId: li.RateId,
+    email: li.Email || undefined,
+    materialCode: li.Matnr || '',
+    materialDesc: li.Maktx || '',
+    materialType: li.Mtart || '',
+    marketName: li.ZmarketName || '',
+    marketRate: li.Zrate != null ? String(li.Zrate) : '',
+    ratePer: li.ZratePer || '',
+    igst: li.Igst != null ? String(li.Igst) : '',
+    sgst: li.Sgst != null ? String(li.Sgst) : '',
+    cgst: li.Cgst != null ? String(li.Cgst) : '',
+    validFrom: li.Zdate ? String(li.Zdate).split('T')[0] : '',
+    // Material identity is SAP reference data here too, same as the Home form's pre-filled
+    // rows — only the rate/tax/date fields make sense to hand-edit.
+    locked: true,
+  }));
 }
 
 export interface MasterDataFile {
