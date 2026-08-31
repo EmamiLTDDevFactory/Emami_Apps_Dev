@@ -52,6 +52,10 @@ export interface MarketRateRow {
   /** Read-only context from ZMarketSuppDataSet (supplier code/name, contact, as-of date) — shown
    * for reference, not sent back to SAP on save (no field for it in the save payload). */
   supplierRef?: string;
+  /** Vendor code (Lifnr) — unlike supplierRef (a combined "code · name" display string), this IS
+   * sent back to SAP on save (toSapLineItem's Lifnr). Blank on rows added via "Add row", since
+   * there's no lookup UI to fill it any other way. */
+  vendorCode: string;
   /** True for rows pre-filled from ZMarketSuppDataSet — material code/description/type are SAP
    * reference data there, not something a user should be free to overwrite by hand. Rows added via
    * "Add row" stay false/editable, since there's no lookup UI to fill those fields any other way. */
@@ -143,6 +147,7 @@ export async function fetchMarketRates(year: string, opts: { email?: string } = 
     materialCode: li.Matnr || '',
     materialDesc: li.Maktx || '',
     materialType: li.Mtart || '',
+    vendorCode: li.Lifnr || '',
     marketName: li.ZmarketName || '',
     marketRate: li.Zrate != null ? String(li.Zrate) : '',
     ratePer: li.ZratePer || '',
@@ -222,6 +227,7 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
     ZmarketName: row.marketName,
     Maktx: row.materialDesc,
     Mtart: row.materialType,
+    Lifnr: row.vendorCode,
     Zrate: row.marketRate,
     ZratePer: row.ratePer,
     Igst: row.igst || '0.00',

@@ -3,8 +3,10 @@ import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, T
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
-import { fetchSuppliedMaterials, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
+import { fetchMarketRates, fetchSuppliedMaterials, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 function todayIso(): string {
   return new Date().toISOString().split('T')[0];
@@ -18,6 +20,7 @@ function emptyRow(): MarketRateRow {
     materialCode: '',
     materialDesc: '',
     materialType: '',
+    vendorCode: '',
     marketName: '',
     marketRate: '',
     ratePer: '',
@@ -112,21 +115,45 @@ export default function MarketRateScreen() {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
+  // Materials excluded from today's pre-fill because a rate was already submitted for them today
+  // — surfaced as a banner instead of silently vanishing, so it doesn't look like the material
+  // list just shrank for no reason.
+  const [alreadySubmittedToday, setAlreadySubmittedToday] = useState<string[]>([]);
 
   // Pre-fills the table with whatever materials this signed-in email is already associated with
   // (ZMarketSuppDataSet) instead of starting blank — market rate/GST/valid-from still need to
   // be filled in per row, those aren't part of that reference data. Falls back to the default
   // blank rows if nothing comes back (no supplier data yet, or the lookup fails).
+  //
+  // Materials that already have a rate submitted with today's date (fetchMarketRates, current
+  // year, this email) are excluded from that pre-fill — otherwise reopening Home later the same
+  // day re-offers an already-submitted material for resubmission, and a second save would create
+  // a duplicate entry for the same day.
   useEffect(() => {
     const email = getHubEmail();
     if (!email) {
       setLoadingInitial(false);
       return;
     }
-    fetchSuppliedMaterials(email).then((materials) => {
-      if (materials.length > 0) {
+    Promise.all([
+      fetchSuppliedMaterials(email),
+      fetchMarketRates(String(CURRENT_YEAR), { email }).catch(() => [] as MarketRateRow[]),
+    ]).then(([materials, existingRates]) => {
+      const today = todayIso();
+      const submittedTodayCodes = new Set(
+        existingRates.filter((r) => r.validFrom === today).map((r) => r.materialCode)
+      );
+
+      const pending = materials.filter((m) => !submittedTodayCodes.has(m.materialCode));
+      setAlreadySubmittedToday(
+        materials
+          .filter((m) => submittedTodayCodes.has(m.materialCode))
+          .map((m) => m.materialDesc || m.materialCode)
+      );
+
+      if (pending.length > 0) {
         setRows(
-          materials.map((m) => {
+          pending.map((m) => {
             nextKey += 1;
             const supplierRef = [m.supplierCode, m.supplierName].filter(Boolean).join(' · ');
             return {
@@ -134,13 +161,14 @@ export default function MarketRateScreen() {
               materialCode: m.materialCode,
               materialDesc: m.materialDesc,
               materialType: m.materialType,
+              vendorCode: m.supplierCode,
               marketName: '',
               marketRate: m.latestRate,
               ratePer: m.rateUom,
               igst: '',
               sgst: '',
               cgst: '',
-              validFrom: todayIso(),
+              validFrom: today,
               supplierRef: supplierRef || undefined,
               locked: true,
             };
@@ -179,6 +207,11 @@ export default function MarketRateScreen() {
     try {
       await saveMarketRates(filled);
       setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
+      const today = todayIso();
+      const savedToday = filled.filter((r) => r.validFrom === today).map((r) => r.materialDesc || r.materialCode);
+      if (savedToday.length > 0) {
+        setAlreadySubmittedToday((prev) => Array.from(new Set([...prev, ...savedToday])));
+      }
       setRows(DEFAULT_ROWS());
     } catch (err) {
       setStatus({ type: 'error', message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
@@ -207,6 +240,15 @@ export default function MarketRateScreen() {
           <Text style={styles.sectionSubtitle}>Fill in one row per material, then save the whole batch together</Text>
         </View>
       </View>
+
+      {alreadySubmittedToday.length > 0 && (
+        <View style={styles.infoBanner}>
+          <Ionicons name="checkmark-done-circle-outline" size={16} color={colors.rust} />
+          <Text style={styles.infoBannerText}>
+            Rate already submitted today for: {alreadySubmittedToday.join(', ')}
+          </Text>
+        </View>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
         <View style={[styles.card, { width: TABLE_WIDTH }]}>
@@ -334,6 +376,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 1,
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: radii.lg,
+    padding: 12,
+    marginBottom: 16,
+    maxWidth: 900,
+    backgroundColor: `${colors.rust}14`,
+  },
+  infoBannerText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: colors.rust,
+    flex: 1,
   },
   tableScroll: {
     flexGrow: 0,
