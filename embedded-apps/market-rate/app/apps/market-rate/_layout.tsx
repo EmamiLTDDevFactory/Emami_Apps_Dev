@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import InfoHeader from '../../../src/components/InfoHeader';
-import { colors, radii } from '../../../src/theme/tokens';
+import { colors } from '../../../src/theme/tokens';
 import { hasHubSession } from '../../../src/lib/hubEmailLogin';
 
 // No login screen here at all — unlike non-ctc-expense, this app has no per-user auth gate of
@@ -51,8 +51,12 @@ export default function MarketRateLayout() {
         </TouchableOpacity>
 
         <View style={styles.titleBar}>
-          <View style={styles.titleIconBox}>
-            <Ionicons name="pricetags-outline" size={18} color={colors.rust} />
+          <View style={styles.titleLogoBox}>
+            <Image
+              source={require('../../../assets/images/emami-apps-logo.png')}
+              style={styles.titleLogo}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.flex1}>
             <Text style={styles.title}>Market Rate</Text>
@@ -110,13 +114,15 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 12,
   },
-  titleIconBox: {
-    width: 36,
+  titleLogoBox: {
+    width: 44,
     height: 36,
-    borderRadius: radii.md,
-    backgroundColor: `${colors.rust}14`,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  titleLogo: {
+    width: 44,
+    height: 36,
   },
   title: {
     fontSize: 18,
