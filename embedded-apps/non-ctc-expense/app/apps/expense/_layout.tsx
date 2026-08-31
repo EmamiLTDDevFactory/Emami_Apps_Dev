@@ -227,8 +227,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   logoWrap: {
-    width: 52,
-    height: 52,
+    width: 64,
+    height: 53,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   },
   userLogo: {
     width: 64,
-    height: 64,
+    height: 53,
   },
   userBarLabel: {
     fontSize: 12,

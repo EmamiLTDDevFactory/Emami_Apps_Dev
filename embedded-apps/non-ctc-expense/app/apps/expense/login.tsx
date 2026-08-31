@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loginLogoWrap: {
-    width: 96,
+    width: 116,
     height: 96,
     alignItems: 'center',
     justifyContent: 'center',
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   loginLogo: {
-    width: 124,
+    width: 150,
     height: 124,
   },
   title: {
