@@ -37,7 +37,7 @@ export function DispatchModal({
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
-  const { invalidate } = useData();
+  const { applyLocalStatus } = useData();
   const invDate = toDate(row.invoice_date);
 
   const [dispatchDate, setDispatchDate] = useState<Date>(todayDate());
@@ -97,7 +97,16 @@ export function DispatchModal({
         transporter: transporter.trim(),
         cases: Number((Number.isFinite(casesNum) ? casesNum : 0).toFixed(2)),
       });
-      invalidate('pend', 'disp', 'inv');
+      // Move the row to Dispatched locally so it leaves Pending immediately. SAP's POST
+      // returns before the update task commits, so an instant re-read can still miss it;
+      // the focus refresh reconciles against SAP the next time a tab is opened.
+      applyLocalStatus(row.invoice_no, 'Dispatched', {
+        dispatch_date: isoDate(dispatchDate),
+        lr_no: lrNo.trim(),
+        vehicle_no: vehicleNo.trim(),
+        vehicle_type: vehicleType,
+        transporter: transporter.trim(),
+      });
       const vtShort = VEHICLE_TYPE_SHORT[vehicleType] ?? vehicleType;
       onSuccess(`✓ ${row.invoice_no} dispatched via ${transporter} [${vtShort}]`);
       onClose();

@@ -12,7 +12,7 @@ import { useData } from '@/contexts/DataContext';
  * spec_dis_shared_components.md §8 item 2, so there is nothing to count).
  */
 export default function TabsLayout() {
-  const { pendCache, dispCache, retCache, cancCache } = useData();
+  const { pendCache, dispCache, compCache, retCache, cancCache } = useData();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -42,7 +42,14 @@ export default function TabsLayout() {
             tabBarBadge: dispCache?.length ? dispCache.length : undefined,
           }}
         />
-        <Tabs.Screen name="completed" options={{ title: 'Completed', tabBarIcon: ({ color }) => <TabIcon icon="✅" color={color} /> }} />
+        <Tabs.Screen
+          name="completed"
+          options={{
+            title: 'Completed',
+            tabBarIcon: ({ color }) => <TabIcon icon="✅" color={color} />,
+            tabBarBadge: compCache?.length ? compCache.length : undefined,
+          }}
+        />
         <Tabs.Screen
           name="returned"
           options={{

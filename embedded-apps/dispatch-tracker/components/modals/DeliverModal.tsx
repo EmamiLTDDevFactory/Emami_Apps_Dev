@@ -31,7 +31,7 @@ export function DeliverModal({
   onClose: () => void;
   onDone: (message: string, kind: 'success' | 'warning') => void;
 }) {
-  const { invalidate } = useData();
+  const { invalidate, applyLocalStatus } = useData();
   const today = todayDate();
   const minDate = toDate(row.dispatch_date) ?? toDate(row.invoice_date) ?? today;
 
@@ -53,7 +53,9 @@ export function DeliverModal({
         row_data: row,
         actual_delivery_date: isoDate(actualDeliveryDate),
       });
-      invalidate('disp', 'comp', 'inv');
+      applyLocalStatus(row.invoice_no, 'Completed', {
+        actual_delivery_date: isoDate(actualDeliveryDate),
+      });
       onDone(`✅ ${row.invoice_no} marked as delivered`, 'success');
     } catch (e) {
       invalidate('disp', 'comp', 'inv');

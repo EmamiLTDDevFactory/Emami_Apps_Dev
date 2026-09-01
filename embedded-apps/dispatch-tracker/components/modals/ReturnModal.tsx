@@ -32,7 +32,7 @@ export function ReturnModal({
   /** Fired once the return request settles — caller shows the flash message. */
   onDone: (message: string, type: 'success' | 'warning') => void;
 }) {
-  const { invalidate } = useData();
+  const { invalidate, applyLocalStatus } = useData();
 
   const today = todayDate();
   const minDate = (invoice && toDate(invoice.actual_delivery_date)) || today;
@@ -114,7 +114,10 @@ export function ReturnModal({
         receiving_date: isoDate(receivingDate),
         cancel_reason: reason,
       });
-      invalidate('comp', 'ret');
+      applyLocalStatus(inv.invoice_no, 'Returned', {
+        receiving_date: isoDate(receivingDate),
+        cancel_reason: reason,
+      });
       onDone(`↩ ${inv.invoice_no} returned successfully`, 'success');
     } catch (e) {
       invalidate('comp', 'ret');

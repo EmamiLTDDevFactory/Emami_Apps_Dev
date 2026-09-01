@@ -74,6 +74,21 @@ export function todayDate(): Date {
   return d;
 }
 
+/**
+ * The calendar date exactly as the user sees it on screen.
+ *
+ * This used to be `d.toISOString().slice(0, 10)`, which is always UTC. Every Date here comes
+ * from todayDate() or the date picker, i.e. LOCAL midnight — and in IST (UTC+5:30) local
+ * midnight is 18:30 the previous day in UTC, so toISOString() moved every date back one day.
+ * That shifted every date this app wrote to SAP: ActDelDate, RecDate, DispatchDate, CanDate,
+ * and the SAP: stamp inside the return reason string.
+ *
+ * getFullYear/getMonth/getDate are local-time getters, so what the user picked is what SAP gets.
+ * (parseDate() on the read side correctly stays UTC — SAP encodes /Date(ms)/ at UTC midnight.)
+ */
 export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }

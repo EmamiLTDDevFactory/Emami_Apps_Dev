@@ -1,4 +1,5 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,10 +29,11 @@ export default function PendingScreen() {
   const { readOnly } = useAuth();
   const { pendCache, loading, errors, ensurePending } = useData();
 
-  useEffect(() => {
-    ensurePending();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      ensurePending();
+    }, [ensurePending])
+  );
 
   const [search, setSearch] = useState('');
   const [depotFilter, setDepotFilter] = useState('All Depots');

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -398,13 +399,17 @@ export default function ReportsScreen() {
     ensureCancelled,
   } = useData();
 
-  useEffect(() => {
-    ensurePending();
-    ensureDispatched();
-    ensureCompleted();
-    ensureReturned();
-    ensureCancelled();
-  }, [ensurePending, ensureDispatched, ensureCompleted, ensureReturned, ensureCancelled]);
+  // All five now resolve to the same snapshot fetch, de-duped in DataContext, so this is one
+  // request rather than the five (x5 entity sets = 25) it used to fire.
+  useFocusEffect(
+    useCallback(() => {
+      ensurePending();
+      ensureDispatched();
+      ensureCompleted();
+      ensureReturned();
+      ensureCancelled();
+    }, [ensurePending, ensureDispatched, ensureCompleted, ensureReturned, ensureCancelled])
+  );
 
   const typeDfs = useMemo<Record<ReportType, AnyInvoiceRow[]>>(() => {
     const pending = pendCache ?? [];

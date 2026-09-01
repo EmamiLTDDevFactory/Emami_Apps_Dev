@@ -31,6 +31,12 @@ export interface Invoice {
   invoice_date: string | null;
   payment_receiving_date: string | null;
   dispatch_date: string | null;
+  // SAP's ActDelDate. Optional here because only completed/returned rows carry one.
+  actual_delivery_date?: string | null;
+  // SAP's RecDate — returned rows only.
+  receiving_date?: string | null;
+  // SAP's CanDate — cancelled rows only.
+  cancel_date?: string | null;
   edd: string | null;
   no_of_cases: number;
   gross_weight_kg: number;

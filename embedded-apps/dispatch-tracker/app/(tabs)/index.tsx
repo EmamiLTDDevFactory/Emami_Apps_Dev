@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DonutChart } from '@/components/charts/DonutChart';
@@ -172,9 +173,13 @@ export default function DashboardScreen() {
   const { session, readOnly } = useAuth();
   const { pendCache, dispCache, compCache, retCache, cancCache, loadDashboard } = useData();
 
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+  // Re-checked on focus (staleness-guarded in DataContext), so returning to this tab after an
+  // action shows SAP's committed state instead of whatever was cached when it first mounted.
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboard();
+    }, [loadDashboard])
+  );
 
   const loaded = pendCache !== null && dispCache !== null && compCache !== null && retCache !== null && cancCache !== null;
 

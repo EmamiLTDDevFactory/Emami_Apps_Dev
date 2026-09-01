@@ -1,4 +1,5 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { EmptyState } from '@/components/EmptyState';
@@ -46,9 +47,11 @@ export default function CompletedScreen() {
   const { compCache, pendCache, dispCache, retCache, cancCache, loading, errors, ensureCompleted, invalidate } =
     useData();
 
-  useEffect(() => {
-    ensureCompleted();
-  }, [ensureCompleted]);
+  useFocusEffect(
+    useCallback(() => {
+      ensureCompleted();
+    }, [ensureCompleted])
+  );
 
   const [search, setSearch] = useState('');
   const [filterDepot, setFilterDepot] = useState('All Depots');
@@ -367,7 +370,7 @@ function InvoiceCard({
           <Text style={[styles.fieldValue, { color: colors.blueDk, fontWeight: '600' }]}>{fd(row.dispatch_date)}</Text>
         </Field>
 
-        <Field label="Delivered">
+        <Field label="Actual Delivery Date">
           <Text style={[styles.fieldValue, { color: colors.g700 }]}>{fd(row.actual_delivery_date)}</Text>
         </Field>
 

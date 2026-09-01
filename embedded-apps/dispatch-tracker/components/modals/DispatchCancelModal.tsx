@@ -30,7 +30,7 @@ export function DispatchCancelModal({
   onClose: () => void;
   onDone: (message: string, kind: 'success' | 'warning') => void;
 }) {
-  const { invalidate } = useData();
+  const { invalidate, applyLocalStatus } = useData();
   const today = todayDate();
   const minDate = toDate(row.dispatch_date) ?? today;
 
@@ -62,7 +62,10 @@ export function DispatchCancelModal({
         cancel_date: isoDate(cancelDate),
         cancel_reason: reason.trim(),
       });
-      invalidate('disp', 'canc');
+      applyLocalStatus(row.invoice_no, 'Cancelled', {
+        cancel_date: isoDate(cancelDate),
+        cancel_reason: reason.trim(),
+      });
       onDone(`✕ ${row.invoice_no} cancelled`, 'success');
     } catch (e) {
       invalidate('disp', 'canc');
