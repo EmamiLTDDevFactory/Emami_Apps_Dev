@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
@@ -110,13 +110,16 @@ function DateCell({ value, onChange, label }: { value: string; onChange: (v: str
   );
 }
 
-type SaveStatus = { type: 'success' | 'error'; message: string } | null;
+// Only ever holds an error now — a successful save shows the confirmation Modal below instead of
+// this inline banner (see showSuccessModal).
+type SaveStatus = { message: string } | null;
 
 export default function MarketRateScreen() {
   const [rows, setRows] = useState<MarketRateRow[]>(DEFAULT_ROWS);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   // Materials excluded from today's pre-fill because a rate was already submitted for them today
   // — surfaced as a banner instead of silently vanishing, so it doesn't look like the material
   // list just shrank for no reason.
@@ -195,28 +198,28 @@ export default function MarketRateScreen() {
     setStatus(null);
     const filled = rows.filter((r) => TEXT_COLUMNS.some((c) => r[c.field].trim()));
     if (filled.length === 0) {
-      setStatus({ type: 'error', message: 'Fill in at least one row before saving.' });
+      setStatus({ message: 'Fill in at least one row before saving.' });
       return;
     }
     const NUMERIC: TextField[] = ['marketRate'];
     const invalidNumber = filled.find((r) => NUMERIC.some((f) => r[f].trim() && Number.isNaN(Number(r[f]))));
     if (invalidNumber) {
-      setStatus({ type: 'error', message: 'Market rate must be a number.' });
+      setStatus({ message: 'Market rate must be a number.' });
       return;
     }
 
     setSaving(true);
     try {
       await saveMarketRates(filled);
-      setStatus({ type: 'success', message: `Saved ${filled.length} row${filled.length === 1 ? '' : 's'}.` });
       const today = todayIso();
       const savedToday = filled.filter((r) => r.validFrom === today).map((r) => r.materialDesc || r.materialCode);
       if (savedToday.length > 0) {
         setAlreadySubmittedToday((prev) => Array.from(new Set([...prev, ...savedToday])));
       }
       setRows(DEFAULT_ROWS());
+      setShowSuccessModal(true);
     } catch (err) {
-      setStatus({ type: 'error', message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
+      setStatus({ message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
     } finally {
       setSaving(false);
     }
@@ -315,15 +318,9 @@ export default function MarketRateScreen() {
       </ScrollView>
 
       {status && (
-        <View style={[styles.statusBanner, status.type === 'success' ? styles.statusSuccess : styles.statusError]}>
-          <Ionicons
-            name={status.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
-            size={16}
-            color={status.type === 'success' ? colors.green : colors.red}
-          />
-          <Text style={[styles.statusText, { color: status.type === 'success' ? colors.green : colors.red }]}>
-            {status.message}
-          </Text>
+        <View style={[styles.statusBanner, styles.statusError]}>
+          <Ionicons name="alert-circle" size={16} color={colors.red} />
+          <Text style={[styles.statusText, { color: colors.red }]}>{status.message}</Text>
         </View>
       )}
 
@@ -343,6 +340,26 @@ export default function MarketRateScreen() {
           </>
         )}
       </Pressable>
+
+      <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={() => setShowSuccessModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalIconBox}>
+              <Ionicons name="checkmark-circle" size={30} color={colors.green} />
+            </View>
+            <Text style={styles.modalTitle}>Rate has been submitted successfully</Text>
+            <Text style={styles.modalMessage}>Check the Change History tab for further changes.</Text>
+            <Pressable
+              style={styles.modalBtn}
+              onPress={() => setShowSuccessModal(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <Text style={styles.modalBtnText}>OK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -512,9 +529,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     maxWidth: 900,
   },
-  statusSuccess: {
-    backgroundColor: `${colors.green}14`,
-  },
   statusError: {
     backgroundColor: `${colors.red}14`,
   },
@@ -539,6 +553,55 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     fontSize: 14,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(31,27,51,0.55)',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: radii.xl,
+    backgroundColor: colors.white,
+    padding: 24,
+    alignItems: 'center',
+  },
+  modalIconBox: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.xl,
+    backgroundColor: `${colors.green}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 15.5,
+    fontWeight: '800',
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 13,
+    color: colors.inkSoft,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 19,
+  },
+  modalBtn: {
+    marginTop: 18,
+    borderRadius: radii.lg,
+    paddingVertical: 11,
+    paddingHorizontal: 32,
+    backgroundColor: colors.rust,
+  },
+  modalBtnText: {
+    fontSize: 13.5,
     fontWeight: '700',
     color: colors.white,
   },
