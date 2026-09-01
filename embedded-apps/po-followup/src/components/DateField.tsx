@@ -10,10 +10,11 @@ interface DateFieldProps {
   onChange: (v: string) => void;
 }
 
-/** Date picker for the Pending Delivery tab's From/To selection — same shape as Market Rate's
- * DateCell (raw HTML date input on web, native community picker elsewhere) so date entry behaves
- * consistently across every Emami Apps embedded app. Stores yyyy-mm-dd; the API layer converts to
- * SAP's YYYYMMDD on the way out (see poFollowupApi.ts's toSapDate). */
+/** Date picker for the Pending Delivery tab's From/To selection, and the Revise Delivery Date
+ * modal's Revised Delivery Date field — same shape as Market Rate's DateCell (raw HTML date input
+ * on web, native community picker elsewhere) so date entry behaves consistently across every Emami
+ * Apps embedded app. Stores yyyy-mm-dd; the API layer converts to SAP's datetime literal on the way
+ * out (see poFollowupApi.ts's toSapDateFilter). */
 export default function DateField({ label, value, onChange }: DateFieldProps) {
   const [showPicker, setShowPicker] = useState(false);
 

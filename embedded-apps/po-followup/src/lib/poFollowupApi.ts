@@ -11,9 +11,10 @@ const sapClient = axios.create({
   headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 });
 
-/** One PO line as returned by ZDelvPendPOSet. Field names/labels haven't been confirmed live yet
- * (unlike Market Rate's ZMarketSuppDataSet) — kept as an open record instead of a fixed shape so
- * the table can render whatever SAP actually sends back without guessing column names wrong. */
+/** One PO line as returned by ZDelvPendPOSet, generic shape — used for the Pending Delivery PO
+ * tab, whose column layout hasn't been specified (unlike Upcoming's, see UpcomingPoRow below).
+ * Kept as an open record so the table can render whatever SAP actually sends back without
+ * guessing column names wrong. */
 export type PoFollowupRow = Record<string, string | number | null>;
 
 /** "2026-09-01" -> "datetime'2026-09-01T00:00:00'" — verified live against ZDelvPendPOSet
@@ -24,7 +25,25 @@ function toSapDateFilter(isoDate: string): string {
   return `datetime'${isoDate}T00:00:00'`;
 }
 
-async function fetchDelvPendPOs(filterParts: string[]): Promise<PoFollowupRow[]> {
+/** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" — same shape Market Rate's
+ * marketRateApi.ts already had to unpack for Zdate. "" for anything else/unparseable. */
+function parseODataDate(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const match = value.match(/\/Date\((-?\d+)\)\//);
+  if (match) return new Date(Number(match[1])).toISOString().split('T')[0];
+  return '';
+}
+
+/** "2026-09-01" -> "01 Sep 2026" — user-friendly display for Eindt per instruction. */
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export function formatDateFriendly(isoDate: string): string {
+  if (!isoDate) return '—';
+  const [y, m, d] = isoDate.split('-');
+  const month = MONTH_ABBR[Number(m) - 1];
+  return month ? `${d} ${month} ${y}` : isoDate;
+}
+
+async function fetchDelvPendPOs(filterParts: string[]): Promise<Record<string, any>[]> {
   const { data } = await sapClient.get(`/${ENTITY_SET}`, {
     params: { '$filter': filterParts.join(' and '), '$format': 'json' },
   });
@@ -32,20 +51,49 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<PoFollowupRow[]>
   return Array.isArray(results) ? results : [];
 }
 
-/** Upcoming Delivery PO tab — filtered to the signed-in user's email only, no Zaction filter at
- * all per instruction.
- *
- * Every Zaction value tried for this tab ('A', then 'B', then 'D') threw SAP Gateway error
- * /IWFND/CM_BEC/029 "RFC Error: Type conflict during a function module call" shortly after being
- * tried — while Email alone (no Zaction) filters cleanly. See fetchPendingDeliveryPOs for the
- * still-working Zaction='P' case. */
-export async function fetchUpcomingDeliveryPOs(email: string): Promise<PoFollowupRow[]> {
-  return fetchDelvPendPOs([`Email eq '${email}'`]);
+/** One PO line for the Upcoming Delivery PO tab — explicit column set per instruction, mapped
+ * from ZDelvPendPOSet's raw SAP field names (Ebeln, Ebelp, Txz01, ...). Matkl/Ekgrp/OrdUnit/Matnr
+ * are read from SAP but no longer surfaced in the table (dropped per instruction). DelvQty's exact
+ * SAP field name wasn't given as precisely as the others (no live sample data existed to confirm
+ * against at write time) — assumed "DelvQty" by analogy with OrdUnit's naming; verify once real
+ * rows exist. */
+export interface UpcomingPoRow {
+  key: string;
+  poNumber: string; // Ebeln
+  poItemNo: string; // Ebelp
+  poText: string; // Txz01
+  materialDesc: string; // Maktx
+  /** yyyy-mm-dd, parsed from Eindt's OData datetime literal. */
+  deliveryDate: string;
+  scheduledQty: string; // schedule_qty
+  deliveredQty: string; // DelvQty (assumed — see interface note)
+}
+
+function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow {
+  const deliveryDate = parseODataDate(raw.Eindt);
+  return {
+    key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}`,
+    poNumber: raw.Ebeln != null ? String(raw.Ebeln) : '',
+    poItemNo: raw.Ebelp != null ? String(raw.Ebelp) : '',
+    poText: raw.Txz01 != null ? String(raw.Txz01) : '',
+    materialDesc: raw.Maktx != null ? String(raw.Maktx) : '',
+    deliveryDate,
+    scheduledQty: raw.schedule_qty != null ? String(raw.schedule_qty) : '',
+    deliveredQty: raw.DelvQty != null ? String(raw.DelvQty) : '',
+  };
+}
+
+/** Upcoming Delivery PO tab — Zaction 'A', filtered to the signed-in user's email only. Verified
+ * live working again as of the last check (it was blocked server-side for a while — see git
+ * history on this file — but both 'A' and 'P' now return cleanly). */
+export async function fetchUpcomingDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`]);
+  return raw.map(toUpcomingPoRow);
 }
 
 /** Pending Delivery PO tab — Zaction 'P', filtered by the signed-in user's email plus the
  * from/to date range picked on screen (see toSapDateFilter for the OData datetime literal these
- * need). Verified live: this combination (unlike Zaction='A') returns cleanly. */
+ * need). */
 export async function fetchPendingDeliveryPOs(email: string, fromDate: string, toDate: string): Promise<PoFollowupRow[]> {
   return fetchDelvPendPOs([
     `Email eq '${email}'`,

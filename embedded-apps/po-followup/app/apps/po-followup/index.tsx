@@ -3,9 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
-import { fetchPendingDeliveryPOs, fetchUpcomingDeliveryPOs, type PoFollowupRow } from '../../../src/lib/poFollowupApi';
+import { fetchPendingDeliveryPOs, fetchUpcomingDeliveryPOs, type PoFollowupRow, type UpcomingPoRow } from '../../../src/lib/poFollowupApi';
 import DateField from '../../../src/components/DateField';
 import PoTable from '../../../src/components/PoTable';
+import UpcomingPoTable from '../../../src/components/UpcomingPoTable';
 
 type Tab = 'upcoming' | 'pending';
 
@@ -17,9 +18,8 @@ export default function PoFollowupHome() {
   const [tab, setTab] = useState<Tab>('upcoming');
   const [email] = useState(() => getHubEmail());
 
-  // Upcoming Delivery PO — loads automatically, no Zaction filter sent (see poFollowupApi.ts),
-  // no selection needed from the user.
-  const [upcomingRows, setUpcomingRows] = useState<PoFollowupRow[]>([]);
+  // Upcoming Delivery PO — loads automatically (Zaction 'A'), no selection needed from the user.
+  const [upcomingRows, setUpcomingRows] = useState<UpcomingPoRow[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [upcomingError, setUpcomingError] = useState<string | null>(null);
 
@@ -96,7 +96,7 @@ export default function PoFollowupHome() {
           ) : upcomingError ? (
             <Text style={styles.errorText}>{upcomingError}</Text>
           ) : (
-            <PoTable rows={upcomingRows} emptyMessage="No upcoming delivery POs found." />
+            <UpcomingPoTable rows={upcomingRows} emptyMessage="No upcoming delivery POs found." />
           )}
         </View>
       ) : (
