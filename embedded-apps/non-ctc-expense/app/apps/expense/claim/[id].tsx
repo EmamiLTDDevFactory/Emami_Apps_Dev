@@ -24,6 +24,8 @@ export default function ClaimDetailPage() {
   const [selectedTaxDescription, setSelectedTaxDescription] = useState('');
   const [taxDropdownOpen, setTaxDropdownOpen] = useState(false);
   const [taxLoading, setTaxLoading] = useState(false);
+  // SAP returns ~1,600 tax codes for a claim, so the list is unusable without a filter.
+  const [taxSearch, setTaxSearch] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const router = useRouter();
   const { currentUser } = useAuth();
@@ -276,6 +278,11 @@ export default function ClaimDetailPage() {
     if (header.Stcd3 || header.stcd3 || header.Lifnr || header.lifnr) {
       setTaxModalVisible(true);
       setTaxLoading(true);
+      // Open the list straight away so Finance sees the codes AND the search box together —
+      // with ~1,600 codes nobody browses this list, they search it, so hiding it behind a
+      // click just adds a step.
+      setTaxDropdownOpen(true);
+      setTaxSearch('');
       const taxes = await fetchTaxes(claimId);
       setAvailableTaxes(taxes || []);
       setTaxLoading(false);
@@ -291,6 +298,7 @@ export default function ClaimDetailPage() {
       setSelectedTaxCode('');
       setSelectedTaxDescription('');
       setTaxDropdownOpen(false);
+      setTaxSearch('');
       setAvailableTaxes([]);
       setScreenMessage({ title: 'Payment Release Failed', message: formatSapErrorMessage(result.error), type: 'error' });
       return;
@@ -299,6 +307,7 @@ export default function ClaimDetailPage() {
     setSelectedTaxCode('');
     setSelectedTaxDescription('');
     setTaxDropdownOpen(false);
+    setTaxSearch('');
     await loadClaim();
     Alert.alert('Success', `Claim ${claimId} has been paid successfully and workflow updated.`);
   };
@@ -382,6 +391,19 @@ export default function ClaimDetailPage() {
   const postingDoc = header?.Belnr ? String(header.Belnr).trim() : '';
   const gjahrRaw = header?.Gjahr ? String(header.Gjahr).trim() : '';
   const fiscalYear = gjahrRaw && gjahrRaw !== '0000' ? gjahrRaw : '';
+
+  // Tax-code search. SAP's TaxSet returns roughly 1,600 rows per claim, which previously all
+  // rendered at once into a 150px scroll box — Finance had to scroll hundreds of times to find
+  // a code. Matches on either the code (Mwskz) or its description (Text1), and only the first
+  // TAX_RESULTS_LIMIT matches are rendered so the modal stays responsive.
+  const TAX_RESULTS_LIMIT = 50;
+  const taxQuery = taxSearch.trim().toLowerCase();
+  const filteredTaxes = taxQuery
+    ? availableTaxes.filter((t: any) =>
+        `${t?.Mwskz ?? ''} ${t?.Text1 ?? ''}`.toLowerCase().includes(taxQuery)
+      )
+    : availableTaxes;
+  const visibleTaxes = filteredTaxes.slice(0, TAX_RESULTS_LIMIT);
 
   return (
     <View style={styles.container}>
@@ -657,38 +679,70 @@ export default function ClaimDetailPage() {
                     </TouchableOpacity>
 
                     {taxDropdownOpen && (
-                      <ScrollView
+                      <View
                         style={{
                           marginTop: 4,
                           borderWidth: 1,
                           borderColor: '#E2E8F0',
                           backgroundColor: '#FFFFFF',
                           borderRadius: 8,
-                          maxHeight: 150
+                          overflow: 'hidden'
                         }}
-                        nestedScrollEnabled
                       >
-                        {availableTaxes.map((tax, index) => (
-                          <TouchableOpacity
-                            key={index}
-                            style={{
-                              padding: 12,
-                              borderBottomWidth: index === availableTaxes.length - 1 ? 0 : 1,
-                              borderBottomColor: '#F1F5F9',
-                              backgroundColor: selectedTaxCode === tax.Mwskz ? '#EFF8FF' : '#FFFFFF',
-                            }}
-                            onPress={() => {
-                              setSelectedTaxCode(tax.Mwskz);
-                              setSelectedTaxDescription(tax.Text1 || '');
-                              setTaxDropdownOpen(false);
-                            }}
-                          >
-                            <Text style={{ fontWeight: selectedTaxCode === tax.Mwskz ? 'bold' : 'normal', color: '#0F172A' }}>
-                              {tax.Mwskz}{tax.Text1 ? ` (${tax.Text1})` : ''}
+                        {/* Search box — type a code (e.g. "V0") or any word from its description. */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#F8FAFC' }}>
+                          <Ionicons name="search" size={15} color="#94A3B8" />
+                          <TextInput
+                            value={taxSearch}
+                            onChangeText={setTaxSearch}
+                            placeholder="Search tax code or description..."
+                            placeholderTextColor="#94A3B8"
+                            style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 14, color: '#0F172A' }}
+                          />
+                          {taxSearch ? (
+                            <TouchableOpacity onPress={() => setTaxSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                              <Ionicons name="close-circle" size={16} color="#94A3B8" />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                          {visibleTaxes.length === 0 ? (
+                            <Text style={{ padding: 14, textAlign: 'center', color: '#64748B' }}>
+                              No tax code matches &quot;{taxSearch.trim()}&quot;.
                             </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
+                          ) : (
+                            visibleTaxes.map((tax: any, index: number) => (
+                              <TouchableOpacity
+                                key={`${tax.Mwskz}-${index}`}
+                                style={{
+                                  padding: 12,
+                                  borderBottomWidth: index === visibleTaxes.length - 1 ? 0 : 1,
+                                  borderBottomColor: '#F1F5F9',
+                                  backgroundColor: selectedTaxCode === tax.Mwskz ? '#EFF8FF' : '#FFFFFF',
+                                }}
+                                onPress={() => {
+                                  // Selection keeps the list open: the chosen row highlights,
+                                  // the bar above shows it, and Finance can still change it
+                                  // without reopening anything.
+                                  setSelectedTaxCode(tax.Mwskz);
+                                  setSelectedTaxDescription(tax.Text1 || '');
+                                }}
+                              >
+                                <Text style={{ fontWeight: selectedTaxCode === tax.Mwskz ? 'bold' : 'normal', color: '#0F172A' }}>
+                                  {tax.Mwskz}{tax.Text1 ? ` (${tax.Text1})` : ''}
+                                </Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </ScrollView>
+
+                        {filteredTaxes.length > visibleTaxes.length ? (
+                          <Text style={{ paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: '#64748B', borderTopWidth: 1, borderTopColor: '#F1F5F9', backgroundColor: '#F8FAFC' }}>
+                            Showing {visibleTaxes.length} of {filteredTaxes.length} — keep typing to narrow down.
+                          </Text>
+                        ) : null}
+                      </View>
                     )}
                   </View>
                 )}
