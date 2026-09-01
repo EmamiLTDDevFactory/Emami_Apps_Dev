@@ -19,6 +19,11 @@ import {
 const VEHICLE_TYPE_PLACEHOLDER = '— Select —';
 const VEHICLE_TYPE_OPTIONS = [VEHICLE_TYPE_PLACEHOLDER, 'FTL (Full Truck Load)', 'PTL (Part Truck Load)', 'Trip'];
 const TRANSPORTER_PLACEHOLDER = '— Select Transporter —';
+/** Appended to the route's transporter list so a depot can dispatch via a carrier SAP
+ *  doesn't have on that route. Picking it reveals a free-text box, and whatever is typed
+ *  is sent as the SAME `transporter` field — SAP sees a plain name either way. */
+const TRANSPORTER_OTHER = 'Others';
+const TRANSPORTER_OTHER_MAX = 100;
 const VEHICLE_TYPE_SHORT: Record<string, string> = {
   'FTL (Full Truck Load)': 'FTL',
   'PTL (Part Truck Load)': 'PTL',
@@ -45,7 +50,11 @@ export function DispatchModal({
   const [vehicleType, setVehicleType] = useState(VEHICLE_TYPE_PLACEHOLDER);
   const [vehicleNo, setVehicleNo] = useState('');
   const [transporter, setTransporter] = useState(TRANSPORTER_PLACEHOLDER);
-  const [transporterOptions, setTransporterOptions] = useState<string[]>([TRANSPORTER_PLACEHOLDER]);
+  const [transporterOptions, setTransporterOptions] = useState<string[]>([
+    TRANSPORTER_PLACEHOLDER,
+    TRANSPORTER_OTHER,
+  ]);
+  const [otherTransporter, setOtherTransporter] = useState('');
   const [cases, setCases] = useState('0');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -57,16 +66,20 @@ export function DispatchModal({
     setVehicleType(VEHICLE_TYPE_PLACEHOLDER);
     setVehicleNo('');
     setTransporter(TRANSPORTER_PLACEHOLDER);
+    setOtherTransporter('');
     setCases(String(row.no_of_cases ?? 0));
     setError(null);
-    setTransporterOptions([TRANSPORTER_PLACEHOLDER]);
+    setTransporterOptions([TRANSPORTER_PLACEHOLDER, TRANSPORTER_OTHER]);
     getTransporters(row.route_code)
-      .then((opts) => setTransporterOptions([TRANSPORTER_PLACEHOLDER, ...opts]))
-      .catch(() => setTransporterOptions([TRANSPORTER_PLACEHOLDER]));
+      .then((opts) => setTransporterOptions([TRANSPORTER_PLACEHOLDER, ...opts, TRANSPORTER_OTHER]))
+      .catch(() => setTransporterOptions([TRANSPORTER_PLACEHOLDER, TRANSPORTER_OTHER]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, row.invoice_no]);
 
   const isFtlOrTrip = vehicleType === 'FTL (Full Truck Load)' || vehicleType === 'Trip';
+  const isOtherTransporter = transporter === TRANSPORTER_OTHER;
+  /** The single value that goes to SAP, whichever way it was chosen. */
+  const transporterName = (isOtherTransporter ? otherTransporter : transporter).trim();
 
   async function handleSubmit() {
     const errs: string[] = [];
@@ -77,6 +90,7 @@ export function DispatchModal({
     if (isFtlOrTrip && !vehicleNo.trim())
       errs.push("Vehicle No is required for FTL/Trip — enter the vehicle number or 'NA' if not available.");
     if (!transporter || transporter === TRANSPORTER_PLACEHOLDER) errs.push('Transporter required.');
+    else if (isOtherTransporter && !transporterName) errs.push('Transporter name required.');
 
     if (errs.length) {
       setError(errs.join(' · '));
@@ -94,7 +108,7 @@ export function DispatchModal({
         lr_no: lrNo.trim(),
         vehicle_no: vehicleNo.trim(),
         vehicle_type: vehicleType,
-        transporter: transporter.trim(),
+        transporter: transporterName,
         cases: Number((Number.isFinite(casesNum) ? casesNum : 0).toFixed(2)),
       });
       // Move the row to Dispatched locally so it leaves Pending immediately. SAP's POST
@@ -105,10 +119,10 @@ export function DispatchModal({
         lr_no: lrNo.trim(),
         vehicle_no: vehicleNo.trim(),
         vehicle_type: vehicleType,
-        transporter: transporter.trim(),
+        transporter: transporterName,
       });
       const vtShort = VEHICLE_TYPE_SHORT[vehicleType] ?? vehicleType;
-      onSuccess(`✓ ${row.invoice_no} dispatched via ${transporter} [${vtShort}]`);
+      onSuccess(`✓ ${row.invoice_no} dispatched via ${transporterName} [${vtShort}]`);
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not dispatch invoice. Please try again.');
@@ -144,7 +158,26 @@ export function DispatchModal({
       />
 
       <FieldLabel text="Transporter" required />
-      <SelectField value={transporter} options={transporterOptions} onChange={setTransporter} />
+      <SelectField
+        value={transporter}
+        options={transporterOptions}
+        onChange={(v) => {
+          setTransporter(v);
+          if (v !== TRANSPORTER_OTHER) setOtherTransporter('');
+        }}
+      />
+
+      {isOtherTransporter ? (
+        <>
+          <FieldLabel text="Transporter Name" required />
+          <TextField
+            value={otherTransporter}
+            // Capped here rather than on the shared TextField so no other form is affected.
+            onChangeText={(v) => setOtherTransporter(v.slice(0, TRANSPORTER_OTHER_MAX))}
+            placeholder={`Enter transporter name (max ${TRANSPORTER_OTHER_MAX} characters)`}
+          />
+        </>
+      ) : null}
 
       <FieldLabel text="Cases" required />
       <TextField value={cases} onChangeText={setCases} placeholder="0.00" keyboardType="decimal-pad" />
