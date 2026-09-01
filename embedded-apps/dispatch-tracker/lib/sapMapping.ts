@@ -43,6 +43,17 @@ export function normalizeInvoice(raw: any): Invoice {
         vehicle_type: raw.VehicleType || '',
         vehicle_no: raw.VehicleNo || '',
         dispatch_date: parseDate(raw.DispatchDate || raw.Disptdat || raw.Dispdat || raw.Wadat_ist),
+        // ActDelDate is what postComplete writes and what InvoiceCompSet/InvoiceRetSet return.
+        // It was missing here, so the Completed card's "Delivered" field, the delivery-date sort,
+        // the EDD colour comparison and the "Actual Delivery Date" export column were all reading
+        // an undefined property. DelDate is kept as a fallback for any row that uses it instead.
+        actual_delivery_date: parseDate(raw.ActDelDate || raw.DelDate),
+        // RecDate is written by postReturn and returned by InvoiceRetSet — the Returned card's
+        // "Receiving Date" was reading an undefined property.
+        receiving_date: parseDate(raw.RecDate),
+        // CanDate is written by postCancel and returned by InvoiceCanSet — the Cancelled card's
+        // "Cancel Date" was blank, and its sort silently fell back to invoice_date.
+        cancel_date: parseDate(raw.CanDate),
         cancel_reason: raw.CanRsn || raw.CancelReason || '',
         agreed_tat: parseIntSafe(raw.Tat || raw.AgreedTat),
         delay_dispatch: parseIntSafe(raw.DelayDispatch),

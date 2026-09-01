@@ -88,7 +88,31 @@ export const NAV: NavItem[] = [
 ];
 
 export function appById(id: string) {
-  return APPS.find((a) => a.id === id);
+  const byId = APPS.find((a) => a.id === id);
+  if (byId) return byId;
+
+  // Fallback: match the last segment of the app's own URL, so `/apps/dispatch-tracker`
+  // resolves to the app whose id is `hr`.
+  //
+  // Why this is needed. An embedded app's URL slug and its hub id are different strings
+  // (hr -> /apps/dispatch-tracker, finance -> /apps/rc-portal, inventory ->
+  // /apps/mouldhealthcheck), and the hub's own route is `apps/:appId` (linking.ts). Hosting
+  // serves `/apps/<slug>` as the app's real index.html, but `/apps/<slug>/` — the trailing
+  // slash the embedded Expo Router app puts in the address bar once it boots — falls through
+  // to the hub's SPA fallback instead. So refreshing an open embedded app loads the HUB at
+  // `/apps/<slug>/`, which looked up "dispatch-tracker" as an id, found nothing, and dead-ended
+  // on "Application not found."
+  //
+  // With this fallback the hub recognises the slug, and AppDetailScreen's existing redirect
+  // sends the browser to the app's real URL (no trailing slash), which hosting serves
+  // correctly — so a refresh recovers by itself instead of erroring.
+  //
+  // Lookups by real id are unaffected: that search runs first and wins.
+  const slug = id.replace(/^\/+|\/+$/g, '');
+  return APPS.find((a) => {
+    if (!a.url || !a.url.startsWith('/')) return false;
+    return a.url.replace(/\/+$/, '').split('/').pop() === slug;
+  });
 }
 
 export const topUsedAppId = APPS.reduce((a, b) => (b.uses > a.uses ? b : a)).id;

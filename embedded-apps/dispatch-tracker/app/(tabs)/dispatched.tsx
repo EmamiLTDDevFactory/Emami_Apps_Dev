@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
 import { fd, finr, toDate } from '@/lib/format';
@@ -89,10 +90,11 @@ export default function DispatchedScreen() {
   const { session, readOnly } = useAuth();
   const { dispCache, errors, ensureDispatched } = useData();
 
-  useEffect(() => {
-    ensureDispatched();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      ensureDispatched();
+    }, [ensureDispatched])
+  );
 
   const [search, setSearch] = useState('');
   const [depotFilter, setDepotFilter] = useState('All Depots');

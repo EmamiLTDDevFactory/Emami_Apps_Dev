@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -68,9 +69,11 @@ export default function CancelledScreen() {
   const { session, readOnly } = useAuth();
   const { cancCache, pendCache, dispCache, compCache, retCache, loading, errors, ensureCancelled } = useData();
 
-  useEffect(() => {
-    ensureCancelled();
-  }, [ensureCancelled]);
+  useFocusEffect(
+    useCallback(() => {
+      ensureCancelled();
+    }, [ensureCancelled])
+  );
 
   const [search, setSearch] = useState('');
   const [depot, setDepot] = useState('All Depots');

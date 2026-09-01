@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -82,9 +83,11 @@ export default function ReturnedScreen() {
   const { session, readOnly } = useAuth();
   const { retCache, pendCache, dispCache, compCache, cancCache, loading, errors, ensureReturned } = useData();
 
-  useEffect(() => {
-    ensureReturned();
-  }, [ensureReturned]);
+  useFocusEffect(
+    useCallback(() => {
+      ensureReturned();
+    }, [ensureReturned])
+  );
 
   const [search, setSearch] = useState('');
   const [depot, setDepot] = useState('All Depots');

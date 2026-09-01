@@ -19,7 +19,7 @@ export function PendingCancelModal({
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
-  const { invalidate } = useData();
+  const { applyLocalStatus } = useData();
   const invDate = toDate(row.invoice_date);
   const minDate = invDate ?? todayDate();
 
@@ -50,7 +50,10 @@ export function PendingCancelModal({
         cancel_date: isoDate(cancelDate),
         cancel_reason: reason.trim(),
       });
-      invalidate('pend', 'canc');
+      applyLocalStatus(row.invoice_no, 'Cancelled', {
+        cancel_date: isoDate(cancelDate),
+        cancel_reason: reason.trim(),
+      });
       onSuccess(`✓ ${row.invoice_no} cancelled`);
       onClose();
     } catch (e) {
