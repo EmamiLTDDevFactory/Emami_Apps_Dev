@@ -56,13 +56,13 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
 
 const RAW_APPS: AppItem[] = [
   { id: 'expense', name: 'Non CTC Expense', desc: 'Submit and track non-CTC (non-salary) expense claims and reimbursements.', cat: 'Finance', icon: Receipt, uses: 128 },
-  { id: 'finance', name: 'RC Portal', desc: 'Manage rate contracts and vendor pricing agreements.', cat: 'Finance', icon: Landmark, uses: 96 },
+  { id: 'finance', name: 'Recruitment Consultant Management Portal', desc: 'Onboarding of an External Recruitment Consultant( Agency or Individual )', cat: 'Finance', icon: Landmark, uses: 96 },
   { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Operations', icon: Truck, uses: 210 },
-  { id: 'inventory', name: 'MoldHealthCheck', desc: 'Monitor mould condition and preventive maintenance health checks.', cat: 'Operations', icon: Activity, uses: 29 },
+  { id: 'inventory', name: 'Mold Health Inspection', desc: 'Monitor mould condition and preventive maintenance health checks.', cat: 'Operations', icon: Activity, uses: 29 },
   { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'Operations', icon: ClipboardCheck, uses: 0 },
-  { id: 'market-rate', name: 'Market Rate', desc: 'Enter material market rates — material code, rate, and valid-from date — for SAP.', cat: 'Finance', icon: TrendingUp, uses: 0 },
+  { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'Finance', icon: TrendingUp, uses: 0 },
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
-  { id: 'po-followup', name: 'PO Followup', desc: 'Track upcoming and pending delivery purchase orders from SAP.', cat: 'Operations', icon: PackageSearch, uses: 0 },
+  { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

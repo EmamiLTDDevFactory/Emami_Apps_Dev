@@ -9,7 +9,7 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useTypewriterPlaceholder } from '../hooks/useTypewriterPlaceholder';
 import Avatar from './Avatar';
 
-const SEARCH_EXAMPLES = ['Dispatch Tracker', 'RC Portal', 'Non CTC Expense', 'MoldHealthCheck'];
+const SEARCH_EXAMPLES = ['Dispatch Tracker', 'Recruitment Consultant Management Portal', 'Non CTC Expense', 'Mold Health Inspection'];
 
 interface HeaderProps {
   searchValue: string;

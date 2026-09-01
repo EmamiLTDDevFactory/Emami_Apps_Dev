@@ -36,7 +36,7 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
     <SidePane
       isOpen={isOpen}
       onClose={onClose}
-      title="Market Rate"
+      title="Current Market Rate"
       subtitle="Enter material market rates for SAP"
       items={items}
       activeHref={activeHref}
@@ -112,7 +112,7 @@ export default function MarketRateLayout() {
               style={styles.titleLogo}
               resizeMode="contain"
             />
-            <Text style={styles.title} numberOfLines={1}>Market Rate</Text>
+            <Text style={styles.title} numberOfLines={1}>Current Market Rate</Text>
             <View style={styles.flex1} />
             <View style={styles.infoItem}>
               <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
