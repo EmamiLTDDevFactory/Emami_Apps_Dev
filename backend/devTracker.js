@@ -76,6 +76,26 @@ async function initSchema() {
         )
     `);
 
+    // Dropdown option values (Status, Area, Priority, Impact, Complexity, Dev Factory, Reason
+    // category), editable from the "Manage master data" tile instead of being hardcoded in
+    // app.js. "active" is a soft-delete flag — a retired option must keep rendering correctly on
+    // existing items that already used it, so rows are never hard-deleted, only deactivated.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.master_data (
+            id text PRIMARY KEY,
+            category text NOT NULL CHECK (category IN
+                ('status','area','priority','impact','complexity','devFactory','reasonCategory')),
+            value text NOT NULL,
+            color text,
+            "softColor" text,
+            "sortOrder" integer NOT NULL DEFAULT 0,
+            active boolean NOT NULL DEFAULT true,
+            "createdAt" timestamptz DEFAULT now(),
+            "updatedAt" timestamptz DEFAULT now(),
+            UNIQUE(category, value)
+        )
+    `);
+
     try {
         const { rows: existsCheck } = await pool.query('SELECT to_regclass($1) AS reg', ['public.items']);
         if (existsCheck[0]?.reg) {
@@ -96,7 +116,43 @@ async function initSchema() {
         console.error('[dev-tracker] Migration of legacy public.items failed:', err.message);
     }
 
-    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history).');
+    await seedMasterDataIfEmpty();
+
+    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data).');
+}
+
+// Seeded once, only if the table is empty — these match exactly what used to be hardcoded in
+// app.js, so an existing deployment behaves identically until someone edits a value from the
+// admin tile. Only "area" carries colors, since that's the only category the module-theming
+// system (MODULE_THEME) uses.
+const DEFAULT_MASTER_DATA = [
+    ...['Not Started', 'Requirement Discussion', 'FS Preparation', 'In Progress', 'IT Testing', 'User Testing', 'Hypercare', 'Completed', 'On Hold', 'Cancelled']
+        .map((value, i) => ({ category: 'status', value, color: null, softColor: null, sortOrder: i })),
+    { category: 'area', value: 'SD', color: '#6366f1', softColor: '#eef0fd', sortOrder: 0 },
+    { category: 'area', value: 'FI-AR', color: '#0d9488', softColor: '#e6f5f3', sortOrder: 1 },
+    { category: 'area', value: 'MM', color: '#d97706', softColor: '#fdf1e0', sortOrder: 2 },
+    { category: 'area', value: 'PP', color: '#e11d48', softColor: '#fce8ec', sortOrder: 3 },
+    { category: 'area', value: 'WM', color: '#0ea5e9', softColor: '#e5f4fc', sortOrder: 4 },
+    { category: 'area', value: 'Cross-Functional', color: '#8b5cf6', softColor: '#f1ecfd', sortOrder: 5 },
+    ...['P1', 'P2', 'P3'].map((value, i) => ({ category: 'priority', value, color: null, softColor: null, sortOrder: i })),
+    ...['High', 'Medium', 'Low'].map((value, i) => ({ category: 'impact', value, color: null, softColor: null, sortOrder: i })),
+    ...['High', 'Medium', 'Low'].map((value, i) => ({ category: 'complexity', value, color: null, softColor: null, sortOrder: i })),
+    ...['Onsite Team', 'Offshore Team', 'Vendor'].map((value, i) => ({ category: 'devFactory', value, color: null, softColor: null, sortOrder: i })),
+    ...['Config pending', 'Vendor dependency', 'Resourcing', 'Scope change', 'Testing failure', 'Other']
+        .map((value, i) => ({ category: 'reasonCategory', value, color: null, softColor: null, sortOrder: i }))
+];
+
+async function seedMasterDataIfEmpty() {
+    const { rows } = await pool.query('SELECT count(*)::int AS c FROM dev_tracker.master_data');
+    if (rows[0].c > 0) return;
+    for (const item of DEFAULT_MASTER_DATA) {
+        await pool.query(
+            `INSERT INTO dev_tracker.master_data (id, category, value, color, "softColor", "sortOrder")
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [crypto.randomUUID(), item.category, item.value, item.color, item.softColor, item.sortOrder]
+        );
+    }
+    console.log('[dev-tracker] Seeded default master data values.');
 }
 
 initSchema().catch((err) => console.error('[dev-tracker] Schema init failed:', err.message));
@@ -195,6 +251,107 @@ router.delete('/items/:id', async (req, res) => {
     } catch (err) {
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to delete item' });
+    }
+});
+
+const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+
+// Gates the master-data WRITE routes to users granted the "Admin" role for the 'dev-tracker' app
+// in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact
+// table backend/server.js's /access/* routes already read/write — emami_apps.authorized_user_apps
+// — via the same `pool` this file already imports, so no new DB connection or schema is needed.
+// Same "email as identity, no bearer token" posture as the rest of this hub (see /me, /access/me):
+// the caller sends their own email, which is enough for a UI-hiding-plus-server-check level of
+// protection, though it means anyone who can read the email out of localStorage could still spoof
+// it — acceptable here since these are internal SAP-process dropdown values, not sensitive data,
+// and matches the trust level every other endpoint in this hub already operates at.
+async function requireDevTrackerAdmin(req, res, next) {
+    const email = String(req.get('x-user-email') || req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(401).json({ error: 'Sign-in required' });
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM emami_apps.authorized_user_apps
+             WHERE email = $1 AND app_id = 'dev-tracker' AND role = 'Admin'`,
+            [email]
+        );
+        if (rows.length === 0) return res.status(403).json({ error: 'Not authorized to manage master data' });
+        next();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to verify access' });
+    }
+}
+
+// GET all master data (active + inactive) — the admin screen needs both; app.js filters
+// down to active=true itself when building each field's dropdown options.
+router.get('/master-data', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM dev_tracker.master_data ORDER BY category, "sortOrder", value');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load master data' });
+    }
+});
+
+// CREATE a new dropdown value
+router.post('/master-data', requireDevTrackerAdmin, async (req, res) => {
+    const { category, value, color, softColor } = req.body || {};
+    if (!MASTER_DATA_CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: 'Invalid category' });
+    }
+    if (!value || !String(value).trim()) {
+        return res.status(400).json({ error: 'Value is required' });
+    }
+    try {
+        const maxResult = await pool.query(
+            'SELECT COALESCE(MAX("sortOrder"), -1) + 1 AS next FROM dev_tracker.master_data WHERE category = $1',
+            [category]
+        );
+        const id = crypto.randomUUID();
+        const result = await pool.query(
+            `INSERT INTO dev_tracker.master_data (id, category, value, color, "softColor", "sortOrder")
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [id, category, String(value).trim(), color || null, softColor || null, maxResult.rows[0].next]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') { // unique_violation
+            return res.status(409).json({ error: 'That value already exists in this category' });
+        }
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to create master data entry' });
+    }
+});
+
+// UPDATE a dropdown value — rename, recolor, or toggle active (soft-delete)
+router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
+    const { value, color, softColor, active, sortOrder } = req.body || {};
+    try {
+        const existing = await pool.query('SELECT * FROM dev_tracker.master_data WHERE id = $1', [req.params.id]);
+        if (!existing.rows[0]) return res.status(404).json({ error: 'Not found' });
+        const current = existing.rows[0];
+
+        const result = await pool.query(
+            `UPDATE dev_tracker.master_data SET
+                value = $2, color = $3, "softColor" = $4, active = $5, "sortOrder" = $6, "updatedAt" = now()
+             WHERE id = $1 RETURNING *`,
+            [
+                req.params.id,
+                value !== undefined ? String(value).trim() : current.value,
+                color !== undefined ? color : current.color,
+                softColor !== undefined ? softColor : current.softColor,
+                active !== undefined ? active : current.active,
+                sortOrder !== undefined ? sortOrder : current.sortOrder
+            ]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ error: 'That value already exists in this category' });
+        }
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to update master data entry' });
     }
 });
 

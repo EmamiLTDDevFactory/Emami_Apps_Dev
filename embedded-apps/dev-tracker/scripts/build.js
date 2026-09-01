@@ -11,10 +11,12 @@ const OUT = path.join(DIST, 'apps', 'dev-tracker');
 
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'dashboard'), { recursive: true });
+fs.mkdirSync(path.join(OUT, 'admin'), { recursive: true });
 
 fs.copyFileSync(path.join(PUBLIC, 'index.html'), path.join(OUT, 'index.html'));
 fs.copyFileSync(path.join(PUBLIC, 'dashboard.html'), path.join(OUT, 'dashboard', 'index.html'));
-['style.css', 'home.css', 'app.js', 'home.js'].forEach((f) => {
+fs.copyFileSync(path.join(PUBLIC, 'admin.html'), path.join(OUT, 'admin', 'index.html'));
+['style.css', 'home.css', 'app.js', 'home.js', 'admin.js'].forEach((f) => {
   fs.copyFileSync(path.join(PUBLIC, f), path.join(OUT, f));
 });
 

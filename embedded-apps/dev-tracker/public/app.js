@@ -4,21 +4,23 @@
   // Manage Access/profile, exposed publicly as https://audit-capa-api.emamiapps.in/api. Dev
   // Tracker's routes are mounted there under /dev-tracker (see backend/devTracker.js).
   const API_BASE = 'https://audit-capa-api.emamiapps.in/api/dev-tracker';
+  // Root of the same backend, used below to show who's signed in (src/lib/authApi.ts's
+  // getMyProfile) — same base home.js already uses for its own greeting/account-bar.
+  const ACCESS_API_BASE = 'https://audit-capa-api.emamiapps.in/api';
+  // Same localStorage key the hub writes on login (AuthContext.tsx's AUTH_EMAIL_STORAGE_KEY).
+  const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
 
-  const STATUS_OPTS = ["Not Started","Requirement Discussion","FS Preparation","In Progress","IT Testing","User Testing","Hypercare","Completed","On Hold","Cancelled"];
-  const AREA_OPTS = ["SD","FI-AR","MM","PP","WM","Cross-Functional"];
+  // These start empty and get populated in-place (via .push, not reassignment) by
+  // loadMasterData() at startup — FIELDS below holds direct references to these same array
+  // objects, so mutating them in place means FIELDS's dropdown options update automatically
+  // once the real data arrives, without FIELDS needing to be rebuilt.
+  let STATUS_OPTS = [];
+  let AREA_OPTS = [];
 
-  // Each module gets its own accent color — professional, saturated hues
-  // rather than pastel/playful ones, distinct enough to tell modules apart
-  // at a glance in badges, the scope banner, and the corner selector.
-  const MODULE_THEME = {
-    "SD":               {accent:"#6366f1", soft:"#eef0fd"}, // indigo
-    "FI-AR":            {accent:"#0d9488", soft:"#e6f5f3"}, // teal
-    "MM":               {accent:"#d97706", soft:"#fdf1e0"}, // amber
-    "PP":               {accent:"#e11d48", soft:"#fce8ec"}, // rose
-    "WM":               {accent:"#0ea5e9", soft:"#e5f4fc"}, // sky
-    "Cross-Functional": {accent:"#8b5cf6", soft:"#f1ecfd"}  // violet
-  };
+  // Populated from master data too (the 'area' category's color/softColor columns) — each
+  // module gets its own accent color, edited from the "Manage master data" tile instead of
+  // being hardcoded here.
+  let MODULE_THEME = {};
   const DEFAULT_THEME = {accent:"#3e7cb1", soft:"#e7f0f7"};
   function themeFor(area){ return MODULE_THEME[area] || DEFAULT_THEME; }
   function hexToRgba(hex, alpha){
@@ -35,11 +37,11 @@
     completed: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="8 12 11 15 16 9"></polyline></svg>',
     overdue: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path></svg>'
   };
-  const IMPACT_OPTS = ["High","Medium","Low"];
-  const COMPLEXITY_OPTS = ["High","Medium","Low"];
-  const PRIORITY_OPTS = ["P1","P2","P3"];
-  const FACTORY_OPTS = ["Onsite Team","Offshore Team","Vendor"];
-  const REASON_OPTS = ["","Config pending","Vendor dependency","Resourcing","Scope change","Testing failure","Other"];
+  let IMPACT_OPTS = [];
+  let COMPLEXITY_OPTS = [];
+  let PRIORITY_OPTS = [];
+  let FACTORY_OPTS = [];
+  let REASON_OPTS = [""]; // leading "" kept for parity with fieldInput()'s own filter — harmless either way
 
   const STAGE_PIPELINE = [
     {key:"reqDiscussion", status:"Requirement Discussion"},
@@ -49,6 +51,23 @@
     {key:"userTesting", status:"User Testing"}
   ];
   const MANUAL_ONLY_STATUSES = ["Hypercare","Completed","On Hold","Cancelled"];
+
+  // Full left-to-right order for the status progress bar — includes Hypercare and Completed,
+  // which STAGE_PIPELINE deliberately excludes (they're not tied to a single date field the way
+  // the five pipeline stages are). "Not Started" anchors the 0% end.
+  const STATUS_PROGRESS_ORDER = [
+    "Not Started", "Requirement Discussion", "FS Preparation", "In Progress",
+    "IT Testing", "User Testing", "Hypercare", "Completed"
+  ];
+  function statusProgress(status){
+    // On Hold and Cancelled render as an empty bar, not a partial one — however much progress
+    // happened before the pause, showing it filled would read as "still advancing," which is
+    // exactly wrong for something that's stopped.
+    if(status === "On Hold" || status === "Cancelled") return 0;
+    const idx = STATUS_PROGRESS_ORDER.indexOf(status);
+    if(idx === -1) return 0;
+    return Math.round((idx / (STATUS_PROGRESS_ORDER.length - 1)) * 100);
+  }
 
   const FIELDS = [
     {key:"devList", label:"Development List", type:"text", required:true},
@@ -163,6 +182,42 @@
     const res = await fetch(API_BASE + '/items/' + id + '/history');
     if(!res.ok) return [];
     return res.json();
+  }
+
+  // Populates the option arrays above from dev_tracker.master_data (see backend/devTracker.js)
+  // instead of the values being hardcoded — editable from the "Manage master data" tile.
+  async function loadMasterData(){
+    const res = await fetch(API_BASE + '/master-data');
+    if(!res.ok) return; // leave whatever's already loaded (empty on first failure) rather than throw
+    const rows = (await res.json()).filter(r=>r.active);
+    const byCategory = {};
+    rows.forEach(r=>{ (byCategory[r.category] = byCategory[r.category] || []).push(r); });
+
+    STATUS_OPTS.length = 0;
+    (byCategory.status || []).forEach(r=> STATUS_OPTS.push(r.value));
+
+    AREA_OPTS.length = 0;
+    Object.keys(MODULE_THEME).forEach(k=> delete MODULE_THEME[k]);
+    (byCategory.area || []).forEach(r=>{
+      AREA_OPTS.push(r.value);
+      if(r.color) MODULE_THEME[r.value] = {accent: r.color, soft: r.softColor || DEFAULT_THEME.soft};
+    });
+
+    PRIORITY_OPTS.length = 0;
+    (byCategory.priority || []).forEach(r=> PRIORITY_OPTS.push(r.value));
+
+    IMPACT_OPTS.length = 0;
+    (byCategory.impact || []).forEach(r=> IMPACT_OPTS.push(r.value));
+
+    COMPLEXITY_OPTS.length = 0;
+    (byCategory.complexity || []).forEach(r=> COMPLEXITY_OPTS.push(r.value));
+
+    FACTORY_OPTS.length = 0;
+    (byCategory.devFactory || []).forEach(r=> FACTORY_OPTS.push(r.value));
+
+    REASON_OPTS.length = 0;
+    REASON_OPTS.push("");
+    (byCategory.reasonCategory || []).forEach(r=> REASON_OPTS.push(r.value));
   }
 
   async function loadRows(){
@@ -452,7 +507,8 @@
       tr.innerHTML = `
         <td class="cell-mono">${sno}</td>
         <td class="cell-title">${escapeHtml(r.devList||'')}</td>
-        <td>${r.status ? `<span class="badge" style="background:${statusColor(r.status).bg};color:${statusColor(r.status).fg}">${r.status}</span>` : ''}</td>
+        <td>${r.status ? `<span class="badge" style="background:${statusColor(r.status).bg};color:${statusColor(r.status).fg}">${r.status}</span>
+          <div class="status-progress-track"><div class="status-progress-fill" style="width:${statusProgress(r.status)}%;background:${r.area ? themeFor(r.area).accent : 'var(--module-accent)'}"></div></div>` : ''}</td>
         <td>${stageCell}</td>
         <td>${r.area ? `<span class="badge" style="background:${themeFor(r.area).soft};color:${themeFor(r.area).accent}">${r.area}</span>` : ''}</td>
         <td>${r.priority ? `<span class="badge pri-${r.priority}">${r.priority}</span>` : ''}</td>
@@ -672,6 +728,29 @@
     URL.revokeObjectURL(url);
   }
 
+  // Signed-in-user chip shown on every page (see home.js's own copy, which additionally gets a
+  // Sign out button — that lives only on the home page, not here, so ending the session mid-edit
+  // isn't one click away from this screen).
+  async function renderAccountBar(){
+    const strip = document.getElementById('accountStrip');
+    const bar = document.getElementById('accountBar');
+    if(!strip || !bar) return;
+    let email = null;
+    try{ email = localStorage.getItem(HUB_EMAIL_STORAGE_KEY); }catch(e){ /* storage unavailable */ }
+    if(!email) return;
+
+    let displayName = email;
+    try{
+      const res = await fetch(`${ACCESS_API_BASE}/me?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if(data && data.success && data.profile && data.profile.name) displayName = data.profile.name;
+    }catch(e){
+      // Keep the email fallback already set above.
+    }
+    bar.innerHTML = `<span class="account-user" title="${escapeHtml(email)}">${escapeHtml(displayName)}</span>`;
+    strip.style.display = 'flex';
+  }
+
   function bindEvents(){
     $('#newBtn').addEventListener('click', ()=>openPanel(null));
     $('#closePanel').addEventListener('click', closePanel);
@@ -696,6 +775,8 @@
   }
 
   async function init(){
+    renderAccountBar();
+    await loadMasterData();
     await loadRows(); populateFilterOptions(); bindEvents(); renderTable();
 
     const params = new URLSearchParams(window.location.search);
