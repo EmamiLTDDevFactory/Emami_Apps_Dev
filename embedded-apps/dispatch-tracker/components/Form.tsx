@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radius } from '@/constants/theme';
 
@@ -90,7 +90,12 @@ export function SelectField({
         <Text style={{ color: value ? colors.nearBlack : colors.g400, fontSize: 12 }}>{value || placeholder}</Text>
       </Pressable>
       {open && (
-        <View style={styles.dropdown}>
+        // ScrollView, not View: the list had maxHeight 220 but nothing to scroll with and no
+        // clipping, so any list taller than that (the transporter list on a busy route is ~9
+        // rows / ~320px) simply spilled out of the box. The overflowing rows painted on top of
+        // the fields below and the last one ended up under the button row, where it could not
+        // be tapped at all. Now the box is exactly maxHeight tall and the options scroll inside.
+        <ScrollView style={styles.dropdown} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           {options.map((opt) => (
             <Pressable
               key={opt}
@@ -102,7 +107,7 @@ export function SelectField({
               <Text style={{ fontSize: 12, color: colors.nearBlack }}>{opt}</Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -169,6 +174,9 @@ const styles = StyleSheet.create({
     borderColor: colors.g200,
     borderRadius: radius.sm,
     maxHeight: 220,
+    // Without this the rows rendered past maxHeight instead of scrolling, overlapping the
+    // fields and buttons underneath and making the last option unclickable.
+    overflow: 'hidden',
   },
   dropdownItem: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.g100 },
   errorBox: { backgroundColor: colors.redLt, borderWidth: 1.5, borderColor: colors.redBd, borderLeftWidth: 3, borderLeftColor: colors.red, borderRadius: radius.sm, padding: 10, marginTop: 10 },
