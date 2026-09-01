@@ -61,7 +61,7 @@ export default function SidePane({ isOpen, onClose, title, subtitle, items, acti
               resizeMode="contain"
             />
             <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close menu">
-              <Ionicons name="close" size={20} color={colors.white} />
+              <Ionicons name="close" size={20} color={colors.ink} />
             </Pressable>
           </View>
           <Text style={styles.headerTitle}>{title}</Text>
@@ -113,7 +113,11 @@ const styles = StyleSheet.create({
     }),
   },
   header: {
-    backgroundColor: colors.plum,
+    // White (not the dark plum this used to be) — the Emami Apps logo is dark artwork meant for a
+    // light background, same as the title bar it also appears in; on plum it was unreadable.
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     paddingTop: Platform.OS === 'ios' ? 54 : 32,
     paddingBottom: 18,
     paddingHorizontal: 18,
@@ -130,12 +134,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: colors.white,
+    color: colors.ink,
     marginTop: 16,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: '#C9C4E3',
+    color: colors.inkSoft,
     marginTop: 2,
   },
   items: {

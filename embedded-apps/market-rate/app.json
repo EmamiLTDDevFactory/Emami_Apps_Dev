@@ -20,12 +20,6 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 160
         }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Market Rate uses your location to show it in the form header."
-        }
       ]
     ],
     "experiments": {

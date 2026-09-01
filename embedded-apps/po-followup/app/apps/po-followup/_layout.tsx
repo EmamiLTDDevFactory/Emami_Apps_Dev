@@ -4,10 +4,13 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import InfoHeader from '../../../src/components/InfoHeader';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
-import { colors } from '../../../src/theme/tokens';
-import { hasHubSession } from '../../../src/lib/hubEmailLogin';
+import { colors, radii } from '../../../src/theme/tokens';
+import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
+
+function formatDateCompact(d: Date): string {
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 type NavItem = SidePaneItem & { href: '/apps/po-followup/' | '/apps/po-followup/history' };
 
@@ -45,6 +48,12 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 export default function PoFollowupLayout() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hubEmail, setHubEmail] = useState<string | null>(null);
+  const [today] = useState(() => formatDateCompact(new Date()));
+
+  useEffect(() => {
+    setHubEmail(getHubEmail());
+  }, []);
 
   useEffect(() => {
     if (hasHubSession()) {
@@ -89,20 +98,24 @@ export default function PoFollowupLayout() {
           >
             <Ionicons name="menu" size={22} color={colors.ink} />
           </TouchableOpacity>
-          <View style={styles.titleLogoBox}>
-            <Image
-              source={require('../../../assets/images/emami-apps-logo.png')}
-              style={styles.titleLogo}
-              resizeMode="contain"
-            />
+          <Image
+            source={require('../../../assets/images/emami-apps-logo.png')}
+            style={styles.titleLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.title} numberOfLines={1}>PO Followup</Text>
+          <View style={styles.flex1} />
+          <View style={styles.infoItem}>
+            <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
+            <Text style={styles.infoText} numberOfLines={1}>
+              {hubEmail ? nameFromEmail(hubEmail) : 'Guest'}
+            </Text>
           </View>
-          <View style={styles.flex1}>
-            <Text style={styles.title}>PO Followup</Text>
-            <Text style={styles.subtitle}>Track upcoming and pending delivery POs</Text>
+          <View style={styles.infoItem}>
+            <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+            <Text style={styles.infoText} numberOfLines={1}>{today}</Text>
           </View>
         </View>
-
-        <InfoHeader />
 
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
@@ -149,36 +162,44 @@ const styles = StyleSheet.create({
   titleBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     backgroundColor: colors.white,
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   menuBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleLogoBox: {
-    width: 44,
-    height: 36,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   titleLogo: {
-    width: 44,
-    height: 36,
+    width: 32,
+    height: 26,
   },
   title: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
     color: colors.ink,
+    flexShrink: 1,
   },
-  subtitle: {
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginTop: 2,
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: colors.appBg,
+  },
+  infoText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.ink,
+    maxWidth: 140,
   },
 });
