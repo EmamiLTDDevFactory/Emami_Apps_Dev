@@ -60,7 +60,10 @@ const HUB_AUTH_VPC_SECURITY_GROUP_IDS = (process.env.HUB_AUTH_LAMBDA_SECURITY_GR
 const BACKENDS = [
   {
     name: 'hub-auth',
-    functionName: 'emami-apps-hub-auth',
+    // This repo's builds must never deploy to 'emami-apps-hub-auth' — that's the production
+    // function, and Emami_Apps_New's own copy of this script deploys there. Sharing one function
+    // meant a dev build's SAML/frontend-redirect config silently overwrote prod's on every deploy.
+    functionName: 'emami-apps-hub-auth-dev',
     dir: path.join(__dirname, '..', 'backend'),
     skipFunctionUrl: true,
     vpcConfig: (HUB_AUTH_VPC_SUBNET_IDS.length && HUB_AUTH_VPC_SECURITY_GROUP_IDS.length)
