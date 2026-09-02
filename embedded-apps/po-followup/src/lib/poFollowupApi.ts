@@ -51,12 +51,10 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<Record<string, a
   return Array.isArray(results) ? results : [];
 }
 
-/** One PO line for the Upcoming Delivery PO tab — explicit column set per instruction, mapped
- * from ZDelvPendPOSet's raw SAP field names (Ebeln, Ebelp, Txz01, ...). Matkl/Ekgrp/OrdUnit/Matnr
- * are read from SAP but no longer surfaced in the table (dropped per instruction). DelvQty's exact
- * SAP field name wasn't given as precisely as the others (no live sample data existed to confirm
- * against at write time) — assumed "DelvQty" by analogy with OrdUnit's naming; verify once real
- * rows exist. */
+/** One PO line for the Upcoming Delivery PO (and Missed Delivery) tab — explicit column set per
+ * instruction, mapped from ZDelvPendPOSet's raw SAP field names (Ebeln, Ebelp, Txz01, ...).
+ * Matkl/Ekgrp/OrdUnit/Matnr/schedule_qty/DelvQty are read from SAP but not surfaced in the table
+ * (Schedule Qty / Delivered Qty dropped per instruction — not needed on this tab). */
 export interface UpcomingPoRow {
   key: string;
   poNumber: string; // Ebeln
@@ -65,8 +63,6 @@ export interface UpcomingPoRow {
   materialDesc: string; // Maktx
   /** yyyy-mm-dd, parsed from Eindt's OData datetime literal. */
   deliveryDate: string;
-  scheduledQty: string; // schedule_qty
-  deliveredQty: string; // DelvQty (assumed — see interface note)
 }
 
 function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow {
@@ -78,8 +74,6 @@ function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow
     poText: raw.Txz01 != null ? String(raw.Txz01) : '',
     materialDesc: raw.Maktx != null ? String(raw.Maktx) : '',
     deliveryDate,
-    scheduledQty: raw.schedule_qty != null ? String(raw.schedule_qty) : '',
-    deliveredQty: raw.DelvQty != null ? String(raw.DelvQty) : '',
   };
 }
 
@@ -88,6 +82,17 @@ function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow
  * history on this file — but both 'A' and 'P' now return cleanly). */
 export async function fetchUpcomingDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
   const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`]);
+  return raw.map(toUpcomingPoRow);
+}
+
+/** Missed Delivery tab — same shape as Upcoming, but for POs whose delivery window has already
+ * passed. 'M' is a PLACEHOLDER Zaction value (following the existing 'A'/'P' naming pattern) — no
+ * third Zaction has been confirmed with SAP yet. Swap this literal for the real value once SAP
+ * confirms it; until then this call will most likely just return an empty result set rather than
+ * erroring, since an unrecognized Zaction is presumably filtered server-side. */
+const MISSED_DELIVERY_ZACTION = 'M'; // TODO: confirm real Zaction value with SAP team.
+export async function fetchMissedDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq '${MISSED_DELIVERY_ZACTION}'`]);
   return raw.map(toUpcomingPoRow);
 }
 
