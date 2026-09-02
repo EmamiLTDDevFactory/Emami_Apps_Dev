@@ -8,9 +8,9 @@ import PeriodFilter, { type Period } from '../../../src/components/PeriodFilter'
 
 /** Missed Delivery — Option B in the side pane. Read-only list of POs whose delivery date has
  * already passed, filtered server-side by the 7/15-day period (sent to SAP as `Interval eq
- * 7`/`Interval eq 15`). Uses the same SAP-backed row shape and table as Upcoming PO, minus the
- * confirmation toggle. See poFollowupApi.ts's fetchMissedDeliveryPOs for the placeholder Zaction
- * this still needs SAP to confirm. */
+ * 7`/`Interval eq 15`, Zaction 'M'). Uses the same SAP-backed row shape and table as Upcoming PO,
+ * minus the confirmation toggle, plus Schedule/Delivered/Remaining Qty (row tinted red/green by
+ * whether Remaining Qty is still outstanding). */
 export default function PoFollowupMissedDelivery() {
   const [email] = useState(() => getHubEmail());
   const [period, setPeriod] = useState<Period>(7);
@@ -46,7 +46,7 @@ export default function PoFollowupMissedDelivery() {
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : (
-          <UpcomingPoTable rows={rows} emptyMessage={`No missed deliveries in the last ${period} days.`} readOnly />
+          <UpcomingPoTable rows={rows} emptyMessage={`No missed deliveries in the last ${period} days.`} readOnly showQtyColumns />
         )}
       </View>
     </ScrollView>

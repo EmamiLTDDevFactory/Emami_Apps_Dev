@@ -3,21 +3,23 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
-import { fetchPendingDeliveryPOs, type PoFollowupRow } from '../../../src/lib/poFollowupApi';
-import PoTable from '../../../src/components/PoTable';
+import { fetchPendingDeliveryPOs, type UpcomingPoRow } from '../../../src/lib/poFollowupApi';
+import UpcomingPoTable from '../../../src/components/UpcomingPoTable';
 import PeriodFilter, { type Period } from '../../../src/components/PeriodFilter';
 import { usePoFollowupAuth } from '../../../src/context/PoFollowupAuthContext';
 
 /** Pending Delivery PO — Option C in the side pane, Admin-only (also gated in _layout.tsx's nav
  * item, but re-checked here directly in case someone reaches this route by URL rather than the
  * side pane). Zaction 'P', filtered server-side by the 7/15-day period (sent to SAP as `Interval
- * eq 7`/`Interval eq 15` — replaces the old manual From/To date-range picker). */
+ * eq 7`/`Interval eq 15` — replaces the old manual From/To date-range picker). Read-only, with
+ * Schedule/Delivered/Remaining Qty (row tinted red/green by whether Remaining Qty is still
+ * outstanding) — same table as Missed Delivery. */
 export default function PoFollowupPending() {
   const { email: hubEmailFromAuth, isAdmin, roleLoading } = usePoFollowupAuth();
   const [email] = useState(() => hubEmailFromAuth ?? getHubEmail());
   const [period, setPeriod] = useState<Period>(7);
 
-  const [rows, setRows] = useState<PoFollowupRow[]>([]);
+  const [rows, setRows] = useState<UpcomingPoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +68,7 @@ export default function PoFollowupPending() {
             <Text style={styles.loadingText}>Loading pending delivery POs…</Text>
           </View>
         ) : (
-          <PoTable rows={rows} emptyMessage={`No pending delivery POs in the last ${period} days.`} />
+          <UpcomingPoTable rows={rows} emptyMessage={`No pending delivery POs in the last ${period} days.`} readOnly showQtyColumns />
         )}
       </View>
     </ScrollView>
