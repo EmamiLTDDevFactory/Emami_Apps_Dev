@@ -17,6 +17,8 @@ const COLUMNS: Column[] = [
   { key: 'poText', label: 'PO Text', width: 180 },
   { key: 'vendor', label: 'Vendor', width: 90 },
   { key: 'companyCode', label: 'Company Code', width: 100 },
+  { key: 'matNumber', label: 'Material Number', width: 130 },
+  { key: 'materialDesc', label: 'Material Description', width: 200 },
   { key: 'matGroup', label: 'Material Group', width: 110 },
   { key: 'purchGroup', label: 'Purch. Group', width: 100 },
   { key: 'acctAssignCat', label: 'Acct Assign Cat', width: 110 },

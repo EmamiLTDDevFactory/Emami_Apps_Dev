@@ -48,13 +48,12 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<Record<string, a
   return Array.isArray(results) ? results : [];
 }
 
-/** One service PO item's payment-tracking status. OData property names are inferred from the
- * backend's internal ls_entityset field names (standard SAP Gateway PascalCase-from-snake_case
- * convention, same as ScheduleQty/DlevQty were already confirmed) — not yet verified against a
- * live response, so double check the exact casing once real data is available. No materialDesc
- * here (service items carry a material *group*, not a material master description) — Payment
- * Tracking's data shape genuinely differs from Delivery Confirmation's, it isn't just the same
- * fields with a different Potype. */
+/** One service PO item's payment-tracking status. Field names confirmed directly against the
+ * entity's own $metadata (ZDelvPendPOSet) — Ebeln/Lifnr/Interval/Potype exist as expected, and
+ * every other property matches the PascalCase-from-ABAP-field-name guess used below (e.g.
+ * SES_CNT -> SesCnt, VAL_NET -> ValNet). materialDesc (Maktx) and matNumber (Matnr) exist on the
+ * shared entity but the po_type='9' backend branch doesn't set them for a service item (it sets
+ * matGroup/Matkl instead) — mapped anyway since they're real fields, expect them blank here. */
 export interface PaymentTrackingRow {
   key: string;
   poNumber: string; // Ebeln
@@ -62,6 +61,8 @@ export interface PaymentTrackingRow {
   poText: string; // Txz01
   vendor: string; // Lifnr
   companyCode: string; // Bukrs
+  matNumber: string; // Matnr
+  materialDesc: string; // Maktx
   matGroup: string; // Matkl
   purchGroup: string; // Ekgrp
   acctAssignCat: string; // Knttp
@@ -117,6 +118,8 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     poText: str(raw.Txz01),
     vendor: str(raw.Lifnr),
     companyCode: str(raw.Bukrs),
+    matNumber: str(raw.Matnr),
+    materialDesc: str(raw.Maktx),
     matGroup: str(raw.Matkl),
     purchGroup: str(raw.Ekgrp),
     acctAssignCat: str(raw.Knttp),
