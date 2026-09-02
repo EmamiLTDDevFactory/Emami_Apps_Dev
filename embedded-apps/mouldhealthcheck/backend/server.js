@@ -77,48 +77,81 @@ client.interceptors.request.use(request => {
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_MOULD_CARE_SRV'; //Development Link
 /*
    OAUTH CONFIG & TOKEN MANAGER
+   Same env-var-driven pattern as non-ctc-expense/backend/server.js — no client
+   credentials are hardcoded in source. AZURE_OAUTH_TOKEN_URL/AZURE_CLIENT_ID/
+   AZURE_SCOPE fall back to the legacy OAUTH_URL/CLIENT_ID/SCOPE var names so
+   existing .env files keep working until they're renamed.
 */
-const OAUTH_URL = 'https://login.microsoftonline.com/d016aebd-1f96-4dd1-a22b-eeb0201fb61e/oauth2/token?sap-client=100';
-const CLIENT_ID = '6225aa6f-d228-4127-8f88-81b08e2aca69';
-const CLIENT_SECRET = process.env.CLIENT_SECRET || '';
-const SCOPE = 'api://6225aa6f-d228-4127-8f88-81b08e2aca69/Sap.Odata.Access';
+const AZURE_OAUTH_TOKEN_URL = process.env.AZURE_OAUTH_TOKEN_URL || process.env.OAUTH_URL;
+const AZURE_CLIENT_ID = process.env.AZURE_CLIENT_ID || process.env.CLIENT_ID;
+const AZURE_CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET || process.env.CLIENT_SECRET;
+const AZURE_SCOPE = process.env.AZURE_SCOPE || process.env.SCOPE;
 
-let cachedToken = null;
-let tokenExpiration = null;
+const tokenCache = {
+    accessToken: null,
+    expiresAt: 0,
+    inflight: null
+};
+
+const isTokenValid = () => {
+    return tokenCache.accessToken && Date.now() + 60000 < tokenCache.expiresAt;
+};
+
+const invalidateAzureToken = () => {
+    tokenCache.accessToken = null;
+    tokenCache.expiresAt = 0;
+};
+
+const refreshAzureToken = async () => {
+    if (!AZURE_OAUTH_TOKEN_URL || !AZURE_CLIENT_ID || !AZURE_CLIENT_SECRET || !AZURE_SCOPE) {
+        throw new Error('Azure OAuth credentials are not fully configured');
+    }
+
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', AZURE_CLIENT_ID);
+    params.append('client_secret', AZURE_CLIENT_SECRET);
+    params.append('scope', AZURE_SCOPE);
+
+    console.log('\nFetching new OAuth Access Token from Microsoft...');
+    const response = await axios.post(AZURE_OAUTH_TOKEN_URL, params.toString(), {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 15000
+    });
+
+    const data = response.data || {};
+    if (!data.access_token) {
+        throw new Error(`Azure token fetch failed: ${data.error_description || data.error || 'missing access_token'}`);
+    }
+
+    const expiresIn = Number(data.expires_in || 3600);
+    tokenCache.accessToken = data.access_token;
+    tokenCache.expiresAt = Date.now() + (expiresIn * 1000) - 60000;
+
+    console.log('Microsoft Token Fetched Successfully.');
+    return tokenCache.accessToken;
+};
 
 // Helper function to get or refresh the OAuth token
 async function getAccessToken() {
-    // If we have a valid token that hasn't expired, return it
-    if (cachedToken && tokenExpiration && Date.now() < tokenExpiration) {
-        return cachedToken;
+    if (isTokenValid()) {
+        return tokenCache.accessToken;
     }
-
-    try {
-        console.log('\nFetching new OAuth Access Token from Microsoft...');
-        const payload = new URLSearchParams({
-            grant_type: 'client_credentials',
-            client_id: CLIENT_ID,
-            client_secret: CLIENT_SECRET,
-            scope: SCOPE
-        });
-
-        const response = await axios.post(OAUTH_URL, payload.toString(), {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        });
-
-        cachedToken = response.data.access_token;
-        // Calculate expiration time (buffer by 5 minutes to prevent edge-case failures)
-        const expiresInSeconds = response.data.expires_in || 3599;
-        tokenExpiration = Date.now() + (expiresInSeconds - 300) * 1000;
-
-        console.log('Microsoft Token Fetched Successfully.');
-        return cachedToken;
-    } catch (error) {
-        console.error('Failed to fetch OAuth Token:', error.response?.data || error.message);
-        throw new Error('OAuth authentication failed');
+    if (tokenCache.inflight) {
+        return tokenCache.inflight;
     }
+    tokenCache.inflight = refreshAzureToken()
+        .catch(error => {
+            invalidateAzureToken();
+            console.error('Failed to fetch OAuth Token:', error.response?.data || error.message);
+            throw new Error('OAuth authentication failed');
+        })
+        .finally(() => {
+            tokenCache.inflight = null;
+        });
+    return tokenCache.inflight;
 }
 
 /*
