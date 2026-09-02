@@ -5,6 +5,10 @@ import axios from 'axios';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_PO_FOLLOWUP_SRV';
 const ENTITY_SET = 'ZDelvPendPOSet';
+// Same service/entity set as Payment Tracking (embedded-apps/payment-tracking) — Potype is what
+// distinguishes the two apps' data on an otherwise identical SAP call; Zaction distinguishes the
+// three tabs *within* each app.
+const POTYPE = 'M';
 
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
@@ -85,19 +89,19 @@ export type Interval = 7 | 15;
  * selected Interval. Verified live working again as of the last check (it was blocked server-side
  * for a while — see git history on this file — but both 'A' and 'P' now return cleanly). */
 export async function fetchUpcomingDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`, `Interval eq ${interval}`]);
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
 
 /** Missed Delivery tab — same row shape as Upcoming, Zaction 'M'. */
 export async function fetchMissedDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'M'`, `Interval eq ${interval}`]);
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'M'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
 
 /** Pending Delivery PO tab — same row shape as Upcoming, Zaction 'P' (replaces the old manual
  * Zfdate/Ztdate From/To date-range picker with the Interval param). */
 export async function fetchPendingDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'P'`, `Interval eq ${interval}`]);
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'P'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
