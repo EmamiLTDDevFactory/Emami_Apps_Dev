@@ -255,7 +255,30 @@ export default function ClaimDetailPage() {
   const isManagerRole = currentUser?.role === 'manager';
   const isFinanceRole = currentUser?.role === 'finance' || currentUser?.role === 'B';
   const isTopLevelPending = currentUser?.role === 'B' && normalizedHeaderStatus === 'P';
-  const showManagerActions = isManagerRole && (claimApproverId === currentUserId || normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED');
+  // Normalised the same way as currentUserId above, so a raw "90000367" and a padded
+  // "90000367" compare equal regardless of how SAP returned them.
+  const claimRaiserId = (header.EmpId || header.empId || '').toString().replace(/\D/g, '').padStart(8, '0');
+  const isOwnClaim = !!currentUserId && claimRaiserId === currentUserId;
+
+  // Approve/Reject is for the ONE manager the claim is actually routed to.
+  //
+  // This used to read:
+  //   isManagerRole && (claimApproverId === currentUserId || status === 'N' || status === 'SUBMITTED')
+  // Because those were ORs, the status check satisfied the condition on its own, so the
+  // approver check was never reached: every manager saw Approve/Reject on every submitted
+  // claim — including claims they had raised themselves, which let a manager approve their
+  // own expense.
+  //
+  // Now status is an AND (only act on a claim that is actually awaiting approval), the
+  // approver must match, and raising the claim disqualifies you from approving it.
+  // Verified against SAP: CurrentApprover is populated (e.g. claim 0000000001 has
+  // EmpId 90000367 and CurrentApprover 90005857), so gating on it hides nothing from the
+  // genuine approver.
+  const showManagerActions =
+    isManagerRole &&
+    !isOwnClaim &&
+    claimApproverId === currentUserId &&
+    (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED');
   const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
 
   const handleManagerApprove = async () => {
