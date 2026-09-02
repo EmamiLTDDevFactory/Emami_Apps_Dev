@@ -8,7 +8,6 @@ import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-import { UnsavedChangesProvider, useUnsavedChanges } from '../../../src/context/UnsavedChangesContext';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -30,7 +29,6 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const pathname = usePathname();
   const router = useRouter();
   const { isAdmin, roleLoading } = usePaymentTrackingAuth();
-  const { confirmLeave } = useUnsavedChanges();
   const activeHref = pathname === '/apps/payment-tracking' ? '/apps/payment-tracking/' : pathname;
 
   const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && isAdmin));
@@ -40,12 +38,11 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       isOpen={isOpen}
       onClose={onClose}
       title="Payment Tracking"
-      subtitle="Track upcoming and pending delivery POs"
+      subtitle="Track payment progress on service POs"
       items={items}
       activeHref={activeHref}
       onNavigate={(href) => {
         if (href === activeHref) { onClose(); return; }
-        if (!confirmLeave()) return;
         router.push(href as any);
         onClose();
       }}
@@ -63,7 +60,6 @@ function LayoutContent() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
-  const { confirmLeave } = useUnsavedChanges();
 
   useEffect(() => {
     setHubEmail(getHubEmail());
@@ -92,7 +88,6 @@ function LayoutContent() {
         <TouchableOpacity
           style={styles.backToHubBar}
           onPress={() => {
-            if (!confirmLeave()) return;
             if (typeof window !== 'undefined') {
               window.location.href = '/';
             }
@@ -148,9 +143,7 @@ function LayoutContent() {
 export default function PaymentTrackingLayout() {
   return (
     <PaymentTrackingAuthProvider>
-      <UnsavedChangesProvider>
-        <LayoutContent />
-      </UnsavedChangesProvider>
+      <LayoutContent />
     </PaymentTrackingAuthProvider>
   );
 }

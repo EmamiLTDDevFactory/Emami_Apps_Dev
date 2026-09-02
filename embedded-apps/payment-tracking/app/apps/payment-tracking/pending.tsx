@@ -1,25 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radii } from '../../../src/theme/tokens';
+import { colors } from '../../../src/theme/tokens';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
-import { fetchPendingDeliveryPOs, type UpcomingPoRow } from '../../../src/lib/paymentTrackingApi';
-import UpcomingPoTable from '../../../src/components/UpcomingPoTable';
+import { fetchPendingDeliveryPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
+import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
 import PeriodFilter, { type Period } from '../../../src/components/PeriodFilter';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
-/** Pending Delivery PO — Option C in the side pane, Admin-only (also gated in _layout.tsx's nav
- * item, but re-checked here directly in case someone reaches this route by URL rather than the
- * side pane). Zaction 'P', filtered server-side by the 7/15-day period (sent to SAP as `Interval
- * eq 7`/`Interval eq 15` — replaces the old manual From/To date-range picker). Read-only, with
- * Schedule/Delivered/Remaining Qty (row tinted red/green by whether Remaining Qty is still
- * outstanding) — same table as Missed Delivery. */
+/** Pending — Option C in the side pane, Admin-only (also gated in _layout.tsx's nav item, but
+ * re-checked here directly in case someone reaches this route by URL rather than the side pane).
+ * Read-only, Zaction 'P' (older backlog beyond the interval), filtered server-side. */
 export default function PaymentTrackingPending() {
   const { email: hubEmailFromAuth, isAdmin, roleLoading } = usePaymentTrackingAuth();
   const [email] = useState(() => hubEmailFromAuth ?? getHubEmail());
   const [period, setPeriod] = useState<Period>(7);
 
-  const [rows, setRows] = useState<UpcomingPoRow[]>([]);
+  const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +31,7 @@ export default function PaymentTrackingPending() {
     setError(null);
     fetchPendingDeliveryPOs(email, period)
       .then(setRows)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pending delivery POs.'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pending payment items.'))
       .finally(() => setLoading(false));
   }, [email, period, isAdmin]);
 
@@ -50,7 +47,7 @@ export default function PaymentTrackingPending() {
     return (
       <View style={styles.deniedWrap}>
         <Ionicons name="lock-closed-outline" size={28} color={colors.inkSoft} />
-        <Text style={styles.deniedText}>Pending PO is only visible to Admins.</Text>
+        <Text style={styles.deniedText}>Pending is only visible to Admins.</Text>
       </View>
     );
   }
@@ -58,17 +55,17 @@ export default function PaymentTrackingPending() {
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.panel}>
-        <PeriodFilter value={period} onChange={setPeriod} label="PO date within last" />
+        <PeriodFilter value={period} onChange={setPeriod} label="Overdue beyond last" />
 
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         {loading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={colors.rust} />
-            <Text style={styles.loadingText}>Loading pending delivery POs…</Text>
+            <Text style={styles.loadingText}>Loading pending payment items…</Text>
           </View>
         ) : (
-          <UpcomingPoTable rows={rows} emptyMessage={`No pending delivery POs in the last ${period} days.`} readOnly showQtyColumns />
+          <PaymentTrackingTable rows={rows} emptyMessage={`No pending payment items beyond the last ${period} days.`} />
         )}
       </View>
     </ScrollView>
