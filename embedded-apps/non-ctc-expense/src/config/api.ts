@@ -38,11 +38,18 @@ export const API_BASE_URL = getBaseUrl();
 // token and/or shouldn't be readable by anyone without restriction.
 // Hardcoded (not env-based) on purpose, same convention as MoldHealthCheck's lib/config.ts —
 // this deploys with zero extra configuration, no Amplify Console env var needed.
-// Development (NGD)
-export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFI_EXPCLAIM_SRV";
-// Quality (NGQ)
-// export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZFI_EXPCLAIM_SRV";
-// Production (NWP)
+// Only the landscape segment (NGD / NGQ / NWP) changes between environments — same host,
+// same service name. Quality is NGQ, not NWQ: the proxy rejects NWQ outright with
+// {"error":"Invalid Landscape : NWQ"}, so do not use that spelling.
+//
+// Quality (NGQ) — ACTIVE. Verified live: GstSet 41,414 rows and TaxSet 1,933 rows returned
+// from backend 10.17.9.4, so the service is registered and anonymous reads work.
+export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZFI_EXPCLAIM_SRV";
+// Development (NGD) — backend 10.17.10.12
+// export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFI_EXPCLAIM_SRV";
+// Production (NWP) — the landscape route exists, but ZFI_EXPCLAIM_SRV was NOT registered
+// there as of this change ("No service found ... ZFI_EXPCLAIM_SRV"). It has to be transported
+// and activated in /IWFND/MAINT_SERVICE before this line can be used.
 // export const SAP_BASE_URL = "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZFI_EXPCLAIM_SRV";
 
 

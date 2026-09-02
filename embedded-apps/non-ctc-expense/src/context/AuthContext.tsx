@@ -85,7 +85,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!hubEmail) return false;
       const result = await loginWithHubEmail(hubEmail);
       if (!result.ok || !result.employeeId || !result.role) {
-        console.warn('[hub-email-login] Falling back to manual login:', result.error);
+        console.warn('[hub-email-login] Hub email did not resolve in SAP:', result.error);
+        // The visitor came in from the hub, so they ARE signed in — SAP simply has no expense
+        // record for their email (typically the employee isn't maintained in this landscape).
+        // Showing this app's Employee ID + OTP screen would be wrong: there is nothing useful
+        // for them to type and it reads as a second, broken login. Send them back to the Emami
+        // Apps dashboard instead, the same way MoldHealthCheck's entry gate does
+        // (embedded-apps/mouldhealthcheck/app/apps/mouldhealthcheck/index.tsx).
+        //
+        // Returns true so nothing further is attempted here. _layout's auth redirect may still
+        // fire an in-app router.replace toward the login route in the same tick, but the full
+        // page navigation started on the line above supersedes it, so the login screen is not
+        // what the user ends up on.
+        //
+        // Web only. On native there is no hub to return to, so that path keeps the existing
+        // login screen as its fallback, unchanged.
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+          return true;
+        }
         return false;
       }
       login(result.employeeId, result.role, result.name, result.info);
