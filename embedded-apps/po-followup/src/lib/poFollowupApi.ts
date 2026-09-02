@@ -17,14 +17,6 @@ const sapClient = axios.create({
  * guessing column names wrong. */
 export type PoFollowupRow = Record<string, string | number | null>;
 
-/** "2026-09-01" -> "datetime'2026-09-01T00:00:00'" — verified live against ZDelvPendPOSet
- * (NGD): Zfdate/Ztdate are Edm.DateTime fields, not the Char8 string the spec's "YYYYMMDD" wording
- * suggested. A bare quoted "20260901" string throws "Invalid parameter type used at function 'eq'"
- * at the OData parser; SAP's OData v2 datetime literal is what the field actually accepts. */
-function toSapDateFilter(isoDate: string): string {
-  return `datetime'${isoDate}T00:00:00'`;
-}
-
 /** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" — same shape Market Rate's
  * marketRateApi.ts already had to unpack for Zdate. "" for anything else/unparseable. */
 function parseODataDate(value: unknown): string {
@@ -77,11 +69,16 @@ function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow
   };
 }
 
-/** Upcoming Delivery PO tab — Zaction 'A', filtered to the signed-in user's email only. Verified
- * live working again as of the last check (it was blocked server-side for a while — see git
- * history on this file — but both 'A' and 'P' now return cleanly). */
-export async function fetchUpcomingDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`]);
+/** The 7 Days / 15 Days side-pane sub-option — sent straight through to SAP as an `Interval`
+ * filter (Interval eq 7 / Interval eq 15) rather than fetching everything and windowing the
+ * results client-side, so the day-count filtering actually happens server-side. */
+export type Interval = 7 | 15;
+
+/** Upcoming Delivery PO tab — Zaction 'A', filtered to the signed-in user's email and the
+ * selected Interval. Verified live working again as of the last check (it was blocked server-side
+ * for a while — see git history on this file — but both 'A' and 'P' now return cleanly). */
+export async function fetchUpcomingDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
 
@@ -91,19 +88,13 @@ export async function fetchUpcomingDeliveryPOs(email: string): Promise<UpcomingP
  * confirms it; until then this call will most likely just return an empty result set rather than
  * erroring, since an unrecognized Zaction is presumably filtered server-side. */
 const MISSED_DELIVERY_ZACTION = 'M'; // TODO: confirm real Zaction value with SAP team.
-export async function fetchMissedDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq '${MISSED_DELIVERY_ZACTION}'`]);
+export async function fetchMissedDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq '${MISSED_DELIVERY_ZACTION}'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
 
-/** Pending Delivery PO tab — Zaction 'P', filtered by the signed-in user's email plus the
- * from/to date range picked on screen (see toSapDateFilter for the OData datetime literal these
- * need). */
-export async function fetchPendingDeliveryPOs(email: string, fromDate: string, toDate: string): Promise<PoFollowupRow[]> {
-  return fetchDelvPendPOs([
-    `Email eq '${email}'`,
-    `Zaction eq 'P'`,
-    `Zfdate eq ${toSapDateFilter(fromDate)}`,
-    `Ztdate eq ${toSapDateFilter(toDate)}`,
-  ]);
+/** Pending Delivery PO tab — Zaction 'P', filtered by the signed-in user's email and the selected
+ * Interval (replaces the old manual Zfdate/Ztdate From/To date-range picker). */
+export async function fetchPendingDeliveryPOs(email: string, interval: Interval): Promise<PoFollowupRow[]> {
+  return fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'P'`, `Interval eq ${interval}`]);
 }

@@ -7,12 +7,11 @@ import { fetchPendingDeliveryPOs, type PoFollowupRow } from '../../../src/lib/po
 import PoTable from '../../../src/components/PoTable';
 import PeriodFilter, { type Period } from '../../../src/components/PeriodFilter';
 import { usePoFollowupAuth } from '../../../src/context/PoFollowupAuthContext';
-import { addDays, todayIso } from '../../../src/lib/dateMath';
 
 /** Pending Delivery PO — Option C in the side pane, Admin-only (also gated in _layout.tsx's nav
  * item, but re-checked here directly in case someone reaches this route by URL rather than the
- * side pane). Zaction 'P', now driven by the 7/15-day preset instead of a manual From/To picker —
- * "last N days" from today. */
+ * side pane). Zaction 'P', filtered server-side by the 7/15-day period (sent to SAP as `Interval
+ * eq 7`/`Interval eq 15` — replaces the old manual From/To date-range picker). */
 export default function PoFollowupPending() {
   const { email: hubEmailFromAuth, isAdmin, roleLoading } = usePoFollowupAuth();
   const [email] = useState(() => hubEmailFromAuth ?? getHubEmail());
@@ -31,9 +30,7 @@ export default function PoFollowupPending() {
     }
     setLoading(true);
     setError(null);
-    const toDate = todayIso();
-    const fromDate = addDays(toDate, -period);
-    fetchPendingDeliveryPOs(email, fromDate, toDate)
+    fetchPendingDeliveryPOs(email, period)
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pending delivery POs.'))
       .finally(() => setLoading(false));

@@ -4,19 +4,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
 import { fetchUpcomingDeliveryPOs, type UpcomingPoRow } from '../../../src/lib/poFollowupApi';
-import UpcomingPoTable, { emptyRevision, type Revision } from '../../../src/components/UpcomingPoTable';
+import UpcomingPoTable, { type Revision } from '../../../src/components/UpcomingPoTable';
 import PeriodFilter, { type Period } from '../../../src/components/PeriodFilter';
 import { useUnsavedChanges } from '../../../src/context/UnsavedChangesContext';
-import { addDays, todayIso } from '../../../src/lib/dateMath';
 
-/** Upcoming Delivery PO — Option A in the side pane. Loads automatically (Zaction 'A'), filtered
- * client-side to a 7/15-day delivery window, with the "Delivery Confirmed?" toggle per row and a
- * Final Submission action gated on at least one row having been answered. */
+/** Upcoming Delivery PO — Option A in the side pane. Loads Zaction 'A', filtered server-side by
+ * the 7/15-day period (sent to SAP as `Interval eq 7`/`Interval eq 15` — see
+ * poFollowupApi.ts's fetchUpcomingDeliveryPOs), with the "Delivery Confirmed?" toggle per row and
+ * a Final Submission action gated on at least one row having been answered. */
 export default function PoFollowupUpcoming() {
   const [email] = useState(() => getHubEmail());
   const [period, setPeriod] = useState<Period>(7);
 
-  const [allRows, setAllRows] = useState<UpcomingPoRow[]>([]);
+  const [rows, setRows] = useState<UpcomingPoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,17 +31,12 @@ export default function PoFollowupUpcoming() {
       return;
     }
     setLoading(true);
-    fetchUpcomingDeliveryPOs(email)
-      .then(setAllRows)
+    setError(null);
+    fetchUpcomingDeliveryPOs(email, period)
+      .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load upcoming delivery POs.'))
       .finally(() => setLoading(false));
-  }, [email]);
-
-  const rows = useMemo(() => {
-    const today = todayIso();
-    const limit = addDays(today, period);
-    return allRows.filter((r) => r.deliveryDate && r.deliveryDate >= today && r.deliveryDate <= limit);
-  }, [allRows, period]);
+  }, [email, period]);
 
   const hasAnyAnswered = useMemo(
     () => Object.values(revisions).some((r) => r.answer !== 'neutral'),
