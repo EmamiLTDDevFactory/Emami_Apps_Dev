@@ -46,7 +46,10 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       onNavigate={(href) => {
         if (href === activeHref) { onClose(); return; }
         if (!confirmLeave()) return;
-        router.push(href as any);
+        // replace, not push — these are flat sibling sections, not a stack to accumulate through.
+        // push here left a synthetic ?__EXPO_ROUTER_key=... in the URL, since Expo Router has to
+        // invent a stack-entry key when there's no dynamic route param to derive one from.
+        router.replace(href as any);
         onClose();
       }}
     />
