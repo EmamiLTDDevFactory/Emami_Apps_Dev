@@ -52,10 +52,11 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // relative path either way, same reasoning as Market Rate/Development Tracker above. Calls SAP
   // (ZMM_PO_FOLLOWUP_SRV) directly from the client, no backend of its own.
   'po-followup': '/apps/po-followup', // PO Followup
-  // Payment Tracking (see embedded-apps/payment-tracking) is PO Followup's sibling app — same
-  // service/entity set (ZMM_PO_FOLLOWUP_SRV / ZDelvPendPOSet) and the same tabs, distinguished from
-  // Delivery Confirmation purely by the Potype SAP filter ('9' here vs 'M' there).
-  'payment-tracking': '/apps/payment-tracking', // Payment Tracking
+  // Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as "payment-tracking"
+  // for routing stability) is PO Followup's sibling app — same service (ZMM_PO_FOLLOWUP_SRV,
+  // entity set ZProvisionTrackSet), distinguished from Delivery Confirmation purely by the Potype
+  // SAP filter ('9' here vs 'M' there).
+  'payment-tracking': '/apps/payment-tracking', // Provision Tracking
 };
 
 const RAW_APPS: AppItem[] = [
@@ -67,7 +68,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'Finance', icon: TrendingUp, uses: 0 },
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
-  { id: 'payment-tracking', name: 'Payment Tracking', desc: 'Payment progress tracking related.', cat: 'Finance', icon: Wallet, uses: 0 },
+  { id: 'payment-tracking', name: 'Provision Tracking', desc: 'Payment progress tracking related.', cat: 'Finance', icon: Wallet, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

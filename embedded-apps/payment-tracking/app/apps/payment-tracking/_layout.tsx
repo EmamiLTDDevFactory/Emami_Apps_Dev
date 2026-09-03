@@ -13,16 +13,24 @@ function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-type Href = '/apps/payment-tracking/' | '/apps/payment-tracking/missed-delivery' | '/apps/payment-tracking/pending' | '/apps/payment-tracking/history';
-type NavItem = SidePaneItem & { href: Href; adminOnly?: boolean };
+type Href =
+  | '/apps/payment-tracking/'
+  | '/apps/payment-tracking/missed-delivery'
+  | '/apps/payment-tracking/history'
+  | '/apps/payment-tracking/dashboard'
+  | '/apps/payment-tracking/provision-details';
+type NavItem = SidePaneItem & { href: Href };
 
-// Option A/B/C from the side pane, replacing the old in-page tab bar — Pending PO (C) is
-// Admin-only, same adminOnly-filter pattern Market Rate's own _layout.tsx uses for Master Data.
-const NAV_ITEMS: NavItem[] = [
-  { href: '/apps/payment-tracking/', label: 'Upcoming PO', icon: 'calendar-outline' },
-  { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Delivery', icon: 'alert-circle-outline' },
-  { href: '/apps/payment-tracking/pending', label: 'Pending PO', icon: 'hourglass-outline', adminOnly: true },
-  { href: '/apps/payment-tracking/history', label: 'History', icon: 'time-outline' },
+// Two completely different side panes by role, not one list with an adminOnly filter (unlike
+// Market Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/
+// Provision Details pair, everyone else gets their own Upcoming/Missed items, never both.
+const ADMIN_NAV_ITEMS: NavItem[] = [
+  { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
+  { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
+];
+const USER_NAV_ITEMS: NavItem[] = [
+  { href: '/apps/payment-tracking/', label: 'Upcoming Provision', icon: 'calendar-outline' },
+  { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
 ];
 
 function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -31,13 +39,14 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const { isAdmin, roleLoading } = usePaymentTrackingAuth();
   const activeHref = pathname === '/apps/payment-tracking' ? '/apps/payment-tracking/' : pathname;
 
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && isAdmin));
+  // While the role lookup is still resolving, show neither set rather than flashing the wrong one.
+  const items = roleLoading ? [] : isAdmin ? ADMIN_NAV_ITEMS : USER_NAV_ITEMS;
 
   return (
     <SidePane
       isOpen={isOpen}
       onClose={onClose}
-      title="Payment Tracking"
+      title="Provision Tracking"
       subtitle="Track payment progress on service POs"
       items={items}
       activeHref={activeHref}
@@ -116,7 +125,7 @@ function LayoutContent() {
             style={styles.titleLogo}
             resizeMode="contain"
           />
-          <Text style={styles.title} numberOfLines={1}>Payment Tracking</Text>
+          <Text style={styles.title} numberOfLines={1}>Provision Tracking</Text>
           <View style={styles.flex1} />
           <View style={styles.infoItem}>
             <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
@@ -133,8 +142,9 @@ function LayoutContent() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="missed-delivery" />
-          <Stack.Screen name="pending" />
           <Stack.Screen name="history" />
+          <Stack.Screen name="dashboard" />
+          <Stack.Screen name="provision-details" />
         </Stack>
       </SafeAreaView>
 

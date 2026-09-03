@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radii } from '../theme/tokens';
-import { formatDateFriendly, type PaymentTrackingRow } from '../lib/paymentTrackingApi';
+import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
 
 interface Column {
   key: keyof PaymentTrackingRow;
@@ -9,35 +9,37 @@ interface Column {
   width: number;
 }
 
-// Exactly the fields Payment Tracking needs, per instruction — every other field
+// Exactly the fields Provision Tracking needs, per instruction — every other field
 // paymentTrackingApi.ts maps stays available on the row (e.g. for a future export) but isn't
-// shown here.
+// shown here. No Delivery Date / Qty column: ZProvisionTrackSet doesn't expose an equivalent
+// field yet (see paymentTrackingApi.ts's header comment on what's not live).
 const COLUMNS: Column[] = [
   { key: 'poNumber', label: 'Po No', width: 100 },
   { key: 'poItemNo', label: 'Line No', width: 80 },
   { key: 'poCreator', label: 'PO Creater', width: 110 },
   { key: 'vendor', label: 'Vendor Code', width: 100 },
   { key: 'vendorName', label: 'Vendor Name', width: 160 },
-  { key: 'poText', label: 'Service Txt', width: 200 },
-  { key: 'qtyWithUnit', label: 'Qty / Au', width: 100 },
-  { key: 'netValue', label: 'Activity value', width: 120 },
-  { key: 'deliveryDate', label: 'Delivery Date', width: 120 },
+  { key: 'serviceText', label: 'Service Txt', width: 200 },
+  { key: 'grossValue', label: 'Activity value', width: 120 },
+  { key: 'statusText', label: 'Status', width: 220 },
   { key: 'liabilityCreated', label: 'Liability Create (Y/N)', width: 150 },
   { key: 'entrySheetNo', label: 'Entry Sheet No', width: 130 },
-  { key: 'openValue', label: 'Pending Bill Value', width: 130 },
+  { key: 'pendingValue', label: 'Pending Bill Value', width: 130 },
   { key: 'costCenter', label: 'Cost Center', width: 100 },
   { key: 'costCenterText', label: 'Cost Center Description', width: 190 },
   { key: 'glAccount', label: 'GL Code', width: 100 },
   { key: 'glAccountText', label: 'GL Description', width: 180 },
 ];
-const DATE_KEYS = new Set<keyof PaymentTrackingRow>(['deliveryDate']);
 
-// Row tint by SAP's own computed status — NO_SES (nothing created yet) is the most concerning,
-// PARTIAL less so, REVERSED is informational (something happened and got undone).
+// Row tint by the SAP-derived Status code — '02' (GR/MIGO posted, no SES) is the main provision
+// exposure bucket per instruction, so it gets the strongest tint; '01' (nothing at all yet) is
+// next; '03' (SES created then reversed) is informational; '04' (acceptance pending) is a mild
+// amber; '05' (accepted) gets no tint — it's resolved.
 const STATUS_ROW_TINT: Record<string, string> = {
-  NO_SES: `${colors.red}12`,
-  PARTIAL: '#FFFBEB',
-  REVERSED: `${colors.inkSoft}12`,
+  '02': `${colors.red}14`,
+  '01': `${colors.red}0A`,
+  '03': `${colors.inkSoft}12`,
+  '04': '#FFFBEB',
 };
 
 interface PaymentTrackingTableProps {
@@ -45,11 +47,11 @@ interface PaymentTrackingTableProps {
   emptyMessage: string;
 }
 
-/** Read-only payment-status table shared by all three Payment Tracking tabs (Upcoming/Missed/
- * Pending) — columns are the specific fields requested (see COLUMNS above), not every field the
- * backend returns (see paymentTrackingApi.ts's header comment for the full set). Row color follows
- * SAP's own computed Status field rather than a client-side answer, unlike Delivery Confirmation's
- * table. */
+/** Read-only provision-status table shared across Provision Tracking's screens (Upcoming/Missed
+ * Provision, and the Provision Details pop-up's line-item list) — columns are the specific fields
+ * requested (see COLUMNS above), not every field the backend returns (see paymentTrackingApi.ts's
+ * header comment for the full set). Row color follows SAP's own computed Status field rather than
+ * a client-side answer, unlike Delivery Confirmation's table. */
 export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrackingTableProps) {
   if (rows.length === 0) {
     return (
@@ -78,7 +80,7 @@ export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrac
             <View key={row.key} style={[styles.row, rowTint ? { backgroundColor: rowTint } : null]}>
               {COLUMNS.map((col) => {
                 const raw = row[col.key];
-                const display = DATE_KEYS.has(col.key) ? formatDateFriendly(raw as string) : (raw as string) || '—';
+                const display = (raw as string) || '—';
                 return (
                   <Text key={col.key} style={[styles.cell, { width: col.width }]} numberOfLines={2}>
                     {display}
