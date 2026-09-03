@@ -13,11 +13,15 @@ function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-type NavItem = SidePaneItem & { href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/master-data'; adminOnly?: boolean };
+type NavItem = SidePaneItem & {
+  href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
+  adminOnly?: boolean;
+};
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline' },
   { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline' },
+  { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 
@@ -41,7 +45,10 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       items={items}
       activeHref={activeHref}
       onNavigate={(href) => {
-        router.push(href as any);
+        // replace, not push — these are flat sibling sections, not a stack to accumulate through.
+        // push here left a synthetic ?__EXPO_ROUTER_key=... in the URL, since Expo Router has to
+        // invent a stack-entry key when there's no dynamic route param to derive one from.
+        router.replace(href as any);
         onClose();
       }}
     />
@@ -129,6 +136,7 @@ export default function MarketRateLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="dashboard" />
+            <Stack.Screen name="submission-history" />
             <Stack.Screen name="master-data" />
           </Stack>
         </SafeAreaView>

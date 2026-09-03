@@ -213,6 +213,77 @@ export async function uploadMasterDataFile(file: MasterDataFile): Promise<Master
   }
 }
 
+export interface VendorMaterialAssignment {
+  email: string;
+  vendorCode: string;
+  vendorName: string;
+  materialCode: string;
+  materialDesc: string;
+  materialType: string;
+}
+
+/** Full vendor-material assignment master list across every user — the "expected submitters"
+ * universe for the Admin Submission History report. Same entity/shape as fetchSuppliedMaterials,
+ * but omits the Email filter entirely to return every user's assignments in one call, the same
+ * way fetchMarketRates omits Email for Admin ("based on only Year it should show all the rates"). */
+export async function fetchAllVendorMaterialAssignments(): Promise<VendorMaterialAssignment[]> {
+  const { data } = await sapClient.get(`/${SUPPLIER_DATA_ENTITY_SET}`, {
+    params: { '$format': 'json' },
+  });
+  const results = data?.d?.results;
+  if (!Array.isArray(results)) return [];
+  return results.map((r: any) => ({
+    email: r.Email || '',
+    vendorCode: r.Lifnr || '',
+    vendorName: r.Name1 || '',
+    materialCode: r.Matnr || '',
+    materialDesc: r.Maktx || '',
+    materialType: r.Mtart || '',
+  }));
+}
+
+export interface SubmissionRecord {
+  email: string;
+  vendorCode: string;
+  vendorName: string;
+  materialCode: string;
+  materialDesc: string;
+  zyear: string;
+  zmonth: string;
+  rate: string;
+  ratePer: string;
+  /** Per instruction: 'X' means the rate was submitted for this material/month, blank means it
+   * was not — this is the sole source of truth for Submission History status, not row existence. */
+  submitted: boolean;
+  submittedOn: string;
+  rateId: string;
+}
+
+/** Every rate status row for a year, across every submitter (no Email filter) — the Admin
+ * Submission History report's "actual" side, matched against
+ * fetchAllVendorMaterialAssignments' "expected" side by email + material code. */
+export async function fetchSubmissionRecords(year: string): Promise<SubmissionRecord[]> {
+  const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, {
+    params: { '$format': 'json', '$filter': `Zyear eq '${year}'` },
+  });
+  const results = data?.d?.results;
+  if (!Array.isArray(results)) return [];
+  return results.map((li: any) => ({
+    email: li.Email || '',
+    vendorCode: li.Lifnr || '',
+    vendorName: li.Name1 || '',
+    materialCode: li.Matnr || '',
+    materialDesc: li.Maktx || '',
+    zyear: li.Zyear || '',
+    zmonth: li.Zmonth || '',
+    rate: li.Zrate != null ? String(li.Zrate) : '',
+    ratePer: li.ZratePer || '',
+    submitted: li.SubDone === 'X',
+    submittedOn: parseODataDate(li.CrDate),
+    rateId: li.RateId || '',
+  }));
+}
+
 function randomRateId(): string {
   // "BATCH-<digits>" mirrors the example payload's shape ("BATCH-001", 9 chars). RateId is a
   // fixed-length SAP field — a 6-digit suffix (12 chars total) blew past its max length and SAP
