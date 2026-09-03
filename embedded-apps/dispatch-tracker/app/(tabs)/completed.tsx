@@ -13,7 +13,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
+import { daysBetween, fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -41,6 +41,15 @@ const SORT_FIELDS: { key: SortField; label: string }[] = [
   { key: 'town', label: '📍 Town' },
 ];
 const PAGE_SIZE = 7;
+/** Return is only allowed within this many days of the actual delivery date. */
+const RETURN_WINDOW_DAYS = 7;
+
+/** Return button stays active through day 7 after delivery, greyed out from day 8 on. */
+function isReturnEligible(row: CompletedInvoice): boolean {
+  const delivered = toDate(row.actual_delivery_date);
+  if (!delivered) return true;
+  return daysBetween(todayDate(), delivered) <= RETURN_WINDOW_DAYS;
+}
 
 export default function CompletedScreen() {
   const { session, readOnly } = useAuth();
@@ -207,11 +216,11 @@ export default function CompletedScreen() {
         <View style={styles.customRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.dateLabel}>From</Text>
-            <DateField value={customFrom} onChange={setCustomFrom} maximumDate={todayDate()} />
+            <DateField value={customFrom} onChange={setCustomFrom} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.dateLabel}>To</Text>
-            <DateField value={customTo} onChange={setCustomTo} maximumDate={todayDate()} />
+            <DateField value={customTo} onChange={setCustomTo} />
           </View>
         </View>
       )}
@@ -341,6 +350,7 @@ function InvoiceCard({
   const totalDelay = Number(row.total_delay) || 0;
   const delayColor = canonicalDelayColor(totalDelay);
   const delayLabel = canonicalDelayLabel(totalDelay);
+  const returnEligible = isReturnEligible(row);
 
   const body = (
     <View style={styles.card}>
@@ -405,7 +415,7 @@ function InvoiceCard({
       <View style={{ flex: 1 }}>{body}</View>
       <View style={styles.actionCol}>
         {hasPod ? <ActionButton label="👁 POD" recipe="viewPod" onPress={onViewPod} fullWidth /> : null}
-        <ActionButton label="↩ Return" recipe="return" onPress={onReturn} fullWidth />
+        <ActionButton label="↩ Return" recipe="return" onPress={onReturn} disabled={!returnEligible} fullWidth />
       </View>
     </View>
   );

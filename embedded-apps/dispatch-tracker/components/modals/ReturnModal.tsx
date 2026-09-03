@@ -143,10 +143,10 @@ export function ReturnModal({
       />
 
       <FieldLabel text="Receiving Date" required />
-      <DateField value={receivingDate} onChange={setReceivingDate} minimumDate={minDate} maximumDate={today} />
+      <DateField value={receivingDate} onChange={setReceivingDate} minimumDate={minDate} />
 
       <FieldLabel text="SAP Entry Date" required />
-      <DateField value={sapEntryDate} onChange={setSapEntryDate} minimumDate={minDate} maximumDate={today} />
+      <DateField value={sapEntryDate} onChange={setSapEntryDate} minimumDate={minDate} />
 
       <FieldLabel text="Return Type" required />
       <SelectField value={returnType} options={RETURN_TYPES} onChange={setReturnType} />

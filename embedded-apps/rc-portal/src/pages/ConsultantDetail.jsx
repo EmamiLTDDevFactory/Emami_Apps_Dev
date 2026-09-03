@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { 
   ArrowLeft, FileText, Calendar, Users, CreditCard, Briefcase, 
   Building2, Phone, FileSignature, Download, CheckCircle2, ShieldCheck, Tag, Copy, AlertTriangle,
-  Edit3, Plus, Trash2, Save, X
+  Edit3, Plus, Trash2, Save, X, Check
 } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 import SuccessModal from '../components/SuccessModal';
@@ -38,6 +38,7 @@ export default function ConsultantDetail() {
   
   const [activeTab, setActiveTab] = useState('contract');
   const [vendorCode, setVendorCode] = useState('');
+  const [vendorSaving, setVendorSaving] = useState(false);
   const [error, setError] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [successModalData, setSuccessModalData] = useState(null);
@@ -185,8 +186,36 @@ export default function ConsultantDetail() {
     }
   }
 
-  async function saveVendorCode(value) {
-    await updateConsultant(consultantId, { ActualVendor: value });
+  // Only enabled when there is genuinely something new to save, so the tick can't re-send
+  // a value SAP already holds.
+  const vendorCodeDirty =
+    Boolean(vendorCode.trim()) && vendorCode.trim() !== (consultant?.ActualVendor || '').trim();
+
+  // Saved on click (or Enter) instead of on every keystroke. This used to fire from the input's
+  // onChange, so typing "Vendor123459" sent twelve separate PUTs whose responses could land out
+  // of order. It was also called without await or try/catch, so any failure was a silent
+  // unhandled rejection and the user saw nothing either way.
+  //
+  // The payload stays partial — just { ActualVendor } — because CONSULTANTSET_UPDATE_ENTITY
+  // guards every field with IF ls_req-<field> IS NOT INITIAL, so untouched fields keep their
+  // stored values. Confirmed live: name, PAN, GST and engagement type all survived a save.
+  async function saveVendorCode() {
+    const value = vendorCode.trim();
+    if (!value || vendorSaving || !consultant) return;
+
+    setVendorSaving(true);
+    try {
+      await updateConsultant(consultantId, { ActualVendor: value });
+      setConsultant((prev) => (prev ? { ...prev, ActualVendor: value } : prev));
+      setVendorCode(value);
+      setToastMessage('Vendor code saved');
+    } catch (err) {
+      console.error('Failed to save vendor code', err);
+      setToastMessage('Failed to save vendor code');
+    } finally {
+      setVendorSaving(false);
+      setTimeout(() => setToastMessage(''), 3000);
+    }
   }
 
   async function downloadAgreement() {
@@ -542,15 +571,32 @@ export default function ConsultantDetail() {
                     <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Actual Vendor Code</span>
                   </div>
                   <div className="px-4 py-2 bg-white">
-                    <input 
-                      className="rc-input w-full bg-slate-50 font-mono text-xs font-black text-slate-900 border-rose-300 focus:border-[#800A36] focus:ring-2 focus:ring-rose-200 shadow-2xs h-8 p-2" 
-                      placeholder="e.g. VEND1234" 
-                      value={vendorCode} 
-                      onChange={(e) => { 
-                        setVendorCode(e.target.value); 
-                        saveVendorCode(e.target.value); 
-                      }} 
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="rc-input w-full bg-slate-50 font-mono text-xs font-black text-slate-900 border-rose-300 focus:border-[#800A36] focus:ring-2 focus:ring-rose-200 shadow-2xs h-8 p-2"
+                        placeholder="e.g. VEND1234"
+                        maxLength={15}
+                        value={vendorCode}
+                        onChange={(e) => setVendorCode(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveVendorCode(); } }}
+                      />
+                      {/* 40px on phones for a comfortable thumb target, back to 32px from the
+                          `sm` breakpoint up so it stays flush with the h-8 input on desktop —
+                          the desktop layout is unchanged. touch-manipulation drops the 300ms
+                          tap delay on mobile. */}
+                      <button
+                        type="button"
+                        onClick={saveVendorCode}
+                        disabled={!vendorCodeDirty || vendorSaving}
+                        title={vendorCodeDirty ? 'Save vendor code' : 'No changes to save'}
+                        aria-label="Save vendor code"
+                        className="shrink-0 grid h-10 w-10 sm:h-8 sm:w-8 place-items-center rounded-lg border border-[#800A36] bg-[#800A36] text-white shadow-2xs transition-all touch-manipulation hover:bg-[#66082b] disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-400"
+                      >
+                        {vendorSaving
+                          ? <span className="h-4 w-4 sm:h-3.5 sm:w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          : <Check className="h-5 w-5 sm:h-4 sm:w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

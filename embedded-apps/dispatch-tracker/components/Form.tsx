@@ -37,6 +37,14 @@ export function TextField({
   );
 }
 
+/** yyyy-mm-dd in local time, for the web <input type="date"> which has no timezone concept. */
+function toInputDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function DateField({
   value,
   onChange,
@@ -49,6 +57,39 @@ export function DateField({
   maximumDate?: Date;
 }) {
   const [open, setOpen] = useState(false);
+
+  // @react-native-community/datetimepicker has no web implementation, so on web it never opens
+  // a calendar — the field would silently stay stuck on whatever date it was initialized to.
+  // Use a real HTML date input there instead; native platforms keep the RN picker below.
+  if (Platform.OS === 'web') {
+    return (
+      // @ts-expect-error — raw DOM element, valid under react-native-web
+      <input
+        type="date"
+        value={toInputDate(value)}
+        min={minimumDate ? toInputDate(minimumDate) : undefined}
+        max={maximumDate ? toInputDate(maximumDate) : undefined}
+        onChange={(e: any) => {
+          const v = e.target.value;
+          if (!v) return;
+          const [y, m, d] = v.split('-').map(Number);
+          onChange(new Date(y, m - 1, d));
+        }}
+        style={{
+          width: '100%',
+          height: 34,
+          padding: '9px 11px',
+          borderRadius: radius.sm,
+          border: `1.5px solid ${colors.g200}`,
+          backgroundColor: colors.surface,
+          color: colors.nearBlack,
+          fontSize: 12,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
   const label = value.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   return (
     <>

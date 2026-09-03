@@ -142,7 +142,7 @@ export function DispatchModal({
       />
 
       <FieldLabel text="Dispatch Date" required />
-      <DateField value={dispatchDate} onChange={setDispatchDate} minimumDate={invDate ?? undefined} maximumDate={todayDate()} />
+      <DateField value={dispatchDate} onChange={setDispatchDate} minimumDate={invDate ?? undefined} />
 
       <FieldLabel text="LR Number" required />
       <TextField value={lrNo} onChangeText={setLrNo} placeholder="Enter LR number" />
