@@ -14,14 +14,16 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: 'poNumber', label: 'PO Number', width: 100 },
   { key: 'poItemNo', label: 'PO Item No', width: 90 },
+  { key: 'poCreator', label: 'PO Creator', width: 110 },
   { key: 'poText', label: 'PO Text', width: 180 },
-  { key: 'vendor', label: 'Vendor', width: 90 },
+  { key: 'vendor', label: 'Vendor Code', width: 100 },
+  { key: 'vendorName', label: 'Vendor Name', width: 160 },
   { key: 'companyCode', label: 'Company Code', width: 100 },
   { key: 'matNumber', label: 'Material Number', width: 130 },
   { key: 'materialDesc', label: 'Material Description', width: 200 },
   { key: 'matGroup', label: 'Material Group', width: 110 },
-  { key: 'purchGroup', label: 'Purch. Group', width: 100 },
-  { key: 'acctAssignCat', label: 'Acct Assign Cat', width: 110 },
+  { key: 'purchGroup', label: 'Purchasing Group', width: 130 },
+  { key: 'acctAssignCat', label: 'Account Assignment Category', width: 170 },
   { key: 'packageNo', label: 'Package No', width: 100 },
   { key: 'orderUnit', label: 'Order Unit', width: 90 },
   { key: 'deliveryDate', label: 'Delivery Date', width: 120 },
@@ -29,31 +31,31 @@ const COLUMNS: Column[] = [
   { key: 'scheduleQty', label: 'Schedule Qty', width: 100 },
   { key: 'delvQty', label: 'Delivered Qty', width: 100 },
   { key: 'remainingQty', label: 'Remaining Qty', width: 110 },
-  { key: 'netValue', label: 'Net Value', width: 100 },
+  { key: 'netValue', label: 'Activity Value', width: 120 },
   { key: 'currency', label: 'Currency', width: 80 },
   { key: 'postedValue', label: 'Posted Value', width: 100 },
   { key: 'reversedValue', label: 'Reversed Value', width: 110 },
   { key: 'netValuePosted', label: 'Net Value Posted', width: 120 },
   { key: 'netQty', label: 'Net Qty', width: 90 },
-  { key: 'openValue', label: 'Open Value', width: 100 },
+  { key: 'openValue', label: 'Pending Bill Value', width: 130 },
   { key: 'status', label: 'Status', width: 100 },
   { key: 'statusText', label: 'Status Text', width: 220 },
-  { key: 'sesCount', label: 'SES Count', width: 90 },
-  { key: 'sesDeleted', label: 'SES Deleted', width: 90 },
-  { key: 'sesAccepted', label: 'SES Accepted', width: 100 },
-  { key: 'lastSesNumber', label: 'Last SES No', width: 110 },
-  { key: 'lastSesDate', label: 'Last SES Date', width: 120 },
-  { key: 'acctAssignCount', label: 'Acct Assign Count', width: 130 },
+  { key: 'sesCount', label: 'Service Entry Sheet Count', width: 150 },
+  { key: 'sesDeleted', label: 'Service Entry Sheet Deleted', width: 150 },
+  { key: 'sesAccepted', label: 'Service Entry Sheet Accepted', width: 160 },
+  { key: 'entrySheetNo', label: 'Entry Sheet No', width: 130 },
+  { key: 'liabilityCreated', label: 'Liability Created (Y/N)', width: 150 },
+  { key: 'acctAssignCount', label: 'Account Assignment Count', width: 160 },
   { key: 'multiAccount', label: 'Multi Account', width: 110 },
-  { key: 'glAccount', label: 'GL Account', width: 100 },
-  { key: 'glAccountText', label: 'GL Account Text', width: 180 },
+  { key: 'glAccount', label: 'GL Code', width: 100 },
+  { key: 'glAccountText', label: 'GL Description', width: 180 },
   { key: 'costCenter', label: 'Cost Center', width: 100 },
-  { key: 'costCenterText', label: 'Cost Center Text', width: 180 },
+  { key: 'costCenterText', label: 'Cost Center Description', width: 190 },
   { key: 'internalOrder', label: 'Internal Order', width: 110 },
   { key: 'wbsElement', label: 'WBS Element', width: 110 },
   { key: 'daysOverdue', label: 'Days Overdue', width: 100 },
 ];
-const DATE_KEYS = new Set<keyof PaymentTrackingRow>(['deliveryDate', 'poDate', 'lastSesDate']);
+const DATE_KEYS = new Set<keyof PaymentTrackingRow>(['deliveryDate', 'poDate']);
 
 // Row tint by SAP's own computed status — NO_SES (nothing created yet) is the most concerning,
 // PARTIAL less so, REVERSED is informational (something happened and got undone).
@@ -88,7 +90,7 @@ export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrac
       <View style={[styles.card, { width: tableWidth }]}>
         <View style={styles.headerRow}>
           {COLUMNS.map((col) => (
-            <Text key={col.key} style={[styles.headerCell, { width: col.width }]} numberOfLines={2}>
+            <Text key={col.key} style={[styles.headerCell, { width: col.width }]}>
               {col.label}
             </Text>
           ))}

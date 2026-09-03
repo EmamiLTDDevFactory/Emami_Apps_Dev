@@ -53,13 +53,17 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<Record<string, a
  * every other property matches the PascalCase-from-ABAP-field-name guess used below (e.g.
  * SES_CNT -> SesCnt, VAL_NET -> ValNet). materialDesc (Maktx) and matNumber (Matnr) exist on the
  * shared entity but the po_type='9' backend branch doesn't set them for a service item (it sets
- * matGroup/Matkl instead) — mapped anyway since they're real fields, expect them blank here. */
+ * matGroup/Matkl instead) — mapped anyway since they're real fields, expect them blank here.
+ * poCreator (Ernam) and vendorName (Name1) confirmed by user instruction. netValue (Netwr) doubles
+ * as "Activity Value" (the PO item's amount) in the table label, per user instruction. */
 export interface PaymentTrackingRow {
   key: string;
   poNumber: string; // Ebeln
   poItemNo: string; // Ebelp
+  poCreator: string; // Ernam
   poText: string; // Txz01
   vendor: string; // Lifnr
+  vendorName: string; // Name1
   companyCode: string; // Bukrs
   matNumber: string; // Matnr
   materialDesc: string; // Maktx
@@ -88,9 +92,10 @@ export interface PaymentTrackingRow {
   sesCount: string; // SesCnt — total service entry sheets
   sesDeleted: string; // SesDel
   sesAccepted: string; // SesAcc
-  lastSesNumber: string; // LastSes
-  /** yyyy-mm-dd, parsed from LastDat's OData datetime literal. */
-  lastSesDate: string;
+  entrySheetNo: string; // LastSes
+  /** 'N' while the entry sheet is still pending (status NO_SES — nothing posted yet), 'Y' once one
+   * exists (PARTIAL/REVERSED), per instruction. */
+  liabilityCreated: 'Y' | 'N';
   acctAssignCount: string; // AccCnt
   /** 'X' if this item is split across more than one GL account / cost center. */
   multiAccount: boolean; // MultiAcc
@@ -115,8 +120,10 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}`,
     poNumber: str(raw.Ebeln),
     poItemNo: str(raw.Ebelp),
+    poCreator: str(raw.Ernam),
     poText: str(raw.Txz01),
     vendor: str(raw.Lifnr),
+    vendorName: str(raw.Name1),
     companyCode: str(raw.Bukrs),
     matNumber: str(raw.Matnr),
     materialDesc: str(raw.Maktx),
@@ -142,8 +149,8 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     sesCount: str(raw.SesCnt),
     sesDeleted: str(raw.SesDel),
     sesAccepted: str(raw.SesAcc),
-    lastSesNumber: str(raw.LastSes),
-    lastSesDate: parseODataDate(raw.LastDat),
+    entrySheetNo: str(raw.LastSes),
+    liabilityCreated: str(raw.Status) === 'NO_SES' ? 'N' : 'Y',
     acctAssignCount: str(raw.AccCnt),
     multiAccount: raw.MultiAcc === 'X',
     glAccount: str(raw.Sakto),
