@@ -259,12 +259,13 @@ export interface SubmissionRecord {
   rateId: string;
 }
 
-/** Every rate status row for a year, across every submitter (no Email filter) — the Admin
- * Submission History report's "actual" side, matched against
- * fetchAllVendorMaterialAssignments' "expected" side by email + material code. */
-export async function fetchSubmissionRecords(year: string): Promise<SubmissionRecord[]> {
+/** Every rate status row for a year, for one submitter — matches the entity's own read path
+ * ("fetched from ZmarketRateSet by passing Year and login email"), same as fetchMarketRates'
+ * per-email call. Email is always sent as a real `Email eq '...'` clause in the $filter, never
+ * omitted. */
+export async function fetchSubmissionRecords(year: string, email: string): Promise<SubmissionRecord[]> {
   const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, {
-    params: { '$format': 'json', '$filter': `Zyear eq '${year}'` },
+    params: { '$format': 'json', '$filter': `Zyear eq '${year}' and Email eq '${email}'` },
   });
   const results = data?.d?.results;
   if (!Array.isArray(results)) return [];
@@ -282,6 +283,19 @@ export async function fetchSubmissionRecords(year: string): Promise<SubmissionRe
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',
   }));
+}
+
+/** Admin Submission History report's "actual" side across every submitter — loops
+ * fetchSubmissionRecords once per distinct email (the assignments' own emails, from
+ * fetchAllVendorMaterialAssignments) instead of ever calling ZmarketRateSet without an Email
+ * filter. One submitter's call failing doesn't take down the whole report, same best-effort
+ * spirit as fetchSuppliedMaterials — it just leaves that submitter's rows out. */
+export async function fetchSubmissionRecordsForEmails(year: string, emails: string[]): Promise<SubmissionRecord[]> {
+  const uniqueEmails = Array.from(new Set(emails.map((e) => e.trim()).filter(Boolean)));
+  const perEmail = await Promise.all(
+    uniqueEmails.map((email) => fetchSubmissionRecords(year, email).catch(() => []))
+  );
+  return perEmail.flat();
 }
 
 function randomRateId(): string {

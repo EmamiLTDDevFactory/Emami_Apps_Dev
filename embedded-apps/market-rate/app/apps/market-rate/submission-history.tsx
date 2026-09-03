@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchAllVendorMaterialAssignments,
-  fetchSubmissionRecords,
+  fetchSubmissionRecordsForEmails,
   type SubmissionRecord,
   type VendorMaterialAssignment,
 } from '../../../src/lib/marketRateApi';
@@ -316,8 +316,12 @@ export default function SubmissionHistoryScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [a, s] = await Promise.all([fetchAllVendorMaterialAssignments(), fetchSubmissionRecords(y)]);
+      const a = await fetchAllVendorMaterialAssignments();
       setAssignments(a);
+      // Fetched per-email, not with Email omitted — matches ZmarketRateSet's own read path
+      // ("fetched from ZmarketRateSet by passing Year and login email"), driven off the
+      // assignments' own emails so every submitter the app knows about gets checked.
+      const s = await fetchSubmissionRecordsForEmails(y, a.map((row) => row.email));
       setSubmissions(s);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load submission history.');
