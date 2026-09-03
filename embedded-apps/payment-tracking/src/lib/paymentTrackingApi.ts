@@ -80,6 +80,8 @@ export interface PaymentTrackingRow {
   delvQty: string; // DlevQty
   /** ScheduleQty - DlevQty, computed client-side. '' if either source quantity is missing. */
   remainingQty: string;
+  /** "<ScheduleQty> <OrdUnit>", computed client-side for the table's combined "Qty / Au" column. */
+  qtyWithUnit: string;
   netValue: string; // Netwr
   currency: string; // Waers
   postedValue: string; // ValPost — sum of PO-history postings (EKBE, SHKZG <> 'H')
@@ -137,6 +139,7 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     scheduleQty: str(raw.ScheduleQty),
     delvQty: str(raw.DlevQty),
     remainingQty,
+    qtyWithUnit: [str(raw.ScheduleQty), str(raw.OrdUnit)].filter(Boolean).join(' '),
     netValue: str(raw.Netwr),
     currency: str(raw.Waers),
     postedValue: str(raw.ValPost),
