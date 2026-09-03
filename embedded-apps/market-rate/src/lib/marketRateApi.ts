@@ -4,7 +4,7 @@
 import axios from 'axios';
 
 // NGD (dev/QA) — switched back from NWP per instruction.
-const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_MARKET_RATE_SRV';
+const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZMM_MARKET_RATE_SRV';
 const ENTITY_SET = 'ZMarketRateHeaderSet';
 // Materials the signed-in user is already associated with — pre-fills the table on load instead
 // of starting blank. Verified live: entity set is ZMarketSuppDataSet (not ZMarketSuppData), Email
