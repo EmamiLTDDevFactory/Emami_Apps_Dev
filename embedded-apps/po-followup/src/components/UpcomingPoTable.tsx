@@ -5,82 +5,134 @@ import { colors, radii } from '../theme/tokens';
 import { formatDateFriendly, type UpcomingPoRow } from '../lib/poFollowupApi';
 import DateField from './DateField';
 
-interface Revision {
-  revised: boolean;
-  revisedDelDate: string; // yyyy-mm-dd, defaults to the row's Eindt once revised
+export type ConfirmAnswer = 'neutral' | 'yes' | 'no';
+
+export interface Revision {
+  answer: ConfirmAnswer;
+  revisedDelDate: string; // yyyy-mm-dd, only meaningful once answer === 'no'
   comments: string;
 }
 
 interface Column {
-  key: 'poNumber' | 'poItemNo' | 'poText' | 'materialDesc' | 'deliveryDate' | 'scheduledQty' | 'deliveredQty';
+  key: 'poNumber' | 'poItemNo' | 'materialDesc' | 'deliveryDate' | 'scheduleQty' | 'delvQty' | 'remainingQty';
   label: string;
   width: number;
 }
 
-const COLUMNS: Column[] = [
+const BASE_COLUMNS: Column[] = [
   { key: 'poNumber', label: 'PO Number', width: 110 },
   { key: 'poItemNo', label: 'PO Item No', width: 90 },
-  { key: 'poText', label: 'PO Text', width: 200 },
   { key: 'materialDesc', label: 'Material Description', width: 220 },
   { key: 'deliveryDate', label: 'Delivery Date', width: 130 },
-  { key: 'scheduledQty', label: 'Scheduled Quantity', width: 150 },
-  { key: 'deliveredQty', label: 'Delivered Quantity', width: 150 },
 ];
-const REVISE_COL_WIDTH = 220;
-const TABLE_WIDTH = COLUMNS.reduce((sum, c) => sum + c.width, 0) + REVISE_COL_WIDTH;
+// Missed Delivery and Pending PO only — Upcoming PO still hides these (see poFollowupApi.ts).
+const QTY_COLUMNS: Column[] = [
+  { key: 'scheduleQty', label: 'Schedule Qty', width: 110 },
+  { key: 'delvQty', label: 'Delivered Qty', width: 110 },
+  { key: 'remainingQty', label: 'Remaining Qty', width: 120 },
+];
+const CONFIRM_COL_WIDTH = 200;
+const REVISED_DATE_COL_WIDTH = 150;
+const COMMENTS_COL_WIDTH = 220;
 
-function emptyRevision(row: UpcomingPoRow): Revision {
-  return { revised: false, revisedDelDate: row.deliveryDate, comments: '' };
+export function emptyRevision(row: UpcomingPoRow): Revision {
+  return { answer: 'neutral', revisedDelDate: row.deliveryDate, comments: '' };
 }
+
+/** Row tint by confirmation answer (Upcoming PO) — every state is colored, including "not yet
+ * answered", so an unattended row is as visible as an answered one. */
+const ANSWER_ROW_TINT: Record<ConfirmAnswer, string> = {
+  neutral: '#FFFBEB', // amber — awaiting an answer
+  yes: `${colors.green}12`,
+  no: `${colors.red}12`,
+};
 
 interface UpcomingPoTableProps {
   rows: UpcomingPoRow[];
   emptyMessage: string;
+  /** Missed Delivery and Pending PO reuse this same table for their read-only listing — no
+   * "Delivery Confirmed?"/Revised Date/Comments columns, no toggle/modal, just the data columns
+   * (plus Schedule/Delivered/Remaining Qty when showQtyColumns is set). */
+  readOnly?: boolean;
+  /** Schedule Qty / Delivered Qty / Remaining Qty columns — Missed Delivery and Pending PO only. */
+  showQtyColumns?: boolean;
+  /** Controlled per-row answer state, lifted to the parent screen so it can drive the Final
+   * Submission button (enabled once any row has an answer) and the unsaved-changes/leave-page
+   * warning. Only required (and only rendered) when readOnly is false. */
+  revisions?: Record<string, Revision>;
+  onRevisionsChange?: (next: Record<string, Revision>) => void;
+  /** Locks every toggle after a successful Final Submission — the confirmed answers stay visible,
+   * but can no longer be edited. */
+  locked?: boolean;
 }
 
-/** Upcoming Delivery PO table. Each row asks "Do you want to revise Delivery Date?" via a Yes/No
- * toggle instead of exposing an always-editable date/comments pair inline — choosing Yes opens a
- * modal to capture the revised date (defaults to that row's own Delivery Date) and a mandatory
- * comment; choosing No (or cancelling the modal before saving) clears any pending revision. No
- * submit endpoint has been specified for these edits yet — this only tracks/validates them
- * client-side. */
-export default function UpcomingPoTable({ rows, emptyMessage }: UpcomingPoTableProps) {
-  const [revisions, setRevisions] = useState<Record<string, Revision>>({});
+/** Upcoming Delivery PO table. Each row answers "Delivery Confirmed?" via a three-state Yes/No
+ * toggle that starts neutral (neither button highlighted): choosing Yes confirms immediately with
+ * nothing further to do; choosing No opens a modal to capture a revised delivery date (defaults to
+ * that row's own Delivery Date) and a mandatory comment — the toggle stays neutral until that modal
+ * is actually saved, so cancelling (or closing without saving) leaves the row unanswered rather than
+ * silently counting it as "No". Whatever was saved in that modal shows in the row's own Revised
+ * Delivery Date / Comments columns. No submit endpoint has been specified for these edits yet —
+ * Final Submission (see index.tsx) only tracks/validates them client-side for now.
+ *
+ * Missed Delivery and Pending PO reuse this same component read-only, with Schedule/Delivered/
+ * Remaining Qty columns instead of the confirmation workflow. */
+export default function UpcomingPoTable({ rows, emptyMessage, readOnly, showQtyColumns, revisions: controlledRevisions, onRevisionsChange, locked }: UpcomingPoTableProps) {
+  const [localRevisions, setLocalRevisions] = useState<Record<string, Revision>>({});
+  const revisions = readOnly ? localRevisions : (controlledRevisions ?? localRevisions);
+  const setRevisions = (updater: (prev: Record<string, Revision>) => Record<string, Revision>) => {
+    const next = updater(revisions);
+    if (onRevisionsChange) onRevisionsChange(next);
+    else setLocalRevisions(next);
+  };
+
   const [modalRowKey, setModalRowKey] = useState<string | null>(null);
   const [draftDate, setDraftDate] = useState('');
   const [draftComments, setDraftComments] = useState('');
   const [draftError, setDraftError] = useState<string | null>(null);
 
-  // Re-seed per-row state whenever a fresh set of rows comes in (new fetch).
+  // Re-seed per-row state whenever a fresh set of rows comes in (new fetch) — only for rows that
+  // don't already have an entry, so an in-progress answer survives e.g. a period-filter re-render.
   useEffect(() => {
-    const next: Record<string, Revision> = {};
-    for (const row of rows) next[row.key] = emptyRevision(row);
-    setRevisions(next);
+    setRevisions((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const row of rows) {
+        if (!next[row.key]) {
+          next[row.key] = emptyRevision(row);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
   const openModalFor = (row: UpcomingPoRow) => {
+    if (locked) return;
     const existing = revisions[row.key];
-    setDraftDate(existing?.revised ? existing.revisedDelDate : row.deliveryDate);
-    setDraftComments(existing?.revised ? existing.comments : '');
+    setDraftDate(existing?.answer === 'no' ? existing.revisedDelDate : row.deliveryDate);
+    setDraftComments(existing?.answer === 'no' ? existing.comments : '');
     setDraftError(null);
     setModalRowKey(row.key);
   };
 
-  const answerNo = (row: UpcomingPoRow) => {
-    setRevisions((prev) => ({ ...prev, [row.key]: emptyRevision(row) }));
+  const answerYes = (row: UpcomingPoRow) => {
+    if (locked) return;
+    setRevisions((prev) => ({ ...prev, [row.key]: { answer: 'yes', revisedDelDate: row.deliveryDate, comments: '' } }));
   };
 
   const closeModal = () => setModalRowKey(null);
 
   const saveModal = () => {
     if (!draftComments.trim()) {
-      setDraftError('Comments are required when revising the delivery date.');
+      setDraftError('Comments are required when the delivery isn’t confirmed.');
       return;
     }
     if (modalRowKey) {
       setRevisions((prev) => ({
         ...prev,
-        [modalRowKey]: { revised: true, revisedDelDate: draftDate, comments: draftComments.trim() },
+        [modalRowKey]: { answer: 'no', revisedDelDate: draftDate, comments: draftComments.trim() },
       }));
     }
     setModalRowKey(null);
@@ -96,101 +148,133 @@ export default function UpcomingPoTable({ rows, emptyMessage }: UpcomingPoTableP
     );
   }
 
+  const columns = showQtyColumns ? [...BASE_COLUMNS, ...QTY_COLUMNS] : BASE_COLUMNS;
+  const workflowWidth = readOnly ? 0 : CONFIRM_COL_WIDTH + REVISED_DATE_COL_WIDTH + COMMENTS_COL_WIDTH;
+  const tableWidth = columns.reduce((sum, c) => sum + c.width, 0) + workflowWidth;
+
   return (
     <>
       <ScrollView horizontal showsHorizontalScrollIndicator style={styles.scroll}>
-        <View style={[styles.card, { width: TABLE_WIDTH }]}>
+        <View style={[styles.card, { width: tableWidth }]}>
           <View style={styles.headerRow}>
-            {COLUMNS.map((col) => (
+            {columns.map((col) => (
               <Text key={col.key} style={[styles.headerCell, { width: col.width }]} numberOfLines={2}>
                 {col.label}
               </Text>
             ))}
-            <Text style={[styles.headerCell, { width: REVISE_COL_WIDTH }]}>Revise Delivery Date?</Text>
+            {!readOnly && (
+              <>
+                <Text style={[styles.headerCell, { width: CONFIRM_COL_WIDTH }]}>Delivery Confirmed?</Text>
+                <Text style={[styles.headerCell, { width: REVISED_DATE_COL_WIDTH }]}>Revised Delivery Date</Text>
+                <Text style={[styles.headerCell, { width: COMMENTS_COL_WIDTH }]}>Comments</Text>
+              </>
+            )}
           </View>
 
           {rows.map((row) => {
             const revision = revisions[row.key] ?? emptyRevision(row);
+            const remainingNum = Number(row.remainingQty);
+            const rowTint = !readOnly
+              ? ANSWER_ROW_TINT[revision.answer]
+              : showQtyColumns && row.remainingQty !== '' && !Number.isNaN(remainingNum)
+                ? (remainingNum > 0 ? `${colors.red}12` : `${colors.green}12`)
+                : undefined;
             return (
-              <View key={row.key} style={styles.row}>
-                {COLUMNS.map((col) => (
+              <View key={row.key} style={[styles.row, rowTint ? { backgroundColor: rowTint } : null]}>
+                {columns.map((col) => (
                   <Text key={col.key} style={[styles.cell, { width: col.width }]} numberOfLines={2}>
                     {col.key === 'deliveryDate' ? formatDateFriendly(row.deliveryDate) : row[col.key] || '—'}
                   </Text>
                 ))}
-                <View style={{ width: REVISE_COL_WIDTH, paddingVertical: 8, paddingHorizontal: 10, gap: 6 }}>
-                  <View style={styles.toggleRow}>
+                {!readOnly && (
+                  <>
+                    <View style={{ width: CONFIRM_COL_WIDTH, paddingVertical: 8, paddingHorizontal: 10 }}>
+                      <View style={styles.toggleRow}>
+                        <Pressable
+                          onPress={() => answerYes(row)}
+                          disabled={locked}
+                          style={[styles.toggleBtn, revision.answer === 'yes' && styles.toggleBtnActiveYes, locked && styles.toggleBtnDisabled]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delivery confirmed for PO ${row.poNumber} item ${row.poItemNo}: Yes`}
+                          accessibilityState={{ selected: revision.answer === 'yes', disabled: locked }}
+                        >
+                          <Text style={[styles.toggleBtnText, revision.answer === 'yes' && styles.toggleBtnTextActive]}>Yes</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => openModalFor(row)}
+                          disabled={locked}
+                          style={[styles.toggleBtn, revision.answer === 'no' && styles.toggleBtnActiveNo, locked && styles.toggleBtnDisabled]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Delivery confirmed for PO ${row.poNumber} item ${row.poItemNo}: No`}
+                          accessibilityState={{ selected: revision.answer === 'no', disabled: locked }}
+                        >
+                          <Text style={[styles.toggleBtnText, revision.answer === 'no' && styles.toggleBtnTextActive]}>No</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                     <Pressable
-                      onPress={() => openModalFor(row)}
-                      style={[styles.toggleBtn, revision.revised && styles.toggleBtnActiveYes]}
+                      style={[styles.cell, { width: REVISED_DATE_COL_WIDTH }]}
+                      onPress={() => revision.answer === 'no' && openModalFor(row)}
+                      disabled={locked || revision.answer !== 'no'}
                       accessibilityRole="button"
-                      accessibilityLabel={`Revise delivery date for PO ${row.poNumber} item ${row.poItemNo}: Yes`}
                     >
-                      <Text style={[styles.toggleBtnText, revision.revised && styles.toggleBtnTextActive]}>Yes</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => answerNo(row)}
-                      style={[styles.toggleBtn, !revision.revised && styles.toggleBtnActiveNo]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Revise delivery date for PO ${row.poNumber} item ${row.poItemNo}: No`}
-                    >
-                      <Text style={[styles.toggleBtnText, !revision.revised && styles.toggleBtnTextActive]}>No</Text>
-                    </Pressable>
-                  </View>
-                  {revision.revised && (
-                    <Pressable onPress={() => openModalFor(row)} accessibilityRole="button">
-                      <Text style={styles.revisedSummary} numberOfLines={1}>
-                        → {formatDateFriendly(revision.revisedDelDate)} · edit
+                      <Text numberOfLines={2}>
+                        {revision.answer === 'no' ? formatDateFriendly(revision.revisedDelDate) : '—'}
                       </Text>
                     </Pressable>
-                  )}
-                </View>
+                    <Text style={[styles.cell, { width: COMMENTS_COL_WIDTH }]} numberOfLines={2}>
+                      {revision.answer === 'no' ? revision.comments : '—'}
+                    </Text>
+                  </>
+                )}
               </View>
             );
           })}
         </View>
       </ScrollView>
 
-      <Modal visible={modalRowKey !== null} transparent animationType="fade" onRequestClose={closeModal}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Revise Delivery Date</Text>
-            {modalRow && (
-              <Text style={styles.modalSubtitle}>
-                PO {modalRow.poNumber} · Item {modalRow.poItemNo}
-              </Text>
-            )}
+      {!readOnly && (
+        <Modal visible={modalRowKey !== null} transparent animationType="fade" onRequestClose={closeModal}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Delivery Not Confirmed</Text>
+              {modalRow && (
+                <Text style={styles.modalSubtitle}>
+                  PO {modalRow.poNumber} · Item {modalRow.poItemNo}
+                </Text>
+              )}
 
-            <Text style={styles.modalLabel}>Revised Delivery Date</Text>
-            <DateField label="Revised Delivery Date" value={draftDate} onChange={setDraftDate} />
+              <Text style={styles.modalLabel}>Revised Delivery Date</Text>
+              <DateField label="Revised Delivery Date" value={draftDate} onChange={setDraftDate} />
 
-            <Text style={[styles.modalLabel, { marginTop: 14 }]}>Comments (required)</Text>
-            <TextInput
-              value={draftComments}
-              onChangeText={(v) => {
-                setDraftComments(v);
-                if (draftError) setDraftError(null);
-              }}
-              placeholder="Why is this delivery date being revised?"
-              placeholderTextColor={colors.inkSoft}
-              multiline
-              style={[styles.modalCommentsInput, draftError && styles.modalCommentsInputError]}
-              accessibilityLabel="Comments"
-            />
-            {draftError && <Text style={styles.modalErrorText}>{draftError}</Text>}
+              <Text style={[styles.modalLabel, { marginTop: 14 }]}>Comments (required)</Text>
+              <TextInput
+                value={draftComments}
+                onChangeText={(v) => {
+                  setDraftComments(v);
+                  if (draftError) setDraftError(null);
+                }}
+                placeholder="Why isn't this delivery confirmed?"
+                placeholderTextColor={colors.inkSoft}
+                multiline
+                style={[styles.modalCommentsInput, draftError && styles.modalCommentsInputError]}
+                accessibilityLabel="Comments"
+              />
+              {draftError && <Text style={styles.modalErrorText}>{draftError}</Text>}
 
-            <View style={styles.modalBtnRow}>
-              <Pressable style={styles.modalCancelBtn} onPress={closeModal} accessibilityRole="button" accessibilityLabel="Cancel">
-                <Text style={styles.modalCancelBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={styles.modalSaveBtn} onPress={saveModal} accessibilityRole="button" accessibilityLabel="Save">
-                <Ionicons name="checkmark" size={15} color={colors.white} />
-                <Text style={styles.modalSaveBtnText}>Save</Text>
-              </Pressable>
+              <View style={styles.modalBtnRow}>
+                <Pressable style={styles.modalCancelBtn} onPress={closeModal} accessibilityRole="button" accessibilityLabel="Cancel">
+                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable style={styles.modalSaveBtn} onPress={saveModal} accessibilityRole="button" accessibilityLabel="Save">
+                  <Ionicons name="checkmark" size={15} color={colors.white} />
+                  <Text style={styles.modalSaveBtnText}>Save</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </>
   );
 }
@@ -241,7 +325,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.appBg,
+    backgroundColor: colors.white,
+  },
+  toggleBtnDisabled: {
+    opacity: 0.6,
   },
   toggleBtnActiveYes: {
     backgroundColor: colors.rust,
@@ -258,11 +345,6 @@ const styles = StyleSheet.create({
   },
   toggleBtnTextActive: {
     color: colors.white,
-  },
-  revisedSummary: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.rust,
   },
   empty: {
     alignItems: 'center',

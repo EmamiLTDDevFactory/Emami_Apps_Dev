@@ -7,22 +7,33 @@ import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
+import { PoFollowupAuthProvider, usePoFollowupAuth } from '../../../src/context/PoFollowupAuthContext';
+import { UnsavedChangesProvider, useUnsavedChanges } from '../../../src/context/UnsavedChangesContext';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-type NavItem = SidePaneItem & { href: '/apps/po-followup/' | '/apps/po-followup/history' };
+type Href = '/apps/po-followup/' | '/apps/po-followup/missed-delivery' | '/apps/po-followup/pending' | '/apps/po-followup/history';
+type NavItem = SidePaneItem & { href: Href; adminOnly?: boolean };
 
+// Option A/B/C from the side pane, replacing the old in-page tab bar — Pending PO (C) is
+// Admin-only, same adminOnly-filter pattern Market Rate's own _layout.tsx uses for Master Data.
 const NAV_ITEMS: NavItem[] = [
-  { href: '/apps/po-followup/', label: 'Home', icon: 'home-outline' },
+  { href: '/apps/po-followup/', label: 'Upcoming PO', icon: 'calendar-outline' },
+  { href: '/apps/po-followup/missed-delivery', label: 'Missed Delivery', icon: 'alert-circle-outline' },
+  { href: '/apps/po-followup/pending', label: 'Pending PO', icon: 'hourglass-outline', adminOnly: true },
   { href: '/apps/po-followup/history', label: 'History', icon: 'time-outline' },
 ];
 
 function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { isAdmin, roleLoading } = usePoFollowupAuth();
+  const { confirmLeave } = useUnsavedChanges();
   const activeHref = pathname === '/apps/po-followup' ? '/apps/po-followup/' : pathname;
+
+  const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && isAdmin));
 
   return (
     <SidePane
@@ -30,10 +41,15 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       onClose={onClose}
       title="PO Followup"
       subtitle="Track upcoming and pending delivery POs"
-      items={NAV_ITEMS}
+      items={items}
       activeHref={activeHref}
       onNavigate={(href) => {
-        router.push(href as any);
+        if (href === activeHref) { onClose(); return; }
+        if (!confirmLeave()) return;
+        // replace, not push — these are flat sibling sections, not a stack to accumulate through.
+        // push here left a synthetic ?__EXPO_ROUTER_key=... in the URL, since Expo Router has to
+        // invent a stack-entry key when there's no dynamic route param to derive one from.
+        router.replace(href as any);
         onClose();
       }}
     />
@@ -45,11 +61,12 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 // hub session (not just a stray email left over in localStorage) and bounce straight back to the
 // hub to sign in if there isn't one, rather than ever rendering the app for an unauthenticated
 // visitor who typed the URL directly.
-export default function PoFollowupLayout() {
+function LayoutContent() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
+  const { confirmLeave } = useUnsavedChanges();
 
   useEffect(() => {
     setHubEmail(getHubEmail());
@@ -78,6 +95,7 @@ export default function PoFollowupLayout() {
         <TouchableOpacity
           style={styles.backToHubBar}
           onPress={() => {
+            if (!confirmLeave()) return;
             if (typeof window !== 'undefined') {
               window.location.href = '/';
             }
@@ -119,12 +137,24 @@ export default function PoFollowupLayout() {
 
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="missed-delivery" />
+          <Stack.Screen name="pending" />
           <Stack.Screen name="history" />
         </Stack>
       </SafeAreaView>
 
       <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
     </View>
+  );
+}
+
+export default function PoFollowupLayout() {
+  return (
+    <PoFollowupAuthProvider>
+      <UnsavedChangesProvider>
+        <LayoutContent />
+      </UnsavedChangesProvider>
+    </PoFollowupAuthProvider>
   );
 }
 

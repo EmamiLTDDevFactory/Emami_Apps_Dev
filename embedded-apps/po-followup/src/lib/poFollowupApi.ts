@@ -5,25 +5,15 @@ import axios from 'axios';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_PO_FOLLOWUP_SRV';
 const ENTITY_SET = 'ZDelvPendPOSet';
+// Same service/entity set as Payment Tracking (embedded-apps/payment-tracking) — Potype is what
+// distinguishes the two apps' data on an otherwise identical SAP call; Zaction distinguishes the
+// three tabs *within* each app.
+const POTYPE = 'M';
 
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
   headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 });
-
-/** One PO line as returned by ZDelvPendPOSet, generic shape — used for the Pending Delivery PO
- * tab, whose column layout hasn't been specified (unlike Upcoming's, see UpcomingPoRow below).
- * Kept as an open record so the table can render whatever SAP actually sends back without
- * guessing column names wrong. */
-export type PoFollowupRow = Record<string, string | number | null>;
-
-/** "2026-09-01" -> "datetime'2026-09-01T00:00:00'" — verified live against ZDelvPendPOSet
- * (NGD): Zfdate/Ztdate are Edm.DateTime fields, not the Char8 string the spec's "YYYYMMDD" wording
- * suggested. A bare quoted "20260901" string throws "Invalid parameter type used at function 'eq'"
- * at the OData parser; SAP's OData v2 datetime literal is what the field actually accepts. */
-function toSapDateFilter(isoDate: string): string {
-  return `datetime'${isoDate}T00:00:00'`;
-}
 
 /** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" — same shape Market Rate's
  * marketRateApi.ts already had to unpack for Zdate. "" for anything else/unparseable. */
@@ -51,54 +41,67 @@ async function fetchDelvPendPOs(filterParts: string[]): Promise<Record<string, a
   return Array.isArray(results) ? results : [];
 }
 
-/** One PO line for the Upcoming Delivery PO tab — explicit column set per instruction, mapped
- * from ZDelvPendPOSet's raw SAP field names (Ebeln, Ebelp, Txz01, ...). Matkl/Ekgrp/OrdUnit/Matnr
- * are read from SAP but no longer surfaced in the table (dropped per instruction). DelvQty's exact
- * SAP field name wasn't given as precisely as the others (no live sample data existed to confirm
- * against at write time) — assumed "DelvQty" by analogy with OrdUnit's naming; verify once real
- * rows exist. */
+/** One PO line, shared by all three tabs — explicit column set per instruction, mapped from
+ * ZDelvPendPOSet's raw SAP field names (Ebeln, Ebelp, Maktx, Eindt, ScheduleQty, DlevQty). PO Text
+ * (Txz01) is intentionally not mapped — dropped per instruction, not needed on any tab. Schedule
+ * Qty / Delivered Qty / Remaining Qty are only rendered on Missed Delivery and Pending PO (see
+ * UpcomingPoTable's showQtyColumns prop) — Upcoming PO still hides them. */
 export interface UpcomingPoRow {
   key: string;
   poNumber: string; // Ebeln
   poItemNo: string; // Ebelp
-  poText: string; // Txz01
   materialDesc: string; // Maktx
   /** yyyy-mm-dd, parsed from Eindt's OData datetime literal. */
   deliveryDate: string;
-  scheduledQty: string; // schedule_qty
-  deliveredQty: string; // DelvQty (assumed — see interface note)
+  scheduleQty: string; // ScheduleQty
+  delvQty: string; // DlevQty
+  /** ScheduleQty - DlevQty, computed client-side (SAP doesn't return this directly). '' if either
+   * source quantity is missing/unparseable. */
+  remainingQty: string;
 }
 
 function toUpcomingPoRow(raw: Record<string, any>, index: number): UpcomingPoRow {
   const deliveryDate = parseODataDate(raw.Eindt);
+  const scheduleQtyNum = raw.ScheduleQty != null ? Number(raw.ScheduleQty) : null;
+  const delvQtyNum = raw.DlevQty != null ? Number(raw.DlevQty) : null;
+  const remainingQty =
+    scheduleQtyNum != null && delvQtyNum != null && !Number.isNaN(scheduleQtyNum) && !Number.isNaN(delvQtyNum)
+      ? String(scheduleQtyNum - delvQtyNum)
+      : '';
   return {
     key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}`,
     poNumber: raw.Ebeln != null ? String(raw.Ebeln) : '',
     poItemNo: raw.Ebelp != null ? String(raw.Ebelp) : '',
-    poText: raw.Txz01 != null ? String(raw.Txz01) : '',
     materialDesc: raw.Maktx != null ? String(raw.Maktx) : '',
     deliveryDate,
-    scheduledQty: raw.schedule_qty != null ? String(raw.schedule_qty) : '',
-    deliveredQty: raw.DelvQty != null ? String(raw.DelvQty) : '',
+    scheduleQty: raw.ScheduleQty != null ? String(raw.ScheduleQty) : '',
+    delvQty: raw.DlevQty != null ? String(raw.DlevQty) : '',
+    remainingQty,
   };
 }
 
-/** Upcoming Delivery PO tab — Zaction 'A', filtered to the signed-in user's email only. Verified
- * live working again as of the last check (it was blocked server-side for a while — see git
- * history on this file — but both 'A' and 'P' now return cleanly). */
-export async function fetchUpcomingDeliveryPOs(email: string): Promise<UpcomingPoRow[]> {
-  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`]);
+/** The 7 Days / 15 Days side-pane sub-option — sent straight through to SAP as an `Interval`
+ * filter (Interval eq 7 / Interval eq 15) rather than fetching everything and windowing the
+ * results client-side, so the day-count filtering actually happens server-side. */
+export type Interval = 7 | 15;
+
+/** Upcoming Delivery PO tab — Zaction 'A', filtered to the signed-in user's email and the
+ * selected Interval. Verified live working again as of the last check (it was blocked server-side
+ * for a while — see git history on this file — but both 'A' and 'P' now return cleanly). */
+export async function fetchUpcomingDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'A'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
   return raw.map(toUpcomingPoRow);
 }
 
-/** Pending Delivery PO tab — Zaction 'P', filtered by the signed-in user's email plus the
- * from/to date range picked on screen (see toSapDateFilter for the OData datetime literal these
- * need). */
-export async function fetchPendingDeliveryPOs(email: string, fromDate: string, toDate: string): Promise<PoFollowupRow[]> {
-  return fetchDelvPendPOs([
-    `Email eq '${email}'`,
-    `Zaction eq 'P'`,
-    `Zfdate eq ${toSapDateFilter(fromDate)}`,
-    `Ztdate eq ${toSapDateFilter(toDate)}`,
-  ]);
+/** Missed Delivery tab — same row shape as Upcoming, Zaction 'M'. */
+export async function fetchMissedDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'M'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
+  return raw.map(toUpcomingPoRow);
+}
+
+/** Pending Delivery PO tab — same row shape as Upcoming, Zaction 'P' (replaces the old manual
+ * Zfdate/Ztdate From/To date-range picker with the Interval param). */
+export async function fetchPendingDeliveryPOs(email: string, interval: Interval): Promise<UpcomingPoRow[]> {
+  const raw = await fetchDelvPendPOs([`Email eq '${email}'`, `Zaction eq 'P'`, `Potype eq '${POTYPE}'`, `Interval eq ${interval}`]);
+  return raw.map(toUpcomingPoRow);
 }
