@@ -2,12 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
-import {
-  fetchAllVendorMaterialAssignments,
-  fetchSubmissionRecordsForEmails,
-  type SubmissionRecord,
-  type VendorMaterialAssignment,
-} from '../../../src/lib/marketRateApi';
+import { fetchSubmissionRecords, type SubmissionRecord } from '../../../src/lib/marketRateApi';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -55,38 +50,31 @@ interface VendorSummary {
   compliancePct: number;
 }
 
-/** Cross-references the "expected" universe (every vendor-material this app knows an email is
- * responsible for, from Master Data) against the "actual" side (SubDone per material/month) to
- * build one row per vendor-material combo with a submitted/not-submitted flag for every month.
- * Matched on email + material code — assignments carry the vendor that owns that combo, actual
- * submissions carry SubDone per instruction ('X' = submitted, blank = not). */
-function buildMatrixRows(assignments: VendorMaterialAssignment[], submissions: SubmissionRecord[]): MatrixRow[] {
-  const submittedMonthsByKey = new Map<string, Set<string>>();
+/** Builds one row per vendor/material combo straight off ZmarketRateSet's own rows — that entity
+ * already carries the vendor (Lifnr/Name1) and material (Matnr/Maktx) alongside Zyear/Zmonth/
+ * SubDone, so there's no second entity to cross-reference; a material with no row for a given
+ * month simply stays unsubmitted (false) for that month. */
+function buildMatrixRows(submissions: SubmissionRecord[]): MatrixRow[] {
+  const byKey = new Map<string, MatrixRow>();
   for (const s of submissions) {
-    if (!s.submitted) continue;
-    const key = `${s.email.toLowerCase()}|${s.materialCode}`;
-    if (!submittedMonthsByKey.has(key)) submittedMonthsByKey.set(key, new Set());
-    submittedMonthsByKey.get(key)!.add(s.zmonth);
+    const key = `${s.email.toLowerCase()}|${s.vendorCode}|${s.materialCode}`;
+    let row = byKey.get(key);
+    if (!row) {
+      row = {
+        key,
+        email: s.email,
+        vendorCode: s.vendorCode,
+        vendorName: s.vendorName,
+        materialCode: s.materialCode,
+        materialDesc: s.materialDesc,
+        monthStatus: MONTHS.map(() => false),
+      };
+      byKey.set(key, row);
+    }
+    const monthIdx = MONTHS.findIndex((m) => m.value === s.zmonth);
+    if (monthIdx >= 0 && s.submitted) row.monthStatus[monthIdx] = true;
   }
-
-  const seen = new Set<string>();
-  const rows: MatrixRow[] = [];
-  for (const a of assignments) {
-    const dedupeKey = `${a.email.toLowerCase()}|${a.vendorCode}|${a.materialCode}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    const submittedMonths = submittedMonthsByKey.get(`${a.email.toLowerCase()}|${a.materialCode}`) ?? new Set<string>();
-    rows.push({
-      key: dedupeKey,
-      email: a.email,
-      vendorCode: a.vendorCode,
-      vendorName: a.vendorName,
-      materialCode: a.materialCode,
-      materialDesc: a.materialDesc,
-      monthStatus: MONTHS.map((m) => submittedMonths.has(m.value)),
-    });
-  }
-  return rows;
+  return Array.from(byKey.values());
 }
 
 function buildVendorSummary(rows: MatrixRow[], monthIdx: number): VendorSummary[] {
@@ -302,30 +290,25 @@ function PendingVendorsChart({ data }: { data: { vendorCode: string; vendorName:
 }
 
 export default function SubmissionHistoryScreen() {
-  const { role, roleLoading } = useMarketRateAuth();
+  const { email, role, roleLoading } = useMarketRateAuth();
   const [year, setYear] = useState(String(CURRENT_YEAR));
   const [month, setMonth] = useState(CURRENT_MONTH_VALUE);
   const [status, setStatus] = useState<'all' | 'submitted' | 'pending'>('all');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [assignments, setAssignments] = useState<VendorMaterialAssignment[]>([]);
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
 
-  const load = async (y: string) => {
+  const load = async (y: string, adminEmail: string) => {
     setLoading(true);
     setError(null);
     try {
-      const a = await fetchAllVendorMaterialAssignments();
-      setAssignments(a);
-      // Fetched per-email, not with Email omitted — matches ZmarketRateSet's own read path
-      // ("fetched from ZmarketRateSet by passing Year and login email"), driven off the
-      // assignments' own emails so every submitter the app knows about gets checked.
-      const s = await fetchSubmissionRecordsForEmails(y, a.map((row) => row.email));
+      // Only ZmarketRateSet, passing Mail (the signed-in Admin's own login email) — no
+      // ZMarketSuppDataSet lookup involved.
+      const s = await fetchSubmissionRecords(y, adminEmail);
       setSubmissions(s);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load submission history.');
-      setAssignments([]);
       setSubmissions([]);
     } finally {
       setLoading(false);
@@ -333,11 +316,11 @@ export default function SubmissionHistoryScreen() {
   };
 
   useEffect(() => {
-    if (!roleLoading && role === 'Admin') load(year);
+    if (!roleLoading && role === 'Admin' && email) load(year, email);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roleLoading, role, year]);
+  }, [roleLoading, role, email, year]);
 
-  const allRows = useMemo(() => buildMatrixRows(assignments, submissions), [assignments, submissions]);
+  const allRows = useMemo(() => buildMatrixRows(submissions), [submissions]);
   const monthIdx = MONTHS.findIndex((m) => m.value === month);
 
   const searchRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
@@ -443,7 +426,7 @@ export default function SubmissionHistoryScreen() {
       ) : totalExpected === 0 ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="file-tray-outline" size={22} color={colors.inkSoft} />
-          <Text style={styles.emptyText}>No vendor-material assignments found for this search.</Text>
+          <Text style={styles.emptyText}>No submission records found for this search.</Text>
         </View>
       ) : (
         <>

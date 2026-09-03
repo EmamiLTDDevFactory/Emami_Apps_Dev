@@ -213,35 +213,6 @@ export async function uploadMasterDataFile(file: MasterDataFile): Promise<Master
   }
 }
 
-export interface VendorMaterialAssignment {
-  email: string;
-  vendorCode: string;
-  vendorName: string;
-  materialCode: string;
-  materialDesc: string;
-  materialType: string;
-}
-
-/** Full vendor-material assignment master list across every user — the "expected submitters"
- * universe for the Admin Submission History report. Same entity/shape as fetchSuppliedMaterials,
- * but omits the Email filter entirely to return every user's assignments in one call, the same
- * way fetchMarketRates omits Email for Admin ("based on only Year it should show all the rates"). */
-export async function fetchAllVendorMaterialAssignments(): Promise<VendorMaterialAssignment[]> {
-  const { data } = await sapClient.get(`/${SUPPLIER_DATA_ENTITY_SET}`, {
-    params: { '$format': 'json' },
-  });
-  const results = data?.d?.results;
-  if (!Array.isArray(results)) return [];
-  return results.map((r: any) => ({
-    email: r.Email || '',
-    vendorCode: r.Lifnr || '',
-    vendorName: r.Name1 || '',
-    materialCode: r.Matnr || '',
-    materialDesc: r.Maktx || '',
-    materialType: r.Mtart || '',
-  }));
-}
-
 export interface SubmissionRecord {
   email: string;
   vendorCode: string;
@@ -259,10 +230,11 @@ export interface SubmissionRecord {
   rateId: string;
 }
 
-/** Every rate status row for a year, for one submitter — matches the entity's own read path
- * ("fetched from ZmarketRateSet by passing Year and login email"), same as fetchMarketRates'
- * per-email call. Email is always sent as a real `Email eq '...'` clause in the $filter, never
- * omitted. */
+/** Admin Submission History's sole data source — every rate status row for a year, for one
+ * submitter, from ZmarketRateSet only (no ZMarketSuppDataSet lookup: vendor/material identity,
+ * month, and SubDone all come off this entity's own rows). Matches its read path as specified
+ * ("fetched from ZmarketRateSet by passing Year and login email") — called with the signed-in
+ * Admin's own email, never omitted from the $filter. */
 export async function fetchSubmissionRecords(year: string, email: string): Promise<SubmissionRecord[]> {
   const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, {
     params: { '$format': 'json', '$filter': `Zyear eq '${year}' and Email eq '${email}'` },
@@ -283,19 +255,6 @@ export async function fetchSubmissionRecords(year: string, email: string): Promi
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',
   }));
-}
-
-/** Admin Submission History report's "actual" side across every submitter — loops
- * fetchSubmissionRecords once per distinct email (the assignments' own emails, from
- * fetchAllVendorMaterialAssignments) instead of ever calling ZmarketRateSet without an Email
- * filter. One submitter's call failing doesn't take down the whole report, same best-effort
- * spirit as fetchSuppliedMaterials — it just leaves that submitter's rows out. */
-export async function fetchSubmissionRecordsForEmails(year: string, emails: string[]): Promise<SubmissionRecord[]> {
-  const uniqueEmails = Array.from(new Set(emails.map((e) => e.trim()).filter(Boolean)));
-  const perEmail = await Promise.all(
-    uniqueEmails.map((email) => fetchSubmissionRecords(year, email).catch(() => []))
-  );
-  return perEmail.flat();
 }
 
 function randomRateId(): string {
