@@ -92,7 +92,7 @@ export function DispatchCancelModal({
       />
 
       <FieldLabel text="Cancel Date" required />
-      <DateField value={cancelDate} onChange={setCancelDate} minimumDate={minDate} maximumDate={today} />
+      <DateField value={cancelDate} onChange={setCancelDate} minimumDate={minDate} />
 
       <FieldLabel text="Reason" required />
       <TextField value={reason} onChangeText={setReason} placeholder="Enter reason for cancelling…" multiline />

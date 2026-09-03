@@ -216,11 +216,11 @@ export default function CompletedScreen() {
         <View style={styles.customRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.dateLabel}>From</Text>
-            <DateField value={customFrom} onChange={setCustomFrom} maximumDate={todayDate()} />
+            <DateField value={customFrom} onChange={setCustomFrom} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.dateLabel}>To</Text>
-            <DateField value={customTo} onChange={setCustomTo} maximumDate={todayDate()} />
+            <DateField value={customTo} onChange={setCustomTo} />
           </View>
         </View>
       )}
