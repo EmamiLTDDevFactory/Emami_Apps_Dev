@@ -53,7 +53,7 @@ const LOCKED_FIELDS: TextField[] = ['materialCode', 'materialDesc', 'materialTyp
 const BOLD_FIELDS: TextField[] = ['materialCode', 'materialDesc'];
 
 const VENDOR_COL_WIDTH = 160;
-const DATE_COL_WIDTH = 140;
+const DATE_COL_WIDTH = 190;
 const REMOVE_COL_WIDTH = 44;
 const TABLE_WIDTH =
   TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
@@ -70,18 +70,19 @@ function DateCell({ value, onChange, label }: { value: string; onChange: (v: str
       <input
         type="date"
         value={value}
+        min={todayIso()}
         onChange={(e: any) => onChange(e.target.value)}
         aria-label={label}
         style={{
           width: DATE_COL_WIDTH - 20,
-          height: 36,
-          padding: '6px 10px',
+          height: 46,
+          padding: '10px 12px',
           margin: 6,
           borderRadius: 8,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.white,
           color: colors.ink,
-          fontSize: 12.5,
+          fontSize: 15,
           boxSizing: 'border-box',
         }}
       />
@@ -92,13 +93,14 @@ function DateCell({ value, onChange, label }: { value: string; onChange: (v: str
   return (
     <View style={{ width: DATE_COL_WIDTH, paddingHorizontal: 6 }}>
       <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
-        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Ionicons name="calendar-outline" size={16} color={colors.rust} />
         <Text style={styles.dateBtnText}>{value}</Text>
       </Pressable>
       {showPicker && (
         <DateTimePicker
           value={dateObj}
           mode="date"
+          minimumDate={new Date()}
           display={Platform.OS === 'android' ? 'spinner' : 'default'}
           onChange={(_event: any, selected?: Date) => {
             setShowPicker(Platform.OS === 'ios');
@@ -188,8 +190,6 @@ export default function MarketRateScreen() {
     setStatus(null);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
-
-  const addRow = () => setRows((prev) => [...prev, emptyRow()]);
 
   const removeRow = (key: string) =>
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
@@ -309,11 +309,6 @@ export default function MarketRateScreen() {
               </Pressable>
             </View>
           ))}
-
-          <Pressable style={styles.addRowBtn} onPress={addRow} accessibilityRole="button" accessibilityLabel="Add row">
-            <Ionicons name="add" size={16} color={colors.rust} />
-            <Text style={styles.addRowText}>Add row</Text>
-          </Pressable>
         </View>
       </ScrollView>
 
@@ -348,7 +343,7 @@ export default function MarketRateScreen() {
               <Ionicons name="checkmark-circle" size={30} color={colors.green} />
             </View>
             <Text style={styles.modalTitle}>Rate has been submitted successfully</Text>
-            <Text style={styles.modalMessage}>Check the Change History tab for further changes.</Text>
+            <Text style={styles.modalMessage}>Check the History tab for further changes.</Text>
             <Pressable
               style={styles.modalBtn}
               onPress={() => setShowSuccessModal(false)}
@@ -490,35 +485,22 @@ const styles = StyleSheet.create({
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     backgroundColor: colors.white,
   },
   dateBtnText: {
-    fontSize: 12.5,
+    fontSize: 15,
     color: colors.ink,
   },
   removeBtn: {
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  addRowBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    backgroundColor: colors.white,
-  },
-  addRowText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.rust,
   },
   statusBanner: {
     flexDirection: 'row',
