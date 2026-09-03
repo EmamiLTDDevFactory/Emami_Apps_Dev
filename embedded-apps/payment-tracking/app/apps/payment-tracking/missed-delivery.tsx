@@ -3,26 +3,34 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { colors } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
+import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
-/** Missed Provision — non-Admin's second side-pane option.
+/** Missed Provision — non-Admin's second side-pane option. Scoped by the signed-in user's own
+ * login email, same as Upcoming Provision (see index.tsx's header comment for why, and for the
+ * status split this is provisional on).
  *
- * PROVISIONAL SPLIT, needs confirmation — see index.tsx's header comment for why (no Email/
- * Zaction/Interval/date field on ZProvisionTrackSet). Until told otherwise, this shows status
- * '02' — "GR/MIGO posted, Service Entry Sheet not created", called out explicitly as the main
- * provision exposure bucket. Flag if this split is wrong. */
+ * PROVISIONAL SPLIT, needs confirmation. Shows status '02' — "GR/MIGO posted, Service Entry Sheet
+ * not created", called out explicitly as the main provision exposure bucket. Flag if this split
+ * is wrong. */
 export default function PaymentTrackingMissedDelivery() {
+  const { email } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!email) {
+      setLoading(false);
+      setError('Not signed in.');
+      return;
+    }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs({ status: '02' })
+    fetchProvisionPOs(email, { status: '02' })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load missed provision items.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [email]);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>

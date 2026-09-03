@@ -13,6 +13,9 @@
 // key), not the fuller append structure (ZST_MM_PROVISION_APP) the ABAP was written against —
 // BUKRS/WERKS/AEDAT/WAERS/PSTYP/KNTTP/SES_COUNT/SES_REV_COUNT/ERDAT_SES were recommended but are
 // NOT yet exposed on the entity ("note - all fields not added"), so none of them are mapped here.
+// Email is now live too, and — per instruction, same lesson as Market Rate's ZmarketRateSet —
+// every call sends the signed-in user's own login email as a real `Email eq '...'` clause, never
+// omitted; the backend is trusted to decide Admin-vs-own-items scope from that email's role.
 // There's nothing here for a user to "confirm" — every field is a server-computed fact, so every
 // screen built on this is read-only.
 import axios from 'axios';
@@ -43,6 +46,7 @@ export interface PaymentTrackingRow {
   /** Ebeln-Ebelp-Lblni — SEGW marks all three as the entity key, so the row key follows suit even
    * though a PO item with no service entry sheet yet has a blank Lblni. */
   key: string;
+  email: string; // Email
   poNumber: string; // Ebeln
   poItemNo: string; // Ebelp
   poCreator: string; // Ernam
@@ -73,6 +77,7 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
   const bool = (v: any) => v === true || v === 'X' || v === 'true';
   return {
     key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}-${raw.Lblni ?? ''}`,
+    email: str(raw.Email),
     poNumber: str(raw.Ebeln),
     poItemNo: str(raw.Ebelp),
     poCreator: str(raw.Ernam),
@@ -98,9 +103,9 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
 }
 
 // Confirmed filterable on the live entity per the ABAP GET_ENTITYSET method's own filter handling
-// AND present as an actual property today: Ebeln, Ebelp, Lifnr, Ernam, Sakto, Kostl, Status.
-// Bukrs/Werks/Aedat/Pstyp are filter-handled in that same ABAP but aren't live properties yet
-// ("note - all fields not added") — don't filter on them until they are.
+// AND present as an actual property today: Ebeln, Ebelp, Lifnr, Ernam, Sakto, Kostl, Status,
+// Email. Bukrs/Werks/Aedat/Pstyp are filter-handled in that same ABAP but aren't live properties
+// yet ("note - all fields not added") — don't filter on them until they are.
 export interface ProvisionFilter {
   poNumber?: string; // Ebeln
   vendor?: string; // Lifnr
@@ -110,8 +115,8 @@ export interface ProvisionFilter {
   status?: ProvisionStatus;
 }
 
-function buildFilterParts(filter: ProvisionFilter): string[] {
-  const parts: string[] = [];
+function buildFilterParts(email: string, filter: ProvisionFilter): string[] {
+  const parts: string[] = [`Email eq '${email}'`];
   if (filter.poNumber) parts.push(`Ebeln eq '${filter.poNumber}'`);
   if (filter.vendor) parts.push(`Lifnr eq '${filter.vendor}'`);
   if (filter.poCreator) parts.push(`Ernam eq '${filter.poCreator}'`);
@@ -121,11 +126,13 @@ function buildFilterParts(filter: ProvisionFilter): string[] {
   return parts;
 }
 
-/** Every open provision item matching the given filters — with no filter at all, this is the
- * Admin-wide, cross-org view Dashboard's KPIs and Provision Details' cost-center/PO drill-down
- * are built on. There is no Email/Zaction/Interval/Potype on this entity (unlike the old
- * ZDelvPendPOSet-based Payment Tracking) — see this file's header comment. */
-export async function fetchProvisionPOs(filter: ProvisionFilter = {}): Promise<PaymentTrackingRow[]> {
-  const raw = await fetchProvisionRows(buildFilterParts(filter));
+/** Every open provision item matching the given filters, always scoped by the signed-in user's
+ * own login email (never omitted — see this file's header comment). For an Admin this is still
+ * the cross-org view Dashboard's KPIs and Provision Details' cost-center/PO drill-down are built
+ * on — the backend is trusted to expand scope to everyone once it sees that email is an Admin,
+ * the same way Market Rate's ZmarketRateSet does. There is no Zaction/Interval/Potype on this
+ * entity (unlike the old ZDelvPendPOSet-based Payment Tracking). */
+export async function fetchProvisionPOs(email: string, filter: ProvisionFilter = {}): Promise<PaymentTrackingRow[]> {
+  const raw = await fetchProvisionRows(buildFilterParts(email, filter));
   return raw.map(toPaymentTrackingRow);
 }

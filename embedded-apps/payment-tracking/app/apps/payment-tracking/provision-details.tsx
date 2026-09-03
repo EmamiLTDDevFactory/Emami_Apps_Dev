@@ -195,11 +195,11 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
  *  - Detailed Report: skips the cost-center level, starts straight at PO tiles (still showing
  *    cost center & GL on each tile) -> pop-up.
  * All client-side state (mode/selection), not route changes — the "pages" here are really just
- * drill-down levels within one screen. Data (fetchProvisionPOs) is fetched once and grouped
- * client-side; best-effort placeholder until real ZProvisionTrackSet field names arrive (see
- * paymentTrackingApi.ts's header comment). */
+ * drill-down levels within one screen. Data (fetchProvisionPOs) is fetched once, with the signed-
+ * in Admin's own login email always sent (never omitted — see paymentTrackingApi.ts's header
+ * comment), and grouped client-side. */
 export default function ProvisionDetailsScreen() {
-  const { isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -209,17 +209,17 @@ export default function ProvisionDetailsScreen() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin) {
+    if (!isAdmin || !email) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs()
+    fetchProvisionPOs(email)
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [isAdmin, roleLoading]);
+  }, [email, isAdmin, roleLoading]);
 
   const poGroups = useMemo(() => groupByPo(rows), [rows]);
   const costCenterGroups = useMemo(() => groupByCostCenter(rows), [rows]);

@@ -52,28 +52,29 @@ function PendingValueChart({ data }: { data: { label: string; sublabel: string; 
 }
 
 /** Admin's landing screen — cross-org KPIs plus "pending value by status" and "by cost center"
- * breakdowns, all from fetchProvisionPOs() called with no filter (there's no Email/Zaction/
- * Interval on this entity — see paymentTrackingApi.ts's header comment). */
+ * breakdowns, from fetchProvisionPOs() called with the signed-in Admin's own login email (always
+ * sent, never omitted — see paymentTrackingApi.ts's header comment). The backend is trusted to
+ * expand scope to every submitter once it sees that email's role is Admin. */
 export default function ProvisionDashboard() {
   const router = useRouter();
-  const { isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin) {
+    if (!isAdmin || !email) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs()
+    fetchProvisionPOs(email)
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [isAdmin, roleLoading]);
+  }, [email, isAdmin, roleLoading]);
 
   const totalPending = useMemo(() => rows.reduce((sum, r) => sum + num(r.pendingValue), 0), [rows]);
   const distinctPOs = useMemo(() => new Set(rows.map((r) => r.poNumber)).size, [rows]);

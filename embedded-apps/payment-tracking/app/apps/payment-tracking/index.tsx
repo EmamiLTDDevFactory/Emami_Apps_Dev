@@ -3,28 +3,37 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { colors } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
+import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
-/** Upcoming Provision — non-Admin's first side-pane option.
+/** Upcoming Provision — non-Admin's first side-pane option. Scoped by the signed-in user's own
+ * login email (Email is now live on ZProvisionTrackSet, always sent — see paymentTrackingApi.ts's
+ * header comment).
  *
- * PROVISIONAL SPLIT, needs confirmation: ZProvisionTrackSet has no Email/Zaction/Interval and no
- * date field (unlike the old ZDelvPendPOSet-based Payment Tracking this replaced), so there is no
- * longer a way to scope "my own" items or bucket by a delivery-date window. Until told otherwise,
- * this shows every item NOT yet at the main exposure status ('01' Service Entry Sheet not created,
- * '04' SES created but acceptance pending) — "Missed Provision" (missed-delivery.tsx) takes '02'
- * (GR/MIGO posted, no SES — the main provision exposure bucket). Flag if this split is wrong. */
+ * PROVISIONAL STATUS SPLIT, still needs confirmation: there's no Zaction/Interval/date field on
+ * this entity (unlike the old ZDelvPendPOSet-based Payment Tracking this replaced), so there's no
+ * way to bucket by a delivery-date window anymore. Until told otherwise, this shows every item NOT
+ * yet at the main exposure status ('01' Service Entry Sheet not created, '04' SES created but
+ * acceptance pending) — "Missed Provision" (missed-delivery.tsx) takes '02' (GR/MIGO posted, no
+ * SES — the main provision exposure bucket). Flag if this split is wrong. */
 export default function PaymentTrackingUpcoming() {
+  const { email } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!email) {
+      setLoading(false);
+      setError('Not signed in.');
+      return;
+    }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs()
+    fetchProvisionPOs(email)
       .then((all) => setRows(all.filter((r) => r.status === '01' || r.status === '04')))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load upcoming provision items.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [email]);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
