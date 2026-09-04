@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchSubmissionRecords, type SubmissionRecord } from '../../../src/lib/marketRateApi';
@@ -108,6 +108,19 @@ function matchesQuery(row: MatrixRow, query: string): boolean {
     row.materialCode.toLowerCase().includes(q) ||
     row.materialDesc.toLowerCase().includes(q) ||
     row.email.toLowerCase().includes(q)
+  );
+}
+
+/** The matrix only keeps a submitted/not boolean per month (see buildMatrixRows) — this looks the
+ * original SubmissionRecord back up from the full year's records already sitting in state, so
+ * tapping a green tick can show the Rate without a second API call. */
+function findSubmissionRecord(submissions: SubmissionRecord[], row: MatrixRow, monthValue: string): SubmissionRecord | undefined {
+  return submissions.find(
+    (s) =>
+      s.email.toLowerCase() === row.email.toLowerCase() &&
+      s.vendorCode === row.vendorCode &&
+      s.materialCode === row.materialCode &&
+      s.zmonth === monthValue
   );
 }
 
@@ -267,25 +280,68 @@ function TrendChart({ data }: { data: { label: string; pct: number; highlighted:
   );
 }
 
-function PendingVendorsChart({ data }: { data: { vendorCode: string; vendorName: string; pending: number }[] }) {
-  if (data.length === 0) {
-    return <Text style={styles.chartEmptyText}>No pending vendors for the selected month — everyone's caught up.</Text>;
-  }
-  const max = Math.max(1, ...data.map((d) => d.pending));
+/** Opens on tapping a submitted (green tick) month cell — shows the Rate actually submitted for
+ * that vendor/material/month, looked up from the already-fetched SubmissionRecord (see
+ * findSubmissionRecord above), not a fresh API call. */
+function RateDetailModal({
+  row,
+  monthLabel,
+  year,
+  record,
+  onClose,
+}: {
+  row: MatrixRow;
+  monthLabel: string;
+  year: string;
+  record: SubmissionRecord | undefined;
+  onClose: () => void;
+}) {
   return (
-    <View style={{ gap: 12 }}>
-      {data.map((d) => (
-        <View key={d.vendorCode} style={styles.hbarRow}>
-          <Text style={styles.hbarLabel} numberOfLines={1}>
-            {d.vendorCode}{d.vendorName ? ` · ${d.vendorName}` : ''}
-          </Text>
-          <View style={styles.hbarTrack}>
-            <View style={[styles.hbarFill, { width: `${(d.pending / max) * 100}%` }]} />
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.rateModalOverlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
+        <View style={styles.rateModalCard}>
+          <View style={styles.rateModalHeaderRow}>
+            <View style={styles.flex1}>
+              <Text style={styles.rateModalTitle}>{row.materialDesc || row.materialCode}</Text>
+              <Text style={styles.rateModalSubtitle}>
+                {row.vendorCode}{row.vendorName ? ` · ${row.vendorName}` : ''} — {monthLabel} {year}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+              <Ionicons name="close" size={20} color={colors.ink} />
+            </Pressable>
           </View>
-          <Text style={styles.hbarCount}>{d.pending}</Text>
+
+          {record ? (
+            <View style={styles.rateModalGrid}>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Rate</Text>
+                <Text style={[styles.rateModalValue, styles.rateModalValueStrong]}>
+                  {record.rate}{record.ratePer ? ` / ${record.ratePer}` : ''}
+                </Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Material Code</Text>
+                <Text style={styles.rateModalValue}>{row.materialCode || '—'}</Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Submitted By</Text>
+                <Text style={styles.rateModalValue}>{record.email || '—'}</Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Submitted On</Text>
+                <Text style={styles.rateModalValue}>{record.submittedOn || '—'}</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.rateModalMissing}>
+              This material shows as submitted for {monthLabel}, but the matching rate record couldn't be found.
+            </Text>
+          )}
         </View>
-      ))}
-    </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -298,6 +354,7 @@ export default function SubmissionHistoryScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionRecord[]>([]);
+  const [rateDetail, setRateDetail] = useState<{ row: MatrixRow; monthValue: string; monthLabel: string } | null>(null);
 
   const load = async (y: string, adminEmail: string) => {
     setLoading(true);
@@ -323,8 +380,12 @@ export default function SubmissionHistoryScreen() {
   const allRows = useMemo(() => buildMatrixRows(submissions), [submissions]);
   const monthIdx = MONTHS.findIndex((m) => m.value === month);
 
+  // The status filter used to only narrow the bottom detail table while every KPI, chart, and
+  // summary above it kept computing off search-only rows — so picking "Pending" left every number
+  // on the page still showing "all statuses" totals. `filteredRows` is now the one place status is
+  // applied, and every derived value below reads from it, so the whole page moves together.
   const searchRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
-  const displayedRows = useMemo(
+  const filteredRows = useMemo(
     () =>
       searchRows.filter((r) => {
         if (status === 'all') return true;
@@ -334,33 +395,27 @@ export default function SubmissionHistoryScreen() {
     [searchRows, status, monthIdx]
   );
 
-  const totalExpected = searchRows.length;
-  const totalSubmitted = searchRows.filter((r) => r.monthStatus[monthIdx]).length;
+  const totalExpected = filteredRows.length;
+  const totalSubmitted = filteredRows.filter((r) => r.monthStatus[monthIdx]).length;
   const totalPending = totalExpected - totalSubmitted;
   const compliancePct = totalExpected ? (totalSubmitted / totalExpected) * 100 : 0;
 
-  const vendorSummary = useMemo(() => buildVendorSummary(searchRows, monthIdx), [searchRows, monthIdx]);
+  const vendorSummary = useMemo(() => buildVendorSummary(filteredRows, monthIdx), [filteredRows, monthIdx]);
   const vendorsTracked = vendorSummary.length;
-  const materialsTracked = new Set(searchRows.map((r) => r.materialCode)).size;
+  const materialsTracked = new Set(filteredRows.map((r) => r.materialCode)).size;
   const fullyCompliantVendors = vendorSummary.filter((v) => v.materials > 0 && v.pending === 0).length;
 
   const trendData = useMemo(
     () =>
       MONTHS.map((m, i) => {
-        const total = searchRows.length;
-        const submitted = searchRows.filter((r) => r.monthStatus[i]).length;
+        const total = filteredRows.length;
+        const submitted = filteredRows.filter((r) => r.monthStatus[i]).length;
         return { label: m.label, pct: total ? (submitted / total) * 100 : 0, highlighted: i === monthIdx };
       }),
-    [searchRows, monthIdx]
+    [filteredRows, monthIdx]
   );
   const ytdAvgCompliancePct =
     trendData.slice(0, monthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / Math.max(1, monthIdx + 1);
-
-  const pendingVendors = vendorSummary
-    .filter((v) => v.pending > 0)
-    .sort((a, b) => b.pending - a.pending)
-    .slice(0, 6)
-    .map((v) => ({ vendorCode: v.vendorCode, vendorName: v.vendorName, pending: v.pending }));
 
   if (roleLoading) {
     return (
@@ -465,50 +520,31 @@ export default function SubmissionHistoryScreen() {
             </View>
           </View>
 
-          <View style={[styles.card, styles.chartCard]}>
-            <Text style={styles.cardTitle}>Vendors with pending submissions — {MONTHS[monthIdx].label} {year}</Text>
-            <PendingVendorsChart data={pendingVendors} />
-          </View>
-
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Vendor-wise summary — {MONTHS[monthIdx].label} {year}</Text>
-            <Text style={styles.cardSubtitle}>Worst compliance first, so the vendors most behind surface at the top.</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
-              <View style={{ width: VENDOR_TABLE_WIDTH }}>
-                <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.headerCell, { width: COL.vendorCode }]}>Vendor Code</Text>
-                  <Text style={[styles.headerCell, { width: COL.vendorName }]}>Vendor Name</Text>
-                  <Text style={[styles.headerCell, { width: COL.count }]}>Materials</Text>
-                  <Text style={[styles.headerCell, { width: COL.count }]}>Submitted</Text>
-                  <Text style={[styles.headerCell, { width: COL.count }]}>Pending</Text>
-                  <Text style={[styles.headerCell, { width: COL.compliance }]}>Compliance</Text>
-                </View>
-                {vendorSummary.map((v) => (
-                  <View key={v.vendorCode} style={styles.tableRow}>
-                    <Text style={[styles.readonlyCell, { width: COL.vendorCode }]} numberOfLines={1}>{v.vendorCode}</Text>
-                    <Text style={[styles.readonlyCell, { width: COL.vendorName }]} numberOfLines={1}>{v.vendorName}</Text>
-                    <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.count }]}>{v.materials}</Text>
-                    <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.count, color: colors.green }]}>{v.submitted}</Text>
-                    <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.count, color: v.pending > 0 ? colors.red : colors.inkSoft }]}>{v.pending}</Text>
-                    <View style={{ width: COL.compliance, paddingHorizontal: 10, paddingVertical: 12 }}>
-                      <View style={styles.complianceBarRow}>
-                        <View style={styles.complianceBarTrack}>
-                          <View style={[styles.complianceBarFill, { width: `${Math.round(v.compliancePct)}%` }]} />
-                        </View>
-                        <Text style={styles.complianceBarText}>{Math.round(v.compliancePct)}%</Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
+            <View style={styles.matrixHeaderRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.cardTitle}>Vendor · material · month detail — {year}</Text>
+                <Text style={styles.cardSubtitle}>
+                  {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current filters. Tap a green tick to see that month's submitted rate.
+                </Text>
               </View>
-            </ScrollView>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Vendor · material · month detail — {year}</Text>
-            <Text style={styles.cardSubtitle}>
-              {displayedRows.length} of {searchRows.length} row{searchRows.length === 1 ? '' : 's'} shown
-            </Text>
+            </View>
+            <View style={styles.matrixSearchWrap}>
+              <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search this table — vendor, material or email"
+                placeholderTextColor={colors.inkSoft}
+                style={styles.matrixSearchInput}
+                accessibilityLabel="Search vendor, material or email in this table"
+              />
+              {query ? (
+                <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
+                </Pressable>
+              ) : null}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
               <View style={{ width: MATRIX_TABLE_WIDTH }}>
                 <View style={styles.tableHeaderRow}>
@@ -522,34 +558,57 @@ export default function SubmissionHistoryScreen() {
                   ))}
                   <Text style={[styles.headerCell, styles.centerCell, { width: COL.total }]}>Total</Text>
                 </View>
-                {displayedRows.map((row) => {
-                  const submittedCount = row.monthStatus.filter(Boolean).length;
-                  return (
-                    <View key={row.key} style={styles.tableRow}>
-                      <Text style={[styles.readonlyCell, { width: COL.vendorCode }]} numberOfLines={1}>{row.vendorCode}</Text>
-                      <Text style={[styles.readonlyCell, { width: COL.vendorName }]} numberOfLines={1}>{row.vendorName}</Text>
-                      <Text style={[styles.readonlyCell, { width: COL.materialCode }]} numberOfLines={1}>{row.materialCode}</Text>
-                      <Text style={[styles.readonlyCell, { width: COL.materialDesc }]} numberOfLines={1}>{row.materialDesc}</Text>
-                      <Text style={[styles.readonlyCell, { width: COL.email }]} numberOfLines={1}>{row.email}</Text>
-                      {row.monthStatus.map((submitted, i) => (
-                        <View key={MONTHS[i].value} style={[styles.monthCell, { width: COL.month }]}>
-                          <Ionicons
-                            name={submitted ? 'checkmark-circle' : 'close-circle-outline'}
-                            size={15}
-                            color={submitted ? colors.green : colors.red}
-                          />
-                        </View>
-                      ))}
-                      <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.total, fontWeight: '700', color: colors.ink }]}>
-                        {submittedCount}/12
-                      </Text>
-                    </View>
-                  );
-                })}
+                {/* Body scrolls on its own, bounded to matrixBody's maxHeight, so the header row
+                    above stays put (visually "fixed") instead of scrolling away with the rows. */}
+                <ScrollView style={styles.matrixBody} nestedScrollEnabled showsVerticalScrollIndicator>
+                  {filteredRows.map((row) => {
+                    const submittedCount = row.monthStatus.filter(Boolean).length;
+                    return (
+                      <View key={row.key} style={styles.tableRow}>
+                        <Text style={[styles.readonlyCell, { width: COL.vendorCode }]} numberOfLines={1}>{row.vendorCode}</Text>
+                        <Text style={[styles.readonlyCell, { width: COL.vendorName }]} numberOfLines={1}>{row.vendorName}</Text>
+                        <Text style={[styles.readonlyCell, { width: COL.materialCode }]} numberOfLines={1}>{row.materialCode}</Text>
+                        <Text style={[styles.readonlyCell, { width: COL.materialDesc }]} numberOfLines={1}>{row.materialDesc}</Text>
+                        <Text style={[styles.readonlyCell, { width: COL.email }]} numberOfLines={1}>{row.email}</Text>
+                        {row.monthStatus.map((submitted, i) =>
+                          submitted ? (
+                            <Pressable
+                              key={MONTHS[i].value}
+                              style={[styles.monthCell, { width: COL.month }]}
+                              onPress={() => setRateDetail({ row, monthValue: MONTHS[i].value, monthLabel: MONTHS[i].label })}
+                              accessibilityRole="button"
+                              accessibilityLabel={`View ${MONTHS[i].label} rate for ${row.materialDesc || row.materialCode}`}
+                              hitSlop={4}
+                            >
+                              <Ionicons name="checkmark-circle" size={15} color={colors.green} />
+                            </Pressable>
+                          ) : (
+                            <View key={MONTHS[i].value} style={[styles.monthCell, { width: COL.month }]}>
+                              <Ionicons name="close-circle-outline" size={15} color={colors.red} />
+                            </View>
+                          )
+                        )}
+                        <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.total, fontWeight: '700', color: colors.ink }]}>
+                          {submittedCount}/12
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
               </View>
             </ScrollView>
           </View>
         </>
+      )}
+
+      {rateDetail && (
+        <RateDetailModal
+          row={rateDetail.row}
+          monthLabel={rateDetail.monthLabel}
+          year={year}
+          record={findSubmissionRecord(submissions, rateDetail.row, rateDetail.monthValue)}
+          onClose={() => setRateDetail(null)}
+        />
       )}
     </ScrollView>
   );
@@ -563,12 +622,9 @@ const COL = {
   email: 170,
   month: 38,
   total: 60,
-  count: 84,
-  compliance: 180,
 };
 const MATRIX_TABLE_WIDTH =
   COL.vendorCode + COL.vendorName + COL.materialCode + COL.materialDesc + COL.email + COL.month * MONTHS.length + COL.total;
-const VENDOR_TABLE_WIDTH = COL.vendorCode + COL.vendorName + COL.count * 3 + COL.compliance;
 
 const styles = StyleSheet.create({
   scroll: {
@@ -784,11 +840,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 12,
   },
-  chartEmptyText: {
-    fontSize: 12.5,
-    color: colors.inkSoft,
-    marginTop: 8,
-  },
   ringRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -883,38 +934,37 @@ const styles = StyleSheet.create({
     color: colors.rust,
     fontWeight: '700',
   },
-  hbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  hbarLabel: {
-    width: 160,
-    fontSize: 12,
-    color: colors.ink,
-  },
-  hbarTrack: {
-    flex: 1,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.appBg,
-    overflow: 'hidden',
-  },
-  hbarFill: {
-    height: '100%',
-    backgroundColor: colors.red,
-    borderRadius: 5,
-  },
-  hbarCount: {
-    width: 24,
-    textAlign: 'right',
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.ink,
-  },
   tableScroll: {
     flexGrow: 0,
     marginTop: 8,
+  },
+  matrixHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  matrixSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    height: 38,
+    backgroundColor: colors.white,
+    marginTop: 10,
+    marginBottom: 4,
+    maxWidth: 420,
+  },
+  matrixSearchInput: {
+    flex: 1,
+    fontSize: 12.5,
+    color: colors.ink,
+  },
+  // Bounded height so the header row above it never scrolls out of view — the body scrolls on its
+  // own within this box instead of the whole table scrolling with the page.
+  matrixBody: {
+    maxHeight: 480,
   },
   tableHeaderRow: {
     flexDirection: 'row',
@@ -950,29 +1000,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 11,
   },
-  complianceBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  complianceBarTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.appBg,
-    overflow: 'hidden',
-  },
-  complianceBarFill: {
-    height: '100%',
-    backgroundColor: colors.rust,
-    borderRadius: 4,
-  },
-  complianceBarText: {
-    width: 34,
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: colors.ink,
-  },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -987,5 +1014,68 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '600',
     flex: 1,
+  },
+  rateModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31,27,51,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  rateModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.white,
+    borderRadius: radii.xl,
+    padding: 20,
+    gap: 14,
+  },
+  rateModalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  rateModalTitle: {
+    fontSize: 15.5,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  rateModalSubtitle: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    marginTop: 3,
+    lineHeight: 17,
+  },
+  rateModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  rateModalItem: {
+    minWidth: 140,
+    gap: 2,
+  },
+  rateModalLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: colors.inkSoft,
+  },
+  rateModalValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  rateModalValueStrong: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.rust,
+  },
+  rateModalMissing: {
+    fontSize: 12.5,
+    color: colors.inkSoft,
+    lineHeight: 18,
   },
 });
