@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth } from '../../../src/lib/provisionMetrics';
 
 /** Missed Provision — non-Admin's second side-pane option. Scoped by the signed-in user's own
  * login email, same as Upcoming Provision (see index.tsx's header comment for why, and for the
@@ -15,6 +17,7 @@ import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuth
  * is wrong. */
 export default function PaymentTrackingMissedDelivery() {
   const { email } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +30,13 @@ export default function PaymentTrackingMissedDelivery() {
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs(email, { status: '02' })
+    fetchProvisionPOs(email, { status: '02', gjahr: year })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load missed provision items.'))
       .finally(() => setLoading(false));
-  }, [email]);
+  }, [email, year]);
+
+  const displayRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -50,7 +55,7 @@ export default function PaymentTrackingMissedDelivery() {
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : (
-          <PaymentTrackingTable rows={rows} emptyMessage="No missed provision items." />
+          <PaymentTrackingTable rows={displayRows} emptyMessage="No missed provision items." />
         )}
       </View>
     </ScrollView>

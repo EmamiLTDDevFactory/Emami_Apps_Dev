@@ -21,18 +21,20 @@ type Href =
   | '/apps/payment-tracking/missed-delivery'
   | '/apps/payment-tracking/history'
   | '/apps/payment-tracking/dashboard'
-  | '/apps/payment-tracking/provision-details';
+  | '/apps/payment-tracking/provision-details'
+  | '/apps/payment-tracking/calendar';
 type NavItem = SidePaneItem & { href: Href };
 
 // Home ('/') is the one tab every role shares — the command-center landing page. Past that, two
 // completely different side panes by role, not one list with an adminOnly filter (unlike Market
 // Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/Provision
-// Details pair, everyone else gets their own Upcoming/Missed items, never both.
+// Details/Calendar set, everyone else gets their own Upcoming/Missed items, never both.
 const HOME_NAV_ITEM: NavItem = { href: '/apps/payment-tracking/', label: 'Home', icon: 'home-outline' };
 const ADMIN_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
+  { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
@@ -158,6 +160,7 @@ function LayoutContent() {
           <Stack.Screen name="history" />
           <Stack.Screen name="dashboard" />
           <Stack.Screen name="provision-details" />
+          <Stack.Screen name="calendar" />
         </Stack>
       </SafeAreaView>
 

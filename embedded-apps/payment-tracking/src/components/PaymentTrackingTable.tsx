@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii } from '../theme/tokens';
 import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
+import { formatDeliveryDate } from '../lib/provisionMetrics';
 
 interface Field {
   label: string;
@@ -15,6 +16,7 @@ interface Field {
 // becomes the header badge — everything else renders as a wrapping label/value field so the whole
 // row is visible without horizontal scrolling on any screen size.
 const FIELDS: Field[] = [
+  { label: 'Delivery Date', get: (r) => formatDeliveryDate(r.deliveryDate) },
   { label: 'PO Creater', get: (r) => r.poCreator },
   { label: 'Vendor', get: (r) => [r.vendor, r.vendorName].filter(Boolean).join(' · ') },
   { label: 'Service Txt', get: (r) => r.serviceText },

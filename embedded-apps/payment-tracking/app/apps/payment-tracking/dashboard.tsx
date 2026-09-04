@@ -5,19 +5,21 @@ import { useRouter } from 'expo-router';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-import { num, formatValue, breakdownBy } from '../../../src/lib/provisionMetrics';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { num, formatValue, breakdownBy, filterByMonth } from '../../../src/lib/provisionMetrics';
 import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal } from '../../../src/components/ProvisionUI';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
 
 /** Admin's landing screen — cross-org KPIs plus "pending value by status" and "by cost center"
  * breakdowns, from fetchProvisionPOs() called with the signed-in Admin's own login email (always
- * sent, never omitted — see paymentTrackingApi.ts's header comment). The backend is trusted to
- * expand scope to every submitter once it sees that email's role is Admin. The filter bar narrows
- * `rows` before any KPI/breakdown is computed, so every number on this screen always matches what's
- * currently filtered. */
+ * sent, never omitted — see paymentTrackingApi.ts's header comment) and the app-wide Month/Year
+ * selection (useMonthYear() — Year goes to SAP as a Gjahr filter, refetching on change; Month
+ * narrows the response client-side by Eindt). The filter bar then narrows further on top of that,
+ * so every KPI/chart on this screen always matches what's currently filtered by both. */
 export default function ProvisionDashboard() {
   const router = useRouter();
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,13 +34,14 @@ export default function ProvisionDashboard() {
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs(email)
+    fetchProvisionPOs(email, { gjahr: year })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading]);
+  }, [email, isAdmin, roleLoading, year]);
 
-  const filteredRows = useMemo(() => applyProvisionFilters(rows, filters), [rows, filters]);
+  const monthRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
+  const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
 
   const totalPending = useMemo(() => filteredRows.reduce((sum, r) => sum + num(r.pendingValue), 0), [filteredRows]);
   const distinctPOs = useMemo(() => new Set(filteredRows.map((r) => r.poNumber)).size, [filteredRows]);
@@ -99,7 +102,7 @@ export default function ProvisionDashboard() {
         <Text style={styles.errorText}>{error}</Text>
       ) : (
         <>
-          <ProvisionFilterBar rows={rows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
+          <ProvisionFilterBar rows={monthRows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
 
           <View style={styles.kpiGrid}>
             <KpiCard

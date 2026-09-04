@@ -2,17 +2,20 @@
 // ZProvisionTrackSet (service ZMM_PO_FOLLOWUP_SRV, unchanged host as Delivery Confirmation's
 // poFollowupApi.ts, but ZProvisionTrackSet is its own entity/GET_ENTITYSET method, not the
 // Potype-9 branch of ZDelvPendPOSet the old Payment Tracking used). Backed by EKKO/EKPO + EKKN
-// (GL/cost center) + ESSR (service entry sheets) + EKBE (GR/SES history, VGABE 1/9), deriving a
-// STATUS code per PO item:
+// (GL/cost center) + EKET (delivery schedule line) + ESSR (service entry sheets) + EKBE (GR/SES
+// history, VGABE 1/9), deriving a STATUS code per PO item:
 //   01 = Service Entry Sheet not created
 //   02 = GR/MIGO posted, SES not created  <- main provision exposure
 //   03 = SES created and reversed
 //   04 = SES created, acceptance pending
 //   05 = SES created and accepted (or "partly reversed" if some sheets were)
 // Field names below are confirmed directly against the live SEGW entity (Ebeln/Ebelp/Lblni as
-// key), not the fuller append structure (ZST_MM_PROVISION_APP) the ABAP was written against —
-// BUKRS/WERKS/AEDAT/WAERS/PSTYP/KNTTP/SES_COUNT/SES_REV_COUNT/ERDAT_SES were recommended but are
-// NOT yet exposed on the entity ("note - all fields not added"), so none of them are mapped here.
+// key). BUKRS/WERKS/AEDAT/WAERS/PSTYP/KNTTP/SES_COUNT/SES_REV_COUNT/ERDAT_SES are still NOT exposed
+// on the entity, so none of those are mapped here — but Eindt (delivery date, from EKET) IS now
+// live, along with the financial-year fields derived from it server-side (Gjahr/Monat/Quarter/
+// FiscyearTxt): the ABAP restricts EINDT to the current financial year (Apr YYYY - Mar YYYY+1) by
+// default and accepts a Gjahr filter to report a different one — see ProvisionFilter/
+// buildFilterParts below and MonthYearContext.tsx for how the UI drives that.
 // Email is now live too, and — per instruction, same lesson as Market Rate's ZmarketRateSet —
 // every call sends the signed-in user's own login email as a real `Email eq '...'` clause, never
 // omitted; the backend is trusted to decide Admin-vs-own-items scope from that email's role.
@@ -27,6 +30,17 @@ const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
   headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
 });
+
+/** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" — same shape
+ * embedded-apps/po-followup/src/lib/poFollowupApi.ts already unpacks for Eindt on the sibling
+ * entity (ZDelvPendPOSet) this app used to read from, same SAP service. "" for anything else/
+ * unparseable rather than throwing, since not every row is guaranteed a schedule line. */
+function parseODataDate(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const match = value.match(/\/Date\((-?\d+)\)\//);
+  if (match) return new Date(Number(match[1])).toISOString().split('T')[0];
+  return '';
+}
 
 async function fetchProvisionRows(filterParts: string[] = []): Promise<Record<string, any>[]> {
   const params: Record<string, string> = { '$format': 'json' };
@@ -70,6 +84,23 @@ export interface PaymentTrackingRow {
   /** Derived from SesFlag, not a raw field — 'N' until a service entry sheet exists, 'Y' once one
    * does (matches this column's original "Y once one exists" definition). */
   liabilityCreated: 'Y' | 'N';
+  /** Eindt — the PO item's delivery (schedule line) date, 'YYYY-MM-DD' or '' if unparseable/
+   * absent. Drives the Month filter client-side (see provisionMetrics.ts's filterByMonth) — the
+   * financial-year window itself is enforced server-side via the Gjahr filter, not by this field. */
+  deliveryDate: string;
+  /** Gjahr — the financial year this row was returned under (server-computed from Eindt), e.g.
+   * '2025' for FY 2025-26. Matches whatever Gjahr was requested (or SAP's current-FY default). */
+  fiscalYear: string;
+  /** Monat — the financial period 1-12 where period 1 = April (server-computed, not a calendar
+   * month number). Kept for reference/display; Month filtering itself uses deliveryDate's real
+   * calendar month, which is what users actually recognize. */
+  fiscalPeriod: string;
+  /** Quarter — 'Q1'..'Q4' of the financial year (server-computed from Monat). */
+  fiscalQuarter: string;
+  /** FiscyearTxt — e.g. "FY 2025-26" (server-computed); MonthYearContext.tsx's fiscalYearLabel()
+   * computes the same format client-side for the year picker, so this is mainly for display
+   * next to a specific row rather than driving any UI on its own. */
+  fiscalYearText: string;
 }
 
 function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentTrackingRow {
@@ -99,13 +130,18 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     status: (str(raw.Status) as ProvisionStatus) || '',
     statusText: str(raw.StatusTxt),
     liabilityCreated: bool(raw.SesFlag) ? 'Y' : 'N',
+    deliveryDate: parseODataDate(raw.Eindt),
+    fiscalYear: str(raw.Gjahr),
+    fiscalPeriod: str(raw.Monat),
+    fiscalQuarter: str(raw.Quarter),
+    fiscalYearText: str(raw.FiscyearTxt),
   };
 }
 
 // Confirmed filterable on the live entity per the ABAP GET_ENTITYSET method's own filter handling
 // AND present as an actual property today: Ebeln, Ebelp, Lifnr, Ernam, Sakto, Kostl, Status,
-// Email. Bukrs/Werks/Aedat/Pstyp are filter-handled in that same ABAP but aren't live properties
-// yet ("note - all fields not added") — don't filter on them until they are.
+// Email, Gjahr. Bukrs/Werks/Aedat/Pstyp are filter-handled in that same ABAP but aren't live
+// properties yet ("note - all fields not added") — don't filter on them until they are.
 export interface ProvisionFilter {
   poNumber?: string; // Ebeln
   vendor?: string; // Lifnr
@@ -113,6 +149,10 @@ export interface ProvisionFilter {
   glAccount?: string; // Sakto
   costCenter?: string; // Kostl
   status?: ProvisionStatus;
+  /** Financial year (the year Apr starts in, e.g. '2025' for FY 2025-26) — omit to get the ABAP's
+   * own current-FY default. This is the one filter that actually changes what SAP returns for the
+   * Month/Year picker; Month itself narrows the response client-side (see filterByMonth). */
+  gjahr?: string;
 }
 
 function buildFilterParts(email: string, filter: ProvisionFilter): string[] {
@@ -123,6 +163,7 @@ function buildFilterParts(email: string, filter: ProvisionFilter): string[] {
   if (filter.glAccount) parts.push(`Sakto eq '${filter.glAccount}'`);
   if (filter.costCenter) parts.push(`Kostl eq '${filter.costCenter}'`);
   if (filter.status) parts.push(`Status eq '${filter.status}'`);
+  if (filter.gjahr) parts.push(`Gjahr eq '${filter.gjahr}'`);
   return parts;
 }
 

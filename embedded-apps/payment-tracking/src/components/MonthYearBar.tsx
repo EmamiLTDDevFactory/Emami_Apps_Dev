@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
-import { useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS } from '../context/MonthYearContext';
+import { useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS, fiscalYearLabel } from '../context/MonthYearContext';
 
 /** Same raw-&lt;select&gt;-on-web, popover-on-native split Market Rate's own filter selects use. */
 function Select({
@@ -70,9 +70,10 @@ function Select({
 
 /** Persistent Month/Year picker shown on every Provision Tracking page (mounted once in
  * _layout.tsx, above the routed Stack) — per instruction it needs to be visible everywhere, not
- * just Dashboard. Currently UI-only: see MonthYearContext.tsx's header comment for why nothing is
- * wired to it yet (no live date field on ZProvisionTrackSet), and the notice line below says so
- * plainly rather than silently doing nothing. */
+ * just Dashboard. Year selects a financial year (sent to SAP as Gjahr — see paymentTrackingApi.ts
+ * and MonthYearContext.tsx); Month narrows the fetched rows client-side by Eindt (delivery date).
+ * Every screen reads both via useMonthYear() and applies them itself (see each screen's own fetch
+ * + filterByMonth call) — this bar only holds the shared selection, not the filtering logic. */
 export default function MonthYearBar() {
   const { month, year, setMonth, setYear } = useMonthYear();
 
@@ -82,11 +83,10 @@ export default function MonthYearBar() {
         <Ionicons name="calendar-outline" size={14} color={colors.rust} />
         <Text style={styles.label}>Period</Text>
         <Select label="Month" value={month} options={MONTH_OPTIONS} onChange={setMonth} />
-        <Select label="Year" value={year} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} onChange={setYear} />
-      </View>
-      <View style={styles.noticeRow}>
-        <Ionicons name="information-circle-outline" size={12} color={colors.inkSoft} />
-        <Text style={styles.noticeText}>Not applied to any data yet — SAP doesn't expose a submission/posting date on this data source.</Text>
+        <Select label="Financial Year" value={year} options={YEAR_OPTIONS} onChange={setYear} />
+        <View style={styles.fyBadge}>
+          <Text style={styles.fyBadgeText}>{fiscalYearLabel(Number(year))}</Text>
+        </View>
       </View>
     </View>
   );
@@ -113,15 +113,17 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     marginRight: 2,
   },
-  noticeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+  fyBadge: {
+    borderRadius: radii.pill,
+    backgroundColor: `${colors.rust}18`,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    marginLeft: 2,
   },
-  noticeText: {
-    fontSize: 10.5,
-    color: colors.inkSoft,
-    flexShrink: 1,
+  fyBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.rust,
   },
   selectBtn: {
     flexDirection: 'row',

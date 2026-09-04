@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth } from '../../../src/lib/provisionMetrics';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
 import { ProvisionHero, HeroIconButton, OptionCard } from '../../../src/components/ProvisionUI';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
@@ -205,6 +207,7 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
  * comment), and grouped client-side. */
 export default function ProvisionDetailsScreen() {
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -221,13 +224,14 @@ export default function ProvisionDetailsScreen() {
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs(email)
+    fetchProvisionPOs(email, { gjahr: year })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading]);
+  }, [email, isAdmin, roleLoading, year]);
 
-  const filteredRows = useMemo(() => applyProvisionFilters(rows, filters), [rows, filters]);
+  const monthRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
+  const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
   const poGroups = useMemo(() => groupByPo(filteredRows), [filteredRows]);
   const costCenterGroups = useMemo(() => groupByCostCenter(filteredRows), [filteredRows]);
   const posForSelectedCostCenter = useMemo(
@@ -301,7 +305,7 @@ export default function ProvisionDetailsScreen() {
         ) : (
           <>
             {mode !== 'choose' && (
-              <ProvisionFilterBar rows={rows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
+              <ProvisionFilterBar rows={monthRows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
             )}
 
             {mode === 'choose' && (

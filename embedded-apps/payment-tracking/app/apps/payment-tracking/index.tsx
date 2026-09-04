@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-import { num, formatValue, breakdownBy } from '../../../src/lib/provisionMetrics';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { num, formatValue, breakdownBy, filterByMonth } from '../../../src/lib/provisionMetrics';
 import { ProvisionHero, KpiCard, HorizontalBarBreakdown, OptionCard } from '../../../src/components/ProvisionUI';
 
 /** Home — the app's root route ("/apps/payment-tracking/") and first side-pane tab for every role.
@@ -16,6 +17,7 @@ import { ProvisionHero, KpiCard, HorizontalBarBreakdown, OptionCard } from '../.
 export default function ProvisionHome() {
   const router = useRouter();
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,24 +31,26 @@ export default function ProvisionHome() {
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs(email)
+    fetchProvisionPOs(email, { gjahr: year })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, roleLoading]);
+  }, [email, roleLoading, year]);
 
-  const distinctPOs = useMemo(() => new Set(rows.map((r) => r.poNumber)).size, [rows]);
-  const totalPending = useMemo(() => rows.reduce((sum, r) => sum + num(r.pendingValue), 0), [rows]);
-  const upcomingRows = useMemo(() => rows.filter((r) => r.status === '01' || r.status === '04'), [rows]);
+  const filteredRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
+
+  const distinctPOs = useMemo(() => new Set(filteredRows.map((r) => r.poNumber)).size, [filteredRows]);
+  const totalPending = useMemo(() => filteredRows.reduce((sum, r) => sum + num(r.pendingValue), 0), [filteredRows]);
+  const upcomingRows = useMemo(() => filteredRows.filter((r) => r.status === '01' || r.status === '04'), [filteredRows]);
   // '02' = GR/MIGO posted but no Service Entry Sheet yet — called out explicitly as "your main
   // provision exposure bucket".
-  const missedRows = useMemo(() => rows.filter((r) => r.status === '02'), [rows]);
-  const distinctCostCenters = useMemo(() => new Set(rows.filter((r) => r.costCenter).map((r) => r.costCenter)).size, [rows]);
-  const distinctVendors = useMemo(() => new Set(rows.filter((r) => r.vendor).map((r) => r.vendor)).size, [rows]);
+  const missedRows = useMemo(() => filteredRows.filter((r) => r.status === '02'), [filteredRows]);
+  const distinctCostCenters = useMemo(() => new Set(filteredRows.filter((r) => r.costCenter).map((r) => r.costCenter)).size, [filteredRows]);
+  const distinctVendors = useMemo(() => new Set(filteredRows.filter((r) => r.vendor).map((r) => r.vendor)).size, [filteredRows]);
 
   const statusBreakdown = useMemo(
-    () => breakdownBy(rows, (r) => r.status || '(unknown)', (r) => r.status || 'Unknown', (r) => r.statusText),
-    [rows]
+    () => breakdownBy(filteredRows, (r) => r.status || '(unknown)', (r) => r.status || 'Unknown', (r) => r.statusText),
+    [filteredRows]
   );
 
   if (roleLoading) {
@@ -114,7 +118,7 @@ export default function ProvisionHome() {
         <>
           <View style={styles.kpiGrid}>
             <KpiCard icon="document-text-outline" label="Open POs" value={String(distinctPOs)} />
-            <KpiCard icon="list-outline" label="Open line items" value={String(rows.length)} />
+            <KpiCard icon="list-outline" label="Open line items" value={String(filteredRows.length)} />
             <KpiCard icon="cash-outline" label="Pending bill value" value={formatValue(totalPending)} accent={colors.red} />
             {isAdmin ? (
               <>

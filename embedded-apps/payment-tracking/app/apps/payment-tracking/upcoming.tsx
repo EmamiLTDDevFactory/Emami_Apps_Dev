@@ -1,24 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth } from '../../../src/lib/provisionMetrics';
 
 /** Upcoming Provision — non-Admin's first side-pane option (moved here from index.tsx so the root
  * route, "/", could become the Home command-center landing screen instead). Scoped by the signed-in
  * user's own login email (Email is now live on ZProvisionTrackSet, always sent — see
  * paymentTrackingApi.ts's header comment).
  *
- * PROVISIONAL STATUS SPLIT, still needs confirmation: there's no Zaction/Interval/date field on
- * this entity (unlike the old ZDelvPendPOSet-based Payment Tracking this replaced), so there's no
- * way to bucket by a delivery-date window anymore. Until told otherwise, this shows every item NOT
- * yet at the main exposure status ('01' Service Entry Sheet not created, '04' SES created but
- * acceptance pending) — "Missed Provision" (missed-delivery.tsx) takes '02' (GR/MIGO posted, no
- * SES — the main provision exposure bucket). Flag if this split is wrong. */
+ * PROVISIONAL STATUS SPLIT, still needs confirmation: this shows every item NOT yet at the main
+ * exposure status ('01' Service Entry Sheet not created, '04' SES created but acceptance pending)
+ * — "Missed Provision" (missed-delivery.tsx) takes '02' (GR/MIGO posted, no SES — the main
+ * provision exposure bucket). Flag if this split is wrong. (Eindt/delivery date is live now — see
+ * paymentTrackingApi.ts's header comment — and drives the Month/Year picker in _layout.tsx, but the
+ * Upcoming-vs-Missed split itself is still by Status, not by date.) */
 export default function PaymentTrackingUpcoming() {
   const { email } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +34,13 @@ export default function PaymentTrackingUpcoming() {
     }
     setLoading(true);
     setError(null);
-    fetchProvisionPOs(email)
+    fetchProvisionPOs(email, { gjahr: year })
       .then((all) => setRows(all.filter((r) => r.status === '01' || r.status === '04')))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load upcoming provision items.'))
       .finally(() => setLoading(false));
-  }, [email]);
+  }, [email, year]);
+
+  const displayRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -54,7 +59,7 @@ export default function PaymentTrackingUpcoming() {
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : (
-          <PaymentTrackingTable rows={rows} emptyMessage="No upcoming provision items." />
+          <PaymentTrackingTable rows={displayRows} emptyMessage="No upcoming provision items." />
         )}
       </View>
     </ScrollView>
