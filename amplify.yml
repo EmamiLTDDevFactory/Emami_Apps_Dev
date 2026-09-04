@@ -20,3 +20,8 @@ frontend:
   cache:
     paths:
       - node_modules/**/*
+      # build-embedded-apps.js runs `npm install` (not `npm ci`) per embedded app, which reuses
+      # whatever's already on disk and only fetches what changed — but only if that node_modules
+      # survives between builds. Previously nothing under embedded-apps/ was cached, so every
+      # single deploy reinstalled all 9 embedded apps' dependencies from scratch (~3-4 min each).
+      - embedded-apps/*/node_modules/**/*
