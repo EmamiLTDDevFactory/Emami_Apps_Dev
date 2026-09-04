@@ -1,6 +1,7 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
+const { spawn } = require('child_process');
 
 const EMBEDDED_APPS_DIR = path.join(__dirname, '..', 'embedded-apps');
 const MAIN_DIST = path.join(__dirname, '..', 'dist');
@@ -92,6 +93,44 @@ function isPureSpa(dir) {
   return htmlFiles.length === 1 && htmlFiles[0].name === 'index.html' && nonSharedDirs.length === 0;
 }
 
+// Runs one shell command to completion, buffering its output instead of
+// streaming it live — needed because multiple of these now run concurrently
+// (see runWithConcurrency below), and interleaving several npm/bundler
+// progress streams line-by-line into one log would be unreadable. Output is
+// flushed as one block once the command finishes (and always flushed before
+// throwing, so a failing app's install/build log is never lost).
+function runCommand(cmd, cwd) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, { cwd, shell: true });
+    let output = '';
+    child.stdout.on('data', (d) => { output += d; });
+    child.stderr.on('data', (d) => { output += d; });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve(output);
+      else reject(Object.assign(new Error(`"${cmd}" failed in ${cwd} (exit code ${code})`), { output }));
+    });
+  });
+}
+
+// Runs worker(item) over every item, at most `limit` at a time — plain
+// Promise-pool, no new dependency needed for something this small. Order of
+// completion isn't relied on anywhere: each app installs/builds into its own
+// directory, and the merge step (below, run only after every app is done)
+// always walks `apps` in its original order regardless of which finished
+// building first, so the final dist/ output is identical to the old
+// sequential loop's.
+async function runWithConcurrency(items, limit, worker) {
+  const queue = [...items];
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  });
+  await Promise.all(lanes);
+}
+
 if (!fs.existsSync(EMBEDDED_APPS_DIR)) {
   console.log('No embedded-apps/ directory found, skipping.');
   process.exit(0);
@@ -107,85 +146,113 @@ if (apps.length === 0) {
   process.exit(0);
 }
 
-const dynamicRouteWarnings = [];
-const spaFallbackApps = [];
+// Each embedded app is its own independent npm project (separate
+// node_modules, separate bundler) merged into the hub's dist/ only at the
+// very end, so their installs/builds are safe to run in parallel — npm's own
+// local cache already tolerates concurrent installs. Defaults to half the
+// available CPUs (min 2) to leave headroom for each app's bundler, which can
+// spike memory on its own; override with EMBEDDED_APPS_CONCURRENCY if that
+// default is wrong for a given build machine.
+const defaultConcurrency = Math.max(2, Math.min(apps.length, Math.floor(os.cpus().length / 2) || 1));
+const concurrency = Number(process.env.EMBEDDED_APPS_CONCURRENCY) || defaultConcurrency;
 
-for (const app of apps) {
-  const appDir = path.join(EMBEDDED_APPS_DIR, app);
-  console.log(`\n=== Building embedded app: ${app} ===`);
-  execSync('npm install --legacy-peer-deps', { cwd: appDir, stdio: 'inherit' });
-  execSync('npm run build', { cwd: appDir, stdio: 'inherit' });
+async function main() {
+  console.log(`\nInstalling and building ${apps.length} embedded app(s), ${concurrency} at a time...`);
 
-  const appDist = path.join(appDir, 'dist');
+  await runWithConcurrency(apps, concurrency, async (app) => {
+    const appDir = path.join(EMBEDDED_APPS_DIR, app);
+    console.log(`\n=== [${app}] npm install ===`);
+    console.log(await runCommand('npm install --legacy-peer-deps', appDir));
+    console.log(`=== [${app}] npm run build ===`);
+    console.log(await runCommand('npm run build', appDir));
+  });
 
-  // Two possible shapes coming out of an embedded app's own `dist/`:
-  //
-  // 1. Folder-based (e.g. Non-CTC-Expense): its own routes already live
-  //    under `dist/apps/<name>/`, because the app's route folder itself was
-  //    renamed to match, but its asset/link references are NOT prefixed
-  //    (e.g. "/_expo/static/..."). So `_expo`/`assets` merge at the hub's
-  //    dist root, shared across everything, same as the hub's own.
-  //
-  // 2. baseUrl-based (e.g. DispatchTracker, via Expo Router's
-  //    `experiments.baseUrl`): ALL references — routes, JS bundle, assets —
-  //    are already prefixed with /apps/<name>/, but the output *files* still
-  //    land at the dist root (dist/login.html, dist/_expo/, etc.) — baseUrl
-  //    only rewrites references, not where Expo Router writes files. So here
-  //    WE nest everything (routes AND _expo/assets) under dist/apps/<name>/
-  //    ourselves, to match what the HTML actually expects to find there.
-  const appsRoot = path.join(appDist, 'apps');
-  const isFolderBased = fs.existsSync(appsRoot);
-  const routeSourceDir = isFolderBased ? appsRoot : appDist;
-  const mergeTarget = isFolderBased ? path.join(MAIN_DIST, 'apps') : path.join(MAIN_DIST, 'apps', app);
+  console.log('\nAll embedded apps installed and built — merging into hub dist/...');
 
-  console.log(`Restructuring ${app}'s flat .html routes into route/index.html...`);
-  restructureFlatHtmlToDirectories(routeSourceDir);
+  const dynamicRouteWarnings = [];
+  const spaFallbackApps = [];
 
-  const routePrefix = isFolderBased ? '/apps' : `/apps/${app}`;
-  findDynamicRoutes(routeSourceDir, routePrefix, dynamicRouteWarnings);
+  for (const app of apps) {
+    const appDir = path.join(EMBEDDED_APPS_DIR, app);
+    console.log(`\n=== Merging embedded app: ${app} ===`);
 
-  if (!isFolderBased && isPureSpa(routeSourceDir)) {
-    spaFallbackApps.push(app);
-  }
+    const appDist = path.join(appDir, 'dist');
 
-  console.log(`Merging ${app}'s routes into ${path.relative(MAIN_DIST, mergeTarget) || '.'}...`);
-  for (const entry of fs.readdirSync(routeSourceDir, { withFileTypes: true })) {
-    if (isFolderBased && SHARED_FOLDERS.includes(entry.name)) continue;
-    copyRecursive(path.join(routeSourceDir, entry.name), path.join(mergeTarget, entry.name));
-  }
+    // Two possible shapes coming out of an embedded app's own `dist/`:
+    //
+    // 1. Folder-based (e.g. Non-CTC-Expense): its own routes already live
+    //    under `dist/apps/<name>/`, because the app's route folder itself was
+    //    renamed to match, but its asset/link references are NOT prefixed
+    //    (e.g. "/_expo/static/..."). So `_expo`/`assets` merge at the hub's
+    //    dist root, shared across everything, same as the hub's own.
+    //
+    // 2. baseUrl-based (e.g. DispatchTracker, via Expo Router's
+    //    `experiments.baseUrl`): ALL references — routes, JS bundle, assets —
+    //    are already prefixed with /apps/<name>/, but the output *files* still
+    //    land at the dist root (dist/login.html, dist/_expo/, etc.) — baseUrl
+    //    only rewrites references, not where Expo Router writes files. So here
+    //    WE nest everything (routes AND _expo/assets) under dist/apps/<name>/
+    //    ourselves, to match what the HTML actually expects to find there.
+    const appsRoot = path.join(appDist, 'apps');
+    const isFolderBased = fs.existsSync(appsRoot);
+    const routeSourceDir = isFolderBased ? appsRoot : appDist;
+    const mergeTarget = isFolderBased ? path.join(MAIN_DIST, 'apps') : path.join(MAIN_DIST, 'apps', app);
 
-  if (isFolderBased) {
-    console.log(`Merging ${app}'s shared {${SHARED_FOLDERS.join(',')}} into the hub's dist/ root...`);
-    for (const folder of SHARED_FOLDERS) {
-      const src = path.join(appDist, folder);
-      if (fs.existsSync(src)) {
-        copyRecursive(src, path.join(MAIN_DIST, folder));
+    console.log(`Restructuring ${app}'s flat .html routes into route/index.html...`);
+    restructureFlatHtmlToDirectories(routeSourceDir);
+
+    const routePrefix = isFolderBased ? '/apps' : `/apps/${app}`;
+    findDynamicRoutes(routeSourceDir, routePrefix, dynamicRouteWarnings);
+
+    if (!isFolderBased && isPureSpa(routeSourceDir)) {
+      spaFallbackApps.push(app);
+    }
+
+    console.log(`Merging ${app}'s routes into ${path.relative(MAIN_DIST, mergeTarget) || '.'}...`);
+    for (const entry of fs.readdirSync(routeSourceDir, { withFileTypes: true })) {
+      if (isFolderBased && SHARED_FOLDERS.includes(entry.name)) continue;
+      copyRecursive(path.join(routeSourceDir, entry.name), path.join(mergeTarget, entry.name));
+    }
+
+    if (isFolderBased) {
+      console.log(`Merging ${app}'s shared {${SHARED_FOLDERS.join(',')}} into the hub's dist/ root...`);
+      for (const folder of SHARED_FOLDERS) {
+        const src = path.join(appDist, folder);
+        if (fs.existsSync(src)) {
+          copyRecursive(src, path.join(MAIN_DIST, folder));
+        }
       }
     }
+    // For baseUrl-based apps, _expo/assets were already copied in the loop
+    // above (they're just more entries under appDist alongside the routes),
+    // landing correctly under dist/apps/<name>/_expo and dist/apps/<name>/assets.
   }
-  // For baseUrl-based apps, _expo/assets were already copied in the loop
-  // above (they're just more entries under appDist alongside the routes),
-  // landing correctly under dist/apps/<name>/_expo and dist/apps/<name>/assets.
+
+  // Written so server/index.js (local testing only — Amplify needs the actual
+  // rewrite rules below configured manually) knows which app prefixes need a
+  // full catch-all fallback to their own index.html, without hardcoding names.
+  fs.writeFileSync(path.join(MAIN_DIST, '.spa-apps.json'), JSON.stringify(spaFallbackApps));
+
+  console.log('\nEmbedded apps merged successfully.');
+
+  if (dynamicRouteWarnings.length > 0) {
+    console.log('\n⚠ Dynamic route(s) need a manual wildcard rewrite rule in Amplify Hosting:');
+    for (const route of dynamicRouteWarnings) {
+      const wildcard = route.replace(/\/\[[^\]]+\]$/, '/*');
+      console.log(`  ${wildcard}  ->  ${route}/index.html  (200, rewrite)`);
+    }
+  }
+
+  if (spaFallbackApps.length > 0) {
+    console.log('\n⚠ Pure client-side SPA(s) need a full wildcard fallback rule in Amplify Hosting:');
+    for (const app of spaFallbackApps) {
+      console.log(`  /apps/${app}/*  ->  /apps/${app}/index.html  (200, rewrite)`);
+    }
+  }
 }
 
-// Written so server/index.js (local testing only — Amplify needs the actual
-// rewrite rules below configured manually) knows which app prefixes need a
-// full catch-all fallback to their own index.html, without hardcoding names.
-fs.writeFileSync(path.join(MAIN_DIST, '.spa-apps.json'), JSON.stringify(spaFallbackApps));
-
-console.log('\nEmbedded apps merged successfully.');
-
-if (dynamicRouteWarnings.length > 0) {
-  console.log('\n⚠ Dynamic route(s) need a manual wildcard rewrite rule in Amplify Hosting:');
-  for (const route of dynamicRouteWarnings) {
-    const wildcard = route.replace(/\/\[[^\]]+\]$/, '/*');
-    console.log(`  ${wildcard}  ->  ${route}/index.html  (200, rewrite)`);
-  }
-}
-
-if (spaFallbackApps.length > 0) {
-  console.log('\n⚠ Pure client-side SPA(s) need a full wildcard fallback rule in Amplify Hosting:');
-  for (const app of spaFallbackApps) {
-    console.log(`  /apps/${app}/*  ->  /apps/${app}/index.html  (200, rewrite)`);
-  }
-}
+main().catch((err) => {
+  if (err && err.output) console.error(err.output);
+  console.error(err && err.message ? err.message : err);
+  process.exit(1);
+});
