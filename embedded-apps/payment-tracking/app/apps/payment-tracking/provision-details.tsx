@@ -5,6 +5,8 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
+import { ProvisionHero, HeroIconButton, OptionCard } from '../../../src/components/ProvisionUI';
+import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
 
 type Mode = 'choose' | 'costcenter' | 'costcenter-po' | 'report-po';
 
@@ -91,22 +93,6 @@ function groupByCostCenter(rows: PaymentTrackingRow[]): CostCenterGroup[] {
     .sort((a, b) => b.totalOpenValue - a.totalOpenValue);
 }
 
-function OptionCard({ icon, title, subtitle, onPress }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle: string; onPress: () => void }) {
-  return (
-    <Pressable style={styles.optionCard} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
-      <View style={styles.optionIconBox}>
-        <Ionicons name={icon} size={22} color={colors.rust} />
-      </View>
-      <Text style={styles.optionTitle}>{title}</Text>
-      <Text style={styles.optionSubtitle}>{subtitle}</Text>
-      <View style={styles.optionCta}>
-        <Text style={styles.optionCtaText}>Open</Text>
-        <Ionicons name="arrow-forward" size={14} color={colors.rust} />
-      </View>
-    </Pressable>
-  );
-}
-
 function Tile({
   title,
   subtitle,
@@ -124,7 +110,7 @@ function Tile({
         <Text style={styles.tileTitle} numberOfLines={1}>{title}</Text>
         <Ionicons name="chevron-forward" size={16} color={colors.inkSoft} />
       </View>
-      {subtitle ? <Text style={styles.tileSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={styles.tileSubtitle}>{subtitle}</Text> : null}
       <View style={styles.tileKpiRow}>
         {kpis.map((k) => (
           <View key={k.label} style={styles.tileKpi}>
@@ -148,7 +134,7 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
         <View style={styles.modalHeaderRow}>
           <View style={styles.flex1}>
             <Text style={styles.modalTitle}>PO {group.poNumber}</Text>
-            <Text style={styles.modalSubtitle} numberOfLines={1}>
+            <Text style={styles.modalSubtitle}>
               {group.vendor}{group.vendorName ? ` · ${group.vendorName}` : ''}
             </Text>
           </View>
@@ -206,6 +192,7 @@ export default function ProvisionDetailsScreen() {
   const [mode, setMode] = useState<Mode>('choose');
   const [selectedCostCenter, setSelectedCostCenter] = useState<string | null>(null);
   const [selectedPo, setSelectedPo] = useState<PoGroup | null>(null);
+  const [filters, setFilters] = useState<ProvisionFilterState>(EMPTY_PROVISION_FILTERS);
 
   useEffect(() => {
     if (roleLoading) return;
@@ -221,8 +208,9 @@ export default function ProvisionDetailsScreen() {
       .finally(() => setLoading(false));
   }, [email, isAdmin, roleLoading]);
 
-  const poGroups = useMemo(() => groupByPo(rows), [rows]);
-  const costCenterGroups = useMemo(() => groupByCostCenter(rows), [rows]);
+  const filteredRows = useMemo(() => applyProvisionFilters(rows, filters), [rows, filters]);
+  const poGroups = useMemo(() => groupByPo(filteredRows), [filteredRows]);
+  const costCenterGroups = useMemo(() => groupByCostCenter(filteredRows), [filteredRows]);
   const posForSelectedCostCenter = useMemo(
     () => poGroups.filter((g) => (g.costCenter || 'Unassigned') === selectedCostCenter),
     [poGroups, selectedCostCenter]
@@ -256,29 +244,33 @@ export default function ProvisionDetailsScreen() {
     setMode('choose');
   };
 
-  const breadcrumb =
+  const heroTitle =
     mode === 'choose'
       ? 'Provision Details'
       : mode === 'costcenter'
-        ? 'Provision Details / Cost Center Wise Details'
+        ? 'Cost Center Wise Details'
         : mode === 'costcenter-po'
-          ? `Provision Details / Cost Center Wise Details / ${selectedCostCenter}`
-          : 'Provision Details / Detailed Report';
+          ? `Cost Center ${selectedCostCenter}`
+          : 'Detailed Report';
+
+  const heroSubtitle =
+    mode === 'choose'
+      ? 'Choose how to browse every open provision — by cost center first, or as one flat report.'
+      : mode === 'costcenter'
+        ? 'Every open cost center with its PO count and pending value — tap one to drill into its POs.'
+        : mode === 'costcenter-po'
+          ? 'Every open PO under this cost center — tap one for its full line-item detail.'
+          : 'Every open PO at once, with cost center and GL shown up front — tap one for its full line-item detail.';
 
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          {mode !== 'choose' && (
-            <Pressable style={styles.backBtn} onPress={onBack} accessibilityRole="button" accessibilityLabel="Back">
-              <Ionicons name="arrow-back" size={16} color={colors.rust} />
-            </Pressable>
-          )}
-          <View style={styles.flex1}>
-            <Text style={styles.breadcrumb} numberOfLines={1}>{breadcrumb}</Text>
-            {mode === 'choose' && <Text style={styles.sectionSubtitle}>Choose how to browse open provisions</Text>}
-          </View>
-        </View>
+        <ProvisionHero
+          eyebrow="Admin · Cross-org"
+          title={heroTitle}
+          subtitle={heroSubtitle}
+          left={mode !== 'choose' ? <HeroIconButton icon="arrow-back" label="Back" onPress={onBack} /> : undefined}
+        />
 
         {loading ? (
           <View style={styles.loadingWrap}>
@@ -289,6 +281,10 @@ export default function ProvisionDetailsScreen() {
           <Text style={styles.errorText}>{error}</Text>
         ) : (
           <>
+            {mode !== 'choose' && (
+              <ProvisionFilterBar rows={rows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
+            )}
+
             {mode === 'choose' && (
               <View style={styles.optionsRow}>
                 <OptionCard
@@ -401,31 +397,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.inkSoft,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-  },
-  breadcrumb: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginTop: 1,
-  },
   loadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -451,57 +422,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
-  },
-  optionCard: {
-    minWidth: 260,
-    flexGrow: 1,
-    flexBasis: 260,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.xl,
-    backgroundColor: colors.white,
-    padding: 20,
-    gap: 8,
-    ...Platform.select({
-      web: { boxShadow: '0 1px 3px rgba(31,27,51,0.06)' },
-      default: {
-        shadowColor: colors.plum,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 1,
-      },
-    }),
-  },
-  optionIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.lg,
-    backgroundColor: `${colors.rust}14`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  optionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  optionSubtitle: {
-    fontSize: 12.5,
-    color: colors.inkSoft,
-    lineHeight: 18,
-  },
-  optionCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  optionCtaText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.rust,
   },
   tileGrid: {
     flexDirection: 'row',

@@ -68,7 +68,7 @@ export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrac
               </Text>
               {row.statusText ? (
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusBadgeText} numberOfLines={1}>{row.statusText}</Text>
+                  <Text style={styles.statusBadgeText}>{row.statusText}</Text>
                 </View>
               ) : null}
             </View>
@@ -77,7 +77,7 @@ export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrac
               {FIELDS.map((f) => (
                 <View key={f.label} style={styles.field}>
                   <Text style={styles.fieldLabel}>{f.label}</Text>
-                  <Text style={[styles.fieldValue, f.strong && styles.fieldValueStrong]} numberOfLines={2}>
+                  <Text style={[styles.fieldValue, f.strong && styles.fieldValueStrong]}>
                     {f.get(row) || '—'}
                   </Text>
                 </View>

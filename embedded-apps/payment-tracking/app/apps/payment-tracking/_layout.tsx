@@ -15,21 +15,26 @@ function formatDateCompact(d: Date): string {
 
 type Href =
   | '/apps/payment-tracking/'
+  | '/apps/payment-tracking/upcoming'
   | '/apps/payment-tracking/missed-delivery'
   | '/apps/payment-tracking/history'
   | '/apps/payment-tracking/dashboard'
   | '/apps/payment-tracking/provision-details';
 type NavItem = SidePaneItem & { href: Href };
 
-// Two completely different side panes by role, not one list with an adminOnly filter (unlike
-// Market Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/
-// Provision Details pair, everyone else gets their own Upcoming/Missed items, never both.
+// Home ('/') is the one tab every role shares — the command-center landing page. Past that, two
+// completely different side panes by role, not one list with an adminOnly filter (unlike Market
+// Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/Provision
+// Details pair, everyone else gets their own Upcoming/Missed items, never both.
+const HOME_NAV_ITEM: NavItem = { href: '/apps/payment-tracking/', label: 'Home', icon: 'home-outline' };
 const ADMIN_NAV_ITEMS: NavItem[] = [
+  HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
-  { href: '/apps/payment-tracking/', label: 'Upcoming Provision', icon: 'calendar-outline' },
+  HOME_NAV_ITEM,
+  { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
 ];
 
@@ -47,7 +52,7 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       isOpen={isOpen}
       onClose={onClose}
       title="Provision Tracking"
-      subtitle="Track payment progress on service POs"
+      subtitle="Command Center — track every open service PO"
       items={items}
       activeHref={activeHref}
       onNavigate={(href) => {
@@ -126,6 +131,9 @@ function LayoutContent() {
             resizeMode="contain"
           />
           <Text style={styles.title} numberOfLines={1}>Provision Tracking</Text>
+          <View style={styles.commandBadge}>
+            <Text style={styles.commandBadgeText} numberOfLines={1}>Command Center</Text>
+          </View>
           <View style={styles.flex1} />
           <View style={styles.infoItem}>
             <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
@@ -141,6 +149,7 @@ function LayoutContent() {
 
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="upcoming" />
           <Stack.Screen name="missed-delivery" />
           <Stack.Screen name="history" />
           <Stack.Screen name="dashboard" />
@@ -217,6 +226,19 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.ink,
     flexShrink: 1,
+  },
+  commandBadge: {
+    borderRadius: radii.pill,
+    backgroundColor: `${colors.rust}18`,
+    paddingVertical: 3,
+    paddingHorizontal: 9,
+  },
+  commandBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    color: colors.rust,
   },
   infoItem: {
     flexDirection: 'row',

@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 import { colors } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
+import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
 /** Missed Provision — non-Admin's second side-pane option. Scoped by the signed-in user's own
@@ -35,6 +36,12 @@ export default function PaymentTrackingMissedDelivery() {
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.panel}>
+        <ProvisionHero
+          eyebrow="Provision Tracking"
+          title="Missed Provision"
+          subtitle="GR/MIGO posted but no Service Entry Sheet created yet — your main provision exposure bucket."
+        />
+
         {loading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={colors.rust} />

@@ -1,66 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-
-function num(v: string): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatValue(n: number): string {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
-function KpiCard({ icon, label, value, accent }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; accent?: string }) {
-  return (
-    <View style={styles.kpiCard}>
-      <View style={[styles.kpiIconBox, accent ? { backgroundColor: `${accent}14` } : null]}>
-        <Ionicons name={icon} size={15} color={accent || colors.rust} />
-      </View>
-      <View style={styles.flex1}>
-        <Text style={styles.kpiValue}>{value}</Text>
-        <Text style={styles.kpiLabel}>{label}</Text>
-      </View>
-    </View>
-  );
-}
-
-function PendingValueChart({ data }: { data: { label: string; sublabel: string; value: number }[] }) {
-  if (data.length === 0) {
-    return <Text style={styles.chartEmptyText}>No open provisions to break down yet.</Text>;
-  }
-  const max = Math.max(1, ...data.map((d) => d.value));
-  return (
-    <View style={{ gap: 12 }}>
-      {data.map((d) => (
-        <View key={d.label} style={styles.hbarRow}>
-          <Text style={styles.hbarLabel} numberOfLines={1}>
-            {d.label}{d.sublabel ? ` · ${d.sublabel}` : ''}
-          </Text>
-          <View style={styles.hbarTrack}>
-            <View style={[styles.hbarFill, { width: `${(d.value / max) * 100}%` }]} />
-          </View>
-          <Text style={styles.hbarValue} numberOfLines={1}>{formatValue(d.value)}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
+import { num, formatValue, breakdownBy } from '../../../src/lib/provisionMetrics';
+import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown } from '../../../src/components/ProvisionUI';
+import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
 
 /** Admin's landing screen — cross-org KPIs plus "pending value by status" and "by cost center"
  * breakdowns, from fetchProvisionPOs() called with the signed-in Admin's own login email (always
  * sent, never omitted — see paymentTrackingApi.ts's header comment). The backend is trusted to
- * expand scope to every submitter once it sees that email's role is Admin. */
+ * expand scope to every submitter once it sees that email's role is Admin. The filter bar narrows
+ * `rows` before any KPI/breakdown is computed, so every number on this screen always matches what's
+ * currently filtered. */
 export default function ProvisionDashboard() {
   const router = useRouter();
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ProvisionFilterState>(EMPTY_PROVISION_FILTERS);
 
   useEffect(() => {
     if (roleLoading) return;
@@ -76,37 +37,29 @@ export default function ProvisionDashboard() {
       .finally(() => setLoading(false));
   }, [email, isAdmin, roleLoading]);
 
-  const totalPending = useMemo(() => rows.reduce((sum, r) => sum + num(r.pendingValue), 0), [rows]);
-  const distinctPOs = useMemo(() => new Set(rows.map((r) => r.poNumber)).size, [rows]);
-  const distinctCostCenters = useMemo(() => new Set(rows.filter((r) => r.costCenter).map((r) => r.costCenter)).size, [rows]);
-  const distinctVendors = useMemo(() => new Set(rows.filter((r) => r.vendor).map((r) => r.vendor)).size, [rows]);
+  const filteredRows = useMemo(() => applyProvisionFilters(rows, filters), [rows, filters]);
+
+  const totalPending = useMemo(() => filteredRows.reduce((sum, r) => sum + num(r.pendingValue), 0), [filteredRows]);
+  const distinctPOs = useMemo(() => new Set(filteredRows.map((r) => r.poNumber)).size, [filteredRows]);
+  const distinctCostCenters = useMemo(() => new Set(filteredRows.filter((r) => r.costCenter).map((r) => r.costCenter)).size, [filteredRows]);
+  const distinctVendors = useMemo(() => new Set(filteredRows.filter((r) => r.vendor).map((r) => r.vendor)).size, [filteredRows]);
   // '02' = GR/MIGO posted but no Service Entry Sheet yet — called out explicitly as "your main
   // provision exposure bucket".
-  const mainExposureRows = useMemo(() => rows.filter((r) => r.status === '02'), [rows]);
+  const mainExposureRows = useMemo(() => filteredRows.filter((r) => r.status === '02'), [filteredRows]);
   const mainExposureValue = useMemo(() => mainExposureRows.reduce((sum, r) => sum + num(r.pendingValue), 0), [mainExposureRows]);
 
-  const costCenterBreakdown = useMemo(() => {
-    const byCc = new Map<string, { label: string; sublabel: string; value: number }>();
-    for (const r of rows) {
-      const key = r.costCenter || '(unassigned)';
-      const cur = byCc.get(key) ?? { label: r.costCenter || 'Unassigned', sublabel: r.costCenterText, value: 0 };
-      cur.value += num(r.pendingValue);
-      byCc.set(key, cur);
-    }
-    return Array.from(byCc.values()).sort((a, b) => b.value - a.value).slice(0, 8);
-  }, [rows]);
-
-  const statusBreakdown = useMemo(() => {
-    const byStatus = new Map<string, { label: string; sublabel: string; value: number; count: number }>();
-    for (const r of rows) {
-      const key = r.status || '(unknown)';
-      const cur = byStatus.get(key) ?? { label: r.status || 'Unknown', sublabel: r.statusText, value: 0, count: 0 };
-      cur.value += num(r.pendingValue);
-      cur.count += 1;
-      byStatus.set(key, cur);
-    }
-    return Array.from(byStatus.values()).sort((a, b) => (a.label < b.label ? -1 : 1));
-  }, [rows]);
+  const costCenterBreakdown = useMemo(
+    () => breakdownBy(filteredRows, (r) => r.costCenter || '(unassigned)', (r) => r.costCenter || 'Unassigned', (r) => r.costCenterText, 8),
+    [filteredRows]
+  );
+  const vendorBreakdown = useMemo(
+    () => breakdownBy(filteredRows, (r) => r.vendor || '(unassigned)', (r) => r.vendor || 'Unassigned', (r) => r.vendorName, 8),
+    [filteredRows]
+  );
+  const statusBreakdown = useMemo(
+    () => breakdownBy(filteredRows, (r) => r.status || '(unknown)', (r) => r.status || 'Unknown', (r) => r.statusText),
+    [filteredRows]
+  );
 
   if (roleLoading) {
     return (
@@ -129,21 +82,12 @@ export default function ProvisionDashboard() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}>
-        <View style={styles.flex1}>
-          <Text style={styles.sectionTitle}>Dashboard</Text>
-          <Text style={styles.sectionSubtitle}>Cross-org provision status, every open service PO</Text>
-        </View>
-        <Pressable
-          style={styles.detailsBtn}
-          onPress={() => router.replace('/apps/payment-tracking/provision-details' as any)}
-          accessibilityRole="button"
-          accessibilityLabel="Open Provision Details"
-        >
-          <Text style={styles.detailsBtnText}>Provision Details</Text>
-          <Ionicons name="arrow-forward" size={14} color={colors.white} />
-        </Pressable>
-      </View>
+      <ProvisionHero
+        eyebrow="Admin · Cross-org"
+        title="Dashboard"
+        subtitle="Cross-org provision status across every open service PO — filter by any standard KPI to focus in on a slice of it."
+        right={<HeroActionButton label="Provision Details" onPress={() => router.replace('/apps/payment-tracking/provision-details' as any)} />}
+      />
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -154,15 +98,17 @@ export default function ProvisionDashboard() {
         <Text style={styles.errorText}>{error}</Text>
       ) : (
         <>
+          <ProvisionFilterBar rows={rows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
+
           <View style={styles.kpiGrid}>
             <KpiCard icon="document-text-outline" label="Open POs" value={String(distinctPOs)} />
-            <KpiCard icon="list-outline" label="Open line items" value={String(rows.length)} />
+            <KpiCard icon="list-outline" label="Open line items" value={String(filteredRows.length)} />
             <KpiCard icon="cash-outline" label="Pending bill value" value={formatValue(totalPending)} accent={colors.red} />
             <KpiCard icon="business-outline" label="Cost centers involved" value={String(distinctCostCenters)} />
             <KpiCard icon="people-outline" label="Vendors involved" value={String(distinctVendors)} />
             <KpiCard
               icon="warning-outline"
-              label="Main provision exposure (GR, no SES)"
+              label="Main provision exposure — GR posted, no Service Entry Sheet"
               value={`${mainExposureRows.length} · ${formatValue(mainExposureValue)}`}
               accent={colors.red}
             />
@@ -171,15 +117,21 @@ export default function ProvisionDashboard() {
           <View style={styles.chartsRow}>
             <View style={[styles.card, styles.flex1]}>
               <Text style={styles.cardTitle}>Pending bill value by status</Text>
-              <Text style={styles.cardSubtitle}>The three scenarios this dashboard tracks, plus SES-accepted/pending.</Text>
-              <PendingValueChart data={statusBreakdown} />
+              <Text style={styles.cardSubtitle}>The provision lifecycle from Service Entry Sheet not created through accepted.</Text>
+              <HorizontalBarBreakdown data={statusBreakdown} emptyMessage="No open provisions to break down yet." />
             </View>
 
             <View style={[styles.card, styles.flex1]}>
               <Text style={styles.cardTitle}>Pending bill value by cost center</Text>
               <Text style={styles.cardSubtitle}>Top 8 cost centers by open value — see Provision Details for the full breakdown.</Text>
-              <PendingValueChart data={costCenterBreakdown} />
+              <HorizontalBarBreakdown data={costCenterBreakdown} emptyMessage="No open provisions to break down yet." />
             </View>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Pending bill value by vendor</Text>
+            <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter.</Text>
+            <HorizontalBarBreakdown data={vendorBreakdown} emptyMessage="No open provisions to break down yet." />
           </View>
         </>
       )}
@@ -207,35 +159,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.inkSoft,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginTop: 1,
-  },
-  detailsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: radii.pill,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    backgroundColor: colors.rust,
-  },
-  detailsBtnText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.white,
-  },
   loadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -260,36 +183,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
-  },
-  kpiCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 190,
-    flexGrow: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.xl,
-    backgroundColor: colors.white,
-    padding: 14,
-  },
-  kpiIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.md,
-    backgroundColor: `${colors.rust}14`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kpiValue: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  kpiLabel: {
-    fontSize: 11,
-    color: colors.inkSoft,
-    marginTop: 1,
   },
   card: {
     borderWidth: 1,
@@ -318,39 +211,6 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     marginTop: 2,
     marginBottom: 12,
-  },
-  chartEmptyText: {
-    fontSize: 12.5,
-    color: colors.inkSoft,
-    marginTop: 8,
-  },
-  hbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  hbarLabel: {
-    width: 170,
-    fontSize: 12,
-    color: colors.ink,
-  },
-  hbarTrack: {
-    flex: 1,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.appBg,
-    overflow: 'hidden',
-  },
-  hbarFill: {
-    height: '100%',
-    backgroundColor: colors.rust,
-    borderRadius: 5,
-  },
-  hbarValue: {
-    width: 70,
-    textAlign: 'right',
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.ink,
+    lineHeight: 17,
   },
 });
