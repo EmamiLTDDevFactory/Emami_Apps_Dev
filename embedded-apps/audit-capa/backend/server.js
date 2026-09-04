@@ -7,6 +7,7 @@ require("./services/notificationListener");
 const auditRoutes = require("./routes/audits");
 const capaRoutes = require("./routes/capas");
 const notificationRoutes = require("./routes/notifications");
+const sapNotifyRoutes = require("./routes/sapNotify");
 const authRoutes = require("./routes/auth");
 const pool = require("./postgres");
 
@@ -79,6 +80,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/audits", auditRoutes);
 app.use("/api/capas", capaRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/sap-notify", sapNotifyRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

@@ -26,6 +26,10 @@ import {
     addNotification,
 } from "../utils/notifications";
 import {
+    notifyCapaSet,
+    SAP_FLAG,
+} from "../utils/sapNotify";
+import {
     saveCAPAs,
     updateAudit,
     updateCAPA,
@@ -188,8 +192,11 @@ export default function CAPAManagement() {
     const [selectedCAPA, setSelectedCAPA] =
         useState(null);
 
-    const { setAudits } =
+    const { setAudits, audits } =
         useAppContext();
+
+    const getAuditNo = (id) =>
+        audits?.find((a) => String(a.id) === String(id))?.auditNo || "";
 
     const currentUser = JSON.parse(
         localStorage.getItem(
@@ -426,6 +433,21 @@ export default function CAPAManagement() {
             // eventType: "CAPA_ACCEPTED"
         });
 
+        // Notify SAP (NGD) so it can trigger the depot email off the Flag.
+        const openAfterClose = updatedCAPA.filter(
+            (c) => c.status === "Open" || c.status === "Sent Back"
+        ).length;
+
+        notifyCapaSet({
+            flag: SAP_FLAG.CAPA_ACCEPTED_CLOSED,
+            auditNo: getAuditNo(auditId),
+            findingNo: closedCAPA?.findingNo,
+            capaId: closedCAPA?.capaNo,
+            totalCapa: updatedCAPA.length,
+            capaSubm: updatedCAPA.length - openAfterClose,
+            capaOpen: openAfterClose,
+        });
+
     };
 
     // const canSubmitCAPA = (item) => {
@@ -524,6 +546,23 @@ export default function CAPAManagement() {
                 link:
                     `/capa/${item.auditId}`,
                 // eventType: "CAPA_SUBMITTED",
+            });
+
+            // Notify SAP (NGD) so it can trigger the CQA email off the Flag.
+            const freshCapas = await getCAPAs(item.auditId);
+            const openAfterSubmit = freshCapas.filter(
+                (c) => c.status === "Open" || c.status === "Sent Back"
+            ).length;
+
+            notifyCapaSet({
+                flag: SAP_FLAG.CAPA_SUBMITTED,
+                auditNo: getAuditNo(item.auditId),
+                findingNo: item.findingNo,
+                capaId: item.capaNo,
+                totalCapa: freshCapas.length,
+                capaSubm: freshCapas.length - openAfterSubmit,
+                capaOpen: openAfterSubmit,
+                usrId: currentUser?.id ?? "",
             });
 
         } catch (error) {
@@ -711,6 +750,21 @@ export default function CAPAManagement() {
             link:
                 `/capa/${selected.auditId}?tab=open`,
             // eventType: "CAPA_SENT_BACK"
+        });
+
+        // Notify SAP (NGD) so it can trigger the depot email off the Flag.
+        const openAfterSendBack = updatedCAPA.filter(
+            (c) => c.status === "Open" || c.status === "Sent Back"
+        ).length;
+
+        notifyCapaSet({
+            flag: SAP_FLAG.CAPA_SENT_BACK,
+            auditNo: getAuditNo(selected.auditId),
+            findingNo: selected?.findingNo,
+            capaId: selected?.capaNo,
+            totalCapa: updatedCAPA.length,
+            capaSubm: updatedCAPA.length - openAfterSendBack,
+            capaOpen: openAfterSendBack,
         });
 
         alert(

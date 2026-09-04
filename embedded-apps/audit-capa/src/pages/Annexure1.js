@@ -40,6 +40,10 @@ import InputAdornment from "@mui/material/InputAdornment";
 import {
     addNotification,
 } from "../utils/notifications";
+import {
+    notifyCapaSet,
+    SAP_FLAG,
+} from "../utils/sapNotify";
 
 import BusinessIcon from "@mui/icons-material/Business";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -192,6 +196,68 @@ export default function Annexure1() {
         currentUser?.role ===
         "Depot";
 
+    const isDesktopAudit =
+        selectedAudit?.auditType === "Desktop";
+
+    const isOnsiteAudit =
+        selectedAudit?.auditType === "Onsite";
+
+    // const canEditAnnexure =
+    //     (isDesktopAudit && isDepot) ||
+    //     (isOnsiteAudit && !isDepot);
+
+    const isCQA =
+        currentUser?.role === "CQA";
+
+    const canEditAnnexure =
+        (
+            //     isDesktopAudit &&
+            //     isDepot &&
+            //     ![
+            //         "Self Assessment Submitted",
+            //         "Under Review",
+            //         "CAPA Open",
+            //         "Closed"
+            //     ].includes(selectedAudit?.status)
+            // )
+
+            isDesktopAudit &&
+            isDepot &&
+            [
+                "Open",
+                "In Progress",
+                "Rework Required"
+            ].includes(selectedAudit?.status)
+        )
+        ||
+        (
+            isDesktopAudit &&
+            isCQA &&
+            selectedAudit?.status ===
+            "Self Assessment Submitted"
+        )
+        ||
+        (
+            isOnsiteAudit &&
+            !isDepot
+        );
+
+    // const canEditAnnexure =
+
+    //     (
+    //         isDesktopAudit &&
+    //         isDepot &&
+    //         selectedAudit?.status !==
+    //         "Self Assessment Submitted"
+    //     )
+
+    //     ||
+
+    //     (
+    //         isOnsiteAudit &&
+    //         !isDepot
+    //     );
+
     const isTablet =
         useMediaQuery(
             "(min-width:768px) and (max-width:1200px)"
@@ -257,8 +323,21 @@ export default function Annexure1() {
         setAuditItems(updatedItems);
 
         try {
+            // const updatedAudit = await updateAudit(Number(id), {
+            //     status: "In Progress",
+            //     checklist: updatedItems,
+            // });
+
             const updatedAudit = await updateAudit(Number(id), {
-                status: "In Progress",
+                status:
+                    selectedAudit?.status ===
+                        "Self Assessment Submitted"
+                        ? "Under Review"
+                        : selectedAudit?.status ===
+                            "Rework Required"
+                            ? "In Progress"
+                            : selectedAudit?.status,
+
                 checklist: updatedItems,
             });
 
@@ -515,6 +594,248 @@ export default function Annexure1() {
 
         navigate("/audits");
     };
+
+    // const handleSelfAssessmentSubmit = async () => {
+
+    //     try {
+
+    //         const updatedAudit =
+    //             await updateAudit(Number(id), {
+    //                 checklist: auditItems,
+    //                 generalInfo,
+    //                 compliance: Number(compliancePercentage),
+    //                 status: "Self Assessment Submitted",
+    //             });
+
+    //         setSelectedAudit(updatedAudit);
+
+    //         setAudits((previous) =>
+    //             previous.map((audit) =>
+    //                 audit.id === Number(id)
+    //                     ? updatedAudit
+    //                     : audit
+    //             )
+    //         );
+
+    //         alert("Self Assessment Submitted Successfully");
+
+    //     } catch (error) {
+    //         console.error(error);
+    //         alert("Unable to submit self assessment.");
+    //     }
+    // };
+
+    const handleSelfAssessmentSubmit = async () => {
+
+        try {
+
+            // Create Findings (all NC items)
+
+            const findings =
+                auditItems.filter(
+                    item =>
+                        item.status !== "NA" &&
+                        item.actualScore < 2
+                );
+
+            // Create CAPAs automatically
+
+            const capaRecords =
+                findings.map((item, index) => ({
+                    capaNo: `CAPA-${index + 1}`,
+                    auditId: Number(id),
+
+                    category: item.category,
+                    section: item.section,
+
+                    questionId: item.id,
+
+                    parameter: item.parameter,
+
+                    observation:
+                        item.observation ||
+
+                        "Observation not provided",
+
+                    actionPlan: "",
+
+                    responsibility: "",
+
+                    targetDate: "",
+
+                    status: "Open",
+                }));
+
+            // Prevent duplicate CAPA creation
+
+            const existingCAPAs =
+                await getCAPAs(Number(id));
+
+            if (
+                existingCAPAs &&
+                existingCAPAs.length > 0
+            ) {
+                alert(
+                    "Self Assessment already submitted."
+                );
+                return;
+            }
+
+            if (capaRecords.length > 0) {
+
+                await saveCAPAs(
+                    capaRecords
+                );
+            }
+
+            await addNotification({
+
+                role: "CQA",
+
+                auditId: Number(id),
+
+                title: "Self Assessment Submitted",
+
+                message:
+                    `${selectedAudit?.depot}
+         has submitted Desktop Self Assessment.`,
+
+                link: `/annexure1/${id}`,
+            });
+
+            // Notify SAP (NGD) so it can trigger the CQA email off the Flag.
+            notifyCapaSet({
+                flag: SAP_FLAG.SELF_ASSESSMENT_SUBMITTED,
+                auditNo: selectedAudit?.auditNo,
+                totalCapa: capaRecords.length,
+                capaSubm: 0,
+                capaOpen: capaRecords.length,
+            });
+
+            const updatedAudit =
+                await updateAudit(Number(id), {
+                    checklist: auditItems,
+                    generalInfo,
+                    compliance: Number(compliancePercentage),
+                    status: "Self Assessment Submitted",
+                });
+
+            setSelectedAudit(updatedAudit);
+
+            setAudits((previous) =>
+                previous.map((audit) =>
+                    audit.id === Number(id)
+                        ? updatedAudit
+                        : audit
+                )
+            );
+
+            alert(
+                "Self Assessment Submitted Successfully."
+            );
+
+        } catch (error) {
+
+            console.error(error);
+
+            alert(
+                "Unable to submit self assessment."
+            );
+        }
+    };
+
+    const handleApproveSelfAssessment =
+        async () => {
+
+            try {
+
+                const updatedAudit =
+                    await updateAudit(
+                        Number(id),
+                        {
+                            status: "CAPA Open",
+                        }
+                    );
+
+                setSelectedAudit(
+                    updatedAudit
+                );
+
+                setAudits(previous =>
+                    previous.map(a =>
+                        a.id === Number(id)
+                            ? updatedAudit
+                            : a
+                    )
+                );
+
+                await addNotification({
+                    role: "Depot",
+                    auditId: Number(id),
+                    title: "Assessment Approved",
+                    message:
+                        "Your self assessment has been approved.",
+                    link: `/capa/${id}`,
+                });
+
+                // Notify SAP (NGD) so it can trigger the depot email off the Flag.
+                notifyCapaSet({
+                    flag: SAP_FLAG.SELF_ASSESSMENT_ACCEPTED,
+                    auditNo: selectedAudit?.auditNo,
+                });
+
+                alert(
+                    "Assessment Approved"
+                );
+
+            } catch (error) {
+                console.error(error);
+            }
+        };
+
+    const handleRejectSelfAssessment =
+        async () => {
+
+            try {
+
+                const updatedAudit =
+                    await updateAudit(
+                        Number(id),
+                        {
+                            status: "Rework Required",
+                        }
+                    );
+
+                setSelectedAudit(
+                    updatedAudit
+                );
+
+                setAudits(previous =>
+                    previous.map(a =>
+                        a.id === Number(id)
+                            ? updatedAudit
+                            : a
+                    )
+                );
+
+                await addNotification({
+                    role: "Depot",
+                    auditId: Number(id),
+                    title: "Rework Required",
+                    message:
+                        "Please revise and resubmit your assessment.",
+                    link: `/annexure1/${id}`,
+                });
+
+                alert(
+                    "Sent back for rework"
+                );
+
+            } catch (error) {
+                console.error(error);
+            }
+        };
+
 
     const handleAddQuestion = (
         category
@@ -978,7 +1299,37 @@ export default function Annexure1() {
     //     }
     // };
 
+    const categoryCompliance = Object.entries(
+        auditItems.reduce((acc, item) => {
 
+            const category = item.category || "Others";
+
+            if (!acc[category]) {
+                acc[category] = {
+                    maxScore: 0,
+                    actualScore: 0,
+                };
+            }
+
+            if (item.status !== "NA") {
+                acc[category].maxScore += Number(item.maxScore || 0);
+                acc[category].actualScore += Number(item.actualScore || 0);
+            }
+
+            return acc;
+        }, {})
+    ).map(([category, scores]) => ({
+        category,
+        maxScore: scores.maxScore,
+        actualScore: scores.actualScore,
+        compliance:
+            scores.maxScore === 0
+                ? 0
+                : (
+                    (scores.actualScore / scores.maxScore) *
+                    100
+                ).toFixed(2),
+    }));
 
     return (
         // <Box
@@ -1011,7 +1362,7 @@ export default function Annexure1() {
                         "0px 4px 20px rgba(0,0,0,0.08)",
                 }}
             >
-                <CardContent>
+                {/* <CardContent>
                     <Box
                         sx={{
                             display: "flex",
@@ -1049,8 +1400,122 @@ export default function Annexure1() {
                             </Typography>
                         </Box>
                     </Box>
+                </CardContent> */}
+
+
+                <CardContent>
+                    <Box
+                        sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: 3,
+                        }}
+                    >
+                        {/* Left Side */}
+                        <Box
+                            sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 3,
+                            }}
+                        >
+                            <Box
+                                component="img"
+                                src={emamiLogo}
+                                alt="Emami Logo"
+                                sx={{
+                                    width: 90,
+                                    height: 90,
+                                    background: "#fff",
+                                    borderRadius: 2,
+                                    objectFit: "contain",
+                                    p: 1,
+                                }}
+                            />
+
+                            <Box>
+                                <Typography
+                                    variant="h5"
+                                    fontWeight={700}
+                                    sx={{ mb: 0.5 }}
+                                >
+                                    DEPOT AUDIT CHECK LIST
+                                </Typography>
+
+                                <Typography variant="body1">
+                                    Audit No: {selectedAudit?.auditNo}
+                                </Typography>
+                            </Box>
+                        </Box>
+
+                        {/* Right Side Summary */}
+                        <Card
+                            sx={{
+                                minWidth: 320,
+                                bgcolor: "rgba(255,255,255,0.15)",
+                                color: "#fff",
+                                borderRadius: 2,
+                            }}
+                        >
+                            <CardContent sx={{ py: 1.5, "&:last-child": { pb: 1.5 } }}>
+                                <Typography
+                                    fontWeight={700}
+                                    sx={{ mb: 1 }}
+                                >
+                                    Element Compliance %
+                                </Typography>
+
+                                {categoryCompliance.map((item) => (
+                                    <Box
+                                        key={item.category}
+                                        sx={{
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                            mb: 0.5,
+                                        }}
+                                    >
+                                        <Typography variant="body2">
+                                            {item.category}
+                                        </Typography>
+
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={700}
+                                        >
+                                            {item.compliance}%
+                                        </Typography>
+                                    </Box>
+                                ))}
+
+                                {/* Total */}
+                                <Box
+                                    sx={{
+                                        mt: 1,
+                                        pt: 1,
+                                        borderTop:
+                                            "1px solid rgba(255,255,255,0.3)",
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                    }}
+                                >
+                                    <Typography fontWeight={700}>
+                                        Total
+                                    </Typography>
+
+                                    <Typography fontWeight={700}>
+                                        {compliancePercentage}%
+                                    </Typography>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    </Box>
                 </CardContent>
             </Card>
+
             {/* <Typography variant="h4" gutterBottom>
                 Annexure-1 Audit Checklist
             </Typography>
@@ -1098,7 +1563,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1114,7 +1580,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1132,7 +1599,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1150,7 +1618,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1166,7 +1635,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1235,7 +1705,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                                 slotProps={{
                                     inputLabel: {
                                         shrink: true,
@@ -1297,7 +1768,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1313,7 +1785,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1331,7 +1804,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1349,7 +1823,8 @@ export default function Annexure1() {
                                         e.target.value
                                     )
                                 }
-                                disabled={isDepot}
+                                // disabled={isDepot}
+                                disabled={!canEditAnnexure}
                             />
                         </Grid>
 
@@ -1715,6 +2190,8 @@ export default function Annexure1() {
                                                 <AuditQuestionCard
                                                     key={item.id}
                                                     item={item}
+                                                    auditType={selectedAudit?.auditType}
+                                                    canEditAnnexure={canEditAnnexure}
                                                     handleStatusChange={
                                                         handleStatusChange
                                                     }
@@ -2468,64 +2945,73 @@ export default function Annexure1() {
                                 : "auto",
                     }}
                 >
-                    {!isDepot && (
-                        <Button
-                            // variant="outlined"
+                    {/* {!isDepot && ( */}
+                    {/* {canEditAnnexure && ( */}
+                    {(
+                        (isDesktopAudit && isDepot) ||
+                        (isOnsiteAudit && !isDepot)
+                    ) && (
 
-                            // fullWidth={isAuditorTablet}
+                            <Button
+                                // variant="outlined"
 
-                            variant="contained"
-                            size={
-                                isAuditorTablet
-                                    ? "large"
-                                    : "medium"
-                            }
-                            // sx={{
-                            //     // minHeight: 50,
-                            //     minHeight:
-                            //         isAuditorTablet
-                            //             ? 50
-                            //             : 36,
-                            //     px: 3,
-                            // }}
-                            sx={{
-                                width:
+                                // fullWidth={isAuditorTablet}
+
+                                variant="contained"
+                                size={
                                     isAuditorTablet
-                                        ? "100%"
-                                        : "auto",
-                                minHeight:
-                                    isAuditorTablet
-                                        ? 50
-                                        : 36,
-                            }}
-                            // sx={{ mr: 2 }}
-                            onClick={async () => {
-
-                                try {
-                                    const updatedAudit = await updateAudit(Number(id), {
-                                        checklist: auditItems,
-                                        generalInfo,
-                                    });
-
-                                    setSelectedAudit(updatedAudit);
-
-                                    setAudits((previous) =>
-                                        previous.map((audit) =>
-                                            audit.id === Number(id) ? updatedAudit : audit
-                                        )
-                                    );
-
-                                    alert("Checklist draft saved successfully.");
-                                } catch (error) {
-                                    console.error(error);
-                                    alert("Unable to save checklist draft.");
+                                        ? "large"
+                                        : "medium"
                                 }
-                            }}
-                        >
-                            Save Draft
-                        </Button>
-                    )}
-                    {!isDepot &&
+                                // sx={{
+                                //     // minHeight: 50,
+                                //     minHeight:
+                                //         isAuditorTablet
+                                //             ? 50
+                                //             : 36,
+                                //     px: 3,
+                                // }}
+                                sx={{
+                                    width:
+                                        isAuditorTablet
+                                            ? "100%"
+                                            : "auto",
+                                    minHeight:
+                                        isAuditorTablet
+                                            ? 50
+                                            : 36,
+                                }}
+                                // sx={{ mr: 2 }}
+                                onClick={async () => {
+
+                                    try {
+                                        const updatedAudit = await updateAudit(Number(id), {
+                                            checklist: auditItems,
+                                            generalInfo,
+                                        });
+
+                                        setSelectedAudit(updatedAudit);
+
+                                        setAudits((previous) =>
+                                            previous.map((audit) =>
+                                                audit.id === Number(id) ? updatedAudit : audit
+                                            )
+                                        );
+
+                                        alert("Checklist draft saved successfully.");
+                                    } catch (error) {
+                                        console.error(error);
+                                        alert("Unable to save checklist draft.");
+                                    }
+                                }}
+                            >
+                                Save Draft
+                            </Button>
+                        )}
+                    {/* {!isDepot &&
+                        nonComplianceCount === 0 && ( */}
+                    {isOnsiteAudit &&
+                        !isDepot &&
                         nonComplianceCount === 0 && (
                             <Button
                                 variant="contained"
@@ -2589,7 +3075,59 @@ export default function Annexure1() {
                             </Button>
                         )}
 
-                    {!isDepot && (
+                    {/* {isDesktopAudit && isDepot && ( */}
+                    {isDesktopAudit &&
+                        isDepot &&
+                        // selectedAudit?.status !==
+                        // "Self Assessment Submitted" 
+                        ["Open", "In Progress", "Rework Required"]
+                            .includes(selectedAudit?.status)
+                        && (
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={handleSelfAssessmentSubmit}
+                                sx={{
+                                    width:
+                                        isAuditorTablet
+                                            ? "100%"
+                                            : "auto",
+                                    minHeight:
+                                        isAuditorTablet
+                                            ? 50
+                                            : 36,
+                                }}
+                            >
+                                Submit Self Assessment
+                            </Button>
+                        )}
+
+                    {isDesktopAudit &&
+                        isCQA &&
+                        selectedAudit?.status ===
+                        "Self Assessment Submitted" && (
+
+                            <>
+                                <Button
+                                    variant="contained"
+                                    color="success"
+                                    onClick={handleApproveSelfAssessment}
+                                >
+                                    Approve Assessment
+                                </Button>
+
+                                <Button
+                                    variant="contained"
+                                    color="error"
+                                    onClick={handleRejectSelfAssessment}
+                                >
+                                    Send For Rework
+                                </Button>
+                            </>
+                        )}
+
+                    {/* {!isDepot && ( */}
+                    {!isDepot && isOnsiteAudit && (
                         <Button
                             variant="contained"
                             // fullWidth={isAuditorTablet}
@@ -2706,7 +3244,7 @@ export default function Annexure1() {
                                 try {
                                     const updatedAudit = await updateAudit(Number(id), {
                                         compliance: Number(compliancePercentage),
-                                        status: "Completed",
+                                        status: "CAPA Open",
                                         checklist: auditItems,
                                         generalInfo,
                                     });

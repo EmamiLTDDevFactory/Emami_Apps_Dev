@@ -226,8 +226,10 @@ const createCAPAs = async (capas) => {
           capa.parameter,
           capa.observation,
           // capa.actionPlan,
-          capa.rootCause,
-          capa.preventiveAction,
+          // capa.rootCause,
+          // capa.preventiveAction,
+          capa.actionPlan || capa.rootCause,
+          capa.responsibility || capa.preventiveAction,
           // capa.targetDate,
           normalizeDate(
             capa.targetDate

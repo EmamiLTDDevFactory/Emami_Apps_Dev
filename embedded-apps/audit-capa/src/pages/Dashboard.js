@@ -50,25 +50,64 @@ export default function Dashboard() {
     const [dashboardView, setDashboardView] =
         useState("AUDITS");
 
+    // const openAudits =
+    //     audits.filter(
+    //         (audit) =>
+    //             audit.status === "Open"
+    //     ).length;
+
     const openAudits =
         audits.filter(
             (audit) =>
-                audit.status === "Open"
+                ["Open", "Rework Required"].includes(audit.status)
         ).length;
 
-    const inProgressAudits =
+    const underReviewAudits =
         audits.filter(
-            (audit) =>
-                audit.status ===
-                "In Progress"
+            a =>
+                [
+                    "Self Assessment Submitted",
+                    "Under Review"
+                ].includes(a.status)
         ).length;
 
-    const completedAudits =
+    const capaOpenAudits =
         audits.filter(
-            (audit) =>
-                audit.status ===
-                "Completed"
+            a =>
+                a.status === "CAPA Open"
         ).length;
+
+    // const inProgressAudits =
+    //     audits.filter(
+    //         (audit) =>
+    //             audit.status ===
+    //             "In Progress"
+    //     ).length;
+    // not used.
+    // const inProgressAudits =
+    //     audits.filter(
+    //         (audit) =>
+    //             [
+    //                 "In Progress",
+    //                 "Self Assessment Submitted",
+    //                 "Under Review"
+    //             ].includes(audit.status)
+    //     ).length;
+
+    // const completedAudits =
+    //     audits.filter(
+    //         (audit) =>
+    //             audit.status ===
+    //             "Completed"
+    //     ).length;
+    // const completedAudits =
+    //     audits.filter(
+    //         (audit) =>
+    //             [
+    //                 "CAPA Open",
+    //                 "Completed"
+    //             ].includes(audit.status)
+    //     ).length;
 
     const closedAudits =
         audits.filter(
@@ -95,21 +134,29 @@ export default function Dashboard() {
             ? capaRecords
             : [];
 
+    // const openCAPA =
+    //     safeCapaRecords.filter(
+    //         c => c.status === "Open"
+    //     ).length;
+
     const openCAPA =
         safeCapaRecords.filter(
-            c => c.status === "Open"
+            c =>
+                c.status === "Open" ||
+                c.status === "Sent Back"
         ).length;
 
 
-    const inProgressCAPA =
-        capaRecords.filter(
-            (c) => c.status === "In Progress"
-        ).length;
 
-    const closedCAPA =
-        capaRecords.filter(
-            (c) => c.status === "Closed"
-        ).length;
+    // const inProgressCAPA =
+    //     capaRecords.filter(
+    //         (c) => c.status === "In Progress"
+    //     ).length;
+
+    // const closedCAPA =
+    //     capaRecords.filter(
+    //         (c) => c.status === "Closed"
+    //     ).length;
 
     const overdueAudits =
         audits.filter(a => {
@@ -117,7 +164,9 @@ export default function Dashboard() {
 
             return new Date(a.dueDate) <
                 new Date() &&
-                a.status !== "Closed";
+                // a.status !== "Closed";
+                !["Closed", "CAPA Open"]
+                    .includes(a.status)
         }).length;
 
     // const averageCompliance =
@@ -151,19 +200,49 @@ export default function Dashboard() {
 
     switch (selectedFilter) {
 
+        // case "Open":
+        //     filteredAudits =
+        //         audits.filter(
+        //             (audit) =>
+        //                 audit.status === "Open"
+        //         );
+        //     break;
         case "Open":
             filteredAudits =
                 audits.filter(
                     (audit) =>
-                        audit.status === "Open"
+                        ["Open", "Rework Required"]
+                            .includes(audit.status)
                 );
             break;
 
+        // case "In Progress":
+        //     filteredAudits =
+        //         audits.filter(
+        //             (audit) =>
+        //                 audit.status === "In Progress"
+        //         );
+        //     break;
         case "In Progress":
             filteredAudits =
                 audits.filter(
                     (audit) =>
-                        audit.status === "In Progress"
+                        [
+                            "In Progress",
+                            "Self Assessment Submitted",
+                            "Under Review"
+                        ].includes(audit.status)
+                );
+            break;
+
+        case "Under Review":
+            filteredAudits =
+                audits.filter(
+                    audit =>
+                        [
+                            "Self Assessment Submitted",
+                            "Under Review"
+                        ].includes(audit.status)
                 );
             break;
 
@@ -179,15 +258,23 @@ export default function Dashboard() {
             filteredAudits =
                 audits.filter(
                     (audit) =>
-                        audit.status === "Open"
+                        audit.status === "CAPA Open"
                 );
             break;
 
+        // case "Completed":
+        //     filteredAudits =
+        //         audits.filter(
+        //             (audit) =>
+        //                 audit.status === "Completed"
+        //         );
+        //     break;
         case "Completed":
             filteredAudits =
                 audits.filter(
                     (audit) =>
-                        audit.status === "Completed"
+                        ["CAPA Open", "Completed"]
+                            .includes(audit.status)
                 );
             break;
 
@@ -201,7 +288,10 @@ export default function Dashboard() {
                     return (
                         new Date(audit.dueDate) <
                         new Date() &&
-                        audit.status !== "Closed"
+                        // audit.status !== "Closed"
+                        // !["Closed"].includes(audit.status)
+                        !["Closed", "CAPA Open"]
+                            .includes(audit.status)
                     );
                 });
             break;
@@ -396,16 +486,24 @@ export default function Dashboard() {
                     <Box
                         onClick={() => {
                             setDashboardView("AUDITS");
-                            setSelectedFilter("In Progress");
+                            setSelectedFilter("Under Review");
                         }
                         }
                         sx={{
                             cursor: "pointer",
                         }}
                     >
-                        <KpiCard
+                        {/* <KpiCard
                             title="In Progress"
                             value={inProgressAudits}
+                            color="#06B6D4"
+                            icon={
+                                <AutorenewIcon fontSize="large" />
+                            }
+                        /> */}
+                        <KpiCard
+                            title="Under Review"
+                            value={underReviewAudits}
                             color="#06B6D4"
                             icon={
                                 <AutorenewIcon fontSize="large" />
@@ -422,7 +520,8 @@ export default function Dashboard() {
                         // )
                         onClick={() => {
                             setDashboardView("AUDITS");
-                            setSelectedFilter("Completed");
+                            // setSelectedFilter("Completed");
+                            setSelectedFilter("Open CAPA");
                         }}
 
 
@@ -430,9 +529,17 @@ export default function Dashboard() {
                             cursor: "pointer",
                         }}
                     >
-                        <KpiCard
+                        {/* <KpiCard
                             title="Completed"
                             value={completedAudits}
+                            color="#8B5CF6"
+                            icon={
+                                <TaskAltIcon fontSize="large" />
+                            }
+                        /> */}
+                        <KpiCard
+                            title="CAPA Open"
+                            value={capaOpenAudits}
                             color="#8B5CF6"
                             icon={
                                 <TaskAltIcon fontSize="large" />
@@ -761,8 +868,13 @@ export default function Dashboard() {
                                 //     (capa) =>
                                 //         capa.status === "Open"
                                 // )}
+                                // rows={safeCapaRecords.filter(
+                                //     capa => capa.status === "Open"
+                                // )}
                                 rows={safeCapaRecords.filter(
-                                    capa => capa.status === "Open"
+                                    capa =>
+                                        capa.status === "Open" ||
+                                        capa.status === "Sent Back"
                                 )}
                                 columns={capaColumns}
                                 pageSizeOptions={[5, 10]}

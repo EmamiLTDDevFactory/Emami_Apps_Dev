@@ -16,6 +16,8 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 
 export default function AuditQuestionCard({
     item,
+    auditType,
+    canEditAnnexure,
     handleStatusChange,
     handleObservationChange,
     handleActionPlanChange,
@@ -40,6 +42,12 @@ export default function AuditQuestionCard({
     const isDepot =
         currentUser?.role ===
         "Depot";
+
+    const isDesktopAudit =
+        auditType === "Desktop";
+
+    const isDepotSelfAssessment =
+        isDesktopAudit && isDepot;
 
     const isAuditorTablet =
         !isDepot && isTablet;
@@ -207,10 +215,11 @@ export default function AuditQuestionCard({
                 mb: 3,
                 borderRadius: 4,
                 // minHeight: isTablet ? 220 : "auto",
-                minHeight:
-                    isAuditorTablet
-                        ? 220
-                        : "auto",
+                // minHeight:
+                //     isAuditorTablet
+                //         ? 220
+                //         : "auto",
+                minHeight: "auto",
 
                 boxShadow:
                     "0px 4px 15px rgba(0,0,0,0.06)",
@@ -270,7 +279,8 @@ export default function AuditQuestionCard({
                         }
                         fullWidth
                         size="small"
-                        disabled={isDepot || isNA}
+                        // disabled={isDepot || isNA}
+                        disabled={!canEditAnnexure || isNA}
                         sx={{
                             width: "65%",
                         }}
@@ -294,17 +304,21 @@ export default function AuditQuestionCard({
 
                         fontWeight={600}
                         sx={{
+                            flex: 1,
+                            maxWidth: "100%",
+                            wordBreak: "break-word",
                             fontSize:
                                 isAuditorTablet
-                                    ? "1.35rem"
+                                    ? "1.2rem"
                                     : "1rem",
 
-                            lineHeight: 1.7,
+                            // lineHeight: 1.7,
 
-                            maxWidth:
-                                isAuditorTablet
-                                    ? "100%"
-                                    : "60%",
+                            // maxWidth:
+                            //     isAuditorTablet
+                            //         ? "100%"
+                            //         : "60%",
+
                         }}
 
 
@@ -327,13 +341,23 @@ export default function AuditQuestionCard({
                     color={getChipColor()}
                 /> */}
 
-                <Box
+                {/* <Box
                     sx={{
                         display: "flex",
                         alignItems: "center",
                         gap: 1,
                     }}
+                > */}
+
+                <Box
+                    sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        flexShrink: 0,
+                    }}
                 >
+
                     {/* <Chip
                         size={
                             isAuditorTablet
@@ -365,21 +389,28 @@ export default function AuditQuestionCard({
                         color={getChipColor()}
                     />
 
-                    {item.isCustom && (
-                        <Tooltip title="Delete Question">
-                            <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() =>
-                                    handleDeleteQuestion(
-                                        item.id
-                                    )
-                                }
-                            >
-                                <DeleteIcon />
-                            </IconButton>
-                        </Tooltip>
-                    )}
+                    {/* {item.isCustom && ( */}
+                    {/* {item.isCustom && canEditAnnexure && ( */}
+                    {/* {item.isCustom && !isDepot && ( */}
+
+                    {item.isCustom &&
+                        !isDepot &&
+                        auditType === "Onsite" && (
+
+                            <Tooltip title="Delete Question">
+                                <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() =>
+                                        handleDeleteQuestion(
+                                            item.id
+                                        )
+                                    }
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            </Tooltip>
+                        )}
                 </Box>
             </Box>
 
@@ -388,12 +419,14 @@ export default function AuditQuestionCard({
                 spacing={2}
                 sx={{ p: 2 }}
             >
-                {/* <Grid item xs={12} md={3}> */}
-                <Grid
+                <Grid item xs={12} sm={6} md={2}>
+                    {/* <Grid
                     item
                     xs={12}
                     lg={3}
-                >
+                > */}
+
+
 
                     <Select
                         fullWidth
@@ -416,7 +449,8 @@ export default function AuditQuestionCard({
                         }}
 
 
-                        disabled={isDepot}
+                        // disabled={isDepot}
+                        disabled={!canEditAnnexure}
                         value={item.status ?? ""}
                         onChange={(e) =>
                             handleStatusChange(
@@ -459,12 +493,13 @@ export default function AuditQuestionCard({
                     </Select>
                 </Grid>
 
-                {/* <Grid item xs={12} md={5}> */}
-                <Grid
+                {/* <Grid item xs={12} sm={6} md={5}> */}
+                <Grid item xs={12} md={isAuditorTablet ? 12 : 5}>
+                    {/* <Grid
                     item
                     xs={12}
                     lg={5}
-                >
+                > */}
                     <TextField
                         label="Observation"
                         multiline
@@ -483,7 +518,8 @@ export default function AuditQuestionCard({
                         }}
                         fullWidth
                         size="small"
-                        disabled={isDepot || isNA}
+                        // disabled={isDepot || isNA}
+                        disabled={!canEditAnnexure || isNA}
                         value={
                             item.observation
                         }
@@ -501,122 +537,172 @@ export default function AuditQuestionCard({
                 </Grid>
 
 
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        // label={
-                        //     isNonCompliance
-                        //         ? "Action Plan"
-                        //         : "Action Plan"
-                        // }
-                        // label="Action Plan"
-                        // required={isNonCompliance}
+                {/* <Grid item xs={12}> */}
+                {/* <Grid item xs={12} md={4}> */}
+                {!isDepotSelfAssessment && (
+                    <>
+                        <Grid
+                            item
+                            xs={12}
+                            md={isAuditorTablet ? 6 : 12}
+                        >
+                            <TextField
+                                fullWidth
+                                // label={
+                                //     isNonCompliance
+                                //         ? "Action Plan"
+                                //         : "Action Plan"
+                                // }
+                                // label="Action Plan"
+                                // required={isNonCompliance}
 
-                        label="Action Plan"
-                        required={isNonCompliance}
-                        // helperText={
-                        //     isNonCompliance &&
-                        //         !item.actionPlan?.trim()
-                        //         ? "Action Plan is mandatory for Non-Compliance findings"
-                        //         : ""
-                        // }
-                        error={
-                            isNonCompliance &&
-                            !item.actionPlan?.trim()
-                        }
-                        // helperText={
-                        //     isNonCompliance &&
-                        //         !item.actionPlan?.trim()
-                        //         ? "Action Plan is mandatory for Non-Compliance findings"
-                        //         : ""
-                        // }
+                                label="Action Plan"
+                                required={isNonCompliance}
+                                // helperText={
+                                //     isNonCompliance &&
+                                //         !item.actionPlan?.trim()
+                                //         ? "Action Plan is mandatory for Non-Compliance findings"
+                                //         : ""
+                                // }
+                                error={
+                                    isNonCompliance &&
+                                    !item.actionPlan?.trim()
+                                }
+                                // helperText={
+                                //     isNonCompliance &&
+                                //         !item.actionPlan?.trim()
+                                //         ? "Action Plan is mandatory for Non-Compliance findings"
+                                //         : ""
+                                // }
 
 
-                        value={item.actionPlan || ""}
-                        disabled={
-                            isDepot || disableFollowupField
-                            // item.status === "NA" ||
-                            // disableFollowupFields
-                        }
+                                value={item.actionPlan || ""}
+                                // disabled={
+                                //     isDepot || disableFollowupField
+                                //     // item.status === "NA" ||
+                                //     // disableFollowupFields
+                                // }
+                                disabled={
+                                    !canEditAnnexure ||
+                                    disableFollowupField
+                                }
 
-                        // sx={{
-                        //     backgroundColor:
-                        //         disableFollowupFields
-                        //             ? "#E5E7EB"
-                        //             : "inherit",
-                        // }}
-                        onChange={(e) =>
-                            handleActionPlanChange(
-                                item.id,
-                                e.target.value
-                            )
-                        }
-                    />
-                </Grid>
+                                // sx={{
+                                //     backgroundColor:
+                                //         disableFollowupFields
+                                //             ? "#E5E7EB"
+                                //             : "inherit",
+                                // }}
+                                onChange={(e) =>
+                                    handleActionPlanChange(
+                                        item.id,
+                                        e.target.value
+                                    )
+                                }
+                            />
+                        </Grid>
 
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        label="Responsibility"
-                        value={
-                            item.responsibility || ""
-                        }
-                        disabled={
-                            isDepot || disableFollowupField
-                            // item.status === "NA" ||
-                            // disableFollowupFields
-                        }
-                        sx={{
-                            "& .MuiInputBase-root": {
-                                backgroundColor:
-                                    disableFollowupFields
-                                        ? "#E5E7EB"
-                                        // : "#FFFFFF",
-                                        : "inherit",
-                            }
-                        }}
-                        onChange={(e) =>
-                            handleResponsibilityChange(
-                                item.id,
-                                e.target.value
-                            )
-                        }
-                    />
-                </Grid>
+                        {/* <Grid item xs={12}> */}
+                        {/* <Grid item xs={12} md={4}> */}
+                        <Grid
+                            item
+                            xs={12}
+                            md={isAuditorTablet ? 3 : 12}
+                        >
+                            <TextField
+                                fullWidth
+                                label="Responsibility"
+                                value={
+                                    item.responsibility || ""
+                                }
+                                // disabled={
+                                //     isDepot || disableFollowupField
+                                //     // item.status === "NA" ||
+                                //     // disableFollowupFields
+                                // }
+                                disabled={
+                                    !canEditAnnexure ||
+                                    disableFollowupField
+                                }
+                                sx={{
+                                    "& .MuiInputBase-root": {
+                                        backgroundColor:
+                                            disableFollowupFields
+                                                ? "#E5E7EB"
+                                                // : "#FFFFFF",
+                                                : "inherit",
+                                    }
+                                }}
+                                onChange={(e) =>
+                                    handleResponsibilityChange(
+                                        item.id,
+                                        e.target.value
+                                    )
+                                }
+                            />
+                        </Grid>
 
-                <Grid item xs={12}>
-                    <TextField
-                        fullWidth
-                        type="date"
-                        label="Target Date"
-                        value={
-                            item.targetDate || ""
-                        }
-                        disabled={
-                            isDepot || disableFollowupField
-                            // item.status === "NA" ||
-                            // disableFollowupFields
+                        {/* <Grid item xs={12}> */}
+                        {/* <Grid item xs={12} sm={6} md={2}> */}
+                        <Grid
+                            item
+                            xs={12}
+                            md={isAuditorTablet ? 3 : 12}
+                        >
+                            <TextField
+                                fullWidth
+                                type="date"
+                                label="Target Date"
+                                value={
+                                    item.targetDate || ""
+                                }
+                                // disabled={
+                                //     isDepot || disableFollowupField
+                                //     // item.status === "NA" ||
+                                //     // disableFollowupFields
 
-                        }
-                        sx={{
-                            backgroundColor:
-                                disableFollowupFields
-                                    ? "#E5E7EB"
-                                    : "inherit",
-                        }}
-                        onChange={(e) =>
-                            handleTargetDateChange(
-                                item.id,
-                                e.target.value
-                            )
-                        }
-                        slotProps={{
-                            inputLabel: {
-                                shrink: true,
-                            },
-                        }}
-                    />
-                </Grid>
+                                // }
+
+                                disabled={
+                                    !canEditAnnexure ||
+                                    disableFollowupField
+                                }
+                                // sx={{
+                                //     backgroundColor:
+                                //         disableFollowupFields
+                                //             ? "#E5E7EB"
+                                //             : "inherit",
+                                // }}
+                                onChange={(e) =>
+                                    handleTargetDateChange(
+                                        item.id,
+                                        e.target.value
+                                    )
+                                }
+                                // slotProps={{
+                                //     inputLabel: {
+                                //         shrink: true,
+                                //     },
+                                // }}
+                                InputLabelProps={{
+                                    shrink: true,
+                                }}
+                                sx={{
+                                    minWidth: isAuditorTablet ? 180 : "auto",
+                                    // 180,
+                                    // "& .MuiInputBase-root": {
+                                    //     minHeight: 56,
+                                    // },
+                                    backgroundColor:
+                                        disableFollowupFields
+                                            ? "#E5E7EB"
+                                            : "inherit",
+                                }}
+
+                            />
+                        </Grid>
+                    </>
+                )}
 
                 {/* <Grid item xs={12}>
     {!isDepot && (
@@ -656,12 +742,17 @@ export default function AuditQuestionCard({
     )}
 </Grid> */}
 
-                <Grid item xs={12}>
-                    {!isDepot && (
+                {/* <Grid item xs={12}> */}
+                <Grid item xs={12} sm={6} md={2}>
+                    {/* {!isDepot && ( */}
+                    {canEditAnnexure && (
                         <Button
                             component="label"
                             variant="outlined"
-                            size="small"
+                            fullWidth={isAuditorTablet}
+                            sx={{
+                                minWidth: isAuditorTablet ? 56 : "auto",
+                            }}
                             disabled={disableFollowupField}
                         >
                             Capture Evidence
@@ -671,7 +762,8 @@ export default function AuditQuestionCard({
                                 type="file"
                                 accept="image/*"
                                 capture="environment"
-                                disabled={isDepot || disableFollowupField}
+                                // disabled={isDepot || disableFollowupField}
+                                disabled={!canEditAnnexure || disableFollowupField}
                                 onChange={(e) =>
                                     handleEvidenceUpload(
                                         item.id,
@@ -792,7 +884,7 @@ export default function AuditQuestionCard({
                         sx={{
                             width:
                                 isAuditorTablet
-                                    ? 140
+                                    ? 180
                                     : "100%",
                         }}
                     // InputProps={{
@@ -813,9 +905,10 @@ export default function AuditQuestionCard({
                         // fullWidth
                         size="small"
                         disabled={isNA}
-                        value={
-                            item.actualScore
-                        }
+                        // value={
+                        //     item.actualScore
+                        // }
+                        value={item.actualScore ?? ""}
                         // InputProps={{
                         //     readOnly: true,
                         // }}
@@ -837,7 +930,7 @@ export default function AuditQuestionCard({
                         sx={{
                             width:
                                 isAuditorTablet
-                                    ? 140
+                                    ? 180
                                     : "100%",
                         }}
                     />

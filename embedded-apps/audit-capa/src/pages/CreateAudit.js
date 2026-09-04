@@ -28,6 +28,10 @@ import dayjs from "dayjs";
 import {
     addNotification,
 } from "../utils/notifications";
+import {
+    notifyAuditTypesSet,
+    SAP_FLAG,
+} from "../utils/sapNotify";
 
 export default function CreateAudit() {
     const [auditCategory, setAuditCategory] =
@@ -207,6 +211,16 @@ export default function CreateAudit() {
                         ? `You have been nominated for self assessment audit for ${depot}`
                         : `Onsite audit has been scheduled for ${depot}`,
                 link: `/annexure1/${createdAudit.id}`,
+            });
+
+            // Notify SAP (NGD) so it can trigger the depot email off the Flag.
+            notifyAuditTypesSet({
+                flag:
+                    auditType === "Desktop"
+                        ? SAP_FLAG.DESKTOP_AUDIT_ASSIGNED
+                        : SAP_FLAG.ONSITE_AUDIT_SCHEDULED,
+                depot: selectedDepot?.code || depot,
+                dueDate: dueDate.toDate(),
             });
 
             alert("Audit created successfully.");
