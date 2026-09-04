@@ -161,10 +161,21 @@ async function main() {
 
   await runWithConcurrency(apps, concurrency, async (app) => {
     const appDir = path.join(EMBEDDED_APPS_DIR, app);
-    console.log(`\n=== [${app}] npm install ===`);
-    console.log(await runCommand('npm install --legacy-peer-deps', appDir));
-    console.log(`=== [${app}] npm run build ===`);
-    console.log(await runCommand('npm run build', appDir));
+    // Built up as one string and flushed with a single console.log/error call
+    // per app — logging the header and the buffered output as two separate
+    // calls let another app's lane print in between them (header for one app
+    // immediately followed by another app's output), since there's an await
+    // in between. One call per app keeps each app's whole block atomic.
+    let log = `\n=== [${app}] npm install ===\n`;
+    try {
+      log += await runCommand('npm install --legacy-peer-deps', appDir);
+      log += `\n=== [${app}] npm run build ===\n`;
+      log += await runCommand('npm run build', appDir);
+      console.log(log);
+    } catch (err) {
+      console.error(log + (err.output || ''));
+      throw err;
+    }
   });
 
   console.log('\nAll embedded apps installed and built — merging into hub dist/...');
@@ -252,7 +263,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  if (err && err.output) console.error(err.output);
+  // A failing embedded app's own install/build output was already printed
+  // (with its `=== [app] ... ===` header) by the worker in runWithConcurrency
+  // above before it rethrew, so this is just the final summary — no need to
+  // dump err.output again here.
   console.error(err && err.message ? err.message : err);
   process.exit(1);
 });
