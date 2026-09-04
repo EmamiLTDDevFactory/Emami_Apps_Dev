@@ -169,21 +169,45 @@ export default function ProvisionDashboard() {
           <View style={styles.chartsRow}>
             <View style={[styles.card, styles.flex1]}>
               <Text style={styles.cardTitle}>Pending bill value by status</Text>
-              <Text style={styles.cardSubtitle}>The provision lifecycle from Service Entry Sheet not created through accepted.</Text>
-              <HorizontalBarBreakdown data={statusBreakdown} emptyMessage="No open provisions to break down yet." />
+              <Text style={styles.cardSubtitle}>The provision lifecycle from Service Entry Sheet not created through accepted. Tap a bar for its line items.</Text>
+              <HorizontalBarBreakdown
+                data={statusBreakdown}
+                emptyMessage="No open provisions to break down yet."
+                onSelect={(d) => setActiveKpi({
+                  title: `Status: ${d.label}${d.sublabel ? ` — ${d.sublabel}` : ''}`,
+                  subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                  rows: filteredRows.filter((r) => (r.status || '(unknown)') === d.key),
+                })}
+              />
             </View>
 
             <View style={[styles.card, styles.flex1]}>
               <Text style={styles.cardTitle}>Pending bill value by cost center</Text>
-              <Text style={styles.cardSubtitle}>Top 8 cost centers by open value — see Provision Details for the full breakdown.</Text>
-              <HorizontalBarBreakdown data={costCenterBreakdown} emptyMessage="No open provisions to break down yet." />
+              <Text style={styles.cardSubtitle}>Top 8 cost centers by open value — tap a bar for its line items.</Text>
+              <HorizontalBarBreakdown
+                data={costCenterBreakdown}
+                emptyMessage="No open provisions to break down yet."
+                onSelect={(d) => setActiveKpi({
+                  title: `Cost Center: ${d.label}${d.sublabel ? ` — ${d.sublabel}` : ''}`,
+                  subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                  rows: filteredRows.filter((r) => (r.costCenter || '(unassigned)') === d.key),
+                })}
+              />
             </View>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Pending bill value by vendor</Text>
-            <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter.</Text>
-            <HorizontalBarBreakdown data={vendorBreakdown} emptyMessage="No open provisions to break down yet." />
+            <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter. Tap a bar for its line items.</Text>
+            <HorizontalBarBreakdown
+              data={vendorBreakdown}
+              emptyMessage="No open provisions to break down yet."
+              onSelect={(d) => setActiveKpi({
+                title: `Vendor: ${d.label}${d.sublabel ? ` — ${d.sublabel}` : ''}`,
+                subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                rows: filteredRows.filter((r) => (r.vendor || '(unassigned)') === d.key),
+              })}
+            />
           </View>
         </>
       )}

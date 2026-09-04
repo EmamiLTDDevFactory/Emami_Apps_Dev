@@ -220,29 +220,49 @@ const kpiStyles = StyleSheet.create({
 
 /** Horizontal bar breakdown (pending value by status / cost center / vendor, etc.) — labels wrap
  * onto a second line instead of being clipped, since cost center and status descriptions can run
- * long and every word needs to stay readable. */
-export function HorizontalBarBreakdown({ data, emptyMessage }: { data: Breakdown[]; emptyMessage: string }) {
+ * long and every word needs to stay readable. Pass `onSelect` to make each row tappable (Dashboard
+ * opens the rows behind that slice in a pop-up) — a chevron signals it's interactive, same
+ * affordance as the clickable KpiCard. */
+export function HorizontalBarBreakdown({
+  data,
+  emptyMessage,
+  onSelect,
+}: {
+  data: Breakdown[];
+  emptyMessage: string;
+  onSelect?: (item: Breakdown) => void;
+}) {
   if (data.length === 0) {
     return <Text style={barStyles.emptyText}>{emptyMessage}</Text>;
   }
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <View style={barStyles.list}>
-      {data.map((d) => (
-        <View key={d.key} style={barStyles.row}>
-          <View style={barStyles.labelCol}>
-            <Text style={barStyles.label}>
-              {d.label}{d.sublabel ? ` · ${d.sublabel}` : ''}
-            </Text>
-          </View>
-          <View style={barStyles.trackCol}>
-            <View style={barStyles.track}>
-              <View style={[barStyles.fill, { width: `${(d.value / max) * 100}%` }]} />
+      {data.map((d) => {
+        const RowWrapper = onSelect ? Pressable : View;
+        return (
+          <RowWrapper
+            key={d.key}
+            style={barStyles.row}
+            {...(onSelect
+              ? { onPress: () => onSelect(d), accessibilityRole: 'button' as const, accessibilityLabel: `${d.label}: ${formatValue(d.value)}` }
+              : null)}
+          >
+            <View style={barStyles.labelCol}>
+              <Text style={barStyles.label}>
+                {d.label}{d.sublabel ? ` · ${d.sublabel}` : ''}
+              </Text>
             </View>
-          </View>
-          <Text style={barStyles.value} numberOfLines={1}>{formatValue(d.value)}</Text>
-        </View>
-      ))}
+            <View style={barStyles.trackCol}>
+              <View style={barStyles.track}>
+                <View style={[barStyles.fill, { width: `${(d.value / max) * 100}%` }]} />
+              </View>
+            </View>
+            <Text style={barStyles.value} numberOfLines={1}>{formatValue(d.value)}</Text>
+            {onSelect ? <Ionicons name="chevron-forward" size={14} color={colors.inkSoft} /> : null}
+          </RowWrapper>
+        );
+      })}
     </View>
   );
 }
