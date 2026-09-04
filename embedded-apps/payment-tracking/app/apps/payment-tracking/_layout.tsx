@@ -5,9 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
+import MonthYearBar from '../../../src/components/MonthYearBar';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { MonthYearProvider } from '../../../src/context/MonthYearContext';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -147,6 +149,8 @@ function LayoutContent() {
           </View>
         </View>
 
+        <MonthYearBar />
+
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="upcoming" />
@@ -165,7 +169,9 @@ function LayoutContent() {
 export default function PaymentTrackingLayout() {
   return (
     <PaymentTrackingAuthProvider>
-      <LayoutContent />
+      <MonthYearProvider>
+        <LayoutContent />
+      </MonthYearProvider>
     </PaymentTrackingAuthProvider>
   );
 }
