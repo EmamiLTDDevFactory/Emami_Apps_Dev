@@ -1,37 +1,32 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii } from '../theme/tokens';
 import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
 
-interface Column {
-  key: keyof PaymentTrackingRow;
+interface Field {
   label: string;
-  width: number;
+  strong?: boolean;
+  get: (row: PaymentTrackingRow) => string;
 }
 
 // Exactly the fields Provision Tracking needs, per instruction — every other field
 // paymentTrackingApi.ts maps stays available on the row (e.g. for a future export) but isn't
-// shown here. No Delivery Date / Qty column: ZProvisionTrackSet doesn't expose an equivalent
-// field yet (see paymentTrackingApi.ts's header comment on what's not live).
-const COLUMNS: Column[] = [
-  { key: 'poNumber', label: 'Po No', width: 100 },
-  { key: 'poItemNo', label: 'Line No', width: 80 },
-  { key: 'poCreator', label: 'PO Creater', width: 110 },
-  { key: 'vendor', label: 'Vendor Code', width: 100 },
-  { key: 'vendorName', label: 'Vendor Name', width: 160 },
-  { key: 'serviceText', label: 'Service Txt', width: 200 },
-  { key: 'grossValue', label: 'Activity value', width: 120 },
-  { key: 'statusText', label: 'Status', width: 220 },
-  { key: 'liabilityCreated', label: 'Liability Create (Y/N)', width: 150 },
-  { key: 'entrySheetNo', label: 'Entry Sheet No', width: 130 },
-  { key: 'pendingValue', label: 'Pending Bill Value', width: 130 },
-  { key: 'costCenter', label: 'Cost Center', width: 100 },
-  { key: 'costCenterText', label: 'Cost Center Description', width: 190 },
-  { key: 'glAccount', label: 'GL Code', width: 100 },
-  { key: 'glAccountText', label: 'GL Description', width: 180 },
+// shown here. PO No / Line No move into the card header below instead of a field, and Status
+// becomes the header badge — everything else renders as a wrapping label/value field so the whole
+// row is visible without horizontal scrolling on any screen size.
+const FIELDS: Field[] = [
+  { label: 'PO Creater', get: (r) => r.poCreator },
+  { label: 'Vendor', get: (r) => [r.vendor, r.vendorName].filter(Boolean).join(' · ') },
+  { label: 'Service Txt', get: (r) => r.serviceText },
+  { label: 'Activity Value', get: (r) => r.grossValue },
+  { label: 'Liability Create (Y/N)', get: (r) => r.liabilityCreated },
+  { label: 'Entry Sheet No', get: (r) => r.entrySheetNo },
+  { label: 'Pending Bill Value', strong: true, get: (r) => r.pendingValue },
+  { label: 'Cost Center', get: (r) => [r.costCenter, r.costCenterText].filter(Boolean).join(' · ') },
+  { label: 'GL Code', get: (r) => [r.glAccount, r.glAccountText].filter(Boolean).join(' · ') },
 ];
 
-// Row tint by the SAP-derived Status code — '02' (GR/MIGO posted, no SES) is the main provision
+// Card accent by the SAP-derived Status code — '02' (GR/MIGO posted, no SES) is the main provision
 // exposure bucket per instruction, so it gets the strongest tint; '01' (nothing at all yet) is
 // next; '03' (SES created then reversed) is informational; '04' (acceptance pending) is a mild
 // amber; '05' (accepted) gets no tint — it's resolved.
@@ -47,11 +42,11 @@ interface PaymentTrackingTableProps {
   emptyMessage: string;
 }
 
-/** Read-only provision-status table shared across Provision Tracking's screens (Upcoming/Missed
- * Provision, and the Provision Details pop-up's line-item list) — columns are the specific fields
- * requested (see COLUMNS above), not every field the backend returns (see paymentTrackingApi.ts's
- * header comment for the full set). Row color follows SAP's own computed Status field rather than
- * a client-side answer, unlike Delivery Confirmation's table. */
+/** Read-only provision-status list shared across Provision Tracking's screens (Upcoming/Missed
+ * Provision, and the Provision Details pop-up's line-item list) — one card per PO item with its
+ * fields wrapping into as many columns as the screen width allows (many on desktop, one or two on
+ * mobile), so nothing needs horizontal scrolling to be seen. Card accent follows SAP's own computed
+ * Status field rather than a client-side answer, unlike Delivery Confirmation's table. */
 export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrackingTableProps) {
   if (rows.length === 0) {
     return (
@@ -61,75 +56,103 @@ export default function PaymentTrackingTable({ rows, emptyMessage }: PaymentTrac
     );
   }
 
-  const tableWidth = COLUMNS.reduce((sum, c) => sum + c.width, 0);
-
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator style={styles.scroll}>
-      <View style={[styles.card, { width: tableWidth }]}>
-        <View style={styles.headerRow}>
-          {COLUMNS.map((col) => (
-            <Text key={col.key} style={[styles.headerCell, { width: col.width }]}>
-              {col.label}
-            </Text>
-          ))}
-        </View>
-
-        {rows.map((row) => {
-          const rowTint = STATUS_ROW_TINT[row.status];
-          return (
-            <View key={row.key} style={[styles.row, rowTint ? { backgroundColor: rowTint } : null]}>
-              {COLUMNS.map((col) => {
-                const raw = row[col.key];
-                const display = (raw as string) || '—';
-                return (
-                  <Text key={col.key} style={[styles.cell, { width: col.width }]} numberOfLines={2}>
-                    {display}
-                  </Text>
-                );
-              })}
+    <View style={styles.list}>
+      {rows.map((row) => {
+        const tint = STATUS_ROW_TINT[row.status];
+        return (
+          <View key={row.key} style={[styles.card, tint ? { backgroundColor: tint } : null]}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                PO {row.poNumber || '—'} · Line {row.poItemNo || '—'}
+              </Text>
+              {row.statusText ? (
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusBadgeText} numberOfLines={1}>{row.statusText}</Text>
+                </View>
+              ) : null}
             </View>
-          );
-        })}
-      </View>
-    </ScrollView>
+
+            <View style={styles.fieldGrid}>
+              {FIELDS.map((f) => (
+                <View key={f.label} style={styles.field}>
+                  <Text style={styles.fieldLabel}>{f.label}</Text>
+                  <Text style={[styles.fieldValue, f.strong && styles.fieldValueStrong]} numberOfLines={2}>
+                    {f.get(row) || '—'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flexGrow: 0,
+  list: {
+    gap: 12,
   },
   card: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.xl,
     backgroundColor: colors.white,
-    overflow: 'hidden',
+    padding: 14,
+    gap: 10,
   },
-  headerRow: {
+  cardHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: colors.rust,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  headerCell: {
+  cardTitle: {
+    flexShrink: 1,
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  statusBadge: {
+    maxWidth: 180,
+    borderRadius: radii.pill,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+  },
+  statusBadgeText: {
     fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.inkSoft,
+  },
+  fieldGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  field: {
+    minWidth: 140,
+    flexGrow: 1,
+    flexBasis: 140,
+    gap: 2,
+  },
+  fieldLabel: {
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.3,
     textTransform: 'uppercase',
-    color: colors.white,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    color: colors.inkSoft,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  cell: {
+  fieldValue: {
     fontSize: 12.5,
     color: colors.ink,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+  },
+  fieldValueStrong: {
+    color: colors.red,
+    fontWeight: '800',
   },
   empty: {
     alignItems: 'center',
