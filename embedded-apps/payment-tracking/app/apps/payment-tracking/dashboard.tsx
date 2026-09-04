@@ -6,7 +6,7 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../../src/lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { num, formatValue, breakdownBy } from '../../../src/lib/provisionMetrics';
-import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown } from '../../../src/components/ProvisionUI';
+import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal } from '../../../src/components/ProvisionUI';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
 
 /** Admin's landing screen — cross-org KPIs plus "pending value by status" and "by cost center"
@@ -22,6 +22,7 @@ export default function ProvisionDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ProvisionFilterState>(EMPTY_PROVISION_FILTERS);
+  const [activeKpi, setActiveKpi] = useState<{ title: string; subtitle: string; rows: PaymentTrackingRow[] } | null>(null);
 
   useEffect(() => {
     if (roleLoading) return;
@@ -101,16 +102,67 @@ export default function ProvisionDashboard() {
           <ProvisionFilterBar rows={rows} value={filters} onChange={setFilters} resultCount={filteredRows.length} />
 
           <View style={styles.kpiGrid}>
-            <KpiCard icon="document-text-outline" label="Open POs" value={String(distinctPOs)} />
-            <KpiCard icon="list-outline" label="Open line items" value={String(filteredRows.length)} />
-            <KpiCard icon="cash-outline" label="Pending bill value" value={formatValue(totalPending)} accent={colors.red} />
-            <KpiCard icon="business-outline" label="Cost centers involved" value={String(distinctCostCenters)} />
-            <KpiCard icon="people-outline" label="Vendors involved" value={String(distinctVendors)} />
+            <KpiCard
+              icon="document-text-outline"
+              label="Open POs"
+              value={String(distinctPOs)}
+              onPress={() => setActiveKpi({
+                title: 'Open POs',
+                subtitle: `${distinctPOs} distinct PO(s) across ${filteredRows.length} open line item(s), under the current filter.`,
+                rows: filteredRows,
+              })}
+            />
+            <KpiCard
+              icon="list-outline"
+              label="Open line items"
+              value={String(filteredRows.length)}
+              onPress={() => setActiveKpi({
+                title: 'Open line items',
+                subtitle: `Every open PO line item under the current filter.`,
+                rows: filteredRows,
+              })}
+            />
+            <KpiCard
+              icon="cash-outline"
+              label="Pending bill value"
+              value={formatValue(totalPending)}
+              accent={colors.red}
+              onPress={() => setActiveKpi({
+                title: 'Pending bill value',
+                subtitle: `${formatValue(totalPending)} total pending across ${filteredRows.length} open line item(s).`,
+                rows: filteredRows,
+              })}
+            />
+            <KpiCard
+              icon="business-outline"
+              label="Cost centers involved"
+              value={String(distinctCostCenters)}
+              onPress={() => setActiveKpi({
+                title: 'Cost centers involved',
+                subtitle: `${distinctCostCenters} distinct cost center(s) across the current filter's open line items.`,
+                rows: filteredRows,
+              })}
+            />
+            <KpiCard
+              icon="people-outline"
+              label="Vendors involved"
+              value={String(distinctVendors)}
+              onPress={() => setActiveKpi({
+                title: 'Vendors involved',
+                subtitle: `${distinctVendors} distinct vendor(s) across the current filter's open line items.`,
+                rows: filteredRows,
+              })}
+            />
             <KpiCard
               icon="warning-outline"
               label="Main provision exposure — GR posted, no Service Entry Sheet"
               value={`${mainExposureRows.length} · ${formatValue(mainExposureValue)}`}
               accent={colors.red}
+              onPress={() => setActiveKpi({
+                title: 'Main provision exposure',
+                subtitle: `GR/MIGO posted but no Service Entry Sheet created yet — ${mainExposureRows.length} line item(s), ${formatValue(mainExposureValue)} pending.`,
+                rows: mainExposureRows,
+              })}
             />
           </View>
 
@@ -134,6 +186,15 @@ export default function ProvisionDashboard() {
             <HorizontalBarBreakdown data={vendorBreakdown} emptyMessage="No open provisions to break down yet." />
           </View>
         </>
+      )}
+
+      {activeKpi && (
+        <ProvisionDetailModal
+          title={activeKpi.title}
+          subtitle={activeKpi.subtitle}
+          rows={activeKpi.rows}
+          onClose={() => setActiveKpi(null)}
+        />
       )}
     </ScrollView>
   );

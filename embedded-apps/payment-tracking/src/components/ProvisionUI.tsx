@@ -1,8 +1,10 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
 import { formatValue, type Breakdown } from '../lib/provisionMetrics';
+import PaymentTrackingTable from './PaymentTrackingTable';
+import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
 
 const cardShadow = Platform.select({
   web: { boxShadow: '0 1px 3px rgba(31,27,51,0.06)' },
@@ -147,20 +149,28 @@ const heroButtonStyles2 = StyleSheet.create({
 
 /** One stat tile — used on Home and Dashboard so both "command center" screens share the exact
  * same KPI look. Label is a full description, never clipped, so what the number means is always
- * legible. */
+ * legible. Pass `onPress` to make it tappable (Dashboard opens the underlying rows in a pop-up) —
+ * a small chevron signals it's interactive; without `onPress` it renders as a plain, inert card
+ * (Home's KPIs are informational only). */
 export function KpiCard({
   icon,
   label,
   value,
   accent,
+  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
   accent?: string;
+  onPress?: () => void;
 }) {
+  const Wrapper = onPress ? Pressable : View;
   return (
-    <View style={kpiStyles.card}>
+    <Wrapper
+      style={kpiStyles.card}
+      {...(onPress ? { onPress, accessibilityRole: 'button' as const, accessibilityLabel: `${label}: ${value}` } : null)}
+    >
       <View style={[kpiStyles.iconBox, accent ? { backgroundColor: `${accent}18` } : null]}>
         <Ionicons name={icon} size={17} color={accent || colors.rust} />
       </View>
@@ -168,7 +178,8 @@ export function KpiCard({
         <Text style={kpiStyles.value}>{value}</Text>
         <Text style={kpiStyles.label}>{label}</Text>
       </View>
-    </View>
+      {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.inkSoft} /> : null}
+    </Wrapper>
   );
 }
 
@@ -280,28 +291,37 @@ const barStyles = StyleSheet.create({
 });
 
 /** Clickable section-chooser card (Home's quick links, Provision Details' "how to browse" choice)
- * — subtitle always wraps in full since it's the explanatory copy that says what the section does. */
+ * — subtitle always wraps in full since it's the explanatory copy that says what the section does.
+ * `accent` colors the icon box, top stripe, and CTA so each choice reads as visually distinct
+ * instead of every card looking identical. */
 export function OptionCard({
   icon,
   title,
   subtitle,
   onPress,
+  accent = colors.rust,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
   onPress: () => void;
+  accent?: string;
 }) {
   return (
-    <Pressable style={optionStyles.card} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
-      <View style={optionStyles.iconBox}>
-        <Ionicons name={icon} size={22} color={colors.rust} />
+    <Pressable
+      style={[optionStyles.card, { borderTopColor: accent, borderTopWidth: 3 }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
+      <View style={[optionStyles.iconBox, { backgroundColor: `${accent}18` }]}>
+        <Ionicons name={icon} size={22} color={accent} />
       </View>
       <Text style={optionStyles.title}>{title}</Text>
       <Text style={optionStyles.subtitle}>{subtitle}</Text>
       <View style={optionStyles.cta}>
-        <Text style={optionStyles.ctaText}>Open</Text>
-        <Ionicons name="arrow-forward" size={14} color={colors.rust} />
+        <Text style={[optionStyles.ctaText, { color: accent }]}>Open</Text>
+        <Ionicons name="arrow-forward" size={14} color={accent} />
       </View>
     </Pressable>
   );
@@ -349,5 +369,82 @@ const optionStyles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: colors.rust,
+  },
+});
+
+/** Generic "here are the rows behind that number" pop-up — used by Dashboard's clickable KpiCards
+ * so every stat can answer "which POs/lines is this counting?" with the same shared line-item table
+ * Upcoming/Missed/Provision Details already use, instead of a bespoke view per stat. */
+export function ProvisionDetailModal({
+  title,
+  subtitle,
+  rows,
+  onClose,
+}: {
+  title: string;
+  subtitle?: string;
+  rows: PaymentTrackingRow[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={detailModalStyles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" />
+        <View style={detailModalStyles.card}>
+          <View style={detailModalStyles.headerRow}>
+            <View style={detailModalStyles.flex1}>
+              <Text style={detailModalStyles.title}>{title}</Text>
+              {subtitle ? <Text style={detailModalStyles.subtitle}>{subtitle}</Text> : null}
+            </View>
+            <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+              <Ionicons name="close" size={20} color={colors.ink} />
+            </Pressable>
+          </View>
+          <ScrollView style={detailModalStyles.scroll} showsVerticalScrollIndicator={false}>
+            <PaymentTrackingTable rows={rows} emptyMessage="No items match this stat right now." />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const detailModalStyles = StyleSheet.create({
+  flex1: { flex: 1 },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31,27,51,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 920,
+    maxHeight: '85%',
+    backgroundColor: colors.white,
+    borderRadius: radii.xl,
+    padding: 20,
+    gap: 12,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  subtitle: {
+    fontSize: 12.5,
+    color: colors.inkSoft,
+    marginTop: 3,
+    lineHeight: 18,
+  },
+  scroll: {
+    flexGrow: 0,
   },
 });

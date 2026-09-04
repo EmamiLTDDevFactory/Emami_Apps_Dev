@@ -9,6 +9,7 @@ export const colors = {
   white: '#FFFFFF',
   green: '#1F7A4D',
   red: '#C0392B',
+  amber: '#B45309',
   appBg: '#EEF0F4',
 };
 

@@ -93,19 +93,38 @@ function groupByCostCenter(rows: PaymentTrackingRow[]): CostCenterGroup[] {
     .sort((a, b) => b.totalOpenValue - a.totalOpenValue);
 }
 
+// Colors each tile by where its pending value ranks against its siblings in the same grid — top
+// third (biggest exposure) red, middle third amber, bottom third green — so the grid reads like a
+// heatmap at a glance instead of a wall of identical white cards. Groups already arrive sorted by
+// totalOpenValue descending (see groupByPo/groupByCostCenter), so `index` alone gives the rank.
+function tileRankAccent(index: number, total: number): string {
+  if (total <= 1) return colors.red;
+  const third = total / 3;
+  if (index < third) return colors.red;
+  if (index < third * 2) return colors.amber;
+  return colors.green;
+}
+
 function Tile({
   title,
   subtitle,
   kpis,
+  accent,
   onPress,
 }: {
   title: string;
   subtitle?: string;
   kpis: { label: string; value: string }[];
+  accent: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.tile} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
+    <Pressable
+      style={[styles.tile, { borderLeftColor: accent, borderLeftWidth: 4, backgroundColor: `${accent}08` }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
       <View style={styles.tileHeaderRow}>
         <Text style={styles.tileTitle} numberOfLines={1}>{title}</Text>
         <Ionicons name="chevron-forward" size={16} color={colors.inkSoft} />
@@ -291,12 +310,14 @@ export default function ProvisionDetailsScreen() {
                   icon="business-outline"
                   title="Cost Center Wise Details"
                   subtitle="Browse by cost center first, then drill into each PO under it."
+                  accent={colors.rust}
                   onPress={() => setMode('costcenter')}
                 />
                 <OptionCard
                   icon="list-outline"
                   title="Detailed Report"
                   subtitle="Every open PO at once, with cost center & GL shown up front."
+                  accent={colors.green}
                   onPress={() => setMode('report-po')}
                 />
               </View>
@@ -307,11 +328,12 @@ export default function ProvisionDetailsScreen() {
                 <Text style={styles.emptyText}>No open provisions found.</Text>
               ) : (
                 <View style={styles.tileGrid}>
-                  {costCenterGroups.map((g) => (
+                  {costCenterGroups.map((g, i) => (
                     <Tile
                       key={g.costCenter}
                       title={g.costCenter}
                       subtitle={g.costCenterText}
+                      accent={tileRankAccent(i, costCenterGroups.length)}
                       kpis={[
                         { label: 'POs', value: String(g.poCount) },
                         { label: 'Lines', value: String(g.lineCount) },
@@ -329,11 +351,12 @@ export default function ProvisionDetailsScreen() {
                 <Text style={styles.emptyText}>No open POs under this cost center.</Text>
               ) : (
                 <View style={styles.tileGrid}>
-                  {posForSelectedCostCenter.map((g) => (
+                  {posForSelectedCostCenter.map((g, i) => (
                     <Tile
                       key={g.poNumber}
                       title={g.poNumber}
                       subtitle={`GL ${g.glAccount || '—'} · CC ${g.costCenter || '—'}`}
+                      accent={tileRankAccent(i, posForSelectedCostCenter.length)}
                       kpis={[
                         { label: 'Lines', value: String(g.lineCount) },
                         { label: 'Pending Value', value: formatValue(g.totalOpenValue) },
@@ -350,11 +373,12 @@ export default function ProvisionDetailsScreen() {
                 <Text style={styles.emptyText}>No open POs found.</Text>
               ) : (
                 <View style={styles.tileGrid}>
-                  {poGroups.map((g) => (
+                  {poGroups.map((g, i) => (
                     <Tile
                       key={g.poNumber}
                       title={g.poNumber}
                       subtitle={`GL ${g.glAccount || '—'} · CC ${g.costCenter || '—'}`}
+                      accent={tileRankAccent(i, poGroups.length)}
                       kpis={[
                         { label: 'Lines', value: String(g.lineCount) },
                         { label: 'Pending Value', value: formatValue(g.totalOpenValue) },
