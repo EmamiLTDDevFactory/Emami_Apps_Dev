@@ -91,7 +91,7 @@ function parseReturnReason(reason: string) {
     kv[p.slice(0, idx).trim().toLowerCase()] = p.slice(idx + 1).trim();
   }
   return {
-    return_type: kind === 'FULL' ? 'Full Return' : kind === 'PARTIAL' ? 'Partial Refund' : kind,
+    return_type: kind === 'FULL' ? 'Full Return' : kind === 'PARTIAL' ? 'Partial Return' : kind,
     credit_note: kv['credit'] ?? '',
     sap_ret_date: kv['sap'] ?? '',
     pieces_returned: kv['pieces'] ?? '',

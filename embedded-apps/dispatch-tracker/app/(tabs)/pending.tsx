@@ -134,38 +134,41 @@ export default function PendingScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
-      <SectionHeader title="Pending Invoices" subtitle={`${sorted.length} total`} />
+    <View style={styles.screen}>
+      <View style={styles.sticky}>
+        <SectionHeader title="Pending Invoices" subtitle={`${sorted.length} total`} />
 
-      {flash ? (
-        <View style={styles.flash}>
-          <Text style={styles.flashText}>{flash}</Text>
+        {flash ? (
+          <View style={styles.flash}>
+            <Text style={styles.flashText}>{flash}</Text>
+          </View>
+        ) : null}
+
+        <FilterRow>
+          <SearchInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Invoice · Customer · Town · Route Code · Customer Code"
+          />
+          {readOnly ? <FilterSelect value={depotFilter} options={depotOptions} onChange={setDepotFilter} minWidth={120} /> : null}
+          <FilterSelect value={townFilter} options={townOptions} onChange={setTownFilter} minWidth={120} />
+          <FilterSelect value={groupBy} options={GROUP_OPTIONS} onChange={setGroupBy} minWidth={120} />
+          <Pressable style={[styles.toggle, showAll && styles.toggleActive]} onPress={() => setShowAll((s) => !s)}>
+            <Text style={[styles.toggleText, showAll && styles.toggleTextActive]}>Show All</Text>
+          </Pressable>
+        </FilterRow>
+
+        <View style={styles.kpiRow}>
+          <KPICard icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
+          <KPICard icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
         </View>
-      ) : null}
-
-      <FilterRow>
-        <SearchInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Invoice · Customer · Town · Route Code · Customer Code"
-        />
-        {readOnly ? <FilterSelect value={depotFilter} options={depotOptions} onChange={setDepotFilter} minWidth={120} /> : null}
-        <FilterSelect value={townFilter} options={townOptions} onChange={setTownFilter} minWidth={120} />
-        <FilterSelect value={groupBy} options={GROUP_OPTIONS} onChange={setGroupBy} minWidth={120} />
-        <Pressable style={[styles.toggle, showAll && styles.toggleActive]} onPress={() => setShowAll((s) => !s)}>
-          <Text style={[styles.toggleText, showAll && styles.toggleTextActive]}>Show All</Text>
-        </Pressable>
-      </FilterRow>
-
-      <View style={styles.kpiRow}>
-        <KPICard icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
-        <KPICard icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
-      </View>
-      <View style={styles.kpiRow}>
-        <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
-        <KPICard icon="📍" label="Towns" value={String(towns)} color={colors.navy} />
+        <View style={styles.kpiRow}>
+          <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
+          <KPICard icon="📍" label="Towns" value={String(towns)} color={colors.navy} />
+        </View>
       </View>
 
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       {filtered.length === 0 ? (
         <EmptyState message="No invoices match" icon="🔍" />
       ) : groupBy === 'None' ? (
@@ -191,6 +194,7 @@ export default function PendingScreen() {
           onCancel={setCancelRow}
         />
       )}
+      </ScrollView>
 
       {dispatchRow ? (
         <DispatchModal
@@ -208,7 +212,7 @@ export default function PendingScreen() {
           onSuccess={showFlash}
         />
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -405,6 +409,9 @@ function PendingRowCard({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   screenContent: { padding: 12, paddingBottom: 32 },
+  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 32 },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.bg },
   loadingText: { fontSize: 12, color: colors.g500 },
   errorBanner: {

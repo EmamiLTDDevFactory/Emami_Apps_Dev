@@ -18,7 +18,7 @@ import { isoDate, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /** Ported 1:1 from the "cp_ret_{inv_no}" popup inside render_completed(). */
-const RETURN_TYPES = ['Full Return', 'Partial Refund'];
+const RETURN_TYPES = ['Full Return', 'Partial Return'];
 
 export function ReturnModal({
   visible,
@@ -68,7 +68,7 @@ export function ReturnModal({
   // Re-bind to a `const` so nested closures below keep the non-null narrowing.
   const inv = invoice;
 
-  const isPartial = returnType === 'Partial Refund';
+  const isPartial = returnType === 'Partial Return';
 
   async function handleGetRetVal() {
     const cn = creditNote.trim();
@@ -143,10 +143,10 @@ export function ReturnModal({
       />
 
       <FieldLabel text="Receiving Date" required />
-      <DateField value={receivingDate} onChange={setReceivingDate} minimumDate={minDate} />
+      <DateField value={receivingDate} onChange={setReceivingDate} minimumDate={minDate} maximumDate={today} />
 
       <FieldLabel text="SAP Entry Date" required />
-      <DateField value={sapEntryDate} onChange={setSapEntryDate} minimumDate={minDate} />
+      <DateField value={sapEntryDate} onChange={setSapEntryDate} minimumDate={minDate} maximumDate={today} />
 
       <FieldLabel text="Return Type" required />
       <SelectField value={returnType} options={RETURN_TYPES} onChange={setReturnType} />

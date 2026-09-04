@@ -13,7 +13,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { daysBetween, fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -41,15 +41,6 @@ const SORT_FIELDS: { key: SortField; label: string }[] = [
   { key: 'town', label: '📍 Town' },
 ];
 const PAGE_SIZE = 7;
-/** Return is only allowed within this many days of the actual delivery date. */
-const RETURN_WINDOW_DAYS = 7;
-
-/** Return button stays active through day 7 after delivery, greyed out from day 8 on. */
-function isReturnEligible(row: CompletedInvoice): boolean {
-  const delivered = toDate(row.actual_delivery_date);
-  if (!delivered) return true;
-  return daysBetween(todayDate(), delivered) <= RETURN_WINDOW_DAYS;
-}
 
 export default function CompletedScreen() {
   const { session, readOnly } = useAuth();
@@ -165,99 +156,103 @@ export default function CompletedScreen() {
   const currentSortLabel = SORT_FIELDS.find((s) => s.key === sortField)?.label ?? sortField;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {flash ? (
-        <Pressable
-          style={[styles.flash, flash.type === 'success' ? styles.flashSuccess : styles.flashWarning]}
-          onPress={() => setFlash(null)}>
-          <Text
-            style={[
-              styles.flashText,
-              { color: flash.type === 'success' ? colors.greenDk : colors.amberDk },
-            ]}>
-            {flash.text}
-          </Text>
-        </Pressable>
-      ) : null}
+    <View style={styles.page}>
+      <View style={styles.sticky}>
+        {flash ? (
+          <Pressable
+            style={[styles.flash, flash.type === 'success' ? styles.flashSuccess : styles.flashWarning]}
+            onPress={() => setFlash(null)}>
+            <Text
+              style={[
+                styles.flashText,
+                { color: flash.type === 'success' ? colors.greenDk : colors.amberDk },
+              ]}>
+              {flash.text}
+            </Text>
+          </Pressable>
+        ) : null}
 
-      <FilterRow>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice · Customer · Town · LR" />
-        {readOnly && (
-          <FilterSelect value={filterDepot} options={depotOptions} onChange={setFilterDepot} minWidth={120} />
+        <FilterRow>
+          <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice · Customer · Town · LR" />
+          {readOnly && (
+            <FilterSelect value={filterDepot} options={depotOptions} onChange={setFilterDepot} minWidth={120} />
+          )}
+          <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={130} />
+          <FilterSelect
+            value={transporterFilter}
+            options={transporterOptions}
+            onChange={setTransporterFilter}
+            minWidth={130}
+          />
+        </FilterRow>
+
+        <FilterRow>
+          <FilterSelect
+            value={currentSortLabel}
+            options={SORT_FIELDS.map((s) => s.label)}
+            onChange={(label) => {
+              const found = SORT_FIELDS.find((s) => s.label === label);
+              if (found) setSortField(found.key);
+            }}
+            minWidth={160}
+          />
+          <Pressable style={styles.ascToggle} onPress={() => setSortAsc((a) => !a)}>
+            <View style={[styles.checkbox, sortAsc && styles.checkboxOn]}>
+              {sortAsc ? <Text style={styles.checkmark}>✓</Text> : null}
+            </View>
+            <Text style={styles.ascLabel}>↑ Asc</Text>
+          </Pressable>
+        </FilterRow>
+
+        {period === 'Custom' && (
+          <View style={styles.customRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dateLabel}>From</Text>
+              <DateField value={customFrom} onChange={setCustomFrom} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.dateLabel}>To</Text>
+              <DateField value={customTo} onChange={setCustomTo} />
+            </View>
+          </View>
         )}
-        <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={130} />
-        <FilterSelect
-          value={transporterFilter}
-          options={transporterOptions}
-          onChange={setTransporterFilter}
-          minWidth={130}
-        />
-      </FilterRow>
 
-      <FilterRow>
-        <FilterSelect
-          value={currentSortLabel}
-          options={SORT_FIELDS.map((s) => s.label)}
-          onChange={(label) => {
-            const found = SORT_FIELDS.find((s) => s.label === label);
-            if (found) setSortField(found.key);
-          }}
-          minWidth={160}
-        />
-        <Pressable style={styles.ascToggle} onPress={() => setSortAsc((a) => !a)}>
-          <View style={[styles.checkbox, sortAsc && styles.checkboxOn]}>
-            {sortAsc ? <Text style={styles.checkmark}>✓</Text> : null}
-          </View>
-          <Text style={styles.ascLabel}>↑ Asc</Text>
-        </Pressable>
-      </FilterRow>
-
-      {period === 'Custom' && (
-        <View style={styles.customRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.dateLabel}>From</Text>
-            <DateField value={customFrom} onChange={setCustomFrom} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.dateLabel}>To</Text>
-            <DateField value={customTo} onChange={setCustomTo} />
-          </View>
+        <View style={styles.kpiRow}>
+          <KPICard icon="✅" label="Completed" value={`${filteredSorted.length}/${totalForDepot}`} color={colors.green} />
+          <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.teal} />
+          <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
+          <KPICard
+            icon="🎯"
+            label="On-Time"
+            value={`${onTimePct.toFixed(0)}%`}
+            color={colors.navy}
+            sub={`Avg delay ${avgDelay.toFixed(1)}d`}
+          />
         </View>
-      )}
-
-      <View style={styles.kpiRow}>
-        <KPICard icon="✅" label="Completed" value={`${filteredSorted.length}/${totalForDepot}`} color={colors.green} />
-        <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.teal} />
-        <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
-        <KPICard
-          icon="🎯"
-          label="On-Time"
-          value={`${onTimePct.toFixed(0)}%`}
-          color={colors.navy}
-          sub={`Avg delay ${avgDelay.toFixed(1)}d`}
-        />
       </View>
 
-      {filteredSorted.length === 0 ? (
-        <EmptyState message="No invoices match filters" icon="🔍" />
-      ) : (
-        <>
-          <Pagination page={page} totalItems={filteredSorted.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
-          {pageRows.map((row) => (
-            <InvoiceCard
-              key={row.invoice_no}
-              row={row}
-              readOnly={readOnly}
-              hasPod={!!podStore[row.invoice_no]}
-              onViewPod={() => {
-                const pod = podStore[row.invoice_no];
-                if (pod) setPodTarget({ invoiceNo: row.invoice_no, pod });
-              }}
-              onReturn={() => setReturnTarget(row)}
-            />
-          ))}
-        </>
-      )}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {filteredSorted.length === 0 ? (
+          <EmptyState message="No invoices match filters" icon="🔍" />
+        ) : (
+          <>
+            <Pagination page={page} totalItems={filteredSorted.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            {pageRows.map((row) => (
+              <InvoiceCard
+                key={row.invoice_no}
+                row={row}
+                readOnly={readOnly}
+                hasPod={!!podStore[row.invoice_no]}
+                onViewPod={() => {
+                  const pod = podStore[row.invoice_no];
+                  if (pod) setPodTarget({ invoiceNo: row.invoice_no, pod });
+                }}
+                onReturn={() => setReturnTarget(row)}
+              />
+            ))}
+          </>
+        )}
+      </ScrollView>
 
       <ReturnModal
         visible={!!returnTarget}
@@ -271,7 +266,7 @@ export default function CompletedScreen() {
         pod={podTarget?.pod ?? null}
         onClose={() => setPodTarget(null)}
       />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -350,7 +345,6 @@ function InvoiceCard({
   const totalDelay = Number(row.total_delay) || 0;
   const delayColor = canonicalDelayColor(totalDelay);
   const delayLabel = canonicalDelayLabel(totalDelay);
-  const returnEligible = isReturnEligible(row);
 
   const body = (
     <View style={styles.card}>
@@ -415,7 +409,7 @@ function InvoiceCard({
       <View style={{ flex: 1 }}>{body}</View>
       <View style={styles.actionCol}>
         {hasPod ? <ActionButton label="👁 POD" recipe="viewPod" onPress={onViewPod} fullWidth /> : null}
-        <ActionButton label="↩ Return" recipe="return" onPress={onReturn} disabled={!returnEligible} fullWidth />
+        <ActionButton label="↩ Return" recipe="return" onPress={onReturn} fullWidth />
       </View>
     </View>
   );
@@ -423,6 +417,10 @@ function InvoiceCard({
 
 const styles = StyleSheet.create({
   container: { padding: 12, paddingBottom: 40, backgroundColor: colors.bg, flexGrow: 1 },
+  page: { flex: 1, backgroundColor: colors.bg },
+  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 40 },
   loadingText: { fontSize: 11, color: colors.g500, marginBottom: 8 },
   errorText: { fontSize: 11, color: colors.redDk, marginBottom: 8 },
   flash: { borderRadius: radius.sm, borderWidth: 1.5, padding: 10, marginBottom: 10 },

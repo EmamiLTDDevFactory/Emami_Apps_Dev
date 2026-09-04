@@ -149,29 +149,33 @@ export default function CancelledScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.kpiRow}>
-        <KPICard icon="✕" label="Total Cancelled" value={`${dcRows.length}/${totalInvCn}`} color={colors.red} />
-        <KPICard icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${casesCn.toFixed(0)} cases`} />
+    <View style={styles.screen}>
+      <View style={styles.sticky}>
+        <View style={styles.kpiRow}>
+          <KPICard icon="✕" label="Total Cancelled" value={`${dcRows.length}/${totalInvCn}`} color={colors.red} />
+          <KPICard icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${casesCn.toFixed(0)} cases`} />
+        </View>
+
+        <FilterRow>
+          <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice / Customer / Town" />
+          {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
+          <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
+        </FilterRow>
       </View>
 
-      <FilterRow>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice / Customer / Town" />
-        {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
-        <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
-      </FilterRow>
-
-      {!filtered.length ? (
-        <EmptyState message="No results" icon="🔍" />
-      ) : (
-        <>
-          {pageRows.map((row, i) => (
-            <CancelledCard key={row.invoice_no + i} row={row} bg={i % 2 === 0 ? '#fff' : colors.cancelledPink} />
-          ))}
-          <Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
-        </>
-      )}
-    </ScrollView>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {!filtered.length ? (
+          <EmptyState message="No results" icon="🔍" />
+        ) : (
+          <>
+            {pageRows.map((row, i) => (
+              <CancelledCard key={row.invoice_no + i} row={row} bg={i % 2 === 0 ? '#fff' : colors.cancelledPink} />
+            ))}
+            <Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -243,6 +247,9 @@ function CancelledCard({ row, bg }: { row: CancelledInvoice; bg: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 12, paddingBottom: 28 },
+  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 28 },
   kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   card: {
     borderWidth: 1,

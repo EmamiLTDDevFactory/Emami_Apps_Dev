@@ -21,7 +21,7 @@ import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
  */
 
 const PERIODS = ['All Time', 'Today', 'Last 7 Days', 'Last 30 Days', 'This Month'];
-const TYPES = ['All', 'Full Return', 'Partial Refund'];
+const TYPES = ['All', 'Full Return', 'Partial Return'];
 const PAGE_SIZE = 7;
 
 function periodCutoff(period: string): Date | null {
@@ -130,7 +130,7 @@ export default function ReturnedScreen() {
     }
     if (period !== 'All Time') ds = ds.filter((r) => inPeriod(period, r.invoice_date));
     if (type === 'Full Return') ds = ds.filter((r) => (r.cancel_reason ?? '').startsWith('FULL'));
-    else if (type === 'Partial Refund') ds = ds.filter((r) => (r.cancel_reason ?? '').startsWith('PARTIAL'));
+    else if (type === 'Partial Return') ds = ds.filter((r) => (r.cancel_reason ?? '').startsWith('PARTIAL'));
     ds.sort((a, b) => {
       const da = toDate((a as ReturnedInvoice & { cancel_date?: string | null }).cancel_date ?? a.invoice_date);
       const db = toDate((b as ReturnedInvoice & { cancel_date?: string | null }).cancel_date ?? b.invoice_date);
@@ -190,32 +190,36 @@ export default function ReturnedScreen() {
   }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.kpiRow}>
-        <KPICard icon="↩" label="Total Returns" value={`${drRows.length}/${totalInvR}`} color={colors.purple} />
-        <KPICard icon="📦" label="Full Returns" value={String(fullCnt)} color={colors.navy} />
-        <KPICard icon="🔄" label="Partial Refunds" value={String(partialCnt)} color={colors.amber} />
-        <KPICard icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${casesR.toFixed(0)} cases`} />
+    <View style={styles.screen}>
+      <View style={styles.sticky}>
+        <View style={styles.kpiRow}>
+          <KPICard icon="↩" label="Total Returns" value={`${drRows.length}/${totalInvR}`} color={colors.purple} />
+          <KPICard icon="📦" label="Full Returns" value={String(fullCnt)} color={colors.navy} />
+          <KPICard icon="🔄" label="Partial Returns" value={String(partialCnt)} color={colors.amber} />
+          <KPICard icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${casesR.toFixed(0)} cases`} />
+        </View>
+
+        <FilterRow>
+          <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice / Customer / Town" />
+          {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
+          <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
+          <FilterSelect value={type} options={TYPES} onChange={setType} minWidth={130} />
+        </FilterRow>
       </View>
 
-      <FilterRow>
-        <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice / Customer / Town" />
-        {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
-        <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
-        <FilterSelect value={type} options={TYPES} onChange={setType} minWidth={130} />
-      </FilterRow>
-
-      {!filtered.length ? (
-        <EmptyState message="No results" icon="🔍" />
-      ) : (
-        <>
-          {pageRows.map((row, i) => (
-            <ReturnedCard key={row.invoice_no + i} row={row} bg={i % 2 === 0 ? '#fff' : '#F8FAFF'} retVals={retVals} />
-          ))}
-          <Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
-        </>
-      )}
-    </ScrollView>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {!filtered.length ? (
+          <EmptyState message="No results" icon="🔍" />
+        ) : (
+          <>
+            {pageRows.map((row, i) => (
+              <ReturnedCard key={row.invoice_no + i} row={row} bg={i % 2 === 0 ? '#fff' : '#F8FAFF'} retVals={retVals} />
+            ))}
+            <Pagination page={page} totalItems={filtered.length} pageSize={PAGE_SIZE} onPageChange={setPage} />
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -244,7 +248,7 @@ function ReturnedCard({ row, bg, retVals }: { row: ReturnedInvoice; bg: string; 
   const reason = row.cancel_reason ?? '';
   const isFull = reason.startsWith('FULL');
   const isPartial = reason.startsWith('PARTIAL');
-  const retLbl = isFull ? 'Full Return' : isPartial ? 'Partial Refund' : 'Return';
+  const retLbl = isFull ? 'Full Return' : isPartial ? 'Partial Return' : 'Return';
   const creditNote = parseReason(reason, 'Credit');
   const sapDateStr = parseReason(reason, 'SAP');
   const pieces = parseReason(reason, 'Pieces');
@@ -322,6 +326,9 @@ function ReturnedCard({ row, bg, retVals }: { row: ReturnedInvoice; bg: string; 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 12, paddingBottom: 28 },
+  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 28 },
   kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
   card: {
     borderWidth: 1,

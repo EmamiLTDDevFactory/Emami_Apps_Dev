@@ -180,7 +180,7 @@ function applyFilters(rows: AnyInvoiceRow[], type: ReportType, f: FilterState): 
     }
   } else if (showRetType) {
     if (f.f2 === 'Full Return') d = d.filter((r) => (r.cancel_reason ?? '').startsWith('FULL'));
-    else if (f.f2 === 'Partial Refund') d = d.filter((r) => (r.cancel_reason ?? '').startsWith('PARTIAL'));
+    else if (f.f2 === 'Partial Return') d = d.filter((r) => (r.cancel_reason ?? '').startsWith('PARTIAL'));
   } else if (f.f2 !== 'All Customers') {
     d = d.filter((r) => (r.customer_name ?? '') === f.f2);
   }
@@ -466,7 +466,7 @@ export default function ReportsScreen() {
 
   const f2Options = useMemo(() => {
     if (showTrans) return buildOptions(optSrcRows, 'transporter', 'All Transporters');
-    if (showRetType) return ['All Types', 'Full Return', 'Partial Refund'];
+    if (showRetType) return ['All Types', 'Full Return', 'Partial Return'];
     return buildOptions(optSrcRows, 'customer_name', 'All Customers');
   }, [optSrcRows, showTrans, showRetType]);
 

@@ -82,7 +82,7 @@ export function DeliverModal({
       />
 
       <FieldLabel text="Actual Delivery Date" />
-      <DateField value={actualDeliveryDate} onChange={setActualDeliveryDate} minimumDate={minDate} />
+      <DateField value={actualDeliveryDate} onChange={setActualDeliveryDate} minimumDate={minDate} maximumDate={today} />
 
       <ModalButtonRow>
         <GhostButton label="✕ Close" onPress={onClose} />

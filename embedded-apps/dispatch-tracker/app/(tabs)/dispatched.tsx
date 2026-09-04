@@ -206,86 +206,90 @@ export default function DispatchedScreen() {
   }
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      {flash && (
-        <Pressable
-          style={[styles.flash, flash.kind === 'success' ? styles.flashSuccess : styles.flashWarning]}
-          onPress={() => setFlash(null)}>
-          <Text style={[styles.flashText, { color: flash.kind === 'success' ? colors.greenDk : colors.amberDk }]}>
-            {flash.text}
-          </Text>
-        </Pressable>
-      )}
-
-      <FilterRow>
-        <SearchInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="🔍  Invoice · Customer · Town · LR No · Transporter · Vehicle No"
-        />
-        {readOnly && <FilterSelect value={depotFilter} options={depotOptions} onChange={setDepotFilter} minWidth={130} />}
-        <FilterSelect value={sort} options={[...SORT_OPTIONS]} onChange={(v) => setSort(v as SortOption)} minWidth={150} />
-        <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
-      </FilterRow>
-
-      <View style={styles.kpiRow}>
-        <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
-        <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
-        <KPICard icon="💰" label="GSV" value={finr(totalGsv)} color={colors.amber} />
-      </View>
-
-      <View style={styles.actionBar}>
-        <Text style={styles.actionBarLabel}>{selectedInvoiceNo ? 'Selected' : 'Actions'}</Text>
-        {selectedInvoiceNo ? (
-          <View style={styles.actionChip}>
-            <Text style={styles.actionChipText}>📄 {selectedInvoiceNo}</Text>
-          </View>
-        ) : (
-          <Text style={styles.actionHint}>Select an invoice to act on it</Text>
+    <View style={styles.page}>
+      <View style={styles.sticky}>
+        {flash && (
+          <Pressable
+            style={[styles.flash, flash.kind === 'success' ? styles.flashSuccess : styles.flashWarning]}
+            onPress={() => setFlash(null)}>
+            <Text style={[styles.flashText, { color: flash.kind === 'success' ? colors.greenDk : colors.amberDk }]}>
+              {flash.text}
+            </Text>
+          </Pressable>
         )}
-        <View style={styles.actionButtons}>
-          <ActionButton label="✓ Deliver" recipe="deliver" disabled={!selectedRow} onPress={() => setDeliverOpen(true)} />
-          <ActionButton label="✕ Cancel" recipe="cancel" disabled={!selectedRow} onPress={() => setCancelOpen(true)} />
+
+        <FilterRow>
+          <SearchInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="🔍  Invoice · Customer · Town · LR No · Transporter · Vehicle No"
+          />
+          {readOnly && <FilterSelect value={depotFilter} options={depotOptions} onChange={setDepotFilter} minWidth={130} />}
+          <FilterSelect value={sort} options={[...SORT_OPTIONS]} onChange={(v) => setSort(v as SortOption)} minWidth={150} />
+          <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
+        </FilterRow>
+
+        <View style={styles.kpiRow}>
+          <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
+          <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
+          <KPICard icon="💰" label="GSV" value={finr(totalGsv)} color={colors.amber} />
+        </View>
+
+        <View style={styles.actionBar}>
+          <Text style={styles.actionBarLabel}>{selectedInvoiceNo ? 'Selected' : 'Actions'}</Text>
+          {selectedInvoiceNo ? (
+            <View style={styles.actionChip}>
+              <Text style={styles.actionChipText}>📄 {selectedInvoiceNo}</Text>
+            </View>
+          ) : (
+            <Text style={styles.actionHint}>Select an invoice to act on it</Text>
+          )}
+          <View style={styles.actionButtons}>
+            <ActionButton label="✓ Deliver" recipe="deliver" disabled={!selectedRow} onPress={() => setDeliverOpen(true)} />
+            <ActionButton label="✕ Cancel" recipe="cancel" disabled={!selectedRow} onPress={() => setCancelOpen(true)} />
+          </View>
         </View>
       </View>
 
-      <View style={styles.list}>
-        {pageRows.map((row) => {
-          const isSelected = row.invoice_no === selectedInvoiceNo;
-          const badge = statusBadgeFor(row.status);
-          const eddColor = eddVsTodayColor(row.edd, 'green-future');
-          return (
-            <Pressable
-              key={row.invoice_no}
-              style={[styles.card, shadow.sm, isSelected && styles.cardSelected]}
-              onPress={() => setSelectedInvoiceNo(isSelected ? null : row.invoice_no)}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.invoiceNo} numberOfLines={1}>
-                  {row.invoice_no}
-                </Text>
-                <StatusBadge status={badge.status} label={badge.label} />
-              </View>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.list}>
+          {pageRows.map((row) => {
+            const isSelected = row.invoice_no === selectedInvoiceNo;
+            const badge = statusBadgeFor(row.status);
+            const eddColor = eddVsTodayColor(row.edd, 'green-future');
+            return (
+              <Pressable
+                key={row.invoice_no}
+                style={[styles.card, shadow.sm, isSelected && styles.cardSelected]}
+                onPress={() => setSelectedInvoiceNo(isSelected ? null : row.invoice_no)}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.invoiceNo} numberOfLines={1}>
+                    {row.invoice_no}
+                  </Text>
+                  <StatusBadge status={badge.status} label={badge.label} />
+                </View>
 
-              <View style={styles.grid}>
-                <Info label="Depot" value={row.depot || '—'} chip />
-                <Info label="Customer" value={truncate(row.customer_name, 23, false)} />
-                <Info label="Town" value={row.town || '—'} />
-                <Info label="Cases" value={fmtCases(row.no_of_cases)} />
-                <Info label="Gross WT" value={fmtWeight(row.gross_weight_kg)} />
-                <Info label="Value ₹" value={finr(row.invoice_value)} valueColor={colors.amber} bold />
-                <Info label="EDD" value={fd(row.edd)} valueColor={eddColor} bold />
-                <Info label="LR No" value={row.lr_no || '—'} />
-                <Info label="Dispatch Date" value={fd(row.dispatch_date)} />
-                <Info label="Transporter" value={truncate(row.transporter, 21, true)} />
-                <Info label="Vehicle No" value={row.vehicle_no || '—'} />
-                <Info label="Vehicle Type" value={row.vehicle_type || '—'} />
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+                <View style={styles.grid}>
+                  <Info label="Depot" value={row.depot || '—'} chip />
+                  <Info label="Customer" value={truncate(row.customer_name, 23, false)} />
+                  <Info label="Town" value={row.town || '—'} />
+                  <Info label="Cases" value={fmtCases(row.no_of_cases)} />
+                  <Info label="Gross WT" value={fmtWeight(row.gross_weight_kg)} />
+                  <Info label="Value ₹" value={finr(row.invoice_value)} valueColor={colors.amber} bold />
+                  <Info label="EDD" value={fd(row.edd)} valueColor={eddColor} bold />
+                  <Info label="LR No" value={row.lr_no || '—'} />
+                  <Info label="Dispatch Date" value={fd(row.dispatch_date)} />
+                  <Info label="Transporter" value={truncate(row.transporter, 21, true)} />
+                  <Info label="Vehicle No" value={row.vehicle_no || '—'} />
+                  <Info label="Vehicle Type" value={row.vehicle_type || '—'} />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
 
-      <Pagination variant="full" showJump={false} page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage} />
+        <Pagination variant="full" showJump={false} page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage} />
+      </ScrollView>
 
       {selectedRow && deliverOpen && (
         <DeliverModal visible={deliverOpen} row={selectedRow} onClose={closeDeliver} onDone={handleDeliverDone} />
@@ -293,7 +297,7 @@ export default function DispatchedScreen() {
       {selectedRow && cancelOpen && (
         <DispatchCancelModal visible={cancelOpen} row={selectedRow} onClose={closeCancel} onDone={handleCancelDone} />
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -332,7 +336,9 @@ function Info({
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 12, paddingBottom: 24 },
+  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   errorBanner: {
     backgroundColor: colors.redLt,
