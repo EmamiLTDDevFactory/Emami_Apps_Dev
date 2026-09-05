@@ -10,7 +10,7 @@ import PaymentTrackingTable from '../../../src/components/PaymentTrackingTable';
 import { ProvisionHero, HeroIconButton, OptionCard } from '../../../src/components/ProvisionUI';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../../src/components/ProvisionFilters';
 
-type Mode = 'choose' | 'costcenter' | 'costcenter-po' | 'report-po';
+type Mode = 'choose' | 'costcenter' | 'costcenter-po' | 'country' | 'country-po' | 'report-po';
 
 interface PoGroup {
   poNumber: string;
@@ -21,6 +21,7 @@ interface PoGroup {
   costCenterText: string;
   glAccount: string;
   glAccountText: string;
+  country: string;
   lineCount: number;
   totalOpenValue: number;
   lines: PaymentTrackingRow[];
@@ -29,6 +30,13 @@ interface PoGroup {
 interface CostCenterGroup {
   costCenter: string;
   costCenterText: string;
+  poCount: number;
+  lineCount: number;
+  totalOpenValue: number;
+}
+
+interface CountryGroup {
+  country: string;
   poCount: number;
   lineCount: number;
   totalOpenValue: number;
@@ -62,6 +70,7 @@ function groupByPo(rows: PaymentTrackingRow[]): PoGroup[] {
         costCenterText: r.costCenterText,
         glAccount: r.glAccount,
         glAccountText: r.glAccountText,
+        country: r.country,
         lineCount: 0,
         totalOpenValue: 0,
         lines: [],
@@ -92,6 +101,27 @@ function groupByCostCenter(rows: PaymentTrackingRow[]): CostCenterGroup[] {
   }
   return Array.from(byCc.values())
     .map((g) => ({ costCenter: g.costCenter, costCenterText: g.costCenterText, poCount: g.poSet.size, lineCount: g.lineCount, totalOpenValue: g.totalOpenValue }))
+    .sort((a, b) => b.totalOpenValue - a.totalOpenValue);
+}
+
+/** One tile per country (Land1) — Country Wise Details' first drill-down level, same shape as
+ * groupByCostCenter above. PO count is the count of *distinct* POs touching that country, not the
+ * line-item count. */
+function groupByCountry(rows: PaymentTrackingRow[]): CountryGroup[] {
+  const byCountry = new Map<string, { country: string; poSet: Set<string>; lineCount: number; totalOpenValue: number }>();
+  for (const r of rows) {
+    const key = r.country || '(unassigned)';
+    let g = byCountry.get(key);
+    if (!g) {
+      g = { country: r.country || 'Unassigned', poSet: new Set(), lineCount: 0, totalOpenValue: 0 };
+      byCountry.set(key, g);
+    }
+    g.poSet.add(r.poNumber);
+    g.lineCount += 1;
+    g.totalOpenValue += num(r.pendingValue);
+  }
+  return Array.from(byCountry.values())
+    .map((g) => ({ country: g.country, poCount: g.poSet.size, lineCount: g.lineCount, totalOpenValue: g.totalOpenValue }))
     .sort((a, b) => b.totalOpenValue - a.totalOpenValue);
 }
 
@@ -183,6 +213,10 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
               </Text>
             </View>
             <View style={styles.modalMetaItem}>
+              <Text style={styles.modalMetaLabel}>Country</Text>
+              <Text style={styles.modalMetaValue}>{group.country || '—'}</Text>
+            </View>
+            <View style={styles.modalMetaItem}>
               <Text style={styles.modalMetaLabel}>Pending Bill Value</Text>
               <Text style={[styles.modalMetaValue, styles.modalMetaValueStrong]}>{formatValue(group.totalOpenValue)}</Text>
             </View>
@@ -213,6 +247,7 @@ export default function ProvisionDetailsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('choose');
   const [selectedCostCenter, setSelectedCostCenter] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [selectedPo, setSelectedPo] = useState<PoGroup | null>(null);
   const [filters, setFilters] = useState<ProvisionFilterState>(EMPTY_PROVISION_FILTERS);
 
@@ -234,9 +269,14 @@ export default function ProvisionDetailsScreen() {
   const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
   const poGroups = useMemo(() => groupByPo(filteredRows), [filteredRows]);
   const costCenterGroups = useMemo(() => groupByCostCenter(filteredRows), [filteredRows]);
+  const countryGroups = useMemo(() => groupByCountry(filteredRows), [filteredRows]);
   const posForSelectedCostCenter = useMemo(
     () => poGroups.filter((g) => (g.costCenter || 'Unassigned') === selectedCostCenter),
     [poGroups, selectedCostCenter]
+  );
+  const posForSelectedCountry = useMemo(
+    () => poGroups.filter((g) => (g.country || 'Unassigned') === selectedCountry),
+    [poGroups, selectedCountry]
   );
 
   if (roleLoading) {
@@ -264,6 +304,11 @@ export default function ProvisionDetailsScreen() {
       setSelectedCostCenter(null);
       return;
     }
+    if (mode === 'country-po') {
+      setMode('country');
+      setSelectedCountry(null);
+      return;
+    }
     setMode('choose');
   };
 
@@ -274,16 +319,24 @@ export default function ProvisionDetailsScreen() {
         ? 'Cost Center Wise Details'
         : mode === 'costcenter-po'
           ? `Cost Center ${selectedCostCenter}`
-          : 'Detailed Report';
+          : mode === 'country'
+            ? 'Country Wise Details'
+            : mode === 'country-po'
+              ? `Country ${selectedCountry}`
+              : 'Detailed Report';
 
   const heroSubtitle =
     mode === 'choose'
-      ? 'Choose how to browse every open provision — by cost center first, or as one flat report.'
+      ? 'Choose how to browse every open provision — by cost center, by country, or as one flat report.'
       : mode === 'costcenter'
         ? 'Every open cost center with its PO count and pending value — tap one to drill into its POs.'
         : mode === 'costcenter-po'
           ? 'Every open PO under this cost center — tap one for its full line-item detail.'
-          : 'Every open PO at once, with cost center and GL shown up front — tap one for its full line-item detail.';
+          : mode === 'country'
+            ? 'Every open country (Land1) with its PO count and pending value — tap one to drill into its POs.'
+            : mode === 'country-po'
+              ? 'Every open PO under this country — tap one for its full line-item detail.'
+              : 'Every open PO at once, with cost center and GL shown up front — tap one for its full line-item detail.';
 
   return (
     <View style={styles.root}>
@@ -316,6 +369,13 @@ export default function ProvisionDetailsScreen() {
                   subtitle="Browse by cost center first, then drill into each PO under it."
                   accent={colors.rust}
                   onPress={() => setMode('costcenter')}
+                />
+                <OptionCard
+                  icon="earth-outline"
+                  title="Country Wise Details"
+                  subtitle="Browse by country (Land1) first, then drill into each PO under it."
+                  accent={colors.amber}
+                  onPress={() => setMode('country')}
                 />
                 <OptionCard
                   icon="list-outline"
@@ -361,6 +421,50 @@ export default function ProvisionDetailsScreen() {
                       title={g.poNumber}
                       subtitle={`GL ${g.glAccount || '—'} · CC ${g.costCenter || '—'}`}
                       accent={tileRankAccent(i, posForSelectedCostCenter.length)}
+                      kpis={[
+                        { label: 'Lines', value: String(g.lineCount) },
+                        { label: 'Pending Value', value: formatValue(g.totalOpenValue) },
+                      ]}
+                      onPress={() => setSelectedPo(g)}
+                    />
+                  ))}
+                </View>
+              )
+            )}
+
+            {mode === 'country' && (
+              countryGroups.length === 0 ? (
+                <Text style={styles.emptyText}>No open provisions found.</Text>
+              ) : (
+                <View style={styles.tileGrid}>
+                  {countryGroups.map((g, i) => (
+                    <Tile
+                      key={g.country}
+                      title={g.country}
+                      accent={tileRankAccent(i, countryGroups.length)}
+                      kpis={[
+                        { label: 'POs', value: String(g.poCount) },
+                        { label: 'Lines', value: String(g.lineCount) },
+                        { label: 'Pending Value', value: formatValue(g.totalOpenValue) },
+                      ]}
+                      onPress={() => { setSelectedCountry(g.country); setMode('country-po'); }}
+                    />
+                  ))}
+                </View>
+              )
+            )}
+
+            {mode === 'country-po' && (
+              posForSelectedCountry.length === 0 ? (
+                <Text style={styles.emptyText}>No open POs under this country.</Text>
+              ) : (
+                <View style={styles.tileGrid}>
+                  {posForSelectedCountry.map((g, i) => (
+                    <Tile
+                      key={g.poNumber}
+                      title={g.poNumber}
+                      subtitle={`GL ${g.glAccount || '—'} · CC ${g.costCenter || '—'}`}
+                      accent={tileRankAccent(i, posForSelectedCountry.length)}
                       kpis={[
                         { label: 'Lines', value: String(g.lineCount) },
                         { label: 'Pending Value', value: formatValue(g.totalOpenValue) },

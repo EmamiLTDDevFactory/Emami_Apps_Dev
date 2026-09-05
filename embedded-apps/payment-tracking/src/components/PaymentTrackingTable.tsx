@@ -24,8 +24,11 @@ const FIELDS: Field[] = [
   { label: 'Liability Create (Y/N)', get: (r) => r.liabilityCreated },
   { label: 'Entry Sheet No', get: (r) => r.entrySheetNo },
   { label: 'Pending Bill Value', strong: true, get: (r) => r.pendingValue },
+  { label: 'GR Value', get: (r) => [r.grValue, r.grCurrency].filter(Boolean).join(' ') },
+  { label: 'SES Value', get: (r) => [r.sesValue, r.sesCurrency].filter(Boolean).join(' ') },
   { label: 'Cost Center', get: (r) => [r.costCenter, r.costCenterText].filter(Boolean).join(' · ') },
   { label: 'GL Code', get: (r) => [r.glAccount, r.glAccountText].filter(Boolean).join(' · ') },
+  { label: 'Country', get: (r) => r.country },
 ];
 
 // Card accent by the SAP-derived Status code — '02' (GR/MIGO posted, no SES) is the main provision

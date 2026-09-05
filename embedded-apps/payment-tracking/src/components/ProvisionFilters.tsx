@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
 import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
 
-type DimensionKey = 'status' | 'costCenter' | 'vendor' | 'glAccount' | 'poCreator';
+type DimensionKey = 'status' | 'costCenter' | 'vendor' | 'glAccount' | 'poCreator' | 'country';
 
 export interface ProvisionFilterState {
   search: string;
@@ -13,6 +13,9 @@ export interface ProvisionFilterState {
   vendor: string[];
   glAccount: string[];
   poCreator: string[];
+  /** Land1 — client-side only, never sent to SAP (see paymentTrackingApi.ts's header comment on
+   * why: the ABAP doesn't honor a Land1 $filter yet, unlike the other dimensions here). */
+  country: string[];
 }
 
 export const EMPTY_PROVISION_FILTERS: ProvisionFilterState = {
@@ -22,6 +25,7 @@ export const EMPTY_PROVISION_FILTERS: ProvisionFilterState = {
   vendor: [],
   glAccount: [],
   poCreator: [],
+  country: [],
 };
 
 export function countActiveProvisionFilters(f: ProvisionFilterState): number {
@@ -31,6 +35,7 @@ export function countActiveProvisionFilters(f: ProvisionFilterState): number {
     f.vendor.length +
     f.glAccount.length +
     f.poCreator.length +
+    f.country.length +
     (f.search.trim() ? 1 : 0)
   );
 }
@@ -46,8 +51,9 @@ export function applyProvisionFilters(rows: PaymentTrackingRow[], f: ProvisionFi
     if (f.vendor.length && !f.vendor.includes(r.vendor)) return false;
     if (f.glAccount.length && !f.glAccount.includes(r.glAccount)) return false;
     if (f.poCreator.length && !f.poCreator.includes(r.poCreator)) return false;
+    if (f.country.length && !f.country.includes(r.country)) return false;
     if (q) {
-      const haystack = `${r.poNumber} ${r.vendor} ${r.vendorName} ${r.serviceText} ${r.costCenter} ${r.costCenterText}`.toLowerCase();
+      const haystack = `${r.poNumber} ${r.vendor} ${r.vendorName} ${r.serviceText} ${r.costCenter} ${r.costCenterText} ${r.country}`.toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
@@ -80,6 +86,7 @@ const FILTER_DIMENSIONS: { key: DimensionKey; title: string; keyOf: (r: PaymentT
   { key: 'vendor', title: 'Vendor', keyOf: (r) => r.vendor, labelOf: (r) => [r.vendor, r.vendorName].filter(Boolean).join(' · ') },
   { key: 'glAccount', title: 'GL Code', keyOf: (r) => r.glAccount, labelOf: (r) => [r.glAccount, r.glAccountText].filter(Boolean).join(' · ') },
   { key: 'poCreator', title: 'PO Creator', keyOf: (r) => r.poCreator, labelOf: (r) => r.poCreator },
+  { key: 'country', title: 'Country', keyOf: (r) => r.country, labelOf: (r) => r.country },
 ];
 
 function FilterSection({
@@ -177,7 +184,7 @@ export function ProvisionFilterBar({ rows, value, onChange, resultCount }: Provi
   };
 
   const clearAllDimensions = () => {
-    onChange({ ...value, status: [], costCenter: [], vendor: [], glAccount: [], poCreator: [] });
+    onChange({ ...value, status: [], costCenter: [], vendor: [], glAccount: [], poCreator: [], country: [] });
   };
 
   const activeChips: { dimKey: DimensionKey; value: string; label: string }[] = [];

@@ -47,6 +47,7 @@ export default function ProvisionDashboard() {
   const distinctPOs = useMemo(() => new Set(filteredRows.map((r) => r.poNumber)).size, [filteredRows]);
   const distinctCostCenters = useMemo(() => new Set(filteredRows.filter((r) => r.costCenter).map((r) => r.costCenter)).size, [filteredRows]);
   const distinctVendors = useMemo(() => new Set(filteredRows.filter((r) => r.vendor).map((r) => r.vendor)).size, [filteredRows]);
+  const distinctCountries = useMemo(() => new Set(filteredRows.filter((r) => r.country).map((r) => r.country)).size, [filteredRows]);
   // '02' = GR/MIGO posted but no Service Entry Sheet yet — called out explicitly as "your main
   // provision exposure bucket".
   const mainExposureRows = useMemo(() => filteredRows.filter((r) => r.status === '02'), [filteredRows]);
@@ -62,6 +63,10 @@ export default function ProvisionDashboard() {
   );
   const statusBreakdown = useMemo(
     () => breakdownBy(filteredRows, (r) => r.status || '(unknown)', (r) => r.status || 'Unknown', (r) => r.statusText),
+    [filteredRows]
+  );
+  const countryBreakdown = useMemo(
+    () => breakdownBy(filteredRows, (r) => r.country || '(unassigned)', (r) => r.country || 'Unassigned', () => ''),
     [filteredRows]
   );
 
@@ -157,6 +162,16 @@ export default function ProvisionDashboard() {
               })}
             />
             <KpiCard
+              icon="earth-outline"
+              label="Countries involved"
+              value={String(distinctCountries)}
+              onPress={() => setActiveKpi({
+                title: 'Countries involved',
+                subtitle: `${distinctCountries} distinct country/countries (Land1) across the current filter's open line items.`,
+                rows: filteredRows,
+              })}
+            />
+            <KpiCard
               icon="warning-outline"
               label="Main provision exposure — GR posted, no Service Entry Sheet"
               value={`${mainExposureRows.length} · ${formatValue(mainExposureValue)}`}
@@ -199,18 +214,34 @@ export default function ProvisionDashboard() {
             </View>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Pending bill value by vendor</Text>
-            <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter. Tap a bar for its line items.</Text>
-            <HorizontalBarBreakdown
-              data={vendorBreakdown}
-              emptyMessage="No open provisions to break down yet."
-              onSelect={(d) => setActiveKpi({
-                title: `Vendor: ${d.label}${d.sublabel ? ` — ${d.sublabel}` : ''}`,
-                subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
-                rows: filteredRows.filter((r) => (r.vendor || '(unassigned)') === d.key),
-              })}
-            />
+          <View style={styles.chartsRow}>
+            <View style={[styles.card, styles.flex1]}>
+              <Text style={styles.cardTitle}>Pending bill value by vendor</Text>
+              <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter. Tap a bar for its line items.</Text>
+              <HorizontalBarBreakdown
+                data={vendorBreakdown}
+                emptyMessage="No open provisions to break down yet."
+                onSelect={(d) => setActiveKpi({
+                  title: `Vendor: ${d.label}${d.sublabel ? ` — ${d.sublabel}` : ''}`,
+                  subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                  rows: filteredRows.filter((r) => (r.vendor || '(unassigned)') === d.key),
+                })}
+              />
+            </View>
+
+            <View style={[styles.card, styles.flex1]}>
+              <Text style={styles.cardTitle}>Pending bill value by country</Text>
+              <Text style={styles.cardSubtitle}>Every country (Land1) with open provisions. Tap a bar for its line items.</Text>
+              <HorizontalBarBreakdown
+                data={countryBreakdown}
+                emptyMessage="No open provisions to break down yet."
+                onSelect={(d) => setActiveKpi({
+                  title: `Country: ${d.label}`,
+                  subtitle: `${d.count} line item(s), ${formatValue(d.value)} pending.`,
+                  rows: filteredRows.filter((r) => (r.country || '(unassigned)') === d.key),
+                })}
+              />
+            </View>
           </View>
         </>
       )}

@@ -10,12 +10,18 @@
 //   04 = SES created, acceptance pending
 //   05 = SES created and accepted (or "partly reversed" if some sheets were)
 // Field names below are confirmed directly against the live SEGW entity (Ebeln/Ebelp/Lblni as
-// key). BUKRS/WERKS/AEDAT/WAERS/PSTYP/KNTTP/SES_COUNT/SES_REV_COUNT/ERDAT_SES are still NOT exposed
-// on the entity, so none of those are mapped here — but Eindt (delivery date, from EKET) IS now
-// live, along with the financial-year fields derived from it server-side (Gjahr/Monat/Quarter/
+// key). BUKRS/WERKS/AEDAT/PSTYP/KNTTP/SES_COUNT/SES_REV_COUNT/ERDAT_SES are still NOT exposed on
+// the entity, so none of those are mapped here — but Eindt (delivery date, from EKET) IS now live,
+// along with the financial-year fields derived from it server-side (Gjahr/Monat/Quarter/
 // FiscyearTxt): the ABAP restricts EINDT to the current financial year (Apr YYYY - Mar YYYY+1) by
 // default and accepts a Gjahr filter to report a different one — see ProvisionFilter/
 // buildFilterParts below and MonthYearContext.tsx for how the UI drives that.
+// Land1 (country key) and GrCur/SesCur (currency keys for GrVal/SesVal) are now live on the entity
+// too (confirmed the same way — a direct GET against ZProvisionTrackSet), but Land1 is NOT yet
+// wired into the ABAP's own filter handling (a `Land1 eq 'IN'` $filter is silently ignored — same
+// server, same result count with or without it), so Country stays a client-side-only filter
+// dimension in ProvisionFilters.tsx, never sent to SAP, unlike Ebeln/Lifnr/Ernam/Sakto/Kostl/
+// Status/Gjahr below which the ABAP does honor.
 // Email is now live too, and — per instruction, same lesson as Market Rate's ZmarketRateSet —
 // every call sends the signed-in user's own login email as a real `Email eq '...'` clause, never
 // omitted; the backend is trusted to decide Admin-vs-own-items scope from that email's role.
@@ -74,7 +80,10 @@ export interface PaymentTrackingRow {
   grossValue: string; // Tbtwr — "Activity value" (EKPO-BRTWR, PO currency)
   pendingValue: string; // PendVal — "Pending Bill Value" (Tbtwr minus accepted SES value)
   grValue: string; // GrVal — GR/MIGO value, net of reversals
+  grCurrency: string; // GrCur — currency key GrVal is denominated in
   sesValue: string; // SesVal — accepted SES value
+  sesCurrency: string; // SesCur — currency key SesVal is denominated in
+  country: string; // Land1 — vendor/plant country key, e.g. 'IN', 'AE'
   grFlag: boolean; // GrFlag — GR/MIGO posted
   sesFlag: boolean; // SesFlag — a service entry sheet exists
   sesRevFlag: boolean; // SesRevFlag — a service entry sheet was reversed
@@ -122,7 +131,10 @@ function toPaymentTrackingRow(raw: Record<string, any>, index: number): PaymentT
     grossValue: str(raw.Tbtwr),
     pendingValue: str(raw.PendVal),
     grValue: str(raw.GrVal),
+    grCurrency: str(raw.GrCur),
     sesValue: str(raw.SesVal),
+    sesCurrency: str(raw.SesCur),
+    country: str(raw.Land1),
     grFlag: bool(raw.GrFlag),
     sesFlag: bool(raw.SesFlag),
     sesRevFlag: bool(raw.SesRevFlag),
