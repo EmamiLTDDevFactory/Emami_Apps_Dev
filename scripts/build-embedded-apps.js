@@ -99,9 +99,9 @@ function isPureSpa(dir) {
 // progress streams line-by-line into one log would be unreadable. Output is
 // flushed as one block once the command finishes (and always flushed before
 // throwing, so a failing app's install/build log is never lost).
-function runCommand(cmd, cwd) {
+function runCommand(cmd, cwd, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, { cwd, shell: true });
+    const child = spawn(cmd, { cwd, shell: true, env });
     let output = '';
     child.stdout.on('data', (d) => { output += d; });
     child.stderr.on('data', (d) => { output += d; });
@@ -161,6 +161,24 @@ async function main() {
 
   await runWithConcurrency(apps, concurrency, async (app) => {
     const appDir = path.join(EMBEDDED_APPS_DIR, app);
+    // Metro's default disk cache (metro-config's FileStore) lives at a single
+    // fixed path, `path.join(os.tmpdir(), 'metro-cache')` — the SAME directory
+    // for every Metro process on the machine, regardless of which project
+    // invoked it. An `expo export --clear` (every embedded app's build script
+    // uses it) calls that store's clear(), which rmdir's subdirectories of
+    // that shared path — so two embedded apps' Metro processes clearing their
+    // (coincidentally same-hash-bucket) cache subdirectory at the same moment
+    // can race, one process's rmdir colliding with another's concurrent write
+    // into that same subdir ("ENOTEMPTY: directory not empty, rmdir
+    // '/tmp/metro-cache/xx'" — seen failing po-followup's build here even
+    // though po-followup's own source hadn't changed). Giving each app's
+    // child process its own TMPDIR (Node's os.tmpdir() reads this env var)
+    // gives it its own private metro-cache root, so concurrent lanes never
+    // touch the same cache directory at all.
+    const appTmpDir = path.join(os.tmpdir(), 'embedded-build-tmp', app);
+    fs.mkdirSync(appTmpDir, { recursive: true });
+    const env = { ...process.env, TMPDIR: appTmpDir };
+
     // Built up as one string and flushed with a single console.log/error call
     // per app — logging the header and the buffered output as two separate
     // calls let another app's lane print in between them (header for one app
@@ -168,9 +186,9 @@ async function main() {
     // in between. One call per app keeps each app's whole block atomic.
     let log = `\n=== [${app}] npm install ===\n`;
     try {
-      log += await runCommand('npm install --legacy-peer-deps', appDir);
+      log += await runCommand('npm install --legacy-peer-deps', appDir, env);
       log += `\n=== [${app}] npm run build ===\n`;
-      log += await runCommand('npm run build', appDir);
+      log += await runCommand('npm run build', appDir, env);
       console.log(log);
     } catch (err) {
       console.error(log + (err.output || ''));
