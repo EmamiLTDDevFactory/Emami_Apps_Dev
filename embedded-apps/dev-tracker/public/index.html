@@ -24,17 +24,26 @@
       </div>
     </div>
 
+    <div class="home-command-bar" id="homeCommandBar">
+      <div class="home-command-input-row">
+        <span class="ai-command-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </span>
+        <input type="text" id="homeCommandInput" placeholder="Ask anything — &quot;show overdue FI-AR items&quot;, &quot;how many completed?&quot;, &quot;create an SD item for...&quot;" />
+        <button type="button" id="homeCommandSend">Quick Ask</button>
+      </div>
+      <div class="home-command-response" id="homeCommandResponse" style="display:none;"></div>
+    </div>
+
     <div class="home-header">
       <span class="eyebrow">SAP Change &amp; Development Log</span>
       <h1>Development Tracker</h1>
-      <p>Pick a task to get started.</p>
+      <p>Pick a task to get started, or just ask above.</p>
     </div>
 
-    <div class="quick-stats" id="quickStats">
-      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Total items</div></div>
-      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Active</div></div>
-      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Overdue</div></div>
-      <div class="quick-stat skeleton"><div class="num">&nbsp;</div><div class="label">Completed</div></div>
+    <div class="status-distribution" id="statusDistribution">
+      <div class="status-distribution-bar skeleton" id="statusDistBar"></div>
+      <div class="status-distribution-legend" id="statusDistLegend"></div>
     </div>
 
     <div class="tile-grid">
@@ -88,6 +97,22 @@
     </div>
 
     <div class="home-footer" id="homeFooter">&nbsp;</div>
+
+    <div class="home-corner-row">
+      <div class="home-corner-card" id="modulePulse" style="display:none;">
+        <div class="pulse-slide-wrap">
+          <div class="pulse-slide-inner" id="pulseSlideInner">
+            <div class="home-corner-label">Module pulse — <span id="modulePulseWindowLabel"></span></div>
+            <div id="modulePulseList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-corner-card" id="activityFeed" style="display:none;">
+        <div class="home-corner-label">Recent activity</div>
+        <div id="activityList"></div>
+      </div>
+    </div>
   </div>
 
   <script src="/apps/dev-tracker/home.js"></script>
