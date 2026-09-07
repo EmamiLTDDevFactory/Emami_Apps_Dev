@@ -17,6 +17,11 @@ interface SidePaneProps {
   items: SidePaneItem[];
   activeHref: string;
   onNavigate: (href: string) => void;
+  /** Desktop web opens this pane by default (see _layout.tsx) — in that mode it must not sit
+   * behind a full-screen modal backdrop the way the mobile/native drawer does, or the rest of the
+   * app would be unusable until the user closed it. `persistent` skips the dimming backdrop
+   * entirely so clicks pass straight through to the page behind the pane. */
+  persistent?: boolean;
 }
 
 const PANE_WIDTH = 280;
@@ -25,7 +30,7 @@ const PANE_WIDTH = 280;
  * per-screen options (Home / Change History / Master Data) live behind a menu button instead of
  * eating horizontal space on every page. Built on core Animated (no reanimated/haptics dep, unlike
  * MoldHealthCheck's SidePane) since this app doesn't otherwise depend on either. */
-export default function SidePane({ isOpen, onClose, title, subtitle, items, activeHref, onNavigate }: SidePaneProps) {
+export default function SidePane({ isOpen, onClose, title, subtitle, items, activeHref, onNavigate, persistent }: SidePaneProps) {
   const translateX = useRef(new Animated.Value(-PANE_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   // Keep the pane mounted through its close animation instead of unmounting the instant isOpen
@@ -51,9 +56,11 @@ export default function SidePane({ isOpen, onClose, title, subtitle, items, acti
 
   return (
     <View style={styles.overlay} pointerEvents="box-none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]} pointerEvents={isOpen ? 'auto' : 'none'}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close menu" />
-      </Animated.View>
+      {!persistent && (
+        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]} pointerEvents={isOpen ? 'auto' : 'none'}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close menu" />
+        </Animated.View>
+      )}
 
       <Animated.View style={[styles.pane, { transform: [{ translateX }] }]}>
         <View style={styles.header}>
@@ -130,9 +137,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  // Matches the hub's own sidebar logo size (EmpAppMark size={172} in CustomDrawerContent) — same
+  // source PNG (720x596, ~1.208:1), scaled the same way so the mark reads consistently everywhere.
   headerLogo: {
-    width: 100,
-    height: 30,
+    width: 172,
+    height: 142.4,
   },
   headerTitle: {
     fontSize: 17,

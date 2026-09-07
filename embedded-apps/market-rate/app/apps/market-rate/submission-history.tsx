@@ -452,20 +452,6 @@ export default function SubmissionHistoryScreen() {
         <FilterSelect label="Year" value={year} onChange={setYear} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} />
         <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
         <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
-        <View style={[styles.filterField, styles.searchField]}>
-          <Text style={styles.filterLabel}>Search</Text>
-          <View style={styles.searchInputWrap}>
-            <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Vendor, material or email"
-              placeholderTextColor={colors.inkSoft}
-              style={styles.searchInput}
-              accessibilityLabel="Search vendor, material or email"
-            />
-          </View>
-        </View>
       </View>
 
       {loading ? (
@@ -485,41 +471,6 @@ export default function SubmissionHistoryScreen() {
         </View>
       ) : (
         <>
-          <View style={styles.kpiGrid}>
-            <KpiCard icon="people-outline" label="Vendors tracked" value={String(vendorsTracked)} />
-            <KpiCard icon="cube-outline" label="Materials tracked" value={String(materialsTracked)} />
-            <KpiCard icon="list-outline" label="Expected this month" value={String(totalExpected)} />
-            <KpiCard icon="checkmark-done-outline" label="Submitted this month" value={String(totalSubmitted)} accent={colors.green} />
-            <KpiCard icon="time-outline" label="Pending this month" value={String(totalPending)} accent={colors.red} />
-            <KpiCard icon="speedometer-outline" label="Compliance this month" value={`${Math.round(compliancePct)}%`} />
-            <KpiCard icon="ribbon-outline" label="Fully compliant vendors" value={`${fullyCompliantVendors}/${vendorsTracked}`} accent={colors.green} />
-            <KpiCard icon="trending-up-outline" label="YTD avg compliance" value={`${Math.round(ytdAvgCompliancePct)}%`} />
-          </View>
-
-          <View style={styles.chartsRow}>
-            <View style={[styles.card, styles.chartCard]}>
-              <Text style={styles.cardTitle}>{MONTHS[monthIdx].label} {year} compliance</Text>
-              <View style={styles.ringRow}>
-                <ComplianceRing pct={compliancePct} />
-                <View style={styles.ringLegend}>
-                  <View style={styles.legendRow}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.rust }]} />
-                    <Text style={styles.legendText}>Submitted — {totalSubmitted}</Text>
-                  </View>
-                  <View style={styles.legendRow}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
-                    <Text style={styles.legendText}>Pending — {totalPending}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            <View style={[styles.card, styles.chartCard, styles.flex1]}>
-              <Text style={styles.cardTitle}>Compliance trend — {year}</Text>
-              <TrendChart data={trendData} />
-            </View>
-          </View>
-
           <View style={styles.card}>
             <View style={styles.matrixHeaderRow}>
               <View style={styles.flex1}>
@@ -528,22 +479,22 @@ export default function SubmissionHistoryScreen() {
                   {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current filters. Tap a green tick to see that month's submitted rate.
                 </Text>
               </View>
-            </View>
-            <View style={styles.matrixSearchWrap}>
-              <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
-              <TextInput
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search this table — vendor, material or email"
-                placeholderTextColor={colors.inkSoft}
-                style={styles.matrixSearchInput}
-                accessibilityLabel="Search vendor, material or email in this table"
-              />
-              {query ? (
-                <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
-                  <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
-                </Pressable>
-              ) : null}
+              <View style={styles.matrixSearchWrap}>
+                <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search this table — vendor, material or email"
+                  placeholderTextColor={colors.inkSoft}
+                  style={styles.matrixSearchInput}
+                  accessibilityLabel="Search vendor, material or email in this table"
+                />
+                {query ? (
+                  <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+                    <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
               <View style={{ width: MATRIX_TABLE_WIDTH }}>
@@ -597,6 +548,41 @@ export default function SubmissionHistoryScreen() {
                 </ScrollView>
               </View>
             </ScrollView>
+          </View>
+
+          <View style={styles.kpiGrid}>
+            <KpiCard icon="people-outline" label="Vendors tracked" value={String(vendorsTracked)} />
+            <KpiCard icon="cube-outline" label="Materials tracked" value={String(materialsTracked)} />
+            <KpiCard icon="list-outline" label="Expected this month" value={String(totalExpected)} />
+            <KpiCard icon="checkmark-done-outline" label="Submitted this month" value={String(totalSubmitted)} accent={colors.green} />
+            <KpiCard icon="time-outline" label="Pending this month" value={String(totalPending)} accent={colors.red} />
+            <KpiCard icon="speedometer-outline" label="Compliance this month" value={`${Math.round(compliancePct)}%`} />
+            <KpiCard icon="ribbon-outline" label="Fully compliant vendors" value={`${fullyCompliantVendors}/${vendorsTracked}`} accent={colors.green} />
+            <KpiCard icon="trending-up-outline" label="YTD avg compliance" value={`${Math.round(ytdAvgCompliancePct)}%`} />
+          </View>
+
+          <View style={styles.chartsRow}>
+            <View style={[styles.card, styles.chartCard]}>
+              <Text style={styles.cardTitle}>{MONTHS[monthIdx].label} {year} compliance</Text>
+              <View style={styles.ringRow}>
+                <ComplianceRing pct={compliancePct} />
+                <View style={styles.ringLegend}>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.rust }]} />
+                    <Text style={styles.legendText}>Submitted — {totalSubmitted}</Text>
+                  </View>
+                  <View style={styles.legendRow}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
+                    <Text style={styles.legendText}>Pending — {totalPending}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={[styles.card, styles.chartCard, styles.flex1]}>
+              <Text style={styles.cardTitle}>Compliance trend — {year}</Text>
+              <TrendChart data={trendData} />
+            </View>
           </View>
         </>
       )}
@@ -680,10 +666,6 @@ const styles = StyleSheet.create({
   filterField: {
     gap: 5,
   },
-  searchField: {
-    flexGrow: 1,
-    minWidth: 220,
-  },
   filterLabel: {
     fontSize: 10.5,
     fontWeight: '700',
@@ -732,22 +714,6 @@ const styles = StyleSheet.create({
   filterOptionTextActive: {
     fontWeight: '700',
     color: colors.rust,
-  },
-  searchInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: 12,
-    height: 38,
-    backgroundColor: colors.white,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 12.5,
-    color: colors.ink,
   },
   loadingWrap: {
     alignItems: 'center',
@@ -941,6 +907,9 @@ const styles = StyleSheet.create({
   matrixHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 12,
   },
   matrixSearchWrap: {
     flexDirection: 'row',
@@ -952,9 +921,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 38,
     backgroundColor: colors.white,
-    marginTop: 10,
-    marginBottom: 4,
-    maxWidth: 420,
+    minWidth: 220,
+    flexShrink: 0,
   },
   matrixSearchInput: {
     flex: 1,
