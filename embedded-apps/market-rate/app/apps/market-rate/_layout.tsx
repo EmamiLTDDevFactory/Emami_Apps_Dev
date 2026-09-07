@@ -16,9 +16,14 @@ function formatDateCompact(d: Date): string {
 type NavItem = SidePaneItem & {
   href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
   adminOnly?: boolean;
+  hiddenForAdmin?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
+  // Admin already lands on Submission History (never uses the entry form or its History view),
+  // so hide these two for Admin while keeping them for the regular submitting User.
+  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', hiddenForAdmin: true },
+  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
@@ -31,7 +36,8 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const pathname = usePathname();
   const router = useRouter();
 
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && role === 'Admin'));
+  const isAdmin = !roleLoading && role === 'Admin';
+  const items = NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && (!item.hiddenForAdmin || !isAdmin));
   const activeHref = pathname === '/apps/market-rate' ? '/apps/market-rate/' : pathname;
 
   return (
