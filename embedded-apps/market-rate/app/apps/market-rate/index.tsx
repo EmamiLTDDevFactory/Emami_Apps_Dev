@@ -128,16 +128,18 @@ export default function MarketRateScreen() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  // Materials excluded from today's pre-fill because a rate was already submitted for them today
-  // — surfaced as a banner instead of silently vanishing, so it doesn't look like the material
-  // list just shrank for no reason.
-  const [alreadySubmittedToday, setAlreadySubmittedToday] = useState<string[]>([]);
 
-  // The batch just saved, held here until the success Modal's OK is pressed — only then does the
-  // screen switch into the read-only "Submitted Rates" view below. Null means "still in the entry
-  // form" (the initial state, and again after "Submit New Rates").
+  // The batch just saved, held here until the success Modal's OK is pressed — only then is it
+  // merged into submittedRows below.
   const [pendingSubmittedRows, setPendingSubmittedRows] = useState<MarketRateRow[] | null>(null);
+  // Rows shown read-only in the "Submitted Rates" table — populated both from materials already
+  // submitted today (fetched fresh on every load, so this survives a page reload) and from
+  // whatever the entry form just saved this session.
   const [submittedRows, setSubmittedRows] = useState<MarketRateRow[] | null>(null);
+  // Whether the fillable entry form below is shown. Starts true; goes false once everything
+  // supplied is already submitted for today, or right after a fresh save (until "Submit New
+  // Rates" is pressed).
+  const [entryMode, setEntryMode] = useState(true);
   // Row keys currently unlocked for editing in the submitted view — only Market Rate is editable
   // even then, everything else in that row (and every other row) stays read-only.
   const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
@@ -171,12 +173,21 @@ export default function MarketRateScreen() {
         existingRates.filter((r) => r.validFrom === today).map((r) => r.materialCode)
       );
 
-      const pending = materials.filter((m) => !submittedTodayCodes.has(m.materialCode));
-      setAlreadySubmittedToday(
-        materials
-          .filter((m) => submittedTodayCodes.has(m.materialCode))
-          .map((m) => m.materialDesc || m.materialCode)
+      // fetchMarketRates doesn't carry the "code · name" supplier display string (that only
+      // comes from ZMarketSuppDataSet, i.e. `materials`) — stitch it on so today's already-
+      // submitted rows show the same Vendor column as freshly-saved ones do.
+      const supplierRefByCode = new Map(
+        materials.map((m) => [m.materialCode, [m.supplierCode, m.supplierName].filter(Boolean).join(' · ') || undefined])
       );
+      const todaySubmittedRows = existingRates
+        .filter((r) => r.validFrom === today)
+        .map((r) => ({ ...r, supplierRef: r.supplierRef ?? supplierRefByCode.get(r.materialCode) }));
+      setSubmittedRows(todaySubmittedRows.length > 0 ? todaySubmittedRows : null);
+
+      const pending = materials.filter((m) => !submittedTodayCodes.has(m.materialCode));
+      // Only hide the entry form when there WAS supplier data and every bit of it is already
+      // submitted today — a user with no supplier data at all should still see the blank form.
+      setEntryMode(!(materials.length > 0 && pending.length === 0));
 
       if (pending.length > 0) {
         setRows(
@@ -260,10 +271,7 @@ export default function MarketRateScreen() {
   };
 
   const startNewSubmission = () => {
-    setSubmittedRows(null);
-    setEditingKeys(new Set());
-    setEditOriginals({});
-    setRowError(null);
+    setEntryMode(true);
     setRows(DEFAULT_ROWS());
   };
 
@@ -284,11 +292,6 @@ export default function MarketRateScreen() {
     setSaving(true);
     try {
       await saveMarketRates(filled);
-      const today = todayIso();
-      const savedToday = filled.filter((r) => r.validFrom === today).map((r) => r.materialDesc || r.materialCode);
-      if (savedToday.length > 0) {
-        setAlreadySubmittedToday((prev) => Array.from(new Set([...prev, ...savedToday])));
-      }
       setRows(DEFAULT_ROWS());
       setPendingSubmittedRows(filled.map((r) => ({ ...r, locked: true })));
       setShowSuccessModal(true);
@@ -310,7 +313,7 @@ export default function MarketRateScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      {submittedRows ? (
+      {submittedRows && submittedRows.length > 0 && (
         <>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionIconBox}>
@@ -412,18 +415,22 @@ export default function MarketRateScreen() {
               <Text style={[styles.statusText, { color: colors.red }]}>{rowError.message}</Text>
             </View>
           )}
-
-          <Pressable
-            style={styles.newEntryBtn}
-            onPress={startNewSubmission}
-            accessibilityRole="button"
-            accessibilityLabel="Submit new rates"
-          >
-            <Ionicons name="add-circle-outline" size={16} color={colors.rust} />
-            <Text style={styles.newEntryBtnText}>Submit New Rates</Text>
-          </Pressable>
         </>
-      ) : (
+      )}
+
+      {!entryMode && (
+        <Pressable
+          style={styles.newEntryBtn}
+          onPress={startNewSubmission}
+          accessibilityRole="button"
+          accessibilityLabel="Submit new rates"
+        >
+          <Ionicons name="add-circle-outline" size={16} color={colors.rust} />
+          <Text style={styles.newEntryBtnText}>Submit New Rates</Text>
+        </Pressable>
+      )}
+
+      {entryMode && (
         <>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionIconBox}>
@@ -434,15 +441,6 @@ export default function MarketRateScreen() {
               <Text style={styles.sectionSubtitle}>Fill in one row per material, then save the whole batch together</Text>
             </View>
           </View>
-
-          {alreadySubmittedToday.length > 0 && (
-            <View style={styles.infoBanner}>
-              <Ionicons name="checkmark-done-circle-outline" size={16} color={colors.rust} />
-              <Text style={styles.infoBannerText}>
-                Rate already submitted today for: {alreadySubmittedToday.join(', ')}
-              </Text>
-            </View>
-          )}
 
           <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
             <View style={[styles.card, { width: TABLE_WIDTH }]}>
@@ -538,8 +536,17 @@ export default function MarketRateScreen() {
             <Pressable
               style={styles.modalBtn}
               onPress={() => {
-                setSubmittedRows(pendingSubmittedRows);
+                setSubmittedRows((prev) => {
+                  const incoming = pendingSubmittedRows || [];
+                  if (incoming.length === 0) return prev;
+                  // Drop any prior submitted-today row for a material this batch just re-saved,
+                  // so re-submitting the same material doesn't leave a stale duplicate row.
+                  const incomingCodes = new Set(incoming.map((r) => r.materialCode));
+                  const kept = (prev || []).filter((r) => !incomingCodes.has(r.materialCode));
+                  return [...kept, ...incoming];
+                });
                 setPendingSubmittedRows(null);
+                setEntryMode(false);
                 setShowSuccessModal(false);
               }}
               accessibilityRole="button"
@@ -585,22 +592,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 1,
-  },
-  infoBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: radii.lg,
-    padding: 12,
-    marginBottom: 16,
-    maxWidth: 900,
-    backgroundColor: `${colors.rust}14`,
-  },
-  infoBannerText: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: colors.rust,
-    flex: 1,
   },
   tableScroll: {
     flexGrow: 0,
