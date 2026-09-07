@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
@@ -19,6 +19,8 @@ type NavItem = SidePaneItem & {
   userOnly?: boolean;
 };
 
+const DESKTOP_BREAKPOINT = 1024;
+
 const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', userOnly: true },
   { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', userOnly: true },
@@ -30,7 +32,7 @@ const NAV_ITEMS: NavItem[] = [
  * admin-only tabs (Submission History, Master Data) only appear once the ZMarketRoleSet lookup
  * confirms Admin, and user-only tabs (Home, History) hide once it does, so an Admin never sees
  * the data-entry tabs and a User never sees the admin ones flash in while the role loads. */
-function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function NavPane({ isOpen, onClose, isDesktopWeb }: { isOpen: boolean; onClose: () => void; isDesktopWeb: boolean }) {
   const { role, roleLoading } = useMarketRateAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -50,12 +52,15 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       subtitle="Enter material market rates for SAP"
       items={items}
       activeHref={activeHref}
+      persistent={isDesktopWeb}
       onNavigate={(href) => {
         // replace, not push — these are flat sibling sections, not a stack to accumulate through.
         // push here left a synthetic ?__EXPO_ROUTER_key=... in the URL, since Expo Router has to
         // invent a stack-entry key when there's no dynamic route param to derive one from.
         router.replace(href as any);
-        onClose();
+        // On desktop web the pane stays open by default (like a docked sidebar) — only mobile/
+        // native closes it after picking a destination, matching a normal drawer's behavior.
+        if (!isDesktopWeb) onClose();
       }}
     />
   );
@@ -67,8 +72,12 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 // localStorage) and bounce straight back to the hub to sign in if there isn't one, rather than
 // ever rendering the form for an unauthenticated visitor who typed the URL directly.
 export default function MarketRateLayout() {
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= DESKTOP_BREAKPOINT;
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  // Opened by default on desktop web (a docked-feeling sidebar), closed everywhere else — see
+  // SidePane's `persistent` prop for how the desktop case avoids blocking the rest of the page.
+  const [menuOpen, setMenuOpen] = useState(isDesktopWeb);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
 
@@ -147,7 +156,7 @@ export default function MarketRateLayout() {
           </Stack>
         </SafeAreaView>
 
-        <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+        <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isDesktopWeb={isDesktopWeb} />
       </View>
     </MarketRateAuthProvider>
   );
