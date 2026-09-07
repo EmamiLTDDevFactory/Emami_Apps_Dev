@@ -19,8 +19,6 @@ type NavItem = SidePaneItem & {
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline' },
-  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline' },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
