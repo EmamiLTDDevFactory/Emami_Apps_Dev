@@ -58,9 +58,9 @@ const REMOVE_COL_WIDTH = 44;
 const TABLE_WIDTH =
   TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
 
-// Wider than REMOVE_COL_WIDTH — the Submitted Rates table's action column holds a Save + Cancel
-// icon pair while a row is being edited, not just the single trash icon the entry table has.
-const SUBMITTED_ACTION_COL_WIDTH = 76;
+// Wider than REMOVE_COL_WIDTH — the Submitted Rates table's action column holds a Submit + Cancel
+// button pair while a row is being edited, not just the single trash icon the entry table has.
+const SUBMITTED_ACTION_COL_WIDTH = 160;
 const SUBMITTED_TABLE_WIDTH =
   TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + SUBMITTED_ACTION_COL_WIDTH;
 
@@ -145,7 +145,7 @@ export default function MarketRateScreen() {
   const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
   // Snapshot of each editing row's Market Rate at the moment Edit was pressed, so Cancel can
   // revert it without re-fetching from SAP.
-  const [editOriginals, setEditOriginals] = useState<Record<string, string>>({});
+  const [editOriginals, setEditOriginals] = useState<Record<string, { marketRate: string; validFrom: string }>>({});
   const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ key: string; message: string } | null>(null);
 
@@ -227,15 +227,18 @@ export default function MarketRateScreen() {
 
   const startEditRow = (row: MarketRateRow) => {
     setRowError(null);
-    setEditOriginals((prev) => ({ ...prev, [row.key]: row.marketRate }));
+    setEditOriginals((prev) => ({ ...prev, [row.key]: { marketRate: row.marketRate, validFrom: row.validFrom } }));
     setEditingKeys((prev) => new Set(prev).add(row.key));
+    // Valid From defaults to today the moment Edit is pressed — an edited rate is being
+    // re-submitted as of now, not backdated to whenever the original batch was saved.
+    setSubmittedRows((prev) => prev && prev.map((r) => (r.key === row.key ? { ...r, validFrom: todayIso() } : r)));
   };
 
   const cancelEditRow = (key: string) => {
     setRowError(null);
     const original = editOriginals[key];
     if (original !== undefined) {
-      setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, marketRate: original } : r)));
+      setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, ...original } : r)));
     }
     setEditingKeys((prev) => {
       const next = new Set(prev);
@@ -244,9 +247,9 @@ export default function MarketRateScreen() {
     });
   };
 
-  const updateSubmittedMarketRate = (key: string, value: string) => {
+  const updateSubmittedField = (key: string, field: 'marketRate' | 'validFrom', value: string) => {
     setRowError(null);
-    setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, marketRate: value } : r)));
+    setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
 
   const saveEditedRow = async (row: MarketRateRow) => {
@@ -348,7 +351,7 @@ export default function MarketRateScreen() {
                           {editableNow ? (
                             <TextInput
                               value={row[col.field]}
-                              onChangeText={(v) => updateSubmittedMarketRate(row.key, v)}
+                              onChangeText={(v) => updateSubmittedField(row.key, 'marketRate', v)}
                               keyboardType={col.keyboard}
                               autoFocus
                               style={[styles.cellInput, styles.cellInputEditing]}
@@ -368,9 +371,17 @@ export default function MarketRateScreen() {
                     <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
                       {row.supplierRef || '-'}
                     </Text>
-                    <Text style={[styles.readonlyCell, { width: DATE_COL_WIDTH }]} numberOfLines={1}>
-                      {row.validFrom}
-                    </Text>
+                    {isEditing ? (
+                      <DateCell
+                        value={row.validFrom}
+                        onChange={(v) => updateSubmittedField(row.key, 'validFrom', v)}
+                        label={`Valid from date, row ${i + 1}`}
+                      />
+                    ) : (
+                      <Text style={[styles.readonlyCell, { width: DATE_COL_WIDTH }]} numberOfLines={1}>
+                        {row.validFrom}
+                      </Text>
+                    )}
                     <View style={[styles.rowActionGroup, { width: SUBMITTED_ACTION_COL_WIDTH }]}>
                       {isEditing ? (
                         isSavingThisRow ? (
@@ -379,17 +390,19 @@ export default function MarketRateScreen() {
                           <>
                             <Pressable
                               onPress={() => saveEditedRow(row)}
+                              style={[styles.rowActionBtn, styles.rowActionBtnSubmit]}
                               accessibilityRole="button"
                               accessibilityLabel={`Save row ${i + 1}`}
                             >
-                              <Ionicons name="checkmark-circle-outline" size={19} color={colors.green} />
+                              <Text style={styles.rowActionBtnSubmitText}>Submit</Text>
                             </Pressable>
                             <Pressable
                               onPress={() => cancelEditRow(row.key)}
+                              style={[styles.rowActionBtn, styles.rowActionBtnCancel]}
                               accessibilityRole="button"
                               accessibilityLabel={`Cancel edit, row ${i + 1}`}
                             >
-                              <Ionicons name="close-circle-outline" size={19} color={colors.red} />
+                              <Text style={styles.rowActionBtnCancelText}>Cancel</Text>
                             </Pressable>
                           </>
                         )
@@ -416,18 +429,6 @@ export default function MarketRateScreen() {
             </View>
           )}
         </>
-      )}
-
-      {!entryMode && (
-        <Pressable
-          style={styles.newEntryBtn}
-          onPress={startNewSubmission}
-          accessibilityRole="button"
-          accessibilityLabel="Submit new rates"
-        >
-          <Ionicons name="add-circle-outline" size={16} color={colors.rust} />
-          <Text style={styles.newEntryBtnText}>Submit New Rates</Text>
-        </Pressable>
       )}
 
       {entryMode && (
@@ -664,7 +665,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
+  },
+  rowActionBtn: {
+    borderRadius: radii.sm,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
+  rowActionBtnSubmit: {
+    backgroundColor: colors.green,
+  },
+  rowActionBtnSubmitText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  rowActionBtnCancel: {
+    borderWidth: 1,
+    borderColor: colors.red,
+    backgroundColor: colors.white,
+  },
+  rowActionBtnCancelText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.red,
   },
   newEntryBtn: {
     flexDirection: 'row',
