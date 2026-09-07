@@ -16,24 +16,30 @@ function formatDateCompact(d: Date): string {
 type NavItem = SidePaneItem & {
   href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
   adminOnly?: boolean;
+  userOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline' },
-  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline' },
+  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', userOnly: true },
+  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', userOnly: true },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 
 /** Home/Dashboard/Master Data switcher, now living in the side pane instead of a top pill bar —
- * Master Data only appears once the ZMarketRoleSet lookup confirms Admin, so a User never sees it
- * flash in while the role is still loading. */
+ * admin-only tabs (Submission History, Master Data) only appear once the ZMarketRoleSet lookup
+ * confirms Admin, and user-only tabs (Home, History) hide once it does, so an Admin never sees
+ * the data-entry tabs and a User never sees the admin ones flash in while the role loads. */
 function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { role, roleLoading } = useMarketRateAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || (!roleLoading && role === 'Admin'));
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return !roleLoading && role === 'Admin';
+    if (item.userOnly) return roleLoading || role !== 'Admin';
+    return true;
+  });
   const activeHref = pathname === '/apps/market-rate' ? '/apps/market-rate/' : pathname;
 
   return (
