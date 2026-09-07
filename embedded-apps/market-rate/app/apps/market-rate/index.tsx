@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchMarketRates, fetchSuppliedMaterials, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
+import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -123,6 +125,8 @@ function DateCell({ value, onChange, label }: { value: string; onChange: (v: str
 type SaveStatus = { message: string } | null;
 
 export default function MarketRateScreen() {
+  const router = useRouter();
+  const { role, roleLoading } = useMarketRateAuth();
   const [rows, setRows] = useState<MarketRateRow[]>(DEFAULT_ROWS);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -148,6 +152,14 @@ export default function MarketRateScreen() {
   const [editOriginals, setEditOriginals] = useState<Record<string, { marketRate: string; validFrom: string }>>({});
   const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ key: string; message: string } | null>(null);
+
+  // Admins don't submit rates themselves, so Home has nothing for them — send them straight to
+  // Submission History (their actual landing page) instead of the supplier entry form.
+  useEffect(() => {
+    if (!roleLoading && role === 'Admin') {
+      router.replace('/apps/market-rate/submission-history');
+    }
+  }, [roleLoading, role, router]);
 
   // Pre-fills the table with whatever materials this signed-in email is already associated with
   // (ZMarketSuppDataSet) instead of starting blank — market rate/GST/valid-from still need to
@@ -305,7 +317,7 @@ export default function MarketRateScreen() {
     }
   };
 
-  if (loadingInitial) {
+  if (roleLoading || role === 'Admin' || loadingInitial) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator size="large" color={colors.rust} />
