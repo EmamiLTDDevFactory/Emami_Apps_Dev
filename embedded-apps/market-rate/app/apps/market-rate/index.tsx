@@ -58,6 +58,12 @@ const REMOVE_COL_WIDTH = 44;
 const TABLE_WIDTH =
   TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
 
+// Wider than REMOVE_COL_WIDTH — the Submitted Rates table's action column holds a Save + Cancel
+// icon pair while a row is being edited, not just the single trash icon the entry table has.
+const SUBMITTED_ACTION_COL_WIDTH = 76;
+const SUBMITTED_TABLE_WIDTH =
+  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + SUBMITTED_ACTION_COL_WIDTH;
+
 /** Valid From cell — a real date picker on every platform, not a free-text field: a raw HTML
  * date input on web (same approach non-ctc-expense's claim date field uses, for consistent
  * behavior across browsers), the native community picker everywhere else. */
@@ -127,6 +133,20 @@ export default function MarketRateScreen() {
   // list just shrank for no reason.
   const [alreadySubmittedToday, setAlreadySubmittedToday] = useState<string[]>([]);
 
+  // The batch just saved, held here until the success Modal's OK is pressed — only then does the
+  // screen switch into the read-only "Submitted Rates" view below. Null means "still in the entry
+  // form" (the initial state, and again after "Submit New Rates").
+  const [pendingSubmittedRows, setPendingSubmittedRows] = useState<MarketRateRow[] | null>(null);
+  const [submittedRows, setSubmittedRows] = useState<MarketRateRow[] | null>(null);
+  // Row keys currently unlocked for editing in the submitted view — only Market Rate is editable
+  // even then, everything else in that row (and every other row) stays read-only.
+  const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
+  // Snapshot of each editing row's Market Rate at the moment Edit was pressed, so Cancel can
+  // revert it without re-fetching from SAP.
+  const [editOriginals, setEditOriginals] = useState<Record<string, string>>({});
+  const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ key: string; message: string } | null>(null);
+
   // Pre-fills the table with whatever materials this signed-in email is already associated with
   // (ZMarketSuppDataSet) instead of starting blank — market rate/GST/valid-from still need to
   // be filled in per row, those aren't part of that reference data. Falls back to the default
@@ -194,6 +214,59 @@ export default function MarketRateScreen() {
   const removeRow = (key: string) =>
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
 
+  const startEditRow = (row: MarketRateRow) => {
+    setRowError(null);
+    setEditOriginals((prev) => ({ ...prev, [row.key]: row.marketRate }));
+    setEditingKeys((prev) => new Set(prev).add(row.key));
+  };
+
+  const cancelEditRow = (key: string) => {
+    setRowError(null);
+    const original = editOriginals[key];
+    if (original !== undefined) {
+      setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, marketRate: original } : r)));
+    }
+    setEditingKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const updateSubmittedMarketRate = (key: string, value: string) => {
+    setRowError(null);
+    setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, marketRate: value } : r)));
+  };
+
+  const saveEditedRow = async (row: MarketRateRow) => {
+    if (!row.marketRate.trim() || Number.isNaN(Number(row.marketRate))) {
+      setRowError({ key: row.key, message: 'Market rate must be a number.' });
+      return;
+    }
+    setRowError(null);
+    setSavingRowKey(row.key);
+    try {
+      await saveMarketRates([row]);
+      setEditingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(row.key);
+        return next;
+      });
+    } catch (err) {
+      setRowError({ key: row.key, message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
+    } finally {
+      setSavingRowKey(null);
+    }
+  };
+
+  const startNewSubmission = () => {
+    setSubmittedRows(null);
+    setEditingKeys(new Set());
+    setEditOriginals({});
+    setRowError(null);
+    setRows(DEFAULT_ROWS());
+  };
+
   const onSave = async () => {
     setStatus(null);
     const filled = rows.filter((r) => TEXT_COLUMNS.some((c) => r[c.field].trim()));
@@ -217,6 +290,7 @@ export default function MarketRateScreen() {
         setAlreadySubmittedToday((prev) => Array.from(new Set([...prev, ...savedToday])));
       }
       setRows(DEFAULT_ROWS());
+      setPendingSubmittedRows(filled.map((r) => ({ ...r, locked: true })));
       setShowSuccessModal(true);
     } catch (err) {
       setStatus({ message: err instanceof Error ? err.message : 'Could not save. Please try again.' });
@@ -236,105 +310,222 @@ export default function MarketRateScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.sectionHeaderRow}>
-        <View style={styles.sectionIconBox}>
-          <Ionicons name="grid-outline" size={14} color={colors.rust} />
-        </View>
-        <View style={styles.flex1}>
-          <Text style={styles.sectionTitle}>Market Rate Entries</Text>
-          <Text style={styles.sectionSubtitle}>Fill in one row per material, then save the whole batch together</Text>
-        </View>
-      </View>
-
-      {alreadySubmittedToday.length > 0 && (
-        <View style={styles.infoBanner}>
-          <Ionicons name="checkmark-done-circle-outline" size={16} color={colors.rust} />
-          <Text style={styles.infoBannerText}>
-            Rate already submitted today for: {alreadySubmittedToday.join(', ')}
-          </Text>
-        </View>
-      )}
-
-      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
-        <View style={[styles.card, { width: TABLE_WIDTH }]}>
-          <View style={styles.tableHeaderRow}>
-            {TEXT_COLUMNS.map((col) => (
-              <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
-            ))}
-            <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
-            <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
-            <View style={{ width: REMOVE_COL_WIDTH }} />
+      {submittedRows ? (
+        <>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconBox}>
+              <Ionicons name="checkmark-done-outline" size={14} color={colors.rust} />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.sectionTitle}>Submitted Rates</Text>
+              <Text style={styles.sectionSubtitle}>Read-only — tap Edit on a row to update its Market Rate</Text>
+            </View>
           </View>
 
-          {rows.map((row, i) => (
-            <View key={row.key} style={styles.tableRow}>
-              {TEXT_COLUMNS.map((col) => {
-                const isLocked = !!row.locked && LOCKED_FIELDS.includes(col.field);
+          <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+            <View style={[styles.card, { width: SUBMITTED_TABLE_WIDTH }]}>
+              <View style={styles.tableHeaderRow}>
+                {TEXT_COLUMNS.map((col) => (
+                  <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
+                ))}
+                <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
+                <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
+                <Text style={[styles.headerCell, { width: SUBMITTED_ACTION_COL_WIDTH }]}>Action</Text>
+              </View>
+
+              {submittedRows.map((row, i) => {
+                const isEditing = editingKeys.has(row.key);
+                const isSavingThisRow = savingRowKey === row.key;
                 return (
-                  <View key={col.field} style={{ width: col.width }}>
-                    <TextInput
-                      value={row[col.field]}
-                      onChangeText={(v) => updateCell(row.key, col.field, v)}
-                      placeholder={col.placeholder}
-                      placeholderTextColor={colors.inkSoft}
-                      keyboardType={col.keyboard}
-                      autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
-                      editable={!isLocked}
-                      style={[
-                        styles.cellInput,
-                        BOLD_FIELDS.includes(col.field) && styles.cellInputBold,
-                        isLocked && styles.cellInputLocked,
-                      ]}
-                      accessibilityLabel={`${col.label}, row ${i + 1}`}
-                    />
+                  <View key={row.key} style={styles.tableRow}>
+                    {TEXT_COLUMNS.map((col) => {
+                      const editableNow = isEditing && col.field === 'marketRate';
+                      return (
+                        <View key={col.field} style={{ width: col.width }}>
+                          {editableNow ? (
+                            <TextInput
+                              value={row[col.field]}
+                              onChangeText={(v) => updateSubmittedMarketRate(row.key, v)}
+                              keyboardType={col.keyboard}
+                              autoFocus
+                              style={[styles.cellInput, styles.cellInputEditing]}
+                              accessibilityLabel={`${col.label}, row ${i + 1}`}
+                            />
+                          ) : (
+                            <Text
+                              style={[styles.readonlyCell, BOLD_FIELDS.includes(col.field) && styles.cellInputBold]}
+                              numberOfLines={1}
+                            >
+                              {row[col.field] || '-'}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                    <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
+                      {row.supplierRef || '-'}
+                    </Text>
+                    <Text style={[styles.readonlyCell, { width: DATE_COL_WIDTH }]} numberOfLines={1}>
+                      {row.validFrom}
+                    </Text>
+                    <View style={[styles.rowActionGroup, { width: SUBMITTED_ACTION_COL_WIDTH }]}>
+                      {isEditing ? (
+                        isSavingThisRow ? (
+                          <ActivityIndicator size="small" color={colors.rust} />
+                        ) : (
+                          <>
+                            <Pressable
+                              onPress={() => saveEditedRow(row)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Save row ${i + 1}`}
+                            >
+                              <Ionicons name="checkmark-circle-outline" size={19} color={colors.green} />
+                            </Pressable>
+                            <Pressable
+                              onPress={() => cancelEditRow(row.key)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Cancel edit, row ${i + 1}`}
+                            >
+                              <Ionicons name="close-circle-outline" size={19} color={colors.red} />
+                            </Pressable>
+                          </>
+                        )
+                      ) : (
+                        <Pressable
+                          onPress={() => startEditRow(row)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit row ${i + 1}`}
+                        >
+                          <Ionicons name="pencil-outline" size={17} color={colors.rust} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 );
               })}
-              <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
-                {row.supplierRef || '-'}
-              </Text>
-              <DateCell
-                value={row.validFrom}
-                onChange={(v) => updateCell(row.key, 'validFrom', v)}
-                label={`Valid from date, row ${i + 1}`}
-              />
-              <Pressable
-                onPress={() => removeRow(row.key)}
-                disabled={rows.length === 1}
-                style={[styles.removeBtn, { width: REMOVE_COL_WIDTH }]}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove row ${i + 1}`}
-              >
-                <Ionicons name="trash-outline" size={16} color={rows.length === 1 ? colors.border : colors.red} />
-              </Pressable>
             </View>
-          ))}
-        </View>
-      </ScrollView>
+          </ScrollView>
 
-      {status && (
-        <View style={[styles.statusBanner, styles.statusError]}>
-          <Ionicons name="alert-circle" size={16} color={colors.red} />
-          <Text style={[styles.statusText, { color: colors.red }]}>{status.message}</Text>
-        </View>
+          {rowError && (
+            <View style={[styles.statusBanner, styles.statusError]}>
+              <Ionicons name="alert-circle" size={16} color={colors.red} />
+              <Text style={[styles.statusText, { color: colors.red }]}>{rowError.message}</Text>
+            </View>
+          )}
+
+          <Pressable
+            style={styles.newEntryBtn}
+            onPress={startNewSubmission}
+            accessibilityRole="button"
+            accessibilityLabel="Submit new rates"
+          >
+            <Ionicons name="add-circle-outline" size={16} color={colors.rust} />
+            <Text style={styles.newEntryBtnText}>Submit New Rates</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconBox}>
+              <Ionicons name="grid-outline" size={14} color={colors.rust} />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.sectionTitle}>Market Rate Entries</Text>
+              <Text style={styles.sectionSubtitle}>Fill in one row per material, then save the whole batch together</Text>
+            </View>
+          </View>
+
+          {alreadySubmittedToday.length > 0 && (
+            <View style={styles.infoBanner}>
+              <Ionicons name="checkmark-done-circle-outline" size={16} color={colors.rust} />
+              <Text style={styles.infoBannerText}>
+                Rate already submitted today for: {alreadySubmittedToday.join(', ')}
+              </Text>
+            </View>
+          )}
+
+          <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+            <View style={[styles.card, { width: TABLE_WIDTH }]}>
+              <View style={styles.tableHeaderRow}>
+                {TEXT_COLUMNS.map((col) => (
+                  <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
+                ))}
+                <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
+                <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
+                <View style={{ width: REMOVE_COL_WIDTH }} />
+              </View>
+
+              {rows.map((row, i) => (
+                <View key={row.key} style={styles.tableRow}>
+                  {TEXT_COLUMNS.map((col) => {
+                    const isLocked = !!row.locked && LOCKED_FIELDS.includes(col.field);
+                    return (
+                      <View key={col.field} style={{ width: col.width }}>
+                        <TextInput
+                          value={row[col.field]}
+                          onChangeText={(v) => updateCell(row.key, col.field, v)}
+                          placeholder={col.placeholder}
+                          placeholderTextColor={colors.inkSoft}
+                          keyboardType={col.keyboard}
+                          autoCapitalize={col.field === 'materialCode' ? 'characters' : 'sentences'}
+                          editable={!isLocked}
+                          style={[
+                            styles.cellInput,
+                            BOLD_FIELDS.includes(col.field) && styles.cellInputBold,
+                            isLocked && styles.cellInputLocked,
+                          ]}
+                          accessibilityLabel={`${col.label}, row ${i + 1}`}
+                        />
+                      </View>
+                    );
+                  })}
+                  <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
+                    {row.supplierRef || '-'}
+                  </Text>
+                  <DateCell
+                    value={row.validFrom}
+                    onChange={(v) => updateCell(row.key, 'validFrom', v)}
+                    label={`Valid from date, row ${i + 1}`}
+                  />
+                  <Pressable
+                    onPress={() => removeRow(row.key)}
+                    disabled={rows.length === 1}
+                    style={[styles.removeBtn, { width: REMOVE_COL_WIDTH }]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove row ${i + 1}`}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={rows.length === 1 ? colors.border : colors.red} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+
+          {status && (
+            <View style={[styles.statusBanner, styles.statusError]}>
+              <Ionicons name="alert-circle" size={16} color={colors.red} />
+              <Text style={[styles.statusText, { color: colors.red }]}>{status.message}</Text>
+            </View>
+          )}
+
+          <Pressable
+            style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+            onPress={onSave}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Save market rates"
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <>
+                <Ionicons name="save-outline" size={16} color={colors.white} />
+                <Text style={styles.saveBtnText}>Save</Text>
+              </>
+            )}
+          </Pressable>
+        </>
       )}
-
-      <Pressable
-        style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-        onPress={onSave}
-        disabled={saving}
-        accessibilityRole="button"
-        accessibilityLabel="Save market rates"
-      >
-        {saving ? (
-          <ActivityIndicator size="small" color={colors.white} />
-        ) : (
-          <>
-            <Ionicons name="save-outline" size={16} color={colors.white} />
-            <Text style={styles.saveBtnText}>Save</Text>
-          </>
-        )}
-      </Pressable>
 
       <Modal visible={showSuccessModal} transparent animationType="fade" onRequestClose={() => setShowSuccessModal(false)}>
         <View style={styles.modalOverlay}>
@@ -346,7 +537,11 @@ export default function MarketRateScreen() {
             <Text style={styles.modalMessage}>Check the History tab for further changes.</Text>
             <Pressable
               style={styles.modalBtn}
-              onPress={() => setShowSuccessModal(false)}
+              onPress={() => {
+                setSubmittedRows(pendingSubmittedRows);
+                setPendingSubmittedRows(null);
+                setShowSuccessModal(false);
+              }}
               accessibilityRole="button"
               accessibilityLabel="Close"
             >
@@ -464,6 +659,39 @@ const styles = StyleSheet.create({
   cellInputLocked: {
     backgroundColor: colors.white,
     color: colors.ink,
+  },
+  // Market Rate cell in the Submitted Rates table once Edit has been tapped for that row — a
+  // rust-tinted border so the one editable cell in an otherwise read-only row is obvious at a glance.
+  cellInputEditing: {
+    borderWidth: 1,
+    borderColor: colors.rust,
+    borderRadius: radii.sm,
+    backgroundColor: colors.white,
+  },
+  rowActionGroup: {
+    height: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  newEntryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    marginTop: 16,
+    borderRadius: radii.lg,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: colors.rust,
+  },
+  newEntryBtnText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.rust,
   },
   readonlyCell: {
     fontSize: 12.5,
