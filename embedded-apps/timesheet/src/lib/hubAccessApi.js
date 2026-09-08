@@ -4,10 +4,14 @@
 // can grant into a real in-app role: hub "Admin" becomes Timesheet's "manager", hub "User"
 // becomes "employee" (see AppContext.jsx's provisioning call).
 //
-// The base URL is env-specific (dev vs prod each have their own hub Manage Access data - see
-// project_dev_prod_backend_split in the hub repo's memory), injected the same way as
-// VITE_TIMESHEET_API_URL via amplify.yml/the Amplify console, not hardcoded.
-const ACCESS_API_BASE = `${import.meta.env.VITE_HUB_ACCESS_API_URL ?? ''}`
+// Hardcoded (not env-based) on purpose: VITE_HUB_ACCESS_API_URL was set correctly in the Amplify
+// console but repeatedly did not end up in the built bundle across several fresh (non-cached)
+// deploys, for reasons that weren't worth continuing to chase live - same reasoning as Dev
+// Tracker's SAP_BASE_URL, MouldHealthCheck's lib/config.ts, etc. hardcoding their own values.
+// This IS environment-specific - dev vs prod each have their own hub Manage Access data (see
+// project_dev_prod_backend_split in the hub repo's memory) - so this must be updated by hand if
+// this app is ever pointed at the prod hub instead of dev.
+const ACCESS_API_BASE = 'https://audit-capa-api.emamiapps.in/dev-api/api'
 const APP_ID = 'timesheet'
 
 /**

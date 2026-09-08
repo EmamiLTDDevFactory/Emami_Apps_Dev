@@ -12,7 +12,6 @@ frontend:
         - echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > embedded-apps/rc-portal/.env
         - echo "REACT_APP_API_URL=$REACT_APP_API_URL" > embedded-apps/audit-capa/.env
         - echo "VITE_TIMESHEET_API_URL=$VITE_TIMESHEET_API_URL" > embedded-apps/timesheet/.env
-        - echo "VITE_HUB_ACCESS_API_URL=$VITE_HUB_ACCESS_API_URL" >> embedded-apps/timesheet/.env
         - npm run build:web
         - npm run build:embedded
   artifacts:
