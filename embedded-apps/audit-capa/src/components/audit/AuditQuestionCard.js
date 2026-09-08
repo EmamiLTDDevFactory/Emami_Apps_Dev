@@ -726,8 +726,10 @@ export default function AuditQuestionCard({
                                         e.target.value
                                     )
                                 }
-                                InputLabelProps={{
-                                    shrink: true,
+                                slotProps={{
+                                    inputLabel: {
+                                        shrink: true,
+                                    },
                                 }}
                                 sx={{
                                     minWidth: 180,

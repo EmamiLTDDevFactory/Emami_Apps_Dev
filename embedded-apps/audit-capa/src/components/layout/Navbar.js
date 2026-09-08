@@ -12,6 +12,7 @@ import NotificationsIcon
     from "@mui/icons-material/Notifications";
 import {
     getNotifications,
+    markAllAsRead,
 } from "../../utils/notifications";
 
 import { useState, useEffect } from "react";
@@ -32,7 +33,7 @@ export default function Navbar() {
 
         const updateCount = async () => {
             try {
-                const notifications = await getNotifications(currentUser?.role);
+                const notifications = await getNotifications(currentUser?.role, currentUser?.id);
                 const count = notifications.filter((n) => !n.read).length;
                 setUnreadCount(count);
             } catch (error) {
@@ -111,11 +112,15 @@ export default function Navbar() {
 
                 <IconButton
                     color="inherit"
-                    onClick={() =>
-                        navigate(
-                            "/notifications"
-                        )
-                    }
+                    onClick={() => {
+                        setUnreadCount(0);
+
+                        markAllAsRead(currentUser?.role, currentUser?.id).catch(
+                            (error) => console.error("Unable to mark notifications as read:", error)
+                        );
+
+                        navigate("/notifications");
+                    }}
                 >
                     {/* <Badge
                         // badgeContent={

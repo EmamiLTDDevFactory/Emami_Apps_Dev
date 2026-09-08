@@ -80,7 +80,7 @@ export default function AuditList() {
             ? audits.filter(
                 (audit) =>
                     audit.depot ===
-                    currentUser.name
+                    currentUser.depot
             )
             : audits;
 
@@ -660,7 +660,7 @@ export default function AuditList() {
                     mb: 3,
                     // background:
                     //     "linear-gradient(135deg,#2563EB,#60A5FA)",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     // background:
                     //     "linear-gradient(135deg,#1565c0,#42a5f5)",
                     color: "white",
@@ -738,7 +738,7 @@ export default function AuditList() {
                                 }
                                 sx={{
                                     bgcolor: "white",
-                                    color: "#1565c0",
+                                    color: "#7C3AED",
                                     fontWeight: 600,
                                     justifyContent: "flex-end",
                                     // alignItems: "flex-end",

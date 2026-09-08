@@ -14,6 +14,7 @@ import emamiLogo from '../assets/emami-logo.jpg';
 import {
   getNotifications,
   markAsRead,
+  markAllAsRead,
 } from "../utils/notifications";
 
 import { useNavigate } from "react-router-dom";
@@ -40,10 +41,16 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
-    getNotifications(currentUser?.role)
-      .then(setNotifications)
-      .catch((error) => console.error("Unable to load notifications:", error));
-  }, [currentUser?.role]);
+    // Opening this page is the "read" moment — mark everything read first so
+    // the list below reflects that, then load it.
+    markAllAsRead(currentUser?.role, currentUser?.id)
+      .catch((error) => console.error("Unable to mark notifications as read:", error))
+      .finally(() => {
+        getNotifications(currentUser?.role, currentUser?.id)
+          .then(setNotifications)
+          .catch((error) => console.error("Unable to load notifications:", error));
+      });
+  }, [currentUser?.role, currentUser?.id]);
 
   // const notifications =
   //   getNotifications();
@@ -103,7 +110,7 @@ export default function Notifications() {
       <Card
         sx={{
           mb: 3,
-          background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+          background: "linear-gradient(135deg,#3730A3,#7C3AED)",
           color: "white",
           borderRadius: 2,
         }}
@@ -170,7 +177,7 @@ export default function Notifications() {
               borderLeft:
                 notification.read
                   ? "4px solid #CBD5E1"
-                  : "4px solid #4F46E5",
+                  : "4px solid #7C3AED",
             }}
           >
             <CardContent>

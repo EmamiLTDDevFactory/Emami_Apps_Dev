@@ -13,6 +13,7 @@ import checklistData from "../data/checklistData";
 import { useState, useRef } from "react";
 import {
     generateCAPA,
+    generateCAPANumber,
 } from "../utils/capaGenerator";
 import LinearProgress from "@mui/material/LinearProgress";
 import {
@@ -361,6 +362,15 @@ export default function Annexure1() {
         }
     };
 
+    // Every question needs an explicit answer — a real score or "NA" — before
+    // self-assessment can be submitted. `status === ""` is the untouched
+    // default from checklistData.js; a score of 0 ("System Non-Existent") is
+    // a real, valid answer and must not be mistaken for unanswered.
+    const unansweredItems =
+        auditItems.filter(
+            item => item.status === ""
+        );
+
     const totalMaxScore =
         auditItems.reduce(
             (sum, item) => {
@@ -634,6 +644,13 @@ export default function Annexure1() {
 
     const handleSelfAssessmentSubmit = async () => {
 
+        if (unansweredItems.length > 0) {
+            alert(
+                `Please answer all questions before submitting — ${unansweredItems.length} question(s) still need a score or "NA".`
+            );
+            return;
+        }
+
         try {
 
             // Create Findings (all NC items)
@@ -649,7 +666,7 @@ export default function Annexure1() {
 
             const capaRecords =
                 findings.map((item, index) => ({
-                    capaNo: `CAPA-${index + 1}`,
+                    capaNo: generateCAPANumber(index + 1),
                     auditId: Number(id),
 
                     category: item.category,
@@ -1513,7 +1530,7 @@ export default function Annexure1() {
                 sx={{
                     mb: 3,
                     // bgcolor: "#1565c0",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     color: "white",
                     boxShadow:
                         "0px 4px 20px rgba(0,0,0,0.08)",
@@ -2225,7 +2242,7 @@ export default function Annexure1() {
 
                                 border:
                                     expandedCategory === category
-                                        ? "2px solid #4F46E5"
+                                        ? "2px solid #7C3AED"
                                         : "1px solid #E5E7EB",
                             }}
                         >
@@ -3169,6 +3186,12 @@ export default function Annexure1() {
                                 variant="contained"
                                 color="primary"
                                 onClick={handleSelfAssessmentSubmit}
+                                disabled={unansweredItems.length > 0}
+                                title={
+                                    unansweredItems.length > 0
+                                        ? `${unansweredItems.length} question(s) still need a score or "NA"`
+                                        : undefined
+                                }
                                 sx={{
                                     width:
                                         isAuditorTablet
@@ -3180,7 +3203,9 @@ export default function Annexure1() {
                                             : 36,
                                 }}
                             >
-                                Submit Self Assessment
+                                {unansweredItems.length > 0
+                                    ? `Submit Self Assessment (${unansweredItems.length} left)`
+                                    : "Submit Self Assessment"}
                             </Button>
                         )}
 

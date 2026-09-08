@@ -1,4 +1,4 @@
-import { Grid, Typography, Card, CardContent } from "@mui/material";
+import { Typography, Card, CardContent } from "@mui/material";
 // import KPIBox from "../components/dashboard/KPIBox";
 // import dashboardData from "../data/dashboardData";
 // import audits from "../data/audits";
@@ -8,7 +8,6 @@ import Box from "@mui/material/Box";
 import { DataGrid } from "@mui/x-data-grid";
 import { getCAPAs } from "../utils/storage";
 import AuditTable from "../components/audit/AuditTable";
-import KpiCard from "../components/dashboard/KPIBox";
 // import AssessmentIcon from "@mui/icons-material/Assessment";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 // import TaskIcon from "@mui/icons-material/Task";
@@ -38,6 +37,101 @@ import emamiLogo from '../assets/emami-logo.jpg';
 //         (a) =>
 //             a.status === "Open"
 //     ).length;
+// One clickable segment of a compact KPI stat bar — icon badge + name + count,
+// with a soft tinted background when it's the active filter.
+function KpiSegment({
+    icon,
+    label,
+    value,
+    color,
+    active,
+    onClick,
+    isLast,
+}) {
+    return (
+        <Box
+            onClick={onClick}
+            sx={{
+                flex: "1 1 0",
+                minWidth: 150,
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                px: 2,
+                py: 1.5,
+                cursor: "pointer",
+                borderRight: isLast ? "none" : "1px solid #EEF1F6",
+                bgcolor: active ? `${color}1A` : "transparent",
+                transition: "background-color 0.15s ease",
+                "&:hover": {
+                    bgcolor: `${color}0F`,
+                },
+            }}
+        >
+            <Box
+                sx={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "10px",
+                    flex: "none",
+                    bgcolor: `${color}22`,
+                    color,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                }}
+            >
+                {icon}
+            </Box>
+
+            <Box sx={{ minWidth: 0 }}>
+                <Typography
+                    sx={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        letterSpacing: "0.03em",
+                        textTransform: "uppercase",
+                        color: "text.secondary",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                    }}
+                >
+                    {label}
+                </Typography>
+
+                <Typography
+                    sx={{
+                        fontSize: "1.3rem",
+                        fontWeight: 800,
+                        color: "#0F172A",
+                        lineHeight: 1.15,
+                    }}
+                >
+                    {value}
+                </Typography>
+            </Box>
+        </Box>
+    );
+}
+
+// A section's worth of segments as one continuous card.
+function KpiBar({ children }) {
+    return (
+        <Box
+            sx={{
+                bgcolor: "#fff",
+                borderRadius: 3,
+                boxShadow: "0px 8px 20px rgba(15,23,42,0.06)",
+                display: "flex",
+                flexWrap: "wrap",
+            }}
+        >
+            {children}
+        </Box>
+    );
+}
+
 export default function Dashboard() {
 
     const { audits } = useAppContext();
@@ -69,7 +163,6 @@ export default function Dashboard() {
         audits.filter(
             a =>
                 [
-                    "In Progress",
                     "Self Assessment Submitted",
                     "Under Review"
                 ].includes(a.status)
@@ -427,7 +520,7 @@ export default function Dashboard() {
                     mb: 3,
                     // background:
                     //     "linear-gradient(135deg,#2563EB,#60A5FA)",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     // background:
                     //     "linear-gradient(135deg,#1565c0,#42a5f5)",
                     color: "white",
@@ -482,186 +575,80 @@ export default function Dashboard() {
                 Audit Overview
             </Typography>
 
-            <Grid container spacing={4}>
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            setSelectedFilter("All");
-                        }}
-                        // onClick={() =>
-                        //     setSelectedFilter("Open")
-                        // }
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        <KpiCard
-                            title="Total Audits"
-                            value={totalAudits}
-                            color="#2563EB"
-                            icon={
-                                <AssignmentTurnedInIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                    {/* <KpiCard
-                        title="Total Audits"
-                        value={totalAudits}
-                        color="#1976d2"
-                        icon={
-                            <AssignmentTurnedInIcon fontSize="large" />
-                        }
-                    /> */}
-                </Grid>
+            <KpiBar>
+                <KpiSegment
+                    label="Total Audits"
+                    value={totalAudits}
+                    color="#2563EB"
+                    icon={<AssignmentTurnedInIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "All"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("All");
+                    }}
+                />
 
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        // onClick={() =>
-                        //     setSelectedFilter("Open")
-                        // }
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            setSelectedFilter("Open");
-                        }}
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        <KpiCard
-                            title="Open Audits"
-                            value={openAudits}
-                            color="#F59E0B"
-                            icon={
-                                <AssignmentLateIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                    {/* <KpiCard
-                        title="Open Audits"
-                        value={
-                            openAudits
-                        }
-                        // value={openAudits}
-                        color="#ff9800"
-                        icon={<AssessmentIcon fontSize="large" />}
-                    /> */}
-                </Grid>
+                <KpiSegment
+                    label="Open Audits"
+                    value={openAudits}
+                    color="#F59E0B"
+                    icon={<AssignmentLateIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "Open"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("Open");
+                    }}
+                />
 
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            setSelectedFilter("Under Review");
-                        }
-                        }
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        {/* <KpiCard
-                            title="In Progress"
-                            value={inProgressAudits}
-                            color="#06B6D4"
-                            icon={
-                                <AutorenewIcon fontSize="large" />
-                            }
-                        /> */}
-                        <KpiCard
-                            title="Under Review"
-                            value={underReviewAudits}
-                            color="#06B6D4"
-                            icon={
-                                <AutorenewIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
+                <KpiSegment
+                    label="Under Review"
+                    value={underReviewAudits}
+                    color="#06B6D4"
+                    icon={<AutorenewIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "Under Review"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("Under Review");
+                    }}
+                />
 
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        // onClick={() =>
-                        // setSelectedFilter(
-                        //     "Closed"
-                        // )
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            // setSelectedFilter("Completed");
-                            setSelectedFilter("Open CAPA");
-                        }}
+                <KpiSegment
+                    label="CAPA Open Audits"
+                    value={capaOpenAudits}
+                    color="#8B5CF6"
+                    icon={<TaskAltIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "Open CAPA"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("Open CAPA");
+                    }}
+                />
 
+                <KpiSegment
+                    label="Closed"
+                    value={closedAudits}
+                    color="#22C55E"
+                    icon={<CheckCircleIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "Closed"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("Closed");
+                    }}
+                />
 
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        {/* <KpiCard
-                            title="Completed"
-                            value={completedAudits}
-                            color="#8B5CF6"
-                            icon={
-                                <TaskAltIcon fontSize="large" />
-                            }
-                        /> */}
-                        <KpiCard
-                            title="CAPA Open Audits"
-                            value={capaOpenAudits}
-                            color="#8B5CF6"
-                            icon={
-                                <TaskAltIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        // onClick={() =>
-                        // setSelectedFilter(
-                        //     "Closed"
-                        // )
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            setSelectedFilter("Closed");
-                        }}
-
-
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        <KpiCard
-                            title="Closed"
-                            value={closedAudits}
-                            color="#22C55E"
-                            icon={
-                                <CheckCircleIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("AUDITS");
-                            setSelectedFilter("Overdue");
-                        }}
-                        sx={{
-                            cursor: "pointer",
-                        }}
-                    >
-                        <KpiCard
-                            title="Overdue"
-                            value={overdueAudits}
-                            color="#EF4444"
-                            icon={
-                                <ReportProblemIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-            </Grid>
+                <KpiSegment
+                    label="Overdue"
+                    value={overdueAudits}
+                    color="#EF4444"
+                    icon={<ReportProblemIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "Overdue"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("Overdue");
+                    }}
+                    isLast
+                />
+            </KpiBar>
 
             <Typography
                 variant="h6"
@@ -675,151 +662,56 @@ export default function Dashboard() {
                 CAPA Overview
             </Typography>
 
-            <Grid container spacing={4}>
+            <KpiBar>
+                <KpiSegment
+                    label="Total CAPA"
+                    value={totalCAPA}
+                    color="#7C3AED"
+                    icon={<TaskAltIcon fontSize="small" />}
+                    active={dashboardView === "CAPA" && selectedCAPAFilter === "All"}
+                    onClick={() => {
+                        setDashboardView("CAPA");
+                        setSelectedCAPAFilter("All");
+                    }}
+                />
 
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("CAPA");
-                            setSelectedCAPAFilter("All");
-                        }}
+                <KpiSegment
+                    label="Open CAPA"
+                    value={openCAPA}
+                    color="#DC2626"
+                    icon={<WarningAmberIcon fontSize="small" />}
+                    active={dashboardView === "CAPA" && selectedCAPAFilter === "Open"}
+                    onClick={() => {
+                        setDashboardView("CAPA");
+                        setSelectedCAPAFilter("Open");
+                    }}
+                />
 
-                        sx={{
-                            cursor: "pointer",
-                            border:
-                                dashboardView === "CAPA" &&
-                                    selectedCAPAFilter === "All"
-                                    ? "2px solid #b3b3e3ff"
-                                    : "2px solid transparent",
-                            borderRadius: 3,
-                        }}
+                <KpiSegment
+                    label="In Progress CAPA"
+                    value={inProgressCAPA}
+                    color="#06B6D4"
+                    icon={<AutorenewIcon fontSize="small" />}
+                    active={dashboardView === "CAPA" && selectedCAPAFilter === "In Progress"}
+                    onClick={() => {
+                        setDashboardView("CAPA");
+                        setSelectedCAPAFilter("In Progress");
+                    }}
+                />
 
-                    // sx={{
-                    //     cursor: "pointer",
-                    // }}
-                    >
-                        <KpiCard
-                            title="Total CAPA"
-                            value={totalCAPA}
-                            color="#6366F1"
-                            icon={
-                                <TaskAltIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        // sx={{ cursor: "pointer" }}
-                        // onClick={() =>
-                        //     setSelectedFilter(
-                        //         "Open CAPA"
-                        //     )
-                        onClick={() => {
-                            setDashboardView("CAPA");
-                            setSelectedCAPAFilter("Open");
-                        }}
-                        sx={{
-                            cursor: "pointer",
-                            border:
-                                dashboardView === "CAPA" &&
-                                    selectedCAPAFilter === "Open"
-                                    ? "2px solid #DC2626"
-                                    : "2px solid transparent",
-                            borderRadius: 3,
-                        }}
-
-
-                    >
-                        <KpiCard
-                            title="Open CAPA"
-                            value={openCAPA}
-                            color="#DC2626"
-                            icon={
-                                <WarningAmberIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                    {/* <KpiCard
-                        title="Open CAPA"
-                        value={openCAPA}
-                        // value = "2"
-                        // value={
-                        //     audits.reduce(
-                        //         (count, audit) => {
-                        //             if (audit.status === "Open") {
-                        //                 return count + 1;
-                        //             }
-                        //             return count;
-                        //         },
-                        //         0
-                        //     )
-                        // }
-                        color="#e53935"
-                        icon={<WarningAmberIcon fontSize="large" />}
-                    /> */}
-                </Grid>
-
-
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("CAPA");
-                            setSelectedCAPAFilter("In Progress");
-                        }}
-                        // sx={{ cursor: "pointer" }}
-                        sx={{
-                            cursor: "pointer",
-                            border:
-                                dashboardView === "CAPA" &&
-                                    selectedCAPAFilter === "In Progress"
-                                    ? "2px solid #06B6D4"
-                                    : "2px solid transparent",
-                            borderRadius: 3,
-                        }}
-
-                    >
-                        <KpiCard
-                            title="In Progress CAPA"
-                            value={inProgressCAPA}
-                            color="#06B6D4"
-                            icon={
-                                <AutorenewIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={6} md={3} lg={3}>
-                    <Box
-                        onClick={() => {
-                            setDashboardView("CAPA");
-                            setSelectedCAPAFilter("Closed");
-                        }}
-                        // sx={{ cursor: "pointer" }}
-                        sx={{
-                            cursor: "pointer",
-                            border:
-                                dashboardView === "CAPA" &&
-                                    selectedCAPAFilter === "Closed"
-                                    ? "2px solid #22C55E"
-                                    : "2px solid transparent",
-                            borderRadius: 3,
-                        }}
-                    >
-                        <KpiCard
-                            title="Closed CAPA"
-                            value={closedCAPA}
-                            color="#22C55E"
-                            icon={
-                                <CheckCircleIcon fontSize="large" />
-                            }
-                        />
-                    </Box>
-                </Grid>
-
-            </Grid>
+                <KpiSegment
+                    label="Closed CAPA"
+                    value={closedCAPA}
+                    color="#22C55E"
+                    icon={<CheckCircleIcon fontSize="small" />}
+                    active={dashboardView === "CAPA" && selectedCAPAFilter === "Closed"}
+                    onClick={() => {
+                        setDashboardView("CAPA");
+                        setSelectedCAPAFilter("Closed");
+                    }}
+                    isLast
+                />
+            </KpiBar>
 
             {/* <Grid item xs={12} md={2}>
                     <Box
