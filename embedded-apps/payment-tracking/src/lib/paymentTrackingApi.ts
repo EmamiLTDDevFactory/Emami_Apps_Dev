@@ -293,11 +293,11 @@ export interface ProvisionConfirmation {
   invoiceAmount: string; // mandatory
 }
 
-function toProvItem(c: ProvisionConfirmation) {
+function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
   return {
     Lifnr: row.lifnr,
-    Email: row.email,
+    Email: email,
     Ebeln: row.poNumber,
     Ebelp: row.poItemNo,
     Matnr: row.materialCode,
@@ -320,17 +320,19 @@ function toProvItem(c: ProvisionConfirmation) {
  * shape as Market Rate's saveMarketRates. Per the given payload example, the header's own
  * Lifnr/Email/Ebeln/Ebelp/Lblni are the FIRST item's — SEGW requires a representative key trio at
  * the header level even though ToProvItems can span multiple PO items. Row-wise "send for
- * approval" always calls this with a single-confirmation array. */
-export async function submitProvisionApproval(confirmations: ProvisionConfirmation[]): Promise<void> {
+ * approval" always calls this with a single-confirmation array. Email is always the signed-in
+ * user's own login email (never the row's echoed-back Email), same posture as every other write
+ * in this app. */
+export async function submitProvisionApproval(confirmations: ProvisionConfirmation[], email: string): Promise<void> {
   if (confirmations.length === 0) return;
   const first = confirmations[0].row;
   const payload = {
     Lifnr: first.lifnr,
-    Email: first.email,
+    Email: email,
     Ebeln: first.poNumber,
     Ebelp: first.poItemNo,
     Lblni: first.entrySheetNo,
-    ToProvItems: confirmations.map(toProvItem),
+    ToProvItems: confirmations.map((c) => toProvItem(c, email)),
   };
   try {
     const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
@@ -351,7 +353,8 @@ export async function submitProvisionApproval(confirmations: ProvisionConfirmati
  * mix of concurrent SAP writes; returns which groups failed instead of throwing on the first one,
  * so the caller can report a per-vendor result rather than an all-or-nothing outcome. */
 export async function submitProvisionApprovalBatch(
-  confirmations: ProvisionConfirmation[]
+  confirmations: ProvisionConfirmation[],
+  email: string
 ): Promise<{ lifnr: string; error: string }[]> {
   const groups = new Map<string, ProvisionConfirmation[]>();
   confirmations.forEach((c) => {
@@ -363,7 +366,7 @@ export async function submitProvisionApprovalBatch(
   const failures: { lifnr: string; error: string }[] = [];
   for (const [lifnr, group] of groups) {
     try {
-      await submitProvisionApproval(group);
+      await submitProvisionApproval(group, email);
     } catch (err) {
       failures.push({ lifnr, error: err instanceof Error ? err.message : 'Could not send this for approval.' });
     }

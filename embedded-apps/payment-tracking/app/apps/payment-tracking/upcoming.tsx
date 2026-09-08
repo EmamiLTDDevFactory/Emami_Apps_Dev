@@ -253,7 +253,7 @@ export default function UpcomingProvision() {
     }
     patchRow(row.key, { submitting: true, error: null });
     try {
-      await submitProvisionApproval([toConfirmation(row, state)]);
+      await submitProvisionApproval([toConfirmation(row, state)], email || '');
       patchRow(row.key, { submitting: false, submitted: true });
       setBanner({ type: 'success', message: `PO ${row.poNumber} / Item ${row.poItemNo} sent for approval.` });
     } catch (e) {
@@ -287,7 +287,7 @@ export default function UpcomingProvision() {
     targets.forEach((r) => patchRow(r.key, { submitting: true, error: null }));
     const confirmations = targets.map((row) => toConfirmation(row, rowState[row.key]));
 
-    const failures = await submitProvisionApprovalBatch(confirmations);
+    const failures = await submitProvisionApprovalBatch(confirmations, email || '');
     const failedLifnrs = new Set(failures.map((f) => f.lifnr));
     targets.forEach((row) => {
       if (failedLifnrs.has(row.lifnr)) {
