@@ -30,16 +30,21 @@ export default function Layout() {
 
     const signInFromHubSession = async () => {
       const hubToken = localStorage.getItem(HUB_SESSION_TOKEN_KEY);
-
+      const EMAMI_APPS_URL =
+        window.location.hostname.includes("dev")
+          ? "https://dev.emamiapps.in/"
+          : "https://www.emamiapps.in/";
       // if (!hubToken) {
       //   setErrorMessage("Please sign in to Emami Apps first.");
       //   setStatus("error");
       //   return;
       // }
       if (!hubToken) {
-        window.location.replace(
-          "https://www.emamiapps.in/"
-        );
+
+        window.location.replace(EMAMI_APPS_URL);
+        // window.location.replace(
+        //   "https://www.emamiapps.in/"
+        // );
         return;
       }
 
@@ -66,9 +71,11 @@ export default function Layout() {
           error
         );
 
-        window.location.replace(
-          "https://www.emamiapps.in/"
-        );
+        window.location.replace(EMAMI_APPS_URL);
+
+        // window.location.replace(
+        //   "https://www.emamiapps.in/"
+        // );
       }
     };
 

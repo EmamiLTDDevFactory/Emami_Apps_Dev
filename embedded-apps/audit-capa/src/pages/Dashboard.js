@@ -50,6 +50,9 @@ export default function Dashboard() {
     const [dashboardView, setDashboardView] =
         useState("AUDITS");
 
+    const [selectedCAPAFilter, setSelectedCAPAFilter] =
+        useState("All");
+
     // const openAudits =
     //     audits.filter(
     //         (audit) =>
@@ -66,6 +69,7 @@ export default function Dashboard() {
         audits.filter(
             a =>
                 [
+                    "In Progress",
                     "Self Assessment Submitted",
                     "Under Review"
                 ].includes(a.status)
@@ -76,6 +80,7 @@ export default function Dashboard() {
             a =>
                 a.status === "CAPA Open"
         ).length;
+
 
     // const inProgressAudits =
     //     audits.filter(
@@ -118,11 +123,21 @@ export default function Dashboard() {
 
     const [capaRecords, setCapaRecords] = useState([]);
 
+
+
+    // useEffect(() => {
+    //     getCAPAs()
+    //         .then(setCapaRecords)
+    //         .catch((error) => console.error("Unable to load CAPAs:", error));
+    // }, []);
+
     useEffect(() => {
         getCAPAs()
             .then(setCapaRecords)
-            .catch((error) => console.error("Unable to load CAPAs:", error));
-    }, []);
+            .catch((error) =>
+                console.error("Unable to load CAPAs:", error)
+            );
+    }, [audits]);
 
     // const openCAPA =
     //     capaRecords.filter(
@@ -133,6 +148,9 @@ export default function Dashboard() {
         Array.isArray(capaRecords)
             ? capaRecords
             : [];
+
+    // const totalCAPA =
+    //     safeCapaRecords.length;
 
     // const openCAPA =
     //     safeCapaRecords.filter(
@@ -146,7 +164,18 @@ export default function Dashboard() {
                 c.status === "Sent Back"
         ).length;
 
+    const inProgressCAPA =
+        safeCapaRecords.filter(
+            c => c.status === "In Progress"
+        ).length;
 
+    const closedCAPA =
+        safeCapaRecords.filter(
+            c => c.status === "Closed"
+        ).length;
+
+    const totalCAPA =
+        safeCapaRecords.length;
 
     // const inProgressCAPA =
     //     capaRecords.filter(
@@ -309,6 +338,31 @@ export default function Dashboard() {
             filteredAudits = audits;
     }
 
+    const filteredCAPAs =
+        safeCapaRecords.filter((capa) => {
+
+            if (selectedCAPAFilter === "All") {
+                return true;
+            }
+
+            if (selectedCAPAFilter === "Open") {
+                return (
+                    capa.status === "Open" ||
+                    capa.status === "Sent Back"
+                );
+            }
+
+            if (selectedCAPAFilter === "In Progress") {
+                return capa.status === "In Progress";
+            }
+
+            if (selectedCAPAFilter === "Closed") {
+                return capa.status === "Closed";
+            }
+
+            return true;
+        });
+
     const capaColumns = [
         {
             field: "capaNo",
@@ -415,6 +469,18 @@ export default function Dashboard() {
                     </Box>
                 </CardContent>
             </Card>
+
+            <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{
+                    mt: 2,
+                    mb: 2,
+                    color: "#1E293B",
+                }}
+            >
+                Audit Overview
+            </Typography>
 
             <Grid container spacing={4}>
                 <Grid item xs={12} sm={6} md={3} lg={3}>
@@ -538,7 +604,7 @@ export default function Dashboard() {
                             }
                         /> */}
                         <KpiCard
-                            title="CAPA Open"
+                            title="CAPA Open Audits"
                             value={capaOpenAudits}
                             color="#8B5CF6"
                             icon={
@@ -595,19 +661,75 @@ export default function Dashboard() {
                         />
                     </Box>
                 </Grid>
+            </Grid>
 
+            <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{
+                    mt: 4,
+                    mb: 2,
+                    color: "#1E293B",
+                }}
+            >
+                CAPA Overview
+            </Typography>
 
+            <Grid container spacing={4}>
 
                 <Grid item xs={12} sm={6} md={3} lg={3}>
                     <Box
-                        sx={{ cursor: "pointer" }}
+                        onClick={() => {
+                            setDashboardView("CAPA");
+                            setSelectedCAPAFilter("All");
+                        }}
+
+                        sx={{
+                            cursor: "pointer",
+                            border:
+                                dashboardView === "CAPA" &&
+                                    selectedCAPAFilter === "All"
+                                    ? "2px solid #b3b3e3ff"
+                                    : "2px solid transparent",
+                            borderRadius: 3,
+                        }}
+
+                    // sx={{
+                    //     cursor: "pointer",
+                    // }}
+                    >
+                        <KpiCard
+                            title="Total CAPA"
+                            value={totalCAPA}
+                            color="#6366F1"
+                            icon={
+                                <TaskAltIcon fontSize="large" />
+                            }
+                        />
+                    </Box>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={3} lg={3}>
+                    <Box
+                        // sx={{ cursor: "pointer" }}
                         // onClick={() =>
                         //     setSelectedFilter(
                         //         "Open CAPA"
                         //     )
-                        onClick={() =>
-                            setDashboardView("CAPA")
-                        }
+                        onClick={() => {
+                            setDashboardView("CAPA");
+                            setSelectedCAPAFilter("Open");
+                        }}
+                        sx={{
+                            cursor: "pointer",
+                            border:
+                                dashboardView === "CAPA" &&
+                                    selectedCAPAFilter === "Open"
+                                    ? "2px solid #DC2626"
+                                    : "2px solid transparent",
+                            borderRadius: 3,
+                        }}
+
 
                     >
                         <KpiCard
@@ -639,7 +761,67 @@ export default function Dashboard() {
                     /> */}
                 </Grid>
 
-                {/* <Grid item xs={12} md={2}>
+
+                <Grid item xs={12} sm={6} md={3} lg={3}>
+                    <Box
+                        onClick={() => {
+                            setDashboardView("CAPA");
+                            setSelectedCAPAFilter("In Progress");
+                        }}
+                        // sx={{ cursor: "pointer" }}
+                        sx={{
+                            cursor: "pointer",
+                            border:
+                                dashboardView === "CAPA" &&
+                                    selectedCAPAFilter === "In Progress"
+                                    ? "2px solid #06B6D4"
+                                    : "2px solid transparent",
+                            borderRadius: 3,
+                        }}
+
+                    >
+                        <KpiCard
+                            title="In Progress CAPA"
+                            value={inProgressCAPA}
+                            color="#06B6D4"
+                            icon={
+                                <AutorenewIcon fontSize="large" />
+                            }
+                        />
+                    </Box>
+                </Grid>
+
+                <Grid item xs={12} sm={6} md={3} lg={3}>
+                    <Box
+                        onClick={() => {
+                            setDashboardView("CAPA");
+                            setSelectedCAPAFilter("Closed");
+                        }}
+                        // sx={{ cursor: "pointer" }}
+                        sx={{
+                            cursor: "pointer",
+                            border:
+                                dashboardView === "CAPA" &&
+                                    selectedCAPAFilter === "Closed"
+                                    ? "2px solid #22C55E"
+                                    : "2px solid transparent",
+                            borderRadius: 3,
+                        }}
+                    >
+                        <KpiCard
+                            title="Closed CAPA"
+                            value={closedCAPA}
+                            color="#22C55E"
+                            icon={
+                                <CheckCircleIcon fontSize="large" />
+                            }
+                        />
+                    </Box>
+                </Grid>
+
+            </Grid>
+
+            {/* <Grid item xs={12} md={2}>
                     <Box
                         // onClick={() =>
                         // setSelectedFilter(
@@ -666,7 +848,7 @@ export default function Dashboard() {
                     </Box>
                 </Grid> */}
 
-                {/* <Grid item xs={12} md={3}>
+            {/* <Grid item xs={12} md={3}>
                     <Box
                         sx={{ cursor: "pointer" }}
                         // onClick={() =>
@@ -688,14 +870,14 @@ export default function Dashboard() {
                             }
                         />
                     </Box> */}
-                {/* <KpiCard
+            {/* <KpiCard
                         title="Compliance"
                         value={`${averageCompliance}%`}
                         color="#43a047"
                         icon={<CheckCircleIcon fontSize="large" />}
                     /> */}
-                {/* </Grid> */}
-            </Grid>
+            {/* </Grid> */}
+            {/* </Grid> */}
             {/* <AuditTable audits={audits} /> */}
 
             {/* <Grid container spacing={3} sx={{ mt: 2 }}>
@@ -806,7 +988,7 @@ export default function Dashboard() {
                     >
                         {dashboardView === "AUDITS"
                             ? "Recent Audit Transactions"
-                            : "Open CAPA Records"}
+                            : `${selectedCAPAFilter} CAPA Records`}
                     </Typography>
 
 
@@ -835,9 +1017,12 @@ export default function Dashboard() {
                             fontWeight: 600,
                         }}
                     >
-                        {dashboardView === "AUDITS"
+                        {/* {dashboardView === "AUDITS"
                             ? `Showing ${selectedFilter} Audits`
-                            : "Showing Open CAPA Records"}
+                            : `Showing ${selectedCAPAFilter} CAPA Records`} */}
+                        {dashboardView === "AUDITS"
+                            ? `Showing ${selectedFilter} Audits (${filteredAudits.length})`
+                            : `Showing ${selectedCAPAFilter} CAPA Records (${filteredCAPAs.length})`}
                     </Typography>
                     {/* <Typography
                         sx={{
@@ -871,11 +1056,13 @@ export default function Dashboard() {
                                 // rows={safeCapaRecords.filter(
                                 //     capa => capa.status === "Open"
                                 // )}
-                                rows={safeCapaRecords.filter(
-                                    capa =>
-                                        capa.status === "Open" ||
-                                        capa.status === "Sent Back"
-                                )}
+
+                                rows={filteredCAPAs}
+                                // rows={safeCapaRecords.filter(
+                                //     capa =>
+                                //         capa.status === "Open" ||
+                                //         capa.status === "Sent Back"
+                                // )}
                                 columns={capaColumns}
                                 pageSizeOptions={[5, 10]}
                                 disableRowSelectionOnClick
@@ -891,6 +1078,6 @@ export default function Dashboard() {
 
                 </CardContent>
             </Card>
-        </Box>
+        </Box >
     );
 }

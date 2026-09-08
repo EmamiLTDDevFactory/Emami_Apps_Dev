@@ -162,8 +162,10 @@ export default function Sidebar() {
                 width: collapsed ? 80 : 240,
                 height: "100vh",
                 // bgcolor: "#1565c0",
-                bgcolor: "#0F172A",
-                color: "white",
+                // bgcolor: "#0F172A",
+                bgcolor: "#91b1f0ff",
+                // bgcolor: "#c4c7c9ff",
+                color: "black",
                 boxShadow: 4,
                 borderRight: "1px solid rgba(255,255,255,0.08)",
                 transition: "all 0.3s ease",
@@ -231,7 +233,9 @@ export default function Sidebar() {
                     src={emamiAppsLogo}
                     alt="Emami Apps"
                     sx={{
-                        width: collapsed ? 48 : 180,
+                        // width: collapsed ? 48 : 180,
+                        // height: collapsed ? 40 : 149,
+                        width: collapsed ? 48 : 150,
                         height: collapsed ? 40 : 149,
                         objectFit: "contain",
                         transition: "all 0.3s ease",

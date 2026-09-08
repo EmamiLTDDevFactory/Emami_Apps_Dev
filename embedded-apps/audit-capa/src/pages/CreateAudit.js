@@ -471,6 +471,7 @@ export default function CreateAudit() {
                             >
                                 <DatePicker
                                     label="Audit Date"
+                                    format="DD/MM/YYYY"
                                     value={auditDate}
                                     onChange={(
                                         newValue
@@ -501,6 +502,7 @@ export default function CreateAudit() {
                             >
                                 <DatePicker
                                     label="Due Date"
+                                    format="DD/MM/YYYY"
                                     value={dueDate}
                                     onChange={(newValue) =>
                                         setDueDate(newValue)

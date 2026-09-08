@@ -1278,10 +1278,26 @@ export default function CAPAManagement() {
                                 />
                             </Box>
 
-                            <Typography>
+                            <Typography
+                                sx={{
+                                    mb: 2,
+                                    p: 1.5,
+                                    bgcolor: "#F8FAFC",
+                                    borderRadius: 1,
+                                    fontWeight: 500,
+                                }}
+                            >
+                                {item.category}
+                                {" > "}
+                                {item.section}
+                                {" > "}
+                                {item.parameter}
+                            </Typography>
+
+                            {/* <Typography>
                                 Observation Area:
                                 {item.observationArea}
-                            </Typography>
+                            </Typography> */}
 
                             <Typography sx={{ mb: 2 }}>
                                 Observation:
@@ -1416,6 +1432,7 @@ export default function CAPAManagement() {
                                                         : null
                                                 )
                                             }
+                                            disabled={isDepot}
                                             slotProps={{
                                                 textField: {
                                                     fullWidth: false,

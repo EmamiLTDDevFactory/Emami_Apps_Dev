@@ -84,7 +84,8 @@ export default function Annexure1() {
         useState(checklistData);
 
     const {
-        setAudits
+        setAudits,
+        refreshAudits
     } = useAppContext();
 
 
@@ -135,7 +136,11 @@ export default function Annexure1() {
 
             // const audit = await getAuditById(id);
 
-            if (audit.status === "Open") {
+            // if (audit.status === "Open") {
+            if (
+                ["Open", "Rework Required"]
+                    .includes(audit.status)
+            ) {
 
                 audit.status = "In Progress";
 
@@ -149,13 +154,15 @@ export default function Annexure1() {
 
                 setSelectedAudit(updatedAudit);
 
-                setAudits(previous =>
-                    previous.map(a =>
-                        a.id === Number(id)
-                            ? updatedAudit
-                            : a
-                    )
-                );
+                await refreshAudits();
+
+                // setAudits(previous =>
+                //     previous.map(a =>
+                //         a.id === Number(id)
+                //             ? updatedAudit
+                //             : a
+                //     )
+                // );
             } else {
                 setSelectedAudit(audit);
             }
@@ -380,14 +387,14 @@ export default function Annexure1() {
             0
         );
 
-    const compliancePercentage =
-        totalMaxScore === 0
-            ? 0
-            : (
-                (totalActualScore /
-                    totalMaxScore) *
-                100
-            ).toFixed(2);
+    // const compliancePercentage =
+    //     totalMaxScore === 0
+    //         ? 0
+    //         : (
+    //             (totalActualScore /
+    //                 totalMaxScore) *
+    //             100
+    //         ).toFixed(2);
 
 
     const filteredItems =
@@ -1299,37 +1306,187 @@ export default function Annexure1() {
     //     }
     // };
 
+    // const compliancePercentage =
+    //     totalMaxScore === 0
+    //         ? 0
+    //         : (
+    //             (totalActualScore /
+    //                 totalMaxScore) *
+    //             100
+    //         ).toFixed(2);
+
+    const applicableQuestions = auditItems.filter(
+        item => item.status !== "NA"
+    ).length;
+
+    const compliantQuestions = auditItems.filter(
+        item =>
+            item.status !== "NA" &&
+            Number(item.actualScore) >= 2
+    ).length;
+
+    const compliancePercentage =
+        applicableQuestions === 0
+            ? "0.00"
+            : (
+                (compliantQuestions / applicableQuestions) *
+                100
+            ).toFixed(2);
+
+    // const categoryCompliance = Object.entries(
+    //     auditItems.reduce((acc, item) => {
+
+    //         const category = item.category || "Others";
+
+    //         if (!acc[category]) {
+    //             acc[category] = {
+    //                 totalQuestions: 0,
+    //                 naQuestions: 0,
+    //                 compliantQuestions: 0
+    //             };
+    //         }
+
+    //         acc[category].totalQuestions++;
+
+    //         if (item.status === "NA") {
+    //             acc[category].naQuestions++;
+    //         } else {
+    //             if (Number(item.actualScore) >= 2) {
+    //                 acc[category].compliantQuestions++;
+    //             }
+    //         }
+
+    //         return acc;
+
+    //     }, {})
+    // ).map(([category, data]) => {
+
+    //     const applicableQuestions =
+    //         data.totalQuestions - data.naQuestions;
+
+    //     return {
+    //         category,
+
+    //         totalQuestions: data.totalQuestions,
+
+    //         naQuestions: data.naQuestions,
+
+    //         applicableQuestions,
+
+    //         compliantQuestions: data.compliantQuestions,
+
+    //         compliance:
+    //             applicableQuestions === 0
+    //                 ? "0.00"
+    //                 : (
+    //                     (data.compliantQuestions /
+    //                         applicableQuestions) *
+    //                     100
+    //                 ).toFixed(2)
+    //     };
+    // });
+
     const categoryCompliance = Object.entries(
+
         auditItems.reduce((acc, item) => {
 
-            const category = item.category || "Others";
+            const category =
+                item.category || "Others";
 
             if (!acc[category]) {
                 acc[category] = {
-                    maxScore: 0,
-                    actualScore: 0,
+                    maxPoints: 0,
+                    actualPoints: 0,
                 };
             }
 
+            // Ignore NA completely
             if (item.status !== "NA") {
-                acc[category].maxScore += Number(item.maxScore || 0);
-                acc[category].actualScore += Number(item.actualScore || 0);
+
+                acc[category].maxPoints +=
+                    Number(item.maxScore || 0);
+
+                acc[category].actualPoints +=
+                    Number(item.actualScore || 0);
+
             }
 
             return acc;
+
         }, {})
-    ).map(([category, scores]) => ({
+
+    ).map(([category, data]) => ({
+
         category,
-        maxScore: scores.maxScore,
-        actualScore: scores.actualScore,
+
+        maxPoints: data.maxPoints,
+
+        actualPoints: data.actualPoints,
+
         compliance:
-            scores.maxScore === 0
-                ? 0
+            data.maxPoints === 0
+                ? "0.00"
                 : (
-                    (scores.actualScore / scores.maxScore) *
-                    100
+                    (data.actualPoints /
+                        data.maxPoints) * 100
                 ).toFixed(2),
+
     }));
+
+    const totalMaxPoints =
+        categoryCompliance.reduce(
+            (sum, item) =>
+                sum + item.maxPoints,
+            0
+        );
+
+    const totalActualPoints =
+        categoryCompliance.reduce(
+            (sum, item) =>
+                sum + item.actualPoints,
+            0
+        );
+
+    const totalCompliance =
+        totalMaxPoints === 0
+            ? "0.00"
+            : (
+                (totalActualPoints /
+                    totalMaxPoints) *
+                100
+            ).toFixed(2);
+
+    // const categoryCompliance = Object.entries(
+    //     auditItems.reduce((acc, item) => {
+
+    //         const category = item.category || "Others";
+
+    //         if (!acc[category]) {
+    //             acc[category] = {
+    //                 maxScore: 0,
+    //                 actualScore: 0,
+    //             };
+    //         }
+
+    //         if (item.status !== "NA") {
+    //             acc[category].maxScore += Number(item.maxScore || 0);
+    //             acc[category].actualScore += Number(item.actualScore || 0);
+    //         }
+
+    //         return acc;
+    //     }, {})
+    // ).map(([category, scores]) => ({
+    //     category,
+    //     maxScore: scores.maxScore,
+    //     actualScore: scores.actualScore,
+    //     compliance:
+    //         scores.maxScore === 0
+    //             ? 0
+    //             : (
+    //                 (scores.actualScore / scores.maxScore) *
+    //                 100
+    //             ).toFixed(2),
+    // }));
 
     return (
         // <Box
@@ -1464,51 +1621,129 @@ export default function Annexure1() {
                                     fontWeight={700}
                                     sx={{ mb: 1 }}
                                 >
-                                    Element Compliance %
+                                    Element Compliance
                                 </Typography>
 
-                                {categoryCompliance.map((item) => (
+                                <Box sx={{ mt: 1 }}>
+
+                                    {/* Header */}
+
                                     <Box
-                                        key={item.category}
                                         sx={{
-                                            display: "flex",
-                                            justifyContent: "space-between",
-                                            alignItems: "center",
-                                            mb: 0.5,
+                                            display: "grid",
+                                            gridTemplateColumns:
+                                                "2fr 0.8fr 0.8fr 0.8fr",
+                                            gap: 1,
+                                            borderBottom:
+                                                "1px solid rgba(255,255,255,0.35)",
+                                            pb: 1,
+                                            mb: 1,
+                                            fontWeight: 700,
                                         }}
                                     >
-                                        <Typography variant="body2">
-                                            {item.category}
+                                        <Typography variant="caption">
+                                            Element
+                                        </Typography>
+
+                                        <Typography variant="caption">
+                                            Max
+                                        </Typography>
+
+                                        <Typography variant="caption">
+                                            Actual
+                                        </Typography>
+
+                                        <Typography variant="caption">
+                                            %
+                                        </Typography>
+                                    </Box>
+
+                                    {/* Data */}
+
+                                    {categoryCompliance.map((item) => (
+
+                                        <Box
+                                            key={item.category}
+                                            sx={{
+                                                display: "grid",
+                                                gridTemplateColumns:
+                                                    "2fr 0.8fr 0.8fr 0.8fr",
+                                                gap: 1,
+                                                py: 0.5,
+                                            }}
+                                        >
+                                            <Typography
+                                                variant="caption"
+                                            >
+                                                {item.category}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                            >
+                                                {item.maxPoints}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                            >
+                                                {item.actualPoints}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                                fontWeight={700}
+                                            >
+                                                {item.compliance}%
+                                            </Typography>
+                                        </Box>
+
+                                    ))}
+
+                                    {/* Total */}
+
+                                    <Box
+                                        sx={{
+                                            display: "grid",
+                                            gridTemplateColumns:
+                                                "2fr 0.8fr 0.8fr 0.8fr",
+                                            gap: 1,
+                                            mt: 1,
+                                            pt: 1,
+                                            borderTop:
+                                                "1px solid rgba(255,255,255,0.35)",
+                                            fontWeight: 700,
+                                        }}
+                                    >
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={700}
+                                        >
+                                            Total
                                         </Typography>
 
                                         <Typography
                                             variant="body2"
                                             fontWeight={700}
                                         >
-                                            {item.compliance}%
+                                            {totalMaxPoints}
+                                        </Typography>
+
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={700}
+                                        >
+                                            {totalActualPoints}
+                                        </Typography>
+
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={700}
+                                        >
+                                            {totalCompliance}%
                                         </Typography>
                                     </Box>
-                                ))}
 
-                                {/* Total */}
-                                <Box
-                                    sx={{
-                                        mt: 1,
-                                        pt: 1,
-                                        borderTop:
-                                            "1px solid rgba(255,255,255,0.3)",
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                    }}
-                                >
-                                    <Typography fontWeight={700}>
-                                        Total
-                                    </Typography>
-
-                                    <Typography fontWeight={700}>
-                                        {compliancePercentage}%
-                                    </Typography>
                                 </Box>
                             </CardContent>
                         </Card>
@@ -2226,159 +2461,6 @@ export default function Annexure1() {
                     )
                 )
             }
-
-
-            {/* <Card
-                sx={{
-                    mb: 3,
-                    borderRadius: 1,
-                    boxShadow:
-                        "0px 10px 30px rgba(15,23,42,0.08)",
-                }}
-            >
-                <CardContent>
-
-                    <Typography
-                        variant="h6"
-                        fontWeight={700}
-                        gutterBottom
-                    >
-                        Audit Summary
-                    </Typography>
-
-                    <Grid
-                        container
-                        spacing={3}
-                    >
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Questions
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                >
-                                    {auditItems.length}
-                                </Typography>
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="success.main"
-                                >
-                                    Compliance
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                    color="success.main"
-                                >
-                                    {
-                                        auditItems.filter(
-                                            item =>
-                                                item.status ===
-                                                "Compliance"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="error.main"
-                                >
-                                    Findings
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                    color="error.main"
-                                >
-                                    {
-                                        auditItems.filter(
-                                            item =>
-                                                item.status ===
-                                                "Non Compliance"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Max Score
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                >
-                                    {totalMaxScore}
-                                </Typography>
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Actual Score
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                >
-                                    {totalActualScore}
-                                </Typography>
-                            </Box>
-                        </Grid>
-
-                        <Grid item xs={12} sm={4} md={2}>
-                            <Box textAlign="center">
-                                <Typography
-                                    color="primary.main"
-                                >
-                                    Compliance %
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={400}
-                                    color={
-                                        compliancePercentage >= 90
-                                            ? "success.main"
-                                            : compliancePercentage >= 70
-                                                ? "warning.main"
-                                                : "error.main"
-                                    }
-                                >
-                                    {compliancePercentage}%
-                                </Typography>
-
-                            </Box>
-
-                        </Grid>
-                    </Grid>
-                </CardContent>
-            </Card> */}
-
 
             <Card
                 sx={{
@@ -3251,7 +3333,7 @@ export default function Annexure1() {
 
                                     setSelectedAudit(updatedAudit);
 
-
+                                    await refreshAudits();
                                     setAudits((previous) =>
                                         previous.map((audit) =>
                                             audit.id === Number(id) ? updatedAudit : audit

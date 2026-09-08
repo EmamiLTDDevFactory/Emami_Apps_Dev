@@ -406,7 +406,7 @@ export default function AuditList() {
                         </IconButton>
                     </Tooltip>
 
-                    {!isDepot && (
+                    {/* {!isDepot && (
                         <Tooltip title="Delete Audit">
                             <IconButton
                                 size={
@@ -425,7 +425,28 @@ export default function AuditList() {
                                 <DeleteIcon />
                             </IconButton>
                         </Tooltip>
-                    )}
+                    )} */}
+
+                    {currentUser?.role === "CQA" &&
+                        ["Open", "In Progress"].includes(params.row.status) && (
+                            <Tooltip title="Delete Audit">
+                                <IconButton
+                                    size={
+                                        isCQATablet
+                                            ? "large"
+                                            : "medium"
+                                    }
+                                    color="error"
+                                    onClick={() =>
+                                        handleDeleteAudit(
+                                            params.row.id
+                                        )
+                                    }
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            </Tooltip>
+                        )}
                 </Box>
             ),
         },
@@ -1457,7 +1478,7 @@ export default function AuditList() {
                                                         <VisibilityIcon />
                                                     </IconButton>
 
-                                                    {!isDepot && (
+                                                    {/* {!isDepot && (
                                                         <IconButton
                                                             color="error"
                                                             onClick={() =>
@@ -1468,7 +1489,21 @@ export default function AuditList() {
                                                         >
                                                             <DeleteIcon />
                                                         </IconButton>
-                                                    )}
+                                                    )} */}
+
+                                                    {currentUser?.role === "CQA" &&
+                                                        ["Open", "In Progress"].includes(audit.status) && (
+                                                            <IconButton
+                                                                color="error"
+                                                                onClick={() =>
+                                                                    handleDeleteAudit(
+                                                                        audit.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        )}
                                                 </Box>
                                             </Box>
 
