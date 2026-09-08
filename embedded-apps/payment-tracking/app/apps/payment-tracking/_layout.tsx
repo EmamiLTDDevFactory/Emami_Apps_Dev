@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import MonthYearBar from '../../../src/components/MonthYearBar';
@@ -25,6 +25,10 @@ type Href =
   | '/apps/payment-tracking/calendar';
 type NavItem = SidePaneItem & { href: Href };
 
+// Matches the hub's own useIsWideScreen breakpoint and Market Rate's own copy of this constant —
+// this app's side pane docks at the same viewport width both of those do.
+const WIDE_BREAKPOINT = 768;
+
 // Home ('/') is the one tab every role shares — the command-center landing page. Past that, two
 // completely different side panes by role, not one list with an adminOnly filter (unlike Market
 // Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/Provision
@@ -42,7 +46,7 @@ const USER_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
 ];
 
-function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: () => void; isWideScreen: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAdmin, roleLoading } = usePaymentTrackingAuth();
@@ -59,13 +63,16 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
       subtitle="Command Center — track every open service PO"
       items={items}
       activeHref={activeHref}
+      permanent={isWideScreen}
       onNavigate={(href) => {
-        if (href === activeHref) { onClose(); return; }
+        if (href === activeHref) { if (!isWideScreen) onClose(); return; }
         // replace, not push — these are flat sibling sections, not a stack to accumulate through.
         // push here left a synthetic ?__EXPO_ROUTER_key=... in the URL, since Expo Router has to
         // invent a stack-entry key when there's no dynamic route param to derive one from.
         router.replace(href as any);
-        onClose();
+        // On a wide viewport the pane is docked and always visible — only the narrow overlay mode
+        // needs to close itself after picking a destination.
+        if (!isWideScreen) onClose();
       }}
     />
   );
@@ -77,7 +84,11 @@ function NavPane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 // hub to sign in if there isn't one, rather than ever rendering the app for an unauthenticated
 // visitor who typed the URL directly.
 function LayoutContent() {
+  const { width } = useWindowDimensions();
+  const isWideScreen = width >= WIDE_BREAKPOINT;
   const [authorized, setAuthorized] = useState<boolean | null>(null);
+  // Only matters below WIDE_BREAKPOINT — on a wide viewport the pane is always rendered open
+  // (docked, see SidePane's `permanent` prop), so this state just tracks the narrow overlay mode.
   const [menuOpen, setMenuOpen] = useState(false);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
@@ -104,67 +115,77 @@ function LayoutContent() {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <StatusBar style="light" />
-        <TouchableOpacity
-          style={styles.backToHubBar}
-          onPress={() => {
-            if (typeof window !== 'undefined') {
-              window.location.href = '/';
-            }
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Back to Emami Apps"
-        >
-          <Ionicons name="arrow-back" size={14} color={colors.white} />
-          <Text style={styles.backToHubText}>Back to Emami Apps</Text>
-        </TouchableOpacity>
+      {/* Row so a wide-viewport docked pane (NavPane -> SidePane's `permanent` mode) sits beside
+          the content and pushes it over, rather than covering it the way the narrow overlay
+          mode does — same layout shape as the hub's own permanent drawer and Market Rate's copy
+          of this pattern. */}
+      <View style={styles.appRow}>
+        <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isWideScreen={isWideScreen} />
 
-        <View style={styles.titleBar}>
-          <TouchableOpacity
-            style={styles.menuBtn}
-            onPress={() => setMenuOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Open menu"
-          >
-            <Ionicons name="menu" size={22} color={colors.ink} />
-          </TouchableOpacity>
-          <Image
-            source={require('../../../assets/images/emami-apps-logo.png')}
-            style={styles.titleLogo}
-            resizeMode="contain"
-          />
-          <Text style={styles.title} numberOfLines={1}>Provision Tracking</Text>
-          <View style={styles.commandBadge}>
-            <Text style={styles.commandBadgeText} numberOfLines={1}>Command Center</Text>
-          </View>
-          <View style={styles.flex1} />
-          <View style={styles.infoItem}>
-            <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
-            <Text style={styles.infoText} numberOfLines={1}>
-              {hubEmail ? nameFromEmail(hubEmail) : 'Guest'}
-            </Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Ionicons name="calendar-outline" size={13} color={colors.rust} />
-            <Text style={styles.infoText} numberOfLines={1}>{today}</Text>
-          </View>
+        <View style={styles.mainColumn}>
+          <SafeAreaView style={styles.safeArea} edges={['top']}>
+            <StatusBar style="light" />
+            <TouchableOpacity
+              style={styles.backToHubBar}
+              onPress={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/';
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Emami Apps"
+            >
+              <Ionicons name="arrow-back" size={14} color={colors.white} />
+              <Text style={styles.backToHubText}>Back to Emami Apps</Text>
+            </TouchableOpacity>
+
+            <View style={styles.titleBar}>
+              {!isWideScreen && (
+                <TouchableOpacity
+                  style={styles.menuBtn}
+                  onPress={() => setMenuOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open menu"
+                >
+                  <Ionicons name="menu" size={22} color={colors.ink} />
+                </TouchableOpacity>
+              )}
+              <Image
+                source={require('../../../assets/images/emami-apps-logo.png')}
+                style={styles.titleLogo}
+                resizeMode="contain"
+              />
+              <Text style={styles.title} numberOfLines={1}>Provision Tracking</Text>
+              <View style={styles.commandBadge}>
+                <Text style={styles.commandBadgeText} numberOfLines={1}>Command Center</Text>
+              </View>
+              <View style={styles.flex1} />
+              <View style={styles.infoItem}>
+                <Ionicons name="person-circle-outline" size={13} color={colors.rust} />
+                <Text style={styles.infoText} numberOfLines={1}>
+                  {hubEmail ? nameFromEmail(hubEmail) : 'Guest'}
+                </Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+                <Text style={styles.infoText} numberOfLines={1}>{today}</Text>
+              </View>
+            </View>
+
+            <MonthYearBar />
+
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="upcoming" />
+              <Stack.Screen name="missed-delivery" />
+              <Stack.Screen name="history" />
+              <Stack.Screen name="dashboard" />
+              <Stack.Screen name="provision-details" />
+              <Stack.Screen name="calendar" />
+            </Stack>
+          </SafeAreaView>
         </View>
-
-        <MonthYearBar />
-
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="upcoming" />
-          <Stack.Screen name="missed-delivery" />
-          <Stack.Screen name="history" />
-          <Stack.Screen name="dashboard" />
-          <Stack.Screen name="provision-details" />
-          <Stack.Screen name="calendar" />
-        </Stack>
-      </SafeAreaView>
-
-      <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} />
+      </View>
     </View>
   );
 }
@@ -183,6 +204,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.plum,
+  },
+  appRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  mainColumn: {
+    flex: 1,
   },
   checkingWrap: {
     flex: 1,

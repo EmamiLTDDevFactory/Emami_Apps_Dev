@@ -189,3 +189,184 @@ export async function fetchProvisionPOs(email: string, filter: ProvisionFilter =
   const raw = await fetchProvisionRows(buildFilterParts(email, filter));
   return raw.map(toPaymentTrackingRow);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Vendor PO Followup / Provision confirmation flow (User's "Upcoming Provision" / "Missed
+// Provision" side-pane screens) — a different entity set (ZVendorPOFollowupSet) and a different
+// write-back entity (ZProvHeader), on the SAME SAP service (ZMM_PO_FOLLOWUP_SRV) as the read-only
+// ZProvisionTrackSet reporting above. Per instruction: the GET is filtered by the signed-in user's
+// own login Email plus Zaction ('U' for Upcoming Provision), and every value sent back on submit
+// comes from what this GET actually returned for that row (or what the user typed into one of the
+// three editable fields) — nothing here is invented.
+const FOLLOWUP_ENTITY_SET = 'ZVendorPOFollowupSet';
+// Confirmed live: GET on 'ZProvHeader' 404s ("Resource not found for the segment"), GET on
+// 'ZProvHeaderSet' instead returns "Method not implemented" (i.e. the entity set exists, its
+// GET_ENTITYSET just isn't wired up) — matching this service's own "EntityType + Set" naming
+// convention (ZMarketRateHeaderSet, ZProvisionTrackSet, ZVendorPOFollowupSet) and the instruction
+// that this entity is POST-only.
+const PROV_HEADER_ENTITY_SET = 'ZProvHeaderSet';
+
+/** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" on the way in; ZProvHeader's
+ * POST body (RevisedDelDate/Eindt/ZinvDate) expects the same literal shape on the way out —
+ * inverse of parseODataDate above. `dateStr` is a 'YYYY-MM-DD' local date (from a date input),
+ * re-encoded at UTC midnight so it round-trips through SAP as the same calendar date regardless
+ * of the browser's timezone. */
+function toODataDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return `/Date(${Date.UTC(y, (m || 1) - 1, d || 1)})/`;
+}
+
+/** One PO/item row from ZVendorPOFollowupSet, scoped to the signed-in user's own email and a
+ * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/shortText/
+ * vendorName) are still captured here — this entity returns them alongside the ones the UI does
+ * display — purely so ZProvHeader's submit payload below can echo them back untouched, per
+ * instruction ("pass the data from the screen data only"), never invented. */
+export interface VendorPOFollowupRow {
+  key: string;
+  lifnr: string; // Lifnr
+  email: string; // Email
+  poNumber: string; // Ebeln
+  poItemNo: string; // Ebelp
+  entrySheetNo: string; // Lblni
+  materialCode: string; // Matnr
+  materialDesc: string; // Maktx
+  shortText: string; // Txz01
+  vendorName: string; // Name1
+  zaction: string; // Zaction — echoed back as-is on submit
+  deliveryDate: string; // Eindt, 'YYYY-MM-DD'
+  revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or '' — as SAP already has it on file
+  provisionValue: string; // Brtwr
+  currency: string; // Waers
+  invoiceNo: string; // ZzinvNo
+  invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
+  invoiceAmount: string; // ZzinvAmt
+  comments: string; // Comments
+}
+
+function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorPOFollowupRow {
+  const str = (v: any) => (v != null ? String(v) : '');
+  return {
+    key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}-${raw.Lblni ?? ''}`,
+    lifnr: str(raw.Lifnr),
+    email: str(raw.Email),
+    poNumber: str(raw.Ebeln),
+    poItemNo: str(raw.Ebelp),
+    entrySheetNo: str(raw.Lblni),
+    materialCode: str(raw.Matnr),
+    materialDesc: str(raw.Maktx),
+    shortText: str(raw.Txz01),
+    vendorName: str(raw.Name1),
+    zaction: str(raw.Zaction) || 'U',
+    deliveryDate: parseODataDate(raw.Eindt),
+    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    provisionValue: str(raw.Brtwr),
+    currency: str(raw.Waers),
+    invoiceNo: str(raw.ZzinvNo),
+    invoiceDate: parseODataDate(raw.ZinvDate),
+    invoiceAmount: str(raw.ZzinvAmt),
+    comments: str(raw.Comments),
+  };
+}
+
+/** Upcoming Provision (Zaction 'U') — or whatever Zaction is passed — for the signed-in user,
+ * from ZVendorPOFollowupSet. Email is always sent (never omitted, same posture as every other
+ * entity in this app). */
+export async function fetchVendorPOFollowups(email: string, zaction: string): Promise<VendorPOFollowupRow[]> {
+  const params = {
+    '$format': 'json',
+    '$filter': `Email eq '${email}' and Zaction eq '${zaction}'`,
+  };
+  const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
+}
+
+/** One row's on-screen confirmation state at submit time — the editable/derived fields the user
+ * actually filled in, layered on top of the read-only VendorPOFollowupRow it came from. */
+export interface ProvisionConfirmation {
+  row: VendorPOFollowupRow;
+  delvConf: boolean; // Delivery Confirmed? — true = Yes (default), false = No
+  revisedDelDate: string; // 'YYYY-MM-DD', mandatory (and never a past date) when delvConf is false
+  comments: string; // mandatory when delvConf is false
+  invoiceNo: string; // mandatory — the only always-editable fields are these three
+  invoiceDate: string; // 'YYYY-MM-DD', mandatory
+  invoiceAmount: string; // mandatory
+}
+
+function toProvItem(c: ProvisionConfirmation) {
+  const { row } = c;
+  return {
+    Lifnr: row.lifnr,
+    Email: row.email,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.shortText,
+    Name1: row.vendorName,
+    Zaction: row.zaction,
+    RevisedDelDate: c.delvConf ? '' : toODataDate(c.revisedDelDate),
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : '',
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: c.invoiceNo,
+    ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : '',
+    ZzinvAmt: c.invoiceAmount,
+    DelvConf: c.delvConf ? 'X' : '',
+  };
+}
+
+/** Sends one or more confirmed rows to ZProvHeader — a deep insert, same POST-with-nested-array
+ * shape as Market Rate's saveMarketRates. Per the given payload example, the header's own
+ * Lifnr/Email/Ebeln/Ebelp/Lblni are the FIRST item's — SEGW requires a representative key trio at
+ * the header level even though ToProvItems can span multiple PO items. Row-wise "send for
+ * approval" always calls this with a single-confirmation array. */
+export async function submitProvisionApproval(confirmations: ProvisionConfirmation[]): Promise<void> {
+  if (confirmations.length === 0) return;
+  const first = confirmations[0].row;
+  const payload = {
+    Lifnr: first.lifnr,
+    Email: first.email,
+    Ebeln: first.poNumber,
+    Ebelp: first.poItemNo,
+    Lblni: first.entrySheetNo,
+    ToProvItems: confirmations.map(toProvItem),
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not send this for approval.'));
+  }
+}
+
+/** Mass "send for approval" groups the selected rows by vendor (Lifnr) — one ZProvHeader batch
+ * per vendor, since the header requires one representative Lifnr/Ebeln/Ebelp/Lblni trio. Runs
+ * sequentially (not Promise.all) so one vendor's failure can't leave a partial, hard-to-diagnose
+ * mix of concurrent SAP writes; returns which groups failed instead of throwing on the first one,
+ * so the caller can report a per-vendor result rather than an all-or-nothing outcome. */
+export async function submitProvisionApprovalBatch(
+  confirmations: ProvisionConfirmation[]
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, ProvisionConfirmation[]>();
+  confirmations.forEach((c) => {
+    const key = c.row.lifnr || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    try {
+      await submitProvisionApproval(group);
+    } catch (err) {
+      failures.push({ lifnr, error: err instanceof Error ? err.message : 'Could not send this for approval.' });
+    }
+  }
+  return failures;
+}
