@@ -312,7 +312,7 @@ function toProvItem(c: ProvisionConfirmation) {
     ZzinvNo: c.invoiceNo,
     ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
     ZzinvAmt: c.invoiceAmount,
-    DelvConf: c.delvConf ? 'X' : '',
+    DelvConf: c.delvConf ? 'Y' : 'N',
   };
 }
 
