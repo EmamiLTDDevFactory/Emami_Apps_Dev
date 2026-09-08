@@ -27,3 +27,17 @@ export function hasHubSession() {
     return false
   }
 }
+
+// The hub only stores email, not a display name - title-cases the local part as a stand-in, same
+// last-resort convention Payment Tracking/Market Rate and the hub's own backend/userProfile.js
+// fall back to when no real name is known. Only used the first time a person is auto-provisioned
+// (see AppContext.jsx) - a manager can still rename them afterward via the DB if this guess is off.
+export function nameFromEmail(email) {
+  const local = email.split('@')[0] || ''
+  const name = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ')
+  return name || email
+}

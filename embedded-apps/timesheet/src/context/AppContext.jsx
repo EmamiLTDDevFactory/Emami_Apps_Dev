@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getHubEmail, hasHubSession } from '../lib/hubEmailLogin'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin'
+import { fetchTimesheetHubRole } from '../lib/hubAccessApi'
 
 const AppContext = createContext(null)
 
@@ -62,20 +63,59 @@ export function AppProvider({ children }) {
     refresh()
   }, [refresh])
 
-  // Identity/role are resolved by matching the hub's signed-in email against Timesheet's own
-  // users table (which already carries a manager/employee role and manager_id per user) - not a
-  // separate role lookup, since Timesheet has its own richer roles the hub's Manage Access
-  // Admin/Viewer levels don't model.
-  const currentUser = useMemo(
-    () => (data && hubEmail ? data.users.find((u) => u.email.toLowerCase() === hubEmail.toLowerCase()) || null : null),
-    [data, hubEmail],
-  )
+  // Role comes from the hub's own Manage Access, not a value stored only in Timesheet: "Admin"
+  // for the 'timesheet' app becomes a Timesheet manager, "User" becomes an employee. The first
+  // time a given email is seen it's auto-created here (POST /users/provision); every later login
+  // re-syncs its role the same way, so promoting someone in Manage Access takes effect on their
+  // next visit with no manual DB work. This is deliberately NOT a plain lookup against the
+  // already-loaded users list (contrast the earlier email-match approach) - a brand-new hub grant
+  // has no Timesheet row to find yet, and provisioning is what creates one.
+  const [currentUser, setCurrentUser] = useState(null)
+  const [provisionState, setProvisionState] = useState('pending') // 'pending' | 'granted' | 'denied'
+  const provisionedRef = useRef(false)
 
-  const isLoggedIn = Boolean(loggedIntoHub && currentUser)
-  // Hub session is valid but this email has no Timesheet user row yet - distinct from "didn't
-  // come from the hub at all", so the access screen can say something more useful than a generic
-  // login prompt.
-  const accessDenied = Boolean(loggedIntoHub && data && !currentUser)
+  useEffect(() => {
+    if (!data || provisionedRef.current) return
+    provisionedRef.current = true
+
+    if (!loggedIntoHub || !hubEmail) {
+      setProvisionState('denied')
+      return
+    }
+
+    let cancelled = false
+    fetchTimesheetHubRole(hubEmail).then(async (hubRole) => {
+      if (cancelled) return
+      if (!hubRole) {
+        setProvisionState('denied')
+        return
+      }
+      try {
+        const role = hubRole === 'Admin' ? 'manager' : 'employee'
+        const user = await api('/users/provision', {
+          method: 'POST',
+          body: JSON.stringify({ name: nameFromEmail(hubEmail), email: hubEmail, role }),
+        })
+        if (cancelled) return
+        setData((d) => ({
+          ...d,
+          users: d.users.some((u) => u.id === user.id) ? d.users.map((u) => (u.id === user.id ? user : u)) : [...d.users, user],
+        }))
+        setCurrentUser(user)
+        setProvisionState('granted')
+      } catch {
+        if (!cancelled) setProvisionState('denied')
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data, hubEmail, loggedIntoHub])
+
+  const isLoggedIn = provisionState === 'granted'
+  // Distinct from "didn't come from the hub at all" only in the message Login.jsx shows -
+  // covers both "no hub session" and "hub session but no Manage Access grant for timesheet".
+  const accessDenied = provisionState === 'denied'
 
   const directReports = useMemo(
     () => data?.users.filter((u) => u.managerId === currentUser?.id) || [],
@@ -285,7 +325,11 @@ export function AppProvider({ children }) {
     )
   }
 
-  if (!data) {
+  // Covers both "still fetching users/projects/etc." and "logged into the hub, but the Manage
+  // Access role check + provisioning call haven't resolved yet" - without this, a signed-in user
+  // would briefly flash Login.jsx's "open this from the hub" copy before landing on their
+  // dashboard, since provisionState starts at 'pending' rather than 'granted'.
+  if (!data || (loggedIntoHub && provisionState === 'pending')) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-sm text-slate-400">Loading...</p>
@@ -299,6 +343,7 @@ export function AppProvider({ children }) {
     isLoggedIn,
     accessDenied,
     hubEmail,
+    loggedIntoHub,
     directReports,
     logout,
     addTeamMember,
