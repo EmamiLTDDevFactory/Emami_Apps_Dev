@@ -1,0 +1,820 @@
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { formatDayNum, formatDayOrdinal, formatTime, formatWeekday, isOffDay, isWorkingSaturday, hoursBetween, monthDays, parseISODate, toISODate } from '../utils/date'
+import { MAX_HOURS_PER_DAY } from '../utils/timesheet'
+import { useToast } from '../context/ToastContext'
+
+const LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave', 'Unpaid Leave', 'Public Holiday']
+const DEFAULT_IN_TIME = '10:00'
+const DEFAULT_OUT_TIME = '18:00'
+
+function emptyLine() {
+  return { taskId: '', description: '' }
+}
+
+function emptyRow() {
+  return { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME, location: '', locationAt: '', lines: [emptyLine()], leaveType: '' }
+}
+
+// Pre-fills every working day that has no saved entries yet with the default
+// in/out time, so a fresh month starts at the standard 10-18 shift instead of
+// a blank grid.
+function withDefaultTimes(map, days) {
+  const next = { ...map }
+  days.forEach((dateIso) => {
+    if (next[dateIso]) return
+    if (isOffDay(parseISODate(dateIso))) return
+    next[dateIso] = emptyRow()
+  })
+  return next
+}
+
+// Groups flat entries (possibly several per date) back into one row per date,
+// each carrying a line per task worked that day (or a leaveType if the whole
+// day was taken as leave / a public holiday).
+function entriesToDayMap(entries) {
+  const map = {}
+  entries.forEach((e) => {
+    if (!map[e.date]) map[e.date] = { inTime: e.inTime || '', outTime: e.outTime || '', location: e.location || '', locationAt: e.locationAt || '', lines: [], leaveType: '' }
+    if (e.leaveType) {
+      map[e.date].leaveType = e.leaveType
+    } else {
+      map[e.date].lines.push({ taskId: e.taskId || '', description: e.note || '' })
+    }
+  })
+  Object.values(map).forEach((row) => {
+    if (row.lines.length === 0 && !row.leaveType) row.lines.push(emptyLine())
+  })
+  return map
+}
+
+function isLineEmpty(line) {
+  return !line.taskId && !line.description
+}
+
+// Row background + accent styling for the day-type of a given date.
+function dayRowTone(date) {
+  if (isWorkingSaturday(date)) {
+    return { row: 'bg-blue-50/60', dayText: 'text-blue-700', badge: { label: 'Working Sat', cls: 'bg-blue-100 text-blue-700' } }
+  }
+  if (isOffDay(date)) {
+    return { row: 'bg-slate-200/80', dayText: 'text-slate-600 font-semibold', badge: { label: 'Off', cls: 'bg-slate-300 text-slate-700' } }
+  }
+  return { row: '', dayText: 'text-slate-500', badge: null }
+}
+
+function LeaveSelect({ dateIso, value, onChange }) {
+  return (
+    <select
+      aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
+      value={value}
+      onChange={(e) => onChange(dateIso, e.target.value)}
+      className="mt-1 w-full rounded-md border border-slate-300 px-1.5 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+    >
+      <option value="">Present</option>
+      {LEAVE_TYPES.map((lt) => (
+        <option key={lt} value={lt}>
+          {lt}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function LocationField({ dateIso, value, capturedAt, locating, onCapture, compact, disabled }) {
+  const title = disabled ? 'Location can only be captured for today' : undefined
+  if (value) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-[11px] font-medium text-emerald-700 break-words">📍 {value}</span>
+        {capturedAt && <span className="text-[10px] text-slate-400">at {formatTime(capturedAt)}</span>}
+        <button
+          type="button"
+          onClick={() => onCapture(dateIso)}
+          disabled={locating || disabled}
+          title={title}
+          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium focus:outline-none focus-visible:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+        >
+          {locating ? 'Locating…' : 'Update'}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onCapture(dateIso)}
+      disabled={locating || disabled}
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+        compact ? 'px-2 py-1.5 text-sm w-full justify-center' : 'px-2 py-1 text-[11px]'
+      }`}
+    >
+      📍 {locating ? 'Locating…' : 'Capture'}
+    </button>
+  )
+}
+
+const TimesheetGrid = forwardRef(function TimesheetGrid(
+  { userId, tasks, monthStartDate, initialEntries, readOnly, onEntriesChange, onAutosave, autosaveDelay = 700 },
+  ref,
+) {
+  const days = useMemo(() => monthDays(monthStartDate).map((d) => toISODate(d)), [monthStartDate])
+  const todayIso = toISODate(new Date())
+  const initDayMap = (entries) => {
+    const map = entriesToDayMap(entries)
+    return readOnly ? map : withDefaultTimes(map, days)
+  }
+  const [dayMap, setDayMap] = useState(() => initDayMap(initialEntries))
+  const [saveState, setSaveState] = useState('idle') // idle | saving | saved
+  const [locatingDate, setLocatingDate] = useState(null)
+  const saveTimer = useRef(null)
+  const savedAtTimer = useRef(null)
+  const { showToast } = useToast()
+
+  // reset local edit state when the viewed month/timesheet changes
+  useEffect(() => {
+    setDayMap(initDayMap(initialEntries))
+    setSaveState('idle')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthStartDate, userId])
+
+  // Each meaningful task line for a day shares that day's in/out time and
+  // splits the day's total hours evenly between the lines actually used. A
+  // day marked as leave (including "Public Holiday") produces a single entry
+  // instead, crediting a full day's expected hours on working days.
+  function buildEntries(map) {
+    const entries = []
+    for (const date of days) {
+      const row = map[date]
+      if (!row) continue
+      if (row.leaveType) {
+        // Leave days contribute 0h to worked-hours totals - they're tracked
+        // separately as "Total leave", not folded into hours worked.
+        entries.push({
+          id: `${userId}_${date}_leave`,
+          userId,
+          projectId: null,
+          taskId: null,
+          date,
+          inTime: '',
+          outTime: '',
+          location: '',
+          locationAt: '',
+          hours: 0,
+          note: '',
+          leaveType: row.leaveType,
+        })
+        continue
+      }
+      const totalHours = hoursBetween(row.inTime, row.outTime)
+      const lines = row.lines.length ? row.lines : [emptyLine()]
+      // Hours count from In/Out time alone - a task isn't required. A day
+      // with no time set at all (both blank) still contributes nothing;
+      // days the user didn't work should be marked Leave to exclude them.
+      const meaningfulLines = lines.filter((l, i) => !isLineEmpty(l) || (i === 0 && (row.inTime || row.outTime)))
+      if (meaningfulLines.length === 0) continue
+      const perLineHours = Math.round((totalHours / meaningfulLines.length) * 100) / 100
+      meaningfulLines.forEach((line, idx) => {
+        const task = tasks.find((t) => t.id === line.taskId)
+        entries.push({
+          id: `${userId}_${date}_${idx}`,
+          userId,
+          projectId: task?.projectId || null,
+          taskId: line.taskId || null,
+          date,
+          inTime: row.inTime,
+          outTime: row.outTime,
+          location: row.location || '',
+          locationAt: row.locationAt || '',
+          hours: perLineHours,
+          note: line.description || '',
+        })
+      })
+    }
+    return entries
+  }
+
+  // Derived straight from buildEntries so the displayed totals can never
+  // drift from what actually gets saved (a day with no logged task/
+  // description contributes 0h here, matching what autosave persists).
+  const totals = useMemo(() => {
+    const perDay = Object.fromEntries(days.map((d) => [d, 0]))
+    const perTask = Object.fromEntries(tasks.map((t) => [t.id, 0]))
+    let month = 0
+    let leaveDays = 0
+    buildEntries(dayMap).forEach((e) => {
+      perDay[e.date] = (perDay[e.date] || 0) + e.hours
+      month += e.hours
+      if (e.taskId) perTask[e.taskId] = (perTask[e.taskId] || 0) + e.hours
+      if (e.leaveType) leaveDays += 1
+    })
+    return { perDay, perTask, month, leaveDays }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayMap, tasks, days])
+
+  useEffect(() => {
+    onEntriesChange?.(buildEntries(dayMap), totals)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayMap, totals])
+
+  useImperativeHandle(ref, () => ({
+    // `entries` must already carry dates within the currently displayed month.
+    loadEntries(entries) {
+      const mapped = entriesToDayMap(entries)
+      setDayMap(mapped)
+      scheduleAutosave(mapped)
+    },
+  }))
+
+  function scheduleAutosave(nextMap) {
+    if (readOnly || !onAutosave) return
+    setSaveState('saving')
+    clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      onAutosave(buildEntries(nextMap))
+      setSaveState('saved')
+      clearTimeout(savedAtTimer.current)
+      savedAtTimer.current = setTimeout(() => setSaveState('idle'), 2500)
+    }, autosaveDelay)
+  }
+
+  function updateDayField(date, patch) {
+    setDayMap((prev) => {
+      const current = prev[date] || emptyRow()
+      const nextRow = { ...current, ...patch }
+      const nextMap = { ...prev, [date]: nextRow }
+      scheduleAutosave(nextMap)
+      return nextMap
+    })
+  }
+
+  // Resolves coordinates to a human-readable place name (e.g. "Emami Tower")
+  // via OpenStreetMap's free reverse-geocoding lookup, falling back to raw
+  // coordinates if the lookup fails or times out.
+  async function resolvePlaceName(latitude, longitude) {
+    const coords = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+      )
+      if (!res.ok) return coords
+      const data = await res.json()
+      const addr = data.address || {}
+      const name = data.name || addr.amenity || addr.building || addr.office || addr.shop || addr.road
+      if (name) return name
+      return data.display_name ? data.display_name.split(',').slice(0, 2).join(',').trim() : coords
+    } catch {
+      return coords
+    }
+  }
+
+  function captureLocation(date) {
+    if (!navigator.geolocation) {
+      showToast('Location is not supported on this device/browser.', 'error')
+      return
+    }
+    setLocatingDate(date)
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords
+        const place = await resolvePlaceName(latitude, longitude)
+        updateDayField(date, { location: place, locationAt: new Date().toISOString() })
+        setLocatingDate(null)
+      },
+      (error) => {
+        setLocatingDate(null)
+        showToast(error.message || 'Could not capture location.', 'error')
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }
+
+  // Setting a leave type clears any time/task entries for that day (leave
+  // and working hours are mutually exclusive); clearing it (back to
+  // "Present") just leaves the day blank for re-entry.
+  function setLeaveType(date, value) {
+    setDayMap((prev) => {
+      const current = prev[date] || emptyRow()
+      const nextRow = value
+        ? { ...current, leaveType: value, inTime: '', outTime: '', location: '', locationAt: '', lines: [emptyLine()] }
+        : { ...current, leaveType: '' }
+      const nextMap = { ...prev, [date]: nextRow }
+      scheduleAutosave(nextMap)
+      return nextMap
+    })
+  }
+
+  function updateLine(date, lineIndex, patch) {
+    setDayMap((prev) => {
+      const current = prev[date] || emptyRow()
+      const lines = current.lines.length ? [...current.lines] : [emptyLine()]
+      lines[lineIndex] = { ...lines[lineIndex], ...patch }
+      const nextMap = { ...prev, [date]: { ...current, lines } }
+      scheduleAutosave(nextMap)
+      return nextMap
+    })
+  }
+
+  function addLine(date) {
+    setDayMap((prev) => {
+      const current = prev[date] || emptyRow()
+      const lines = [...(current.lines.length ? current.lines : [emptyLine()]), emptyLine()]
+      const nextMap = { ...prev, [date]: { ...current, lines } }
+      scheduleAutosave(nextMap)
+      return nextMap
+    })
+  }
+
+  function removeLine(date, lineIndex) {
+    setDayMap((prev) => {
+      const current = prev[date] || emptyRow()
+      if (current.lines.length <= 1) return prev
+      const lines = current.lines.filter((_, i) => i !== lineIndex)
+      const nextMap = { ...prev, [date]: { ...current, lines } }
+      scheduleAutosave(nextMap)
+      return nextMap
+    })
+  }
+
+  useEffect(
+    () => () => {
+      clearTimeout(saveTimer.current)
+      clearTimeout(savedAtTimer.current)
+    },
+    [],
+  )
+
+  if (tasks.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+        No tasks are assigned to you yet. Ask your manager to assign some in Manage Team.
+      </div>
+    )
+  }
+
+  function taskLabel(taskId) {
+    const task = tasks.find((t) => t.id === taskId)
+    return task ? `${task.projectName} · ${task.name}` : '-'
+  }
+
+  // Tasks already picked by this day's other lines are hidden from a line's
+  // dropdown so the same module can't be logged twice in one day.
+  function availableTasks(lines, lineIndex) {
+    const usedElsewhere = new Set(lines.filter((_, i) => i !== lineIndex).map((l) => l.taskId).filter(Boolean))
+    return tasks.filter((t) => !usedElsewhere.has(t.id))
+  }
+
+  return (
+    <div>
+      {!readOnly && (
+        <div className="mb-2 flex justify-end">
+          <SaveIndicator state={saveState} />
+        </div>
+      )}
+
+      {/* Desktop / tablet: one row per day (multiple lines if 2+ tasks that day) */}
+      <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b-2 border-indigo-100 bg-gradient-to-b from-slate-50 to-white">
+              <th scope="col" className="sticky left-0 z-10 bg-slate-50 text-left font-semibold text-slate-600 px-3 py-3 min-w-[92px] whitespace-nowrap">Date</th>
+              <th scope="col" className="text-left font-semibold text-slate-600 px-3 py-3 min-w-[140px]">Day</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[110px]">In Time</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[110px]">Out Time</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[120px]">Location</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[90px]">Hours of Work</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[170px]">Task</th>
+              <th scope="col" className="text-left font-semibold text-slate-600 px-2 py-3 min-w-[200px]">Task Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((dateIso) => {
+              const date = parseISODate(dateIso)
+              const tone = dayRowTone(date)
+              const row = dayMap[dateIso] || emptyRow()
+              const onLeave = !!row.leaveType
+              const hours = totals.perDay[dateIso]
+              const working = !isOffDay(date)
+              const zero = !onLeave && working && hours === 0
+              const over = hours > MAX_HOURS_PER_DAY
+              const rowTint = onLeave ? 'bg-violet-50/60' : tone.row
+
+              if (onLeave) {
+                return (
+                  <tr key={dateIso} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
+                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}>
+                      {formatDayOrdinal(date)}
+                    </th>
+                    <td className="px-3 py-2 align-top">
+                      <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
+                      <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
+                        {row.leaveType}
+                      </span>
+                      {!readOnly && !isOffDay(date) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                    </td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center">
+                      <span className="inline-block rounded-md px-2 py-1 text-xs font-semibold bg-violet-100 text-violet-700">
+                        0h
+                      </span>
+                    </td>
+                    <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 italic">
+                      {row.leaveType} - no task logged
+                    </td>
+                  </tr>
+                )
+              }
+
+              if (!working) {
+                return (
+                  <tr key={dateIso} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
+                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}>
+                      {formatDayOrdinal(date)}
+                    </th>
+                    <td className="px-3 py-2 align-top">
+                      <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
+                      {tone.badge && (
+                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
+                          {tone.badge.label}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 italic">
+                      Non-working day
+                    </td>
+                  </tr>
+                )
+              }
+
+              const lines = row.lines.length ? row.lines : [emptyLine()]
+              const rowSpan = lines.length
+              return lines.map((line, lineIndex) => (
+                <tr key={`${dateIso}_${lineIndex}`} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
+                  {lineIndex === 0 && (
+                    <>
+                      <th
+                        scope="row"
+                        rowSpan={rowSpan}
+                        className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}
+                      >
+                        {formatDayOrdinal(date)}
+                      </th>
+                      <td rowSpan={rowSpan} className="px-3 py-2 align-top">
+                        <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
+                        {tone.badge && (
+                          <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
+                            {tone.badge.label}
+                          </span>
+                        )}
+                        {!readOnly && working && zero && <div className="mt-1 text-[10px] font-medium text-amber-600">No hours</div>}
+                        {over && <div className="mt-1 text-[10px] font-medium text-red-600">Exceeds {MAX_HOURS_PER_DAY}h</div>}
+                        {!readOnly && working && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
+                        {readOnly ? (
+                          <span className="text-slate-700">{row.inTime || '-'}</span>
+                        ) : (
+                          <input
+                            type="time"
+                            aria-label={`In time on ${formatDayNum(date)}`}
+                            value={row.inTime}
+                            onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
+                            className="w-full rounded-md border border-slate-300 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        )}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
+                        {readOnly ? (
+                          <span className="text-slate-700">{row.outTime || '-'}</span>
+                        ) : (
+                          <input
+                            type="time"
+                            aria-label={`Out time on ${formatDayNum(date)}`}
+                            value={row.outTime}
+                            onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
+                            className="w-full rounded-md border border-slate-300 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        )}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
+                        {readOnly ? (
+                          row.location ? (
+                            <span className="text-[11px] text-slate-700 break-words">
+                              📍 {row.location}
+                              {row.locationAt && <span className="block text-slate-400">at {formatTime(row.locationAt)}</span>}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">-</span>
+                          )
+                        ) : (
+                          <LocationField
+                            dateIso={dateIso}
+                            value={row.location}
+                            capturedAt={row.locationAt}
+                            locating={locatingDate === dateIso}
+                            onCapture={captureLocation}
+                            disabled={dateIso !== todayIso}
+                          />
+                        )}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
+                        <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                          {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
+                        </span>
+                      </td>
+                    </>
+                  )}
+                  <td className="px-2 py-2 align-top text-center">
+                    {readOnly ? (
+                      <span className={line.taskId ? 'font-medium text-indigo-700' : 'text-slate-400'}>{taskLabel(line.taskId)}</span>
+                    ) : (
+                      <select
+                        aria-label={`Task ${lineIndex + 1} on ${formatDayNum(date)}`}
+                        value={line.taskId}
+                        onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
+                        className={`w-full rounded-md border px-1.5 py-1.5 text-xs text-center font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                          line.taskId
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                            : 'border-slate-300 bg-white text-slate-500 font-normal'
+                        }`}
+                      >
+                        <option value="">Select task</option>
+                        {availableTasks(lines, lineIndex).map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.projectName} · {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 align-top">
+                    {readOnly ? (
+                      <span className="text-slate-600">{line.description || '-'}</span>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          aria-label={`Task description ${lineIndex + 1} on ${formatDayNum(date)}`}
+                          value={line.description}
+                          onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
+                          placeholder="What did you work on?"
+                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        {lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLine(dateIso, lineIndex)}
+                            aria-label={`Remove task ${lineIndex + 1} on ${formatDayNum(date)}`}
+                            className="shrink-0 text-slate-400 hover:text-red-600 focus:outline-none focus-visible:text-red-600"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {lineIndex === lines.length - 1 && (
+                          <button
+                            type="button"
+                            onClick={() => addLine(dateIso)}
+                            className="shrink-0 text-indigo-600 hover:text-indigo-800 text-xs font-medium whitespace-nowrap focus:outline-none focus-visible:underline"
+                          >
+                            + Add task
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gradient-to-r from-indigo-50/70 to-violet-50/70 border-t-2 border-indigo-100">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-indigo-50/90 text-left font-semibold text-slate-700 px-3 py-3">
+                Total hours this month
+              </th>
+              <td className="px-2 py-3 text-center font-bold text-indigo-700">
+                {totals.month.toFixed(2).replace(/\.00$/, '')}h
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+            <tr className="bg-violet-50/70 border-t border-violet-100">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 text-left font-semibold text-slate-700 px-3 py-2.5">
+                Total leave this month
+              </th>
+              <td className="px-2 py-2.5 text-center font-bold text-violet-700">
+                {totals.leaveDays} {totals.leaveDays === 1 ? 'day' : 'days'}
+              </td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* Mobile: stacked card-per-day layout */}
+      <div className="md:hidden space-y-4">
+        {days.map((dateIso) => {
+          const date = parseISODate(dateIso)
+          const tone = dayRowTone(date)
+          const row = dayMap[dateIso] || emptyRow()
+          const onLeave = !!row.leaveType
+          const lines = row.lines.length ? row.lines : [emptyLine()]
+          const hours = totals.perDay[dateIso]
+          const working = !isOffDay(date)
+          const zero = !onLeave && working && hours === 0
+          const over = hours > MAX_HOURS_PER_DAY
+          const cardTint = onLeave ? 'bg-violet-50' : tone.row || 'bg-white'
+          return (
+            <div key={dateIso} className={`rounded-xl border border-slate-200 shadow-sm p-4 ${cardTint}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className={`font-semibold ${tone.dayText || 'text-slate-800'}`}>
+                    {formatWeekday(date)} {formatDayNum(date)}
+                  </div>
+                  {onLeave ? (
+                    <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
+                      {row.leaveType}
+                    </span>
+                  ) : (
+                    tone.badge && (
+                      <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
+                        {tone.badge.label}
+                      </span>
+                    )
+                  )}
+                </div>
+                <div className="text-right">
+                  <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${onLeave ? 'bg-violet-100 text-violet-700' : over ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                    {onLeave ? '0' : hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
+                  </span>
+                  {!readOnly && working && zero && <div className="mt-1 text-[11px] font-medium text-amber-600">No hours logged</div>}
+                  {over && <div className="mt-1 text-[11px] font-medium text-red-600">Exceeds {MAX_HOURS_PER_DAY}h</div>}
+                </div>
+              </div>
+
+              {!readOnly && working && (
+                <label className="block mb-3">
+                  <span className="block text-[11px] font-medium text-slate-500 mb-1">Leave</span>
+                  <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />
+                </label>
+              )}
+
+              {onLeave ? (
+                <p className="text-sm text-slate-400 italic">{row.leaveType} - no task logged</p>
+              ) : !working ? (
+                <p className="text-sm text-slate-400 italic">Non-working day</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block text-[11px] font-medium text-slate-500 mb-1">In Time</span>
+                      {readOnly ? (
+                        <span className="block text-sm text-slate-700">{row.inTime || '-'}</span>
+                      ) : (
+                        <input
+                          type="time"
+                          value={row.inTime}
+                          onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
+                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      )}
+                    </label>
+                    <label className="block">
+                      <span className="block text-[11px] font-medium text-slate-500 mb-1">Out Time</span>
+                      {readOnly ? (
+                        <span className="block text-sm text-slate-700">{row.outTime || '-'}</span>
+                      ) : (
+                        <input
+                          type="time"
+                          value={row.outTime}
+                          onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
+                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      )}
+                    </label>
+                  </div>
+
+                  <div className="mt-3">
+                    <span className="block text-[11px] font-medium text-slate-500 mb-1">Location</span>
+                    {readOnly ? (
+                      row.location ? (
+                        <span className="block text-sm text-slate-700 break-words">
+                          📍 {row.location}
+                          {row.locationAt && <span className="block text-xs text-slate-400">at {formatTime(row.locationAt)}</span>}
+                        </span>
+                      ) : (
+                        <span className="block text-sm text-slate-400">-</span>
+                      )
+                    ) : (
+                      <LocationField
+                        dateIso={dateIso}
+                        value={row.location}
+                        capturedAt={row.locationAt}
+                        locating={locatingDate === dateIso}
+                        onCapture={captureLocation}
+                        disabled={dateIso !== todayIso}
+                        compact
+                      />
+                    )}
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    {lines.map((line, lineIndex) => (
+                      <div key={lineIndex} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-500">Task {lineIndex + 1}</span>
+                          {!readOnly && lines.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeLine(dateIso, lineIndex)}
+                              aria-label={`Remove task ${lineIndex + 1}`}
+                              className="text-slate-400 hover:text-red-600 text-xs focus:outline-none focus-visible:text-red-600"
+                            >
+                              ✕ Remove
+                            </button>
+                          )}
+                        </div>
+                        <label className="block">
+                          <span className="block text-[11px] font-medium text-slate-500 mb-1">Task</span>
+                          {readOnly ? (
+                            <span className={`block text-sm ${line.taskId ? 'font-medium text-indigo-700' : 'text-slate-400'}`}>{taskLabel(line.taskId)}</span>
+                          ) : (
+                            <select
+                              value={line.taskId}
+                              onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
+                              className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                                line.taskId ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-300 bg-white text-slate-500 font-normal'
+                              }`}
+                            >
+                              <option value="">Select task</option>
+                              {availableTasks(lines, lineIndex).map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.projectName} · {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </label>
+                        <label className="block">
+                          <span className="block text-[11px] font-medium text-slate-500 mb-1">Task Description</span>
+                          {readOnly ? (
+                            <span className="block text-sm text-slate-600">{line.description || '-'}</span>
+                          ) : (
+                            <input
+                              type="text"
+                              value={line.description}
+                              onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
+                              placeholder="What did you work on?"
+                              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          )}
+                        </label>
+                      </div>
+                    ))}
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => addLine(dateIso)}
+                        className="text-indigo-600 hover:text-indigo-800 text-sm font-medium focus:outline-none focus-visible:underline"
+                      >
+                        + Add task
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })}
+        <div className="sticky bottom-0 rounded-xl border border-indigo-200 bg-indigo-50 shadow-sm divide-y divide-indigo-100 overflow-hidden">
+          <div className="p-4 flex items-center justify-between">
+            <span className="font-semibold text-indigo-800">Month Total</span>
+            <span className="font-bold text-indigo-800 text-lg">{totals.month.toFixed(2).replace(/\.00$/, '')}h</span>
+          </div>
+          <div className="px-4 py-2.5 flex items-center justify-between bg-violet-50">
+            <span className="font-medium text-violet-800 text-sm">Total Leave</span>
+            <span className="font-bold text-violet-800">
+              {totals.leaveDays} {totals.leaveDays === 1 ? 'day' : 'days'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+function SaveIndicator({ state }) {
+  if (state === 'saving') {
+    return <span className="text-xs text-slate-400 flex items-center gap-1">Saving…</span>
+  }
+  if (state === 'saved') {
+    return <span className="text-xs text-green-600 font-medium flex items-center gap-1">✓ Saved</span>
+  }
+  return <span className="text-xs text-transparent select-none">.</span>
+}
+
+export default TimesheetGrid
