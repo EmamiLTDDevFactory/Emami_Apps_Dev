@@ -2,11 +2,11 @@ import { useApp } from '../context/AppContext'
 import emamiLogo from '../assets/emami-logo.png'
 
 // Reached only when the hub identity in AppContext.jsx didn't resolve to a signed-in Timesheet
-// user - either this page was opened outside the Emami Apps hub, or the hub's signed-in email has
-// no matching row in timesheet.users yet. There is no form here: Timesheet has no login of its
-// own, identity comes entirely from the hub.
+// user - either this page was opened outside the Emami Apps hub, or the hub session is valid but
+// Manage Access has no "Admin"/"User" grant for the 'timesheet' app on this email. There is no
+// form here: Timesheet has no login of its own, identity AND role come entirely from the hub.
 export default function Login() {
-  const { hubEmail, accessDenied } = useApp()
+  const { hubEmail, loggedIntoHub, accessDenied } = useApp()
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-violet-50">
@@ -19,12 +19,13 @@ export default function Login() {
           <span className="text-lg font-bold text-slate-900 tracking-tight">TimeSheet</span>
         </div>
 
-        {accessDenied ? (
+        {loggedIntoHub && accessDenied ? (
           <>
             <p className="text-sm font-semibold text-slate-800">No Timesheet access yet</p>
             <p className="mt-2 text-sm text-slate-500">
-              <span className="font-medium text-slate-700">{hubEmail}</span> is signed in to Emami Apps but isn't set up
-              in Timesheet yet. Ask your manager or the Timesheet admin to add you.
+              <span className="font-medium text-slate-700">{hubEmail}</span> is signed in to Emami Apps, but Timesheet
+              hasn't been granted to this email in Manage Access. Ask your hub admin to grant "Admin" (manager) or
+              "User" (employee) access there.
             </p>
           </>
         ) : (
