@@ -217,7 +217,7 @@ function toODataDate(dateStr: string): string {
 }
 
 /** One PO/item row from ZVendorPOFollowupSet, scoped to the signed-in user's own email and a
- * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/shortText/
+ * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/
  * vendorName) are still captured here — this entity returns them alongside the ones the UI does
  * display — purely so ZProvHeader's submit payload below can echo them back untouched, per
  * instruction ("pass the data from the screen data only"), never invented. */
@@ -230,12 +230,12 @@ export interface VendorPOFollowupRow {
   entrySheetNo: string; // Lblni
   materialCode: string; // Matnr
   materialDesc: string; // Maktx
-  shortText: string; // Txz01
+  serviceText: string; // Txz01
   vendorName: string; // Name1
   zaction: string; // Zaction — echoed back as-is on submit
   deliveryDate: string; // Eindt, 'YYYY-MM-DD'
   revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or '' — as SAP already has it on file
-  provisionValue: string; // Brtwr
+  provisionValue: string; // Netwr
   currency: string; // Waers
   invoiceNo: string; // ZzinvNo
   invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
@@ -254,12 +254,12 @@ function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorP
     entrySheetNo: str(raw.Lblni),
     materialCode: str(raw.Matnr),
     materialDesc: str(raw.Maktx),
-    shortText: str(raw.Txz01),
+    serviceText: str(raw.Txz01),
     vendorName: str(raw.Name1),
     zaction: str(raw.Zaction) || 'U',
     deliveryDate: parseODataDate(raw.Eindt),
     revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
-    provisionValue: str(raw.Brtwr),
+    provisionValue: str(raw.Netwr),
     currency: str(raw.Waers),
     invoiceNo: str(raw.ZzinvNo),
     invoiceDate: parseODataDate(raw.ZinvDate),
@@ -302,7 +302,7 @@ function toProvItem(c: ProvisionConfirmation) {
     Ebelp: row.poItemNo,
     Matnr: row.materialCode,
     Maktx: row.materialDesc,
-    Txz01: row.shortText,
+    Txz01: row.serviceText,
     Name1: row.vendorName,
     Zaction: row.zaction,
     RevisedDelDate: c.delvConf ? '' : toODataDate(c.revisedDelDate),

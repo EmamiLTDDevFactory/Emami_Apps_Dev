@@ -395,6 +395,7 @@ export default function UpcomingProvision() {
                   </View>
 
                   <View style={styles.fieldGrid}>
+                    <InfoField label="Service Text" value={row.serviceText} />
                     <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} />
                     <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} />
                     {state.submitted ? (
@@ -530,7 +531,7 @@ const styles = StyleSheet.create({
     paddingBottom: 60,
   },
   panel: {
-    gap: 16,
+    gap: 10,
   },
   flex1: { flex: 1 },
   loadingWrap: {
@@ -611,8 +612,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
-    gap: 12,
+    padding: 12,
+    gap: 8,
     ...Platform.select({
       web: { boxShadow: '0 2px 8px rgba(31,27,51,0.06)' },
       default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
@@ -624,20 +625,20 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   checkbox: {
     padding: 2,
   },
   cardTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: colors.ink,
   },
   cardSubtitle: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: colors.inkSoft,
-    marginTop: 2,
+    marginTop: 1,
   },
   submittedBadge: {
     flexDirection: 'row',
@@ -645,34 +646,34 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: `${colors.green}14`,
     borderRadius: radii.pill,
-    paddingVertical: 4,
-    paddingHorizontal: 9,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
   },
   submittedBadgeText: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.green,
   },
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 8,
   },
   infoField: {
-    minWidth: 150,
+    minWidth: 130,
     flexGrow: 1,
     flexBasis: '30%',
-    gap: 4,
+    gap: 2,
   },
   infoLabel: {
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   infoValue: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
   },
@@ -680,9 +681,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 13.5,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    fontSize: 13,
     color: colors.ink,
     backgroundColor: colors.white,
   },
@@ -693,12 +694,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
     backgroundColor: colors.white,
   },
   dateBtnText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.ink,
     fontWeight: '600',
   },
@@ -708,23 +709,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 12,
+    paddingTop: 8,
   },
   delvConfLabel: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
   },
   delvConfOptions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   delvConfBtn: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 18,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
   },
   delvConfBtnYesActive: {
     backgroundColor: `${colors.green}14`,
@@ -754,8 +755,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   sendBtnText: {
     color: colors.white,
