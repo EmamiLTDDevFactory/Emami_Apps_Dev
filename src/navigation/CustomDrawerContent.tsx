@@ -31,10 +31,12 @@ export default function CustomDrawerContent({ state, navigation }: DrawerContent
     }
     (navigation as any).navigate('AppDetail', { appId: app.id });
   };
-  // Manage Access is only for Super Admin/Admin (see UserAccessScreen.tsx, which enforces the
-  // same rule server-side too — this just keeps the nav item from showing to a Viewer at all).
+  // Manage Access and Administration are only for Super Admin/Admin (see UserAccessScreen.tsx/
+  // AdministrationScreen.tsx, which each enforce the same rule server-side too — this just keeps
+  // the nav items from showing to a Viewer at all).
   const canManageAccess = access?.accessLevel === 'Super Admin' || access?.accessLevel === 'Admin';
-  const navItems = NAV.filter((item) => item.id !== 'UserAccess' || canManageAccess);
+  const ADMIN_ONLY_NAV_IDS = new Set(['UserAccess', 'Administration']);
+  const navItems = NAV.filter((item) => !ADMIN_ONLY_NAV_IDS.has(item.id) || canManageAccess);
 
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + 16 }]}>

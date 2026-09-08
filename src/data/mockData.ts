@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
+  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
@@ -99,6 +99,7 @@ export const NAV: NavItem[] = [
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'Settings', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
+  { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];
 
 export function appById(id: string) {
