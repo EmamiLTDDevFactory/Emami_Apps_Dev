@@ -11,6 +11,7 @@ import {
   type ProvisionConfirmation,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
+import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
@@ -23,23 +24,6 @@ function formatDisplayDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-/** Reads a picked attachment (blob: or file: uri, same on web and native via expo-document-picker)
- * into a plain base64 string, so it can travel as JSON text inside the ZProvHeaderSet payload
- * rather than a raw binary multipart upload — same approach as non-ctc-expense's ClaimContext. */
-function readAttachmentAsBase64(uri: string): Promise<string> {
-  return fetch(uri)
-    .then((res) => res.blob())
-    .then((blob) => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = (reader.result as string) || '';
-        resolve(result.includes(',') ? result.split(',')[1] : result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    }));
 }
 
 /** One row's local, in-progress confirmation. Invoice fields seed from whatever
@@ -259,7 +243,19 @@ export default function UpcomingProvision() {
         return;
       }
       patchRow(key, { attaching: true });
-      const base64 = await readAttachmentAsBase64(asset.uri);
+      const picked = await readAttachmentAsBase64(asset.uri);
+      // SAP's ZProvHeaderSet 413s well below what even a small PDF needs (confirmed in dev
+      // testing) — anything over 70KB gets compressed (web only) before it's attached.
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchRow(key, {
+          attaching: false,
+          error: Platform.OS === 'web'
+            ? 'This PDF could not be compressed under 70KB. Please attach a smaller file.'
+            : 'This PDF is larger than 70KB. Please attach a smaller file — compression is only available on the web app.',
+        });
+        return;
+      }
       patchRow(key, { attaching: false, attachmentName: name, attachmentBase64: base64, attachmentMimeType: mimeType });
     } catch {
       patchRow(key, { attaching: false, error: 'Could not attach this file. Please try again.' });
