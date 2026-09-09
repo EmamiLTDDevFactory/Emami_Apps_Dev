@@ -132,6 +132,22 @@
       if(isDevTrackerAdmin) tile.style.display = '';
     }catch(e){
       // Network/API failure — stays hidden, same fail-closed posture as everywhere else here.
+    }finally{
+      updateTileBannerState();
+    }
+  }
+
+  // Whenever an odd number of tiles end up visible, the last visible one becomes a full-width
+  // banner (see .tile-banner in home.css) instead of dangling alone beside empty grid space. This
+  // is computed from actual visibility rather than DOM position, since the admin-only tile is
+  // always present in the DOM (just hidden) — a plain :nth-child CSS rule would either fire for
+  // the wrong tile or never fire once more always-visible tiles are added.
+  function updateTileBannerState(){
+    const tiles = Array.from(document.querySelectorAll('.tile-grid > .tile'))
+      .filter(t => getComputedStyle(t).display !== 'none');
+    tiles.forEach(t => t.classList.remove('tile-banner'));
+    if(tiles.length % 2 === 1 && tiles.length > 1){
+      tiles[tiles.length - 1].classList.add('tile-banner');
     }
   }
 
@@ -481,6 +497,162 @@
     }
   }
 
+  // ============================================================
+  // Critical / time-sensitive panel — top 10 active items ranked by how overdue they are (or how
+  // close their revised target date is) combined with priority, shown as auto-flipping placards.
+  // On screens too narrow for the fixed side panel (see .side-panel's media query in home.css), an
+  // edge tab opens the same list as a floating drawer instead — never a separate feature, just a
+  // different presentation of the same ranked list, built from the same fetch.
+  // ============================================================
+  const PRIORITY_RANK = { P1: 0, P2: 1, P3: 2 };
+  const AREA_COLOR_FALLBACK = '#94a3b8';
+  let criticalItemsCache = null;
+  let criticalActive = 0;
+  let criticalCycleTimer = null;
+
+  function priorityRankOf(item){
+    const r = PRIORITY_RANK[item.priority];
+    return r === undefined ? 2 : r; // unknown/blank priority ranks alongside the lowest tier
+  }
+
+  // Blends "how close/overdue" with priority into one ranking score, rather than sorting purely by
+  // date and only using priority as a tie-breaker — a P1 item due in 3 days should generally surface
+  // above a P3 item due in 1 day. Each priority tier below the top counts as 2 extra apparent days
+  // of lateness; this is a simple, tunable weighting, not a claimed-precise formula.
+  function criticalScore(daysDiff, item){
+    return daysDiff + priorityRankOf(item) * 2;
+  }
+
+  function rankCriticalItems(items){
+    const today = todayStr();
+    return items
+      .filter(r => !['Completed','Cancelled'].includes(r.status))
+      .map(r => {
+        const rt = revisedTarget(r);
+        if(!rt) return null;
+        const daysDiff = Math.round((new Date(rt+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+        return { item: r, daysDiff, score: criticalScore(daysDiff, r) };
+      })
+      .filter(Boolean)
+      .sort((a,b) => a.score - b.score)
+      .slice(0, 10);
+  }
+
+  function urgencyTagHtml(daysDiff){
+    return daysDiff < 0
+      ? `<span class="placard-tag overdue">OVERDUE ${Math.abs(daysDiff)}D</span>`
+      : `<span class="placard-tag soon">DUE ${daysDiff}D</span>`;
+  }
+  function urgencyColorOf(daysDiff){
+    if(daysDiff < 0) return 'var(--red)';
+    if(daysDiff <= 2) return 'var(--amber)';
+    return 'color-mix(in srgb, var(--accent) 55%, var(--muted))';
+  }
+
+  function criticalPlacardsHtml(ranked, areaColorMap){
+    return ranked.map(({item, daysDiff}) => {
+      const areaColor = areaColorMap[item.area] || AREA_COLOR_FALLBACK;
+      const synopsis = item.remarks ? item.remarks : `${item.area || 'Unassigned'} · ${item.status || 'Not Started'}`;
+      return `<div class="placard"><div class="placard-inner">
+        <div class="placard-face placard-front"><span class="placard-urgency-bar" style="background:${urgencyColorOf(daysDiff)}"></span>
+          <div class="placard-front-body"><div class="placard-title-row"><span class="placard-title">${escapeHtml(item.devList)}</span>${urgencyTagHtml(daysDiff)}</div>
+          <span class="placard-synopsis">${escapeHtml(synopsis)}</span></div></div>
+        <div class="placard-face placard-back">
+          <div class="pb-row"><span class="pb-area" style="background:${areaColor}">${escapeHtml(item.area || '—')}</span><b>${escapeHtml(item.status || 'Not Started')}</b></div>
+          <div class="pb-row">Func <b>${escapeHtml(item.spocFunction || '—')}</b> &middot; Dev <b>${escapeHtml(item.developer || '—')}</b></div>
+          <div class="pb-row">${item.remarks ? ('Note: <b>'+escapeHtml(item.remarks)+'</b>') : '<i>No remarks</i>'}</div>
+        </div>
+      </div></div>`;
+    }).join('');
+  }
+
+  function stopCriticalCycle(){
+    if(criticalCycleTimer){ cancelAnimationFrame(criticalCycleTimer); criticalCycleTimer = null; }
+  }
+
+  function setActivePlacard(listEl, i){
+    const cards = listEl.querySelectorAll('.placard');
+    cards.forEach((c, ci) => c.classList.toggle('flipped', ci === i));
+  }
+
+  function startCriticalCycle(listEl, count){
+    stopCriticalCycle();
+    if(count <= 1) return;
+    let remaining = 4000;
+    const clockEl = document.getElementById('critCycleClock');
+    let lastTs = null;
+    function tick(ts){
+      if(lastTs == null) lastTs = ts;
+      remaining -= (ts - lastTs); lastTs = ts;
+      if(clockEl) clockEl.textContent = Math.max(0, Math.ceil(remaining/1000)) + 's';
+      if(remaining <= 0){
+        criticalActive = (criticalActive + 1) % count;
+        setActivePlacard(listEl, criticalActive);
+        remaining = 4000;
+      }
+      criticalCycleTimer = requestAnimationFrame(tick);
+    }
+    criticalCycleTimer = requestAnimationFrame(tick);
+  }
+
+  function openCriticalDrawer(){
+    document.getElementById('critBackdrop').classList.add('open');
+    document.getElementById('critDrawer').classList.add('open');
+  }
+  function closeCriticalDrawer(){
+    document.getElementById('critBackdrop').classList.remove('open');
+    document.getElementById('critDrawer').classList.remove('open');
+  }
+
+  async function loadCriticalPanel(){
+    try{
+      const [itemsRes, mdRes] = await Promise.all([
+        fetch(API_BASE + '/items'),
+        fetch(API_BASE + '/master-data')
+      ]);
+      if(!itemsRes.ok || !mdRes.ok) return;
+      const items = await itemsRes.json();
+      const areas = (await mdRes.json()).filter(r => r.active && r.category === 'area');
+      const areaColorMap = {};
+      areas.forEach(a => { areaColorMap[a.value] = a.color || AREA_COLOR_FALLBACK; });
+
+      const ranked = rankCriticalItems(items);
+      if(ranked.length === 0) return; // nothing time-sensitive — panel/tab stay hidden
+
+      const html = criticalPlacardsHtml(ranked, areaColorMap);
+      const sidePanel = document.getElementById('criticalSidePanel');
+      const placardList = document.getElementById('critPlacardList');
+      const drawerList = document.getElementById('critDrawerList');
+      const tab = document.getElementById('critTab');
+      const tabBadge = document.getElementById('critTabBadge');
+
+      placardList.innerHTML = html;
+      drawerList.innerHTML = html;
+
+      sidePanel.style.display = '';
+      tab.style.display = '';
+      tabBadge.textContent = String(ranked.filter(r => r.daysDiff < 0).length);
+
+      criticalActive = 0;
+      setActivePlacard(placardList, 0);
+      startCriticalCycle(placardList, ranked.length);
+      placardList.querySelectorAll('.placard').forEach((card, i) => {
+        card.addEventListener('click', () => { criticalActive = i; setActivePlacard(placardList, i); });
+      });
+      // Drawer cards flip independently on tap — opening the drawer is already a deliberate
+      // action, so there's no need to also force an auto-cycle on it.
+      drawerList.querySelectorAll('.placard').forEach(card => {
+        card.addEventListener('click', () => card.classList.toggle('flipped'));
+      });
+
+      tab.addEventListener('click', openCriticalDrawer);
+      document.getElementById('critBackdrop').addEventListener('click', closeCriticalDrawer);
+      document.getElementById('critDrawerClose').addEventListener('click', closeCriticalDrawer);
+    }catch(e){
+      // Non-essential — the rest of the home page works fine without it.
+    }
+  }
+
   document.getElementById('homeCommandSend').addEventListener('click', handleHomeCommand);
   document.getElementById('homeCommandInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') handleHomeCommand(); });
 
@@ -490,6 +662,8 @@
   loadQuickStats();
   loadActivity();
   loadModulePulse();
+  loadCriticalPanel();
+  updateTileBannerState(); // regular-user default (3 tiles) — revealAdminTileIfAuthorized() re-runs this if the admin tile appears
   revealAdminTileIfAuthorized();
   renderAccountBar();
 
