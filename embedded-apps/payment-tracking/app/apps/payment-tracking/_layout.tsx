@@ -24,7 +24,7 @@ type Href =
   | '/apps/payment-tracking/provision-details'
   | '/apps/payment-tracking/calendar'
   | '/apps/payment-tracking/pending-approval'
-  | '/apps/payment-tracking/ses-status';
+  | '/apps/payment-tracking/admin-upcoming';
 type NavItem = SidePaneItem & { href: Href };
 
 // Matches the hub's own useIsWideScreen breakpoint and Market Rate's own copy of this constant —
@@ -42,7 +42,7 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
   { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
-  { href: '/apps/payment-tracking/ses-status', label: 'Overall SES Status', icon: 'analytics-outline' },
+  { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
@@ -187,7 +187,7 @@ function LayoutContent() {
               <Stack.Screen name="provision-details" />
               <Stack.Screen name="calendar" />
               <Stack.Screen name="pending-approval" />
-              <Stack.Screen name="ses-status" />
+              <Stack.Screen name="admin-upcoming" />
             </Stack>
           </SafeAreaView>
         </View>

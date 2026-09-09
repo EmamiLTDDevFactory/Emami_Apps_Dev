@@ -293,11 +293,20 @@ export interface ProvisionConfirmation {
   delvConf: boolean; // Delivery Confirmed? — true = Yes (default), false = No
   revisedDelDate: string; // 'YYYY-MM-DD', mandatory (and never a past date) when delvConf is false
   comments: string; // mandatory when delvConf is false
-  invoiceNo: string; // mandatory — the only always-editable fields are these three
-  invoiceDate: string; // 'YYYY-MM-DD', mandatory
-  invoiceAmount: string; // mandatory
+  invoiceNo: string; // mandatory when delvConf is true
+  invoiceDate: string; // 'YYYY-MM-DD', mandatory when delvConf is true
+  invoiceAmount: string; // mandatory when delvConf is true
+  attachmentName: string; // mandatory when delvConf is true — PDF only, enforced at the picker
+  attachmentBase64: string; // base64 file content, no data: URI prefix
+  attachmentMimeType: string; // always 'application/pdf' when attachmentBase64 is set
 }
 
+// Value/Mimetype/Filename below are NOT confirmed live on ZProvHeaderSet — there's no known
+// attachment field on this entity (unlike ZMM_PO_FOLLOWUP_SRV's sibling service where
+// non-ctc-expense's ClaimHeaderSet/CLAIMNAV got dedicated Value/Mimetype/Filename fields added by
+// SAP Basis for exactly this purpose). These three are a best-effort guess at matching that same
+// naming convention, sent per instruction pending SAP Basis confirming (or correcting) the real
+// field names for an invoice attachment on this entity.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
   return {
@@ -318,6 +327,9 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
     ZzinvAmt: c.invoiceAmount,
     DelvConf: c.delvConf ? 'Y' : 'N',
+    Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
+    Mimetype: c.delvConf && c.attachmentMimeType ? c.attachmentMimeType.slice(0, 100) : null,
+    Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
 }
 

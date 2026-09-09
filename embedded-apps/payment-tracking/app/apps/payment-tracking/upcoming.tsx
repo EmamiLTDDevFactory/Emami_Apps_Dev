@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchVendorPOFollowups,
@@ -24,10 +25,28 @@ function formatDisplayDate(iso: string): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** Reads a picked attachment (blob: or file: uri, same on web and native via expo-document-picker)
+ * into a plain base64 string, so it can travel as JSON text inside the ZProvHeaderSet payload
+ * rather than a raw binary multipart upload — same approach as non-ctc-expense's ClaimContext. */
+function readAttachmentAsBase64(uri: string): Promise<string> {
+  return fetch(uri)
+    .then((res) => res.blob())
+    .then((blob) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = (reader.result as string) || '';
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }));
+}
+
 /** One row's local, in-progress confirmation. Invoice fields seed from whatever
  * ZVendorPOFollowupSet already had on file (not blank) so reopening this screen doesn't discard a
  * previous partial fill; DelvConf always starts at Yes with no revised date/comments per
- * instruction, regardless of what SAP has on file for those two. */
+ * instruction, regardless of what SAP has on file for those two. The invoice attachment has no
+ * equivalent field on the GET side yet, so it always starts blank. */
 interface RowState {
   delvConf: boolean;
   revisedDelDate: string;
@@ -35,6 +54,10 @@ interface RowState {
   invoiceNo: string;
   invoiceDate: string;
   invoiceAmount: string;
+  attachmentName: string;
+  attachmentBase64: string;
+  attachmentMimeType: string;
+  attaching: boolean;
   submitting: boolean;
   submitted: boolean;
   error: string | null;
@@ -48,6 +71,10 @@ function initialRowState(row: VendorPOFollowupRow): RowState {
     invoiceNo: row.invoiceNo,
     invoiceDate: row.invoiceDate,
     invoiceAmount: row.invoiceAmount,
+    attachmentName: '',
+    attachmentBase64: '',
+    attachmentMimeType: '',
+    attaching: false,
     submitting: false,
     submitted: false,
     error: null,
@@ -143,6 +170,23 @@ function EditableField({
   );
 }
 
+/** Attach Invoice (PDF) — restricted to `application/pdf` at the picker level (native picker and
+ * web's underlying `<input accept>` both honor it), mandatory whenever the invoice fields
+ * themselves are (see rowMandatoryError). */
+function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF) *</Text>
+      <Pressable style={styles.attachBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={15} color={colors.rust} />
+        <Text style={styles.attachBtnText} numberOfLines={1}>
+          {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /** Upcoming Provision — User's first side-pane option. ZVendorPOFollowupSet, filtered by the
  * signed-in user's own login email and Zaction='U'. Each row: confirm delivery (Yes/No — No opens
  * a mandatory Revised Delivery Date + Comments popup, no back-dating), fill in the three editable
@@ -201,6 +245,27 @@ export default function UpcomingProvision() {
     }
   };
 
+  const handlePickAttachment = async (key: string) => {
+    patchRow(key, { error: null });
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = (result as any).assets?.[0] ?? result;
+      if (!asset?.uri) return;
+      const name: string = asset.name || 'invoice.pdf';
+      const mimeType: string = asset.mimeType || 'application/pdf';
+      if (!name.toLowerCase().endsWith('.pdf') || (mimeType && mimeType !== 'application/pdf')) {
+        patchRow(key, { error: 'Only a PDF file can be attached as the invoice.' });
+        return;
+      }
+      patchRow(key, { attaching: true });
+      const base64 = await readAttachmentAsBase64(asset.uri);
+      patchRow(key, { attaching: false, attachmentName: name, attachmentBase64: base64, attachmentMimeType: mimeType });
+    } catch {
+      patchRow(key, { attaching: false, error: 'Could not attach this file. Please try again.' });
+    }
+  };
+
   const confirmModal = () => {
     if (!modalKey) return;
     if (!modalDraft.revisedDelDate || !modalDraft.comments.trim()) {
@@ -221,11 +286,16 @@ export default function UpcomingProvision() {
     setModalKey(null);
   };
 
+  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are the mandatory ones; Delivery
+  // Confirmed = No -> those are hidden entirely (see the fieldGrid render below) and instead the
+  // Revised Delivery Date + Comments popup (already mandatory via confirmModal) is what's required.
   function rowMandatoryError(state: RowState): string | null {
-    if (!state.invoiceNo.trim()) return 'Invoice Number is required.';
-    if (!state.invoiceDate) return 'Invoice Date is required.';
-    if (!state.invoiceAmount.trim() || Number.isNaN(Number(state.invoiceAmount))) return 'A valid Invoice Amount is required.';
-    if (!state.delvConf) {
+    if (state.delvConf) {
+      if (!state.invoiceNo.trim()) return 'Invoice Number is required.';
+      if (!state.invoiceDate) return 'Invoice Date is required.';
+      if (!state.invoiceAmount.trim() || Number.isNaN(Number(state.invoiceAmount))) return 'A valid Invoice Amount is required.';
+      if (!state.attachmentBase64) return 'An invoice attachment (PDF) is required.';
+    } else {
       if (!state.revisedDelDate) return 'Revised Delivery Date is required when delivery is not confirmed.';
       if (!state.comments.trim()) return 'Comments are required when delivery is not confirmed.';
     }
@@ -241,6 +311,9 @@ export default function UpcomingProvision() {
       invoiceNo: state.invoiceNo,
       invoiceDate: state.invoiceDate,
       invoiceAmount: state.invoiceAmount,
+      attachmentName: state.attachmentName,
+      attachmentBase64: state.attachmentBase64,
+      attachmentMimeType: state.attachmentMimeType,
     };
   }
 
@@ -398,11 +471,12 @@ export default function UpcomingProvision() {
                     <InfoField label="Service Text" value={row.serviceText} />
                     <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} />
                     <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} />
-                    {state.submitted ? (
+                    {state.delvConf && (state.submitted ? (
                       <>
                         <InfoField label="Invoice Number" value={state.invoiceNo} />
                         <InfoField label="Invoice Date" value={formatDisplayDate(state.invoiceDate)} />
                         <InfoField label="Invoice Amount" value={state.invoiceAmount} />
+                        <InfoField label="Attach Invoice (PDF)" value={state.attachmentName} />
                       </>
                     ) : (
                       <>
@@ -425,8 +499,13 @@ export default function UpcomingProvision() {
                           onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
                           keyboardType="decimal-pad"
                         />
+                        <AttachField
+                          fileName={state.attachmentName}
+                          attaching={state.attaching}
+                          onPick={() => handlePickAttachment(row.key)}
+                        />
                       </>
-                    )}
+                    ))}
                     {!state.delvConf && (
                       <>
                         <InfoField label="Revised Delivery Date" value={formatDisplayDate(state.revisedDelDate)} />
@@ -469,7 +548,9 @@ export default function UpcomingProvision() {
                       {state.submitting ? (
                         <ActivityIndicator size="small" color={colors.white} />
                       ) : (
-                        <Text style={styles.sendBtnText}>Send for Approval</Text>
+                        <Text style={styles.sendBtnText}>
+                          {state.delvConf ? 'Send for Invoice Approval' : 'Send for Revised Date Approval'}
+                        </Text>
                       )}
                     </Pressable>
                   )}
@@ -702,6 +783,23 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: colors.ink,
     fontWeight: '600',
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    backgroundColor: colors.white,
+  },
+  attachBtnText: {
+    fontSize: 12.5,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   delvConfRow: {
     flexDirection: 'row',
