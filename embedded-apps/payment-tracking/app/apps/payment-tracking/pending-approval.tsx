@@ -11,7 +11,8 @@ import {
 } from '../../../src/lib/paymentTrackingApi';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-import { formatDeliveryDate } from '../../../src/lib/provisionMetrics';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../../src/lib/provisionMetrics';
 
 /** Per-row decision state — 'idle' until the Admin acts on it, then locks into whichever decision
  * went through (or an error, which leaves it actionable again). */
@@ -44,13 +45,17 @@ function InfoField({ label, value }: { label: string; value: string }) {
 }
 
 /** Admin's Pending Approval — every ZVendorPOFollowupSet row scoped to the signed-in Admin's own
- * login email (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Value/Currency/Revised
- * Del Date/Delivery date/Comments/Invoice No/Invoice Date/Invoice Amount, with Approve/Reject
- * actions — row-wise or as a multi-select mass batch — both calling the same ZProvHeader POST as
- * Upcoming Provision's "send for approval" (see paymentTrackingApi.ts's submitApprovalDecision/
- * submitApprovalDecisionBatch), just with Zaction set to 'A'/'R' instead of echoed back. */
+ * login email (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
+ * Provisional Value/Currency/Revised Del Date/Delivery date/Comments/Invoice No/Invoice Date/
+ * Invoice Amount, with Approve/Reject actions — row-wise or as a multi-select mass batch — both
+ * calling the same ZProvHeader POST as Upcoming Provision's "send for approval" (see
+ * paymentTrackingApi.ts's submitApprovalDecision/submitApprovalDecisionBatch), just with Zaction
+ * set to 'A'/'R' instead of echoed back. Also filtered by the shared Month/Year bar and by SAP's
+ * own Stat field (Pending/Approved tabs — see effectiveStatus below), not just this session's own
+ * in-memory decisions. */
 export default function PendingApproval() {
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -74,7 +79,14 @@ export default function PendingApproval() {
       .then((data) => {
         setRows(data);
         const state: Record<string, RowState> = {};
-        data.forEach((r) => { state[r.key] = initialRowState(); });
+        data.forEach((r) => {
+          const s = initialRowState();
+          // Seed decided from SAP's own Stat so a row already approved in an earlier session (or
+          // by someone else) renders as Approved on load, not as still-actionable — Stat has no
+          // 'R' value (rejections aren't tracked there), so Rejected stays session-only.
+          if ((r.status || '').trim() === 'A') s.decided = 'A';
+          state[r.key] = s;
+        });
         setRowState(state);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load pending approvals.'))
@@ -85,9 +97,30 @@ export default function PendingApproval() {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }, []);
 
+  // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
+  // delivery date client-side, same as every other screen; ZVendorPOFollowupSet has no Gjahr server
+  // filter to send the year to, unlike ZProvisionTrackSet, so both dimensions apply here.
+  const monthYearRows = useMemo(
+    () => filterByFiscalYear(filterByMonth(rows, month), year),
+    [rows, month, year]
+  );
+
   const currencies = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.currency).filter(Boolean))).sort(),
-    [rows]
+    () => Array.from(new Set(monthYearRows.map((r) => r.currency).filter(Boolean))).sort(),
+    [monthYearRows]
+  );
+
+  // A row's effective status: whatever this Admin already decided this session takes priority
+  // (so an acted-on row moves tabs immediately, without waiting on a refetch), otherwise it's SAP's
+  // own Stat field ('P' pending, 'A' approved, ' '/blank = not yet submitted) — real server state,
+  // not just "untouched in this browser session" the way the old decided-only check was.
+  const effectiveStatus = useCallback(
+    (row: VendorPOFollowupRow): string => {
+      const decided = rowState[row.key]?.decided ?? null;
+      if (decided) return decided;
+      return (row.status || '').trim();
+    },
+    [rowState]
   );
 
   // Search + filter narrows what's shown, but selection/decision state stays keyed by the full row
@@ -95,10 +128,9 @@ export default function PendingApproval() {
   // list, so "Select all" below only ever (de)selects what's currently visible.
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      const decided = rowState[row.key]?.decided ?? null;
-      if (decisionFilter === 'pending' && decided) return false;
-      if ((decisionFilter === 'A' || decisionFilter === 'R') && decided !== decisionFilter) return false;
+    return monthYearRows.filter((row) => {
+      if (decisionFilter === 'pending' && effectiveStatus(row) !== 'P') return false;
+      if ((decisionFilter === 'A' || decisionFilter === 'R') && effectiveStatus(row) !== decisionFilter) return false;
       if (currencyFilter !== 'all' && row.currency !== currencyFilter) return false;
       if (q) {
         const haystack = [
@@ -108,7 +140,7 @@ export default function PendingApproval() {
       }
       return true;
     });
-  }, [rows, rowState, search, decisionFilter, currencyFilter]);
+  }, [monthYearRows, effectiveStatus, search, decisionFilter, currencyFilter]);
 
   const toggleSelected = (key: string) => {
     setSelected((prev) => {
@@ -378,7 +410,8 @@ export default function PendingApproval() {
                   <View style={styles.fieldGrid}>
                     <InfoField label="PO Number" value={row.poNumber} />
                     <InfoField label="PO Line Item" value={row.poItemNo} />
-                    <InfoField label="Value" value={row.provisionValue} />
+                    <InfoField label="Service Description" value={row.serviceText} />
+                    <InfoField label="Provisional Value" value={row.provisionValue} />
                     <InfoField label="Currency" value={row.currency} />
                     <InfoField label="Revised Del Date" value={formatDeliveryDate(row.revisedDeliveryDate)} />
                     <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />

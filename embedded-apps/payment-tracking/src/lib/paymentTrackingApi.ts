@@ -241,6 +241,10 @@ export interface VendorPOFollowupRow {
   invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
   invoiceAmount: string; // ZzinvAmt
   comments: string; // Comments
+  /** Stat — the row's real approval state on SAP: 'P' = pending approval, 'A' = approved, ' '
+   * (blank) = not yet submitted for approval. Drives Pending Approval's Pending/Approved tabs
+   * (see pending-approval.tsx) instead of relying purely on client-side session state. */
+  status: string;
 }
 
 function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorPOFollowupRow {
@@ -265,6 +269,7 @@ function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorP
     invoiceDate: parseODataDate(raw.ZinvDate),
     invoiceAmount: str(raw.ZzinvAmt),
     comments: str(raw.Comments),
+    status: str(raw.Stat),
   };
 }
 
