@@ -86,7 +86,8 @@ export const STATUS_COLOR_HOME = {
 export const KANBAN_COLUMNS = [
   { key: 'not-started', name: 'Not Started', dot: 'var(--st-gray)', statuses: ['Not Started'] },
   { key: 'discussion', name: 'In Discussion', dot: 'var(--st-indigo)', statuses: ['Requirement Discussion', 'FS Preparation'] },
-  { key: 'development', name: 'In Development', dot: 'var(--st-blue)', statuses: ['In Progress', 'IT Testing', 'User Testing'] },
+  { key: 'development', name: 'In Development', dot: 'var(--st-blue)', statuses: ['In Progress'] },
+  { key: 'testing', name: 'Testing', dot: 'var(--st-teal)', statuses: ['IT Testing', 'User Testing'] },
   { key: 'hypercare', name: 'Hypercare', dot: 'var(--st-amber)', statuses: ['Hypercare', 'On Hold'] },
   { key: 'completed', name: 'Completed', dot: 'var(--st-green)', statuses: ['Completed', 'Cancelled'] },
 ];
