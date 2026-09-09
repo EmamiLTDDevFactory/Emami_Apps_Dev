@@ -301,12 +301,15 @@ export interface ProvisionConfirmation {
   attachmentMimeType: string; // always 'application/pdf' when attachmentBase64 is set
 }
 
-// Value/Mimetype/Filename below are NOT confirmed live on ZProvHeaderSet — there's no known
-// attachment field on this entity (unlike ZMM_PO_FOLLOWUP_SRV's sibling service where
-// non-ctc-expense's ClaimHeaderSet/CLAIMNAV got dedicated Value/Mimetype/Filename fields added by
-// SAP Basis for exactly this purpose). These three are a best-effort guess at matching that same
-// naming convention, sent per instruction pending SAP Basis confirming (or correcting) the real
-// field names for an invoice attachment on this entity.
+// The invoice attachment (attachmentName/attachmentBase64/attachmentMimeType on
+// ProvisionConfirmation) is deliberately NOT included below. Confirmed in dev testing
+// (2026-09-10): posting the base64 PDF alongside the rest of ToProvItems as guessed
+// Value/Mimetype/Filename fields gets rejected with an HTTP 413 (Payload Too Large) — something
+// in front of this SAP OData service caps the request body well below what even a small PDF's
+// base64 encoding needs, and that 413 has no CORS header so the browser reports it as a blocked
+// cross-origin request. Until SAP Basis/infra confirms either a higher body-size limit or a
+// separate channel for the attachment (e.g. its own upload entity/endpoint), the mandatory PDF
+// picker stays client-side only — enforced in upcoming.tsx's rowMandatoryError, never POSTed here.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
   return {
@@ -327,9 +330,6 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
     ZzinvAmt: c.invoiceAmount,
     DelvConf: c.delvConf ? 'Y' : 'N',
-    Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
-    Mimetype: c.delvConf && c.attachmentMimeType ? c.attachmentMimeType.slice(0, 100) : null,
-    Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
 }
 
