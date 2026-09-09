@@ -111,6 +111,12 @@ async function fetchInvoicesRaw(entitySet: string, email: string, filter: Invoic
  * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Sent as a
  * plain POST (no Otp field — this app has no OTP flow, see AuthContext.tsx). Non-fatal: a failure
  * here shouldn't block reading whatever's already in the tables.
+ *
+ * $expand is required here, not optional: the ABAP class's actual "Login" business logic lives
+ * in the generic CREATE_DEEP_ENTITY method (CASE iv_entity_name WHEN 'Login') — a plain POST with
+ * no $expand and no nested navigation data instead routes to the separate, auto-generated
+ * LOGINSET_CREATE_ENTITY stub, which never runs that logic. $expand on the nav properties is what
+ * makes SAP Gateway dispatch to CREATE_DEEP_ENTITY instead.
  */
 async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
   if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
@@ -120,7 +126,7 @@ async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<v
     FrmDate: formatSAPDate(filter.frmDate),
     ToDate: formatSAPDate(filter.toDate),
   };
-  await fetch(`${API_BASE_URL}/LoginSet?$format=json`, {
+  await fetch(`${API_BASE_URL}/LoginSet?$expand=NAV_LoginToDepot,NAV_LoginToInv&$format=json`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
