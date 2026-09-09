@@ -316,6 +316,20 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
   };
 }
 
+/** Pending Approval (Admin's side-pane tab) — every ZVendorPOFollowupSet row scoped to the signed-
+ * in Admin's own login email, no Zaction filter (per instruction: Email only) — the backend is
+ * trusted to expand scope to every user's pending items once it sees an Admin email, same posture
+ * as fetchProvisionPOs above. */
+export async function fetchPendingApprovals(email: string): Promise<VendorPOFollowupRow[]> {
+  const params = {
+    '$format': 'json',
+    '$filter': `Email eq '${email}'`,
+  };
+  const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
+}
+
 /** Sends one or more confirmed rows to ZProvHeader — a deep insert, same POST-with-nested-array
  * shape as Market Rate's saveMarketRates. Per the given payload example, the header's own
  * Lifnr/Email/Ebeln/Ebelp/Lblni are the FIRST item's — SEGW requires a representative key trio at
@@ -369,6 +383,96 @@ export async function submitProvisionApprovalBatch(
       await submitProvisionApproval(group, email);
     } catch (err) {
       failures.push({ lifnr, error: err instanceof Error ? err.message : 'Could not send this for approval.' });
+    }
+  }
+  return failures;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Admin's Pending Approval decision — same ZProvHeader POST endpoint and same header/deep-insert
+// shape as submitProvisionApproval above ("the same POST method, same way", per instruction), just
+// with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
+// Zaction — that field is already how this entity carries a row's state, so an Admin decision is
+// just a different Zaction value on the same write. Every other field is echoed back from what the
+// GET already returned for that row, same posture as toProvItem above — nothing invented.
+export type ApprovalDecision = 'A' | 'R';
+
+function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
+  return {
+    Lifnr: row.lifnr,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.serviceText,
+    Name1: row.vendorName,
+    Zaction: decision,
+    RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: row.invoiceNo,
+    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
+    ZzinvAmt: row.invoiceAmount,
+    Comments: row.comments,
+    DelvConf: 'Y',
+  };
+}
+
+/** One or more Pending Approval rows, approved or rejected by the signed-in Admin — same
+ * ZProvHeaderSet POST as submitProvisionApproval (header's Lifnr/Ebeln/Ebelp/Lblni taken from the
+ * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email. */
+export async function submitApprovalDecision(
+  rows: VendorPOFollowupRow[],
+  email: string,
+  decision: ApprovalDecision
+): Promise<void> {
+  if (rows.length === 0) return;
+  const first = rows[0];
+  const payload = {
+    Lifnr: first.lifnr,
+    Email: email,
+    Ebeln: first.poNumber,
+    Ebelp: first.poItemNo,
+    Lblni: first.entrySheetNo,
+    ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
+    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+  }
+}
+
+/** Mass approve/reject — groups the selected rows by vendor (Lifnr), one ZProvHeader POST per
+ * vendor, run sequentially (not Promise.all), same rationale as submitProvisionApprovalBatch:
+ * one vendor's failure can't leave a partial mix of concurrent SAP writes, and the caller gets a
+ * per-vendor failure list instead of an all-or-nothing throw. */
+export async function submitApprovalDecisionBatch(
+  rows: VendorPOFollowupRow[],
+  email: string,
+  decision: ApprovalDecision
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, VendorPOFollowupRow[]>();
+  rows.forEach((r) => {
+    const key = r.lifnr || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    try {
+      await submitApprovalDecision(group, email, decision);
+    } catch (err) {
+      const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
+      failures.push({ lifnr, error: err instanceof Error ? err.message : fallback });
     }
   }
   return failures;
