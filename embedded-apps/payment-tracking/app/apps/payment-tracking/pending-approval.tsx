@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
@@ -25,6 +25,15 @@ function initialRowState(): RowState {
   return { deciding: null, decided: null, error: null };
 }
 
+type DecisionFilter = 'all' | 'pending' | 'A' | 'R';
+
+const DECISION_FILTERS: { key: DecisionFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'A', label: 'Approved' },
+  { key: 'R', label: 'Rejected' },
+];
+
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoField}>
@@ -49,6 +58,9 @@ export default function PendingApproval() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [massDeciding, setMassDeciding] = useState<ApprovalDecision | null>(null);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('all');
 
   useEffect(() => {
     if (roleLoading) return;
@@ -73,6 +85,31 @@ export default function PendingApproval() {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }, []);
 
+  const currencies = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.currency).filter(Boolean))).sort(),
+    [rows]
+  );
+
+  // Search + filter narrows what's shown, but selection/decision state stays keyed by the full row
+  // set — a row selected before a search term hides it stays selected, same as any other filtered
+  // list, so "Select all" below only ever (de)selects what's currently visible.
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      const decided = rowState[row.key]?.decided ?? null;
+      if (decisionFilter === 'pending' && decided) return false;
+      if ((decisionFilter === 'A' || decisionFilter === 'R') && decided !== decisionFilter) return false;
+      if (currencyFilter !== 'all' && row.currency !== currencyFilter) return false;
+      if (q) {
+        const haystack = [
+          row.poNumber, row.poItemNo, row.vendorName, row.materialDesc, row.invoiceNo, row.comments,
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rows, rowState, search, decisionFilter, currencyFilter]);
+
   const toggleSelected = (key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -82,10 +119,13 @@ export default function PendingApproval() {
   };
 
   const toggleSelectAll = () => {
-    const selectable = rows.filter((r) => !rowState[r.key]?.decided);
-    setSelected((prev) =>
-      selectable.length > 0 && selectable.every((r) => prev.has(r.key)) ? new Set() : new Set(selectable.map((r) => r.key))
-    );
+    const selectable = filteredRows.filter((r) => !rowState[r.key]?.decided);
+    setSelected((prev) => {
+      const allChecked = selectable.length > 0 && selectable.every((r) => prev.has(r.key));
+      const next = new Set(prev);
+      selectable.forEach((r) => { if (allChecked) next.delete(r.key); else next.add(r.key); });
+      return next;
+    });
   };
 
   const decideRow = async (row: VendorPOFollowupRow, decision: ApprovalDecision) => {
@@ -148,8 +188,8 @@ export default function PendingApproval() {
     );
   }
 
-  const selectableCount = rows.filter((r) => !rowState[r.key]?.decided).length;
-  const allSelected = selectableCount > 0 && selected.size === selectableCount;
+  const selectableCount = filteredRows.filter((r) => !rowState[r.key]?.decided).length;
+  const allSelected = selectableCount > 0 && filteredRows.filter((r) => !rowState[r.key]?.decided).every((r) => selected.has(r.key));
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -187,56 +227,115 @@ export default function PendingApproval() {
           <Text style={styles.emptyText}>No pending approvals.</Text>
         ) : (
           <>
-            <View style={styles.selectAllRow}>
-              <Pressable
-                onPress={toggleSelectAll}
-                style={styles.checkbox}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: allSelected }}
-                accessibilityLabel="Select all"
-              >
-                <Ionicons
-                  name={allSelected ? 'checkbox' : 'square-outline'}
-                  size={19}
-                  color={allSelected ? colors.rust : colors.inkSoft}
+            <View style={styles.filterBar}>
+              <View style={styles.searchBox}>
+                <Ionicons name="search-outline" size={13} color={colors.inkSoft} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search PO, vendor, invoice, comments…"
+                  placeholderTextColor={colors.inkSoft}
+                  style={styles.searchInput}
                 />
-              </Pressable>
-              <Text style={styles.selectAllText}>Select all</Text>
+                {search.length > 0 && (
+                  <Pressable onPress={() => setSearch('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+                    <Ionicons name="close-circle" size={13} color={colors.inkSoft} />
+                  </Pressable>
+                )}
+              </View>
+
+              <View style={styles.chipRow}>
+                {DECISION_FILTERS.map((f) => (
+                  <Pressable
+                    key={f.key}
+                    onPress={() => setDecisionFilter(f.key)}
+                    style={[styles.chip, decisionFilter === f.key && styles.chipActive]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Filter: ${f.label}`}
+                  >
+                    <Text style={[styles.chipText, decisionFilter === f.key && styles.chipTextActive]}>{f.label}</Text>
+                  </Pressable>
+                ))}
+                {currencies.length > 1 && (
+                  <>
+                    <View style={styles.chipDivider} />
+                    <Pressable
+                      onPress={() => setCurrencyFilter('all')}
+                      style={[styles.chip, currencyFilter === 'all' && styles.chipActive]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={[styles.chipText, currencyFilter === 'all' && styles.chipTextActive]}>All Currencies</Text>
+                    </Pressable>
+                    {currencies.map((c) => (
+                      <Pressable
+                        key={c}
+                        onPress={() => setCurrencyFilter(c)}
+                        style={[styles.chip, currencyFilter === c && styles.chipActive]}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[styles.chipText, currencyFilter === c && styles.chipTextActive]}>{c}</Text>
+                      </Pressable>
+                    ))}
+                  </>
+                )}
+                <Text style={styles.resultCount}>{filteredRows.length} of {rows.length}</Text>
+              </View>
             </View>
 
-            {selected.size > 0 && (
-              <View style={styles.massBar}>
-                <Text style={styles.massBarText}>{selected.size} selected</Text>
-                <View style={styles.massBarActions}>
+            {filteredRows.length === 0 ? (
+              <Text style={styles.emptyText}>No items match your search/filter.</Text>
+            ) : (
+              <>
+                <View style={styles.selectAllRow}>
                   <Pressable
-                    style={[styles.massBtn, styles.massBtnReject, massDeciding !== null && styles.btnDisabled]}
-                    onPress={() => decideSelected('R')}
-                    disabled={massDeciding !== null}
-                    accessibilityRole="button"
+                    onPress={toggleSelectAll}
+                    style={styles.checkbox}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: allSelected }}
+                    accessibilityLabel="Select all"
                   >
-                    {massDeciding === 'R' ? (
-                      <ActivityIndicator size="small" color={colors.white} />
-                    ) : (
-                      <Text style={styles.massBtnText}>Reject Selected</Text>
-                    )}
+                    <Ionicons
+                      name={allSelected ? 'checkbox' : 'square-outline'}
+                      size={17}
+                      color={allSelected ? colors.rust : colors.inkSoft}
+                    />
                   </Pressable>
-                  <Pressable
-                    style={[styles.massBtn, styles.massBtnApprove, massDeciding !== null && styles.btnDisabled]}
-                    onPress={() => decideSelected('A')}
-                    disabled={massDeciding !== null}
-                    accessibilityRole="button"
-                  >
-                    {massDeciding === 'A' ? (
-                      <ActivityIndicator size="small" color={colors.white} />
-                    ) : (
-                      <Text style={styles.massBtnText}>Approve Selected</Text>
-                    )}
-                  </Pressable>
+                  <Text style={styles.selectAllText}>Select all</Text>
                 </View>
-              </View>
-            )}
 
-            {rows.map((row) => {
+                {selected.size > 0 && (
+                  <View style={styles.massBar}>
+                    <Text style={styles.massBarText}>{selected.size} selected</Text>
+                    <View style={styles.massBarActions}>
+                      <Pressable
+                        style={[styles.massBtn, styles.massBtnReject, massDeciding !== null && styles.btnDisabled]}
+                        onPress={() => decideSelected('R')}
+                        disabled={massDeciding !== null}
+                        accessibilityRole="button"
+                      >
+                        {massDeciding === 'R' ? (
+                          <ActivityIndicator size="small" color={colors.white} />
+                        ) : (
+                          <Text style={styles.massBtnText}>Reject Selected</Text>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={[styles.massBtn, styles.massBtnApprove, massDeciding !== null && styles.btnDisabled]}
+                        onPress={() => decideSelected('A')}
+                        disabled={massDeciding !== null}
+                        accessibilityRole="button"
+                      >
+                        {massDeciding === 'A' ? (
+                          <ActivityIndicator size="small" color={colors.white} />
+                        ) : (
+                          <Text style={styles.massBtnText}>Approve Selected</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {filteredRows.map((row) => {
               const state = rowState[row.key];
               if (!state) return null;
               const busy = state.deciding !== null;
@@ -253,7 +352,7 @@ export default function PendingApproval() {
                       >
                         <Ionicons
                           name={selected.has(row.key) ? 'checkbox' : 'square-outline'}
-                          size={19}
+                          size={16}
                           color={selected.has(row.key) ? colors.rust : colors.inkSoft}
                         />
                       </Pressable>
@@ -321,7 +420,9 @@ export default function PendingApproval() {
                   )}
                 </View>
               );
-            })}
+                })}
+              </>
+            )}
           </>
         )}
       </View>
@@ -331,11 +432,11 @@ export default function PendingApproval() {
 
 const styles = StyleSheet.create({
   scroll: {
-    padding: 20,
-    paddingBottom: 60,
+    padding: 14,
+    paddingBottom: 36,
   },
   panel: {
-    gap: 10,
+    gap: 8,
   },
   flex1: { flex: 1 },
   centerWrap: {
@@ -375,8 +476,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
   bannerSuccess: {
@@ -392,14 +493,72 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '600',
   },
+  filterBar: {
+    gap: 6,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.ink,
+    ...Platform.select({ web: { outlineStyle: 'none' as any }, default: {} }),
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    backgroundColor: colors.white,
+  },
+  chipActive: {
+    backgroundColor: `${colors.rust}14`,
+    borderColor: colors.rust,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.inkSoft,
+  },
+  chipTextActive: {
+    color: colors.rust,
+  },
+  chipDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: colors.border,
+    marginHorizontal: 2,
+  },
+  resultCount: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    marginLeft: 'auto',
+  },
   selectAllRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 2,
   },
   selectAllText: {
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.ink,
   },
@@ -411,22 +570,22 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   massBarText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
   },
   massBarActions: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   massBtn: {
     borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
   },
   massBtnApprove: {
     backgroundColor: colors.green,
@@ -444,14 +603,14 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    gap: 8,
+    padding: 9,
+    gap: 5,
     ...Platform.select({
-      web: { boxShadow: '0 2px 8px rgba(31,27,51,0.06)' },
-      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+      web: { boxShadow: '0 1px 4px rgba(31,27,51,0.05)' },
+      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
     }),
   },
   cardDecided: {
@@ -460,28 +619,28 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   checkbox: {
     padding: 2,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: colors.ink,
   },
   cardSubtitle: {
-    fontSize: 11.5,
+    fontSize: 10.5,
     color: colors.inkSoft,
-    marginTop: 1,
+    marginTop: 0,
   },
   decidedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     borderRadius: radii.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
   },
   decidedBadgeApprove: {
     backgroundColor: `${colors.green}14`,
@@ -490,66 +649,66 @@ const styles = StyleSheet.create({
     backgroundColor: `${colors.red}14`,
   },
   decidedBadgeText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
   },
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   infoField: {
-    minWidth: 130,
+    minWidth: 96,
     flexGrow: 1,
-    flexBasis: '30%',
-    gap: 2,
+    flexBasis: '18%',
+    gap: 1,
   },
   infoLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: colors.inkSoft,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   infoValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.ink,
   },
   rowErrorText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.red,
   },
   rowActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   approveBtn: {
     backgroundColor: colors.green,
     borderRadius: radii.md,
-    paddingVertical: 7,
-    paddingHorizontal: 16,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
   approveBtnText: {
     color: colors.white,
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: '700',
   },
   rejectBtn: {
     borderWidth: 1,
     borderColor: colors.red,
     borderRadius: radii.md,
-    paddingVertical: 7,
-    paddingHorizontal: 16,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
   rejectBtnText: {
     color: colors.red,
-    fontSize: 12.5,
+    fontSize: 11.5,
     fontWeight: '700',
   },
 });
