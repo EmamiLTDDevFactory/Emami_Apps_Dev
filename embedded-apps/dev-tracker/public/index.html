@@ -12,6 +12,7 @@
     <div class="account-bar" id="accountBar"></div>
   </div>
 
+  <div class="home-outer">
   <div class="home-wrap">
 
     <div class="home-topbar">
@@ -47,7 +48,7 @@
     </div>
 
     <div class="tile-grid">
-      <a class="tile" href="/apps/dev-tracker/dashboard">
+      <a class="tile" href="/apps/dev-tracker/dashboard" style="--tile-accent:#3e7cb1;">
         <div class="tile-icon" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="8" height="10" rx="1.5"></rect>
@@ -64,7 +65,7 @@
         <span class="tile-arrow" aria-hidden="true">&rarr;</span>
       </a>
 
-      <a class="tile" href="/apps/dev-tracker/dashboard?action=new">
+      <a class="tile" href="/apps/dev-tracker/dashboard?action=new" style="--tile-accent:#2f9e63;">
         <div class="tile-icon tile-icon-green" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9"></circle>
@@ -80,7 +81,24 @@
         <span class="tile-arrow" aria-hidden="true">&rarr;</span>
       </a>
 
-      <a class="tile" id="adminTile" href="/apps/dev-tracker/admin" style="display:none;">
+      <a class="tile" href="/apps/dev-tracker/resource-utilization" style="--tile-accent:#2c5a82;">
+        <div class="tile-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="13" r="8"></circle>
+            <path d="M12 13 15.5 9.5"></path>
+            <path d="M8 13a4 4 0 0 1 4-4"></path>
+            <path d="M12 3v2"></path>
+          </svg>
+        </div>
+        <div class="tile-body">
+          <h2>Resource Utilization</h2>
+          <p>See who's stretched or idle right now, and by how much.</p>
+          <p class="tile-meta">Concurrent load, by developer &amp; function SPOC</p>
+        </div>
+        <span class="tile-arrow" aria-hidden="true">&rarr;</span>
+      </a>
+
+      <a class="tile" id="adminTile" href="/apps/dev-tracker/admin" style="display:none;--tile-accent:#5b6472;">
         <div class="tile-icon tile-icon-admin" aria-hidden="true">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2 4 6v6c0 4.5 3.4 8.7 8 10 4.6-1.3 8-5.5 8-10V6l-8-4Z"></path>
@@ -99,7 +117,7 @@
     <div class="home-footer" id="homeFooter">&nbsp;</div>
 
     <div class="home-corner-row">
-      <div class="home-corner-card" id="modulePulse" style="display:none;">
+      <div class="home-corner-card" id="modulePulse" style="display:none;--corner-accent:#3e7cb1;">
         <div class="pulse-slide-wrap">
           <div class="pulse-slide-inner" id="pulseSlideInner">
             <div class="home-corner-label">Module pulse — <span id="modulePulseWindowLabel"></span></div>
@@ -108,11 +126,29 @@
         </div>
       </div>
 
-      <div class="home-corner-card" id="activityFeed" style="display:none;">
+      <div class="home-corner-card" id="activityFeed" style="display:none;--corner-accent:#2f9e63;">
         <div class="home-corner-label">Recent activity</div>
         <div id="activityList"></div>
       </div>
     </div>
+  </div>
+
+  <div class="side-panel" id="criticalSidePanel" style="display:none;">
+    <div class="side-head"><h3>Critical</h3><span id="critCycleClock">4s</span></div>
+    <div class="side-sub">Ranked by overdue / closest target date and priority. Click any card to flip it now.</div>
+    <div class="placard-list" id="critPlacardList"></div>
+  </div>
+  </div>
+
+  <button type="button" class="crit-tab" id="critTab" style="display:none;">
+    <span class="crit-tab-badge" id="critTabBadge">0</span>
+    <span class="crit-tab-label">Critical</span>
+  </button>
+  <div class="crit-backdrop" id="critBackdrop"></div>
+  <div class="crit-drawer" id="critDrawer">
+    <div class="crit-drawer-head"><h3>Critical</h3><button type="button" class="crit-drawer-close" id="critDrawerClose">&#10005;</button></div>
+    <div class="crit-drawer-sub">Ranked by overdue / closest target date and priority. Tap any card to flip it.</div>
+    <div class="crit-drawer-list" id="critDrawerList"></div>
   </div>
 
   <script src="/apps/dev-tracker/home.js"></script>

@@ -1,0 +1,69 @@
+/* Shared design tokens for Dev Tracker — reused across Home, Dashboard, Master Data
+   and Resource Utilization. Colors use OKLCH for perceptually-consistent hue/lightness
+   control. IBM Plex Sans/Mono match the font pairing already used by the hub shell. */
+:root {
+  --bg: oklch(98% 0.004 260);
+  --bg-alt: oklch(96% 0.006 260);
+  --surface: oklch(100% 0 0);
+  --border: oklch(0% 0 0 / 0.08);
+  --border-strong: oklch(0% 0 0 / 0.13);
+  --text: oklch(22% 0.012 260);
+  --text-2: oklch(42% 0.015 260);
+  --muted: oklch(48% 0.012 260);
+
+  --accent: oklch(52% 0.18 264);
+  --accent-soft: oklch(94% 0.03 264);
+  --accent-2: oklch(58% 0.16 300);
+
+  /* Area colors fall back to these when master-data doesn't supply one (e.g. a
+     newly-added area with no color chosen yet, or an area beyond the six defaults) */
+  --mod-sd: oklch(52% 0.18 265);
+  --mod-sd-soft: oklch(94% 0.028 265);
+  --mod-fiar: oklch(46% 0.10 175);
+  --mod-fiar-soft: oklch(94% 0.022 175);
+  --mod-mm: oklch(56% 0.16 65);
+  --mod-mm-soft: oklch(94% 0.032 65);
+  --mod-pp: oklch(50% 0.20 350);
+  --mod-pp-soft: oklch(95% 0.032 350);
+  --mod-wm: oklch(50% 0.13 230);
+  --mod-wm-soft: oklch(94% 0.022 230);
+  --mod-xf: oklch(48% 0.17 320);
+  --mod-xf-soft: oklch(94% 0.028 320);
+  --mod-fallback: oklch(50% 0.02 260);
+  --mod-fallback-soft: oklch(94% 0.006 260);
+
+  --st-red: oklch(50% 0.20 25);
+  --st-red-soft: oklch(95% 0.035 25);
+  --st-amber: oklch(56% 0.14 85);
+  --st-amber-soft: oklch(95% 0.03 85);
+  --st-green: oklch(48% 0.13 150);
+  --st-green-soft: oklch(94% 0.028 150);
+  --st-blue: oklch(50% 0.15 250);
+  --st-blue-soft: oklch(94% 0.028 250);
+  --st-indigo: oklch(50% 0.16 280);
+  --st-indigo-soft: oklch(94% 0.028 280);
+  --st-gray: oklch(52% 0.01 260);
+  --st-gray-soft: oklch(94% 0.006 260);
+
+  --band-idle: oklch(52% 0.01 260);
+  --band-idle-soft: oklch(94% 0.006 260);
+  --band-light: oklch(50% 0.15 250);
+  --band-light-soft: oklch(94% 0.028 250);
+  --band-balanced: oklch(48% 0.11 190);
+  --band-balanced-soft: oklch(94% 0.022 190);
+  --band-stretched: oklch(50% 0.20 25);
+  --band-stretched-soft: oklch(95% 0.035 25);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-2); }
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+button { font-family: inherit; }
