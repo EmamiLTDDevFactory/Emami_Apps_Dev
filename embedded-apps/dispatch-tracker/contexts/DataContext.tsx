@@ -22,6 +22,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { isoDate, todayDate } from '@/lib/format';
 import {
   CancelledInvoice,
   CompletedInvoice,
@@ -32,6 +33,22 @@ import {
 } from '@/types/models';
 
 const INV_CACHE_TTL_MS = 90 * 1000;
+
+/** Fiscal Year / From Date / To Date filter shown on Pending/Dispatched/Completed/Returned/
+ *  Cancelled — shared across all five since they're all slices of the one combined SAP fetch
+ *  (see this file's header comment). Changing it on any tab refetches that shared snapshot. */
+export interface DateFilterState {
+  fiscalYear: string;
+  frmDate: string;
+  toDate: string;
+}
+
+function defaultDateFilter(): DateFilterState {
+  const to = todayDate();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 30);
+  return { fiscalYear: String(to.getFullYear()), frmDate: isoDate(from), toDate: isoDate(to) };
+}
 
 export type CacheKey = 'inv' | 'pend' | 'disp' | 'comp' | 'ret' | 'canc';
 
@@ -50,6 +67,8 @@ interface DataState {
   cancCache: CancelledInvoice[] | null;
   loading: Partial<Record<CacheKey, boolean>>;
   errors: Partial<Record<CacheKey, string>>;
+  dateFilter: DateFilterState;
+  setDateFilter: (patch: Partial<DateFilterState>) => void;
   loadDashboard: () => Promise<void>;
   ensurePending: () => Promise<void>;
   ensureDispatched: () => Promise<void>;
@@ -74,6 +93,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const [loading, setLoading] = useState<Partial<Record<CacheKey, boolean>>>({});
   const [errors, setErrors] = useState<Partial<Record<CacheKey, string>>>({});
+  const [dateFilter, setDateFilterRaw] = useState<DateFilterState>(defaultDateFilter);
 
   useEffect(() => {
     if (!session) {
@@ -92,7 +112,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setLoading(everyKey(true));
       setErrors({});
       try {
-        const rows = await api.refreshInvoices();
+        const rows = await api.refreshInvoices(dateFilter);
         setInvCache(rows);
         cacheTs.current = Date.now();
       } catch (e) {
@@ -105,7 +125,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     inFlight.current = run;
     return run;
+  }, [dateFilter]);
+
+  /** Changing the filter always forces a fresh SAP fetch on next call — it changes what SAP
+   *  returns, so the existing cache (however fresh by TTL) no longer answers the new question. */
+  const setDateFilter = useCallback((patch: Partial<DateFilterState>) => {
+    setDateFilterRaw((prev) => ({ ...prev, ...patch }));
+    cacheTs.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    reloadInvoices();
+    // Only re-run when the filter itself changes — the initial load is handled by each tab's
+    // own ensureX() on focus, same as before this filter existed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter]);
 
   /** load_df(): reuse the one-shot LoginSet rows first, else refetch when missing/stale. */
   const ensureInvoices = useCallback(async () => {
@@ -191,6 +226,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         cancCache,
         loading,
         errors,
+        dateFilter,
+        setDateFilter,
         loadDashboard,
         ensurePending,
         ensureDispatched,

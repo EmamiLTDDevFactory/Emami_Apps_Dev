@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
-import { fd, finr, toDate } from '@/lib/format';
+import { fd, finr, isoDate, toDate, todayDate } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { DispatchDetail } from '@/types/models';
 import { EmptyState } from '@/components/EmptyState';
 import { KPICard } from '@/components/KPICard';
-import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
 import { ActionButton } from '@/components/ActionButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Pagination } from '@/components/Pagination';
@@ -88,7 +88,7 @@ function truncate(v: string | null | undefined, max: number, ellipsis: boolean):
 
 export default function DispatchedScreen() {
   const { session, readOnly } = useAuth();
-  const { dispCache, errors, ensureDispatched } = useData();
+  const { dispCache, errors, ensureDispatched, dateFilter, setDateFilter } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -228,6 +228,15 @@ export default function DispatchedScreen() {
           <FilterSelect value={sort} options={[...SORT_OPTIONS]} onChange={(v) => setSort(v as SortOption)} minWidth={150} />
           <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
         </FilterRow>
+
+        <FiscalYearDateRow
+          fiscalYear={dateFilter.fiscalYear}
+          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
+          toDate={toDate(dateFilter.toDate) ?? todayDate()}
+          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
+          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
+          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        />
 
         <View style={styles.kpiRow}>
           <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />

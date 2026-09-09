@@ -7,7 +7,7 @@ import { GsvBarChart } from '@/components/charts/GsvBarChart';
 import { HBarChart } from '@/components/charts/HBarChart';
 import { DepotDelayChart, SlaBreachChart } from '@/components/charts/SlaCharts';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, FiscalYearDateRow } from '@/components/FilterBar';
 import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { colors, radius, shadow, slaBuckets } from '@/constants/theme';
 import { dashboardDelayColor } from '@/lib/delay';
-import { finr, gsvFmt, toDate, todayDate } from '@/lib/format';
+import { finr, gsvFmt, isoDate, toDate, todayDate } from '@/lib/format';
 import { AnyInvoiceRow } from '@/types/models';
 
 /** Ported 1:1 from dis_shared_components.py's render_dashboard(). */
@@ -171,7 +171,7 @@ function depotAgg(rows: AnyInvoiceRow[]): Map<string, DepotAgg> {
 
 export default function DashboardScreen() {
   const { session, readOnly } = useAuth();
-  const { pendCache, dispCache, compCache, retCache, cancCache, loadDashboard } = useData();
+  const { pendCache, dispCache, compCache, retCache, cancCache, loadDashboard, dateFilter, setDateFilter } = useData();
 
   // Re-checked on focus (staleness-guarded in DataContext), so returning to this tab after an
   // action shows SAP's committed state instead of whatever was cached when it first mounted.
@@ -414,6 +414,16 @@ export default function DashboardScreen() {
       <FilterRow>
         <FilterSelect value={selectedLabel} options={periodOptions} onChange={handlePeriodChange} minWidth={190} />
       </FilterRow>
+
+      <FiscalYearDateRow
+        fiscalYear={dateFilter.fiscalYear}
+        fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
+        toDate={toDate(dateFilter.toDate) ?? todayDate()}
+        onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
+        onFromDateChange={(date) => setDateFilter({ frmDate: isoDate(date) })}
+        onToDateChange={(date) => setDateFilter({ toDate: isoDate(date) })}
+      />
+
       {periodBase === 'Custom' && (
         <View style={styles.customRow}>
           <View style={styles.customField}>

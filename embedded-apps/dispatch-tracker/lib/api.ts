@@ -15,13 +15,13 @@ import { normalizeInvoice } from './sapMapping';
 
 const TOKEN_KEY = 'dis_session_token';
 
-// SAP system base URLs — NGQ is the active one. NWP/NGD are kept here, commented out,
-// for quick switching if needed.
+// SAP system base URLs — NGD is the active one (testing). NGQ/NWP are kept here, commented
+// out, for quick switching if needed.
 // const API_BASE_NWP = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_DISP_INTL_ANALYTICS_SRV';
-const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
-// const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
+// const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
+const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
 
-export const API_BASE_URL = API_BASE_NGQ;
+export const API_BASE_URL = API_BASE_NGD;
 
 export class ApiError extends Error {
   status: number;
@@ -78,22 +78,35 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-async function fetchInvoicesRaw(entitySet: string, email: string): Promise<Invoice[]> {
-  const res: any = await requestSap(`/${entitySet}?$filter=Email eq '${email}'&$format=json`);
+/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' Fiscal Year, From
+ *  Date, and To Date filters — sent as SAP OData $filter properties (FiscalYear/FrmDate/ToDate)
+ *  on every one of the five invoice entity sets, alongside the existing Email filter. */
+export interface InvoiceListFilter {
+  fiscalYear?: string;
+  frmDate?: string;
+  toDate?: string;
+}
+
+async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
+  const parts = [`Email eq '${email}'`];
+  if (filter.fiscalYear) parts.push(`FiscalYear eq '${filter.fiscalYear}'`);
+  if (filter.frmDate) parts.push(`FrmDate eq '${filter.frmDate}'`);
+  if (filter.toDate) parts.push(`ToDate eq '${filter.toDate}'`);
+  const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
 }
 
-export async function refreshInvoices(): Promise<Invoice[]> {
+export async function refreshInvoices(filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const email = await getToken();
   if (!email) throw new ApiError("Not logged in", 401);
 
   const [pend, disp, comp, ret, canc] = await Promise.all([
-    fetchInvoicesRaw("InvoicePendSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceDispSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCompSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceRetSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCanSet", email).catch(() => [])
+    fetchInvoicesRaw("InvoicePendSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceDispSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCompSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceRetSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCanSet", email, filter).catch(() => [])
   ]);
 
   const mapStatus = (arr: Invoice[], status: string) => arr.map(i => ({ ...i, status }));
