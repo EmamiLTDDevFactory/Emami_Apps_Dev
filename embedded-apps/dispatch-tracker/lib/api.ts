@@ -87,19 +87,51 @@ export interface InvoiceListFilter {
   toDate?: string;
 }
 
+/** FrmDate/ToDate are Edm.DateTime on the SAP side — a plain quoted string ('2026-08-10')
+ *  gets rejected with "Invalid parametertype used at function 'eq'" (verified live against
+ *  NGD). OData v2's datetime literal (unquoted, datetime'...' prefix) is what SAP expects. */
+function sapDateTimeLiteral(isoDateStr: string): string {
+  return `datetime'${isoDateStr}T00:00:00'`;
+}
+
 async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const parts = [`Email eq '${email}'`];
   if (filter.fiscalYear) parts.push(`FiscalYear eq '${filter.fiscalYear}'`);
-  if (filter.frmDate) parts.push(`FrmDate eq '${filter.frmDate}'`);
-  if (filter.toDate) parts.push(`ToDate eq '${filter.toDate}'`);
+  if (filter.frmDate) parts.push(`FrmDate eq ${sapDateTimeLiteral(filter.frmDate)}`);
+  if (filter.toDate) parts.push(`ToDate eq ${sapDateTimeLiteral(filter.toDate)}`);
   const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
 }
 
+/**
+ * Primes SAP's backend custom tables (Pending/Dispatched/Completed/Returned/Cancelled) with live
+ * data for this Email + Fiscal Year + date range. Per the backend's design, InvoicePendSet/
+ * InvoiceDispSet/etc. only read whatever is already sitting in those tables — LoginSet is what
+ * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Sent as a
+ * plain POST (no Otp field — this app has no OTP flow, see AuthContext.tsx). Non-fatal: a failure
+ * here shouldn't block reading whatever's already in the tables.
+ */
+async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
+  if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
+  const body = {
+    Email: email,
+    FiscalYear: filter.fiscalYear,
+    FrmDate: formatSAPDate(filter.frmDate),
+    ToDate: formatSAPDate(filter.toDate),
+  };
+  await fetch(`${API_BASE_URL}/LoginSet?$format=json`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function refreshInvoices(filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const email = await getToken();
   if (!email) throw new ApiError("Not logged in", 401);
+
+  await callLoginSet(email, filter).catch(() => {});
 
   const [pend, disp, comp, ret, canc] = await Promise.all([
     fetchInvoicesRaw("InvoicePendSet", email, filter).catch(() => []),
