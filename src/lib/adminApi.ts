@@ -61,3 +61,22 @@ export async function getAdminRoster(): Promise<{ ok: boolean; users?: AdminRost
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }
 }
+
+export interface AdminUserAppStat {
+  appId: string;
+  opens: number;
+  firstOpened: string | null;
+  lastOpened: string | null;
+}
+
+/** Per-app drill-down for one user — backs the app-tile tap in the roster's user-detail dialog. */
+export async function getAdminUserAppStats(email: string): Promise<{ ok: boolean; apps?: AdminUserAppStat[]; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/admin/user/${encodeURIComponent(email)}/apps`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load per-app stats.' };
+    return { ok: true, apps: data.apps };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}

@@ -9,7 +9,10 @@ import ScreenScaffold from '../components/ScreenScaffold';
 import { appById } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { getMyProfile, type UserProfile } from '../lib/authApi';
-import { getAdminOverview, getAdminRoster, type AdminOverview, type AdminRosterEntry } from '../lib/adminApi';
+import {
+  getAdminOverview, getAdminRoster, getAdminUserAppStats,
+  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat,
+} from '../lib/adminApi';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 
 /** App ids that manage their own role internally (own DB or SAP OData), rather than being
@@ -56,6 +59,11 @@ export default function AdministrationScreen() {
   const [selectedLoading, setSelectedLoading] = useState(false);
   const [selectedError, setSelectedError] = useState('');
 
+  // Per-app drill-down — opened by tapping an app tile inside the user-detail dialog above.
+  const [appStats, setAppStats] = useState<Record<string, AdminUserAppStat>>({});
+  const [appStatsLoading, setAppStatsLoading] = useState(false);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+
   useEffect(() => {
     getAdminOverview().then((result) => {
       setOverviewLoading(false);
@@ -73,6 +81,8 @@ export default function AdministrationScreen() {
     setSelected(user);
     setSelectedProfile(null);
     setSelectedError('');
+    setAppStats({});
+    setSelectedAppId(null);
     if (!user.usage.hasLoggedIn) return; // nothing to fetch — getMyProfile would 404
     setSelectedLoading(true);
     getMyProfile(user.email).then((profile) => {
@@ -80,9 +90,21 @@ export default function AdministrationScreen() {
       if (profile) setSelectedProfile(profile);
       else setSelectedError('Could not load this user’s activity.');
     });
+    setAppStatsLoading(true);
+    getAdminUserAppStats(user.email).then((result) => {
+      setAppStatsLoading(false);
+      if (result.ok && result.apps) {
+        setAppStats(Object.fromEntries(result.apps.map((s) => [s.appId, s])));
+      }
+    });
   };
 
-  const closeUser = () => setSelected(null);
+  const closeUser = () => {
+    setSelected(null);
+    setSelectedAppId(null);
+  };
+
+  const closeAppDetail = () => setSelectedAppId(null);
 
   const visibleRoster = roster.filter((u) => u.email.toLowerCase().includes(rosterSearch.trim().toLowerCase()));
 
@@ -327,7 +349,7 @@ export default function AdministrationScreen() {
                   </>
                 )}
 
-                <Text style={styles.dialogSectionLabel}>App Access</Text>
+                <Text style={styles.dialogSectionLabel}>App Access · tap an app for its usage stats</Text>
                 <View style={styles.appChipsRow}>
                   {(selected?.apps.length ?? 0) === 0 ? (
                     <Text style={styles.noAppsText}>No app grants</Text>
@@ -338,18 +360,81 @@ export default function AdministrationScreen() {
                       const Icon = app?.icon;
                       const internal = ROLE_MANAGED_INTERNALLY.has(grant.appId);
                       return (
-                        <View key={grant.appId} style={[styles.appChip, { borderColor: accent, backgroundColor: `${accent}14` }]}>
+                        <Pressable
+                          key={grant.appId}
+                          onPress={() => setSelectedAppId(grant.appId)}
+                          style={[styles.appChip, { borderColor: accent, backgroundColor: `${accent}14` }]}
+                          accessibilityRole="button"
+                          accessibilityLabel={`View usage stats for ${appLabel(grant.appId)}`}
+                        >
                           {Icon && <Icon size={12} color={accent} />}
                           <Text style={[styles.appChipText, { color: accent }]}>
                             {appLabel(grant.appId)} · {grant.role}{internal ? ' (hub grant only)' : ''}
                           </Text>
-                        </View>
+                        </Pressable>
                       );
                     })
                   )}
                 </View>
               </>
             ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* App-specific drill-down — opened by tapping an app tile in the dialog above. */}
+      <Modal visible={!!selectedAppId} transparent animationType="fade" onRequestClose={closeAppDetail}>
+        <Pressable style={styles.backdrop} onPress={closeAppDetail}>
+          <Pressable style={styles.dialogCard} onPress={() => {}}>
+            {selectedAppId && selected && (() => {
+              const app = appById(selectedAppId);
+              const Icon = app?.icon;
+              const accent = appColor(selectedAppId);
+              const grant = selected.apps.find((a) => a.appId === selectedAppId);
+              const stat = appStats[selectedAppId];
+              const internal = ROLE_MANAGED_INTERNALLY.has(selectedAppId);
+              return (
+                <>
+                  <View style={styles.dialogHeaderRow}>
+                    <View style={[styles.flex1, styles.appDetailTitleRow]}>
+                      {Icon && <Icon size={17} color={accent} />}
+                      <Text style={styles.dialogTitle} numberOfLines={1}>{appLabel(selectedAppId)}</Text>
+                    </View>
+                    <Pressable onPress={closeAppDetail} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                      <X size={18} color={colors.inkSoft} />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.cardSubtitle}>{selected.email}</Text>
+
+                  {grant && (
+                    <View style={[styles.appChip, styles.appDetailRoleChip, { borderColor: accent, backgroundColor: `${accent}14` }]}>
+                      <Text style={[styles.appChipText, { color: accent }]}>
+                        Role: {grant.role}{internal ? ' (hub grant only)' : ''}
+                      </Text>
+                    </View>
+                  )}
+
+                  {appStatsLoading ? (
+                    <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
+                  ) : stat ? (
+                    <View style={styles.detailGrid}>
+                      <DetailField label="Total Opens" value={String(stat.opens)} />
+                      <DetailField label="First Opened" value={formatDateTime(stat.firstOpened)} />
+                      <DetailField label="Last Opened" value={formatDateTime(stat.lastOpened)} />
+                    </View>
+                  ) : (
+                    <Text style={styles.emptyText}>{selected.email} hasn't opened {appLabel(selectedAppId)} yet.</Text>
+                  )}
+
+                  {internal && (
+                    <Text style={styles.appDetailInternalNote}>
+                      This app manages its own role internally — the grant above is only the generic
+                      hub-level access, not necessarily the user's real role inside the app.
+                    </Text>
+                  )}
+                </>
+              );
+            })()}
           </Pressable>
         </Pressable>
       </Modal>
@@ -640,6 +725,23 @@ const styles = StyleSheet.create({
   appChipText: {
     fontSize: 11.5,
     fontFamily: fonts.sansMedium,
+  },
+  appDetailTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  appDetailRoleChip: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  appDetailInternalNote: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansRegular,
+    color: colors.inkSoft,
+    lineHeight: 16,
+    marginTop: 16,
   },
   backdrop: {
     flex: 1,

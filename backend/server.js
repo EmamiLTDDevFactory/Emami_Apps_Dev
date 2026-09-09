@@ -217,6 +217,44 @@ apiRouter.get('/admin/roster', async (req, res) => {
     }
 });
 
+/** Administration tab — per-app drill-down for one user, shown when an admin taps an app tile in
+ * the roster's user-detail dialog. Same visit-count-not-duration honesty as userProfile.js's
+ * getTopApps: only APP_OPEN events carry a reliable app_id today (FAVORITE_ADD/REMOVE don't), so
+ * opens/first/last-opened is what's actually available. Covers every app the user has ever opened,
+ * not just their currently-granted ones — useful if a grant was since revoked. */
+apiRouter.get('/admin/user/:email/apps', async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT e.app_id,
+                    COUNT(*) AS opens,
+                    MIN(e.occurred_at) AS first_opened,
+                    MAX(e.occurred_at) AS last_opened
+             FROM emami_apps.users u
+             JOIN emami_apps.events e ON e.user_id = u.user_id
+             WHERE u.email = $1 AND e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+             GROUP BY e.app_id
+             ORDER BY opens DESC`,
+            [email]
+        );
+        res.json({
+            success: true,
+            apps: rows.map((r) => ({
+                appId: r.app_id,
+                opens: Number(r.opens || 0),
+                firstOpened: r.first_opened,
+                lastOpened: r.last_opened,
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load per-app stats for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load per-app stats.' });
+    }
+});
+
 /**
  * What the CURRENTLY LOGGED IN user themselves is allowed to see/do — their own hub-wide access
  * level (gates whether the frontend even shows the Manage Access nav item/screen — see

@@ -16,8 +16,8 @@ import {
 } from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Tap cycles a role through this order — None (no access) -> User -> Admin -> back to None. */
-const ROLE_CYCLE: (AppRole | null)[] = [null, 'User', 'Admin'];
+/** Options offered by the app-role picker popup, in display order. */
+const ROLE_OPTIONS: (AppRole | null)[] = [null, 'User', 'Admin'];
 /** Hub-wide levels an admin can actually grant through this screen — 'Super Admin' is never
  * offered here at all, it only ever exists on the one permanently-seeded email (see db.js). */
 const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
@@ -92,6 +92,11 @@ export default function UserAccessScreen() {
   // table itself can stay one line per user instead of every row expanding permanently.
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
 
+  // App-role picker popup — tapping an app chip (in either the Add Users or per-user editor
+  // dialog) opens this instead of blindly cycling the role, so it's clear which role is being
+  // picked rather than tapping repeatedly and guessing which state you land on.
+  const [rolePickerFor, setRolePickerFor] = useState<{ context: 'add' | 'edit'; appId: string } | null>(null);
+
   // "Add Users" dialog — Single mirrors the original one-email flow; Bulk Add accepts a
   // pasted/typed list. Both apply the same picked app roles to whoever gets added.
   const [showAddModal, setShowAddModal] = useState(false);
@@ -126,14 +131,11 @@ export default function UserAccessScreen() {
   const closeAddUserModal = () => {
     if (addingUser) return; // don't let a stray tap dismiss mid-save
     setShowAddModal(false);
+    setRolePickerFor(null);
   };
 
-  const cycleNewUserRole = (appId: string) => {
-    setNewUserRoles((prev) => {
-      const current = prev[appId] ?? null;
-      const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
-      return { ...prev, [appId]: next };
-    });
+  const setNewUserRole = (appId: string, role: AppRole | null) => {
+    setNewUserRoles((prev) => ({ ...prev, [appId]: role }));
   };
 
   const submitNewUser = async () => {
@@ -257,12 +259,10 @@ export default function UserAccessScreen() {
     return actingLevel === 'Admin' && level === 'Viewer';
   };
 
-  const cycleRole = (user: UserAccessEntry, appId: string) => {
-    const current = effectiveRole(user, appId);
-    const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
+  const setPendingRole = (user: UserAccessEntry, appId: string, role: AppRole | null) => {
     setPending((prev) => {
       const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: next } } };
+      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: role } } };
     });
   };
 
@@ -468,6 +468,7 @@ export default function UserAccessScreen() {
   const closeEdit = () => {
     if (editTarget && saving === editTarget.email) return; // don't let a stray tap dismiss mid-save
     setEditingEmail(null);
+    setRolePickerFor(null);
   };
 
   return (
@@ -664,6 +665,10 @@ export default function UserAccessScreen() {
                   </Text>
                 )}
 
+                {/* Bounded to its own scroll area (rather than growing with the page) so the header,
+                    search box, and bulk bar above stay put while reviewing a long roster — no more
+                    scrolling the whole screen just to get past a handful of users. */}
+                <ScrollView style={styles.tableBody} nestedScrollEnabled showsVerticalScrollIndicator>
                 {visibleUsers.map((user, i) => {
                   const active = effectiveActive(user);
                   const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
@@ -748,6 +753,7 @@ export default function UserAccessScreen() {
                     </View>
                   );
                 })}
+                </ScrollView>
               </View>
             </ScrollView>
           )}
@@ -838,14 +844,14 @@ export default function UserAccessScreen() {
                 return (
                   <Pressable
                     key={app.id}
-                    onPress={() => cycleNewUserRole(app.id)}
+                    onPress={() => setRolePickerFor({ context: 'add', appId: app.id })}
                     style={[
                       styles.appChip,
                       { borderColor: role ? accent : colors.border },
                       role && { backgroundColor: `${accent}14` },
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${app.name} access for new user(s): ${role ?? 'None'}. Tap to change.`}
+                    accessibilityLabel={`${app.name} access for new user(s): ${role ?? 'None'}. Tap to choose a role.`}
                   >
                     <Icon size={12.5} color={role ? accent : colors.inkSoft} />
                     <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
@@ -946,14 +952,14 @@ export default function UserAccessScreen() {
                     return (
                       <Pressable
                         key={app.id}
-                        onPress={() => cycleRole(editTarget, app.id)}
+                        onPress={() => setRolePickerFor({ context: 'edit', appId: app.id })}
                         style={[
                           styles.appChip,
                           { borderColor: role ? accent : colors.border },
                           role && { backgroundColor: `${accent}14` },
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel={`${app.name} access for ${editTarget.email}: ${role ?? 'None'}. Tap to change.`}
+                        accessibilityLabel={`${app.name} access for ${editTarget.email}: ${role ?? 'None'}. Tap to choose a role.`}
                       >
                         <Icon size={12.5} color={role ? accent : colors.inkSoft} />
                         <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
@@ -992,6 +998,62 @@ export default function UserAccessScreen() {
                 </View>
               </>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* App-role picker — opened by tapping an app chip in either dialog above, instead of
+          blindly cycling the role on tap. */}
+      <Modal visible={!!rolePickerFor} transparent animationType="fade" onRequestClose={() => setRolePickerFor(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setRolePickerFor(null)}>
+          <Pressable style={[styles.dialogCard, styles.rolePickerCard]} onPress={() => {}}>
+            {rolePickerFor && (() => {
+              const app = APPS.find((a) => a.id === rolePickerFor.appId);
+              if (!app) return null;
+              const Icon = app.icon;
+              const accent = appColor(app.id);
+              const currentRole = rolePickerFor.context === 'add'
+                ? newUserRoles[rolePickerFor.appId] ?? null
+                : editTarget ? effectiveRole(editTarget, rolePickerFor.appId) : null;
+              const choose = (role: AppRole | null) => {
+                if (rolePickerFor.context === 'add') setNewUserRole(rolePickerFor.appId, role);
+                else if (editTarget) setPendingRole(editTarget, rolePickerFor.appId, role);
+                setRolePickerFor(null);
+              };
+              return (
+                <>
+                  <View style={styles.dialogHeaderRow}>
+                    <View style={styles.rolePickerTitleRow}>
+                      <Icon size={16} color={accent} />
+                      <Text style={styles.dialogTitle}>{app.name}</Text>
+                    </View>
+                    <Pressable onPress={() => setRolePickerFor(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                      <X size={18} color={colors.inkSoft} />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.rolePickerHint}>Choose this person's access for {app.name}</Text>
+                  {ROLE_OPTIONS.map((role) => {
+                    const isCurrent = currentRole === role;
+                    const label = role ?? 'None';
+                    return (
+                      <Pressable
+                        key={label}
+                        onPress={() => choose(role)}
+                        style={[styles.rolePickerOption, isCurrent && styles.rolePickerOptionActive]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Set ${app.name} access to ${label}`}
+                        accessibilityState={{ selected: isCurrent }}
+                      >
+                        <Text style={[styles.rolePickerOptionText, isCurrent && styles.rolePickerOptionTextActive]}>
+                          {label}
+                        </Text>
+                        {isCurrent && <Check size={15} color={colors.rust} />}
+                      </Pressable>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1332,6 +1394,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     overflow: 'hidden',
   },
+  tableBody: {
+    maxHeight: 460,
+  },
   emptyText: {
     padding: 20,
     textAlign: 'center',
@@ -1344,7 +1409,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 7,
     backgroundColor: colors.appBg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -1361,7 +1426,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingVertical: 6,
     backgroundColor: colors.white,
   },
   tableRowBorder: {
@@ -1491,6 +1556,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     marginTop: 16,
     marginBottom: 10,
+  },
+  rolePickerCard: {
+    maxWidth: 300,
+  },
+  rolePickerTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rolePickerHint: {
+    fontSize: 12,
+    fontFamily: fonts.sansRegular,
+    color: colors.inkSoft,
+    marginBottom: 12,
+  },
+  rolePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+    backgroundColor: colors.appBg,
+  },
+  rolePickerOptionActive: {
+    borderColor: colors.rust,
+    backgroundColor: `${colors.rust}14`,
+  },
+  rolePickerOptionText: {
+    fontSize: 13.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
+  rolePickerOptionTextActive: {
+    color: colors.rust,
   },
   dialogFooterRow: {
     flexDirection: 'row',
