@@ -226,7 +226,15 @@ export default function Dashboard() {
     const prevItems = items;
     setItems((cur) => cur.map((row) => (String(row.id) === String(id) ? { ...row, status: targetStatus } : row)));
     try {
-      await apiUpdate(it.id, { status: targetStatus }, email);
+      // PUT /items/:id is a full-row replace (see backend/devTracker.js's normalize(), which
+      // nulls out any field missing from the body) — sending only { status } would null every
+      // other field, including NOT NULL ones, and the write would be rejected outright. Send
+      // the item's existing values for every field, same as ItemPanel's handleSave, with just
+      // status overridden.
+      const payload = {};
+      for (const key of FIELDS) payload[key] = it[key] ?? '';
+      payload.status = targetStatus;
+      await apiUpdate(it.id, payload, email);
     } catch (e2) {
       setItems(prevItems);
       setDragError(e2.message || 'Failed to move item');
