@@ -5,7 +5,7 @@ import {
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations'];
+export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD'];
 
 /**
  * Live app URLs. Every real app renders inside a WebView on the launch screen
@@ -52,11 +52,11 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // relative path either way, same reasoning as Market Rate/Development Tracker above. Calls SAP
   // (ZMM_PO_FOLLOWUP_SRV) directly from the client, no backend of its own.
   'po-followup': '/apps/po-followup', // PO Followup
-  // Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as "payment-tracking"
-  // for routing stability) is PO Followup's sibling app — same service (ZMM_PO_FOLLOWUP_SRV,
-  // entity set ZProvisionTrackSet), distinguished from Delivery Confirmation purely by the Potype
-  // SAP filter ('9' here vs 'M' there).
-  'payment-tracking': '/apps/payment-tracking', // Provision Tracking
+  // IBD Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as
+  // "payment-tracking" for routing stability) is PO Followup's sibling app — same service
+  // (ZMM_PO_FOLLOWUP_SRV, entity set ZProvisionTrackSet), distinguished from Delivery Confirmation
+  // purely by the Potype SAP filter ('9' here vs 'M' there).
+  'payment-tracking': '/apps/payment-tracking', // IBD Provision Tracking
   // Timesheet (see embedded-apps/timesheet) has no separate native deployment either — same
   // relative path either way, same reasoning as Market Rate/Development Tracker above. Unlike
   // Dev Tracker it DOES have a bundler, so rather than hardcoding the host it reads
@@ -75,7 +75,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'Finance', icon: TrendingUp, uses: 0 },
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
-  { id: 'payment-tracking', name: 'Provision Tracking', desc: 'Payment progress tracking related.', cat: 'Finance', icon: Wallet, uses: 0 },
+  { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
   { id: 'timesheet', name: 'Timesheet', desc: 'Fill, submit and approve monthly timesheets against projects and tasks, with team reports and Excel export.', cat: 'Operations', icon: Clock, uses: 0 },
 ];
 
