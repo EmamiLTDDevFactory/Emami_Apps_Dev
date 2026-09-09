@@ -14,6 +14,15 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export default defineConfig({
   plugins: [react()],
   base: '/apps/dev-tracker/',
+  // The old vanilla-JS app's leftover public/*.html (admin.html, dashboard.html,
+  // resource-utilization.html) are unused by this React build, but Vite copies the
+  // whole public/ dir into outDir by default — landing those flat files right next
+  // to the new admin/index.html etc. The hub's build-embedded-apps.js then "helpfully"
+  // renames any stray flat name.html into name/index.html, silently overwriting the
+  // real React page with the old one (fs.renameSync clobbers an existing destination).
+  // Disabling publicDir avoids that collision entirely; nothing here references a
+  // public/ asset (no favicon, no static image) so there's nothing to lose.
+  publicDir: false,
   build: {
     outDir: 'dist/apps/dev-tracker',
     emptyOutDir: true,
