@@ -305,10 +305,19 @@ export interface ProvisionConfirmation {
 // attachment field on this entity (unlike ZMM_PO_FOLLOWUP_SRV's sibling service where
 // non-ctc-expense's ClaimHeaderSet/CLAIMNAV got dedicated Value/Mimetype/Filename fields added by
 // SAP Basis for exactly this purpose). These three are a best-effort guess at matching that same
-// naming convention. Dev testing (2026-09-10) found the request 413s (Payload Too Large — some
-// gateway in front of this OData service caps the body) when the attachment is sent at full size,
-// which is why the caller (upcoming.tsx/admin-upcoming.tsx, via pdfAttachment.ts's
-// ensureAttachmentUnderLimit) compresses anything over 70KB before it ever reaches here.
+// naming convention. Dev testing (2026-09-10) found two live issues in order: (1) the request
+// 413s (Payload Too Large — some gateway in front of this OData service caps the body) at full
+// attachment size, which is why the caller (upcoming.tsx/admin-upcoming.tsx, via
+// pdfAttachment.ts's ensureAttachmentUnderLimit) compresses anything over 70KB before it ever
+// reaches here; (2) once that was fixed, SAP itself returned
+// CX_DS_EDM_FACET_ERROR — "Property 'Mimetype' ... has invalid value 'application/pdf'" —
+// confirming Mimetype IS a real field on this entity, but with a declared length shorter than
+// that 15-char MIME string (this service's own $metadata endpoint refuses to serve $metadata at
+// all — some gateway/proxy issue independent of auth or query-string encoding — so the actual
+// limit couldn't be confirmed directly). Since every attachment here is a PDF by construction
+// (mandatory PDF-only picker), Mimetype is sent as the short fixed code 'PDF' instead of the full
+// MIME string — safely under any plausible field length. If SAP Basis ever confirms the real
+// facet (or a different intended value), update this and the sibling ProvisionConfirmation type.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
   return {
@@ -330,7 +339,7 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     ZzinvAmt: c.invoiceAmount,
     DelvConf: c.delvConf ? 'Y' : 'N',
     Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
-    Mimetype: c.delvConf && c.attachmentMimeType ? c.attachmentMimeType.slice(0, 100) : null,
+    Mimetype: c.delvConf && c.attachmentBase64 ? 'PDF' : null,
     Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
 }
