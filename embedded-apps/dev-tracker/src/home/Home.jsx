@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import AccountBar from '../shared/AccountBar.jsx';
 import { apiList, apiMasterData, apiActivity, apiAiCommand, apiMe, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
 import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
-import { isOverdue, statusProgress, relativeTime, initialsHome } from '../shared/utils.js';
+import { isOverdue, statusProgress, relativeTime, initialsHome, hexToRgba } from '../shared/utils.js';
 import { STATUS_COLOR_HOME, KANBAN_COLUMNS, PULSE_WINDOWS } from '../shared/constants.js';
 import { buildRoster, computeConcurrency } from '../shared/roster.js';
 import { ROUTES } from '../shared/routes.js';
@@ -83,9 +83,16 @@ export default function Home() {
     return areas.map((area) => {
       const areaItems = items.filter((it) => it.area === area && (!cutoff || new Date(it.createdAt).getTime() >= cutoff));
       const total = areaItems.length;
-      const done = areaItems.filter((it) => it.status === 'Completed').length;
-      const pct = total ? Math.round((done / total) * 100) : 0;
-      return { area, pct, color: areaColors[area]?.color || AREA_FALLBACK.color, soft: areaColors[area]?.softColor || AREA_FALLBACK.softColor };
+      const closed = areaItems.filter((it) => it.status === 'Completed').length;
+      const held = areaItems.filter((it) => it.status === 'On Hold' || it.status === 'Cancelled').length;
+      const color = areaColors[area]?.color || AREA_FALLBACK.color;
+      const pct = total ? Math.round((closed / total) * 100) : 0;
+      const heldPct = total ? Math.round((held / total) * 100) : 0;
+      // Matches the original: whatever's left after closed/held is "active" (in progress but
+      // not yet done) — drawn as a faded fill of the module's own color, so a module with real,
+      // in-flight items still shows *something* instead of looking identical to an empty one.
+      const activePct = total ? Math.max(0, 100 - pct - heldPct) : 0;
+      return { area, pct, heldPct, activePct, color };
     });
   }, [areas, items, areaColors, pulseIdx]);
 
@@ -93,7 +100,10 @@ export default function Home() {
   const stretchedCount = roster.filter((r) => r.band.label === 'Stretched').length;
 
   const kanbanPreview = useMemo(() => {
-    const previewCols = [KANBAN_COLUMNS[1], KANBAN_COLUMNS[2], KANBAN_COLUMNS[4]]; // Discussion, In Development, Completed
+    // Looked up by key, not array index — KANBAN_COLUMNS' shape/order can change (e.g. the
+    // Testing column split out from In Development) without silently breaking this preview.
+    const previewKeys = ['discussion', 'development', 'completed'];
+    const previewCols = previewKeys.map((key) => KANBAN_COLUMNS.find((c) => c.key === key)).filter(Boolean);
     return previewCols.map((col) => ({
       ...col,
       sample: items.filter((it) => col.statuses.includes(it.status)).slice(0, 2),
@@ -279,7 +289,8 @@ export default function Home() {
                   <span className="pulse-name"><span className="dot" style={{ background: m.color, marginRight: 5 }} />{m.area}</span>
                   <div className="pulse-track">
                     <div style={{ width: `${m.pct}%`, background: m.color }} />
-                    <div style={{ width: `${100 - m.pct}%`, background: m.soft }} />
+                    <div style={{ width: `${m.heldPct}%`, background: '#c7ccd6' }} />
+                    <div style={{ width: `${m.activePct}%`, background: hexToRgba(m.color, 0.28) }} />
                   </div>
                   <span className="pulse-pct">{m.pct}%</span>
                 </div>
