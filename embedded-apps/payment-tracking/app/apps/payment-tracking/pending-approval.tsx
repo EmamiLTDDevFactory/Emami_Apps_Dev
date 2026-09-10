@@ -6,7 +6,10 @@ import {
   fetchPendingApprovals,
   submitApprovalDecision,
   submitApprovalDecisionBatch,
+  PENDING_APPROVAL_ACTIONS,
+  PENDING_APPROVAL_ACTION_LABELS,
   type ApprovalDecision,
+  type PendingApprovalAction,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
@@ -34,6 +37,38 @@ const DECISION_FILTERS: { key: DecisionFilter; label: string }[] = [
   { key: 'A', label: 'Approved' },
   { key: 'R', label: 'Rejected' },
 ];
+
+type ActionFilter = 'all' | PendingApprovalAction;
+
+/** Per-Zaction color + icon so Admin can tell at a glance which type of approval a tile is —
+ * mirrors Submission History's STATUS_STYLE (same ZROLE_ACTION codes), plus a neutral fallback for
+ * any row whose Zaction doesn't match one of the five known codes. */
+const ACTION_STYLE: Record<PendingApprovalAction, { color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  RD: { color: colors.amber, icon: 'calendar-outline' },
+  SA: { color: colors.blue, icon: 'hourglass-outline' },
+  AS: { color: colors.green, icon: 'checkmark-circle-outline' },
+  RS: { color: colors.red, icon: 'arrow-undo-circle-outline' },
+  MS: { color: colors.teal, icon: 'mail-outline' },
+};
+const UNKNOWN_ACTION_STYLE = { color: colors.inkSoft, icon: 'ellipse-outline' as keyof typeof Ionicons.glyphMap };
+
+function actionStyleFor(zaction: string) {
+  return ACTION_STYLE[zaction as PendingApprovalAction] || UNKNOWN_ACTION_STYLE;
+}
+
+function actionLabelFor(zaction: string) {
+  return PENDING_APPROVAL_ACTION_LABELS[zaction as PendingApprovalAction] || zaction || 'Unknown';
+}
+
+function ActionBadge({ zaction }: { zaction: string }) {
+  const style = actionStyleFor(zaction);
+  return (
+    <View style={[styles.actionBadge, { backgroundColor: `${style.color}14` }]}>
+      <Ionicons name={style.icon} size={12} color={style.color} />
+      <Text style={[styles.actionBadgeText, { color: style.color }]} numberOfLines={1}>{actionLabelFor(zaction)}</Text>
+    </View>
+  );
+}
 
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
@@ -66,6 +101,7 @@ export default function PendingApproval() {
   const [search, setSearch] = useState('');
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
 
   useEffect(() => {
     if (roleLoading) return;
@@ -132,6 +168,7 @@ export default function PendingApproval() {
       if (decisionFilter === 'pending' && effectiveStatus(row) !== 'P') return false;
       if ((decisionFilter === 'A' || decisionFilter === 'R') && effectiveStatus(row) !== decisionFilter) return false;
       if (currencyFilter !== 'all' && row.currency !== currencyFilter) return false;
+      if (actionFilter !== 'all' && row.zaction !== actionFilter) return false;
       if (q) {
         const haystack = [
           row.poNumber, row.poItemNo, row.vendorName, row.materialDesc, row.invoiceNo, row.comments,
@@ -140,7 +177,7 @@ export default function PendingApproval() {
       }
       return true;
     });
-  }, [monthYearRows, effectiveStatus, search, decisionFilter, currencyFilter]);
+  }, [monthYearRows, effectiveStatus, search, decisionFilter, currencyFilter, actionFilter]);
 
   const toggleSelected = (key: string) => {
     setSelected((prev) => {
@@ -312,6 +349,33 @@ export default function PendingApproval() {
                 )}
                 <Text style={styles.resultCount}>{filteredRows.length} of {rows.length}</Text>
               </View>
+
+              <View style={styles.chipRow}>
+                <Pressable
+                  onPress={() => setActionFilter('all')}
+                  style={[styles.chip, actionFilter === 'all' && styles.chipActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Filter: All approval types"
+                >
+                  <Text style={[styles.chipText, actionFilter === 'all' && styles.chipTextActive]}>All Types</Text>
+                </Pressable>
+                {PENDING_APPROVAL_ACTIONS.map((a) => {
+                  const active = actionFilter === a;
+                  const style = ACTION_STYLE[a];
+                  return (
+                    <Pressable
+                      key={a}
+                      onPress={() => setActionFilter(a)}
+                      style={[styles.chip, active && { backgroundColor: `${style.color}14`, borderColor: style.color }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Filter: ${PENDING_APPROVAL_ACTION_LABELS[a]}`}
+                    >
+                      <Ionicons name={style.icon} size={11} color={active ? style.color : colors.inkSoft} />
+                      <Text style={[styles.chipText, active && { color: style.color }]}>{PENDING_APPROVAL_ACTION_LABELS[a]}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
 
             {filteredRows.length === 0 ? (
@@ -371,8 +435,16 @@ export default function PendingApproval() {
               const state = rowState[row.key];
               if (!state) return null;
               const busy = state.deciding !== null;
+              const actionStyle = actionStyleFor(row.zaction);
               return (
-                <View key={row.key} style={[styles.card, state.decided && styles.cardDecided]}>
+                <View
+                  key={row.key}
+                  style={[
+                    styles.card,
+                    { borderLeftWidth: 3, borderLeftColor: actionStyle.color },
+                    state.decided && styles.cardDecided,
+                  ]}
+                >
                   <View style={styles.cardHeader}>
                     {!state.decided && (
                       <Pressable
@@ -393,6 +465,7 @@ export default function PendingApproval() {
                       <Text style={styles.cardTitle}>PO {row.poNumber} · Item {row.poItemNo}</Text>
                       {row.vendorName ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.vendorName}</Text> : null}
                     </View>
+                    <ActionBadge zaction={row.zaction} />
                     {state.decided && (
                       <View style={[styles.decidedBadge, state.decided === 'A' ? styles.decidedBadgeApprove : styles.decidedBadgeReject]}>
                         <Ionicons
@@ -407,14 +480,25 @@ export default function PendingApproval() {
                     )}
                   </View>
 
+                  {row.revisedDeliveryDate ? (
+                    <View style={styles.overwriteCallout}>
+                      <Ionicons name="swap-horizontal" size={14} color={colors.amber} />
+                      <Text style={styles.overwriteCalloutText}>
+                        Requested to overwrite delivery date{' '}
+                        <Text style={styles.overwriteOldDate}>{formatDeliveryDate(row.deliveryDate) || '—'}</Text>
+                        {'  →  '}
+                        <Text style={styles.overwriteNewDate}>{formatDeliveryDate(row.revisedDeliveryDate)}</Text>
+                      </Text>
+                    </View>
+                  ) : null}
+
                   <View style={styles.fieldGrid}>
                     <InfoField label="PO Number" value={row.poNumber} />
                     <InfoField label="PO Line Item" value={row.poItemNo} />
                     <InfoField label="Service Description" value={row.serviceText} />
                     <InfoField label="Provisional Value" value={row.provisionValue} />
                     <InfoField label="Currency" value={row.currency} />
-                    <InfoField label="Revised Del Date" value={formatDeliveryDate(row.revisedDeliveryDate)} />
-                    <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />
+                    {!row.revisedDeliveryDate && <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />}
                     <InfoField label="Comments" value={row.comments} />
                     <InfoField label="Invoice No" value={row.invoiceNo} />
                     <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
@@ -553,6 +637,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,
@@ -684,6 +771,44 @@ const styles = StyleSheet.create({
   decidedBadgeText: {
     fontSize: 9.5,
     fontWeight: '700',
+  },
+  actionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderRadius: radii.pill,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    maxWidth: 160,
+  },
+  actionBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  overwriteCallout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: `${colors.amber}12`,
+    borderWidth: 1,
+    borderColor: `${colors.amber}40`,
+    borderRadius: radii.md,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+  },
+  overwriteCalloutText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  overwriteOldDate: {
+    color: colors.inkSoft,
+    textDecorationLine: 'line-through',
+  },
+  overwriteNewDate: {
+    color: colors.amber,
+    fontWeight: '800',
   },
   fieldGrid: {
     flexDirection: 'row',

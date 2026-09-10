@@ -271,6 +271,23 @@ export interface VendorPOFollowupRow {
   status: string;
 }
 
+/** Zaction values a Pending Approval row's own Zaction field carries, per the ZROLE_ACTION domain
+ * (SE11) — same domain/codes as Submission History's Zstatus (see PROVISION_LOG_STATUS_LABELS
+ * below). NOTE: the OData query behind this tab filters by Zaction eq 'PA' (see
+ * fetchPendingApprovals) — 'PA' is the query's filter bucket, not a value the field itself ever
+ * holds; each returned row's own Zaction is one of these five, confirmed live 2026-09-10. */
+export type PendingApprovalAction = 'RD' | 'SA' | 'AS' | 'RS' | 'MS';
+
+export const PENDING_APPROVAL_ACTIONS: PendingApprovalAction[] = ['RD', 'SA', 'AS', 'RS', 'MS'];
+
+export const PENDING_APPROVAL_ACTION_LABELS: Record<PendingApprovalAction, string> = {
+  RD: 'Approval for Revised Delivery Date',
+  SA: 'Approval for SES',
+  AS: 'SES Created',
+  RS: 'SES Reversed',
+  MS: 'Mail Sent to P2P',
+};
+
 function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorPOFollowupRow {
   const str = (v: any) => (v != null ? String(v) : '');
   return {
@@ -286,7 +303,11 @@ function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorP
     vendorName: str(raw.Name1),
     zaction: str(raw.Zaction) || 'U',
     deliveryDate: parseODataDate(raw.Eindt),
-    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    // Confirmed live 2026-09-10: this entity's field is 'RevisedDelDate' (capital D on both Del
+    // and Date), NOT 'RevisedDeldate' — the lowercase-d guess used elsewhere in this file for the
+    // still-unconfirmed ZProvisionLogSet. Reading the wrong casing silently returned '' here, so
+    // Pending Approval's revised-date tiles always rendered blank.
+    revisedDeliveryDate: parseODataDate(raw.RevisedDelDate),
     provisionValue: str(raw.Netwr),
     currency: str(raw.Waers),
     invoiceNo: str(raw.ZzinvNo),
