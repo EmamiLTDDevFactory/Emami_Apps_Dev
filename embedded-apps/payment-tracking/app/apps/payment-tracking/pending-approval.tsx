@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
@@ -103,6 +103,64 @@ function InfoField({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** In-app attachment preview — an <iframe> onto the attachment's blob URL, so the browser's own
+ * PDF viewer (scroll, zoom in/out, its own print/download controls) renders inside the modal
+ * instead of a bare new tab. Plus an explicit Download button in the header, since not every
+ * browser's inline viewer makes that obvious. Web-only (this app builds web-only, see app.json),
+ * hence the plain `React.createElement('iframe', ...)` — react-native-web has no <iframe>
+ * primitive of its own. */
+function AttachmentPreviewModal({
+  blobUrl,
+  filename,
+  onClose,
+}: {
+  blobUrl: string | null;
+  filename: string;
+  onClose: () => void;
+}) {
+  if (!blobUrl) return null;
+
+  const handleDownload = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename || 'attachment.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.previewOverlay} onPress={onClose} accessibilityRole="button" accessibilityLabel="Close preview">
+        <Pressable style={styles.previewBox} onPress={() => {}}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewTitle} numberOfLines={1}>{filename || 'Attachment'}</Text>
+            <View style={styles.previewHeaderActions}>
+              <Pressable onPress={handleDownload} style={styles.previewActionBtn} accessibilityRole="button" accessibilityLabel="Download attachment">
+                <Ionicons name="download-outline" size={15} color={colors.white} />
+                <Text style={styles.previewActionText}>Download</Text>
+              </Pressable>
+              <Pressable onPress={onClose} style={styles.previewCloseBtn} accessibilityRole="button" accessibilityLabel="Close preview">
+                <Ionicons name="close" size={18} color={colors.ink} />
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.previewBody}>
+            {Platform.OS === 'web'
+              ? React.createElement('iframe', {
+                  src: blobUrl,
+                  title: filename || 'Attachment preview',
+                  style: { flex: 1, width: '100%', height: '100%', border: 'none', backgroundColor: colors.appBg },
+                })
+              : <Text style={styles.previewFallbackText}>Preview isn't available here — use Download.</Text>}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 /** Admin's Pending Approval — every ZVendorPOFollowupSet row scoped to the signed-in Admin's own
  * login email and Zaction 'PA' (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
  * Provisional Value/Currency/Revised Del Date/Delivery date/Comments/Invoice No/Invoice Date/
@@ -126,6 +184,7 @@ export default function PendingApproval() {
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all');
   const [currencyFilter, setCurrencyFilter] = useState<string>('all');
   const [actionFilter, setActionFilter] = useState<ActionFilter>('all');
+  const [preview, setPreview] = useState<{ blobUrl: string; filename: string } | null>(null);
 
   useEffect(() => {
     if (roleLoading) return;
@@ -264,17 +323,28 @@ export default function PendingApproval() {
 
   // The attachment (if any) comes back inline on the row itself — Filename/Mimetype/Value on the
   // same GET as every other field (see paymentTrackingApi.ts) — so opening it is just decoding the
-  // base64 already in hand, no extra request.
+  // base64 already in hand, no extra request. Opens in-app (AttachmentPreviewModal) rather than a
+  // bare new tab, so Admin/User get a scroll/zoom/download-capable view without leaving the app.
   const viewAttachment = (row: VendorPOFollowupRow) => {
     if (!row.attachmentBase64) return;
     try {
       const blob = base64ToBlob(row.attachmentBase64, row.mimetype);
       const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
+      setPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev.blobUrl);
+        return { blobUrl, filename: row.filename || `PO-${row.poNumber}-Item-${row.poItemNo}.pdf` };
+      });
       patchRow(row.key, { attachmentError: null });
     } catch (e) {
       patchRow(row.key, { attachmentError: 'Could not open this attachment.' });
     }
+  };
+
+  const closePreview = () => {
+    setPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev.blobUrl);
+      return null;
+    });
   };
 
   if (roleLoading) {
@@ -300,6 +370,7 @@ export default function PendingApproval() {
   const allSelected = selectableCount > 0 && filteredRows.filter((r) => !rowState[r.key]?.decided).every((r) => selected.has(r.key));
 
   return (
+    <>
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.panel}>
         <ProvisionHero
@@ -609,6 +680,8 @@ export default function PendingApproval() {
         )}
       </View>
     </ScrollView>
+    <AttachmentPreviewModal blobUrl={preview?.blobUrl ?? null} filename={preview?.filename ?? ''} onClose={closePreview} />
+    </>
   );
 }
 
@@ -967,5 +1040,73 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontSize: 11.5,
     fontWeight: '700',
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(20,16,34,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  previewBox: {
+    width: '100%',
+    maxWidth: 900,
+    height: '90%',
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0 12px 40px rgba(20,16,34,0.35)' },
+      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+    }),
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  previewTitle: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  previewHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  previewActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.rust,
+    borderRadius: radii.md,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  previewActionText: {
+    color: colors.white,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  previewCloseBtn: {
+    padding: 4,
+  },
+  previewBody: {
+    flex: 1,
+    backgroundColor: colors.appBg,
+  },
+  previewFallbackText: {
+    flex: 1,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 13,
+    color: colors.inkSoft,
+    padding: 24,
   },
 });
