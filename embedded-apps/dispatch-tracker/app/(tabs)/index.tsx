@@ -242,7 +242,11 @@ export default function DashboardScreen() {
   if (unionAll.length === 0) {
     return (
       <ScrollView contentContainerStyle={styles.screen}>
-        <EmptyState message="No invoices available" icon="📦" hint="Upload SAP export or check API connection" />
+        <EmptyState
+          message="No invoices available"
+          icon="📦"
+          hint="Try a different date range on the Pending, Dispatched, Completed, Returned, or Cancelled tab"
+        />
       </ScrollView>
     );
   }

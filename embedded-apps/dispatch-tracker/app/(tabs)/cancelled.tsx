@@ -162,14 +162,6 @@ export default function CancelledScreen() {
     );
   }
 
-  if (!dcRows.length) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <EmptyState message="No cancelled invoices yet" icon="✕" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -199,7 +191,9 @@ export default function CancelledScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {!filtered.length ? (
+        {!dcRows.length ? (
+          <EmptyState message="No cancelled invoices" icon="✕" hint="Try a different date range above" />
+        ) : !filtered.length ? (
           <EmptyState message="No results" icon="🔍" />
         ) : (
           <>
