@@ -216,6 +216,30 @@ function toODataDate(dateStr: string): string {
   return `/Date(${Date.UTC(y, (m || 1) - 1, d || 1)})/`;
 }
 
+/** ZProvHeaderSet's deep-insert POST throws CX_SXML_PARSE_ERROR — "Failed to read property
+ * '<X>'" — for ANY property sent as JSON `null`, not just the Edm.Binary attachment fields first
+ * found to trip it (dev testing 2026-09-10 hit this on 'Value', then again on 'Comments'): the
+ * Gateway's JSON-to-Atom/XML converter can't deserialize an explicit null on this entity at all,
+ * for any facet type. Every optional field below (RevisedDelDate/Eindt/ZinvDate/Comments/Value/
+ * Mimetype/Filename) is therefore still built with `null` where it doesn't apply — clearest to
+ * read — and this strips every null/undefined key (recursively, so it also covers the nested
+ * ToProvItems array) right before the request goes out, rather than each field needing its own
+ * conditional-key workaround. */
+function omitNulls<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => omitNulls(v)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value as Record<string, any>)) {
+      if (v === null || v === undefined) continue;
+      result[k] = omitNulls(v);
+    }
+    return result as T;
+  }
+  return value;
+}
+
 /** One PO/item row from ZVendorPOFollowupSet, scoped to the signed-in user's own email and a
  * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/
  * vendorName) are still captured here — this entity returns them alongside the ones the UI does
@@ -318,16 +342,13 @@ export interface ProvisionConfirmation {
 // (mandatory PDF-only picker), Mimetype is sent as the short fixed code 'PDF' instead of the full
 // MIME string — safely under any plausible field length. If SAP Basis ever confirms the real
 // facet (or a different intended value), update this and the sibling ProvisionConfirmation type.
-// Dev testing (2026-09-10) found a third live issue: with DelvConf = 'No' (no attachment to send),
-// sending Value/Mimetype/Filename as JSON `null` throws CX_SXML_PARSE_ERROR — "Failed to read
-// property 'Value'" — instead of a normal field-validation error. Value is Edm.Binary-typed; the
-// Gateway's JSON-to-Atom/XML converter appears to choke deserializing a binary property that's
-// explicitly null, rather than one that's simply absent. Omitting the three keys entirely when
-// there's no attachment (below) avoids that parse path.
+// Null fields below (RevisedDelDate/ZinvDate/Comments/Value/Mimetype/Filename, depending on
+// DelvConf) are stripped by omitNulls() at the POST call site — see that function's header
+// comment for why they can't just be sent as JSON null.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
   const hasAttachment = c.delvConf && !!c.attachmentBase64;
-  const item: Record<string, any> = {
+  return {
     Lifnr: row.lifnr,
     Email: email,
     Ebeln: row.poNumber,
@@ -348,13 +369,10 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     // name matches toApprovalItem's Comments below, the one other write on this entity.
     Comments: c.delvConf ? null : c.comments,
     DelvConf: c.delvConf ? 'Y' : 'N',
+    Value: hasAttachment ? c.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
-  if (hasAttachment) {
-    item.Value = c.attachmentBase64;
-    item.Mimetype = 'PDF';
-    item.Filename = c.attachmentName ? c.attachmentName.slice(0, 90) : null;
-  }
-  return item;
 }
 
 /** Pending Approval (Admin's side-pane tab) — every ZVendorPOFollowupSet row scoped to the signed-
@@ -390,7 +408,7 @@ export async function submitProvisionApproval(confirmations: ProvisionConfirmati
     ToProvItems: confirmations.map((c) => toProvItem(c, email)),
   };
   try {
-    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
     // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
     const body = result.data?.d || result.data;
     if (body?.Type === 'E') {
@@ -435,7 +453,9 @@ export async function submitProvisionApprovalBatch(
 // with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
 // Zaction — that field is already how this entity carries a row's state, so an Admin decision is
 // just a different Zaction value on the same write. Every other field is echoed back from what the
-// GET already returned for that row, same posture as toProvItem above — nothing invented.
+// GET already returned for that row, same posture as toProvItem above — nothing invented. Null
+// fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at the POST call site,
+// same as toProvItem.
 export type ApprovalDecision = 'A' | 'R';
 
 function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
@@ -479,7 +499,7 @@ export async function submitApprovalDecision(
     ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
   };
   try {
-    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
     const body = result.data?.d || result.data;
     if (body?.Type === 'E') {
       throw new Error(body.Message || 'SAP rejected this submission.');
