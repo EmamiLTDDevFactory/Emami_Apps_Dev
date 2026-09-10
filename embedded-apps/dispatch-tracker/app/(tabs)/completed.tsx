@@ -156,16 +156,6 @@ export default function CompletedScreen() {
     return count(pendCache) + count(dispCache) + count(compCache) + count(retCache) + count(cancCache);
   }, [readOnly, filterDepot, pendCache, dispCache, compCache, retCache, cancCache]);
 
-  if (!allRows.length) {
-    return (
-      <ScrollView contentContainerStyle={styles.container}>
-        {loading.comp ? <Text style={styles.loadingText}>Loading completed invoices…</Text> : null}
-        {errors.comp ? <Text style={styles.errorText}>{errors.comp}</Text> : null}
-        <EmptyState message="No completed invoices yet" icon="✅" />
-      </ScrollView>
-    );
-  }
-
   const gsv = filteredSorted.reduce((s, r) => s + (Number(r.invoice_value) || 0), 0);
   const totalCases = filteredSorted.reduce((s, r) => s + (Number(r.no_of_cases) || 0), 0);
   const onTimeCount = filteredSorted.filter((r) => isOnTimeExact(Number(r.total_delay) || 0)).length;
@@ -193,6 +183,9 @@ export default function CompletedScreen() {
             </Text>
           </Pressable>
         ) : null}
+
+        {loading.comp && !compCache ? <Text style={styles.loadingText}>Loading completed invoices…</Text> : null}
+        {errors.comp ? <Text style={styles.errorText}>{errors.comp}</Text> : null}
 
         <FilterRow>
           <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice · Customer · Town · LR" />
@@ -267,7 +260,9 @@ export default function CompletedScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {filteredSorted.length === 0 ? (
+        {allRows.length === 0 ? (
+          <EmptyState message="No completed invoices" icon="✅" hint="Try a different date range above" />
+        ) : filteredSorted.length === 0 ? (
           <EmptyState message="No invoices match filters" icon="🔍" />
         ) : (
           <>
