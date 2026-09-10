@@ -410,6 +410,37 @@ export async function fetchPendingApprovals(email: string): Promise<VendorPOFoll
   return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
 }
 
+/** ZVendorPOFollowupSet is now a media/HasStream entity (backend GET_STREAM reads the attached
+ * PDF, keyed by Ebeln+Ebelp, from table zibd_ses_pro_log) — the standard OData media-resource URL
+ * shape, `<EntitySet>(Key1='..',Key2='..')/$value`. There's no boolean field on the entity's own
+ * GET response saying whether a row has an attachment (confirmed absent — see this file's other
+ * comments on what's actually returned), so callers can only find out by trying this fetch and
+ * handling a 404 (no attachment for that PO item) as an expected outcome, not an error to surface
+ * loudly. */
+export function followupAttachmentUrl(poNumber: string, poItemNo: string): string {
+  return `${SAP_BASE_URL}/${FOLLOWUP_ENTITY_SET}(Ebeln='${poNumber}',Ebelp='${poItemNo}')/$value`;
+}
+
+export interface FollowupAttachment {
+  blob: Blob;
+  filename: string;
+}
+
+/** Fetches the PDF attached to a PO/item, if any. sapClient defaults to `Accept: application/json`
+ * for the entity's normal JSON reads above — overridden here since a media stream is neither JSON
+ * nor safe to let axios coerce as text, and `responseType: 'blob'` keeps the bytes intact (this app
+ * is web-only, see app.json, so a browser Blob is always what comes back). */
+export async function fetchFollowupAttachment(poNumber: string, poItemNo: string): Promise<FollowupAttachment> {
+  const response = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}(Ebeln='${poNumber}',Ebelp='${poItemNo}')/$value`, {
+    responseType: 'blob',
+    headers: { Accept: '*/*' },
+  });
+  const disposition = String(response.headers?.['content-disposition'] || '');
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] || `PO-${poNumber}-Item-${poItemNo}.pdf`;
+  return { blob: response.data as Blob, filename: decodeURIComponent(filename) };
+}
+
 /** Sends one or more confirmed rows to ZProvHeader — a deep insert, same POST-with-nested-array
  * shape as Market Rate's saveMarketRates. Per the given payload example, the header's own
  * Lifnr/Email/Ebeln/Ebelp/Lblni are the FIRST item's — SEGW requires a representative key trio at

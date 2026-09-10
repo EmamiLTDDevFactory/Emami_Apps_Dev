@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchPendingApprovals,
+  fetchFollowupAttachment,
+  followupAttachmentUrl,
   submitApprovalDecision,
   submitApprovalDecisionBatch,
   PENDING_APPROVAL_ACTIONS,
@@ -18,15 +20,19 @@ import { useMonthYear } from '../../../src/context/MonthYearContext';
 import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../../src/lib/provisionMetrics';
 
 /** Per-row decision state — 'idle' until the Admin acts on it, then locks into whichever decision
- * went through (or an error, which leaves it actionable again). */
+ * went through (or an error, which leaves it actionable again). Also carries the (independent)
+ * attachment view state, since fetching the PDF is its own async action a row can be in the
+ * middle of regardless of its decision state. */
 interface RowState {
   deciding: ApprovalDecision | null; // which action is in flight, if any
   decided: ApprovalDecision | null; // which action has gone through
   error: string | null;
+  attachmentLoading: boolean;
+  attachmentError: string | null;
 }
 
 function initialRowState(): RowState {
-  return { deciding: null, decided: null, error: null };
+  return { deciding: null, decided: null, error: null, attachmentLoading: false, attachmentError: null };
 }
 
 type DecisionFilter = 'all' | 'pending' | 'A' | 'R';
@@ -60,12 +66,32 @@ function actionLabelFor(zaction: string) {
   return PENDING_APPROVAL_ACTION_LABELS[zaction as PendingApprovalAction] || zaction || 'Unknown';
 }
 
-function ActionBadge({ zaction }: { zaction: string }) {
+/** Approve/Reject button copy per approval type, so Admin knows exactly what they're approving
+ * without reading the fields first — e.g. "Approve Revised Delivery Date" instead of a bare
+ * "Approve" that could mean the delivery date change or the SES itself. Only RD/SA are specified;
+ * any other type (or an unrecognized code) falls back to the generic Approve/Reject. */
+const APPROVAL_BUTTON_LABELS: Partial<Record<PendingApprovalAction, { approve: string; reject: string }>> = {
+  RD: { approve: 'Approve Revised Delivery Date', reject: 'Reject Revised Date' },
+  SA: { approve: 'Approve for SES', reject: 'Reject for SES' },
+};
+
+function approveLabelFor(zaction: string) {
+  return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.approve || 'Approve';
+}
+
+function rejectLabelFor(zaction: string) {
+  return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.reject || 'Reject';
+}
+
+/** Full-width, un-truncated banner naming what this tile is actually asking the Admin to approve
+ * — replaces a squeezed inline badge that could clip a long label like "Approval for Revised
+ * Delivery Date". */
+function ActionBanner({ zaction }: { zaction: string }) {
   const style = actionStyleFor(zaction);
   return (
-    <View style={[styles.actionBadge, { backgroundColor: `${style.color}14` }]}>
-      <Ionicons name={style.icon} size={12} color={style.color} />
-      <Text style={[styles.actionBadgeText, { color: style.color }]} numberOfLines={1}>{actionLabelFor(zaction)}</Text>
+    <View style={[styles.actionBanner, { backgroundColor: `${style.color}1f`, borderColor: `${style.color}55` }]}>
+      <Ionicons name={style.icon} size={14} color={style.color} />
+      <Text style={[styles.actionBannerText, { color: style.color }]}>{actionLabelFor(zaction)}</Text>
     </View>
   );
 }
@@ -235,6 +261,27 @@ export default function PendingApproval() {
       setBanner({ type: 'success', message: `${targets.length} item(s) ${decision === 'A' ? 'approved' : 'rejected'}.` });
     } else {
       setBanner({ type: 'error', message: `${failures.length} vendor group(s) failed — see the affected rows below.` });
+    }
+  };
+
+  // ZVendorPOFollowupSet is a media entity now (see paymentTrackingApi.ts) — there's no field on
+  // the row saying whether a PO/item actually has an attachment, so this is always offered and a
+  // 404 (no attachment for this PO item) is just reported inline, not treated as a hard failure.
+  const viewAttachment = async (row: VendorPOFollowupRow) => {
+    patchRow(row.key, { attachmentLoading: true, attachmentError: null });
+    try {
+      const { blob } = await fetchFollowupAttachment(row.poNumber, row.poItemNo);
+      if (Platform.OS === 'web') {
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+      } else {
+        // Unverified on native — this app builds web-only (see app.json), kept as a best-effort
+        // fallback only.
+        await Linking.openURL(followupAttachmentUrl(row.poNumber, row.poItemNo));
+      }
+      patchRow(row.key, { attachmentLoading: false });
+    } catch (e) {
+      patchRow(row.key, { attachmentLoading: false, attachmentError: 'No attachment found for this PO item.' });
     }
   };
 
@@ -445,6 +492,8 @@ export default function PendingApproval() {
                     state.decided && styles.cardDecided,
                   ]}
                 >
+                  <ActionBanner zaction={row.zaction} />
+
                   <View style={styles.cardHeader}>
                     {!state.decided && (
                       <Pressable
@@ -465,7 +514,20 @@ export default function PendingApproval() {
                       <Text style={styles.cardTitle}>PO {row.poNumber} · Item {row.poItemNo}</Text>
                       {row.vendorName ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.vendorName}</Text> : null}
                     </View>
-                    <ActionBadge zaction={row.zaction} />
+                    <Pressable
+                      onPress={() => viewAttachment(row)}
+                      style={styles.attachmentBtn}
+                      disabled={state.attachmentLoading}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View or download attachment for PO ${row.poNumber} item ${row.poItemNo}`}
+                    >
+                      {state.attachmentLoading ? (
+                        <ActivityIndicator size="small" color={colors.rust} />
+                      ) : (
+                        <Ionicons name="attach-outline" size={13} color={colors.rust} />
+                      )}
+                      <Text style={styles.attachmentBtnText}>Attachment</Text>
+                    </Pressable>
                     {state.decided && (
                       <View style={[styles.decidedBadge, state.decided === 'A' ? styles.decidedBadgeApprove : styles.decidedBadgeReject]}>
                         <Ionicons
@@ -500,12 +562,17 @@ export default function PendingApproval() {
                     <InfoField label="Currency" value={row.currency} />
                     {!row.revisedDeliveryDate && <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />}
                     <InfoField label="Comments" value={row.comments} />
-                    <InfoField label="Invoice No" value={row.invoiceNo} />
-                    <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
-                    <InfoField label="Invoice Amount" value={row.invoiceAmount} />
+                    {row.zaction !== 'RD' && (
+                      <>
+                        <InfoField label="Invoice No" value={row.invoiceNo} />
+                        <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
+                        <InfoField label="Invoice Amount" value={row.invoiceAmount} />
+                      </>
+                    )}
                   </View>
 
                   {state.error && <Text style={styles.rowErrorText}>{state.error}</Text>}
+                  {state.attachmentError && <Text style={styles.rowErrorText}>{state.attachmentError}</Text>}
 
                   {!state.decided && (
                     <View style={styles.rowActions}>
@@ -518,7 +585,7 @@ export default function PendingApproval() {
                         {state.deciding === 'R' ? (
                           <ActivityIndicator size="small" color={colors.red} />
                         ) : (
-                          <Text style={styles.rejectBtnText}>Reject</Text>
+                          <Text style={styles.rejectBtnText}>{rejectLabelFor(row.zaction)}</Text>
                         )}
                       </Pressable>
                       <Pressable
@@ -530,7 +597,7 @@ export default function PendingApproval() {
                         {state.deciding === 'A' ? (
                           <ActivityIndicator size="small" color={colors.white} />
                         ) : (
-                          <Text style={styles.approveBtnText}>Approve</Text>
+                          <Text style={styles.approveBtnText}>{approveLabelFor(row.zaction)}</Text>
                         )}
                       </Pressable>
                     </View>
@@ -726,8 +793,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 9,
-    gap: 5,
+    padding: 7,
+    gap: 4,
     ...Platform.select({
       web: { boxShadow: '0 1px 4px rgba(31,27,51,0.05)' },
       default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
@@ -739,7 +806,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   checkbox: {
     padding: 2,
@@ -772,18 +839,34 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '700',
   },
-  actionBadge: {
+  actionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: radii.md,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  actionBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  attachmentBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radii.pill,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    maxWidth: 160,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
   },
-  actionBadgeText: {
-    fontSize: 9.5,
+  attachmentBtnText: {
+    fontSize: 10,
     fontWeight: '700',
+    color: colors.rust,
   },
   overwriteCallout: {
     flexDirection: 'row',
@@ -813,12 +896,13 @@ const styles = StyleSheet.create({
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 5,
   },
   infoField: {
-    minWidth: 96,
-    flexGrow: 1,
-    flexBasis: '18%',
+    // Sized to content (no flexGrow) rather than stretching to fill the row — stretching left
+    // short values (dates, amounts) surrounded by a lot of empty box, which read as blank gaps.
+    minWidth: 84,
+    flexShrink: 0,
     gap: 1,
   },
   infoLabel: {
@@ -840,11 +924,12 @@ const styles = StyleSheet.create({
   },
   rowActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'flex-end',
     gap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 6,
+    paddingTop: 5,
   },
   approveBtn: {
     backgroundColor: colors.green,
