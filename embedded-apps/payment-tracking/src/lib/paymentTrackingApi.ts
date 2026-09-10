@@ -505,3 +505,85 @@ export async function submitApprovalDecisionBatch(
   }
   return failures;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Submission History (User side-pane tab) — reads ZProvisionLogSet, a third entity set on the
+// same ZMM_PO_FOLLOWUP_SRV service. Per the ZROLE_ACTION domain (SE11), Zstatus is one of:
+//   RD = Revised Delivery Date, SA = Approval for SES, AS = SES Created,
+//   RS = SES Reversed, MS = Mail Sent to P2P
+// UNLIKE every other entity in this file, the field names below (Ebeln/Ebelp/Lifnr/Name1/Ktext1/
+// Zstatus/Zdate/Comments) are NOT confirmed against the live SEGW entity — 'ZProvisionLogSet' has
+// never been queried before now, and (per this file's header comment) this service's own
+// $metadata endpoint doesn't serve metadata at all, so there's no schema to check them against
+// offline either. They're a best-effort guess, following the exact naming convention every other
+// entity on this service already uses (Ebeln/Ebelp/Lifnr/Name1/Email are identical field names on
+// ZProvisionTrackSet and ZVendorPOFollowupSet above). toProvisionLogRow() below reads every field
+// defensively (str()/parseODataDate() already no-op to '' on anything missing/unparseable), so a
+// wrong guess here degrades to blank columns rather than a thrown error — ship this and correct
+// field names once SAP Basis confirms them or a live response shows the real ones.
+const LOG_ENTITY_SET = 'ZProvisionLogSet';
+
+/** Zstatus values per the ZROLE_ACTION domain (SE11) — see this section's header comment. */
+export type ProvisionLogStatus = 'RD' | 'SA' | 'AS' | 'RS' | 'MS';
+
+export const PROVISION_LOG_STATUSES: ProvisionLogStatus[] = ['RD', 'SA', 'AS', 'RS', 'MS'];
+
+/** Domain-fixed short description per status code, straight from ZROLE_ACTION — used as the
+ * fallback label whenever the entity itself doesn't also return a text field for it. */
+export const PROVISION_LOG_STATUS_LABELS: Record<ProvisionLogStatus, string> = {
+  RD: 'Revised Delivery Date',
+  SA: 'Approval for SES',
+  AS: 'SES Created',
+  RS: 'SES Reversed',
+  MS: 'Mail Sent to P2P',
+};
+
+/** One submission-history entry from ZProvisionLogSet — see this section's header comment on why
+ * these field names are a best-effort guess, not a confirmed mapping. */
+export interface ProvisionLogRow {
+  key: string;
+  email: string; // Email
+  poNumber: string; // Ebeln
+  poItemNo: string; // Ebelp
+  vendor: string; // Lifnr
+  vendorName: string; // Name1
+  serviceText: string; // Ktext1
+  zstatus: ProvisionLogStatus | ''; // Zstatus
+  /** Display label for zstatus — the entity's own text field if it returns one (guessed as
+   * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
+  zstatusText: string;
+  actionDate: string; // Zdate (guessed) — 'YYYY-MM-DD', when this log entry was recorded
+  remarks: string; // Comments
+}
+
+function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLogRow {
+  const str = (v: any) => (v != null ? String(v) : '');
+  const zstatus = (str(raw.Zstatus).toUpperCase() as ProvisionLogStatus) || '';
+  return {
+    key: `${raw.Ebeln ?? 'log'}-${raw.Ebelp ?? index}-${zstatus}-${index}`,
+    email: str(raw.Email),
+    poNumber: str(raw.Ebeln),
+    poItemNo: str(raw.Ebelp),
+    vendor: str(raw.Lifnr),
+    vendorName: str(raw.Name1),
+    serviceText: str(raw.Ktext1),
+    zstatus,
+    zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
+    actionDate: parseODataDate(raw.Zdate),
+    remarks: str(raw.Comments),
+  };
+}
+
+/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email,
+ * optionally narrowed to one Zstatus. Email is always sent (never omitted, same posture as every
+ * other entity in this app); Zstatus is the client-side status-chip filter, sent to SAP as a real
+ * $filter (not applied client-side) so a large history doesn't have to come down in one page just
+ * to look at one status. */
+export async function fetchProvisionLog(email: string, zstatus?: ProvisionLogStatus): Promise<ProvisionLogRow[]> {
+  const parts = [`Email eq '${email}'`];
+  if (zstatus) parts.push(`Zstatus eq '${zstatus}'`);
+  const params = { '$format': 'json', '$filter': parts.join(' and ') };
+  const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toProvisionLogRow) : [];
+}
