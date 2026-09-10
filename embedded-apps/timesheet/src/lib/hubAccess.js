@@ -4,10 +4,14 @@
 
 const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email'
 
-// The EmamiApps hub's own Manage Access backend (see its backend/server.js) - reachable at this
-// fixed production URL regardless of where this app's own frontend/backend happen to be hosted,
-// same as every other embedded app that checks it.
-const HUB_ACCESS_API_BASE = 'https://audit-capa-api.emamiapps.in/api'
+// The EmamiApps hub's own Manage Access backend (see its backend/server.js). This app is
+// currently only deployed on the Emami_Apps_Dev environment, so this points at the dev-pointed
+// hub backend (port 4001/Devhubfactory, proxied under /dev-api/) rather than the prod one -
+// otherwise every Manage Access grant made on Emami_Apps_Dev (e.g. Admin for 'timesheet') would
+// be invisible here, since prod and dev keep entirely separate Manage Access data (see
+// project_dev_prod_backend_split in the hub repo). Update this if/when this app is ever also
+// deployed to the prod hub.
+const HUB_ACCESS_API_BASE = 'https://audit-capa-api.emamiapps.in/dev-api/api'
 
 // The id this app is registered under on the hub (src/data/mockData.ts's RAW_APPS/EMBEDDED_APP_URLS).
 const APP_ID = 'timesheet'

@@ -7,12 +7,18 @@ const AppContext = createContext(null)
 // data (users, projects, tasks, timesheets, ...) is fetched from the API,
 // which is backed by Postgres (see server/).
 const SESSION_KEY = 'timesheet-session-v1'
-// VITE_API_BASE_URL is set at build time once this app's own backend (server/) is deployed
-// somewhere of its own (see the hub's amplify.yml, which injects the same kind of build-time env
-// var for every embedded app that has its own backend - rc-portal, non-ctc-expense, audit-capa).
-// Falls back to the relative '/api' this app has always used for local dev (proxied to
-// localhost:4000 by vite.config.js).
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+// Hardcoded (not a custom-named env var) on purpose: VITE_API_BASE_URL collides with RC Portal's
+// own env var of the same name, which is set at the Amplify-console level (global to the whole
+// build, not scoped per embedded app) - Vite prioritizes that real environment variable over
+// whatever this app's own amplify.yml line writes into its local .env file, so the build was
+// silently picking up RC Portal's backend URL instead of this app's. Same reasoning as
+// src/lib/hubAccess.js's hardcoded HUB_ACCESS_API_BASE. This app's own backend (server/) is
+// deployed on 172.17.2.21, reachable via the existing nginx /dev-api/timesheet/ route - update
+// this if that backend is ever redeployed elsewhere.
+// import.meta.env.DEV is Vite's own built-in flag (not a custom name, can't collide with
+// anything) - keeps the relative '/api' this app has always used for local dev, proxied to
+// localhost:4000 by vite.config.js.
+const API_BASE = import.meta.env.DEV ? '/api' : 'https://audit-capa-api.emamiapps.in/dev-api/timesheet/api'
 
 function loadSession() {
   try {
