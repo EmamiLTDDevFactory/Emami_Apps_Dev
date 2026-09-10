@@ -4,7 +4,8 @@ const {
   // replaceCAPAs,
   createCAPAs,
   updateCAPA,
-  uploadCAPAEvidenceController
+  uploadCAPAEvidenceController,
+  deleteCAPAsForAudit
 } = require("../controllers/capaController");
 
 const router = express.Router();
@@ -25,6 +26,7 @@ router.post(
 router.get("/", getCAPAs);
 router.post("/", createCAPAs);
 // router.put("/sync", replaceCAPAs);
+router.delete("/", deleteCAPAsForAudit);
 router.patch("/:id", updateCAPA);
 router.put("/:id", updateCAPA);
 

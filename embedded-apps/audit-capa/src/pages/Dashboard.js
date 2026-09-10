@@ -18,9 +18,10 @@ import AutorenewIcon from "@mui/icons-material/Autorenew";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 // import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import { KpiSegment, KpiBar } from "../components/common/KpiBar";
 // import ComplianceChart
 //     from "../components/dashboard/ComplianceChart";
-import emamiLogo from '../assets/emami-logo.jpg';
 // import AuditStatusChart
 //     from "../components/dashboard/AuditStatusChart";
 
@@ -37,101 +38,6 @@ import emamiLogo from '../assets/emami-logo.jpg';
 //         (a) =>
 //             a.status === "Open"
 //     ).length;
-// One clickable segment of a compact KPI stat bar — icon badge + name + count,
-// with a soft tinted background when it's the active filter.
-function KpiSegment({
-    icon,
-    label,
-    value,
-    color,
-    active,
-    onClick,
-    isLast,
-}) {
-    return (
-        <Box
-            onClick={onClick}
-            sx={{
-                flex: "1 1 0",
-                minWidth: 150,
-                display: "flex",
-                alignItems: "center",
-                gap: 1.25,
-                px: 2,
-                py: 1.5,
-                cursor: "pointer",
-                borderRight: isLast ? "none" : "1px solid #EEF1F6",
-                bgcolor: active ? `${color}1A` : "transparent",
-                transition: "background-color 0.15s ease",
-                "&:hover": {
-                    bgcolor: `${color}0F`,
-                },
-            }}
-        >
-            <Box
-                sx={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "10px",
-                    flex: "none",
-                    bgcolor: `${color}22`,
-                    color,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                }}
-            >
-                {icon}
-            </Box>
-
-            <Box sx={{ minWidth: 0 }}>
-                <Typography
-                    sx={{
-                        fontSize: "0.68rem",
-                        fontWeight: 700,
-                        letterSpacing: "0.03em",
-                        textTransform: "uppercase",
-                        color: "text.secondary",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                    }}
-                >
-                    {label}
-                </Typography>
-
-                <Typography
-                    sx={{
-                        fontSize: "1.3rem",
-                        fontWeight: 800,
-                        color: "#0F172A",
-                        lineHeight: 1.15,
-                    }}
-                >
-                    {value}
-                </Typography>
-            </Box>
-        </Box>
-    );
-}
-
-// A section's worth of segments as one continuous card.
-function KpiBar({ children }) {
-    return (
-        <Box
-            sx={{
-                bgcolor: "#fff",
-                borderRadius: 3,
-                boxShadow: "0px 8px 20px rgba(15,23,42,0.06)",
-                display: "flex",
-                flexWrap: "wrap",
-            }}
-        >
-            {children}
-        </Box>
-    );
-}
-
 export default function Dashboard() {
 
     const { audits } = useAppContext();
@@ -536,20 +442,21 @@ export default function Dashboard() {
                         }}
                     >
                         <Box
-                            component="img"
-                            src={emamiLogo}
-                            alt="Emami Logo"
                             sx={{
                                 width: 110,
                                 height: 90,
-                                objectFit: "contain",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                                 background: "#fff",
                                 borderRadius: 2,
                                 p: 1,
                                 boxShadow:
                                     "0px 4px 12px rgba(0,0,0,0.15)",
                             }}
-                        />
+                        >
+                            <DashboardIcon sx={{ fontSize: 44, color: "#7C3AED" }} />
+                        </Box>
                         <Box>
                             <Typography variant="h4">
                                 Dashboard

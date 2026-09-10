@@ -5,21 +5,12 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import { apiPost } from "../../api/client";
+import { EMAMI_APPS_URL, IS_LOCAL_HOST } from "./emamiAppsUrl";
 
 // AsyncStorage's web backend writes straight to localStorage under this exact key, unprefixed —
 // see the hub's src/context/AuthContext.tsx. Audit & CAPA runs same-origin under /apps/audit-capa
 // on the hub's own domain, so it can read that same key directly.
 const HUB_SESSION_TOKEN_KEY = "emami_apps_session_token";
-
-// Local dev servers (localhost / 127.0.0.1) must never bounce out to the real
-// Emami Apps hub — there's nothing there for a locally-run app to exchange a
-// session with. Only genuinely deployed dev/prod hostnames redirect, and each
-// one only ever goes to its own environment.
-const HOSTNAME = window.location.hostname;
-const IS_LOCAL_HOST = HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1";
-const EMAMI_APPS_URL = HOSTNAME.includes("dev")
-  ? "https://dev.emamiapps.in/"
-  : "https://www.emamiapps.in/";
 
 /**
  * Audit & CAPA has no login screen of its own — every route in this app is gated here instead.
