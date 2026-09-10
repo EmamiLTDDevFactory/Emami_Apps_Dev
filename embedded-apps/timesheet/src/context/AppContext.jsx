@@ -137,9 +137,16 @@ export function AppProvider({ children }) {
     if (!hubToken) {
       setHubEmailDetected(false)
       setHubBootstrapped(true)
-      api('/auth/demo-users')
-        .then(setDemoUsers)
-        .catch((err) => console.error('[auth] Could not load demo users:', err.message))
+      // The demo "log in as" picker only makes sense for a genuinely standalone dev run
+      // (`npm run dev`, no hub around it at all) - on the real deployed site, someone with no
+      // hub token just opened this URL directly instead of through the hub, and should see the
+      // "sign in through the hub" screen below instead (see the render guard further down).
+      // Skipping this call there too, since /auth/demo-users 404s outright once deployed anyway.
+      if (import.meta.env.DEV) {
+        api('/auth/demo-users')
+          .then(setDemoUsers)
+          .catch((err) => console.error('[auth] Could not load demo users:', err.message))
+      }
       return () => {}
     }
     setHubEmailDetected(true)
@@ -476,6 +483,30 @@ export function AppProvider({ children }) {
           >
             Retry
           </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Real deployment, but this browser never went through the hub at all (no session token
+  // found) - most likely someone opened this URL directly instead of clicking the Timesheet
+  // tile in the hub. Login.jsx's demo picker only exists for genuinely standalone local dev
+  // (see the DEV check above) - showing it here would offer a working "log in as anyone" form
+  // on the real site to a visitor who simply took the wrong path in.
+  if (!import.meta.env.DEV && !hubEmailDetected && !session.isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm font-semibold text-slate-800">Sign in through Emami Apps</p>
+          <p className="mt-1 text-sm text-slate-500">
+            This page isn't reachable directly - open Timesheet from the Emami Apps hub instead.
+          </p>
+          <a
+            href="/"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+          >
+            Back to Emami Apps
+          </a>
         </div>
       </div>
     )

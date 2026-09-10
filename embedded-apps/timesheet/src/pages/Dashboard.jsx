@@ -48,7 +48,7 @@ const MANAGER_CARDS = [
 
 
 export default function Dashboard({ navigate }) {
-  const { currentUser, getTimesheet, teamSettings, directReports, getLeaveBalance, timesheets } = useApp()
+  const { currentUser, getTimesheet, teamSettings, directReports, getLeaveBalance, timesheets, unassignedEmployees } = useApp()
   const [showLeaveDetails, setShowLeaveDetails] = useState(false)
   const { isMinimal } = useTheme()
   const primaryFrom = isMinimal ? 'from-indigo-500' : 'from-blue-500'
@@ -162,6 +162,14 @@ export default function Dashboard({ navigate }) {
                   {card.key === 'team-approvals' && pendingApprovals > 0 && (
                     <span className="inline-flex items-center justify-center whitespace-nowrap shrink-0 rounded-full bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300 text-xs font-semibold px-2.5 py-0.5">
                       {pendingApprovals} pendings
+                    </span>
+                  )}
+                  {/* Anyone who signed in via the hub but has no manager yet - shared across every
+                      manager (see AppContext.jsx's claimEmployee), so this is a "someone should look
+                      at this" nudge, not a count owned specifically by this manager. */}
+                  {card.key === 'manage-team' && unassignedEmployees.length > 0 && (
+                    <span className="inline-flex items-center justify-center whitespace-nowrap shrink-0 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-semibold px-2.5 py-0.5">
+                      {unassignedEmployees.length} waiting to join
                     </span>
                   )}
                 </div>
