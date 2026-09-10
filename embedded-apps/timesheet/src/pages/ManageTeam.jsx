@@ -19,6 +19,8 @@ export default function ManageTeam({ navigate }) {
     deleteTask,
     setUserAssignments,
     addDirectReport,
+    unassignedEmployees,
+    claimEmployee,
     getLeaveBalance,
     setLeaveAllocation,
     timesheets,
@@ -51,6 +53,7 @@ export default function ManageTeam({ navigate }) {
   const [newReportName, setNewReportName] = useState('')
   const [newReportEmail, setNewReportEmail] = useState('')
   const [addingReport, setAddingReport] = useState(false)
+  const [claimingUserId, setClaimingUserId] = useState(null)
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
   const [savingLeaveUserId, setSavingLeaveUserId] = useState(null)
   const [viewingLeaveUserId, setViewingLeaveUserId] = useState(null)
@@ -171,6 +174,22 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
+  // Claims someone who already exists (synced from a hub sign-in with no manager yet) onto this
+  // manager's team - self-service, first click wins. A 409 means another manager just claimed
+  // them first; refetch-on-refresh isn't needed since the list is already scoped to whoever's
+  // still unassigned as of the last load.
+  async function handleClaim(userId) {
+    setClaimingUserId(userId)
+    try {
+      await claimEmployee(userId)
+      showToast('Employee added to your team.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to add employee - someone else may have already claimed them.', 'error')
+    } finally {
+      setClaimingUserId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <BackButton onClick={() => navigate('dashboard')} />
@@ -217,6 +236,38 @@ export default function ManageTeam({ navigate }) {
             {addingReport ? 'Adding…' : 'Add employee'}
           </button>
         </form>
+
+        {unassignedEmployees.length > 0 && (
+          <div className="mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+              Waiting to be added to a team
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              These people already have Timesheet access but aren't on any manager's team yet.
+            </p>
+            <ul className="space-y-2">
+              {unassignedEmployees.map((user) => (
+                <li
+                  key={user.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{user.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleClaim(user.id)}
+                    disabled={claimingUserId === user.id}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed ${solidBtn}`}
+                  >
+                    {claimingUserId === user.id ? 'Adding…' : 'Add to my team'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="space-y-5">
           {directReports.map((user) => (
@@ -279,6 +330,10 @@ export default function ManageTeam({ navigate }) {
                       <span className="text-slate-400 dark:text-slate-500">·</span>
                       <span className="text-slate-600 dark:text-slate-300">{used} taken</span>
                       <span className="text-slate-400 dark:text-slate-500">·</span>
+                      <span className={`font-semibold ${balance < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                        {balance} {Math.abs(balance) === 1 ? 'day' : 'days'} remaining
+                      </span>
+                      <span className="text-slate-400 dark:text-slate-500">·</span>
                       <button
                         type="button"
                         onClick={() => setViewingLeaveUserId(user.id)}
@@ -286,10 +341,6 @@ export default function ManageTeam({ navigate }) {
                       >
                         Leave details
                       </button>
-                      <span className="text-slate-400 dark:text-slate-500">·</span>
-                      <span className={`font-semibold ${balance < 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                        {balance} {Math.abs(balance) === 1 ? 'day' : 'days'} remaining
-                      </span>
                     </div>
                   )
                 })()}

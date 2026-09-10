@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getHubEmail, getHubRoleForTimesheet } from '../lib/hubAccess'
+import { getHubSessionToken } from '../lib/hubAccess'
 
 const AppContext = createContext(null)
 
@@ -7,6 +7,10 @@ const AppContext = createContext(null)
 // data (users, projects, tasks, timesheets, ...) is fetched from the API,
 // which is backed by Postgres (see server/).
 const SESSION_KEY = 'timesheet-session-v1'
+// This app's own session token (see server/src/middleware/auth.js) - issued after either a
+// verified hub sign-in or a demo login (see bootstrapFromHub/demoLogin below), and required by
+// every API route except POST /auth/hub-login and /auth/demo-*.
+const TOKEN_KEY = 'timesheet-api-token'
 // Hardcoded (not a custom-named env var) on purpose: VITE_API_BASE_URL collides with RC Portal's
 // own env var of the same name, which is set at the Amplify-console level (global to the whole
 // build, not scoped per embedded app) - Vite prioritizes that real environment variable over
@@ -30,9 +34,30 @@ function loadSession() {
   return { currentUserId: null, isLoggedIn: false }
 }
 
+function loadToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+function saveToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // ignore - worst case the token just isn't persisted across reloads
+  }
+}
+
 async function api(path, options) {
+  const token = loadToken()
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...options,
   })
   if (!res.ok) {
@@ -44,16 +69,17 @@ async function api(path, options) {
 }
 
 async function loadAllData() {
-  const [users, projects, tasks, assignments, teamSettings, leaveBalances] = await Promise.all([
+  const [users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees] = await Promise.all([
     api('/users'),
     api('/projects'),
     api('/tasks'),
     api('/assignments'),
     api('/team-settings'),
     api('/leave-balances'),
+    api('/users/unassigned'),
   ])
   const timesheetsByUser = await Promise.all(users.map((u) => api(`/timesheets?userId=${u.id}`)))
-  return { users, projects, tasks, assignments, teamSettings, leaveBalances, timesheets: timesheetsByUser.flat() }
+  return { users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, timesheets: timesheetsByUser.flat() }
 }
 
 export function AppProvider({ children }) {
@@ -64,11 +90,25 @@ export function AppProvider({ children }) {
   // useHubEmailBootstrap - true immediately for a manual/demo session, or once the hub check
   // (found or not) has resolved, so the manual Login screen never flashes in between.
   const [hubBootstrapped, setHubBootstrapped] = useState(false)
+  // Whether a hub email was found at all - distinguishes "really standalone" (no hub email,
+  // the manual/demo Login screen is the right fallback) from "inside the hub but the access
+  // check failed" (a real person who must NOT be handed the demo picker's free "log in as
+  // anyone" dropdown just because a network call hiccuped).
+  const [hubEmailDetected, setHubEmailDetected] = useState(false)
+  const [hubError, setHubError] = useState(null)
+  // Populated only when there's no hub token at all (genuinely standalone) - lets Login.jsx's
+  // "log in as" picker list someone before any session token exists, via the unauthenticated
+  // GET /auth/demo-users (see bootstrapFromHub below and server/src/routes/auth.js).
+  const [demoUsers, setDemoUsers] = useState([])
 
   useEffect(() => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
   }, [session])
 
+  // Every other API route requires a session token (see server/src/middleware/auth.js), so this
+  // can't run until one exists - callers below only ever invoke it after a hub or demo login has
+  // stored one, or (for a returning session) right away, trusting the token persisted from last
+  // time until the server itself says otherwise via a 401.
   const refresh = useCallback(() => {
     setLoadError(null)
     return loadAllData()
@@ -76,42 +116,47 @@ export function AppProvider({ children }) {
       .catch((err) => setLoadError(err.message))
   }, [])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  // Signs the user straight in using the email the EmamiApps hub already captured at its own
-  // login (same-origin localStorage), catching whether Manage Access granted them Admin or User
-  // for 'timesheet' specifically and syncing that into this app's own manager/employee role - see
-  // src/lib/hubAccess.js. Only runs when there's no existing session already, so it never
-  // overrides an active manual/demo login. Falls back to the ordinary "Log in as" screen,
-  // unchanged, when there's no hub email (e.g. `npm run dev` standalone) or the sync fails.
-  useEffect(() => {
+  // Establishes this tab's session token before anything else can load. Three cases:
+  //  1. Already logged in (persisted from last time) - reuse the token already in localStorage
+  //     and just load data; an expired/invalid token surfaces as the ordinary load-error retry.
+  //  2. A hub session token is present (see src/lib/hubAccess.js) - verify it against this app's
+  //     own backend (POST /auth/hub-login), which checks the token's signature server-side, looks
+  //     up the Manage Access role for 'timesheet', and hands back this app's own session token.
+  //     Only the real fallback here is the retryable error screen below (hubError) - never the
+  //     demo picker, which would let anyone free-pick who to sign in as.
+  //  3. No hub token at all - genuinely standalone (e.g. `npm run dev`). Fetch the demo user list
+  //     (unauthenticated) so Login.jsx has someone to pick from; demoLogin (below) is what
+  //     actually gets a token once someone's picked.
+  const bootstrapFromHub = useCallback(() => {
     if (session.isLoggedIn) {
       setHubBootstrapped(true)
-      return
+      refresh()
+      return () => {}
     }
-    const hubEmail = getHubEmail()
-    if (!hubEmail) {
+    const hubToken = getHubSessionToken()
+    if (!hubToken) {
+      setHubEmailDetected(false)
       setHubBootstrapped(true)
-      return
+      api('/auth/demo-users')
+        .then(setDemoUsers)
+        .catch((err) => console.error('[auth] Could not load demo users:', err.message))
+      return () => {}
     }
+    setHubEmailDetected(true)
+    setHubError(null)
 
     let cancelled = false
-    getHubRoleForTimesheet(hubEmail)
-      .then((hubRole) => {
+    api('/auth/hub-login', { method: 'POST', body: JSON.stringify({ hubToken }) })
+      .then(async ({ user, token }) => {
         if (cancelled) return
-        const role = hubRole === 'Admin' ? 'manager' : 'employee'
-        return api('/users/hub-sync', { method: 'POST', body: JSON.stringify({ email: hubEmail, role }) }).then(
-          async (user) => {
-            if (cancelled) return
-            await refresh()
-            login(user.id)
-          },
-        )
+        saveToken(token)
+        await refresh()
+        login(user.id)
       })
       .catch((err) => {
-        console.error('[hub-access] Falling back to manual login:', err.message)
+        if (cancelled) return
+        console.error('[auth] Could not verify hub access:', err.message)
+        setHubError(err.message || 'Could not verify your access.')
       })
       .finally(() => {
         if (!cancelled) setHubBootstrapped(true)
@@ -122,6 +167,24 @@ export function AppProvider({ children }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => bootstrapFromHub(), [bootstrapFromHub])
+
+  function retryHubBootstrap() {
+    setHubBootstrapped(false)
+    setHubError(null)
+    bootstrapFromHub()
+  }
+
+  // What Login.jsx's picker actually calls - no real verification (this only ever runs when
+  // there's no hub token at all, i.e. standalone dev - see /auth/demo-login's own
+  // ALLOW_DEMO_LOGIN gate server-side, which 404s it outright once deployed for real hub users).
+  async function demoLogin(userId) {
+    const { user, token } = await api('/auth/demo-login', { method: 'POST', body: JSON.stringify({ userId }) })
+    saveToken(token)
+    await refresh()
+    login(user.id)
+  }
 
   const currentUser = useMemo(
     () => data?.users.find((u) => u.id === session.currentUserId) || data?.users[0] || null,
@@ -143,6 +206,7 @@ export function AppProvider({ children }) {
 
   function logout() {
     setSession((s) => ({ ...s, isLoggedIn: false }))
+    saveToken(null)
   }
 
   function getTimesheet(userId, monthStartDate) {
@@ -339,9 +403,23 @@ export function AppProvider({ children }) {
   }
 
   async function addDirectReport(name, email) {
-    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email, managerId: currentUser.id }) })
+    // No managerId in the body - the server derives it from this session's own verified token.
+    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email }) })
     setData((d) => ({ ...d, users: [...d.users, user] }))
     return user
+  }
+
+  // Claims an employee who already exists (synced from a hub sign-in with no manager yet) onto
+  // the current manager's team, instead of the "Add employee" form above which only ever creates
+  // brand-new people. Self-service - the server 409s if someone else claimed them first.
+  async function claimEmployee(userId) {
+    const updated = await api(`/users/${userId}/claim`, { method: 'PUT' })
+    setData((d) => ({
+      ...d,
+      users: d.users.map((u) => (u.id === updated.id ? updated : u)),
+      unassignedEmployees: d.unassignedEmployees.filter((u) => u.id !== userId),
+    }))
+    return updated
   }
 
   function resetDemoData() {
@@ -368,11 +446,37 @@ export function AppProvider({ children }) {
 
   // !hubBootstrapped covers the same window rc-portal's loading spinner does - the moment
   // between mount and the hub sign-in check (above) resolving - so the manual Login screen never
-  // flashes for someone who's about to be signed straight in via the hub.
-  if (!hubBootstrapped || !data) {
+  // flashes for someone who's about to be signed straight in via the hub. Once bootstrapped,
+  // `data` is only required for an already-logged-in session (hub or demo) - Login.jsx itself
+  // renders fine with data still null, using demoUsers instead (no session token exists yet to
+  // load real data with).
+  if (!hubBootstrapped || (session.isLoggedIn && !data)) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-sm text-slate-400">Loading...</p>
+      </div>
+    )
+  }
+
+  // A hub email WAS found (this is a real person inside the EmamiApps hub, not standalone dev)
+  // but the Manage Access role lookup failed - never fall through to the manual "Log in as"
+  // screen here, since its free-pick dropdown would let them sign in as anyone, including a
+  // manager. Show a retryable error instead; the demo picker below is only reachable when
+  // hubEmailDetected is false (i.e. no hub email at all).
+  if (hubEmailDetected && hubError && !session.isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-sm rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+          <p className="text-sm font-semibold text-red-800">Couldn't verify your access</p>
+          <p className="mt-1 text-sm text-red-700">{hubError}</p>
+          <button
+            type="button"
+            onClick={retryHubBootstrap}
+            className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
@@ -382,6 +486,8 @@ export function AppProvider({ children }) {
     ...session,
     currentUser,
     directReports,
+    demoUsers,
+    demoLogin,
     setCurrentUserId,
     login,
     logout,
@@ -403,6 +509,7 @@ export function AppProvider({ children }) {
     deleteTask,
     setUserAssignments,
     addDirectReport,
+    claimEmployee,
     resetDemoData,
   }
 
