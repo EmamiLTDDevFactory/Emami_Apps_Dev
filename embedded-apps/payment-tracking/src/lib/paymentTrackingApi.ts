@@ -318,9 +318,16 @@ export interface ProvisionConfirmation {
 // (mandatory PDF-only picker), Mimetype is sent as the short fixed code 'PDF' instead of the full
 // MIME string — safely under any plausible field length. If SAP Basis ever confirms the real
 // facet (or a different intended value), update this and the sibling ProvisionConfirmation type.
+// Dev testing (2026-09-10) found a third live issue: with DelvConf = 'No' (no attachment to send),
+// sending Value/Mimetype/Filename as JSON `null` throws CX_SXML_PARSE_ERROR — "Failed to read
+// property 'Value'" — instead of a normal field-validation error. Value is Edm.Binary-typed; the
+// Gateway's JSON-to-Atom/XML converter appears to choke deserializing a binary property that's
+// explicitly null, rather than one that's simply absent. Omitting the three keys entirely when
+// there's no attachment (below) avoids that parse path.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
-  return {
+  const hasAttachment = c.delvConf && !!c.attachmentBase64;
+  const item: Record<string, any> = {
     Lifnr: row.lifnr,
     Email: email,
     Ebeln: row.poNumber,
@@ -337,11 +344,17 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     ZzinvNo: c.invoiceNo,
     ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
     ZzinvAmt: c.invoiceAmount,
+    // Mandatory (and collected via the Revised Delivery Date modal) when DelvConf is 'No' — field
+    // name matches toApprovalItem's Comments below, the one other write on this entity.
+    Comments: c.delvConf ? null : c.comments,
     DelvConf: c.delvConf ? 'Y' : 'N',
-    Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
-    Mimetype: c.delvConf && c.attachmentBase64 ? 'PDF' : null,
-    Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
+  if (hasAttachment) {
+    item.Value = c.attachmentBase64;
+    item.Mimetype = 'PDF';
+    item.Filename = c.attachmentName ? c.attachmentName.slice(0, 90) : null;
+  }
+  return item;
 }
 
 /** Pending Approval (Admin's side-pane tab) — every ZVendorPOFollowupSet row scoped to the signed-
