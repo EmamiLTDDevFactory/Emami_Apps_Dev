@@ -12,7 +12,7 @@ import {
   type PendingApprovalAction,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
-import { base64ToBlob } from '../../../src/lib/pdfAttachment';
+import { base64ToBlob, base64ToBytes, looksLikePdf } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../../src/context/MonthYearContext';
@@ -328,7 +328,18 @@ export default function PendingApproval() {
   const viewAttachment = (row: VendorPOFollowupRow) => {
     if (!row.attachmentBase64) return;
     try {
-      const blob = base64ToBlob(row.attachmentBase64, row.mimetype);
+      const bytes = base64ToBytes(row.attachmentBase64);
+      if (!looksLikePdf(bytes)) {
+        patchRow(row.key, {
+          attachmentError: 'This attachment did not come through as a valid PDF (it may be corrupted or incomplete on the SAP side) — try again, or ask SAP support to check the file.',
+        });
+        return;
+      }
+      // Every attachment on this entity is a PDF by construction (mandatory PDF-only picker on the
+      // upload side) — SAP's own Mimetype field isn't reliably populated, so it's hardcoded here
+      // rather than trusted: a blank/wrong Mimetype made the browser render the raw bytes as text
+      // instead of invoking its PDF viewer.
+      const blob = base64ToBlob(row.attachmentBase64, 'application/pdf');
       const blobUrl = URL.createObjectURL(blob);
       setPreview((prev) => {
         if (prev) URL.revokeObjectURL(prev.blobUrl);
