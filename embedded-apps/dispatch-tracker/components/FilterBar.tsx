@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Portal from './Portal';
 import { DateField } from './Form';
 import { colors, radius } from '@/constants/theme';
-import { fiscalYearOptions } from '@/lib/format';
 
 export function SearchInput({
   value,
@@ -97,30 +96,22 @@ export function FilterRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.row}>{children}</View>;
 }
 
-/** Fiscal Year / From Date / To Date filter — shared by the Pending/Dispatched/Completed/
- *  Returned/Cancelled tabs. Maps to the SAP OData FiscalYear/FrmDate/ToDate filter fields
- *  (see lib/api.ts's InvoiceListFilter). */
-export function FiscalYearDateRow({
-  fiscalYear,
+/** From Date / To Date filter — used by the Pending/Dispatched/Completed/Returned/Cancelled
+ *  tabs. Maps to the SAP OData FrmDate/ToDate filter fields (see lib/api.ts's
+ *  InvoiceListFilter) — no Fiscal Year field; the date range alone scopes the query. */
+export function DateRangeRow({
   fromDate,
   toDate,
-  onFiscalYearChange,
   onFromDateChange,
   onToDateChange,
 }: {
-  fiscalYear: string;
   fromDate: Date;
   toDate: Date;
-  onFiscalYearChange: (v: string) => void;
   onFromDateChange: (d: Date) => void;
   onToDateChange: (d: Date) => void;
 }) {
   return (
     <View style={styles.dateFilterRow}>
-      <View style={{ minWidth: 100 }}>
-        <Text style={styles.dateFilterLabel}>Fiscal Year</Text>
-        <FilterSelect value={fiscalYear} options={fiscalYearOptions()} onChange={onFiscalYearChange} minWidth={100} />
-      </View>
       <View style={{ flex: 1, minWidth: 130 }}>
         <Text style={styles.dateFilterLabel}>From Date</Text>
         <DateField value={fromDate} onChange={onFromDateChange} />

@@ -78,11 +78,10 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' Fiscal Year, From
- *  Date, and To Date filters — sent as SAP OData $filter properties (FiscalYear/FrmDate/ToDate)
- *  on every one of the five invoice entity sets, alongside the existing Email filter. */
+/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' From Date and To
+ *  Date filters — sent as SAP OData $filter properties (FrmDate/ToDate) on every one of the
+ *  five invoice entity sets, alongside the existing Email filter. */
 export interface InvoiceListFilter {
-  fiscalYear?: string;
   frmDate?: string;
   toDate?: string;
 }
@@ -96,12 +95,22 @@ function sapDateTimeLiteral(isoDateStr: string): string {
 
 async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const parts = [`Email eq '${email}'`];
-  if (filter.fiscalYear) parts.push(`FiscalYear eq '${filter.fiscalYear}'`);
   if (filter.frmDate) parts.push(`FrmDate eq ${sapDateTimeLiteral(filter.frmDate)}`);
   if (filter.toDate) parts.push(`ToDate eq ${sapDateTimeLiteral(filter.toDate)}`);
   const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
+}
+
+/** One tab's own entity set, refetched independently (Email + FrmDate + ToDate only) when that
+ *  tab's date range changes — does NOT call LoginSet, unlike the combined refreshInvoices()
+ *  below. Tags each row with `status` so it can be merged into the shared invCache in place of
+ *  that status's old rows (see DataContext's refreshEntitySet). */
+export async function refreshEntitySet(entitySet: string, status: string, filter: InvoiceListFilter): Promise<Invoice[]> {
+  const email = await getToken();
+  if (!email) throw new ApiError('Not logged in', 401);
+  const rows = await fetchInvoicesRaw(entitySet, email, filter);
+  return rows.map((r) => ({ ...r, status }));
 }
 
 /**
@@ -122,10 +131,13 @@ async function fetchInvoicesRaw(entitySet: string, email: string, filter: Invoic
  * so the suspected fault is in that middleware's relay of array-valued JSON properties, not here.
  */
 async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
-  if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
+  if (!filter.frmDate || !filter.toDate) return;
+  // No user-facing Fiscal Year field anymore — derived from To Date's year, since LoginSet's
+  // payload still needs one.
+  const fiscalYear = String(new Date(filter.toDate).getFullYear());
   const body = {
     Email: email,
-    FiscalYear: filter.fiscalYear,
+    FiscalYear: fiscalYear,
     FrmDate: formatSAPDate(filter.frmDate),
     ToDate: formatSAPDate(filter.toDate),
     NAV_LoginToDepot: [],

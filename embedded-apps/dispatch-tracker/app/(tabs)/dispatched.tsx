@@ -9,7 +9,7 @@ import { useData } from '@/contexts/DataContext';
 import { DispatchDetail } from '@/types/models';
 import { EmptyState } from '@/components/EmptyState';
 import { KPICard } from '@/components/KPICard';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
 import { ActionButton } from '@/components/ActionButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Pagination } from '@/components/Pagination';
@@ -88,12 +88,24 @@ function truncate(v: string | null | undefined, max: number, ellipsis: boolean):
 
 export default function DispatchedScreen() {
   const { session, readOnly } = useAuth();
-  const { dispCache, errors, ensureDispatched, dateFilter, setDateFilter } = useData();
+  const { dispCache, errors, ensureDispatched, refreshEntitySet } = useData();
 
+  const [frmDate, setFrmDate] = useState<Date>(() => {
+    const d = todayDate();
+    d.setDate(d.getDate() - 30);
+    return d;
+  });
+  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
+
+  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
+  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
+  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensureDispatched();
-    }, [ensureDispatched])
+      refreshEntitySet('disp', isoDate(frmDate), isoDate(dateTo));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ensureDispatched, refreshEntitySet])
   );
 
   const [search, setSearch] = useState('');
@@ -229,13 +241,17 @@ export default function DispatchedScreen() {
           <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        <DateRangeRow
+          fromDate={frmDate}
+          toDate={dateTo}
+          onFromDateChange={(d) => {
+            setFrmDate(d);
+            refreshEntitySet('disp', isoDate(d), isoDate(dateTo));
+          }}
+          onToDateChange={(d) => {
+            setDateTo(d);
+            refreshEntitySet('disp', isoDate(frmDate), isoDate(d));
+          }}
         />
 
         <View style={styles.kpiRow}>

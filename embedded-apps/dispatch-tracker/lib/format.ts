@@ -92,10 +92,3 @@ export function isoDate(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-
-/** Fixed 2020–2035 range, newest first, for the Fiscal Year filter dropdown. */
-export function fiscalYearOptions(): string[] {
-  const years: string[] = [];
-  for (let y = 2035; y >= 2020; y--) years.push(String(y));
-  return years;
-}
