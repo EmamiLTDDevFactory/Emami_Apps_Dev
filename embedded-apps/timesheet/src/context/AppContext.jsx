@@ -211,11 +211,6 @@ export function AppProvider({ children }) {
     setSession({ currentUserId: userId, isLoggedIn: true })
   }
 
-  function logout() {
-    setSession((s) => ({ ...s, isLoggedIn: false }))
-    saveToken(null)
-  }
-
   function getTimesheet(userId, monthStartDate) {
     return data.timesheets.find((t) => t.userId === userId && t.monthStartDate === monthStartDate) || null
   }
@@ -521,7 +516,6 @@ export function AppProvider({ children }) {
     demoLogin,
     setCurrentUserId,
     login,
-    logout,
     getTimesheet,
     getUserById,
     getAssignedTasks,
