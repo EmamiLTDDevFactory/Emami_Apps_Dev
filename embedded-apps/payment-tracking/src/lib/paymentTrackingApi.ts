@@ -607,15 +607,12 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
   };
 }
 
-/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email,
- * optionally narrowed to one Zstatus. Email is always sent (never omitted, same posture as every
- * other entity in this app); Zstatus is the client-side status-chip filter, sent to SAP as a real
- * $filter (not applied client-side) so a large history doesn't have to come down in one page just
- * to look at one status. */
-export async function fetchProvisionLog(email: string, zstatus?: ProvisionLogStatus): Promise<ProvisionLogRow[]> {
-  const parts = [`Email eq '${email}'`];
-  if (zstatus) parts.push(`Zstatus eq '${zstatus}'`);
-  const params = { '$format': 'json', '$filter': parts.join(' and ') };
+/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email.
+ * Email is always sent (never omitted, same posture as every other entity in this app); the
+ * status-chip filter is applied client-side over this full result set (see history.tsx) rather
+ * than as a $filter, so switching chips doesn't re-hit SAP. */
+export async function fetchProvisionLog(email: string): Promise<ProvisionLogRow[]> {
+  const params = { '$format': 'json', '$filter': `Email eq '${email}'` };
   const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   return Array.isArray(results) ? results.map(toProvisionLogRow) : [];
