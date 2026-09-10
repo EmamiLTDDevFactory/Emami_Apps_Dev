@@ -216,6 +216,30 @@ function toODataDate(dateStr: string): string {
   return `/Date(${Date.UTC(y, (m || 1) - 1, d || 1)})/`;
 }
 
+/** ZProvHeaderSet's deep-insert POST throws CX_SXML_PARSE_ERROR — "Failed to read property
+ * '<X>'" — for ANY property sent as JSON `null`, not just the Edm.Binary attachment fields first
+ * found to trip it (dev testing 2026-09-10 hit this on 'Value', then again on 'Comments'): the
+ * Gateway's JSON-to-Atom/XML converter can't deserialize an explicit null on this entity at all,
+ * for any facet type. Every optional field below (RevisedDelDate/Eindt/ZinvDate/Comments/Value/
+ * Mimetype/Filename) is therefore still built with `null` where it doesn't apply — clearest to
+ * read — and this strips every null/undefined key (recursively, so it also covers the nested
+ * ToProvItems array) right before the request goes out, rather than each field needing its own
+ * conditional-key workaround. */
+function omitNulls<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => omitNulls(v)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value as Record<string, any>)) {
+      if (v === null || v === undefined) continue;
+      result[k] = omitNulls(v);
+    }
+    return result as T;
+  }
+  return value;
+}
+
 /** One PO/item row from ZVendorPOFollowupSet, scoped to the signed-in user's own email and a
  * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/
  * vendorName) are still captured here — this entity returns them alongside the ones the UI does
@@ -318,8 +342,12 @@ export interface ProvisionConfirmation {
 // (mandatory PDF-only picker), Mimetype is sent as the short fixed code 'PDF' instead of the full
 // MIME string — safely under any plausible field length. If SAP Basis ever confirms the real
 // facet (or a different intended value), update this and the sibling ProvisionConfirmation type.
+// Null fields below (RevisedDelDate/ZinvDate/Comments/Value/Mimetype/Filename, depending on
+// DelvConf) are stripped by omitNulls() at the POST call site — see that function's header
+// comment for why they can't just be sent as JSON null.
 function toProvItem(c: ProvisionConfirmation, email: string) {
   const { row } = c;
+  const hasAttachment = c.delvConf && !!c.attachmentBase64;
   return {
     Lifnr: row.lifnr,
     Email: email,
@@ -337,10 +365,13 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     ZzinvNo: c.invoiceNo,
     ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
     ZzinvAmt: c.invoiceAmount,
+    // Mandatory (and collected via the Revised Delivery Date modal) when DelvConf is 'No' — field
+    // name matches toApprovalItem's Comments below, the one other write on this entity.
+    Comments: c.delvConf ? null : c.comments,
     DelvConf: c.delvConf ? 'Y' : 'N',
-    Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
-    Mimetype: c.delvConf && c.attachmentBase64 ? 'PDF' : null,
-    Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
+    Value: hasAttachment ? c.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
   };
 }
 
@@ -377,7 +408,7 @@ export async function submitProvisionApproval(confirmations: ProvisionConfirmati
     ToProvItems: confirmations.map((c) => toProvItem(c, email)),
   };
   try {
-    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
     // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
     const body = result.data?.d || result.data;
     if (body?.Type === 'E') {
@@ -422,7 +453,9 @@ export async function submitProvisionApprovalBatch(
 // with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
 // Zaction — that field is already how this entity carries a row's state, so an Admin decision is
 // just a different Zaction value on the same write. Every other field is echoed back from what the
-// GET already returned for that row, same posture as toProvItem above — nothing invented.
+// GET already returned for that row, same posture as toProvItem above — nothing invented. Null
+// fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at the POST call site,
+// same as toProvItem.
 export type ApprovalDecision = 'A' | 'R';
 
 function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
@@ -466,7 +499,7 @@ export async function submitApprovalDecision(
     ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
   };
   try {
-    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
     const body = result.data?.d || result.data;
     if (body?.Type === 'E') {
       throw new Error(body.Message || 'SAP rejected this submission.');
@@ -574,15 +607,12 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
   };
 }
 
-/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email,
- * optionally narrowed to one Zstatus. Email is always sent (never omitted, same posture as every
- * other entity in this app); Zstatus is the client-side status-chip filter, sent to SAP as a real
- * $filter (not applied client-side) so a large history doesn't have to come down in one page just
- * to look at one status. */
-export async function fetchProvisionLog(email: string, zstatus?: ProvisionLogStatus): Promise<ProvisionLogRow[]> {
-  const parts = [`Email eq '${email}'`];
-  if (zstatus) parts.push(`Zstatus eq '${zstatus}'`);
-  const params = { '$format': 'json', '$filter': parts.join(' and ') };
+/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email.
+ * Email is always sent (never omitted, same posture as every other entity in this app); the
+ * status-chip filter is applied client-side over this full result set (see history.tsx) rather
+ * than as a $filter, so switching chips doesn't re-hit SAP. */
+export async function fetchProvisionLog(email: string): Promise<ProvisionLogRow[]> {
+  const params = { '$format': 'json', '$filter': `Email eq '${email}'` };
   const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   return Array.isArray(results) ? results.map(toProvisionLogRow) : [];

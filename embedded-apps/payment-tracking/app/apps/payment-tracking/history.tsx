@@ -63,8 +63,9 @@ function InfoField({ label, value }: { label: string; value: string }) {
 type StatusFilter = 'all' | ProvisionLogStatus;
 
 /** Submission History (User side-pane tab) — every ZProvisionLogSet entry for the signed-in
- * user's own login email (see fetchProvisionLog), filtered/segregated by Zstatus with a colored
- * indicator per status (see STATUS_STYLE above and this screen's status chip row). */
+ * user's own login email (see fetchProvisionLog), fetched once and then filtered client-side by
+ * Zstatus (see filteredRows below) so switching status chips doesn't re-hit SAP. Each row gets a
+ * colored indicator per status (see STATUS_STYLE above and this screen's status chip row). */
 export default function PaymentTrackingHistory() {
   const { email, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<ProvisionLogRow[]>([]);
@@ -77,20 +78,21 @@ export default function PaymentTrackingHistory() {
     if (roleLoading || !email) return;
     setLoading(true);
     setLoadError(null);
-    fetchProvisionLog(email, statusFilter === 'all' ? undefined : statusFilter)
+    fetchProvisionLog(email)
       .then(setRows)
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load submission history.'))
       .finally(() => setLoading(false));
-  }, [email, roleLoading, statusFilter]);
+  }, [email, roleLoading]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
     return rows.filter((row) => {
+      if (statusFilter !== 'all' && row.zstatus !== statusFilter) return false;
+      if (!q) return true;
       const haystack = [row.poNumber, row.poItemNo, row.vendorName, row.serviceText, row.remarks].join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, search]);
+  }, [rows, search, statusFilter]);
 
   if (roleLoading) {
     return (

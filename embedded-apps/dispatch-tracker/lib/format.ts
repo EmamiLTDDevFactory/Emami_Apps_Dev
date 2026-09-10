@@ -93,10 +93,9 @@ export function isoDate(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-/** Current year ±, newest-forward-first, for the Fiscal Year filter dropdown. */
+/** Fixed 2020–2035 range, newest first, for the Fiscal Year filter dropdown. */
 export function fiscalYearOptions(): string[] {
-  const y = todayDate().getFullYear();
   const years: string[] = [];
-  for (let i = 1; i >= -4; i--) years.push(String(y + i));
+  for (let y = 2035; y >= 2020; y--) years.push(String(y));
   return years;
 }
