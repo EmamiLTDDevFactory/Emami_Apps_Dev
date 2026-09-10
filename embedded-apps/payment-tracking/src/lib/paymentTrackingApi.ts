@@ -376,13 +376,13 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
 }
 
 /** Pending Approval (Admin's side-pane tab) — every ZVendorPOFollowupSet row scoped to the signed-
- * in Admin's own login email, no Zaction filter (per instruction: Email only) — the backend is
- * trusted to expand scope to every user's pending items once it sees an Admin email, same posture
- * as fetchProvisionPOs above. */
+ * in Admin's own login email AND Zaction 'PA' (Pending Approval) — the backend is trusted to
+ * expand scope to every user's pending items once it sees an Admin email, same posture as
+ * fetchProvisionPOs above. */
 export async function fetchPendingApprovals(email: string): Promise<VendorPOFollowupRow[]> {
   const params = {
     '$format': 'json',
-    '$filter': `Email eq '${email}'`,
+    '$filter': `Email eq '${email}' and Zaction eq 'PA'`,
   };
   const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
   const results = data?.d?.results;
@@ -545,15 +545,19 @@ export async function submitApprovalDecisionBatch(
 //   RD = Revised Delivery Date, SA = Approval for SES, AS = SES Created,
 //   RS = SES Reversed, MS = Mail Sent to P2P
 // UNLIKE every other entity in this file, the field names below (Ebeln/Ebelp/Lifnr/Name1/Ktext1/
-// Zstatus/Zdate/Comments) are NOT confirmed against the live SEGW entity — 'ZProvisionLogSet' has
-// never been queried before now, and (per this file's header comment) this service's own
-// $metadata endpoint doesn't serve metadata at all, so there's no schema to check them against
-// offline either. They're a best-effort guess, following the exact naming convention every other
-// entity on this service already uses (Ebeln/Ebelp/Lifnr/Name1/Email are identical field names on
-// ZProvisionTrackSet and ZVendorPOFollowupSet above). toProvisionLogRow() below reads every field
-// defensively (str()/parseODataDate() already no-op to '' on anything missing/unparseable), so a
-// wrong guess here degrades to blank columns rather than a thrown error — ship this and correct
-// field names once SAP Basis confirms them or a live response shows the real ones.
+// Zstatus/Zdate/Comments/Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt) are NOT confirmed
+// against the live SEGW entity — 'ZProvisionLogSet' has never been queried before now, and (per
+// this file's header comment) this service's own $metadata endpoint doesn't serve metadata at all,
+// so there's no schema to check them against offline either. They're a best-effort guess, following
+// the exact naming convention every other entity on this service already uses (Ebeln/Ebelp/Lifnr/
+// Name1/Email are identical field names on ZProvisionTrackSet and ZVendorPOFollowupSet above; the
+// delivery/provision/invoice fields below reuse the exact casing already confirmed live on
+// ZVendorPOFollowupSet's read side — Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt, see
+// toVendorPOFollowupRow above — rather than the differently-cased RevisedDelDate/ZzinvDate one
+// might otherwise guess). toProvisionLogRow() below reads every field defensively (str()/
+// parseODataDate() already no-op to '' on anything missing/unparseable), so a wrong guess here
+// degrades to blank columns rather than a thrown error — ship this and correct field names once
+// SAP Basis confirms them or a live response shows the real ones.
 const LOG_ENTITY_SET = 'ZProvisionLogSet';
 
 /** Zstatus values per the ZROLE_ACTION domain (SE11) — see this section's header comment. */
@@ -586,6 +590,12 @@ export interface ProvisionLogRow {
    * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
   zstatusText: string;
   actionDate: string; // Zdate (guessed) — 'YYYY-MM-DD', when this log entry was recorded
+  deliveryDate: string; // Eindt, 'YYYY-MM-DD'
+  revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or ''
+  provisionValue: string; // Netwr
+  invoiceNo: string; // ZzinvNo
+  invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
+  invoiceAmount: string; // ZzinvAmt
   remarks: string; // Comments
 }
 
@@ -603,6 +613,12 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
     zstatus,
     zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
     actionDate: parseODataDate(raw.Zdate),
+    deliveryDate: parseODataDate(raw.Eindt),
+    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    provisionValue: str(raw.Netwr),
+    invoiceNo: str(raw.ZzinvNo),
+    invoiceDate: parseODataDate(raw.ZinvDate),
+    invoiceAmount: str(raw.ZzinvAmt),
     remarks: str(raw.Comments),
   };
 }

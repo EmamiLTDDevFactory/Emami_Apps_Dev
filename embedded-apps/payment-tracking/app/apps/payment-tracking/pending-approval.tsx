@@ -45,7 +45,7 @@ function InfoField({ label, value }: { label: string; value: string }) {
 }
 
 /** Admin's Pending Approval — every ZVendorPOFollowupSet row scoped to the signed-in Admin's own
- * login email (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
+ * login email and Zaction 'PA' (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
  * Provisional Value/Currency/Revised Del Date/Delivery date/Comments/Invoice No/Invoice Date/
  * Invoice Amount, with Approve/Reject actions — row-wise or as a multi-select mass batch — both
  * calling the same ZProvHeader POST as Upcoming Provision's "send for approval" (see
