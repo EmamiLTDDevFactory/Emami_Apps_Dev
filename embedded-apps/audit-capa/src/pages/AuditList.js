@@ -80,7 +80,7 @@ export default function AuditList() {
             ? audits.filter(
                 (audit) =>
                     audit.depot ===
-                    currentUser.name
+                    currentUser.depot
             )
             : audits;
 
@@ -406,7 +406,7 @@ export default function AuditList() {
                         </IconButton>
                     </Tooltip>
 
-                    {!isDepot && (
+                    {/* {!isDepot && (
                         <Tooltip title="Delete Audit">
                             <IconButton
                                 size={
@@ -425,7 +425,28 @@ export default function AuditList() {
                                 <DeleteIcon />
                             </IconButton>
                         </Tooltip>
-                    )}
+                    )} */}
+
+                    {currentUser?.role === "CQA" &&
+                        ["Open", "In Progress"].includes(params.row.status) && (
+                            <Tooltip title="Delete Audit">
+                                <IconButton
+                                    size={
+                                        isCQATablet
+                                            ? "large"
+                                            : "medium"
+                                    }
+                                    color="error"
+                                    onClick={() =>
+                                        handleDeleteAudit(
+                                            params.row.id
+                                        )
+                                    }
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            </Tooltip>
+                        )}
                 </Box>
             ),
         },
@@ -639,7 +660,7 @@ export default function AuditList() {
                     mb: 3,
                     // background:
                     //     "linear-gradient(135deg,#2563EB,#60A5FA)",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     // background:
                     //     "linear-gradient(135deg,#1565c0,#42a5f5)",
                     color: "white",
@@ -717,7 +738,7 @@ export default function AuditList() {
                                 }
                                 sx={{
                                     bgcolor: "white",
-                                    color: "#1565c0",
+                                    color: "#7C3AED",
                                     fontWeight: 600,
                                     justifyContent: "flex-end",
                                     // alignItems: "flex-end",
@@ -1457,7 +1478,7 @@ export default function AuditList() {
                                                         <VisibilityIcon />
                                                     </IconButton>
 
-                                                    {!isDepot && (
+                                                    {/* {!isDepot && (
                                                         <IconButton
                                                             color="error"
                                                             onClick={() =>
@@ -1468,7 +1489,21 @@ export default function AuditList() {
                                                         >
                                                             <DeleteIcon />
                                                         </IconButton>
-                                                    )}
+                                                    )} */}
+
+                                                    {currentUser?.role === "CQA" &&
+                                                        ["Open", "In Progress"].includes(audit.status) && (
+                                                            <IconButton
+                                                                color="error"
+                                                                onClick={() =>
+                                                                    handleDeleteAudit(
+                                                                        audit.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        )}
                                                 </Box>
                                             </Box>
 

@@ -200,9 +200,15 @@ async function deployBackend(lambda, iam, backend) {
 }
 
 async function main() {
-  const hasCreds = process.env.AWS_ACCESS_KEY_ID || process.env.AWS_SESSION_TOKEN
-    || process.env.AWS_EXECUTION_ENV || process.env.AWS_ROLE_ARN;
-  if (!hasCreds) {
+  // The old check here only looked for AWS_ACCESS_KEY_ID/AWS_SESSION_TOKEN/AWS_EXECUTION_ENV/
+  // AWS_ROLE_ARN as env vars — true for CI (Amplify's CodeBuild role) but a false negative for
+  // a local profile/SSO login (`aws sso login` / `aws configure`), which authenticates through
+  // ~/.aws/config with no matching env var set. Resolve credentials the same way the SDK calls
+  // below actually will, via its real default provider chain, and only skip if that fails.
+  const { defaultProvider } = require('@aws-sdk/credential-provider-node');
+  try {
+    await defaultProvider()();
+  } catch (err) {
     console.warn('deploy-lambdas: no AWS credentials detected in this environment — skipping backend deploy.');
     console.warn('Frontends will build against whatever API URL is already in each app\'s .env (e.g. localhost for local dev).');
     return;

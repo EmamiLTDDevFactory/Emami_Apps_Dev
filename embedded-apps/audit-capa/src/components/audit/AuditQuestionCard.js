@@ -644,12 +644,19 @@ export default function AuditQuestionCard({
 
                         {/* <Grid item xs={12}> */}
                         {/* <Grid item xs={12} sm={6} md={2}> */}
-                        <Grid
+                        {/* <Grid
                             item
                             xs={12}
                             md={isAuditorTablet ? 3 : 12}
+                        > */}
+                        <Grid
+                            item
+                            xs={12}
+                            sm={6}
+                            md={3}
+                            lg={2}
                         >
-                            <TextField
+                            {/* <TextField
                                 fullWidth
                                 type="date"
                                 label="Target Date"
@@ -699,6 +706,44 @@ export default function AuditQuestionCard({
                                             : "inherit",
                                 }}
 
+                            /> */}
+                            <TextField
+                                fullWidth
+                                type="date"
+                                label="Target Date"
+                                value={
+                                    item.targetDate
+                                        ? item.targetDate.substring(0, 10)
+                                        : ""
+                                }
+                                disabled={
+                                    !canEditAnnexure ||
+                                    disableFollowupField
+                                }
+                                onChange={(e) =>
+                                    handleTargetDateChange(
+                                        item.id,
+                                        e.target.value
+                                    )
+                                }
+                                slotProps={{
+                                    inputLabel: {
+                                        shrink: true,
+                                    },
+                                }}
+                                sx={{
+                                    minWidth: 180,
+
+                                    "& .MuiInputBase-root": {
+                                        height: isAuditorTablet ? 56 : 40,
+                                    },
+
+                                    "& input": {
+                                        fontSize: isAuditorTablet
+                                            ? "1rem"
+                                            : "0.875rem",
+                                    },
+                                }}
                             />
                         </Grid>
                     </>

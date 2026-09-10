@@ -15,14 +15,13 @@ import { normalizeInvoice } from './sapMapping';
 
 const TOKEN_KEY = 'dis_session_token';
 
-// SAP system base URLs — NGQ is the active one until NWP's logon issue (401 "Anmeldung
-// fehlgeschlagen" — see the ZIT_DISP_INTL_ANALYTICS_SRV transport/alias work) is confirmed
-// fixed. NWP/NGD are kept here, commented out, for quick switching once that's resolved.
+// SAP system base URLs — NGD is the active one (testing). NGQ/NWP are kept here, commented
+// out, for quick switching if needed.
 // const API_BASE_NWP = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_DISP_INTL_ANALYTICS_SRV';
-const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
-// const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
+// const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
+const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
 
-export const API_BASE_URL = API_BASE_NGQ;
+export const API_BASE_URL = API_BASE_NGD;
 
 export class ApiError extends Error {
   status: number;
@@ -79,22 +78,73 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-async function fetchInvoicesRaw(entitySet: string, email: string): Promise<Invoice[]> {
-  const res: any = await requestSap(`/${entitySet}?$filter=Email eq '${email}'&$format=json`);
+/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' Fiscal Year, From
+ *  Date, and To Date filters — sent as SAP OData $filter properties (FiscalYear/FrmDate/ToDate)
+ *  on every one of the five invoice entity sets, alongside the existing Email filter. */
+export interface InvoiceListFilter {
+  fiscalYear?: string;
+  frmDate?: string;
+  toDate?: string;
+}
+
+/** FrmDate/ToDate are Edm.DateTime on the SAP side — a plain quoted string ('2026-08-10')
+ *  gets rejected with "Invalid parametertype used at function 'eq'" (verified live against
+ *  NGD). OData v2's datetime literal (unquoted, datetime'...' prefix) is what SAP expects. */
+function sapDateTimeLiteral(isoDateStr: string): string {
+  return `datetime'${isoDateStr}T00:00:00'`;
+}
+
+async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
+  const parts = [`Email eq '${email}'`];
+  if (filter.fiscalYear) parts.push(`FiscalYear eq '${filter.fiscalYear}'`);
+  if (filter.frmDate) parts.push(`FrmDate eq ${sapDateTimeLiteral(filter.frmDate)}`);
+  if (filter.toDate) parts.push(`ToDate eq ${sapDateTimeLiteral(filter.toDate)}`);
+  const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
 }
 
-export async function refreshInvoices(): Promise<Invoice[]> {
+/**
+ * Primes SAP's backend custom tables (Pending/Dispatched/Completed/Returned/Cancelled) with live
+ * data for this Email + Fiscal Year + date range. Per the backend's design, InvoicePendSet/
+ * InvoiceDispSet/etc. only read whatever is already sitting in those tables — LoginSet is what
+ * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Sent as a
+ * plain POST (no Otp field — this app has no OTP flow, see AuthContext.tsx). Non-fatal: a failure
+ * here shouldn't block reading whatever's already in the tables.
+ *
+ * $expand is required here, not optional: the ABAP class's actual "Login" business logic lives
+ * in the generic CREATE_DEEP_ENTITY method (CASE iv_entity_name WHEN 'Login') — a plain POST with
+ * no $expand and no nested navigation data instead routes to the separate, auto-generated
+ * LOGINSET_CREATE_ENTITY stub, which never runs that logic. $expand on the nav properties is what
+ * makes SAP Gateway dispatch to CREATE_DEEP_ENTITY instead.
+ */
+async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
+  if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
+  const body = {
+    Email: email,
+    FiscalYear: filter.fiscalYear,
+    FrmDate: formatSAPDate(filter.frmDate),
+    ToDate: formatSAPDate(filter.toDate),
+  };
+  await fetch(`${API_BASE_URL}/LoginSet?$expand=NAV_LoginToDepot,NAV_LoginToInv&$format=json`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function refreshInvoices(filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const email = await getToken();
   if (!email) throw new ApiError("Not logged in", 401);
 
+  await callLoginSet(email, filter).catch(() => {});
+
   const [pend, disp, comp, ret, canc] = await Promise.all([
-    fetchInvoicesRaw("InvoicePendSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceDispSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCompSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceRetSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCanSet", email).catch(() => [])
+    fetchInvoicesRaw("InvoicePendSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceDispSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCompSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceRetSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCanSet", email, filter).catch(() => [])
   ]);
 
   const mapStatus = (arr: Invoice[], status: string) => arr.map(i => ({ ...i, status }));

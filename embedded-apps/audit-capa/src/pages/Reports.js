@@ -246,7 +246,7 @@ export default function Reports() {
             <Card
                 sx={{
                     mb: 3,
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     color: "white",
                     borderRadius: 2,
                 }}
@@ -351,7 +351,7 @@ export default function Reports() {
                                     <Tooltip />
                                     <Bar
                                         dataKey="count"
-                                        fill="#4F46E5"
+                                        fill="#7C3AED"
                                     />
                                 </BarChart>
                             </ResponsiveContainer>

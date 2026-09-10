@@ -4,6 +4,7 @@ import { Navigate } from "react-router-dom";
 
 export default function RoleGuard({
     role,
+    redirectTo = "/",
     children,
 }) {
 
@@ -17,7 +18,7 @@ export default function RoleGuard({
     if (
         currentUser?.role !== role
     ) {
-        return <Navigate to="/" />;
+        return <Navigate to={redirectTo} />;
     }
 
     return children;

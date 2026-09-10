@@ -4,12 +4,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { fd, finr, fmtCw, sv, toDate } from '@/lib/format';
+import { fd, finr, fmtCw, isoDate, sv, toDate, todayDate } from '@/lib/format';
 import { CancelledInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
-import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
 
 /**
  * Ported 1:1 from dis_shared_components.py's render_cancelled(). Read-only on
@@ -67,7 +67,18 @@ function invTotalForDepot(depot: string, caches: (Array<{ depot?: string }> | nu
 
 export default function CancelledScreen() {
   const { session, readOnly } = useAuth();
-  const { cancCache, pendCache, dispCache, compCache, retCache, loading, errors, ensureCancelled } = useData();
+  const {
+    cancCache,
+    pendCache,
+    dispCache,
+    compCache,
+    retCache,
+    loading,
+    errors,
+    ensureCancelled,
+    dateFilter,
+    setDateFilter,
+  } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -161,6 +172,15 @@ export default function CancelledScreen() {
           {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
           <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
         </FilterRow>
+
+        <FiscalYearDateRow
+          fiscalYear={dateFilter.fiscalYear}
+          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
+          toDate={toDate(dateFilter.toDate) ?? todayDate()}
+          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
+          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
+          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>

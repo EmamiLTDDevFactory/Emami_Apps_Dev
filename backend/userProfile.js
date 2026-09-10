@@ -340,3 +340,4 @@ module.exports.upsertLoginProfile = upsertLoginProfile;
 module.exports.getProfile = getProfile;
 module.exports.recordEvent = recordEvent;
 module.exports.getUserIdByEmail = getUserIdByEmail;
+module.exports.formatTimeSpent = formatTimeSpent;

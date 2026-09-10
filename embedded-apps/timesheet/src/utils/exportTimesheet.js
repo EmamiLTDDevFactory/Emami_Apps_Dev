@@ -1,11 +1,26 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { formatMonthShort, formatWeekday, isOffDay, monthDays, toISODate } from './date'
+
+const COLUMNS = [
+  { header: 'Date', key: 'Date', width: 12 },
+  { header: 'Day', key: 'Day', width: 10 },
+  { header: 'In Time', key: 'In Time', width: 9 },
+  { header: 'Out Time', key: 'Out Time', width: 9 },
+  { header: 'Location', key: 'Location', width: 20 },
+  { header: 'Hours of Work', key: 'Hours of Work', width: 14 },
+  { header: 'Task', key: 'Task', width: 30 },
+  { header: 'Task Description', key: 'Task Description', width: 40 },
+  { header: 'Status', key: 'Status', width: 16 },
+]
+
+const THIN_BORDER = { style: 'thin', color: { argb: 'FFB8BEC7' } }
+const CELL_BORDER = { top: THIN_BORDER, left: THIN_BORDER, bottom: THIN_BORDER, right: THIN_BORDER }
 
 // Builds one worksheet row per calendar day of the month, merging same-day
 // entries (multiple tasks) into single Task/Description columns so the
 // exported sheet mirrors what the grid shows, rather than the flat
 // multi-line entry list used for storage.
-export function exportTimesheetToExcel({ entries, tasks, monthStartDate, userName }) {
+export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, userName }) {
   const byDate = {}
   entries.forEach((e) => {
     if (!byDate[e.date]) byDate[e.date] = []
@@ -82,23 +97,36 @@ export function exportTimesheetToExcel({ entries, tasks, monthStartDate, userNam
     Status: 'Total hours this month',
   })
 
-  const sheet = XLSX.utils.json_to_sheet(rows)
-  sheet['!cols'] = [
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 9 },
-    { wch: 9 },
-    { wch: 20 },
-    { wch: 14 },
-    { wch: 30 },
-    { wch: 40 },
-    { wch: 16 },
-  ]
+  const workbook = new ExcelJS.Workbook()
+  const sheet = workbook.addWorksheet('Timesheet')
+  sheet.columns = COLUMNS
 
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Timesheet')
+  const headerRow = sheet.getRow(1)
+  headerRow.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = CELL_BORDER
+  })
+
+  rows.forEach((row) => {
+    const sheetRow = sheet.addRow(row)
+    sheetRow.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = CELL_BORDER
+    })
+  })
 
   const monthLabel = formatMonthShort(monthStartDate).replace(' ', '-')
   const safeUserName = (userName || 'timesheet').replace(/[^a-z0-9]+/gi, '-')
-  XLSX.writeFile(workbook, `${safeUserName}-timesheet-${monthLabel}.xlsx`)
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${safeUserName}-timesheet-${monthLabel}.xlsx`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }

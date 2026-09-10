@@ -181,6 +181,39 @@
     height:100%;border-radius:3px;transition:width .2s ease;
   }
 
+  /* AI command bar (dashboard.html) — see home.css's .home-command-bar for the home page's copy */
+  .ai-command-bar{margin:14px 24px 0;}
+  .ai-command-input-row{
+    display:flex;align-items:center;gap:8px;background:var(--surface);border:1.5px solid var(--line);
+    border-radius:12px;padding:5px 6px 5px 14px;transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  .ai-command-input-row:focus-within{
+    border-color:var(--module-accent);box-shadow:0 0 0 4px color-mix(in srgb, var(--module-accent) 12%, transparent);
+  }
+  .ai-command-icon{color:var(--module-accent);display:flex;flex-shrink:0;}
+  .ai-command-input-row input{
+    flex:1;border:none;outline:none;font-size:13.5px;padding:9px 0;background:transparent;font-family:var(--sans);
+  }
+  .ai-command-input-row button{
+    padding:9px 16px;border:none;border-radius:8px;background:var(--module-accent);color:#fff;
+    font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0;transition:background .15s ease;
+  }
+  .ai-command-input-row button:hover{background:color-mix(in srgb, var(--module-accent) 85%, black 15%);}
+  .ai-command-input-row button:disabled{opacity:.6;cursor:default;}
+  .ai-command-response{
+    margin-top:8px;padding:11px 15px;border-radius:10px;background:var(--accent-soft);
+    border:1px solid #cfe0ee;font-size:13px;color:var(--ink);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
+  }
+  .ai-command-response.error{background:var(--red-soft);border-color:#f2c9c7;color:var(--red);}
+  .ai-command-response .ai-clear{
+    cursor:pointer;font-size:11.5px;font-weight:700;color:var(--muted);background:none;border:none;flex-shrink:0;
+  }
+  .ai-command-response .ai-clear:hover{color:var(--ink);}
+  .ai-command-response .ai-response-close{
+    background:none;border:none;font-size:17px;line-height:1;color:var(--muted);cursor:pointer;padding:0 0 0 2px;
+  }
+  .ai-command-response .ai-response-close:hover{color:var(--ink);}
+
   /* Full-width utility strip above the page's real header (home-topbar / .topbar) on every Dev
      Tracker page — a slightly darker shade of the same navy the header already uses (derived, not
      a new color) so it reads as a distinct top-of-page bar rather than another row squeezed into

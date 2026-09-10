@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Portal from './Portal';
+import { DateField } from './Form';
 import { colors, radius } from '@/constants/theme';
+import { fiscalYearOptions } from '@/lib/format';
 
 export function SearchInput({
   value,
@@ -95,6 +97,42 @@ export function FilterRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.row}>{children}</View>;
 }
 
+/** Fiscal Year / From Date / To Date filter — shared by the Pending/Dispatched/Completed/
+ *  Returned/Cancelled tabs. Maps to the SAP OData FiscalYear/FrmDate/ToDate filter fields
+ *  (see lib/api.ts's InvoiceListFilter). */
+export function FiscalYearDateRow({
+  fiscalYear,
+  fromDate,
+  toDate,
+  onFiscalYearChange,
+  onFromDateChange,
+  onToDateChange,
+}: {
+  fiscalYear: string;
+  fromDate: Date;
+  toDate: Date;
+  onFiscalYearChange: (v: string) => void;
+  onFromDateChange: (d: Date) => void;
+  onToDateChange: (d: Date) => void;
+}) {
+  return (
+    <View style={styles.dateFilterRow}>
+      <View style={{ minWidth: 100 }}>
+        <Text style={styles.dateFilterLabel}>Fiscal Year</Text>
+        <FilterSelect value={fiscalYear} options={fiscalYearOptions()} onChange={onFiscalYearChange} minWidth={100} />
+      </View>
+      <View style={{ flex: 1, minWidth: 130 }}>
+        <Text style={styles.dateFilterLabel}>From Date</Text>
+        <DateField value={fromDate} onChange={onFromDateChange} />
+      </View>
+      <View style={{ flex: 1, minWidth: 130 }}>
+        <Text style={styles.dateFilterLabel}>To Date</Text>
+        <DateField value={toDate} onChange={onToDateChange} />
+      </View>
+    </View>
+  );
+}
+
 export function ActiveFilterChip({ label }: { label: string }) {
   return (
     <View style={styles.activeChip}>
@@ -149,4 +187,6 @@ const styles = StyleSheet.create({
   dropdownItem: { paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.g100 },
   activeChip: { backgroundColor: colors.navyLt, borderWidth: 1, borderColor: colors.navyBd, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   activeChipText: { fontSize: 10, fontWeight: '700', color: colors.navy },
+  dateFilterRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', paddingBottom: 8 },
+  dateFilterLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, marginBottom: 4, textTransform: 'uppercase' },
 });

@@ -1,24 +1,28 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin'
-import { fetchTimesheetHubRole } from '../lib/hubAccessApi'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { getHubEmail, getHubRoleForTimesheet } from '../lib/hubAccess'
 
 const AppContext = createContext(null)
 
-// Who's logged in comes from the Emami Apps hub, not a session of this app's own - see
-// src/lib/hubEmailLogin.js. All real data (users, projects, tasks, timesheets, ...) is fetched
-// from the API, which is backed by Postgres (see server/).
+// Only the "who's logged in" session lives in localStorage now - all real
+// data (users, projects, tasks, timesheets, ...) is fetched from the API,
+// which is backed by Postgres (see server/).
+const SESSION_KEY = 'timesheet-session-v1'
+// VITE_API_BASE_URL is set at build time once this app's own backend (server/) is deployed
+// somewhere of its own (see the hub's amplify.yml, which injects the same kind of build-time env
+// var for every embedded app that has its own backend - rc-portal, non-ctc-expense, audit-capa).
+// Falls back to the relative '/api' this app has always used for local dev (proxied to
+// localhost:4000 by vite.config.js).
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
-// Embedded in the Emami Apps hub, this frontend is served from the hub's own
-// origin at /apps/timesheet/, where a bare '/api' would hit the HUB's API
-// rather than this app's. So the API host is injected at build time via
-// VITE_TIMESHEET_API_URL (set in the Amplify console — see .env.example) and
-// the calls go straight to the Timesheet backend wherever it is deployed,
-// independent of where this frontend is hosted.
-//
-// Unset — i.e. running this app standalone with `npm run dev` — it falls back
-// to the relative '/api' that vite.config.js proxies to localhost:4000, so
-// local development is unchanged.
-const API_BASE = `${import.meta.env.VITE_TIMESHEET_API_URL ?? ''}/api`
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch {
+    // fall through to signed-out
+  }
+  return { currentUserId: null, isLoggedIn: false }
+}
 
 async function api(path, options) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -34,23 +38,30 @@ async function api(path, options) {
 }
 
 async function loadAllData() {
-  const [users, projects, tasks, assignments, teamSettings] = await Promise.all([
+  const [users, projects, tasks, assignments, teamSettings, leaveBalances] = await Promise.all([
     api('/users'),
     api('/projects'),
     api('/tasks'),
     api('/assignments'),
     api('/team-settings'),
+    api('/leave-balances'),
   ])
   const timesheetsByUser = await Promise.all(users.map((u) => api(`/timesheets?userId=${u.id}`)))
-  return { users, projects, tasks, assignments, teamSettings, timesheets: timesheetsByUser.flat() }
+  return { users, projects, tasks, assignments, teamSettings, leaveBalances, timesheets: timesheetsByUser.flat() }
 }
 
 export function AppProvider({ children }) {
-  // Read once at mount - the hub's own login/logout controls these, not this app.
-  const [hubEmail] = useState(() => getHubEmail())
-  const [loggedIntoHub] = useState(() => hasHubSession())
+  const [session, setSession] = useState(loadSession)
   const [data, setData] = useState(null)
   const [loadError, setLoadError] = useState(null)
+  // Gates first render on the hub sign-in check below, same as rc-portal's
+  // useHubEmailBootstrap - true immediately for a manual/demo session, or once the hub check
+  // (found or not) has resolved, so the manual Login screen never flashes in between.
+  const [hubBootstrapped, setHubBootstrapped] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  }, [session])
 
   const refresh = useCallback(() => {
     setLoadError(null)
@@ -63,80 +74,69 @@ export function AppProvider({ children }) {
     refresh()
   }, [refresh])
 
-  // Role comes from the hub's own Manage Access, not a value stored only in Timesheet: "Admin"
-  // for the 'timesheet' app becomes a Timesheet manager, "User" becomes an employee. The first
-  // time a given email is seen it's auto-created here (POST /users/provision); every later login
-  // re-syncs its role the same way, so promoting someone in Manage Access takes effect on their
-  // next visit with no manual DB work. This is deliberately NOT a plain lookup against the
-  // already-loaded users list (contrast the earlier email-match approach) - a brand-new hub grant
-  // has no Timesheet row to find yet, and provisioning is what creates one.
-  const [currentUser, setCurrentUser] = useState(null)
-  const [provisionState, setProvisionState] = useState('pending') // 'pending' | 'granted' | 'denied'
-  const provisionedRef = useRef(false)
-
+  // Signs the user straight in using the email the EmamiApps hub already captured at its own
+  // login (same-origin localStorage), catching whether Manage Access granted them Admin or User
+  // for 'timesheet' specifically and syncing that into this app's own manager/employee role - see
+  // src/lib/hubAccess.js. Only runs when there's no existing session already, so it never
+  // overrides an active manual/demo login. Falls back to the ordinary "Log in as" screen,
+  // unchanged, when there's no hub email (e.g. `npm run dev` standalone) or the sync fails.
   useEffect(() => {
-    if (!data || provisionedRef.current) return
-    provisionedRef.current = true
-
-    if (!loggedIntoHub || !hubEmail) {
-      setProvisionState('denied')
+    if (session.isLoggedIn) {
+      setHubBootstrapped(true)
+      return
+    }
+    const hubEmail = getHubEmail()
+    if (!hubEmail) {
+      setHubBootstrapped(true)
       return
     }
 
     let cancelled = false
-    fetchTimesheetHubRole(hubEmail).then(async (hubRole) => {
-      if (cancelled) return
-      if (!hubRole) {
-        setProvisionState('denied')
-        return
-      }
-      try {
-        const role = hubRole === 'Admin' ? 'manager' : 'employee'
-        const user = await api('/users/provision', {
-          method: 'POST',
-          body: JSON.stringify({ name: nameFromEmail(hubEmail), email: hubEmail, role }),
-        })
+    getHubRoleForTimesheet(hubEmail)
+      .then((hubRole) => {
         if (cancelled) return
-        setData((d) => ({
-          ...d,
-          users: d.users.some((u) => u.id === user.id) ? d.users.map((u) => (u.id === user.id ? user : u)) : [...d.users, user],
-        }))
-        setCurrentUser(user)
-        setProvisionState('granted')
-      } catch {
-        if (!cancelled) setProvisionState('denied')
-      }
-    })
+        const role = hubRole === 'Admin' ? 'manager' : 'employee'
+        return api('/users/hub-sync', { method: 'POST', body: JSON.stringify({ email: hubEmail, role }) }).then(
+          async (user) => {
+            if (cancelled) return
+            await refresh()
+            login(user.id)
+          },
+        )
+      })
+      .catch((err) => {
+        console.error('[hub-access] Falling back to manual login:', err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setHubBootstrapped(true)
+      })
+
     return () => {
       cancelled = true
     }
-  }, [data, hubEmail, loggedIntoHub])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const isLoggedIn = provisionState === 'granted'
-  // Distinct from "didn't come from the hub at all" only in the message Login.jsx shows -
-  // covers both "no hub session" and "hub session but no Manage Access grant for timesheet".
-  const accessDenied = provisionState === 'denied'
+  const currentUser = useMemo(
+    () => data?.users.find((u) => u.id === session.currentUserId) || data?.users[0] || null,
+    [data, session.currentUserId],
+  )
 
   const directReports = useMemo(
     () => data?.users.filter((u) => u.managerId === currentUser?.id) || [],
     [data, currentUser],
   )
 
-  // Identity comes entirely from the Emami Apps hub's login - there is nothing to log in or
-  // switch to inside Timesheet itself, so this just leaves the app and returns to the hub.
-  function logout() {
-    window.location.href = '/'
+  function setCurrentUserId(userId) {
+    setSession((s) => ({ ...s, currentUserId: userId }))
   }
 
-  // Lets a manager onboard a direct report themselves instead of needing a DB insert - see
-  // ManageTeam.jsx. Unlike the other mutations here, this intentionally does NOT swallow its
-  // error: a duplicate email is a realistic, expected failure (fat-fingering an existing
-  // teammate's address), and the form needs the real message to show the manager, not a
-  // silently-ignored no-op.
-  async function addTeamMember(name, email) {
-    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email, managerId: currentUser.id }) })
-    setData((d) => ({ ...d, users: [...d.users, user] }))
-    return user
+  function login(userId) {
+    setSession({ currentUserId: userId, isLoggedIn: true })
+  }
+
+  function logout() {
+    setSession((s) => ({ ...s, isLoggedIn: false }))
   }
 
   function getTimesheet(userId, monthStartDate) {
@@ -152,11 +152,47 @@ export function AppProvider({ children }) {
     return data.tasks.filter((t) => taskIds.includes(t.id))
   }
 
+  // One yearly leave pool per user (defaults to 24 until a manager adjusts it).
+  function getLeaveBalance(userId) {
+    return data.leaveBalances.find((b) => b.userId === userId) || { userId, allocated: 24, used: 0, balance: 24 }
+  }
+
+  // Manager action: sets a direct report's yearly allocation directly - same "edit it in
+  // place" pattern as toggling an assigned task.
+  async function setLeaveAllocation(userId, allocated) {
+    const updated = await api(`/leave-balances/${userId}`, { method: 'PUT', body: JSON.stringify({ allocated }) })
+    setData((d) => ({
+      ...d,
+      leaveBalances: d.leaveBalances.some((b) => b.userId === userId)
+        ? d.leaveBalances.map((b) => (b.userId === userId ? updated : b))
+        : [...d.leaveBalances, updated],
+    }))
+    return updated
+  }
+
   function upsertTimesheet(ts) {
     setData((d) => {
       const exists = d.timesheets.some((t) => t.id === ts.id)
       return { ...d, timesheets: exists ? d.timesheets.map((t) => (t.id === ts.id ? ts : t)) : [...d.timesheets, ts] }
     })
+  }
+
+  // Re-pulls one user's leave balance from the server - `used`/`balance` are computed there
+  // from actual timesheet_entries, so this is how a balance picks up a leave day the moment
+  // it's saved, without trusting a locally-recomputed count to stay in sync. Scoped to a
+  // single user (not the whole team) so it stays fast on every autosave.
+  async function refreshLeaveBalance(userId) {
+    try {
+      const updated = await api(`/leave-balances/${userId}`)
+      setData((d) => ({
+        ...d,
+        leaveBalances: d.leaveBalances.some((b) => b.userId === userId)
+          ? d.leaveBalances.map((b) => (b.userId === userId ? updated : b))
+          : [...d.leaveBalances, updated],
+      }))
+    } catch (err) {
+      console.error('Failed to refresh leave balance:', err)
+    }
   }
 
   // Persist the current in-progress entries for a user's month as a Draft.
@@ -165,6 +201,7 @@ export function AppProvider({ children }) {
   async function saveDraftEntries(userId, monthStartDate, entries) {
     try {
       upsertTimesheet(await api('/timesheets/draft', { method: 'POST', body: JSON.stringify({ userId, monthStartDate, entries }) }))
+      refreshLeaveBalance(userId)
     } catch (err) {
       console.error('Failed to save draft:', err)
     }
@@ -175,6 +212,7 @@ export function AppProvider({ children }) {
   async function submitForApproval(userId, monthStartDate, entries) {
     try {
       upsertTimesheet(await api('/timesheets/submit', { method: 'POST', body: JSON.stringify({ userId, monthStartDate, entries }) }))
+      refreshLeaveBalance(userId)
     } catch (err) {
       console.error('Failed to submit timesheet:', err)
     }
@@ -294,13 +332,10 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function updateTeamSettings(patch) {
-    try {
-      const next = await api('/team-settings', { method: 'PUT', body: JSON.stringify({ ...data.teamSettings, ...patch }) })
-      setData((d) => ({ ...d, teamSettings: next }))
-    } catch (err) {
-      console.error('Failed to update team settings:', err)
-    }
+  async function addDirectReport(name, email) {
+    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email, managerId: currentUser.id }) })
+    setData((d) => ({ ...d, users: [...d.users, user] }))
+    return user
   }
 
   function resetDemoData() {
@@ -325,11 +360,10 @@ export function AppProvider({ children }) {
     )
   }
 
-  // Covers both "still fetching users/projects/etc." and "logged into the hub, but the Manage
-  // Access role check + provisioning call haven't resolved yet" - without this, a signed-in user
-  // would briefly flash Login.jsx's "open this from the hub" copy before landing on their
-  // dashboard, since provisionState starts at 'pending' rather than 'granted'.
-  if (!data || (loggedIntoHub && provisionState === 'pending')) {
+  // !hubBootstrapped covers the same window rc-portal's loading spinner does - the moment
+  // between mount and the hub sign-in check (above) resolving - so the manual Login screen never
+  // flashes for someone who's about to be signed straight in via the hub.
+  if (!hubBootstrapped || !data) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <p className="text-sm text-slate-400">Loading...</p>
@@ -339,17 +373,17 @@ export function AppProvider({ children }) {
 
   const value = {
     ...data,
+    ...session,
     currentUser,
-    isLoggedIn,
-    accessDenied,
-    hubEmail,
-    loggedIntoHub,
     directReports,
+    setCurrentUserId,
+    login,
     logout,
-    addTeamMember,
     getTimesheet,
     getUserById,
     getAssignedTasks,
+    getLeaveBalance,
+    setLeaveAllocation,
     saveDraftEntries,
     submitForApproval,
     approveTimesheet,
@@ -362,7 +396,7 @@ export function AppProvider({ children }) {
     updateTask,
     deleteTask,
     setUserAssignments,
-    updateTeamSettings,
+    addDirectReport,
     resetDemoData,
   }
 

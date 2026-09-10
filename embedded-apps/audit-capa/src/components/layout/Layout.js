@@ -11,6 +11,16 @@ import { apiPost } from "../../api/client";
 // on the hub's own domain, so it can read that same key directly.
 const HUB_SESSION_TOKEN_KEY = "emami_apps_session_token";
 
+// Local dev servers (localhost / 127.0.0.1) must never bounce out to the real
+// Emami Apps hub — there's nothing there for a locally-run app to exchange a
+// session with. Only genuinely deployed dev/prod hostnames redirect, and each
+// one only ever goes to its own environment.
+const HOSTNAME = window.location.hostname;
+const IS_LOCAL_HOST = HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1";
+const EMAMI_APPS_URL = HOSTNAME.includes("dev")
+  ? "https://dev.emamiapps.in/"
+  : "https://www.emamiapps.in/";
+
 /**
  * Audit & CAPA has no login screen of its own — every route in this app is gated here instead.
  * A user is already authenticated by signing in to the Emami Apps hub; this exchanges that hub
@@ -31,15 +41,16 @@ export default function Layout() {
     const signInFromHubSession = async () => {
       const hubToken = localStorage.getItem(HUB_SESSION_TOKEN_KEY);
 
-      // if (!hubToken) {
-      //   setErrorMessage("Please sign in to Emami Apps first.");
-      //   setStatus("error");
-      //   return;
-      // }
       if (!hubToken) {
-        window.location.replace(
-          "https://www.emamiapps.in/"
-        );
+        if (IS_LOCAL_HOST) {
+          setErrorMessage(
+            "No Emami Apps session found. Sign in to Emami Apps in another tab, then reload this page."
+          );
+          setStatus("error");
+          return;
+        }
+
+        window.location.replace(EMAMI_APPS_URL);
         return;
       }
 
@@ -52,13 +63,6 @@ export default function Layout() {
 
         setStatus("ready");
       }
-      // catch (error) {
-      //   console.error("Sign-in via Emami Apps session failed:", error);
-      //   setErrorMessage(
-      //     error?.message || "Could not sign you in. Please try again from Emami Apps."
-      //   );
-      //   setStatus("error");
-      // }
       catch (error) {
 
         console.error(
@@ -66,9 +70,15 @@ export default function Layout() {
           error
         );
 
-        window.location.replace(
-          "https://www.emamiapps.in/"
-        );
+        if (IS_LOCAL_HOST) {
+          setErrorMessage(
+            error?.message || "Could not sign you in. Please try again from Emami Apps."
+          );
+          setStatus("error");
+          return;
+        }
+
+        window.location.replace(EMAMI_APPS_URL);
       }
     };
 
@@ -88,8 +98,8 @@ export default function Layout() {
           bgcolor: "#F8FAFC",
         }}
       >
-        <CircularProgress sx={{ color: "#0F5AA8" }} />
-        <Typography color="text.secondary">Signing you in…</Typography>
+        <CircularProgress sx={{ color: "#7C3AED" }} />
+        <Typography color="text.secondary">loading...</Typography>
       </Box>
     );
   }
@@ -109,16 +119,16 @@ export default function Layout() {
           px: 3,
         }}
       >
-        <Typography variant="h6" color="#0F2C5C" fontWeight={700}>
+        <Typography variant="h6" color="#3730A3" fontWeight={700}>
           Sign-in required
         </Typography>
         <Typography color="error">{errorMessage}</Typography>
         <Button
           variant="contained"
-          onClick={() => { window.location.href = "https://www.emamiapps.in"; }}
+          onClick={() => { window.location.href = EMAMI_APPS_URL; }}
           sx={{
             borderRadius: 3,
-            background: "linear-gradient(135deg,#004A8D,#0077CC)",
+            background: "linear-gradient(135deg,#3730A3,#7C3AED)",
             fontWeight: 700,
           }}
         >

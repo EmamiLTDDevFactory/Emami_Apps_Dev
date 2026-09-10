@@ -189,3 +189,401 @@ export async function fetchProvisionPOs(email: string, filter: ProvisionFilter =
   const raw = await fetchProvisionRows(buildFilterParts(email, filter));
   return raw.map(toPaymentTrackingRow);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Vendor PO Followup / Provision confirmation flow (User's "Upcoming Provision" / "Missed
+// Provision" side-pane screens) — a different entity set (ZVendorPOFollowupSet) and a different
+// write-back entity (ZProvHeader), on the SAME SAP service (ZMM_PO_FOLLOWUP_SRV) as the read-only
+// ZProvisionTrackSet reporting above. Per instruction: the GET is filtered by the signed-in user's
+// own login Email plus Zaction ('U' for Upcoming Provision), and every value sent back on submit
+// comes from what this GET actually returned for that row (or what the user typed into one of the
+// three editable fields) — nothing here is invented.
+const FOLLOWUP_ENTITY_SET = 'ZVendorPOFollowupSet';
+// Confirmed live: GET on 'ZProvHeader' 404s ("Resource not found for the segment"), GET on
+// 'ZProvHeaderSet' instead returns "Method not implemented" (i.e. the entity set exists, its
+// GET_ENTITYSET just isn't wired up) — matching this service's own "EntityType + Set" naming
+// convention (ZMarketRateHeaderSet, ZProvisionTrackSet, ZVendorPOFollowupSet) and the instruction
+// that this entity is POST-only.
+const PROV_HEADER_ENTITY_SET = 'ZProvHeaderSet';
+
+/** SAP OData v2 JSON encodes Edm.DateTime as "/Date(epochMillis)/" on the way in; ZProvHeader's
+ * POST body (RevisedDelDate/Eindt/ZinvDate) expects the same literal shape on the way out —
+ * inverse of parseODataDate above. `dateStr` is a 'YYYY-MM-DD' local date (from a date input),
+ * re-encoded at UTC midnight so it round-trips through SAP as the same calendar date regardless
+ * of the browser's timezone. */
+function toODataDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return `/Date(${Date.UTC(y, (m || 1) - 1, d || 1)})/`;
+}
+
+/** One PO/item row from ZVendorPOFollowupSet, scoped to the signed-in user's own email and a
+ * given Zaction. Fields not shown on screen (lifnr/lblni/materialCode/materialDesc/
+ * vendorName) are still captured here — this entity returns them alongside the ones the UI does
+ * display — purely so ZProvHeader's submit payload below can echo them back untouched, per
+ * instruction ("pass the data from the screen data only"), never invented. */
+export interface VendorPOFollowupRow {
+  key: string;
+  lifnr: string; // Lifnr
+  email: string; // Email
+  poNumber: string; // Ebeln
+  poItemNo: string; // Ebelp
+  entrySheetNo: string; // Lblni
+  materialCode: string; // Matnr
+  materialDesc: string; // Maktx
+  serviceText: string; // Txz01
+  vendorName: string; // Name1
+  zaction: string; // Zaction — echoed back as-is on submit
+  deliveryDate: string; // Eindt, 'YYYY-MM-DD'
+  revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or '' — as SAP already has it on file
+  provisionValue: string; // Netwr
+  currency: string; // Waers
+  invoiceNo: string; // ZzinvNo
+  invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
+  invoiceAmount: string; // ZzinvAmt
+  comments: string; // Comments
+  /** Stat — the row's real approval state on SAP: 'P' = pending approval, 'A' = approved, ' '
+   * (blank) = not yet submitted for approval. Drives Pending Approval's Pending/Approved tabs
+   * (see pending-approval.tsx) instead of relying purely on client-side session state. */
+  status: string;
+}
+
+function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorPOFollowupRow {
+  const str = (v: any) => (v != null ? String(v) : '');
+  return {
+    key: `${raw.Ebeln ?? 'po'}-${raw.Ebelp ?? index}-${raw.Lblni ?? ''}`,
+    lifnr: str(raw.Lifnr),
+    email: str(raw.Email),
+    poNumber: str(raw.Ebeln),
+    poItemNo: str(raw.Ebelp),
+    entrySheetNo: str(raw.Lblni),
+    materialCode: str(raw.Matnr),
+    materialDesc: str(raw.Maktx),
+    serviceText: str(raw.Txz01),
+    vendorName: str(raw.Name1),
+    zaction: str(raw.Zaction) || 'U',
+    deliveryDate: parseODataDate(raw.Eindt),
+    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    provisionValue: str(raw.Netwr),
+    currency: str(raw.Waers),
+    invoiceNo: str(raw.ZzinvNo),
+    invoiceDate: parseODataDate(raw.ZinvDate),
+    invoiceAmount: str(raw.ZzinvAmt),
+    comments: str(raw.Comments),
+    status: str(raw.Stat),
+  };
+}
+
+/** Upcoming Provision (Zaction 'U') — or whatever Zaction is passed — for the signed-in user,
+ * from ZVendorPOFollowupSet. Email is always sent (never omitted, same posture as every other
+ * entity in this app). */
+export async function fetchVendorPOFollowups(email: string, zaction: string): Promise<VendorPOFollowupRow[]> {
+  const params = {
+    '$format': 'json',
+    '$filter': `Email eq '${email}' and Zaction eq '${zaction}'`,
+  };
+  const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
+}
+
+/** One row's on-screen confirmation state at submit time — the editable/derived fields the user
+ * actually filled in, layered on top of the read-only VendorPOFollowupRow it came from. */
+export interface ProvisionConfirmation {
+  row: VendorPOFollowupRow;
+  delvConf: boolean; // Delivery Confirmed? — true = Yes (default), false = No
+  revisedDelDate: string; // 'YYYY-MM-DD', mandatory (and never a past date) when delvConf is false
+  comments: string; // mandatory when delvConf is false
+  invoiceNo: string; // mandatory when delvConf is true
+  invoiceDate: string; // 'YYYY-MM-DD', mandatory when delvConf is true
+  invoiceAmount: string; // mandatory when delvConf is true
+  attachmentName: string; // mandatory when delvConf is true — PDF only, enforced at the picker
+  attachmentBase64: string; // base64 file content, no data: URI prefix
+  attachmentMimeType: string; // always 'application/pdf' when attachmentBase64 is set
+}
+
+// Value/Mimetype/Filename below are NOT confirmed live on ZProvHeaderSet — there's no known
+// attachment field on this entity (unlike ZMM_PO_FOLLOWUP_SRV's sibling service where
+// non-ctc-expense's ClaimHeaderSet/CLAIMNAV got dedicated Value/Mimetype/Filename fields added by
+// SAP Basis for exactly this purpose). These three are a best-effort guess at matching that same
+// naming convention. Dev testing (2026-09-10) found two live issues in order: (1) the request
+// 413s (Payload Too Large — some gateway in front of this OData service caps the body) at full
+// attachment size, which is why the caller (upcoming.tsx/admin-upcoming.tsx, via
+// pdfAttachment.ts's ensureAttachmentUnderLimit) compresses anything over 70KB before it ever
+// reaches here; (2) once that was fixed, SAP itself returned
+// CX_DS_EDM_FACET_ERROR — "Property 'Mimetype' ... has invalid value 'application/pdf'" —
+// confirming Mimetype IS a real field on this entity, but with a declared length shorter than
+// that 15-char MIME string (this service's own $metadata endpoint refuses to serve $metadata at
+// all — some gateway/proxy issue independent of auth or query-string encoding — so the actual
+// limit couldn't be confirmed directly). Since every attachment here is a PDF by construction
+// (mandatory PDF-only picker), Mimetype is sent as the short fixed code 'PDF' instead of the full
+// MIME string — safely under any plausible field length. If SAP Basis ever confirms the real
+// facet (or a different intended value), update this and the sibling ProvisionConfirmation type.
+function toProvItem(c: ProvisionConfirmation, email: string) {
+  const { row } = c;
+  return {
+    Lifnr: row.lifnr,
+    Email: email,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.serviceText,
+    Name1: row.vendorName,
+    Zaction: row.zaction,
+    RevisedDelDate: c.delvConf ? null : toODataDate(c.revisedDelDate),
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: c.invoiceNo,
+    ZinvDate: c.invoiceDate ? toODataDate(c.invoiceDate) : null,
+    ZzinvAmt: c.invoiceAmount,
+    DelvConf: c.delvConf ? 'Y' : 'N',
+    Value: c.delvConf && c.attachmentBase64 ? c.attachmentBase64 : null,
+    Mimetype: c.delvConf && c.attachmentBase64 ? 'PDF' : null,
+    Filename: c.delvConf && c.attachmentName ? c.attachmentName.slice(0, 90) : null,
+  };
+}
+
+/** Pending Approval (Admin's side-pane tab) — every ZVendorPOFollowupSet row scoped to the signed-
+ * in Admin's own login email, no Zaction filter (per instruction: Email only) — the backend is
+ * trusted to expand scope to every user's pending items once it sees an Admin email, same posture
+ * as fetchProvisionPOs above. */
+export async function fetchPendingApprovals(email: string): Promise<VendorPOFollowupRow[]> {
+  const params = {
+    '$format': 'json',
+    '$filter': `Email eq '${email}'`,
+  };
+  const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
+}
+
+/** Sends one or more confirmed rows to ZProvHeader — a deep insert, same POST-with-nested-array
+ * shape as Market Rate's saveMarketRates. Per the given payload example, the header's own
+ * Lifnr/Email/Ebeln/Ebelp/Lblni are the FIRST item's — SEGW requires a representative key trio at
+ * the header level even though ToProvItems can span multiple PO items. Row-wise "send for
+ * approval" always calls this with a single-confirmation array. Email is always the signed-in
+ * user's own login email (never the row's echoed-back Email), same posture as every other write
+ * in this app. */
+export async function submitProvisionApproval(confirmations: ProvisionConfirmation[], email: string): Promise<void> {
+  if (confirmations.length === 0) return;
+  const first = confirmations[0].row;
+  const payload = {
+    Lifnr: first.lifnr,
+    Email: email,
+    Ebeln: first.poNumber,
+    Ebelp: first.poItemNo,
+    Lblni: first.entrySheetNo,
+    ToProvItems: confirmations.map((c) => toProvItem(c, email)),
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    // SAP's OData gateway sometimes returns HTTP 200 with an error body instead of a non-2xx status.
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not send this for approval.'));
+  }
+}
+
+/** Mass "send for approval" groups the selected rows by vendor (Lifnr) — one ZProvHeader batch
+ * per vendor, since the header requires one representative Lifnr/Ebeln/Ebelp/Lblni trio. Runs
+ * sequentially (not Promise.all) so one vendor's failure can't leave a partial, hard-to-diagnose
+ * mix of concurrent SAP writes; returns which groups failed instead of throwing on the first one,
+ * so the caller can report a per-vendor result rather than an all-or-nothing outcome. */
+export async function submitProvisionApprovalBatch(
+  confirmations: ProvisionConfirmation[],
+  email: string
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, ProvisionConfirmation[]>();
+  confirmations.forEach((c) => {
+    const key = c.row.lifnr || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    try {
+      await submitProvisionApproval(group, email);
+    } catch (err) {
+      failures.push({ lifnr, error: err instanceof Error ? err.message : 'Could not send this for approval.' });
+    }
+  }
+  return failures;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Admin's Pending Approval decision — same ZProvHeader POST endpoint and same header/deep-insert
+// shape as submitProvisionApproval above ("the same POST method, same way", per instruction), just
+// with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
+// Zaction — that field is already how this entity carries a row's state, so an Admin decision is
+// just a different Zaction value on the same write. Every other field is echoed back from what the
+// GET already returned for that row, same posture as toProvItem above — nothing invented.
+export type ApprovalDecision = 'A' | 'R';
+
+function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
+  return {
+    Lifnr: row.lifnr,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.serviceText,
+    Name1: row.vendorName,
+    Zaction: decision,
+    RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: row.invoiceNo,
+    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
+    ZzinvAmt: row.invoiceAmount,
+    Comments: row.comments,
+    DelvConf: 'Y',
+  };
+}
+
+/** One or more Pending Approval rows, approved or rejected by the signed-in Admin — same
+ * ZProvHeaderSet POST as submitProvisionApproval (header's Lifnr/Ebeln/Ebelp/Lblni taken from the
+ * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email. */
+export async function submitApprovalDecision(
+  rows: VendorPOFollowupRow[],
+  email: string,
+  decision: ApprovalDecision
+): Promise<void> {
+  if (rows.length === 0) return;
+  const first = rows[0];
+  const payload = {
+    Lifnr: first.lifnr,
+    Email: email,
+    Ebeln: first.poNumber,
+    Ebelp: first.poItemNo,
+    Lblni: first.entrySheetNo,
+    ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, payload);
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
+    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+  }
+}
+
+/** Mass approve/reject — groups the selected rows by vendor (Lifnr), one ZProvHeader POST per
+ * vendor, run sequentially (not Promise.all), same rationale as submitProvisionApprovalBatch:
+ * one vendor's failure can't leave a partial mix of concurrent SAP writes, and the caller gets a
+ * per-vendor failure list instead of an all-or-nothing throw. */
+export async function submitApprovalDecisionBatch(
+  rows: VendorPOFollowupRow[],
+  email: string,
+  decision: ApprovalDecision
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, VendorPOFollowupRow[]>();
+  rows.forEach((r) => {
+    const key = r.lifnr || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    try {
+      await submitApprovalDecision(group, email, decision);
+    } catch (err) {
+      const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
+      failures.push({ lifnr, error: err instanceof Error ? err.message : fallback });
+    }
+  }
+  return failures;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Submission History (User side-pane tab) — reads ZProvisionLogSet, a third entity set on the
+// same ZMM_PO_FOLLOWUP_SRV service. Per the ZROLE_ACTION domain (SE11), Zstatus is one of:
+//   RD = Revised Delivery Date, SA = Approval for SES, AS = SES Created,
+//   RS = SES Reversed, MS = Mail Sent to P2P
+// UNLIKE every other entity in this file, the field names below (Ebeln/Ebelp/Lifnr/Name1/Ktext1/
+// Zstatus/Zdate/Comments) are NOT confirmed against the live SEGW entity — 'ZProvisionLogSet' has
+// never been queried before now, and (per this file's header comment) this service's own
+// $metadata endpoint doesn't serve metadata at all, so there's no schema to check them against
+// offline either. They're a best-effort guess, following the exact naming convention every other
+// entity on this service already uses (Ebeln/Ebelp/Lifnr/Name1/Email are identical field names on
+// ZProvisionTrackSet and ZVendorPOFollowupSet above). toProvisionLogRow() below reads every field
+// defensively (str()/parseODataDate() already no-op to '' on anything missing/unparseable), so a
+// wrong guess here degrades to blank columns rather than a thrown error — ship this and correct
+// field names once SAP Basis confirms them or a live response shows the real ones.
+const LOG_ENTITY_SET = 'ZProvisionLogSet';
+
+/** Zstatus values per the ZROLE_ACTION domain (SE11) — see this section's header comment. */
+export type ProvisionLogStatus = 'RD' | 'SA' | 'AS' | 'RS' | 'MS';
+
+export const PROVISION_LOG_STATUSES: ProvisionLogStatus[] = ['RD', 'SA', 'AS', 'RS', 'MS'];
+
+/** Domain-fixed short description per status code, straight from ZROLE_ACTION — used as the
+ * fallback label whenever the entity itself doesn't also return a text field for it. */
+export const PROVISION_LOG_STATUS_LABELS: Record<ProvisionLogStatus, string> = {
+  RD: 'Revised Delivery Date',
+  SA: 'Approval for SES',
+  AS: 'SES Created',
+  RS: 'SES Reversed',
+  MS: 'Mail Sent to P2P',
+};
+
+/** One submission-history entry from ZProvisionLogSet — see this section's header comment on why
+ * these field names are a best-effort guess, not a confirmed mapping. */
+export interface ProvisionLogRow {
+  key: string;
+  email: string; // Email
+  poNumber: string; // Ebeln
+  poItemNo: string; // Ebelp
+  vendor: string; // Lifnr
+  vendorName: string; // Name1
+  serviceText: string; // Ktext1
+  zstatus: ProvisionLogStatus | ''; // Zstatus
+  /** Display label for zstatus — the entity's own text field if it returns one (guessed as
+   * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
+  zstatusText: string;
+  actionDate: string; // Zdate (guessed) — 'YYYY-MM-DD', when this log entry was recorded
+  remarks: string; // Comments
+}
+
+function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLogRow {
+  const str = (v: any) => (v != null ? String(v) : '');
+  const zstatus = (str(raw.Zstatus).toUpperCase() as ProvisionLogStatus) || '';
+  return {
+    key: `${raw.Ebeln ?? 'log'}-${raw.Ebelp ?? index}-${zstatus}-${index}`,
+    email: str(raw.Email),
+    poNumber: str(raw.Ebeln),
+    poItemNo: str(raw.Ebelp),
+    vendor: str(raw.Lifnr),
+    vendorName: str(raw.Name1),
+    serviceText: str(raw.Ktext1),
+    zstatus,
+    zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
+    actionDate: parseODataDate(raw.Zdate),
+    remarks: str(raw.Comments),
+  };
+}
+
+/** Submission History — every ZProvisionLogSet entry for the signed-in user's own login email,
+ * optionally narrowed to one Zstatus. Email is always sent (never omitted, same posture as every
+ * other entity in this app); Zstatus is the client-side status-chip filter, sent to SAP as a real
+ * $filter (not applied client-side) so a large history doesn't have to come down in one page just
+ * to look at one status. */
+export async function fetchProvisionLog(email: string, zstatus?: ProvisionLogStatus): Promise<ProvisionLogRow[]> {
+  const parts = [`Email eq '${email}'`];
+  if (zstatus) parts.push(`Zstatus eq '${zstatus}'`);
+  const params = { '$format': 'json', '$filter': parts.join(' and ') };
+  const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
+  const results = data?.d?.results;
+  return Array.isArray(results) ? results.map(toProvisionLogRow) : [];
+}

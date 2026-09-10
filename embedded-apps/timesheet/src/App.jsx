@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import { ToastProvider } from './context/ToastContext'
+import { ThemeProvider } from './context/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -73,23 +74,23 @@ function AppShell() {
     <div className="min-h-screen lg:flex">
       <Sidebar page={page} onNavigate={navigate} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div className="flex-1 min-w-0">
-        <header className="lg:hidden h-16 flex items-center gap-3 px-4 border-b border-slate-200 bg-white sticky top-0 z-20">
+        <header className="lg:hidden h-16 flex items-center gap-3 px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-20">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
-            className="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
           >
             ☰
           </button>
-          <span className="font-semibold text-slate-900">{PAGE_TITLES[page]}</span>
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{PAGE_TITLES[page]}</span>
         </header>
         <main className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">{content}</main>
         <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
           <button
             type="button"
             onClick={resetDemoData}
-            className="text-xs text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:underline"
+            className="text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus-visible:underline"
           >
             Reset demo data
           </button>
@@ -101,10 +102,12 @@ function AppShell() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppProvider>
-        <AppShell />
-      </AppProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AppProvider>
+          <AppShell />
+        </AppProvider>
+      </ToastProvider>
+    </ThemeProvider>
   )
 }

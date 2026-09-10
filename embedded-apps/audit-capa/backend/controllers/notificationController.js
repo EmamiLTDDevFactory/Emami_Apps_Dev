@@ -256,7 +256,8 @@ const getNotifications = async (req, res) => {
 
     const notifications =
       await notificationModel.getAllNotifications(
-        req.query.role
+        req.query.role,
+        req.query.userId
       );
 
     res.json(notifications);
@@ -320,8 +321,31 @@ const markNotificationAsRead = async (req, res) => {
   }
 };
 
+const markAllNotificationsAsRead = async (req, res) => {
+  try {
+
+    const updatedCount =
+      await notificationModel.markAllAsRead(
+        req.query.role,
+        req.query.userId
+      );
+
+    res.json({ updatedCount });
+
+  } catch (error) {
+
+    console.error(error);
+
+    res.status(500).json({
+      message: "Error marking notifications as read"
+    });
+
+  }
+};
+
 module.exports = {
   getNotifications,
   createNotification,
   markNotificationAsRead,
+  markAllNotificationsAsRead,
 };

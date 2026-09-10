@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resource Utilization — Development Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/apps/dev-tracker/style.css" />
+  <link rel="stylesheet" href="/apps/dev-tracker/resource-utilization.css" />
+</head>
+<body class="ru-page">
+  <div class="account-strip" id="accountStrip">
+    <div class="account-bar" id="accountBar"></div>
+  </div>
+
+  <div class="letterhead">
+    <div class="letterhead-row">
+      <div>
+        <a class="back-link" href="/apps/dev-tracker">&larr; Home</a><br/>
+        <span class="letterhead-org">Emami Group &middot; SAP Change &amp; Development Log</span>
+        <h1>Resource Allocation Report</h1>
+      </div>
+      <div class="letterhead-meta">Report generated <b id="reportGeneratedAt">&nbsp;</b><br/>Scope: Development Tracker &mdash; Dev Tracker module</div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Load Spectrum &mdash; All Resources</h2>
+        <span class="sub">Position = concurrent items overlapping <b id="asOfLabel"></b></span>
+      </div>
+      <div class="date-row">
+        <label for="asOfDate">View as of</label>
+        <input type="date" id="asOfDate" />
+        <button type="button" id="asOfToday" class="btn-today">Today</button>
+      </div>
+      <div class="spectrum">
+        <div id="spectrumMarkers"></div>
+        <div class="spectrum-track" id="spectrumTrack"></div>
+        <div class="spectrum-ticks" id="spectrumTicks"></div>
+      </div>
+      <div class="spectrum-legend" id="spectrumLegend"></div>
+    </div>
+
+    <div class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <h2>Resource Detail</h2>
+        <span class="sub n" id="detailSub"></span>
+      </div>
+      <div id="groups"></div>
+      <div class="empty-state" id="emptyState" style="display:none;">No developer or functional SPOC activity found in the tracker yet.</div>
+    </div>
+
+    <div class="footnotes">
+      <p><span class="mark">*</span> Concurrent count reflects items whose start&ndash;revised-target window includes the date selected above (defaults to today).</p>
+      <p><span class="mark">&dagger;</span> Planned is each concurrent item's full development-time estimate (devTime), unadjusted. Remaining assumes those days burn down in a straight line across the item's start&ndash;revised-target window and shows what's left as of the selected date &mdash; a linear estimate, not tracked effort, since the schema has no daily time log, only a planned devTime figure and phase dates.</p>
+      <p>Only items with a developer or functional SPOC assigned are in scope for this report.</p>
+    </div>
+  </div>
+
+  <script src="/apps/dev-tracker/resource-utilization.js"></script>
+</body>
+</html>

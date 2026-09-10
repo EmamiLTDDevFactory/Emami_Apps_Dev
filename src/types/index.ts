@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react-native';
 
-export type Category = 'Finance' | 'People' | 'Operations' | 'Sales' | 'Insights';
+export type Category = 'Finance' | 'People' | 'Operations' | 'Sales' | 'Insights' | 'IBD';
 
 export interface AppItem {
   id: string;

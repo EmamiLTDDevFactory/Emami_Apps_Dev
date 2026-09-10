@@ -10,6 +10,8 @@ export const colors = {
   green: '#1F7A4D',
   red: '#C0392B',
   amber: '#B45309',
+  blue: '#1D6FA5',
+  teal: '#0F766E',
   appBg: '#EEF0F4',
 };
 

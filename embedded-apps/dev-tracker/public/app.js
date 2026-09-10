@@ -10,6 +10,11 @@
   // Same localStorage key the hub writes on login (AuthContext.tsx's AUTH_EMAIL_STORAGE_KEY).
   const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
 
+  // Set once in init() from localStorage — sent on every write below so the backend can attribute
+  // item_history rows to a real person (see backend/devTracker.js's resolveDisplayName), the same
+  // "email as identity" posture admin.js's adminFetch already uses for master-data writes.
+  let currentUserEmail = null;
+
   // These start empty and get populated in-place (via .push, not reassignment) by
   // loadMasterData() at startup — FIELDS below holds direct references to these same array
   // objects, so mutating them in place means FIELDS's dropdown options update automatically
@@ -162,14 +167,14 @@
   }
   async function apiCreate(data){
     const res = await fetch(API_BASE + '/items', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+      method: 'POST', headers: {'Content-Type':'application/json', 'X-User-Email': currentUserEmail || ''}, body: JSON.stringify(data)
     });
     if(!res.ok) throw new Error((await res.json()).error || 'Failed to create item');
     return res.json();
   }
   async function apiUpdate(id, data){
     const res = await fetch(API_BASE + '/items/' + id, {
-      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+      method: 'PUT', headers: {'Content-Type':'application/json', 'X-User-Email': currentUserEmail || ''}, body: JSON.stringify(data)
     });
     if(!res.ok) throw new Error((await res.json()).error || 'Failed to update item');
     return res.json();
@@ -250,6 +255,8 @@
     });
   }
 
+  let aiOverdueOnly = false; // set by the AI command bar's "filter" intent; cleared on "Clear filter"
+
   function getFiltered(){
     const q = $('#searchInput').value.trim().toLowerCase();
     const fStatus = $('#filterStatus').value, fPriority = $('#filterPriority').value, fArea = $('#filterArea').value;
@@ -257,6 +264,10 @@
       if(fStatus && r.status !== fStatus) return false;
       if(fPriority && r.priority !== fPriority) return false;
       if(fArea && r.area !== fArea) return false;
+      if(aiOverdueOnly){
+        const isOverdue = !['Completed','Cancelled'].includes(r.status) && revisedTarget(r) && revisedTarget(r) < todayStr();
+        if(!isOverdue) return false;
+      }
       if(q){
         const hay = [r.devList, r.func, r.developer, r.remarks, r.spocFunction, r.spocIT].join(' ').toLowerCase();
         if(!hay.includes(q)) return false;
@@ -728,6 +739,85 @@
     URL.revokeObjectURL(url);
   }
 
+  function showAiResponse(text, isError, showClear){
+    const responseBox = document.getElementById('aiCommandResponse');
+    responseBox.classList.toggle('error', !!isError);
+    responseBox.style.display = 'flex';
+    responseBox.innerHTML = `<span>${escapeHtml(text)}</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        ${showClear ? `<button type="button" class="ai-clear" id="aiClearBtn">Clear filter</button>` : ''}
+        <button type="button" class="ai-response-close" id="aiResponseCloseBtn" aria-label="Dismiss">&times;</button>
+      </div>`;
+    if(showClear){
+      document.getElementById('aiClearBtn').addEventListener('click', ()=>{
+        aiOverdueOnly = false;
+        $('#filterArea').value = ''; $('#filterStatus').value = ''; $('#filterPriority').value = ''; $('#searchInput').value = '';
+        responseBox.style.display = 'none';
+        renderTable();
+      });
+    }
+    document.getElementById('aiResponseCloseBtn').addEventListener('click', ()=>{
+      responseBox.style.display = 'none';
+    });
+  }
+
+  // Handles the AI command bar's three intents: apply a filter to the existing table, prefill a
+  // new-item draft for review (never saved automatically), or show a data-grounded text answer.
+  async function handleAiCommand(){
+    const input = document.getElementById('aiCommandInput');
+    const btn = document.getElementById('aiCommandSend');
+    const message = input.value.trim();
+    if(!message) return;
+    btn.disabled = true; btn.textContent = 'Thinking...';
+    try{
+      const res = await fetch(API_BASE + '/ai/command', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({message})
+      });
+      const data = await res.json();
+      if(!res.ok){
+        showAiResponse(data.error || 'Something went wrong.', true);
+        return;
+      }
+
+      if(data.intent === 'filter'){
+        const f = data.filters || {};
+        aiOverdueOnly = !!f.overdueOnly;
+        $('#filterArea').value = f.area || '';
+        $('#filterStatus').value = f.status || '';
+        $('#filterPriority').value = f.priority || '';
+        $('#searchInput').value = f.search || '';
+        renderTable();
+        const parts = [f.area, f.status, f.priority, f.overdueOnly ? 'overdue only' : null, f.search ? `"${f.search}"` : null].filter(Boolean);
+        showAiResponse(`Filtered to: ${parts.length ? parts.join(', ') : 'all items'}.`, false, true);
+
+      } else if(data.intent === 'create_draft'){
+        openPanel(null);
+        // The edit panel's fields don't exist in the DOM until openPanel() finishes building them
+        // — a short delay lets that render complete before this writes into fields that aren't
+        // there yet.
+        setTimeout(()=>{
+          const d = data.draft || {};
+          Object.keys(d).forEach(key=>{
+            const el = document.getElementById('f_' + key);
+            if(el) el.value = d[key];
+          });
+          updateComputed(); updateSuggestion();
+        }, 50);
+        showAiResponse(`Draft ready below — review it and click Save Item when you're happy with it. Nothing is saved automatically.`, false);
+
+      } else if(data.intent === 'answer'){
+        showAiResponse(data.text, false);
+
+      } else {
+        showAiResponse('Got an unexpected response — try rephrasing your request.', true);
+      }
+    }catch(e){
+      showAiResponse(e.message || 'Something went wrong.', true);
+    }finally{
+      btn.disabled = false; btn.textContent = 'Quick Ask';
+    }
+  }
+
   // Signed-in-user chip shown on every page (see home.js's own copy, which additionally gets a
   // Sign out button — that lives only on the home page, not here, so ending the session mid-edit
   // isn't one click away from this screen).
@@ -764,6 +854,9 @@
     $('#filterPriority').addEventListener('change', renderTable);
     $('#filterArea').addEventListener('change', renderTable);
 
+    $('#aiCommandSend').addEventListener('click', handleAiCommand);
+    $('#aiCommandInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter') handleAiCommand(); });
+
     $('#moduleViewBtn').addEventListener('click', (e)=>{
       e.stopPropagation();
       $('#moduleView').classList.toggle('open');
@@ -775,14 +868,50 @@
   }
 
   async function init(){
+    try{ currentUserEmail = localStorage.getItem(HUB_EMAIL_STORAGE_KEY); }catch(e){ /* storage unavailable */ }
     renderAccountBar();
     await loadMasterData();
     await loadRows(); populateFilterOptions(); bindEvents(); renderTable();
 
     const params = new URLSearchParams(window.location.search);
+
+    // Filters handed off from the home page's own command bar — applied the same way a manual
+    // filter change would be, then the URL is cleaned so a refresh doesn't silently re-apply an
+    // old request.
+    const hasAiFilters = params.has('aiArea') || params.has('aiStatus') || params.has('aiPriority') || params.has('aiOverdue') || params.has('aiSearch');
+    if(hasAiFilters){
+      $('#filterArea').value = params.get('aiArea') || '';
+      $('#filterStatus').value = params.get('aiStatus') || '';
+      $('#filterPriority').value = params.get('aiPriority') || '';
+      $('#searchInput').value = params.get('aiSearch') || '';
+      aiOverdueOnly = params.get('aiOverdue') === '1';
+      renderTable();
+    }
+
     if(params.get('action') === 'new'){
       openPanel(null);
+
+      // A draft handed off from the home page's command bar (create_draft intent) — applied the
+      // same way this page's own command bar fills a draft, then cleared so it can't
+      // accidentally reappear on a later, unrelated "+ New Item" click.
+      const pendingDraftRaw = sessionStorage.getItem('aiPendingDraft');
+      if(pendingDraftRaw){
+        sessionStorage.removeItem('aiPendingDraft');
+        setTimeout(()=>{
+          try{
+            const d = JSON.parse(pendingDraftRaw);
+            Object.keys(d).forEach(key=>{
+              const el = document.getElementById('f_' + key);
+              if(el) el.value = d[key];
+            });
+            updateComputed(); updateSuggestion();
+          }catch(e){ /* malformed draft — leave the panel blank rather than crash */ }
+        }, 50);
+      }
+
       // Clean the URL so a refresh doesn't reopen the panel.
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if(hasAiFilters){
       window.history.replaceState({}, '', window.location.pathname);
     }
   }

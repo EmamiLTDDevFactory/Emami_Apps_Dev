@@ -1,22 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Switch, Modal } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound, ChevronRight, Lock, Search, X } from 'lucide-react-native';
+import {
+  ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound,
+  ChevronRight, Lock, Search, X, Pencil, Square, CheckSquare, FileSpreadsheet,
+} from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import type { AccessLevel, AppRole, UserAccessEntry } from '../types';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
+import { exportUsersToExcel } from '../lib/exportUsersExcel';
 import {
   listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess, setUserActive, setAccessLevel,
 } from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Tap cycles a role through this order — None (no access) -> User -> Admin -> back to None. */
-const ROLE_CYCLE: (AppRole | null)[] = [null, 'User', 'Admin'];
+/** Options offered by the app-role picker popup, in display order. */
+const ROLE_OPTIONS: (AppRole | null)[] = [null, 'User', 'Admin'];
 /** Hub-wide levels an admin can actually grant through this screen — 'Super Admin' is never
  * offered here at all, it only ever exists on the one permanently-seeded email (see db.js). */
 const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
+/** How many requests to have in flight at once for a bulk/mass operation — a courtesy to the
+ * backend's Postgres pool (max 10 connections, see backend/db.js), not a hard technical limit. */
+const BULK_CONCURRENCY = 8;
 
 /** Local, unsaved edits for one user — undefined fields mean "unchanged from the server copy". */
 type PendingChanges = {
@@ -27,6 +34,32 @@ type PendingChanges = {
 
 function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
   return user.apps.find((a) => a.appId === appId)?.role ?? null;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** Runs `fn` over every item with at most `size` in flight at a time — plain Promise.all across
+ * the full list would fire e.g. 130 queries at once against a 10-connection pool. */
+async function runBatched<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  for (const batch of chunk(items, size)) {
+    out.push(...(await Promise.all(batch.map(fn))));
+  }
+  return out;
+}
+
+/** Splits pasted text on commas, semicolons, whitespace/newlines — however someone pastes a list
+ * of emails out of Outlook/Excel/a Teams chat — then dedupes. */
+function parseBulkEmails(text: string): string[] {
+  const raw = text
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set(raw));
 }
 
 export default function UserAccessScreen() {
@@ -47,15 +80,35 @@ export default function UserAccessScreen() {
   // Keyed by email — edits made in the UI that haven't been saved to the server yet.
   const [pending, setPending] = useState<Record<string, PendingChanges>>({});
 
-  // "Add User" dialog — email + per-app roles are picked here, then submitted together via the
-  // same addAuthorizedUser/setAppAccess calls the row-level edit flow below already uses.
+  const [exporting, setExporting] = useState(false);
+
+  // Row selection, for the bulk action bar below the table.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkTargetApp, setBulkTargetApp] = useState<string | null>(null);
+
+  // Per-user detail editor (access level + app roles) — opened via the row's Edit button, so the
+  // table itself can stay one line per user instead of every row expanding permanently.
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
+
+  // App-role picker popup — tapping an app chip (in either the Add Users or per-user editor
+  // dialog) opens this instead of blindly cycling the role, so it's clear which role is being
+  // picked rather than tapping repeatedly and guessing which state you land on.
+  const [rolePickerFor, setRolePickerFor] = useState<{ context: 'add' | 'edit'; appId: string } | null>(null);
+
+  // "Add Users" dialog — Single mirrors the original one-email flow; Bulk Add accepts a
+  // pasted/typed list. Both apply the same picked app roles to whoever gets added.
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addMode, setAddMode] = useState<'single' | 'bulk'>('single');
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [bulkEmailsText, setBulkEmailsText] = useState('');
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [newUserRoles, setNewUserRoles] = useState<Record<string, AppRole | null>>({});
   const [dialogError, setDialogError] = useState('');
   const [addingUser, setAddingUser] = useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     listAuthorizedUsers().then((result) => {
       setLoading(false);
       if (result.ok && result.users) {
@@ -67,7 +120,9 @@ export default function UserAccessScreen() {
   }, []);
 
   const openAddUserModal = () => {
+    setAddMode('single');
     setNewUserEmail('');
+    setBulkEmailsText('');
     setNewUserRoles({});
     setDialogError('');
     setShowAddModal(true);
@@ -76,14 +131,11 @@ export default function UserAccessScreen() {
   const closeAddUserModal = () => {
     if (addingUser) return; // don't let a stray tap dismiss mid-save
     setShowAddModal(false);
+    setRolePickerFor(null);
   };
 
-  const cycleNewUserRole = (appId: string) => {
-    setNewUserRoles((prev) => {
-      const current = prev[appId] ?? null;
-      const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
-      return { ...prev, [appId]: next };
-    });
+  const setNewUserRole = (appId: string, role: AppRole | null) => {
+    setNewUserRoles((prev) => ({ ...prev, [appId]: role }));
   };
 
   const submitNewUser = async () => {
@@ -119,6 +171,50 @@ export default function UserAccessScreen() {
     }
   };
 
+  const parsedBulkEmails = addMode === 'bulk' ? parseBulkEmails(bulkEmailsText) : [];
+  const existingEmails = new Set(users.map((u) => u.email));
+  const bulkValidEmails = parsedBulkEmails.filter((e) => EMAIL_RE.test(e) && !existingEmails.has(e));
+  const bulkSkippedCount = parsedBulkEmails.length - bulkValidEmails.length;
+
+  const submitBulkUsers = async () => {
+    if (bulkValidEmails.length === 0) {
+      setDialogError('Paste at least one valid, new email address.');
+      return;
+    }
+    setDialogError('');
+    setAddingUser(true);
+    setBulkProgress({ done: 0, total: bulkValidEmails.length });
+    const grantedRoles = Object.entries(newUserRoles).filter((entry): entry is [string, AppRole] => !!entry[1]);
+    const added: UserAccessEntry[] = [];
+    let failures = 0;
+    try {
+      for (const batch of chunk(bulkValidEmails, 5)) {
+        const results = await Promise.all(
+          batch.map(async (email) => {
+            const res = await addAuthorizedUser(email);
+            if (!res.ok) return { email, ok: false as const };
+            const roleResults = await Promise.all(grantedRoles.map(([appId, role]) => setAppAccess(email, appId, role)));
+            const apps = grantedRoles.filter((_, i) => roleResults[i].ok).map(([appId, role]) => ({ appId, role }));
+            return { email, ok: true as const, apps };
+          })
+        );
+        for (const r of results) {
+          if (r.ok) added.push({ email: r.email, isActive: true, accessLevel: 'Viewer', apps: r.apps });
+          else failures += 1;
+        }
+        setBulkProgress((prev) => (prev ? { done: prev.done + batch.length, total: prev.total } : null));
+      }
+      setUsers((prev) => [...prev, ...added]);
+      setShowAddModal(false);
+      if (failures > 0) {
+        setError(`${added.length} of ${bulkValidEmails.length} users added. ${failures} failed — add those individually to retry.`);
+      }
+    } finally {
+      setAddingUser(false);
+      setBulkProgress(null);
+    }
+  };
+
   const removeUser = async (email: string) => {
     const result = await removeAuthorizedUser(email);
     if (!result.ok) {
@@ -129,6 +225,12 @@ export default function UserAccessScreen() {
     setPending((prev) => {
       const { [email]: _drop, ...rest } = prev;
       return rest;
+    });
+    setSelected((prev) => {
+      if (!prev.has(email)) return prev;
+      const next = new Set(prev);
+      next.delete(email);
+      return next;
     });
   };
 
@@ -157,12 +259,10 @@ export default function UserAccessScreen() {
     return actingLevel === 'Admin' && level === 'Viewer';
   };
 
-  const cycleRole = (user: UserAccessEntry, appId: string) => {
-    const current = effectiveRole(user, appId);
-    const next = ROLE_CYCLE[(ROLE_CYCLE.indexOf(current) + 1) % ROLE_CYCLE.length];
+  const setPendingRole = (user: UserAccessEntry, appId: string, role: AppRole | null) => {
     setPending((prev) => {
       const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: next } } };
+      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: role } } };
     });
   };
 
@@ -220,8 +320,127 @@ export default function UserAccessScreen() {
         const { [user.email]: _drop, ...rest } = prev;
         return rest;
       });
+      setEditingEmail((current) => (current === user.email ? null : current));
     } finally {
       setSaving(null);
+    }
+  };
+
+  // --- Selection + bulk actions -------------------------------------------------------------
+  const toggleSelected = (email: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
+
+  const allVisibleSelected = visibleUsers.length > 0 && visibleUsers.every((u) => selected.has(u.email));
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleUsers.forEach((u) => next.delete(u.email));
+      } else {
+        visibleUsers.forEach((u) => next.add(u.email));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelected(new Set());
+    setBulkTargetApp(null);
+    setBulkNote('');
+  };
+
+  const bulkSetAccessLevel = async (level: AccessLevel) => {
+    const targets = users.filter((u) => selected.has(u.email));
+    const eligible = targets.filter((u) => canSetAccessLevel(u, level));
+    const skipped = targets.length - eligible.length;
+    if (eligible.length === 0) {
+      setBulkNote('None of the selected users are eligible for that change.');
+      return;
+    }
+    if (!userEmail) return;
+    setBulkBusy(true);
+    setBulkNote('');
+    try {
+      const results = await runBatched(eligible, BULK_CONCURRENCY, (u) => setAccessLevel(u.email, level, userEmail));
+      const okEmails = new Set(eligible.filter((_, i) => results[i].ok).map((u) => u.email));
+      const failed = eligible.length - okEmails.size;
+      setUsers((prev) => prev.map((u) => (okEmails.has(u.email) ? { ...u, accessLevel: level } : u)));
+      setBulkNote(
+        `Set ${okEmails.size} of ${eligible.length} selected user(s) to ${level}.` +
+          (skipped ? ` ${skipped} skipped (not eligible).` : '') +
+          (failed ? ` ${failed} failed.` : '')
+      );
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkSetActive = async (isActive: boolean) => {
+    const targets = users.filter((u) => selected.has(u.email));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    setBulkNote('');
+    try {
+      const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setUserActive(u.email, isActive));
+      const okEmails = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
+      const failed = targets.length - okEmails.size;
+      setUsers((prev) => prev.map((u) => (okEmails.has(u.email) ? { ...u, isActive } : u)));
+      setBulkNote(`${isActive ? 'Activated' : 'Deactivated'} ${okEmails.size} of ${targets.length} selected user(s).` + (failed ? ` ${failed} failed.` : ''));
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkSetAppRole = async (role: AppRole | null) => {
+    if (!bulkTargetApp) {
+      setBulkNote('Pick an app to target first.');
+      return;
+    }
+    const targetAppId = bulkTargetApp;
+    const targets = users.filter((u) => selected.has(u.email));
+    if (targets.length === 0) return;
+    setBulkBusy(true);
+    setBulkNote('');
+    try {
+      const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setAppAccess(u.email, targetAppId, role));
+      const okEmails = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
+      const failed = targets.length - okEmails.size;
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (!okEmails.has(u.email)) return u;
+          const apps = u.apps.filter((a) => a.appId !== targetAppId);
+          if (role) apps.push({ appId: targetAppId, role });
+          return { ...u, apps };
+        })
+      );
+      const appLabel = APPS.find((a) => a.id === targetAppId)?.name ?? targetAppId;
+      setBulkNote(
+        `Set ${appLabel} to ${role ?? 'None'} for ${okEmails.size} of ${targets.length} selected user(s).` +
+          (failed ? ` ${failed} failed.` : '')
+      );
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      await exportUsersToExcel(visibleUsers, APPS);
+    } catch {
+      setError('Could not export the roster. Please try again.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -244,6 +463,13 @@ export default function UserAccessScreen() {
       </ScreenScaffold>
     );
   }
+
+  const editTarget = editingEmail ? users.find((u) => u.email === editingEmail) ?? null : null;
+  const closeEdit = () => {
+    if (editTarget && saving === editTarget.email) return; // don't let a stray tap dismiss mid-save
+    setEditingEmail(null);
+    setRolePickerFor(null);
+  };
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
@@ -277,7 +503,8 @@ export default function UserAccessScreen() {
           <Text style={styles.noticeText}>
             This list is the source of truth for who can sign in to EmamiApps at all — an email
             not listed here (or marked inactive) is blocked at login, regardless of sign-in method.
-            Tap an app chip to cycle its role: None → User → Admin. Changes save per-user via Save.
+            Tap the pencil to edit a user's access level and app roles, tick rows to change many at
+            once, or use Export/Add Users above the table.
           </Text>
         </View>
 
@@ -292,160 +519,248 @@ export default function UserAccessScreen() {
             </View>
           </View>
 
-          <View style={[styles.inputWrap, styles.searchUsersWrap]}>
-            <Search size={14} color={colors.inkSoft} />
-            <TextInput
-              value={userSearch}
-              onChangeText={setUserSearch}
-              placeholder="Search by email…"
-              placeholderTextColor={colors.inkSoft}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              style={styles.input}
-              accessibilityLabel="Search authorized users by email"
-            />
-            {!!userSearch && (
-              <Pressable onPress={() => setUserSearch('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
-                <X size={14} color={colors.inkSoft} />
-              </Pressable>
-            )}
+          <View style={styles.toolbarRow}>
+            <View style={[styles.inputWrap, styles.flex1]}>
+              <Search size={14} color={colors.inkSoft} />
+              <TextInput
+                value={userSearch}
+                onChangeText={setUserSearch}
+                placeholder="Search by email…"
+                placeholderTextColor={colors.inkSoft}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={styles.input}
+                accessibilityLabel="Search authorized users by email"
+              />
+              {!!userSearch && (
+                <Pressable onPress={() => setUserSearch('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+                  <X size={14} color={colors.inkSoft} />
+                </Pressable>
+              )}
+            </View>
+            <Pressable
+              style={styles.exportTriggerBtn}
+              onPress={handleExport}
+              disabled={exporting || visibleUsers.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Export the visible roster to Excel"
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color={colors.ink} />
+              ) : (
+                <>
+                  <FileSpreadsheet size={14} color={colors.ink} />
+                  <Text style={styles.exportBtnText}>Export</Text>
+                </>
+              )}
+            </Pressable>
+            <Pressable style={styles.addTriggerBtn} onPress={openAddUserModal} accessibilityRole="button" accessibilityLabel="Add users">
+              <Plus size={14} color={colors.white} />
+              <Text style={styles.addBtnText}>Add Users</Text>
+            </Pressable>
           </View>
-
-          <Pressable style={styles.addTriggerBtn} onPress={openAddUserModal} accessibilityRole="button" accessibilityLabel="Add user">
-            <Plus size={14} color={colors.white} />
-            <Text style={styles.addBtnText}>Add User</Text>
-          </Pressable>
           {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+          {selected.size > 0 && (
+            <View style={styles.bulkBar}>
+              <View style={styles.bulkBarHeaderRow}>
+                <Text style={styles.bulkBarTitle}>{selected.size} selected</Text>
+                <Pressable onPress={clearSelection} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear selection">
+                  <X size={14} color={colors.inkSoft} />
+                </Pressable>
+              </View>
+
+              <View style={styles.bulkRow}>
+                <Text style={styles.bulkLabel}>Access level</Text>
+                {GRANTABLE_LEVELS.map((level) => (
+                  <Pressable
+                    key={level}
+                    onPress={() => bulkSetAccessLevel(level)}
+                    disabled={bulkBusy}
+                    style={styles.bulkChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Set access level to ${level} for selected users`}
+                  >
+                    <Text style={styles.bulkChipText}>{level}</Text>
+                  </Pressable>
+                ))}
+                <View style={styles.bulkDivider} />
+                <Text style={styles.bulkLabel}>Status</Text>
+                <Pressable onPress={() => bulkSetActive(true)} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Activate selected users">
+                  <Text style={styles.bulkChipText}>Activate</Text>
+                </Pressable>
+                <Pressable onPress={() => bulkSetActive(false)} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Deactivate selected users">
+                  <Text style={styles.bulkChipText}>Deactivate</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.bulkRow}>
+                <Text style={styles.bulkLabel}>App role</Text>
+                <View style={styles.appChipsRow}>
+                  {APPS.map((app) => {
+                    const Icon = app.icon;
+                    const accent = appColor(app.id);
+                    const targeted = bulkTargetApp === app.id;
+                    return (
+                      <Pressable
+                        key={app.id}
+                        onPress={() => setBulkTargetApp(targeted ? null : app.id)}
+                        style={[styles.appChip, { borderColor: targeted ? accent : colors.border }, targeted && { backgroundColor: `${accent}14` }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Target ${app.name} for a bulk role change`}
+                        accessibilityState={{ selected: targeted }}
+                      >
+                        <Icon size={12.5} color={targeted ? accent : colors.inkSoft} />
+                        <Text style={[styles.appChipText, { color: targeted ? accent : colors.inkSoft }]}>{app.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {!!bulkTargetApp && (
+                  <View style={styles.bulkRow}>
+                    <Text style={styles.bulkLabel}>Set to</Text>
+                    <Pressable onPress={() => bulkSetAppRole('User')} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Set role to User for selected users">
+                      <Text style={styles.bulkChipText}>User</Text>
+                    </Pressable>
+                    <Pressable onPress={() => bulkSetAppRole('Admin')} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Set role to Admin for selected users">
+                      <Text style={styles.bulkChipText}>Admin</Text>
+                    </Pressable>
+                    <Pressable onPress={() => bulkSetAppRole(null)} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Remove role for selected users">
+                      <Text style={styles.bulkChipText}>None</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+
+              {bulkBusy && <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />}
+              {!!bulkNote && <Text style={styles.bulkNoteText}>{bulkNote}</Text>}
+            </View>
+          )}
 
           {loading ? (
             <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
           ) : (
-          <View style={styles.list}>
-            {visibleUsers.length === 0 && (
-              <Text style={styles.emptyText}>
-                {userSearch.trim() ? `No authorized users match "${userSearch.trim()}".` : 'No authorized users yet.'}
-              </Text>
-            )}
-            {visibleUsers.map((user, i) => {
-              const active = effectiveActive(user);
-              const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
-              const dirty = isDirty(user);
-              return (
-                <View key={user.email} style={[styles.userRow, i < visibleUsers.length - 1 && styles.userRowBorder, !active && styles.userRowInactive]}>
-                  <View style={styles.userHeaderRow}>
-                    <View style={styles.flex1}>
-                      <Text style={styles.userEmail}>{user.email}</Text>
-                      <Text style={styles.userCount}>{grantedCount}/{APPS.length} apps · {active ? 'Active' : 'Inactive'}</Text>
-                    </View>
-                    <View style={styles.userHeaderRight}>
-                      <Switch
-                        value={active}
-                        onValueChange={() => toggleActivePending(user)}
-                        trackColor={{ true: colors.rust, false: colors.border }}
-                        accessibilityLabel={`${active ? 'Deactivate' : 'Activate'} ${user.email}`}
-                      />
-                      <Pressable
-                        onPress={() => removeUser(user.email)}
-                        hitSlop={8}
-                        style={styles.removeBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${user.email}`}
-                      >
-                        <Trash2 size={14} color={colors.rust} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  <View style={styles.accessLevelRow}>
-                    <Text style={styles.accessLevelLabel}>Access level</Text>
-                    {user.accessLevel === 'Super Admin' ? (
-                      <View style={styles.superAdminBadge}>
-                        <ShieldCheck size={12} color={colors.rust} />
-                        <Text style={styles.superAdminBadgeText}>Super Admin · Fixed</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.accessLevelChips}>
-                        {GRANTABLE_LEVELS.map((level) => {
-                          const isCurrent = effectiveAccessLevel(user) === level;
-                          const allowed = canSetAccessLevel(user, level);
-                          return (
-                            <Pressable
-                              key={level}
-                              onPress={() => setAccessLevelPending(user, level)}
-                              disabled={!allowed}
-                              style={[
-                                styles.accessLevelChip,
-                                isCurrent && styles.accessLevelChipActive,
-                                !allowed && !isCurrent && styles.accessLevelChipDisabled,
-                              ]}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Set ${user.email} to ${level}`}
-                              accessibilityState={{ selected: isCurrent, disabled: !allowed }}
-                            >
-                              {!allowed && !isCurrent && <Lock size={10} color={colors.inkSoft} />}
-                              <Text style={[styles.accessLevelChipText, isCurrent && styles.accessLevelChipTextActive]}>
-                                {level}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.appChipsRow}>
-                    {APPS.map((app) => {
-                      const role = effectiveRole(user, app.id);
-                      const accent = appColor(app.id);
-                      const Icon = app.icon;
-                      return (
-                        <Pressable
-                          key={app.id}
-                          onPress={() => cycleRole(user, app.id)}
-                          style={[
-                            styles.appChip,
-                            { borderColor: role ? accent : colors.border },
-                            role && { backgroundColor: `${accent}14` },
-                          ]}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${app.name} access for ${user.email}: ${role ?? 'None'}. Tap to change.`}
-                        >
-                          <Icon size={12.5} color={role ? accent : colors.inkSoft} />
-                          <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
-                            {app.name}{role ? ` · ${role}` : ''}
-                          </Text>
-                          {role === 'Admin' && <Check size={12} color={accent} />}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-
-                  {dirty && (
-                    <Pressable
-                      style={styles.saveBtn}
-                      onPress={() => saveUser(user)}
-                      disabled={saving === user.email}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Save changes for ${user.email}`}
-                    >
-                      {saving === user.email ? (
-                        <ActivityIndicator size="small" color={colors.white} />
-                      ) : (
-                        <>
-                          <Save size={13} color={colors.white} />
-                          <Text style={styles.saveBtnText}>Save changes</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  )}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>
+              <View style={styles.tableWrap}>
+                <View style={styles.tableHeaderRow}>
+                  <Pressable
+                    onPress={toggleSelectAll}
+                    style={styles.checkboxCell}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel="Select all visible users"
+                    accessibilityState={{ checked: allVisibleSelected }}
+                  >
+                    {allVisibleSelected ? <CheckSquare size={16} color={colors.rust} /> : <Square size={16} color={colors.inkSoft} />}
+                  </Pressable>
+                  <Text style={[styles.tableHeaderText, styles.emailCell]}>Email</Text>
+                  <Text style={[styles.tableHeaderText, styles.accessCell]}>Access</Text>
+                  <Text style={[styles.tableHeaderText, styles.appsCell]}>Apps</Text>
+                  <Text style={[styles.tableHeaderText, styles.activeCell]}>Active</Text>
+                  <Text style={[styles.tableHeaderText, styles.actionsCell]}>Actions</Text>
                 </View>
-              );
-            })}
-          </View>
+
+                {visibleUsers.length === 0 && (
+                  <Text style={styles.emptyText}>
+                    {userSearch.trim() ? `No authorized users match "${userSearch.trim()}".` : 'No authorized users yet.'}
+                  </Text>
+                )}
+
+                {/* Bounded to its own scroll area (rather than growing with the page) so the header,
+                    search box, and bulk bar above stay put while reviewing a long roster — no more
+                    scrolling the whole screen just to get past a handful of users. */}
+                <ScrollView style={styles.tableBody} nestedScrollEnabled showsVerticalScrollIndicator>
+                {visibleUsers.map((user, i) => {
+                  const active = effectiveActive(user);
+                  const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
+                  const dirty = isDirty(user);
+                  const accessLevel = effectiveAccessLevel(user);
+                  return (
+                    <View
+                      key={user.email}
+                      style={[styles.tableRow, i < visibleUsers.length - 1 && styles.tableRowBorder, !active && styles.tableRowInactive]}
+                    >
+                      <Pressable
+                        onPress={() => toggleSelected(user.email)}
+                        style={styles.checkboxCell}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={`Select ${user.email}`}
+                        accessibilityState={{ checked: selected.has(user.email) }}
+                      >
+                        {selected.has(user.email) ? <CheckSquare size={16} color={colors.rust} /> : <Square size={16} color={colors.inkSoft} />}
+                      </Pressable>
+
+                      <View style={styles.emailCell}>
+                        <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+                      </View>
+
+                      <View style={styles.accessCell}>
+                        {user.accessLevel === 'Super Admin' ? (
+                          <View style={styles.superAdminBadgeCompact}>
+                            <ShieldCheck size={11} color={colors.rust} />
+                            <Text style={styles.superAdminBadgeTextCompact}>Super</Text>
+                          </View>
+                        ) : (
+                          <View style={[styles.accessLevelBadge, accessLevel === 'Admin' && styles.accessLevelBadgeAdmin]}>
+                            <Text style={[styles.accessLevelBadgeText, accessLevel === 'Admin' && styles.accessLevelBadgeTextAdmin]}>
+                              {accessLevel}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.appsCell}>
+                        <Text style={styles.appsCountText}>{grantedCount}/{APPS.length}</Text>
+                      </View>
+
+                      <View style={styles.activeCell}>
+                        <Switch
+                          value={active}
+                          onValueChange={() => toggleActivePending(user)}
+                          trackColor={{ true: colors.rust, false: colors.border }}
+                          accessibilityLabel={`${active ? 'Deactivate' : 'Activate'} ${user.email}`}
+                        />
+                      </View>
+
+                      <View style={styles.actionsCell}>
+                        {dirty && (
+                          <Pressable
+                            onPress={() => saveUser(user)}
+                            disabled={saving === user.email}
+                            style={styles.iconBtnSave}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Save changes for ${user.email}`}
+                          >
+                            {saving === user.email ? <ActivityIndicator size="small" color={colors.white} /> : <Save size={13} color={colors.white} />}
+                          </Pressable>
+                        )}
+                        <Pressable
+                          onPress={() => setEditingEmail(user.email)}
+                          style={styles.iconBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit access level and app roles for ${user.email}`}
+                        >
+                          <Pencil size={14} color={colors.ink} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => removeUser(user.email)}
+                          style={styles.iconBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${user.email}`}
+                        >
+                          <Trash2 size={14} color={colors.rust} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+                </ScrollView>
+              </View>
+            </ScrollView>
           )}
         </View>
       </ScrollView>
 
+      {/* Add Users — Single mirrors the original one-email flow; Bulk Add accepts a pasted list. */}
       <Modal visible={showAddModal} transparent animationType="fade" onRequestClose={closeAddUserModal}>
         {/* No accessibilityRole="button" here — this wraps other button-role Pressables (close,
             chips, cancel, save), and react-native-web renders that role as a literal <button>;
@@ -454,28 +769,73 @@ export default function UserAccessScreen() {
           {/* Swallow taps on the card itself so they don't bubble to the backdrop's onPress. */}
           <Pressable style={styles.dialogCard} onPress={() => {}}>
             <View style={styles.dialogHeaderRow}>
-              <Text style={styles.dialogTitle}>Add User</Text>
+              <Text style={styles.dialogTitle}>Add Users</Text>
               <Pressable onPress={closeAddUserModal} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <X size={18} color={colors.inkSoft} />
               </Pressable>
             </View>
 
-            <View style={styles.inputWrap}>
-              <Mail size={14} color={colors.inkSoft} />
-              <TextInput
-                value={newUserEmail}
-                onChangeText={(v) => { setNewUserEmail(v); if (dialogError) setDialogError(''); }}
-                placeholder="name@emamigroup.com"
-                placeholderTextColor={colors.inkSoft}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoFocus
-                style={styles.input}
-                accessibilityLabel="Email address to grant access"
-              />
+            <View style={styles.tabRow}>
+              <Pressable
+                onPress={() => setAddMode('single')}
+                style={[styles.tabBtn, addMode === 'single' && styles.tabBtnActive]}
+                accessibilityRole="button"
+                accessibilityLabel="Add a single user"
+                accessibilityState={{ selected: addMode === 'single' }}
+              >
+                <Text style={[styles.tabBtnText, addMode === 'single' && styles.tabBtnTextActive]}>Single</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAddMode('bulk')}
+                style={[styles.tabBtn, addMode === 'bulk' && styles.tabBtnActive]}
+                accessibilityRole="button"
+                accessibilityLabel="Add multiple users at once"
+                accessibilityState={{ selected: addMode === 'bulk' }}
+              >
+                <Text style={[styles.tabBtnText, addMode === 'bulk' && styles.tabBtnTextActive]}>Bulk Add</Text>
+              </Pressable>
             </View>
 
-            <Text style={styles.dialogSectionLabel}>Assign app roles</Text>
+            {addMode === 'single' ? (
+              <View style={styles.inputWrap}>
+                <Mail size={14} color={colors.inkSoft} />
+                <TextInput
+                  value={newUserEmail}
+                  onChangeText={(v) => { setNewUserEmail(v); if (dialogError) setDialogError(''); }}
+                  placeholder="name@emamigroup.com"
+                  placeholderTextColor={colors.inkSoft}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoFocus
+                  style={styles.input}
+                  accessibilityLabel="Email address to grant access"
+                />
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  value={bulkEmailsText}
+                  onChangeText={(v) => { setBulkEmailsText(v); if (dialogError) setDialogError(''); }}
+                  placeholder={'Paste emails — separated by commas, spaces, or one per line'}
+                  placeholderTextColor={colors.inkSoft}
+                  autoCapitalize="none"
+                  multiline
+                  numberOfLines={5}
+                  style={styles.bulkTextArea}
+                  accessibilityLabel="Paste multiple email addresses, one per line or comma-separated"
+                />
+                {parsedBulkEmails.length > 0 && (
+                  <Text style={styles.bulkParseHint}>
+                    {bulkValidEmails.length} new email{bulkValidEmails.length === 1 ? '' : 's'} ready to add
+                    {bulkSkippedCount > 0 ? ` · ${bulkSkippedCount} skipped (invalid or already has access)` : ''}
+                  </Text>
+                )}
+              </>
+            )}
+
+            <Text style={styles.dialogSectionLabel}>
+              Assign app roles{addMode === 'bulk' ? ' (applied to every user added)' : ''}
+            </Text>
             <View style={styles.appChipsRow}>
               {APPS.map((app) => {
                 const role = newUserRoles[app.id] ?? null;
@@ -484,14 +844,14 @@ export default function UserAccessScreen() {
                 return (
                   <Pressable
                     key={app.id}
-                    onPress={() => cycleNewUserRole(app.id)}
+                    onPress={() => setRolePickerFor({ context: 'add', appId: app.id })}
                     style={[
                       styles.appChip,
                       { borderColor: role ? accent : colors.border },
                       role && { backgroundColor: `${accent}14` },
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel={`${app.name} access for new user: ${role ?? 'None'}. Tap to change.`}
+                    accessibilityLabel={`${app.name} access for new user(s): ${role ?? 'None'}. Tap to choose a role.`}
                   >
                     <Icon size={12.5} color={role ? accent : colors.inkSoft} />
                     <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
@@ -504,22 +864,196 @@ export default function UserAccessScreen() {
             </View>
 
             {!!dialogError && <Text style={styles.errorText}>{dialogError}</Text>}
+            {!!bulkProgress && <Text style={styles.bulkParseHint}>Adding {bulkProgress.done}/{bulkProgress.total}…</Text>}
 
             <View style={styles.dialogFooterRow}>
               <Pressable style={styles.dialogCancelBtn} onPress={closeAddUserModal} disabled={addingUser} accessibilityRole="button" accessibilityLabel="Cancel">
                 <Text style={styles.dialogCancelBtnText}>Cancel</Text>
               </Pressable>
-              <Pressable style={[styles.saveBtn, styles.dialogSaveBtn]} onPress={submitNewUser} disabled={addingUser} accessibilityRole="button" accessibilityLabel="Save new user">
+              <Pressable
+                style={[styles.saveBtn, styles.dialogSaveBtn]}
+                onPress={addMode === 'single' ? submitNewUser : submitBulkUsers}
+                disabled={addingUser}
+                accessibilityRole="button"
+                accessibilityLabel={addMode === 'single' ? 'Save new user' : 'Add all pasted users'}
+              >
                 {addingUser ? (
                   <ActivityIndicator size="small" color={colors.white} />
                 ) : (
                   <>
                     <Save size={13} color={colors.white} />
-                    <Text style={styles.saveBtnText}>Save</Text>
+                    <Text style={styles.saveBtnText}>
+                      {addMode === 'single' ? 'Save' : `Add ${bulkValidEmails.length || ''} Users`}
+                    </Text>
                   </>
                 )}
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Per-user editor — access level + app roles, opened via the table row's Edit button. */}
+      <Modal visible={!!editTarget} transparent animationType="fade" onRequestClose={closeEdit}>
+        <Pressable style={styles.backdrop} onPress={closeEdit}>
+          <Pressable style={styles.dialogCard} onPress={() => {}}>
+            {editTarget && (
+              <>
+                <View style={styles.dialogHeaderRow}>
+                  <Text style={styles.dialogTitle} numberOfLines={1}>{editTarget.email}</Text>
+                  <Pressable onPress={closeEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                    <X size={18} color={colors.inkSoft} />
+                  </Pressable>
+                </View>
+
+                <View style={styles.accessLevelRow}>
+                  <Text style={styles.accessLevelLabel}>Access level</Text>
+                  {editTarget.accessLevel === 'Super Admin' ? (
+                    <View style={styles.superAdminBadge}>
+                      <ShieldCheck size={12} color={colors.rust} />
+                      <Text style={styles.superAdminBadgeText}>Super Admin · Fixed</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.accessLevelChips}>
+                      {GRANTABLE_LEVELS.map((level) => {
+                        const isCurrent = effectiveAccessLevel(editTarget) === level;
+                        const allowed = canSetAccessLevel(editTarget, level);
+                        return (
+                          <Pressable
+                            key={level}
+                            onPress={() => setAccessLevelPending(editTarget, level)}
+                            disabled={!allowed}
+                            style={[
+                              styles.accessLevelChip,
+                              isCurrent && styles.accessLevelChipActive,
+                              !allowed && !isCurrent && styles.accessLevelChipDisabled,
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set ${editTarget.email} to ${level}`}
+                            accessibilityState={{ selected: isCurrent, disabled: !allowed }}
+                          >
+                            {!allowed && !isCurrent && <Lock size={10} color={colors.inkSoft} />}
+                            <Text style={[styles.accessLevelChipText, isCurrent && styles.accessLevelChipTextActive]}>
+                              {level}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.dialogSectionLabel}>App roles</Text>
+                <View style={styles.appChipsRow}>
+                  {APPS.map((app) => {
+                    const role = effectiveRole(editTarget, app.id);
+                    const accent = appColor(app.id);
+                    const Icon = app.icon;
+                    return (
+                      <Pressable
+                        key={app.id}
+                        onPress={() => setRolePickerFor({ context: 'edit', appId: app.id })}
+                        style={[
+                          styles.appChip,
+                          { borderColor: role ? accent : colors.border },
+                          role && { backgroundColor: `${accent}14` },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${app.name} access for ${editTarget.email}: ${role ?? 'None'}. Tap to choose a role.`}
+                      >
+                        <Icon size={12.5} color={role ? accent : colors.inkSoft} />
+                        <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
+                          {app.name}{role ? ` · ${role}` : ''}
+                        </Text>
+                        {role === 'Admin' && <Check size={12} color={accent} />}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+                <View style={styles.dialogFooterRow}>
+                  <Pressable style={styles.dialogCancelBtn} onPress={closeEdit} accessibilityRole="button" accessibilityLabel="Close">
+                    <Text style={styles.dialogCancelBtnText}>Close</Text>
+                  </Pressable>
+                  {isDirty(editTarget) && (
+                    <Pressable
+                      style={[styles.saveBtn, styles.dialogSaveBtn]}
+                      onPress={() => saveUser(editTarget)}
+                      disabled={saving === editTarget.email}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Save changes for ${editTarget.email}`}
+                    >
+                      {saving === editTarget.email ? (
+                        <ActivityIndicator size="small" color={colors.white} />
+                      ) : (
+                        <>
+                          <Save size={13} color={colors.white} />
+                          <Text style={styles.saveBtnText}>Save changes</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  )}
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* App-role picker — opened by tapping an app chip in either dialog above, instead of
+          blindly cycling the role on tap. */}
+      <Modal visible={!!rolePickerFor} transparent animationType="fade" onRequestClose={() => setRolePickerFor(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setRolePickerFor(null)}>
+          <Pressable style={[styles.dialogCard, styles.rolePickerCard]} onPress={() => {}}>
+            {rolePickerFor && (() => {
+              const app = APPS.find((a) => a.id === rolePickerFor.appId);
+              if (!app) return null;
+              const Icon = app.icon;
+              const accent = appColor(app.id);
+              const currentRole = rolePickerFor.context === 'add'
+                ? newUserRoles[rolePickerFor.appId] ?? null
+                : editTarget ? effectiveRole(editTarget, rolePickerFor.appId) : null;
+              const choose = (role: AppRole | null) => {
+                if (rolePickerFor.context === 'add') setNewUserRole(rolePickerFor.appId, role);
+                else if (editTarget) setPendingRole(editTarget, rolePickerFor.appId, role);
+                setRolePickerFor(null);
+              };
+              return (
+                <>
+                  <View style={styles.dialogHeaderRow}>
+                    <View style={styles.rolePickerTitleRow}>
+                      <Icon size={16} color={accent} />
+                      <Text style={styles.dialogTitle}>{app.name}</Text>
+                    </View>
+                    <Pressable onPress={() => setRolePickerFor(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                      <X size={18} color={colors.inkSoft} />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.rolePickerHint}>Choose this person's access for {app.name}</Text>
+                  {ROLE_OPTIONS.map((role) => {
+                    const isCurrent = currentRole === role;
+                    const label = role ?? 'None';
+                    return (
+                      <Pressable
+                        key={label}
+                        onPress={() => choose(role)}
+                        style={[styles.rolePickerOption, isCurrent && styles.rolePickerOptionActive]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Set ${app.name} access to ${label}`}
+                        accessibilityState={{ selected: isCurrent }}
+                      >
+                        <Text style={[styles.rolePickerOptionText, isCurrent && styles.rolePickerOptionTextActive]}>
+                          {label}
+                        </Text>
+                        {isCurrent && <Check size={15} color={colors.rust} />}
+                      </Pressable>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </Pressable>
         </Pressable>
       </Modal>
@@ -604,6 +1138,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     color: colors.rust,
   },
+  superAdminBadgeCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: `${colors.rust}14`,
+  },
+  superAdminBadgeTextCompact: {
+    fontSize: 10.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.rust,
+  },
   accessLevelChips: {
     flexDirection: 'row',
     gap: 8,
@@ -634,6 +1183,27 @@ const styles = StyleSheet.create({
   accessLevelChipTextActive: {
     color: colors.rust,
     fontFamily: fonts.sansSemiBold,
+  },
+  accessLevelBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: colors.appBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  accessLevelBadgeAdmin: {
+    backgroundColor: `${colors.rust}14`,
+    borderColor: colors.rust,
+  },
+  accessLevelBadgeText: {
+    fontSize: 10.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+  },
+  accessLevelBadgeTextAdmin: {
+    color: colors.rust,
   },
   ssoLinkCard: {
     flexDirection: 'row',
@@ -694,7 +1264,10 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     marginTop: 1,
   },
-  searchUsersWrap: {
+  toolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginBottom: 10,
   },
   inputWrap: {
@@ -730,6 +1303,23 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     color: colors.white,
   },
+  exportTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    height: 40,
+    backgroundColor: colors.white,
+  },
+  exportBtnText: {
+    fontSize: 13,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
   errorText: {
     fontSize: 11.5,
     fontFamily: fonts.sansMedium,
@@ -739,12 +1329,73 @@ const styles = StyleSheet.create({
   loadingIndicator: {
     marginTop: 18,
   },
-  list: {
-    marginTop: 18,
+  bulkBar: {
+    borderWidth: 1,
+    borderColor: `${colors.rust}33`,
+    backgroundColor: `${colors.rust}0d`,
+    borderRadius: radii.lg,
+    padding: 12,
+    marginBottom: 12,
+    gap: 10,
+  },
+  bulkBarHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bulkBarTitle: {
+    fontSize: 12.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
+  bulkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  bulkLabel: {
+    fontSize: 11,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+    marginRight: 2,
+  },
+  bulkDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: `${colors.rust}33`,
+    marginHorizontal: 4,
+  },
+  bulkChip: {
+    borderWidth: 1,
+    borderColor: colors.rust,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.white,
+  },
+  bulkChipText: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.rust,
+  },
+  bulkNoteText: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansMedium,
+    color: colors.ink,
+  },
+  tableScroll: {
+    marginTop: 8,
+  },
+  tableWrap: {
+    minWidth: '100%',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,
     overflow: 'hidden',
+  },
+  tableBody: {
+    maxHeight: 460,
   },
   emptyText: {
     padding: 20,
@@ -753,42 +1404,87 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansRegular,
     color: colors.inkSoft,
   },
-  userRow: {
-    padding: 14,
-  },
-  userRowBorder: {
+  tableHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: colors.appBg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  userRowInactive: {
+  tableHeaderText: {
+    fontSize: 10.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.white,
+  },
+  tableRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableRowInactive: {
     backgroundColor: colors.appBg,
     opacity: 0.7,
   },
-  userHeaderRow: {
-    flexDirection: 'row',
+  checkboxCell: {
+    width: 24,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-    gap: 10,
+    justifyContent: 'center',
   },
-  userHeaderRight: {
+  emailCell: {
+    width: 240,
+  },
+  accessCell: {
+    width: 90,
+  },
+  appsCell: {
+    width: 50,
+  },
+  activeCell: {
+    width: 44,
+  },
+  actionsCell: {
+    width: 90,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 6,
   },
   userEmail: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontFamily: fonts.sansSemiBold,
     color: colors.ink,
   },
-  userCount: {
-    fontSize: 11,
+  appsCountText: {
+    fontSize: 11.5,
     fontFamily: fonts.sansMedium,
     color: colors.inkSoft,
-    marginTop: 2,
   },
-  removeBtn: {
-    padding: 4,
+  iconBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.appBg,
+  },
+  iconBtnSave: {
+    width: 26,
+    height: 26,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.rust,
   },
   appChipsRow: {
     flexDirection: 'row',
@@ -834,6 +1530,7 @@ const styles = StyleSheet.create({
   dialogCard: {
     width: '100%',
     maxWidth: 440,
+    maxHeight: '85%',
     borderRadius: radii.xl,
     backgroundColor: colors.white,
     padding: 20,
@@ -848,6 +1545,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fonts.sansBold,
     color: colors.ink,
+    flex: 1,
+    marginRight: 10,
   },
   dialogSectionLabel: {
     fontSize: 11,
@@ -857,6 +1556,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     marginTop: 16,
     marginBottom: 10,
+  },
+  rolePickerCard: {
+    maxWidth: 300,
+  },
+  rolePickerTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  rolePickerHint: {
+    fontSize: 12,
+    fontFamily: fonts.sansRegular,
+    color: colors.inkSoft,
+    marginBottom: 12,
+  },
+  rolePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+    backgroundColor: colors.appBg,
+  },
+  rolePickerOptionActive: {
+    borderColor: colors.rust,
+    backgroundColor: `${colors.rust}14`,
+  },
+  rolePickerOptionText: {
+    fontSize: 13.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.ink,
+  },
+  rolePickerOptionTextActive: {
+    color: colors.rust,
   },
   dialogFooterRow: {
     flexDirection: 'row',
@@ -881,5 +1619,49 @@ const styles = StyleSheet.create({
   },
   dialogSaveBtn: {
     flex: 1,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  tabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingVertical: 8,
+    backgroundColor: colors.appBg,
+  },
+  tabBtnActive: {
+    borderColor: colors.rust,
+    backgroundColor: `${colors.rust}14`,
+  },
+  tabBtnText: {
+    fontSize: 12.5,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.inkSoft,
+  },
+  tabBtnTextActive: {
+    color: colors.rust,
+  },
+  bulkTextArea: {
+    borderRadius: radii.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontSize: 13,
+    color: colors.ink,
+    fontFamily: fonts.sansRegular,
+    backgroundColor: colors.appBg,
+  },
+  bulkParseHint: {
+    fontSize: 11.5,
+    fontFamily: fonts.sansMedium,
+    color: colors.inkSoft,
+    marginTop: 6,
   },
 });

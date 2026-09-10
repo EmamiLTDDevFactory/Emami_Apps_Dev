@@ -92,3 +92,11 @@ export function isoDate(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/** Current year ±, newest-forward-first, for the Fiscal Year filter dropdown. */
+export function fiscalYearOptions(): string[] {
+  const y = todayDate().getFullYear();
+  const years: string[] = [];
+  for (let i = 1; i >= -4; i--) years.push(String(y + i));
+  return years;
+}

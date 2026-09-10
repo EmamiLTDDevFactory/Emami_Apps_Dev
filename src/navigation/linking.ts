@@ -23,6 +23,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
           Settings: 'settings',
           UserAccess: 'manage-access',
           SsoConfig: 'manage-access/sso',
+          Administration: 'administration',
         },
       },
       AppDetail: 'apps/:appId',

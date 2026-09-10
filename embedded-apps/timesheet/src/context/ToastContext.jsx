@@ -34,9 +34,9 @@ export function ToastProvider({ children }) {
 
 function ToastItem({ toast, onDismiss }) {
   const variantStyles = {
-    success: 'bg-white border-l-4 border-green-500 text-slate-800',
-    error: 'bg-white border-l-4 border-red-500 text-slate-800',
-    info: 'bg-white border-l-4 border-indigo-500 text-slate-800',
+    success: 'bg-white dark:bg-slate-800 border-l-4 border-green-500 text-slate-800 dark:text-slate-100',
+    error: 'bg-white dark:bg-slate-800 border-l-4 border-red-500 text-slate-800 dark:text-slate-100',
+    info: 'bg-white dark:bg-slate-800 border-l-4 border-indigo-500 text-slate-800 dark:text-slate-100',
   }
   return (
     <div className={`flex items-start justify-between gap-3 rounded-lg shadow-lg px-4 py-3 text-sm ${variantStyles[toast.variant] || variantStyles.info}`}>
@@ -45,7 +45,7 @@ function ToastItem({ toast, onDismiss }) {
         type="button"
         onClick={onDismiss}
         aria-label="Dismiss notification"
-        className="text-slate-400 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+        className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
       >
         ✕
       </button>

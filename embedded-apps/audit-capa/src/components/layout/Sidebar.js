@@ -161,8 +161,7 @@ export default function Sidebar() {
             sx={{
                 width: collapsed ? 80 : 240,
                 height: "100vh",
-                // bgcolor: "#1565c0",
-                bgcolor: "#0F172A",
+                bgcolor: "#171335",
                 color: "white",
                 boxShadow: 4,
                 borderRight: "1px solid rgba(255,255,255,0.08)",
@@ -223,20 +222,33 @@ export default function Sidebar() {
                 sx={{
                     display: "flex",
                     justifyContent: "center",
-                    p: collapsed ? 1.5 : 3,
+                    p: collapsed ? 1.5 : 2.5,
                 }}
             >
                 <Box
-                    component="img"
-                    src={emamiAppsLogo}
-                    alt="Emami Apps"
                     sx={{
-                        width: collapsed ? 48 : 180,
-                        height: collapsed ? 40 : 149,
-                        objectFit: "contain",
+                        bgcolor: "#fff",
+                        borderRadius: 3,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        p: collapsed ? 0.75 : 1.25,
+                        boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
                         transition: "all 0.3s ease",
                     }}
-                />
+                >
+                    <Box
+                        component="img"
+                        src={emamiAppsLogo}
+                        alt="Emami Apps"
+                        sx={{
+                            width: collapsed ? 32 : 76,
+                            height: collapsed ? 32 : 76,
+                            objectFit: "contain",
+                            transition: "all 0.3s ease",
+                        }}
+                    />
+                </Box>
             </Box>
 
             <Typography
@@ -293,7 +305,7 @@ export default function Sidebar() {
                                 // },
                                 "&.Mui-selected": {
                                     backgroundColor:
-                                        "#3e57a9",
+                                        "rgba(124,58,237,0.28)",
 
                                     boxShadow:
                                         "0 4px 12px rgba(0,0,0,0.2)",
@@ -301,7 +313,7 @@ export default function Sidebar() {
 
                                 "&:hover": {
                                     backgroundColor:
-                                        "rgba(59,130,246,0.15)",
+                                        "rgba(124,58,237,0.15)",
 
                                     transform:
                                         "translateX(4px)",

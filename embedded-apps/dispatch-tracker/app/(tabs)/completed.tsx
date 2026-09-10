@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
 import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { PodRecord, PodViewModal } from '@/components/modals/PodViewModal';
@@ -13,7 +13,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, isoDate, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -44,8 +44,19 @@ const PAGE_SIZE = 7;
 
 export default function CompletedScreen() {
   const { session, readOnly } = useAuth();
-  const { compCache, pendCache, dispCache, retCache, cancCache, loading, errors, ensureCompleted, invalidate } =
-    useData();
+  const {
+    compCache,
+    pendCache,
+    dispCache,
+    retCache,
+    cancCache,
+    loading,
+    errors,
+    ensureCompleted,
+    invalidate,
+    dateFilter,
+    setDateFilter,
+  } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -203,6 +214,15 @@ export default function CompletedScreen() {
             <Text style={styles.ascLabel}>↑ Asc</Text>
           </Pressable>
         </FilterRow>
+
+        <FiscalYearDateRow
+          fiscalYear={dateFilter.fiscalYear}
+          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
+          toDate={toDate(dateFilter.toDate) ?? todayDate()}
+          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
+          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
+          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        />
 
         {period === 'Custom' && (
           <View style={styles.customRow}>
