@@ -108,15 +108,18 @@ async function fetchInvoicesRaw(entitySet: string, email: string, filter: Invoic
  * Primes SAP's backend custom tables (Pending/Dispatched/Completed/Returned/Cancelled) with live
  * data for this Email + Fiscal Year + date range. Per the backend's design, InvoicePendSet/
  * InvoiceDispSet/etc. only read whatever is already sitting in those tables — LoginSet is what
- * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Sent as a
- * plain POST (no Otp field — this app has no OTP flow, see AuthContext.tsx). Non-fatal: a failure
- * here shouldn't block reading whatever's already in the tables.
+ * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Non-fatal: a
+ * failure here shouldn't block reading whatever's already in the tables.
  *
- * $expand is required here, not optional: the ABAP class's actual "Login" business logic lives
- * in the generic CREATE_DEEP_ENTITY method (CASE iv_entity_name WHEN 'Login') — a plain POST with
- * no $expand and no nested navigation data instead routes to the separate, auto-generated
- * LOGINSET_CREATE_ENTITY stub, which never runs that logic. $expand on the nav properties is what
- * makes SAP Gateway dispatch to CREATE_DEEP_ENTITY instead.
+ * What actually dispatches this POST to CREATE_DEEP_ENTITY (not the auto-generated
+ * LOGINSET_CREATE_ENTITY stub) is a genuine deep-insert body — the NAV_LoginToDepot/
+ * NAV_LoginToInv navigation properties present in the payload itself, not $expand (that's a
+ * read-time option, for GET_EXPANDED_ENTITYSET). Confirmed working with this exact shape via SAP
+ * Gateway Client, called directly against SAP.
+ *
+ * KNOWN RISK: this same shape, sent through the Azure middleware this app actually calls through
+ * (as opposed to direct-to-SAP), has hung indefinitely in testing — SAP itself handles it fine,
+ * so the suspected fault is in that middleware's relay of array-valued JSON properties, not here.
  */
 async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
   if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
@@ -125,8 +128,10 @@ async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<v
     FiscalYear: filter.fiscalYear,
     FrmDate: formatSAPDate(filter.frmDate),
     ToDate: formatSAPDate(filter.toDate),
+    NAV_LoginToDepot: [],
+    NAV_LoginToInv: [],
   };
-  await fetch(`${API_BASE_URL}/LoginSet?$expand=NAV_LoginToDepot,NAV_LoginToInv&$format=json`, {
+  await fetch(`${API_BASE_URL}/LoginSet?$format=json`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
