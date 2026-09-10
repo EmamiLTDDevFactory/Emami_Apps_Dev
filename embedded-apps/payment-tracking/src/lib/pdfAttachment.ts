@@ -46,6 +46,16 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
+/** The read-back counterpart to readAttachmentAsBase64 above — turns a base64 attachment already
+ * in hand (e.g. ZVendorPOFollowupSet's inline Value field) into a Blob a browser can open/download,
+ * without a network round-trip. Web-only (atob), same posture as the rest of this file. */
+export function base64ToBlob(base64: string, mimeType: string): Blob {
+  // Cast needed because TS's Blob typing wants an ArrayBuffer-backed view specifically, while
+  // Uint8Array's declared buffer type is the broader ArrayBufferLike — a runtime non-issue, every
+  // browser accepts a plain Uint8Array here.
+  return new Blob([base64ToBytes(base64) as unknown as BlobPart], { type: mimeType || 'application/octet-stream' });
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunkSize = 0x8000;

@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchPendingApprovals,
-  fetchFollowupAttachment,
-  followupAttachmentUrl,
   submitApprovalDecision,
   submitApprovalDecisionBatch,
   PENDING_APPROVAL_ACTIONS,
@@ -14,25 +12,25 @@ import {
   type PendingApprovalAction,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
+import { base64ToBlob } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../../src/context/MonthYearContext';
 import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../../src/lib/provisionMetrics';
 
 /** Per-row decision state — 'idle' until the Admin acts on it, then locks into whichever decision
- * went through (or an error, which leaves it actionable again). Also carries the (independent)
- * attachment view state, since fetching the PDF is its own async action a row can be in the
- * middle of regardless of its decision state. */
+ * went through (or an error, which leaves it actionable again). attachmentError is only for the
+ * rare case opening an in-hand attachment fails (e.g. malformed base64) — whether one exists at
+ * all is read straight off the row (see AttachmentControl below), not tracked here. */
 interface RowState {
   deciding: ApprovalDecision | null; // which action is in flight, if any
   decided: ApprovalDecision | null; // which action has gone through
   error: string | null;
-  attachmentLoading: boolean;
   attachmentError: string | null;
 }
 
 function initialRowState(): RowState {
-  return { deciding: null, decided: null, error: null, attachmentLoading: false, attachmentError: null };
+  return { deciding: null, decided: null, error: null, attachmentError: null };
 }
 
 type DecisionFilter = 'all' | 'pending' | 'A' | 'R';
@@ -264,24 +262,18 @@ export default function PendingApproval() {
     }
   };
 
-  // ZVendorPOFollowupSet is a media entity now (see paymentTrackingApi.ts) — there's no field on
-  // the row saying whether a PO/item actually has an attachment, so this is always offered and a
-  // 404 (no attachment for this PO item) is just reported inline, not treated as a hard failure.
-  const viewAttachment = async (row: VendorPOFollowupRow) => {
-    patchRow(row.key, { attachmentLoading: true, attachmentError: null });
+  // The attachment (if any) comes back inline on the row itself — Filename/Mimetype/Value on the
+  // same GET as every other field (see paymentTrackingApi.ts) — so opening it is just decoding the
+  // base64 already in hand, no extra request.
+  const viewAttachment = (row: VendorPOFollowupRow) => {
+    if (!row.attachmentBase64) return;
     try {
-      const { blob } = await fetchFollowupAttachment(row.poNumber, row.poItemNo);
-      if (Platform.OS === 'web') {
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-      } else {
-        // Unverified on native — this app builds web-only (see app.json), kept as a best-effort
-        // fallback only.
-        await Linking.openURL(followupAttachmentUrl(row.poNumber, row.poItemNo));
-      }
-      patchRow(row.key, { attachmentLoading: false });
+      const blob = base64ToBlob(row.attachmentBase64, row.mimetype);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      patchRow(row.key, { attachmentError: null });
     } catch (e) {
-      patchRow(row.key, { attachmentLoading: false, attachmentError: 'No attachment found for this PO item.' });
+      patchRow(row.key, { attachmentError: 'Could not open this attachment.' });
     }
   };
 
@@ -514,20 +506,26 @@ export default function PendingApproval() {
                       <Text style={styles.cardTitle}>PO {row.poNumber} · Item {row.poItemNo}</Text>
                       {row.vendorName ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.vendorName}</Text> : null}
                     </View>
-                    <Pressable
-                      onPress={() => viewAttachment(row)}
-                      style={styles.attachmentBtn}
-                      disabled={state.attachmentLoading}
-                      accessibilityRole="button"
-                      accessibilityLabel={`View or download attachment for PO ${row.poNumber} item ${row.poItemNo}`}
-                    >
-                      {state.attachmentLoading ? (
-                        <ActivityIndicator size="small" color={colors.rust} />
+                    {row.filename ? (
+                      row.attachmentBase64 ? (
+                        <Pressable
+                          onPress={() => viewAttachment(row)}
+                          style={styles.attachmentBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`View or download attachment for PO ${row.poNumber} item ${row.poItemNo}`}
+                        >
+                          <Ionicons name="attach-outline" size={13} color={colors.rust} />
+                          <Text style={styles.attachmentBtnText}>Attachment</Text>
+                        </Pressable>
                       ) : (
-                        <Ionicons name="attach-outline" size={13} color={colors.rust} />
-                      )}
-                      <Text style={styles.attachmentBtnText}>Attachment</Text>
-                    </Pressable>
+                        // Backend skips sending content over 2MB — filename comes through so we
+                        // can at least say a file exists, but there's nothing to open here.
+                        <View style={styles.attachmentBtnDisabled}>
+                          <Ionicons name="attach-outline" size={13} color={colors.inkSoft} />
+                          <Text style={styles.attachmentBtnDisabledText}>Too large to preview</Text>
+                        </View>
+                      )
+                    ) : null}
                     {state.decided && (
                       <View style={[styles.decidedBadge, state.decided === 'A' ? styles.decidedBadgeApprove : styles.decidedBadgeReject]}>
                         <Ionicons
@@ -867,6 +865,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: colors.rust,
+  },
+  attachmentBtnDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
+    opacity: 0.7,
+  },
+  attachmentBtnDisabledText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.inkSoft,
   },
   overwriteCallout: {
     flexDirection: 'row',

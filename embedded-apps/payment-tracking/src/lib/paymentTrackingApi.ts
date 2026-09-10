@@ -269,6 +269,15 @@ export interface VendorPOFollowupRow {
    * (blank) = not yet submitted for approval. Drives Pending Approval's Pending/Approved tabs
    * (see pending-approval.tsx) instead of relying purely on client-side session state. */
   status: string;
+  /** Attachment, if any — returned inline on the same GET as every other field (confirmed live
+   * 2026-09-10, per the backend's GET_ENTITYSET), not via a separate media/$value call. `filename`
+   * is set whenever a file exists on the server side even if `attachmentBase64` isn't (the backend
+   * skips sending content over 2MB to keep the response small — filename-only in that case, so the
+   * UI can at least say an attachment exists without being able to open it). Empty filename means
+   * no attachment for this PO item. */
+  filename: string; // Filename
+  mimetype: string; // Mimetype
+  attachmentBase64: string; // Value
 }
 
 /** Zaction values a Pending Approval row's own Zaction field carries, per the ZROLE_ACTION domain
@@ -315,6 +324,9 @@ function toVendorPOFollowupRow(raw: Record<string, any>, index: number): VendorP
     invoiceAmount: str(raw.ZzinvAmt),
     comments: str(raw.Comments),
     status: str(raw.Stat),
+    filename: str(raw.Filename),
+    mimetype: str(raw.Mimetype),
+    attachmentBase64: str(raw.Value),
   };
 }
 
@@ -408,37 +420,6 @@ export async function fetchPendingApprovals(email: string): Promise<VendorPOFoll
   const { data } = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   return Array.isArray(results) ? results.map(toVendorPOFollowupRow) : [];
-}
-
-/** ZVendorPOFollowupSet is now a media/HasStream entity (backend GET_STREAM reads the attached
- * PDF, keyed by Ebeln+Ebelp, from table zibd_ses_pro_log) — the standard OData media-resource URL
- * shape, `<EntitySet>(Key1='..',Key2='..')/$value`. There's no boolean field on the entity's own
- * GET response saying whether a row has an attachment (confirmed absent — see this file's other
- * comments on what's actually returned), so callers can only find out by trying this fetch and
- * handling a 404 (no attachment for that PO item) as an expected outcome, not an error to surface
- * loudly. */
-export function followupAttachmentUrl(poNumber: string, poItemNo: string): string {
-  return `${SAP_BASE_URL}/${FOLLOWUP_ENTITY_SET}(Ebeln='${poNumber}',Ebelp='${poItemNo}')/$value`;
-}
-
-export interface FollowupAttachment {
-  blob: Blob;
-  filename: string;
-}
-
-/** Fetches the PDF attached to a PO/item, if any. sapClient defaults to `Accept: application/json`
- * for the entity's normal JSON reads above — overridden here since a media stream is neither JSON
- * nor safe to let axios coerce as text, and `responseType: 'blob'` keeps the bytes intact (this app
- * is web-only, see app.json, so a browser Blob is always what comes back). */
-export async function fetchFollowupAttachment(poNumber: string, poItemNo: string): Promise<FollowupAttachment> {
-  const response = await sapClient.get(`/${FOLLOWUP_ENTITY_SET}(Ebeln='${poNumber}',Ebelp='${poItemNo}')/$value`, {
-    responseType: 'blob',
-    headers: { Accept: '*/*' },
-  });
-  const disposition = String(response.headers?.['content-disposition'] || '');
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
-  const filename = match?.[1] || `PO-${poNumber}-Item-${poItemNo}.pdf`;
-  return { blob: response.data as Blob, filename: decodeURIComponent(filename) };
 }
 
 /** Sends one or more confirmed rows to ZProvHeader — a deep insert, same POST-with-nested-array
