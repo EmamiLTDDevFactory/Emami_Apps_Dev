@@ -127,20 +127,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return run;
   }, [dateFilter]);
 
-  /** Changing the filter always forces a fresh SAP fetch on next call — it changes what SAP
-   *  returns, so the existing cache (however fresh by TTL) no longer answers the new question. */
+  /**
+   * Changing the filter only updates the stored values and marks the cache stale — it does NOT
+   * fetch on its own. Dashboard's explicit Search button (or a tab's own ensureX() on focus,
+   * once the cache is stale) is what actually triggers the next LoginSet + entity-set call. This
+   * is deliberate: LoginSet has real backend side effects, so it should only fire when the user
+   * has confirmed the Fiscal Year/From/To they want, not on every keystroke/selection.
+   */
   const setDateFilter = useCallback((patch: Partial<DateFilterState>) => {
     setDateFilterRaw((prev) => ({ ...prev, ...patch }));
     cacheTs.current = null;
   }, []);
-
-  useEffect(() => {
-    if (!session) return;
-    reloadInvoices();
-    // Only re-run when the filter itself changes — the initial load is handled by each tab's
-    // own ensureX() on focus, same as before this filter existed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter]);
 
   /** load_df(): reuse the one-shot LoginSet rows first, else refetch when missing/stale. */
   const ensureInvoices = useCallback(async () => {

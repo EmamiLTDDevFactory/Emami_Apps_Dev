@@ -43,11 +43,13 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
   { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
   { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
+  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
+  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 
 function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: () => void; isWideScreen: boolean }) {
