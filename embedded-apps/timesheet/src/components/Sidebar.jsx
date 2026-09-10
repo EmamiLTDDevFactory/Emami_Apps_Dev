@@ -55,7 +55,7 @@ function avatarGradient(id) {
 }
 
 export default function Sidebar({ page, onNavigate, mobileOpen, onCloseMobile }) {
-  const { currentUser, getUserById, logout } = useApp()
+  const { currentUser, getUserById } = useApp()
   const { theme, setTheme, isMinimal } = useTheme()
   const navItems = isMinimal ? MINIMAL_NAV : EMPLOYEE_NAV
   const manager = currentUser?.managerId ? getUserById(currentUser.managerId) : null
@@ -152,11 +152,13 @@ export default function Sidebar({ page, onNavigate, mobileOpen, onCloseMobile })
           </div>
           <button
             type="button"
-            onClick={logout}
+            onClick={() => {
+              window.location.href = '/'
+            }}
             className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-center rounded-lg border border-slate-200 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800 py-1.5 text-slate-700 dark:text-slate-200 hover:from-slate-100 hover:to-slate-200 dark:hover:from-slate-700 dark:hover:to-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
           >
-            <span aria-hidden="true">🔄</span>
-            Switch user
+            <span aria-hidden="true">🏠</span>
+            Back to Emami Apps
           </button>
         </div>
       </aside>
