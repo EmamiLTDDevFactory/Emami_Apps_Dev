@@ -34,25 +34,31 @@ import {
 
 const INV_CACHE_TTL_MS = 90 * 1000;
 
-/** Fiscal Year / From Date / To Date filter shown on Pending/Dispatched/Completed/Returned/
- *  Cancelled — shared across all five since they're all slices of the one combined SAP fetch
- *  (see this file's header comment). Changing it on any tab refetches that shared snapshot. */
-export interface DateFilterState {
-  fiscalYear: string;
-  frmDate: string;
-  toDate: string;
-}
-
-function defaultDateFilter(): DateFilterState {
+/** From Date / To Date used for the combined bulk fetch (LoginSet + all five entity sets) that
+ *  fires on Dashboard entry/focus — always "today-30 to today", recomputed fresh each call since
+ *  there's no user-facing control for it anymore (Pending/Dispatched/Completed/Returned/
+ *  Cancelled each refetch just their own entity set independently instead — see
+ *  refreshEntitySet below). */
+function defaultDateFilter(): { frmDate: string; toDate: string } {
   const to = todayDate();
   const from = new Date(to);
   from.setDate(from.getDate() - 30);
-  return { fiscalYear: String(to.getFullYear()), frmDate: isoDate(from), toDate: isoDate(to) };
+  return { frmDate: isoDate(from), toDate: isoDate(to) };
 }
 
 export type CacheKey = 'inv' | 'pend' | 'disp' | 'comp' | 'ret' | 'canc';
+export type StatusCacheKey = Exclude<CacheKey, 'inv'>;
 
 const ALL_KEYS: CacheKey[] = ['inv', 'pend', 'disp', 'comp', 'ret', 'canc'];
+
+/** Which entity set and status label each tab's independent refresh maps to. */
+const ENTITY_SET_FOR: Record<StatusCacheKey, { entitySet: string; status: string }> = {
+  pend: { entitySet: 'InvoicePendSet', status: 'Pending' },
+  disp: { entitySet: 'InvoiceDispSet', status: 'Dispatched' },
+  comp: { entitySet: 'InvoiceCompSet', status: 'Completed' },
+  ret: { entitySet: 'InvoiceRetSet', status: 'Returned' },
+  canc: { entitySet: 'InvoiceCanSet', status: 'Cancelled' },
+};
 
 /** One fetch feeds every key, so loading/error flags are set for all of them together. */
 const everyKey = <T,>(value: T): Partial<Record<CacheKey, T>> =>
@@ -67,8 +73,6 @@ interface DataState {
   cancCache: CancelledInvoice[] | null;
   loading: Partial<Record<CacheKey, boolean>>;
   errors: Partial<Record<CacheKey, string>>;
-  dateFilter: DateFilterState;
-  setDateFilter: (patch: Partial<DateFilterState>) => void;
   loadDashboard: () => Promise<void>;
   ensurePending: () => Promise<void>;
   ensureDispatched: () => Promise<void>;
@@ -76,6 +80,10 @@ interface DataState {
   ensureReturned: () => Promise<void>;
   ensureCancelled: () => Promise<void>;
   reloadInvoices: () => Promise<void>;
+  /** Refetches just one tab's own entity set (Email + FrmDate + ToDate, no LoginSet) and merges
+   *  the result into the shared cache in place of that status's old rows — used when a tab's own
+   *  From/To Date filter changes, instead of refetching all five. */
+  refreshEntitySet: (key: StatusCacheKey, frmDate: string, toDate: string) => Promise<void>;
   invalidate: (...keys: CacheKey[]) => void;
   /** Move one invoice to a new status locally, so the UI updates without waiting on SAP. */
   applyLocalStatus: (invoiceNo: string, status: string, patch?: Partial<Invoice>) => void;
@@ -93,7 +101,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const [loading, setLoading] = useState<Partial<Record<CacheKey, boolean>>>({});
   const [errors, setErrors] = useState<Partial<Record<CacheKey, string>>>({});
-  const [dateFilter, setDateFilterRaw] = useState<DateFilterState>(defaultDateFilter);
 
   useEffect(() => {
     if (!session) {
@@ -112,7 +119,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setLoading(everyKey(true));
       setErrors({});
       try {
-        const rows = await api.refreshInvoices(dateFilter);
+        const rows = await api.refreshInvoices(defaultDateFilter());
         setInvCache(rows);
         cacheTs.current = Date.now();
       } catch (e) {
@@ -125,22 +132,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     inFlight.current = run;
     return run;
-  }, [dateFilter]);
-
-  /** Changing the filter always forces a fresh SAP fetch on next call — it changes what SAP
-   *  returns, so the existing cache (however fresh by TTL) no longer answers the new question. */
-  const setDateFilter = useCallback((patch: Partial<DateFilterState>) => {
-    setDateFilterRaw((prev) => ({ ...prev, ...patch }));
-    cacheTs.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!session) return;
-    reloadInvoices();
-    // Only re-run when the filter itself changes — the initial load is handled by each tab's
-    // own ensureX() on focus, same as before this filter existed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter]);
+  /** One tab's own entity set, refetched independently on that tab's own From/To Date change —
+   *  no LoginSet call, just Email + FrmDate + ToDate against that one entity set. The result
+   *  replaces that status's rows in the shared invCache, leaving every other status untouched. */
+  const refreshEntitySet = useCallback(async (key: StatusCacheKey, frmDate: string, toDate: string): Promise<void> => {
+    const { entitySet, status } = ENTITY_SET_FOR[key];
+    setLoading((prev) => ({ ...prev, [key]: true }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+    try {
+      const rows = await api.refreshEntitySet(entitySet, status, { frmDate, toDate });
+      setInvCache((prev) => {
+        const others = (prev ?? []).filter((r) => r.status !== status);
+        return [...others, ...rows];
+      });
+    } catch (e) {
+      setErrors((prev) => ({ ...prev, [key]: e instanceof Error ? e.message : 'Could not reach SAP.' }));
+    } finally {
+      setLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  }, []);
 
   /** load_df(): reuse the one-shot LoginSet rows first, else refetch when missing/stale. */
   const ensureInvoices = useCallback(async () => {
@@ -226,8 +238,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         cancCache,
         loading,
         errors,
-        dateFilter,
-        setDateFilter,
         loadDashboard,
         ensurePending,
         ensureDispatched,
@@ -235,6 +245,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ensureReturned,
         ensureCancelled,
         reloadInvoices,
+        refreshEntitySet,
         invalidate,
         applyLocalStatus,
       }}>

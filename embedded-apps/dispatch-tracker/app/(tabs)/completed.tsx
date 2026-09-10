@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
 import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { PodRecord, PodViewModal } from '@/components/modals/PodViewModal';
@@ -54,14 +54,25 @@ export default function CompletedScreen() {
     errors,
     ensureCompleted,
     invalidate,
-    dateFilter,
-    setDateFilter,
+    refreshEntitySet,
   } = useData();
 
+  const [frmDate, setFrmDate] = useState<Date>(() => {
+    const d = todayDate();
+    d.setDate(d.getDate() - 30);
+    return d;
+  });
+  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
+
+  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
+  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
+  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensureCompleted();
-    }, [ensureCompleted])
+      refreshEntitySet('comp', isoDate(frmDate), isoDate(dateTo));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ensureCompleted, refreshEntitySet])
   );
 
   const [search, setSearch] = useState('');
@@ -215,13 +226,17 @@ export default function CompletedScreen() {
           </Pressable>
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        <DateRangeRow
+          fromDate={frmDate}
+          toDate={dateTo}
+          onFromDateChange={(d) => {
+            setFrmDate(d);
+            refreshEntitySet('comp', isoDate(d), isoDate(dateTo));
+          }}
+          onToDateChange={(d) => {
+            setDateTo(d);
+            refreshEntitySet('comp', isoDate(frmDate), isoDate(d));
+          }}
         />
 
         {period === 'Custom' && (

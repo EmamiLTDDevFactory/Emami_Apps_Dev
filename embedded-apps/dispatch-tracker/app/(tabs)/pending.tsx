@@ -12,7 +12,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
 import { ActionButton } from '@/components/ActionButton';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
 import { DispatchModal } from '@/components/modals/DispatchModal';
 import { PendingCancelModal } from '@/components/modals/PendingCancelModal';
 
@@ -27,12 +27,24 @@ const GROUP_FIELD: Record<string, keyof PendingInvoice> = {
 /** Ported 1:1 from render_pending() in streamlit_app/dis_shared_components.py. */
 export default function PendingScreen() {
   const { readOnly } = useAuth();
-  const { pendCache, loading, errors, ensurePending, dateFilter, setDateFilter } = useData();
+  const { pendCache, loading, errors, ensurePending, refreshEntitySet } = useData();
 
+  const [frmDate, setFrmDate] = useState<Date>(() => {
+    const d = todayDate();
+    d.setDate(d.getDate() - 30);
+    return d;
+  });
+  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
+
+  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
+  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
+  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensurePending();
-    }, [ensurePending])
+      refreshEntitySet('pend', isoDate(frmDate), isoDate(dateTo));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ensurePending, refreshEntitySet])
   );
 
   const [search, setSearch] = useState('');
@@ -158,13 +170,17 @@ export default function PendingScreen() {
           </Pressable>
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        <DateRangeRow
+          fromDate={frmDate}
+          toDate={dateTo}
+          onFromDateChange={(d) => {
+            setFrmDate(d);
+            refreshEntitySet('pend', isoDate(d), isoDate(dateTo));
+          }}
+          onToDateChange={(d) => {
+            setDateTo(d);
+            refreshEntitySet('pend', isoDate(frmDate), isoDate(d));
+          }}
         />
 
         <View style={styles.kpiRow}>

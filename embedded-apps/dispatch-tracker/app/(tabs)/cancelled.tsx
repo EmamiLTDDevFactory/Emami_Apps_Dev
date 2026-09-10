@@ -9,7 +9,7 @@ import { CancelledInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
 
 /**
  * Ported 1:1 from dis_shared_components.py's render_cancelled(). Read-only on
@@ -76,14 +76,25 @@ export default function CancelledScreen() {
     loading,
     errors,
     ensureCancelled,
-    dateFilter,
-    setDateFilter,
+    refreshEntitySet,
   } = useData();
 
+  const [frmDate, setFrmDate] = useState<Date>(() => {
+    const d = todayDate();
+    d.setDate(d.getDate() - 30);
+    return d;
+  });
+  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
+
+  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
+  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
+  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensureCancelled();
-    }, [ensureCancelled])
+      refreshEntitySet('canc', isoDate(frmDate), isoDate(dateTo));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ensureCancelled, refreshEntitySet])
   );
 
   const [search, setSearch] = useState('');
@@ -173,13 +184,17 @@ export default function CancelledScreen() {
           <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
+        <DateRangeRow
+          fromDate={frmDate}
+          toDate={dateTo}
+          onFromDateChange={(d) => {
+            setFrmDate(d);
+            refreshEntitySet('canc', isoDate(d), isoDate(dateTo));
+          }}
+          onToDateChange={(d) => {
+            setDateTo(d);
+            refreshEntitySet('canc', isoDate(frmDate), isoDate(d));
+          }}
         />
       </View>
 
