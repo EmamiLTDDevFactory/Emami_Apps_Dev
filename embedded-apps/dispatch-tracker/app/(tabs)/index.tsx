@@ -1,21 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DonutChart } from '@/components/charts/DonutChart';
 import { GsvBarChart } from '@/components/charts/GsvBarChart';
 import { HBarChart } from '@/components/charts/HBarChart';
 import { DepotDelayChart, SlaBreachChart } from '@/components/charts/SlaCharts';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect, FiscalYearDateRow } from '@/components/FilterBar';
-import { DateField, PrimaryButton } from '@/components/Form';
+import { FilterRow, FilterSelect } from '@/components/FilterBar';
+import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { colors, radius, shadow, slaBuckets } from '@/constants/theme';
 import { dashboardDelayColor } from '@/lib/delay';
-import { finr, gsvFmt, isoDate, toDate, todayDate } from '@/lib/format';
+import { finr, gsvFmt, toDate, todayDate } from '@/lib/format';
 import { AnyInvoiceRow } from '@/types/models';
 
 /** Ported 1:1 from dis_shared_components.py's render_dashboard(). */
@@ -171,34 +171,20 @@ function depotAgg(rows: AnyInvoiceRow[]): Map<string, DepotAgg> {
 
 export default function DashboardScreen() {
   const { session, readOnly } = useAuth();
-  const { pendCache, dispCache, compCache, retCache, cancCache, loadDashboard, reloadInvoices, loading, dateFilter, setDateFilter } =
-    useData();
+  const { pendCache, dispCache, compCache, retCache, cancCache, loadDashboard } = useData();
 
-  const loaded = pendCache !== null && dispCache !== null && compCache !== null && retCache !== null && cancCache !== null;
-
-  // Entering the app no longer auto-fires LoginSet + the five entity sets — that only happens
-  // once the user confirms Fiscal Year/From/To and taps Search below. Once there's data (from
-  // that search, or from another tab having loaded it first), normal focus-triggered
-  // staleness refresh resumes so returning here after an action stays live.
+  // Re-checked on focus (staleness-guarded in DataContext), so returning to this tab after an
+  // action shows SAP's committed state instead of whatever was cached when it first mounted.
+  // Fires immediately on entry too (tile click → this tab mounts) — LoginSet + the five entity
+  // sets go out right away using the current Fiscal Year/From/To (defaults: current year,
+  // today-30, today), set from the Pending/Dispatched/Completed/Returned/Cancelled tabs.
   useFocusEffect(
     useCallback(() => {
-      if (loaded) loadDashboard();
-    }, [loadDashboard, loaded])
+      loadDashboard();
+    }, [loadDashboard])
   );
 
-  const searchBar = (
-    <>
-      <FiscalYearDateRow
-        fiscalYear={dateFilter.fiscalYear}
-        fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-        toDate={toDate(dateFilter.toDate) ?? todayDate()}
-        onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-        onFromDateChange={(date) => setDateFilter({ frmDate: isoDate(date) })}
-        onToDateChange={(date) => setDateFilter({ toDate: isoDate(date) })}
-      />
-      <PrimaryButton label="🔍 Search" onPress={() => reloadInvoices()} loading={!!loading.inv} />
-    </>
-  );
+  const loaded = pendCache !== null && dispCache !== null && compCache !== null && retCache !== null && cancCache !== null;
 
   const pend = pendCache ?? [];
   const disp = dispCache ?? [];
@@ -247,18 +233,16 @@ export default function DashboardScreen() {
 
   if (!loaded) {
     return (
-      <ScrollView contentContainerStyle={styles.screen}>
-        {searchBar}
-        <EmptyState message="Select Fiscal Year and date range, then tap Search" icon="🔍" />
-      </ScrollView>
+      <View style={styles.loading}>
+        <ActivityIndicator color={colors.navy} size="large" />
+      </View>
     );
   }
 
   if (unionAll.length === 0) {
     return (
       <ScrollView contentContainerStyle={styles.screen}>
-        {searchBar}
-        <EmptyState message="No invoices available" icon="📦" hint="Try different filters, then tap Search" />
+        <EmptyState message="No invoices available" icon="📦" hint="Upload SAP export or check API connection" />
       </ScrollView>
     );
   }
@@ -429,8 +413,6 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      {searchBar}
-
       {/* 1. Period selector */}
       <FilterRow>
         <FilterSelect value={selectedLabel} options={periodOptions} onChange={handlePeriodChange} minWidth={190} />
@@ -697,6 +679,7 @@ function DepotOverviewTable({
 
 const styles = StyleSheet.create({
   screen: { padding: 12, paddingBottom: 40, gap: 0 },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   customRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   customField: { flex: 1 },
