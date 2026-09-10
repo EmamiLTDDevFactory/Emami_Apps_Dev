@@ -2,6 +2,8 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { pool } from './db/pool.js'
+import { requireAuth } from './middleware/auth.js'
+import authRouter from './routes/auth.js'
 import usersRouter from './routes/users.js'
 import projectsRouter from './routes/projects.js'
 import tasksRouter from './routes/tasks.js'
@@ -35,13 +37,19 @@ app.get('/api/health', async (_req, res) => {
   }
 })
 
-app.use('/api/users', usersRouter)
-app.use('/api/projects', projectsRouter)
-app.use('/api/tasks', tasksRouter)
-app.use('/api/assignments', assignmentsRouter)
-app.use('/api/team-settings', teamSettingsRouter)
-app.use('/api/timesheets', timesheetsRouter)
-app.use('/api/leave-balances', leaveBalancesRouter)
+// Unauthenticated - this IS the login step that hands out the session token every other route
+// below requires (see middleware/auth.js).
+app.use('/api/auth', authRouter)
+
+// Every route below here requires a valid session token - proof the caller is who they claim to
+// be, instead of the API trusting whatever id a request body happens to name.
+app.use('/api/users', requireAuth, usersRouter)
+app.use('/api/projects', requireAuth, projectsRouter)
+app.use('/api/tasks', requireAuth, tasksRouter)
+app.use('/api/assignments', requireAuth, assignmentsRouter)
+app.use('/api/team-settings', requireAuth, teamSettingsRouter)
+app.use('/api/timesheets', requireAuth, timesheetsRouter)
+app.use('/api/leave-balances', requireAuth, leaveBalancesRouter)
 
 app.use((err, _req, res, _next) => {
   console.error(err)

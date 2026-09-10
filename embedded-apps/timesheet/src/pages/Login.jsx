@@ -1,16 +1,26 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { useTheme, THEMES } from '../context/ThemeContext'
+import { useToast } from '../context/ToastContext'
 import emamiLogo from '../assets/emami-apps-logo.png'
 
 export default function Login() {
-  const { users, login, currentUserId } = useApp()
+  const { demoUsers, demoLogin, currentUserId } = useApp()
   const { theme, setTheme, isMinimal } = useTheme()
-  const [selected, setSelected] = useState(currentUserId || users[0]?.id)
+  const { showToast } = useToast()
+  const [selected, setSelected] = useState(currentUserId || demoUsers[0]?.id)
+  const [loggingIn, setLoggingIn] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    login(selected)
+    if (!selected) return
+    setLoggingIn(true)
+    try {
+      await demoLogin(selected)
+    } catch (err) {
+      showToast(err.message || 'Could not log in.', 'error')
+      setLoggingIn(false)
+    }
   }
 
   const bgGradient = isMinimal
@@ -45,10 +55,11 @@ export default function Login() {
             <select
               id="user-select"
               value={selected}
+              disabled={loggingIn}
               onChange={(e) => setSelected(e.target.value)}
-              className={`w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${selectFocus}`}
+              className={`w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 disabled:opacity-50 ${selectFocus}`}
             >
-              {users.map((u) => (
+              {demoUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name} - {u.role === 'manager' ? 'Manager' : 'Employee'}
                 </option>
@@ -57,9 +68,10 @@ export default function Login() {
           </div>
           <button
             type="submit"
-            className={`w-full rounded-lg bg-gradient-to-r px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${btnGradient}`}
+            disabled={loggingIn || !selected}
+            className={`w-full rounded-lg bg-gradient-to-r px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none ${btnGradient}`}
           >
-            Log in
+            {loggingIn ? 'Logging in…' : 'Log in'}
           </button>
         </form>
         <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">

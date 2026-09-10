@@ -13,8 +13,17 @@ const COLUMNS = [
   { header: 'Status', key: 'Status', width: 16 },
 ]
 
-const THIN_BORDER = { style: 'thin', color: { argb: 'FFB8BEC7' } }
+const THIN_BORDER = { style: 'thin', color: { argb: 'FF808080' } }
 const CELL_BORDER = { top: THIN_BORDER, left: THIN_BORDER, bottom: THIN_BORDER, right: THIN_BORDER }
+
+// DD-MM-YYYY, distinct from the ISO "YYYY-MM-DD" used everywhere else in this app for
+// lookups/storage - this is only how the Date column reads once it hits the exported sheet.
+function formatDDMMYYYY(date) {
+  const d = String(date.getDate()).padStart(2, '0')
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const y = date.getFullYear()
+  return `${d}-${m}-${y}`
+}
 
 // Builds one worksheet row per calendar day of the month, merging same-day
 // entries (multiple tasks) into single Task/Description columns so the
@@ -34,7 +43,7 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
 
     if (leaveEntry) {
       return {
-        Date: dateIso,
+        Date: formatDDMMYYYY(date),
         Day: formatWeekday(date),
         'In Time': '',
         'Out Time': '',
@@ -43,12 +52,13 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
         Task: '',
         'Task Description': '',
         Status: leaveEntry.leaveType,
+        _bold: true,
       }
     }
 
     if (isOffDay(date) || dayEntries.length === 0) {
       return {
-        Date: dateIso,
+        Date: formatDDMMYYYY(date),
         Day: formatWeekday(date),
         'In Time': '',
         'Out Time': '',
@@ -57,6 +67,7 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
         Task: '',
         'Task Description': '',
         Status: isOffDay(date) ? 'Off' : '',
+        _bold: isOffDay(date),
       }
     }
 
@@ -72,7 +83,7 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
     const location = dayEntries.find((e) => e.location)?.location || ''
 
     return {
-      Date: dateIso,
+      Date: formatDDMMYYYY(date),
       Day: formatWeekday(date),
       'In Time': dayEntries[0]?.inTime || '',
       'Out Time': dayEntries[0]?.outTime || '',
@@ -86,7 +97,7 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
 
   const monthTotal = rows.reduce((sum, r) => sum + r['Hours of Work'], 0)
   rows.push({
-    Date: '',
+    Date: 'Total hours this month',
     Day: '',
     'In Time': '',
     'Out Time': '',
@@ -94,7 +105,9 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
     'Hours of Work': monthTotal,
     Task: '',
     'Task Description': '',
-    Status: 'Total hours this month',
+    Status: '',
+    _bold: true,
+    _isTotal: true,
   })
 
   const workbook = new ExcelJS.Workbook()
@@ -113,8 +126,23 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
     const sheetRow = sheet.addRow(row)
     sheetRow.eachCell({ includeEmpty: true }, (cell) => {
       cell.border = CELL_BORDER
+      // Saturdays, Sundays, public holidays and every leave type stand out in bold so a
+      // manager scanning the exported sheet doesn't have to read the Status column to spot them.
+      if (row._bold) cell.font = { bold: true }
     })
+    sheetRow.getCell(6).alignment = { vertical: 'middle', horizontal: 'center' }
+
+    // "Total hours this month" reads under Date through Location, centered the same way every
+    // row's Hours of Work is, instead of trailing off in the Status column.
+    if (row._isTotal) {
+      sheet.mergeCells(sheetRow.number, 1, sheetRow.number, 5)
+      sheetRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }
+    }
   })
+
+  // A plain spacer row after the total - no border/fill, just breathing room at the end of
+  // the sheet.
+  sheet.addRow({})
 
   const monthLabel = formatMonthShort(monthStartDate).replace(' ', '-')
   const safeUserName = (userName || 'timesheet').replace(/[^a-z0-9]+/gi, '-')
