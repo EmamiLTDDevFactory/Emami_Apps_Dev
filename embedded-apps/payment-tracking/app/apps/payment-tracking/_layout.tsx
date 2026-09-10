@@ -31,10 +31,10 @@ type NavItem = SidePaneItem & { href: Href };
 // this app's side pane docks at the same viewport width both of those do.
 const WIDE_BREAKPOINT = 768;
 
-// Home ('/') is the one tab every role shares — the command-center landing page. Past that, two
-// completely different side panes by role, not one list with an adminOnly filter (unlike Market
-// Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/Provision
-// Details/Calendar set, everyone else gets their own Upcoming/Missed items, never both.
+// Home ('/') used to be the one tab every role shared — the command-center landing page. Per
+// instruction, Users no longer need it (see index.tsx's redirect to Upcoming Provision for that
+// role) — only Admin still gets it, alongside the cross-org Dashboard/Provision Details/Calendar
+// set; Users get their own Upcoming/Missed items, never both.
 const HOME_NAV_ITEM: NavItem = { href: '/apps/payment-tracking/', label: 'Home', icon: 'home-outline' };
 const ADMIN_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
@@ -46,7 +46,6 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
-  HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
   { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
