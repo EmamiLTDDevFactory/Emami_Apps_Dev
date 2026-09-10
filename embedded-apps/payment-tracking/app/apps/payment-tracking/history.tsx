@@ -182,6 +182,12 @@ export default function PaymentTrackingHistory() {
               <View style={styles.fieldGrid}>
                 <InfoField label="Service" value={row.serviceText} />
                 <InfoField label="Action Date" value={formatDeliveryDate(row.actionDate)} />
+                <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />
+                <InfoField label="Revised Delivery Date" value={formatDeliveryDate(row.revisedDeliveryDate)} />
+                <InfoField label="Provision Amount" value={row.provisionValue} />
+                <InfoField label="Invoice Number" value={row.invoiceNo} />
+                <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
+                <InfoField label="Invoice Amount" value={row.invoiceAmount} />
                 <InfoField label="Remarks" value={row.remarks} />
               </View>
             </View>

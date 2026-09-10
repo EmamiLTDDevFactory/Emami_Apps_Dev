@@ -8,10 +8,10 @@ import { useMonthYear } from '../../../src/context/MonthYearContext';
 import { num, formatValue, breakdownBy, filterByMonth } from '../../../src/lib/provisionMetrics';
 import { ProvisionHero, KpiCard, HorizontalBarBreakdown, OptionCard } from '../../../src/components/ProvisionUI';
 
-/** Home — the app's root route ("/apps/payment-tracking/") and first side-pane tab for every role.
- * A "command center" landing: top-line KPIs plus quick links into whatever this role's real work
- * screens are (Admin: Dashboard/Provision Details; everyone else: their own Upcoming/Missed
- * Provision), so nobody lands on a blank page or has to guess where to go first. Reuses
+/** Home — the app's root route ("/apps/payment-tracking/") and first side-pane tab, Admin-only
+ * (per instruction, Users no longer need a Home tab — see this screen's redirect below and
+ * _layout.tsx's USER_NAV_ITEMS, which drops HOME_NAV_ITEM for that role). A "command center"
+ * landing: top-line KPIs plus quick links into Dashboard/Provision Details. Reuses
  * fetchProvisionPOs(email) — same call every other screen makes, always sending the signed-in
  * user's own login email (see paymentTrackingApi.ts's header comment on why it's never omitted). */
 export default function ProvisionHome() {
@@ -22,8 +22,17 @@ export default function ProvisionHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Non-Admin visitors never see Home — bounce straight to their own first work screen instead
+  // (same destination as USER_NAV_ITEMS's first entry in _layout.tsx).
   useEffect(() => {
     if (roleLoading) return;
+    if (!isAdmin) {
+      router.replace('/apps/payment-tracking/upcoming' as any);
+    }
+  }, [isAdmin, roleLoading, router]);
+
+  useEffect(() => {
+    if (roleLoading || !isAdmin) return;
     if (!email) {
       setLoading(false);
       setError('Not signed in.');
@@ -35,7 +44,7 @@ export default function ProvisionHome() {
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, roleLoading, year]);
+  }, [email, isAdmin, roleLoading, year]);
 
   const filteredRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
 
