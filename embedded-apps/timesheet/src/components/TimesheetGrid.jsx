@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { formatDayNum, formatDayOrdinal, formatTime, formatWeekday, isOffDay, isWorkingSaturday, hoursBetween, monthDays, parseISODate, toISODate } from '../utils/date'
-import { MAX_HOURS_PER_DAY } from '../utils/timesheet'
+import { ACCRUAL_LEAVE_TYPES, MAX_HOURS_PER_DAY } from '../utils/timesheet'
 import { useToast } from '../context/ToastContext'
+import { useApp } from '../context/AppContext'
 
-const LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave', 'Unpaid Leave', 'Public Holiday']
+const LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave', 'Public Holiday']
 const DEFAULT_IN_TIME = '10:00'
 const DEFAULT_OUT_TIME = '18:00'
 
@@ -12,7 +13,7 @@ function emptyLine() {
 }
 
 function emptyRow() {
-  return { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME, location: '', locationAt: '', lines: [emptyLine()], leaveType: '' }
+  return { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME, location: '', locationAt: '', lines: [emptyLine()], leaveType: '', leaveNote: '' }
 }
 
 // Pre-fills every working day that has no saved entries yet with the default
@@ -34,9 +35,10 @@ function withDefaultTimes(map, days) {
 function entriesToDayMap(entries) {
   const map = {}
   entries.forEach((e) => {
-    if (!map[e.date]) map[e.date] = { inTime: e.inTime || '', outTime: e.outTime || '', location: e.location || '', locationAt: e.locationAt || '', lines: [], leaveType: '' }
+    if (!map[e.date]) map[e.date] = { inTime: e.inTime || '', outTime: e.outTime || '', location: e.location || '', locationAt: e.locationAt || '', lines: [], leaveType: '', leaveNote: '' }
     if (e.leaveType) {
       map[e.date].leaveType = e.leaveType
+      map[e.date].leaveNote = e.note || ''
     } else {
       map[e.date].lines.push({ taskId: e.taskId || '', description: e.note || '' })
     }
@@ -54,12 +56,12 @@ function isLineEmpty(line) {
 // Row background + accent styling for the day-type of a given date.
 function dayRowTone(date) {
   if (isWorkingSaturday(date)) {
-    return { row: 'bg-blue-50/60', dayText: 'text-blue-700', badge: { label: 'Working Sat', cls: 'bg-blue-100 text-blue-700' } }
+    return { row: 'bg-blue-50/60 dark:bg-blue-500/10', dayText: 'text-blue-700 dark:text-blue-300', badge: { label: 'Working Sat', cls: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300' } }
   }
   if (isOffDay(date)) {
-    return { row: 'bg-slate-200/80', dayText: 'text-slate-600 font-semibold', badge: { label: 'Off', cls: 'bg-slate-300 text-slate-700' } }
+    return { row: 'bg-slate-200/80 dark:bg-slate-800', dayText: 'text-slate-600 dark:text-slate-300 font-semibold', badge: { label: 'Off', cls: 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200' } }
   }
-  return { row: '', dayText: 'text-slate-500', badge: null }
+  return { row: '', dayText: 'text-slate-500 dark:text-slate-400', badge: null }
 }
 
 function LeaveSelect({ dateIso, value, onChange }) {
@@ -68,7 +70,7 @@ function LeaveSelect({ dateIso, value, onChange }) {
       aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
       value={value}
       onChange={(e) => onChange(dateIso, e.target.value)}
-      className="mt-1 w-full rounded-md border border-slate-300 px-1.5 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-1.5 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
     >
       <option value="">Present</option>
       {LEAVE_TYPES.map((lt) => (
@@ -85,14 +87,14 @@ function LocationField({ dateIso, value, capturedAt, locating, onCapture, compac
   if (value) {
     return (
       <div className="flex flex-col items-center gap-1">
-        <span className="text-[11px] font-medium text-emerald-700 break-words">📍 {value}</span>
-        {capturedAt && <span className="text-[10px] text-slate-400">at {formatTime(capturedAt)}</span>}
+        <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 break-words">📍 {value}</span>
+        {capturedAt && <span className="text-[10px] text-slate-400 dark:text-slate-500">at {formatTime(capturedAt)}</span>}
         <button
           type="button"
           onClick={() => onCapture(dateIso)}
           disabled={locating || disabled}
           title={title}
-          className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium focus:outline-none focus-visible:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+          className="text-[10px] text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 font-medium focus:outline-none focus-visible:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
         >
           {locating ? 'Locating…' : 'Update'}
         </button>
@@ -105,7 +107,7 @@ function LocationField({ dateIso, value, capturedAt, locating, onCapture, compac
       onClick={() => onCapture(dateIso)}
       disabled={locating || disabled}
       title={title}
-      className={`inline-flex items-center gap-1 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+      className={`inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
         compact ? 'px-2 py-1.5 text-sm w-full justify-center' : 'px-2 py-1 text-[11px]'
       }`}
     >
@@ -130,11 +132,26 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
   const saveTimer = useRef(null)
   const savedAtTimer = useRef(null)
   const { showToast } = useToast()
+  const { getLeaveBalance } = useApp()
+  // The yearly leave pool a manager has set for this person. `serverBalance` only moves once
+  // the server has recomputed it (a network round-trip after autosave), so we track an
+  // optimistic `balanceAdjustment` that moves the instant a day is marked/unmarked as leave -
+  // same tick as "Total leave this month" below, which is purely local state. The adjustment
+  // resets to 0 whenever serverBalance itself changes (the round-trip caught up and now agrees
+  // with what was already shown) or the viewed month/user changes.
+  const serverBalance = getLeaveBalance(userId).balance
+  const [balanceAdjustment, setBalanceAdjustment] = useState(0)
+  const leaveBalance = serverBalance + balanceAdjustment
+
+  useEffect(() => {
+    setBalanceAdjustment(0)
+  }, [serverBalance])
 
   // reset local edit state when the viewed month/timesheet changes
   useEffect(() => {
     setDayMap(initDayMap(initialEntries))
     setSaveState('idle')
+    setBalanceAdjustment(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthStartDate, userId])
 
@@ -161,7 +178,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
           location: '',
           locationAt: '',
           hours: 0,
-          note: '',
+          note: row.leaveNote || '',
           leaveType: row.leaveType,
         })
         continue
@@ -291,13 +308,21 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
 
   // Setting a leave type clears any time/task entries for that day (leave
   // and working hours are mutually exclusive); clearing it (back to
-  // "Present") just leaves the day blank for re-entry.
+  // "Present") restores the default in/out time for re-entry.
   function setLeaveType(date, value) {
+    // Only Sick/Casual/Earned draw from the yearly pool - adjust the optimistic balance
+    // display the instant one of those is picked or cleared, same tick as the day's own
+    // "Present"/leave-type badge, well before autosave round-trips to confirm it.
+    const wasAccrual = ACCRUAL_LEAVE_TYPES.includes(dayMap[date]?.leaveType)
+    const willBeAccrual = ACCRUAL_LEAVE_TYPES.includes(value)
+    if (wasAccrual !== willBeAccrual) {
+      setBalanceAdjustment((adj) => adj + (willBeAccrual ? -1 : 1))
+    }
     setDayMap((prev) => {
       const current = prev[date] || emptyRow()
       const nextRow = value
         ? { ...current, leaveType: value, inTime: '', outTime: '', location: '', locationAt: '', lines: [emptyLine()] }
-        : { ...current, leaveType: '' }
+        : { ...current, leaveType: '', leaveNote: '', inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME }
       const nextMap = { ...prev, [date]: nextRow }
       scheduleAutosave(nextMap)
       return nextMap
@@ -346,7 +371,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
 
   if (tasks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-8 text-center text-sm text-slate-500 dark:text-slate-400">
         No tasks are assigned to you yet. Ask your manager to assign some in Manage Team.
       </div>
     )
@@ -373,18 +398,18 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
       )}
 
       {/* Desktop / tablet: one row per day (multiple lines if 2+ tasks that day) */}
-      <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b-2 border-indigo-100 bg-gradient-to-b from-slate-50 to-white">
-              <th scope="col" className="sticky left-0 z-10 bg-slate-50 text-left font-semibold text-slate-600 px-3 py-3 min-w-[92px] whitespace-nowrap">Date</th>
-              <th scope="col" className="text-left font-semibold text-slate-600 px-3 py-3 min-w-[140px]">Day</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[110px]">In Time</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[110px]">Out Time</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[120px]">Location</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[90px]">Hours of Work</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 px-2 py-3 min-w-[170px]">Task</th>
-              <th scope="col" className="text-left font-semibold text-slate-600 px-2 py-3 min-w-[200px]">Task Description</th>
+            <tr className="border-b-2 border-violet-100 dark:border-violet-500/20 bg-gradient-to-b from-slate-50 dark:from-slate-800/60 to-white dark:to-slate-900">
+              <th scope="col" className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 text-left font-semibold text-slate-600 dark:text-slate-300 px-3 py-3 min-w-[92px] whitespace-nowrap">Date</th>
+              <th scope="col" className="text-left font-semibold text-slate-600 dark:text-slate-300 px-3 py-3 min-w-[140px]">Day</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[110px]">In Time</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[110px]">Out Time</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[120px]">Location</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[90px]">Hours of Work</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[170px]">Task</th>
+              <th scope="col" className="text-left font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[200px]">Task Description</th>
             </tr>
           </thead>
           <tbody>
@@ -397,31 +422,46 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
               const working = !isOffDay(date)
               const zero = !onLeave && working && hours === 0
               const over = hours > MAX_HOURS_PER_DAY
-              const rowTint = onLeave ? 'bg-violet-50/60' : tone.row
+              const rowTint = onLeave ? 'bg-fuchsia-50/60 dark:bg-fuchsia-500/10' : tone.row
 
               if (onLeave) {
                 return (
-                  <tr key={dateIso} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
-                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}>
+                  <tr key={dateIso} className={`border-b border-slate-100 dark:border-slate-800 last:border-0 ${rowTint}`}>
+                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 dark:text-slate-100 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white dark:bg-slate-900'}`}>
                       {formatDayOrdinal(date)}
                     </th>
                     <td className="px-3 py-2 align-top">
-                      <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
-                      <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
-                        {row.leaveType}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
+                        <span className="inline-block rounded-full px-2 py-0.5 text-[10px] font-medium bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300">
+                          {row.leaveType}
+                        </span>
+                      </div>
                       {!readOnly && !isOffDay(date) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
                     </td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center">
-                      <span className="inline-block rounded-md px-2 py-1 text-xs font-semibold bg-violet-100 text-violet-700">
+                      <span className="inline-block rounded-md px-2 py-1 text-xs font-semibold bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300">
                         0h
                       </span>
                     </td>
-                    <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 italic">
-                      {row.leaveType} - no task logged
+                    <td colSpan={2} className="px-2 py-2 align-top">
+                      {readOnly ? (
+                        <span className={row.leaveNote ? 'text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500 italic'}>
+                          {row.leaveNote || 'No reason given'}
+                        </span>
+                      ) : (
+                        <input
+                          type="text"
+                          aria-label={`Leave reason on ${formatDayNum(date)}`}
+                          value={row.leaveNote}
+                          onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
+                          placeholder="Reason for leave (optional)"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                        />
+                      )}
                     </td>
                   </tr>
                 )
@@ -429,23 +469,25 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
 
               if (!working) {
                 return (
-                  <tr key={dateIso} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
-                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}>
+                  <tr key={dateIso} className={`border-b border-slate-100 dark:border-slate-800 last:border-0 ${rowTint}`}>
+                    <th scope="row" className={`sticky left-0 z-10 text-left font-semibold text-slate-800 dark:text-slate-100 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white dark:bg-slate-900'}`}>
                       {formatDayOrdinal(date)}
                     </th>
                     <td className="px-3 py-2 align-top">
-                      <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
-                      {tone.badge && (
-                        <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
-                          {tone.badge.label}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
+                        {tone.badge && (
+                          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
+                            {tone.badge.label}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400">-</td>
-                    <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 italic">
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
+                    <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500 italic">
                       Non-working day
                     </td>
                   </tr>
@@ -455,62 +497,64 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
               const lines = row.lines.length ? row.lines : [emptyLine()]
               const rowSpan = lines.length
               return lines.map((line, lineIndex) => (
-                <tr key={`${dateIso}_${lineIndex}`} className={`border-b border-slate-100 last:border-0 ${rowTint}`}>
+                <tr key={`${dateIso}_${lineIndex}`} className={`border-b border-slate-100 dark:border-slate-800 last:border-0 ${rowTint}`}>
                   {lineIndex === 0 && (
                     <>
                       <th
                         scope="row"
                         rowSpan={rowSpan}
-                        className={`sticky left-0 z-10 text-left font-semibold text-slate-800 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white'}`}
+                        className={`sticky left-0 z-10 text-left font-semibold text-slate-800 dark:text-slate-100 px-3 py-2 align-top whitespace-nowrap ${rowTint || 'bg-white dark:bg-slate-900'}`}
                       >
                         {formatDayOrdinal(date)}
                       </th>
                       <td rowSpan={rowSpan} className="px-3 py-2 align-top">
-                        <div className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</div>
-                        {tone.badge && (
-                          <span className={`inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
-                            {tone.badge.label}
-                          </span>
-                        )}
-                        {!readOnly && working && zero && <div className="mt-1 text-[10px] font-medium text-amber-600">No hours</div>}
-                        {over && <div className="mt-1 text-[10px] font-medium text-red-600">Exceeds {MAX_HOURS_PER_DAY}h</div>}
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
+                          {tone.badge && (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>
+                              {tone.badge.label}
+                            </span>
+                          )}
+                        </div>
+                        {!readOnly && working && zero && <div className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">No hours</div>}
+                        {over && <div className="mt-1 text-[10px] font-medium text-red-600 dark:text-red-400">Exceeds {MAX_HOURS_PER_DAY}h</div>}
                         {!readOnly && working && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
                         {readOnly ? (
-                          <span className="text-slate-700">{row.inTime || '-'}</span>
+                          <span className="text-slate-700 dark:text-slate-200">{row.inTime || '-'}</span>
                         ) : (
                           <input
                             type="time"
                             aria-label={`In time on ${formatDayNum(date)}`}
                             value={row.inTime}
                             onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
-                            className="w-full rounded-md border border-slate-300 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                           />
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
                         {readOnly ? (
-                          <span className="text-slate-700">{row.outTime || '-'}</span>
+                          <span className="text-slate-700 dark:text-slate-200">{row.outTime || '-'}</span>
                         ) : (
                           <input
                             type="time"
                             aria-label={`Out time on ${formatDayNum(date)}`}
                             value={row.outTime}
                             onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
-                            className="w-full rounded-md border border-slate-300 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                           />
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
                         {readOnly ? (
                           row.location ? (
-                            <span className="text-[11px] text-slate-700 break-words">
+                            <span className="text-[11px] text-slate-700 dark:text-slate-200 break-words">
                               📍 {row.location}
-                              {row.locationAt && <span className="block text-slate-400">at {formatTime(row.locationAt)}</span>}
+                              {row.locationAt && <span className="block text-slate-400 dark:text-slate-500">at {formatTime(row.locationAt)}</span>}
                             </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">-</span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500">-</span>
                           )
                         ) : (
                           <LocationField
@@ -524,7 +568,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
-                        <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                        <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300' : 'bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300'}`}>
                           {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
                         </span>
                       </td>
@@ -532,16 +576,16 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                   )}
                   <td className="px-2 py-2 align-top text-center">
                     {readOnly ? (
-                      <span className={line.taskId ? 'font-medium text-indigo-700' : 'text-slate-400'}>{taskLabel(line.taskId)}</span>
+                      <span className={line.taskId ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-slate-400 dark:text-slate-500'}>{taskLabel(line.taskId)}</span>
                     ) : (
                       <select
                         aria-label={`Task ${lineIndex + 1} on ${formatDayNum(date)}`}
                         value={line.taskId}
                         onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
-                        className={`w-full rounded-md border px-1.5 py-1.5 text-xs text-center font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                        className={`w-full rounded-md border px-1.5 py-1.5 text-xs text-center font-medium focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 ${
                           line.taskId
-                            ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
-                            : 'border-slate-300 bg-white text-slate-500 font-normal'
+                            ? 'border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/15 text-violet-800 dark:text-violet-200'
+                            : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-normal'
                         }`}
                       >
                         <option value="">Select task</option>
@@ -555,7 +599,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                   </td>
                   <td className="px-2 py-2 align-top">
                     {readOnly ? (
-                      <span className="text-slate-600">{line.description || '-'}</span>
+                      <span className="text-slate-600 dark:text-slate-300">{line.description || '-'}</span>
                     ) : (
                       <div className="flex items-center gap-1">
                         <input
@@ -564,14 +608,14 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                           value={line.description}
                           onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                           placeholder="What did you work on?"
-                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                         />
                         {lines.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeLine(dateIso, lineIndex)}
                             aria-label={`Remove task ${lineIndex + 1} on ${formatDayNum(date)}`}
-                            className="shrink-0 text-slate-400 hover:text-red-600 focus:outline-none focus-visible:text-red-600"
+                            className="shrink-0 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 focus:outline-none focus-visible:text-red-600"
                           >
                             ✕
                           </button>
@@ -580,7 +624,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                           <button
                             type="button"
                             onClick={() => addLine(dateIso)}
-                            className="shrink-0 text-indigo-600 hover:text-indigo-800 text-xs font-medium whitespace-nowrap focus:outline-none focus-visible:underline"
+                            className="shrink-0 text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 text-xs font-medium whitespace-nowrap focus:outline-none focus-visible:underline"
                           >
                             + Add task
                           </button>
@@ -593,23 +637,28 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-gradient-to-r from-indigo-50/70 to-violet-50/70 border-t-2 border-indigo-100">
-              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-indigo-50/90 text-left font-semibold text-slate-700 px-3 py-3">
+            <tr className="bg-gradient-to-r from-violet-50/70 dark:from-violet-500/10 to-violet-50/70 dark:to-violet-500/10 border-t-2 border-violet-100 dark:border-violet-500/20">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-3">
                 Total hours this month
               </th>
-              <td className="px-2 py-3 text-center font-bold text-indigo-700">
+              <td className="px-2 py-3 text-center font-bold text-violet-700 dark:text-violet-300">
                 {totals.month.toFixed(2).replace(/\.00$/, '')}h
               </td>
               <td colSpan={2}></td>
             </tr>
-            <tr className="bg-violet-50/70 border-t border-violet-100">
-              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 text-left font-semibold text-slate-700 px-3 py-2.5">
+            <tr className="bg-violet-50/70 dark:bg-violet-500/10 border-t border-violet-100 dark:border-violet-500/20">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-2.5">
                 Total leave this month
               </th>
-              <td className="px-2 py-2.5 text-center font-bold text-violet-700">
+              <td className="px-2 py-2.5 text-center font-bold text-violet-700 dark:text-violet-300">
                 {totals.leaveDays} {totals.leaveDays === 1 ? 'day' : 'days'}
               </td>
-              <td colSpan={2}></td>
+              <td colSpan={2} className="px-3 py-2.5 text-right whitespace-nowrap">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">Leave balance:</span>{' '}
+                <span className={`font-bold ${leaveBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-violet-700 dark:text-violet-300'}`}>
+                  {leaveBalance} {Math.abs(leaveBalance) === 1 ? 'day' : 'days'}
+                </span>
+              </td>
             </tr>
           </tfoot>
         </table>
@@ -627,16 +676,16 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
           const working = !isOffDay(date)
           const zero = !onLeave && working && hours === 0
           const over = hours > MAX_HOURS_PER_DAY
-          const cardTint = onLeave ? 'bg-violet-50' : tone.row || 'bg-white'
+          const cardTint = onLeave ? 'bg-fuchsia-50 dark:bg-fuchsia-500/10' : tone.row || 'bg-white dark:bg-slate-900'
           return (
-            <div key={dateIso} className={`rounded-xl border border-slate-200 shadow-sm p-4 ${cardTint}`}>
+            <div key={dateIso} className={`rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 ${cardTint}`}>
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className={`font-semibold ${tone.dayText || 'text-slate-800'}`}>
+                  <div className={`font-semibold ${tone.dayText || 'text-slate-800 dark:text-slate-100'}`}>
                     {formatWeekday(date)} {formatDayNum(date)}
                   </div>
                   {onLeave ? (
-                    <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700">
+                    <span className="inline-block mt-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300">
                       {row.leaveType}
                     </span>
                   ) : (
@@ -648,66 +697,82 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                   )}
                 </div>
                 <div className="text-right">
-                  <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${onLeave ? 'bg-violet-100 text-violet-700' : over ? 'bg-red-50 text-red-700' : 'bg-indigo-50 text-indigo-700'}`}>
+                  <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${onLeave ? 'bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-300' : over ? 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300' : 'bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300'}`}>
                     {onLeave ? '0' : hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
                   </span>
-                  {!readOnly && working && zero && <div className="mt-1 text-[11px] font-medium text-amber-600">No hours logged</div>}
-                  {over && <div className="mt-1 text-[11px] font-medium text-red-600">Exceeds {MAX_HOURS_PER_DAY}h</div>}
+                  {!readOnly && working && zero && <div className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">No hours logged</div>}
+                  {over && <div className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">Exceeds {MAX_HOURS_PER_DAY}h</div>}
                 </div>
               </div>
 
               {!readOnly && working && (
                 <label className="block mb-3">
-                  <span className="block text-[11px] font-medium text-slate-500 mb-1">Leave</span>
+                  <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Leave</span>
                   <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />
                 </label>
               )}
 
               {onLeave ? (
-                <p className="text-sm text-slate-400 italic">{row.leaveType} - no task logged</p>
+                <label className="block">
+                  <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Reason</span>
+                  {readOnly ? (
+                    <p className={row.leaveNote ? 'text-sm text-slate-600 dark:text-slate-300' : 'text-sm text-slate-400 dark:text-slate-500 italic'}>
+                      {row.leaveNote || 'No reason given'}
+                    </p>
+                  ) : (
+                    <input
+                      type="text"
+                      aria-label={`Leave reason on ${formatDayNum(date)}`}
+                      value={row.leaveNote}
+                      onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
+                      placeholder="Reason for leave (optional)"
+                      className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                    />
+                  )}
+                </label>
               ) : !working ? (
-                <p className="text-sm text-slate-400 italic">Non-working day</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500 italic">Non-working day</p>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block">
-                      <span className="block text-[11px] font-medium text-slate-500 mb-1">In Time</span>
+                      <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">In Time</span>
                       {readOnly ? (
-                        <span className="block text-sm text-slate-700">{row.inTime || '-'}</span>
+                        <span className="block text-sm text-slate-700 dark:text-slate-200">{row.inTime || '-'}</span>
                       ) : (
                         <input
                           type="time"
                           value={row.inTime}
                           onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
-                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                         />
                       )}
                     </label>
                     <label className="block">
-                      <span className="block text-[11px] font-medium text-slate-500 mb-1">Out Time</span>
+                      <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Out Time</span>
                       {readOnly ? (
-                        <span className="block text-sm text-slate-700">{row.outTime || '-'}</span>
+                        <span className="block text-sm text-slate-700 dark:text-slate-200">{row.outTime || '-'}</span>
                       ) : (
                         <input
                           type="time"
                           value={row.outTime}
                           onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
-                          className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                         />
                       )}
                     </label>
                   </div>
 
                   <div className="mt-3">
-                    <span className="block text-[11px] font-medium text-slate-500 mb-1">Location</span>
+                    <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Location</span>
                     {readOnly ? (
                       row.location ? (
-                        <span className="block text-sm text-slate-700 break-words">
+                        <span className="block text-sm text-slate-700 dark:text-slate-200 break-words">
                           📍 {row.location}
-                          {row.locationAt && <span className="block text-xs text-slate-400">at {formatTime(row.locationAt)}</span>}
+                          {row.locationAt && <span className="block text-xs text-slate-400 dark:text-slate-500">at {formatTime(row.locationAt)}</span>}
                         </span>
                       ) : (
-                        <span className="block text-sm text-slate-400">-</span>
+                        <span className="block text-sm text-slate-400 dark:text-slate-500">-</span>
                       )
                     ) : (
                       <LocationField
@@ -724,30 +789,32 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
 
                   <div className="mt-3 space-y-3">
                     {lines.map((line, lineIndex) => (
-                      <div key={lineIndex} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2.5 space-y-2">
+                      <div key={lineIndex} className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/60 p-2.5 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-slate-500">Task {lineIndex + 1}</span>
+                          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Task {lineIndex + 1}</span>
                           {!readOnly && lines.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeLine(dateIso, lineIndex)}
                               aria-label={`Remove task ${lineIndex + 1}`}
-                              className="text-slate-400 hover:text-red-600 text-xs focus:outline-none focus-visible:text-red-600"
+                              className="text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 text-xs focus:outline-none focus-visible:text-red-600"
                             >
                               ✕ Remove
                             </button>
                           )}
                         </div>
                         <label className="block">
-                          <span className="block text-[11px] font-medium text-slate-500 mb-1">Task</span>
+                          <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Task</span>
                           {readOnly ? (
-                            <span className={`block text-sm ${line.taskId ? 'font-medium text-indigo-700' : 'text-slate-400'}`}>{taskLabel(line.taskId)}</span>
+                            <span className={`block text-sm ${line.taskId ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-slate-400 dark:text-slate-500'}`}>{taskLabel(line.taskId)}</span>
                           ) : (
                             <select
                               value={line.taskId}
                               onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
-                              className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                                line.taskId ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-slate-300 bg-white text-slate-500 font-normal'
+                              className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-500 ${
+                                line.taskId
+                                  ? 'border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/15 text-violet-800 dark:text-violet-200'
+                                  : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-normal'
                               }`}
                             >
                               <option value="">Select task</option>
@@ -760,16 +827,16 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                           )}
                         </label>
                         <label className="block">
-                          <span className="block text-[11px] font-medium text-slate-500 mb-1">Task Description</span>
+                          <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Task Description</span>
                           {readOnly ? (
-                            <span className="block text-sm text-slate-600">{line.description || '-'}</span>
+                            <span className="block text-sm text-slate-600 dark:text-slate-300">{line.description || '-'}</span>
                           ) : (
                             <input
                               type="text"
                               value={line.description}
                               onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                               placeholder="What did you work on?"
-                              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                             />
                           )}
                         </label>
@@ -779,7 +846,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                       <button
                         type="button"
                         onClick={() => addLine(dateIso)}
-                        className="text-indigo-600 hover:text-indigo-800 text-sm font-medium focus:outline-none focus-visible:underline"
+                        className="text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 text-sm font-medium focus:outline-none focus-visible:underline"
                       >
                         + Add task
                       </button>
@@ -790,15 +857,21 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
             </div>
           )
         })}
-        <div className="sticky bottom-0 rounded-xl border border-indigo-200 bg-indigo-50 shadow-sm divide-y divide-indigo-100 overflow-hidden">
+        <div className="sticky bottom-0 rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-slate-900 shadow-sm divide-y divide-violet-100 dark:divide-violet-500/20 overflow-hidden">
           <div className="p-4 flex items-center justify-between">
-            <span className="font-semibold text-indigo-800">Month Total</span>
-            <span className="font-bold text-indigo-800 text-lg">{totals.month.toFixed(2).replace(/\.00$/, '')}h</span>
+            <span className="font-semibold text-violet-800 dark:text-violet-300">Month Total</span>
+            <span className="font-bold text-violet-800 dark:text-violet-300 text-lg">{totals.month.toFixed(2).replace(/\.00$/, '')}h</span>
           </div>
-          <div className="px-4 py-2.5 flex items-center justify-between bg-violet-50">
-            <span className="font-medium text-violet-800 text-sm">Total Leave</span>
-            <span className="font-bold text-violet-800">
+          <div className="px-4 py-2.5 flex items-center justify-between bg-violet-50 dark:bg-slate-900">
+            <span className="font-medium text-violet-800 dark:text-violet-300 text-sm">Total Leave</span>
+            <span className="font-bold text-violet-800 dark:text-violet-300">
               {totals.leaveDays} {totals.leaveDays === 1 ? 'day' : 'days'}
+            </span>
+          </div>
+          <div className="px-4 py-2.5 flex items-center justify-between bg-violet-50 dark:bg-slate-900">
+            <span className="font-medium text-violet-800 dark:text-violet-300 text-sm">Leave Balance</span>
+            <span className={`font-bold ${leaveBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-violet-800 dark:text-violet-300'}`}>
+              {leaveBalance} {Math.abs(leaveBalance) === 1 ? 'day' : 'days'}
             </span>
           </div>
         </div>
@@ -809,10 +882,10 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
 
 function SaveIndicator({ state }) {
   if (state === 'saving') {
-    return <span className="text-xs text-slate-400 flex items-center gap-1">Saving…</span>
+    return <span className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1">Saving…</span>
   }
   if (state === 'saved') {
-    return <span className="text-xs text-green-600 font-medium flex items-center gap-1">✓ Saved</span>
+    return <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">✓ Saved</span>
   }
   return <span className="text-xs text-transparent select-none">.</span>
 }

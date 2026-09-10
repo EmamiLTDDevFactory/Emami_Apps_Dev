@@ -13,14 +13,19 @@ export const MAX_HOURS_PER_DAY = 12
 export const HOURS_PER_WEEKDAY = 8
 export const PAYROLL_CUTOFF_DAYS = 10 // days after month end an Approved timesheet becomes Locked
 
+// Leave types that draw from the yearly leave balance pool. Mirrors
+// server/src/routes/leaveBalances.js's own copy (the server can't import from src/). Unpaid
+// Leave and Public Holiday are excluded on purpose - neither is capped.
+export const ACCRUAL_LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave']
+
 export const STATUS_STYLES = {
-  [STATUS.DRAFT]: { badge: 'bg-gray-100 text-gray-700 ring-gray-400/30', dot: 'bg-gray-400' },
-  [STATUS.SUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30', dot: 'bg-amber-500' },
-  [STATUS.RESUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30', dot: 'bg-amber-500' },
-  [STATUS.APPROVED]: { badge: 'bg-green-100 text-green-800 ring-green-400/30', dot: 'bg-green-500' },
-  [STATUS.REJECTED]: { badge: 'bg-red-100 text-red-800 ring-red-400/30', dot: 'bg-red-500' },
-  [STATUS.LOCKED]: { badge: 'bg-slate-200 text-slate-700 ring-slate-400/30', dot: 'bg-slate-500' },
-  Overdue: { badge: 'bg-orange-100 text-orange-800 ring-orange-400/30', dot: 'bg-orange-500' },
+  [STATUS.DRAFT]: { badge: 'bg-gray-100 text-gray-700 ring-gray-400/30 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-500/30', dot: 'bg-gray-400' },
+  [STATUS.SUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/30', dot: 'bg-amber-500' },
+  [STATUS.RESUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/30', dot: 'bg-amber-500' },
+  [STATUS.APPROVED]: { badge: 'bg-green-100 text-green-800 ring-green-400/30 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-400/30', dot: 'bg-green-500' },
+  [STATUS.REJECTED]: { badge: 'bg-red-100 text-red-800 ring-red-400/30 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30', dot: 'bg-red-500' },
+  [STATUS.LOCKED]: { badge: 'bg-slate-200 text-slate-700 ring-slate-400/30 dark:bg-slate-700 dark:text-slate-300 dark:ring-slate-500/30', dot: 'bg-slate-500' },
+  Overdue: { badge: 'bg-orange-100 text-orange-800 ring-orange-400/30 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-400/30', dot: 'bg-orange-500' },
 }
 
 // Expected hours for a month = 8h for every working day in it (Mon-Fri, plus

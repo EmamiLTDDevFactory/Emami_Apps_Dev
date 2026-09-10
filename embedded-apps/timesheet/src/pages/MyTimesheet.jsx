@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
 import TimesheetGrid from '../components/TimesheetGrid'
 import StatusBadge from '../components/StatusBadge'
@@ -10,6 +11,11 @@ import { exportTimesheetToExcel } from '../utils/exportTimesheet'
 
 export default function MyTimesheet({ monthParam, navigate }) {
   const { currentUser, getTimesheet, getAssignedTasks, projects, saveDraftEntries, submitForApproval } = useApp()
+  const { isMinimal } = useTheme()
+  const copyFocusRing = isMinimal ? 'focus-visible:ring-indigo-500' : 'focus-visible:ring-violet-500'
+  const submitBtn = isMinimal
+    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 shadow-indigo-200 dark:shadow-none hover:from-indigo-500 hover:to-indigo-600 focus-visible:ring-indigo-500'
+    : 'bg-gradient-to-r from-violet-600 to-purple-600 shadow-violet-200 dark:shadow-none hover:from-violet-500 hover:to-purple-500 focus-visible:ring-violet-500'
   const { showToast } = useToast()
   const thisMonth = currentMonthStartIso()
   const [viewedMonth, setViewedMonth] = useState(monthParam || thisMonth)
@@ -60,10 +66,14 @@ export default function MyTimesheet({ monthParam, navigate }) {
     showToast('Timesheet submitted for approval.', 'success')
   }
 
-  function handleDownloadExcel() {
+  async function handleDownloadExcel() {
     const entries = readOnly ? timesheet?.entries || [] : liveEntries
-    exportTimesheetToExcel({ entries, tasks, monthStartDate: viewedMonth, userName: currentUser.name })
-    showToast('Timesheet downloaded.', 'success')
+    try {
+      await exportTimesheetToExcel({ entries, tasks, monthStartDate: viewedMonth, userName: currentUser.name })
+      showToast('Timesheet downloaded.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to download timesheet.', 'error')
+    }
   }
 
   const leaveDaysToDate = liveEntries.filter((e) => e.leaveType && parseISODate(e.date) <= new Date()).length
@@ -76,11 +86,11 @@ export default function MyTimesheet({ monthParam, navigate }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">My Timesheet</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-50">My Timesheet</h1>
           <div className="mt-1.5 flex items-center gap-2">
             <StatusBadge status={displayStatus} />
             {timesheet && wasEverRejected(timesheet) && timesheet.status !== 'Rejected' && (
-              <span className="text-xs text-slate-400">previously revised after feedback</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">previously revised after feedback</span>
             )}
           </div>
         </div>
@@ -88,16 +98,16 @@ export default function MyTimesheet({ monthParam, navigate }) {
       </div>
 
       {rejected && timesheet?.managerComment && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <p className="text-sm font-semibold text-red-800">Changes requested by your manager</p>
-          <p className="mt-1 text-sm text-red-700">{timesheet.managerComment}</p>
+        <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">Changes requested by your manager</p>
+          <p className="mt-1 text-sm text-red-700 dark:text-red-300/90">{timesheet.managerComment}</p>
         </div>
       )}
 
       {!rejected && timesheet?.managerComment && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-semibold text-slate-700">Manager comment</p>
-          <p className="mt-1 text-sm text-slate-600">{timesheet.managerComment}</p>
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 p-4">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Manager comment</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{timesheet.managerComment}</p>
         </div>
       )}
 
@@ -106,7 +116,7 @@ export default function MyTimesheet({ monthParam, navigate }) {
           <button
             type="button"
             onClick={handleCopyLastMonth}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className={`rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 ${copyFocusRing}`}
           >
             Copy from last month
           </button>
@@ -114,7 +124,7 @@ export default function MyTimesheet({ monthParam, navigate }) {
         <button
           type="button"
           onClick={handleDownloadExcel}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
           ⬇ Download Excel
         </button>
@@ -140,12 +150,12 @@ export default function MyTimesheet({ monthParam, navigate }) {
             type="button"
             onClick={handleSubmit}
             disabled={incomplete}
-            className="rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-200 hover:shadow-md hover:from-indigo-500 hover:to-violet-500 transition-all disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+            className={`rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:shadow-none disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${submitBtn}`}
           >
             {rejected ? 'Resubmit for Approval' : 'Submit for Approval'}
           </button>
           {incomplete && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               You've logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before submitting.
             </p>
           )}
@@ -153,7 +163,7 @@ export default function MyTimesheet({ monthParam, navigate }) {
       )}
 
       {readOnly && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-400 dark:text-slate-500">
           This timesheet is {displayStatus.toLowerCase()} and can no longer be edited.
         </p>
       )}
