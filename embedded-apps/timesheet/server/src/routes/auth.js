@@ -29,8 +29,9 @@ const APP_ID = 'timesheet'
 /** Server-side counterpart of the old client-side src/lib/hubAccess.js's getHubRoleForTimesheet -
  * moved here so the browser never has to be trusted with an already-verified email; this backend
  * looks up the hub's Manage Access grant for 'timesheet' itself once it already knows who's
- * really asking (see POST /hub-login below). */
-async function fetchHubRoleForTimesheet(email) {
+ * really asking (see POST /hub-login below). Exported for routes/users.js's "Add employee" form
+ * to reuse the exact same check, rather than duplicating this call. */
+export async function fetchHubRoleForTimesheet(email) {
   try {
     const res = await fetch(`${HUB_ACCESS_API_BASE}/access/me?email=${encodeURIComponent(email)}`)
     const data = await res.json().catch(() => null)
