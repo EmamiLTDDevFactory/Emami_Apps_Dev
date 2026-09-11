@@ -6,12 +6,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 56px;
+  padding: 8px 56px 8px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-alt);
 }
 .account-strip-brand { display: flex; align-items: center; gap: 14px; }
-.account-strip-logo { height: 64px; width: 64px; object-fit: contain; flex-shrink: 0; }
+.account-strip-logo { height: 108px; width: auto; object-fit: contain; flex-shrink: 0; }
 
 @media (max-width: 768px) {
   .account-strip { padding: 12px 20px; }

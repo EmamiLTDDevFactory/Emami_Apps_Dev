@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getCurrentUserEmail, getLoginMethod, apiMe } from './api.js';
 import { HUB_AUTH_API_BASE } from './constants.js';
 import { initialsHome } from './utils.js';
-import emamiLogo from './assets/emami-logo.png';
+import emamiLogo from './assets/emami-apps-logo.png';
 
 // Leaves the app and returns to the Emami Apps hub itself - distinct from
 // clearHubSessionAndRedirect below, which actually signs the user out.

@@ -25,6 +25,16 @@ function mapHistory(row) {
   return { status: row.status, date: row.occurred_at.toISOString(), comment: row.comment, action: row.action || undefined }
 }
 
+// A pending employee (picked a manager but not yet approved, or hasn't picked one at all - see
+// server/src/routes/users.js) shouldn't be able to log any hours yet, even by calling this route
+// directly instead of through the UI's own gate. Checked against the DB rather than the request's
+// JWT payload since approval doesn't require a fresh sign-in - status can flip while an already-
+// issued session token is still being used.
+async function isPendingUser(userId) {
+  const { rows } = await pool.query('SELECT status FROM users WHERE id = $1', [userId])
+  return rows[0]?.status === 'pending'
+}
+
 async function loadTimesheet(client, id) {
   const { rows: tsRows } = await client.query('SELECT * FROM timesheets WHERE id = $1', [id])
   if (!tsRows[0]) return null
@@ -124,6 +134,9 @@ router.post('/draft', async (req, res, next) => {
   if (!userId || !monthStartDate || !Array.isArray(entries)) {
     return res.status(400).json({ error: 'userId, monthStartDate and entries are required' })
   }
+  if (await isPendingUser(userId)) {
+    return res.status(403).json({ error: 'Your manager still needs to approve you before you can log hours.' })
+  }
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -167,6 +180,9 @@ router.post('/submit', async (req, res, next) => {
   const { userId, monthStartDate, entries } = req.body
   if (!userId || !monthStartDate || !Array.isArray(entries)) {
     return res.status(400).json({ error: 'userId, monthStartDate and entries are required' })
+  }
+  if (await isPendingUser(userId)) {
+    return res.status(403).json({ error: 'Your manager still needs to approve you before you can log hours.' })
   }
   const client = await pool.connect()
   try {
