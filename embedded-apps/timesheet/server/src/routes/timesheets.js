@@ -16,8 +16,10 @@ function mapEntry(row) {
     hours: Number(row.hours),
     note: row.note || '',
     leaveType: row.leave_type || '',
-    location: row.location || '',
-    locationAt: row.location_at ? row.location_at.toISOString() : '',
+    inLocation: row.in_location || '',
+    inLocationAt: row.in_location_at ? row.in_location_at.toISOString() : '',
+    outLocation: row.out_location || '',
+    outLocationAt: row.out_location_at ? row.out_location_at.toISOString() : '',
   }
 }
 
@@ -56,7 +58,8 @@ async function loadTimesheet(client, id) {
 
 const ENTRY_COLUMNS = [
   'id', 'timesheet_id', 'user_id', 'project_id', 'task_id', 'entry_date',
-  'in_time', 'out_time', 'hours', 'note', 'leave_type', 'location', 'location_at',
+  'in_time', 'out_time', 'hours', 'note', 'leave_type',
+  'in_location', 'in_location_at', 'out_location', 'out_location_at',
 ]
 
 // One INSERT for every row instead of one round-trip per entry - a full month can be 25-60+
@@ -79,8 +82,10 @@ async function replaceEntries(client, timesheetId, userId, entries) {
       e.hours || 0,
       e.note || null,
       e.leaveType || null,
-      e.location || null,
-      e.locationAt || null,
+      e.inLocation || null,
+      e.inLocationAt || null,
+      e.outLocation || null,
+      e.outLocationAt || null,
     ]
     values.push(...row)
     const base = i * ENTRY_COLUMNS.length

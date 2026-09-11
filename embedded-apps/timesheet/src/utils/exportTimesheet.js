@@ -5,8 +5,9 @@ const COLUMNS = [
   { header: 'Date', key: 'Date', width: 12 },
   { header: 'Day', key: 'Day', width: 10 },
   { header: 'In Time', key: 'In Time', width: 9 },
+  { header: 'In Location', key: 'In Location', width: 20 },
   { header: 'Out Time', key: 'Out Time', width: 9 },
-  { header: 'Location', key: 'Location', width: 20 },
+  { header: 'Out Location', key: 'Out Location', width: 20 },
   { header: 'Hours of Work', key: 'Hours of Work', width: 14 },
   { header: 'Task', key: 'Task', width: 30 },
   { header: 'Task Description', key: 'Task Description', width: 40 },
@@ -46,8 +47,9 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
         Date: formatDDMMYYYY(date),
         Day: formatWeekday(date),
         'In Time': '',
+        'In Location': '',
         'Out Time': '',
-        Location: '',
+        'Out Location': '',
         'Hours of Work': 0,
         Task: '',
         'Task Description': '',
@@ -61,8 +63,9 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
         Date: formatDDMMYYYY(date),
         Day: formatWeekday(date),
         'In Time': '',
+        'In Location': '',
         'Out Time': '',
-        Location: '',
+        'Out Location': '',
         'Hours of Work': 0,
         Task: '',
         'Task Description': '',
@@ -80,14 +83,16 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
       .join('; ')
     const descriptions = dayEntries.map((e) => e.note).filter(Boolean).join('; ')
     const totalHours = dayEntries.reduce((sum, e) => sum + (Number(e.hours) || 0), 0)
-    const location = dayEntries.find((e) => e.location)?.location || ''
+    const inLocation = dayEntries.find((e) => e.inLocation)?.inLocation || ''
+    const outLocation = dayEntries.find((e) => e.outLocation)?.outLocation || ''
 
     return {
       Date: formatDDMMYYYY(date),
       Day: formatWeekday(date),
       'In Time': dayEntries[0]?.inTime || '',
+      'In Location': inLocation,
       'Out Time': dayEntries[0]?.outTime || '',
-      Location: location,
+      'Out Location': outLocation,
       'Hours of Work': totalHours,
       Task: taskNames,
       'Task Description': descriptions,
@@ -100,8 +105,9 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
     Date: 'Total hours this month',
     Day: '',
     'In Time': '',
+    'In Location': '',
     'Out Time': '',
-    Location: '',
+    'Out Location': '',
     'Hours of Work': monthTotal,
     Task: '',
     'Task Description': '',
@@ -130,12 +136,12 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
       // manager scanning the exported sheet doesn't have to read the Status column to spot them.
       if (row._bold) cell.font = { bold: true }
     })
-    sheetRow.getCell(6).alignment = { vertical: 'middle', horizontal: 'center' }
+    sheetRow.getCell(7).alignment = { vertical: 'middle', horizontal: 'center' }
 
-    // "Total hours this month" reads under Date through Location, centered the same way every
-    // row's Hours of Work is, instead of trailing off in the Status column.
+    // "Total hours this month" reads under Date through Out Location, centered the same way
+    // every row's Hours of Work is, instead of trailing off in the Status column.
     if (row._isTotal) {
-      sheet.mergeCells(sheetRow.number, 1, sheetRow.number, 5)
+      sheet.mergeCells(sheetRow.number, 1, sheetRow.number, 6)
       sheetRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }
     }
   })
