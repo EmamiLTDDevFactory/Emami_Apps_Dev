@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
+import { fetchHubRoleForTimesheet } from './auth.js'
 
 const router = Router()
+
+// A plain, ordinary-looking email address - "someone@somewhere.something". Not trying to cover
+// every edge case the real email spec allows, just enough to catch an obvious typo (missing @,
+// no dot in the domain) before ever bothering the hub with it.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function mapUser(row) {
   return { id: row.id, name: row.name, email: row.email, role: row.role, managerId: row.manager_id }
@@ -63,6 +69,13 @@ router.get('/', async (_req, res, next) => {
 // someone's report. The manager is req.user (verified by requireAuth), same reasoning as
 // /:id/claim below - otherwise anyone calling this endpoint could create a report under whichever
 // manager account they felt like naming.
+//
+// Two checks happen before anything is created, in order (cheapest first):
+//   1. Does this look like a real email address at all - catches an obvious typo instantly,
+//      without spending a network call on it.
+//   2. Does the hub's own Manage Access actually grant this email Timesheet access - without
+//      this, a manager could type any email and create a phantom employee who could never
+//      actually sign in (Manage Access gates every embedded app before someone even reaches it).
 router.post('/', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can add employees' })
@@ -70,6 +83,15 @@ router.post('/', async (req, res, next) => {
     const email = String(req.body?.email || '').trim().toLowerCase()
     if (!name) return res.status(400).json({ error: 'name is required' })
     if (!email) return res.status(400).json({ error: 'email is required' })
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' })
+
+    const hubRole = await fetchHubRoleForTimesheet(email)
+    if (!hubRole) {
+      return res.status(400).json({
+        error: 'This email has not been granted Timesheet access yet. Ask a hub admin to add it in Manage Access first.',
+      })
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO users (id, name, email, role, manager_id) VALUES ($1, $2, $3, 'employee', $4) RETURNING *`,
       [`u_${randomUUID()}`, name, email, req.user.userId],
