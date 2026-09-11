@@ -454,6 +454,20 @@ export function AppProvider({ children }) {
     return updated
   }
 
+  // Removes an employee from the current manager's team - the inverse of claimEmployee above.
+  // The employee, their timesheets, and their task assignments all stay intact server-side; they
+  // just fall out of directReports (managerId cleared) and back into unassignedEmployees, same
+  // place someone lands before ever being claimed.
+  async function removeDirectReport(userId) {
+    const updated = await api(`/users/${userId}/team`, { method: 'DELETE' })
+    setData((d) => ({
+      ...d,
+      users: d.users.map((u) => (u.id === updated.id ? updated : u)),
+      unassignedEmployees: [...d.unassignedEmployees, updated],
+    }))
+    return updated
+  }
+
   function resetDemoData() {
     refresh()
   }
@@ -566,6 +580,7 @@ export function AppProvider({ children }) {
     addDirectReport,
     fetchAddEmployeeCandidates,
     claimEmployee,
+    removeDirectReport,
     resetDemoData,
   }
 

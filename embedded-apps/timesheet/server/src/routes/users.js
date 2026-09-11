@@ -160,6 +160,25 @@ router.put('/:id/claim', async (req, res, next) => {
   }
 })
 
+// Removes an employee from the requesting manager's team - the inverse of /:id/claim above.
+// Only clears manager_id (the employee, their timesheets, and their task assignments all stay
+// intact) so they fall back into the "unassigned" pool instead of being deleted outright. Scoped
+// to `manager_id = req.user.userId` so a manager can only remove their own reports, not someone
+// else's.
+router.delete('/:id/team', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can remove employees' })
+    const { rows } = await pool.query(
+      `UPDATE users SET manager_id = NULL WHERE id = $1 AND manager_id = $2 RETURNING *`,
+      [req.params.id, req.user.userId],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get('/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id])
