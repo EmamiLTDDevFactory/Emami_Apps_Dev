@@ -3,6 +3,7 @@ import { View, Text, Animated, Easing, StyleSheet } from 'react-native';
 import { TrendingUp, TrendingDown } from 'lucide-react-native';
 import { colors, fonts } from '../theme/tokens';
 import { getEmamiStockQuote, type StockQuote } from '../lib/stockApi';
+import { useIsScrolling } from '../hooks/useScrollActivity';
 
 const REFRESH_MS = 60 * 1000;
 const PX_PER_SECOND = 55; // scroll speed — tuned to read comfortably at this font size
@@ -16,6 +17,8 @@ export default function StockTicker() {
   const [quote, setQuote] = useState<StockQuote | null>(null);
   const [blockWidth, setBlockWidth] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const isScrolling = useIsScrolling();
 
   useEffect(() => {
     let cancelled = false;
@@ -43,9 +46,26 @@ export default function StockTicker() {
         useNativeDriver: true,
       })
     );
-    loop.start();
+    loopRef.current = loop;
+    if (!isScrolling) loop.start();
     return () => loop.stop();
+    // isScrolling deliberately excluded — the effect below start/stops the same loop
+    // instance without resetting position, so this one only (re)builds it when the
+    // measured width changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockWidth, translateX]);
+
+  // Pause the continuously-running animation while the user is actively dragging or
+  // flinging a scroll — on web there's a single UI thread, so this frees it up for
+  // smoother touch scrolling. Resumes from wherever it left off, no position jump.
+  useEffect(() => {
+    if (!blockWidth) return;
+    if (isScrolling) {
+      loopRef.current?.stop();
+    } else {
+      loopRef.current?.start();
+    }
+  }, [isScrolling, blockWidth]);
 
   const hasPrice = quote?.price != null;
   const changePercent = quote?.changePercent ?? 0;

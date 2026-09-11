@@ -29,6 +29,7 @@ import {
 import LogoutIcon from "@mui/icons-material/Logout";
 
 import emamiAppsLogo from "../../assets/emami-apps-logo.png";
+import { EMAMI_APPS_URL } from "./emamiAppsUrl";
 
 export default function Sidebar() {
     const location = useLocation();
@@ -433,7 +434,7 @@ export default function Sidebar() {
                             "authToken"
                         );
 
-                        window.location.href = "https://www.emamiapps.in/";
+                        window.location.href = EMAMI_APPS_URL;
                     }}
                     sx={{
                         color: "white",

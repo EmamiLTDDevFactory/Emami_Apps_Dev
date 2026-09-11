@@ -20,13 +20,14 @@ import {
     saveCAPAs,
     // updateAudit,
     getCAPAs,
+    deleteCAPAsForAudit,
 } from "../utils/storage";
 import {
     saveChecklistDraft,
 } from "../utils/storage";
 
 import { useEffect } from "react";
-import emamiLogo from '../assets/emami-logo.jpg';
+import ChecklistIcon from "@mui/icons-material/Checklist";
 
 import AuditQuestionCard from "../components/audit/AuditQuestionCard";
 import { useNavigate } from "react-router-dom";
@@ -822,6 +823,14 @@ export default function Annexure1() {
 
             try {
 
+                // These CAPAs were auto-generated from the submission being
+                // rejected — clear them so the resubmission after rework
+                // isn't blocked by the "already submitted" guard, and so a
+                // clean set gets generated from the corrected checklist.
+                await deleteCAPAsForAudit(
+                    Number(id)
+                );
+
                 const updatedAudit =
                     await updateAudit(
                         Number(id),
@@ -1596,18 +1605,19 @@ export default function Annexure1() {
                             }}
                         >
                             <Box
-                                component="img"
-                                src={emamiLogo}
-                                alt="Emami Logo"
                                 sx={{
                                     width: 90,
                                     height: 90,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
                                     background: "#fff",
                                     borderRadius: 2,
-                                    objectFit: "contain",
                                     p: 1,
                                 }}
-                            />
+                            >
+                                <ChecklistIcon sx={{ fontSize: 40, color: "#7C3AED" }} />
+                            </Box>
 
                             <Box>
                                 <Typography

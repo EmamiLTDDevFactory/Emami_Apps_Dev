@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
@@ -139,11 +139,6 @@ export default function MarketRateLayout() {
                     <Ionicons name="menu" size={22} color={colors.ink} />
                   </TouchableOpacity>
                 )}
-                <Image
-                  source={require('../../../assets/images/emami-apps-logo.png')}
-                  style={styles.titleLogo}
-                  resizeMode="contain"
-                />
                 <Text style={styles.title} numberOfLines={1}>Current Market Rate</Text>
                 <View style={styles.flex1} />
                 <View style={styles.infoItem}>
@@ -225,10 +220,6 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  titleLogo: {
-    width: 32,
-    height: 26,
   },
   title: {
     fontSize: 15,

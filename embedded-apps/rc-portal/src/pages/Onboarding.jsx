@@ -326,12 +326,12 @@ export default function Onboarding() {
       {/* Header Banner - Light Breathable Theme */}
       <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-r from-white via-rose-50/50 to-pink-50/60 p-6 shadow-sm border border-rose-200/80 text-slate-900 relative overflow-hidden">
         {/* Top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#800A36] via-rose-500 to-pink-400" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#4F3FD6] via-rose-500 to-pink-400" />
         <button 
           onClick={() => navigate(-1)} 
-          className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer group"
+          className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer group"
         >
-          <ArrowLeft className="h-4 w-4 text-[#800A36] group-hover:text-white transition-colors" />
+          <ArrowLeft className="h-4 w-4 text-[#4F3FD6] group-hover:text-white transition-colors" />
           <span className="text-xs font-black uppercase tracking-wider">Back</span>
         </button>
         <div>
@@ -370,7 +370,7 @@ export default function Onboarding() {
 
         <form onSubmit={handleSubmit} onKeyDown={(e) => { if (e.key === 'Enter' && currentStep < steps.length - 1) e.preventDefault(); }} className="space-y-6 mt-16">
           {currentStep === 0 && (
-            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#9E0D43] via-[#800A36] to-[#600727] p-8 shadow-xl text-white relative overflow-hidden">
+            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#6D5BF5] via-[#4F3FD6] to-[#3B2FB0] p-8 shadow-xl text-white relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-amber-300" />
               <div className="mb-6 flex items-center gap-3 border-b border-white/20 pb-4">
                 <div className="h-6 w-1.5 rounded-full bg-amber-300"></div>
@@ -380,7 +380,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Consultant/Agency Name <span className="text-amber-300">*</span></label>
                   <input 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                     value={formData.ConsuName} 
                     onChange={(e) => setField('ConsuName', e.target.value)} 
                     placeholder="e.g. Protiviti" 
@@ -391,7 +391,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Consultant Type <span className="text-amber-300">*</span></label>
                   <select 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.ConsuType} 
                     onChange={(e) => setField('ConsuType', e.target.value)}
                   >
@@ -410,7 +410,7 @@ export default function Onboarding() {
                         disabled={!canSelectTa}
                         checked={canSelectTa && formData.Ta === 'X'}
                         onChange={(e) => canSelectTa && setField('Ta', e.target.checked ? 'X' : '')}
-                        className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                        className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                       />
                       <span className={`text-sm font-black ${canSelectTa ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                         TA {!canSelectTa && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -423,7 +423,7 @@ export default function Onboarding() {
                         disabled={!canSelectTm}
                         checked={canSelectTm && formData.Tm === 'X'}
                         onChange={(e) => canSelectTm && setField('Tm', e.target.checked ? 'X' : '')}
-                        className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                        className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                       />
                       <span className={`text-sm font-black ${canSelectTm ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                         TM {!canSelectTm && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -436,7 +436,7 @@ export default function Onboarding() {
                         disabled={!canSelectLd}
                         checked={canSelectLd && formData.Ld === 'X'}
                         onChange={(e) => canSelectLd && setField('Ld', e.target.checked ? 'X' : '')}
-                        className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                        className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                       />
                       <span className={`text-sm font-black ${canSelectLd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                         L&D {!canSelectLd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -449,7 +449,7 @@ export default function Onboarding() {
                         disabled={!canSelectOd}
                         checked={canSelectOd && formData.Od === 'X'}
                         onChange={(e) => canSelectOd && setField('Od', e.target.checked ? 'X' : '')}
-                        className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                        className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                       />
                       <span className={`text-sm font-black ${canSelectOd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                         OD {!canSelectOd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -461,7 +461,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">PAN Number <span className="text-amber-300">*</span></label>
                   <input 
-                    className="rc-input uppercase font-mono font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                    className="rc-input uppercase font-mono font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                     value={formData.PanNumber} 
                     onChange={(e) => setField('PanNumber', e.target.value.toUpperCase())} 
                     placeholder="ABCDE1234F" 
@@ -472,7 +472,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">GST Number</label>
                   <input 
-                    className="rc-input uppercase font-mono font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                    className="rc-input uppercase font-mono font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                     value={formData.GstNumber} 
                     onChange={(e) => setField('GstNumber', e.target.value.toUpperCase())} 
                     placeholder="Optional" 
@@ -482,7 +482,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Contact Person <span className="text-amber-300">*</span></label>
                   <input 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                     value={formData.ContactPers} 
                     onChange={(e) => setField('ContactPers', e.target.value)} 
                     placeholder="e.g. John Doe" 
@@ -492,7 +492,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Contact Email <span className="text-amber-300">*</span></label>
                   <input 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                     value={formData.ContactEmail} 
                     onChange={(e) => setField('ContactEmail', e.target.value)} 
                     placeholder="john@example.com" 
@@ -503,7 +503,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2 md:col-span-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Engagement Type <span className="text-amber-300">*</span></label>
                   <select 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.EngageType} 
                     onChange={(e) => setField('EngageType', e.target.value)}
                   >
@@ -517,7 +517,7 @@ export default function Onboarding() {
           )}
 
           {currentStep === 1 && (
-            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#9E0D43] via-[#800A36] to-[#600727] p-8 shadow-xl text-white relative overflow-hidden">
+            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#6D5BF5] via-[#4F3FD6] to-[#3B2FB0] p-8 shadow-xl text-white relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-amber-300" />
               <div className="mb-6 flex items-center gap-3 border-b border-white/20 pb-4">
                 <div className="h-6 w-1.5 rounded-full bg-amber-300"></div>
@@ -528,7 +528,7 @@ export default function Onboarding() {
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Contract Start Date <span className="text-amber-300">*</span></label>
                   <input 
                     type="date" 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.ContStart} 
                     onChange={(e) => setField('ContStart', e.target.value)} 
                   />
@@ -539,7 +539,7 @@ export default function Onboarding() {
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Contract End Date <span className="text-amber-300">*</span></label>
                   <input 
                     type="date" 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.ContEnd} 
                     onChange={(e) => setField('ContEnd', e.target.value)} 
                   />
@@ -549,7 +549,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Fee Type <span className="text-amber-300">*</span></label>
                   <select 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.FeeType} 
                     onChange={(e) => {
                       const val = e.target.value;
@@ -573,7 +573,7 @@ export default function Onboarding() {
                     type="number" 
                     step="0.01" 
                     disabled={formData.FeeType === 'PERCENT_CTC'}
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner disabled:bg-slate-100/50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-rose-200/40" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner disabled:bg-slate-100/50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-rose-200/40" 
                     value={formData.FeeValue} 
                     onChange={(e) => setField('FeeValue', e.target.value)} 
                     placeholder={formData.FeeType === 'PERCENT_CTC' ? 'N/A' : 'e.g. 8.33'} 
@@ -603,7 +603,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Payment Terms <span className="text-amber-300">*</span></label>
                   <select 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.PaytTerms} 
                     onChange={(e) => setField('PaytTerms', e.target.value)}
                   >
@@ -620,7 +620,7 @@ export default function Onboarding() {
                     <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Custom Days <span className="text-amber-300">*</span></label>
                     <input 
                       type="number" 
-                      className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                      className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                       value={formData.CustomPaytTerms} 
                       onChange={(e) => setField('CustomPaytTerms', e.target.value)} 
                       placeholder="e.g. 15" 
@@ -631,7 +631,7 @@ export default function Onboarding() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Replacement Clause</label>
                   <select 
-                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
+                    className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white cursor-pointer shadow-inner" 
                     value={formData.ReplacementClause} 
                     onChange={(e) => setField('ReplacementClause', e.target.value)}
                   >
@@ -645,7 +645,7 @@ export default function Onboarding() {
                     <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Replacement Period (Days) <span className="text-amber-300">*</span></label>
                     <input 
                       type="number" 
-                      className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
+                      className="rc-input font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" 
                       value={formData.ReplcPeriod} 
                       onChange={(e) => setField('ReplcPeriod', e.target.value)} 
                       placeholder="e.g. 90" 
@@ -683,7 +683,7 @@ export default function Onboarding() {
           )}
 
           {currentStep === 2 && (
-            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#9E0D43] via-[#800A36] to-[#600727] p-8 shadow-xl text-white relative overflow-hidden">
+            <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#6D5BF5] via-[#4F3FD6] to-[#3B2FB0] p-8 shadow-xl text-white relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-amber-300" />
               <div className="mb-6 flex items-center gap-3 border-b border-white/20 pb-4">
                 <div className="h-6 w-1.5 rounded-full bg-amber-300"></div>
@@ -705,10 +705,10 @@ export default function Onboarding() {
                     <div className="flex flex-col md:col-span-2">
                       <span className="text-xs font-bold text-slate-500 mb-1">Module Type</span>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {formData.Ta === 'X' && <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-3 py-0.5 text-xs font-bold text-teal-800">TA</span>}
-                        {formData.Tm === 'X' && <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-3 py-0.5 text-xs font-bold text-teal-800">TM</span>}
-                        {formData.Ld === 'X' && <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-3 py-0.5 text-xs font-bold text-teal-800">L&D</span>}
-                        {formData.Od === 'X' && <span className="inline-flex items-center rounded-full bg-teal-50 border border-teal-200 px-3 py-0.5 text-xs font-bold text-teal-800">OD</span>}
+                        {formData.Ta === 'X' && <span className="inline-flex items-center rounded-full bg-rc-indigo-50 border border-rc-indigo-200 px-3 py-0.5 text-xs font-bold text-rc-indigo-800">TA</span>}
+                        {formData.Tm === 'X' && <span className="inline-flex items-center rounded-full bg-rc-indigo-50 border border-rc-indigo-200 px-3 py-0.5 text-xs font-bold text-rc-indigo-800">TM</span>}
+                        {formData.Ld === 'X' && <span className="inline-flex items-center rounded-full bg-rc-indigo-50 border border-rc-indigo-200 px-3 py-0.5 text-xs font-bold text-rc-indigo-800">L&D</span>}
+                        {formData.Od === 'X' && <span className="inline-flex items-center rounded-full bg-rc-indigo-50 border border-rc-indigo-200 px-3 py-0.5 text-xs font-bold text-rc-indigo-800">OD</span>}
                         {formData.Ta !== 'X' && formData.Tm !== 'X' && formData.Ld !== 'X' && formData.Od !== 'X' && <span className="font-bold text-slate-800">-</span>}
                       </div>
                     </div>
@@ -742,7 +742,7 @@ export default function Onboarding() {
           <div className="flex items-center justify-between pt-6 border-t border-slate-200">
             <button
               type="button"
-              className="rounded-2xl border-2 border-rose-200 bg-rose-50/40 px-6 py-2.5 text-xs font-extrabold text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer"
+              className="rounded-2xl border-2 border-rose-200 bg-rose-50/40 px-6 py-2.5 text-xs font-extrabold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer"
               onClick={() => {
                 if (currentStep > 0) setCurrentStep((prev) => prev - 1);
                 else navigate(-1);

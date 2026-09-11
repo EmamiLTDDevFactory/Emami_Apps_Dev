@@ -10,12 +10,12 @@ import { formatCurrency } from '../utils/formatters';
 // labels, a floating top-right value per panel, two bold glowing lines (not one faint one), all
 // status rings actually populated, and vendor rows as individual gradient progress bars instead
 // of one combined chart.
-const NEON = { yellow: '#FCCF31', cyan: '#17ead9', magenta: '#f02fc2', orange: '#F55555', blue: '#6078ea' };
-const PAGE_DARK = '#1B213B';
-const CARD_DARK = '#262D47';
-const GRID_DARK = '#40475D';
-const TEXT_LIGHT = '#e8e8f0';
-const TEXT_MUTED = '#9aa0b8';
+const NEON = { yellow: '#FCCF31', cyan: '#17ead9', magenta: '#B98CF2', orange: '#F5A623', blue: '#6D5BF5' };
+const PAGE_DARK = '#241E3D';
+const CARD_DARK = '#332B54';
+const GRID_DARK = '#4A3F72';
+const TEXT_LIGHT = '#EFEDFB';
+const TEXT_MUTED = '#A79BF2';
 
 function parseDateMs(val) {
   if (!val) return null;

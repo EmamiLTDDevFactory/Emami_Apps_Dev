@@ -21,13 +21,13 @@ const CONTACT_CARDS = [
     icon: Send,
     title: 'Report an Issue',
     subtitle: 'Something broken, slow, or not behaving as expected',
-    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('EmamiApps Hub — Bug report')}`),
+    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Emami Apps — Bug report')}`),
   },
   {
     icon: ShieldCheck,
     title: 'Request App Access',
     subtitle: 'Need a locked application unlocked, or a role changed',
-    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('EmamiApps Hub — Access request')}`),
+    action: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Emami Apps — Access request')}`),
   },
 ];
 

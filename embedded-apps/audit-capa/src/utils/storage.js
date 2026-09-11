@@ -60,6 +60,13 @@ export const createCAPAs = (capas) =>
 export const updateCAPA = (capaId, changes) =>
   apiPatch(`/capas/${capaId}`, changes);
 
+// Used when a self-assessment is sent back for rework — the CAPAs auto-
+// generated from that (now-superseded) submission need clearing so the
+// resubmission isn't blocked by the "already submitted" guard, and so a
+// clean set gets generated from the corrected checklist.
+export const deleteCAPAsForAudit = (auditId) =>
+  apiDelete(`/capas?auditId=${auditId}`);
+
 // Kept with the old function name so the existing UI can be migrated
 // without changing CAPA business logic all at once.
 // export const saveCAPAs = (capas) =>

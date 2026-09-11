@@ -63,6 +63,18 @@
 .avatar-empty { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); background: var(--surface); border: 1px dashed var(--border-strong); flex-shrink: 0; }
 
 .chart-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+
+@media (max-width: 1024px) {
+  .chart-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .dash-stage { padding: 20px 18px 32px; }
+  .field-row { grid-template-columns: 1fr; }
+  .panel { padding: 22px 18px 48px; }
+}
+@media (max-width: 480px) {
+  .chart-row { grid-template-columns: 1fr; }
+}
 .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
 .chart-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; }
 

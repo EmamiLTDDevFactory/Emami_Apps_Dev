@@ -78,9 +78,9 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' From Date and To
- *  Date filters — sent as SAP OData $filter properties (FrmDate/ToDate) on every one of the
- *  five invoice entity sets, alongside the existing Email filter. */
+/** The one shared From Date / To Date, set via the Depot Panel's filter row (see TopBar) — sent
+ *  as SAP OData $filter properties (FrmDate/ToDate) on every one of the five invoice entity
+ *  sets, alongside the existing Email filter. */
 export interface InvoiceListFilter {
   frmDate?: string;
   toDate?: string;
@@ -100,17 +100,6 @@ async function fetchInvoicesRaw(entitySet: string, email: string, filter: Invoic
   const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
-}
-
-/** One tab's own entity set, refetched independently (Email + FrmDate + ToDate only) when that
- *  tab's date range changes — does NOT call LoginSet, unlike the combined refreshInvoices()
- *  below. Tags each row with `status` so it can be merged into the shared invCache in place of
- *  that status's old rows (see DataContext's refreshEntitySet). */
-export async function refreshEntitySet(entitySet: string, status: string, filter: InvoiceListFilter): Promise<Invoice[]> {
-  const email = await getToken();
-  if (!email) throw new ApiError('Not logged in', 401);
-  const rows = await fetchInvoicesRaw(entitySet, email, filter);
-  return rows.map((r) => ({ ...r, status }));
 }
 
 /**

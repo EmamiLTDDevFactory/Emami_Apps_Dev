@@ -404,10 +404,25 @@ const updateCAPAEvidence = async (
   );
 };
 
+const deleteCAPAsByAudit = async (auditId) => {
+
+  const result = await pool.query(
+    `
+    DELETE FROM audit_capa.capas
+    WHERE audit_id = $1
+    RETURNING id
+    `,
+    [auditId]
+  );
+
+  return result.rowCount;
+};
+
 module.exports = {
   getAllCAPAs,
   createCAPAs,
   updateCAPA,
   updateCAPAs,
-  updateCAPAEvidence
+  updateCAPAEvidence,
+  deleteCAPAsByAudit
 };

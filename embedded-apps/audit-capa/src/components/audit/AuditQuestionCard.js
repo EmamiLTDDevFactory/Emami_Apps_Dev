@@ -518,6 +518,11 @@ export default function AuditQuestionCard({
                         }}
                         fullWidth
                         size="small"
+                        required={isNonCompliance}
+                        error={
+                            isNonCompliance &&
+                            !item.observation?.trim()
+                        }
                         // disabled={isDepot || isNA}
                         disabled={!canEditAnnexure || isNA}
                         value={

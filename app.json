@@ -28,7 +28,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Emami HUB uses your location to show the local weather on the dashboard."
+          "locationWhenInUsePermission": "Emami Apps uses your location to show the local weather on the dashboard."
         }
       ]
     ]

@@ -105,14 +105,14 @@ export default function Login() {
     <div className="min-h-screen w-full bg-slate-950 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden font-sans">
       
       {/* Ambient Luxury Background Lights */}
-      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#800A36]/30 rounded-full blur-[140px] pointer-events-none animate-pulse" />
+      <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#4F3FD6]/30 rounded-full blur-[140px] pointer-events-none animate-pulse" />
       <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-[450px] h-[450px] bg-rose-600/20 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Main Container Card */}
       <div className="relative z-10 w-full max-w-4xl bg-slate-900/90 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden grid md:grid-cols-12 backdrop-blur-xl">
         
         {/* Left Side: Brand Panel */}
-        <div className="md:col-span-5 bg-gradient-to-br from-[#800A36] via-[#600727] to-[#40041a] p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r border-[#9E0D43]/30">
+        <div className="md:col-span-5 bg-gradient-to-br from-[#4F3FD6] via-[#3B2FB0] to-[#151129] p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden border-b md:border-b-0 md:border-r border-[#6D5BF5]/30">
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-400 via-pink-400 to-amber-300" />
           
           <div>
@@ -198,7 +198,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isSubmitting || employeeId.length < 5}
-                className="w-full flex items-center justify-center gap-2 bg-[#800A36] hover:bg-[#600727] text-white py-3.5 px-4 rounded-2xl font-black text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group shadow-lg cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 bg-[#4F3FD6] hover:bg-[#3B2FB0] text-white py-3.5 px-4 rounded-2xl font-black text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group shadow-lg cursor-pointer"
               >
                 {isSubmitting ? (
                   <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -258,7 +258,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isSubmitting || !otp}
-                className="w-full flex items-center justify-center gap-2 bg-[#800A36] hover:bg-[#600727] text-white py-3.5 px-4 rounded-2xl font-black text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group shadow-lg cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 bg-[#4F3FD6] hover:bg-[#3B2FB0] text-white py-3.5 px-4 rounded-2xl font-black text-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group shadow-lg cursor-pointer"
               >
                 {isSubmitting ? (
                   <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

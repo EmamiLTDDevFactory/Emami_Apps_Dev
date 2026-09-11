@@ -37,13 +37,30 @@ export function base64ByteLength(b64: string): number {
   return Math.floor((b64.length * 3) / 4) - padding;
 }
 
-/** atob/btoa-based — both web-only globals, only ever called from the web-only compression path
- * below (never on native, where an oversized file is rejected before either would be needed). */
-function base64ToBytes(b64: string): Uint8Array {
+/** atob/btoa-based — both web-only globals. Exported so callers can validate the decoded bytes
+ * (see looksLikePdf below) before handing them to a Blob/viewer. */
+export function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+/** True if `bytes` starts with the PDF magic number ("%PDF") — a cheap sanity check that what came
+ * back actually decoded into a real PDF, rather than silently handing a viewer/iframe truncated or
+ * mis-encoded bytes it'll just render as raw garbage with no explanation of what went wrong. */
+export function looksLikePdf(bytes: Uint8Array): boolean {
+  return bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
+}
+
+/** The read-back counterpart to readAttachmentAsBase64 above — turns a base64 attachment already
+ * in hand (e.g. ZVendorPOFollowupSet's inline Value field) into a Blob a browser can open/download,
+ * without a network round-trip. Web-only (atob), same posture as the rest of this file. */
+export function base64ToBlob(base64: string, mimeType: string): Blob {
+  // Cast needed because TS's Blob typing wants an ArrayBuffer-backed view specifically, while
+  // Uint8Array's declared buffer type is the broader ArrayBufferLike — a runtime non-issue, every
+  // browser accepts a plain Uint8Array here.
+  return new Blob([base64ToBytes(base64) as unknown as BlobPart], { type: mimeType || 'application/octet-stream' });
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
