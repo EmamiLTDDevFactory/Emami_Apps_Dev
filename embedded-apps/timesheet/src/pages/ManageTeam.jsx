@@ -22,6 +22,9 @@ export default function ManageTeam({ navigate }) {
     fetchAddEmployeeCandidates,
     unassignedEmployees,
     claimEmployee,
+    fetchPendingRequests,
+    approveEmployee,
+    rejectEmployee,
     getLeaveBalance,
     setLeaveAllocation,
     timesheets,
@@ -60,6 +63,10 @@ export default function ManageTeam({ navigate }) {
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [addingReport, setAddingReport] = useState(false)
   const [claimingUserId, setClaimingUserId] = useState(null)
+  // People who've specifically named this manager as theirs and are waiting on a yes/no -
+  // distinct from unassignedEmployees below (nobody's picked those people at all yet).
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [decidingUserId, setDecidingUserId] = useState(null)
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
   const [savingLeaveUserId, setSavingLeaveUserId] = useState(null)
   const [viewingLeaveUserId, setViewingLeaveUserId] = useState(null)
@@ -91,6 +98,13 @@ export default function ManageTeam({ navigate }) {
     fetchAddEmployeeCandidates()
       .then(setCandidates)
       .catch((err) => console.error('Failed to load employee search candidates:', err.message))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    fetchPendingRequests()
+      .then(setPendingRequests)
+      .catch((err) => console.error('Failed to load pending requests:', err.message))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -225,6 +239,32 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
+  async function handleApprove(userId) {
+    setDecidingUserId(userId)
+    try {
+      await approveEmployee(userId)
+      setPendingRequests((list) => list.filter((u) => u.id !== userId))
+      showToast('Employee approved.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to approve employee.', 'error')
+    } finally {
+      setDecidingUserId(null)
+    }
+  }
+
+  async function handleReject(userId) {
+    setDecidingUserId(userId)
+    try {
+      await rejectEmployee(userId)
+      setPendingRequests((list) => list.filter((u) => u.id !== userId))
+      showToast('Request declined.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to decline request.', 'error')
+    } finally {
+      setDecidingUserId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <BackButton onClick={() => navigate('dashboard')} />
@@ -281,6 +321,48 @@ export default function ManageTeam({ navigate }) {
             {addingReport ? 'Adding…' : 'Add employee'}
           </button>
         </form>
+
+        {pendingRequests.length > 0 && (
+          <div className="mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
+              Requests waiting for your approval
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              These people named you as their reporting manager and can't log any hours until you approve them.
+            </p>
+            <ul className="space-y-2">
+              {pendingRequests.map((user) => (
+                <li
+                  key={user.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{user.name}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                  </div>
+                  <span className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleReject(user.id)}
+                      disabled={decidingUserId === user.id}
+                      className="rounded-lg border border-red-200 dark:border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(user.id)}
+                      disabled={decidingUserId === user.id}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed ${solidBtn}`}
+                    >
+                      {decidingUserId === user.id ? 'Working…' : 'Approve'}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {unassignedEmployees.length > 0 && (
           <div className="mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">

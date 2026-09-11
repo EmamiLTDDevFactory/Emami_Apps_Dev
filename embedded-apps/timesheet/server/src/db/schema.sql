@@ -13,8 +13,17 @@ CREATE TABLE IF NOT EXISTS timesheet.users (
   email        TEXT NOT NULL UNIQUE,
   role         TEXT NOT NULL CHECK (role IN ('employee', 'manager')),
   manager_id   TEXT REFERENCES timesheet.users(id) ON DELETE SET NULL,
+  -- 'pending' = a brand-new employee who either hasn't picked a reporting manager yet, or has
+  -- picked one but that manager hasn't approved them yet - blocked from everything except the
+  -- picker/waiting screens (see server/src/routes/users.js) until 'active'. Defaults to 'active'
+  -- so every user that existed before this column was added (already using the app) is
+  -- unaffected - only brand-new sign-ins go through the new pick-a-manager gate.
+  status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- IF NOT EXISTS makes this a no-op (CHECK included) once the column already exists, so re-running
+-- this file against an already-migrated DB stays safe, same as every CREATE TABLE IF NOT EXISTS above.
+ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active'));
 
 CREATE TABLE IF NOT EXISTS timesheet.projects (
   id    TEXT PRIMARY KEY,
