@@ -2,7 +2,6 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Eye, Plus, UserCheck, Users, CreditCard, AlertTriangle, Search, ShieldCheck, FileText, Folder, ChevronLeft, ChevronRight, Calendar, ArrowUpDown } from 'lucide-react';
 import KpiTile from '../components/KpiTile';
-import ConsultantAnalytics from '../components/ConsultantAnalytics';
 import { AppContext } from '../context/AppContext';
 import { getConsultants } from '../services/odataService';
 import { formatCurrency, formatDate, statusColor, statusText } from '../utils/formatters';
@@ -69,7 +68,7 @@ export default function Dashboard() {
       <span>
         {parts.map((part, index) => 
           part.toLowerCase() === highlight.toLowerCase() ? (
-            <mark key={index} className="bg-yellow-200 text-slate-900 rounded-xs px-0.5 font-black">{part}</mark>
+            <mark key={index} className="bg-yellow-200 text-slate-900 rounded-xs px-0.5 font-bold">{part}</mark>
           ) : (
             part
           )
@@ -178,66 +177,57 @@ export default function Dashboard() {
   const userRole = (localStorage.getItem('employeeRole') || '').trim();
   const isSuperadmin = userRole === 'S' || userRole === 'Superadmin';
 
+  const employeeName = localStorage.getItem('employeeName') || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        <KpiTile 
-          title="Active Consultants" 
-          subtitle="Current active consultants" 
-          value={kpis.activeConsultants} 
-          icon={UserCheck} 
-          onClick={() => handleKpiClick('active')} 
-          active={filters.status === 'ACTIVE'} 
-          bgClass="bg-gradient-to-br from-[#4F3FD6] to-[#3B2FB0] border border-[#6D5BF5]/40 shadow-md"
-          titleClass="text-white/90 font-bold" 
-          subtitleClass="text-white/70" 
-          valueClass="text-white font-black" 
-          iconBgClass="bg-white/20 text-white" 
-          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#4F3FD6]" 
-        />
-        <KpiTile 
-          title="Total Hires" 
-          subtitle="All consultant hires" 
-          value={kpis.totalHires} 
-          icon={Users} 
-          onClick={() => handleKpiClick('all')} 
-          bgClass="bg-gradient-to-br from-[#065F46] to-[#044E38] border border-[#059669]/40 shadow-md" 
-          titleClass="text-white/90 font-bold" 
-          subtitleClass="text-white/70" 
-          valueClass="text-white font-black" 
-          iconBgClass="bg-white/20 text-white" 
-          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#065F46]" 
-        />
-        <KpiTile 
-          title="Total Fees Paid" 
-          subtitle="Accumulated consultant fees" 
-          value={formatCurrency(kpis.totalFeesPaid)} 
-          icon={CreditCard} 
-          onClick={() => handleKpiClick('all')} 
-          bgClass="bg-gradient-to-br from-[#5B21B6] to-[#431497] border border-[#7C3AED]/40 shadow-md" 
-          titleClass="text-white/90 font-bold" 
-          subtitleClass="text-white/70" 
-          valueClass="text-white font-black" 
-          iconBgClass="bg-white/20 text-white" 
-          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#5B21B6]" 
-        />
-        <KpiTile 
-          title="Zero Hires" 
-          subtitle="Consultants without hires" 
-          value={kpis.zeroHireConsultants} 
-          icon={AlertTriangle} 
-          onClick={() => handleKpiClick('zero')} 
-          active={filters.hires === 'ZERO'} 
-          bgClass="bg-gradient-to-br from-[#92400E] to-[#78350F] border border-[#D97706]/40 shadow-md" 
-          titleClass="text-white/90 font-bold" 
-          subtitleClass="text-white/70" 
-          valueClass="text-white font-black" 
-          iconBgClass="bg-white/20 text-white" 
-          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#92400E]" 
-        />
+      <div className="flex items-start justify-between gap-3 pb-[18px] mb-[2px] border-b border-rc-indigo-100">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900">{greeting}, {employeeName}</h1>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">Manage and track your consultant network.</p>
+        </div>
+        <p className="text-[11px] font-medium text-slate-500 shrink-0 pt-0.5">{today}</p>
       </div>
 
-      <ConsultantAnalytics consultants={consultants} />
+      <div className="grid gap-4 md:grid-cols-4">
+        <KpiTile
+          title="Active Consultants"
+          subtitle="Current active consultants"
+          value={kpis.activeConsultants}
+          icon={UserCheck}
+          onClick={() => handleKpiClick('active')}
+          active={filters.status === 'ACTIVE'}
+          iconBgClass="bg-rc-indigo-50 text-rc-indigo-600"
+        />
+        <KpiTile
+          title="Total Hires"
+          subtitle="All consultant hires"
+          value={kpis.totalHires}
+          icon={Users}
+          onClick={() => handleKpiClick('all')}
+          iconBgClass="bg-emerald-50 text-emerald-600"
+        />
+        <KpiTile
+          title="Total Fees Paid"
+          subtitle="Accumulated consultant fees"
+          value={formatCurrency(kpis.totalFeesPaid)}
+          icon={CreditCard}
+          onClick={() => handleKpiClick('all')}
+          iconBgClass="bg-violet-50 text-violet-600"
+        />
+        <KpiTile
+          title="Zero Hires"
+          subtitle="Consultants without hires"
+          value={kpis.zeroHireConsultants}
+          icon={AlertTriangle}
+          onClick={() => handleKpiClick('zero')}
+          active={filters.hires === 'ZERO'}
+          iconBgClass="bg-amber-50 text-amber-600"
+        />
+      </div>
 
       <div className="rc-card overflow-hidden border border-slate-200/80 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">
@@ -275,7 +265,7 @@ export default function Dashboard() {
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto max-h-[580px] overflow-y-auto">
           <table className="min-w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white font-bold tracking-wider text-xs uppercase shadow-sm">
+            <thead className="sticky top-0 z-10 rc-table-header">
               <tr>
                 <th 
                   onClick={() => toggleSort('ConsuName')}
@@ -335,21 +325,21 @@ export default function Dashboard() {
                       key={item.ConsultantId || item.ConsuId} 
                       onClick={() => navigate(`/consultants/${item.ConsultantId || item.ConsuId}`)} 
                       className={`group cursor-pointer border-b border-slate-200/80 transition-colors ${
-                        isEven ? 'bg-white hover:bg-rose-50/40' : 'bg-slate-50/60 hover:bg-rose-50/50'
+                        isEven ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/60 hover:bg-slate-50'
                       }`}
                     >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAvatarColor(item.ConsuName)} text-xs font-black text-white shadow-xs`}>
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAvatarColor(item.ConsuName)} text-xs font-bold text-white shadow-sm`}>
                             {(item.ConsuName || '?').charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <span className="font-bold text-slate-900 group-hover:text-[#4F3FD6] transition-colors">{highlightText(item.ConsuName, filters.search)}</span>
+                            <span className="font-bold text-slate-900 group-hover:text-rc-teal transition-colors">{highlightText(item.ConsuName, filters.search)}</span>
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`rc-status-pill text-xs font-extrabold ${statusColor(item.Status)}`}>
+                        <span className={`rc-status-pill text-xs font-semibold ${statusColor(item.Status)}`}>
                           {statusText(item.Status)}
                         </span>
                       </td>
@@ -357,7 +347,7 @@ export default function Dashboard() {
                         {item.ContStart ? `${formatDate(item.ContStart)} - ${formatDate(item.ContEnd)}` : '-'}
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex items-center justify-center min-w-[26px] px-2.5 py-0.5 rounded-full text-xs font-black border shadow-2xs ${
+                        <span className={`inline-flex items-center justify-center min-w-[26px] px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${
                           Number(item.TotalHires || 0) === 0 
                             ? 'bg-slate-100 text-slate-600 border-slate-300' 
                             : 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -368,7 +358,7 @@ export default function Dashboard() {
                       <td className="px-5 py-4 font-bold text-slate-800 text-xs">{formatCurrency(item.TotalFees || 0)}</td>
                       <td className="px-5 py-4 font-bold text-slate-800 text-xs">{item.LastClosure ? formatDate(item.LastClosure) : '-'}</td>
                       <td className="px-5 py-4">
-                        <span className="font-mono text-xs font-extrabold text-slate-800 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                        <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">
                           {item.DummyVendor || '-'}
                         </span>
                       </td>
@@ -376,15 +366,15 @@ export default function Dashboard() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => navigate(`/consultants/${item.ConsultantId || item.ConsuId}`)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer group/view"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rc-indigo-200 bg-rc-indigo-50 px-3 py-1.5 text-xs font-bold text-rc-teal hover:bg-rc-teal hover:text-white hover:border-rc-teal transition shadow-sm cursor-pointer group/view"
                             title="View Details"
                           >
-                            <Eye className="h-3.5 w-3.5 text-[#4F3FD6] group-hover/view:text-white transition-colors" /> View
+                            <Eye className="h-3.5 w-3.5 text-rc-teal group-hover/view:text-white transition-colors" /> View
                           </button>
                           {item.Status === 'ACTIVE' && (
                             <button
                               onClick={() => navigate(`/closure/${item.ConsultantId || item.ConsuId}`)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition shadow-2xs cursor-pointer group/closure"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 transition shadow-sm cursor-pointer group/closure"
                               title="Log Closure"
                             >
                               <UserCheck className="h-3.5 w-3.5 text-emerald-800 group-hover/closure:text-white transition-colors" /> Closure
@@ -406,51 +396,51 @@ export default function Dashboard() {
             <div 
               key={item.ConsultantId || item.ConsuId} 
               onClick={() => navigate(`/consultants/${item.ConsultantId || item.ConsuId}`)} 
-              className="overflow-hidden rounded-2xl border-2 border-rose-200/80 bg-gradient-to-br from-white via-rose-50/20 to-pink-50/30 shadow-sm active:scale-[0.99] transition-all cursor-pointer border-l-[4px] border-l-[#4F3FD6]"
+              className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm active:scale-[0.99] transition-all cursor-pointer border-l-[4px] border-l-rc-teal"
             >
               {/* Card Header Banner */}
-              <div className="flex items-center justify-between border-b border-rose-100 bg-gradient-to-r from-rose-50/90 via-pink-50/60 to-rose-50/80 px-4 py-3">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAvatarColor(item.ConsuName)} text-xs font-black text-white shadow-sm ring-2 ring-white`}>
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${getAvatarColor(item.ConsuName)} text-xs font-bold text-white shadow-sm ring-2 ring-white`}>
                     {(item.ConsuName || '?').charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <div className="text-sm font-black text-slate-900 tracking-tight">{highlightText(item.ConsuName, filters.search)}</div>
-                    <div className="mt-0.5 inline-block rounded-md bg-rose-100/90 px-2 py-0.5 font-mono text-[10px] font-extrabold text-[#4F3FD6] border border-rose-200/80">
+                    <div className="text-sm font-bold text-slate-900 tracking-tight">{highlightText(item.ConsuName, filters.search)}</div>
+                    <div className="mt-0.5 inline-block rounded-md bg-rc-indigo-50 px-2 py-0.5 font-mono text-[10px] font-semibold text-rc-teal border border-rc-indigo-100">
                       {item.DummyVendor || 'No Vendor'}
                     </div>
                   </div>
                 </div>
-                <span className={`rc-status-pill text-[11px] px-2.5 py-1 font-bold shadow-2xs ${statusColor(item.Status)}`}>
+                <span className={`rc-status-pill text-[11px] px-2.5 py-1 font-bold shadow-sm ${statusColor(item.Status)}`}>
                   {statusText(item.Status)}
                 </span>
               </div>
               
               {/* Body Details Grid */}
               <div className="p-3.5 grid grid-cols-3 gap-2.5">
-                <div className="col-span-2 p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-[#4F3FD6] flex items-center gap-1">
-                    <Calendar className="h-3 w-3 text-[#4F3FD6]" /> Contract Period
+                <div className="col-span-2 p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-sm">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-rc-teal flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-rc-teal" /> Contract Period
                   </div>
                   <div className="mt-1 text-xs font-bold text-slate-800">
                     {item.ContStart ? `${formatDate(item.ContStart)} - ${formatDate(item.ContEnd)}` : '-'}
                   </div>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-rose-50/80 border border-rose-200/80 text-right shadow-2xs flex flex-col justify-center">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-[#4F3FD6]">Hires</div>
-                  <div className="mt-0.5 text-base font-black text-[#4F3FD6]">{item.TotalHires || 0}</div>
+                <div className="p-2.5 rounded-xl bg-rc-indigo-50 border border-rc-indigo-100 text-right shadow-sm flex flex-col justify-center">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-rc-teal">Hires</div>
+                  <div className="mt-0.5 text-base font-bold text-rc-teal">{item.TotalHires || 0}</div>
                 </div>
               </div>
               
               {/* Card Footer Bar */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-rose-50/40 border-t border-rose-100">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-200">
                 <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                  Tap card for details <ChevronRight className="h-3 w-3 text-[#4F3FD6]" />
+                  Tap card for details <ChevronRight className="h-3 w-3 text-rc-teal" />
                 </span>
                 <button 
                   onClick={(e) => { e.stopPropagation(); navigate(`/consultants/${item.ConsultantId || item.ConsuId}`); }} 
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F3FD6] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#3B2FB0] transition"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-rc-teal px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark transition"
                 >
                   <Eye className="h-3.5 w-3.5" /> View Details
                 </button>
@@ -462,23 +452,23 @@ export default function Dashboard() {
         {/* Crisp, Highly Visible Pagination Footer */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-slate-200 bg-slate-100/90 text-slate-800">
           <div className="text-xs font-bold text-slate-700">
-            Showing <span className="font-extrabold text-[#4F3FD6]">{filteredConsultants.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredConsultants.length)}</span> of <span className="font-extrabold text-slate-900">{filteredConsultants.length}</span> consultants
+            Showing <span className="font-semibold text-rc-teal">{filteredConsultants.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredConsultants.length)}</span> of <span className="font-semibold text-slate-900">{filteredConsultants.length}</span> consultants
           </div>
           <div className="flex items-center gap-2">
             <button 
               disabled={page <= 1} 
               onClick={() => setPage(page - 1)} 
-              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-sm hover:bg-rc-teal hover:text-white hover:border-rc-teal disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" /> Prev
             </button>
-            <span className="text-xs font-extrabold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-xs font-semibold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
               Page {page} / {totalPages || 1}
             </span>
             <button 
               disabled={page >= totalPages} 
               onClick={() => setPage(page + 1)} 
-              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-sm hover:bg-rc-teal hover:text-white hover:border-rc-teal disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>

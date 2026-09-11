@@ -3,7 +3,10 @@ frontend:
   phases:
     preBuild:
       commands:
-        - npm ci
+        # npm install (not ci) so the cached root node_modules/ below actually gets reused —
+        # npm ci always wipes and reinstalls from scratch regardless of what's on disk, same
+        # reasoning build-embedded-apps.js already documents for the embedded apps' installs.
+        - npm install
     build:
       commands:
         - echo "EXPO_PUBLIC_AUTH_API_URL=$EXPO_PUBLIC_AUTH_API_URL" > .env

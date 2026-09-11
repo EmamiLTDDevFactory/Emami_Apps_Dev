@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
 import Onboarding from './pages/Onboarding';
 import ConsultantDetail from './pages/ConsultantDetail';
 import Closure from './pages/Closure';
@@ -177,8 +178,8 @@ export default function App() {
 
   if (!bootstrapped) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs">
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-5 shadow-xl">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30">
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-white px-6 py-5 shadow-lg border border-slate-200">
           <Loader2 className="h-8 w-8 animate-spin text-rc-teal" />
           <span className="text-sm font-medium text-slate-600">Loading...</span>
         </div>
@@ -194,6 +195,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/consultants" element={<Dashboard />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/consultants/:consultantId" element={<ConsultantDetail />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/onboarding/:consultantId/edit" element={<Onboarding />} />
