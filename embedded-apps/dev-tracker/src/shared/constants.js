@@ -94,6 +94,23 @@ export const KANBAN_COLUMNS = [
 
 export const PRIORITY_RANK = { P1: 0, P2: 1, P3: 2 };
 
+// Command-centre risk thresholds — an active item is "at risk" once its revised target is
+// this many days out or closer, and "stalled" once it's gone this many days with no field
+// change recorded in item_history (tracked via the item's own updatedAt timestamp).
+export const AT_RISK_WINDOW_DAYS = 3;
+export const STALLED_DAYS = 5;
+
+// Display metadata for the four risk levels riskLevel() (see utils.js) can return, keyed by
+// the CSS custom properties already defined in tokens.css so severity colors stay consistent
+// with the rest of the app instead of introducing a parallel palette.
+export const RISK_META = {
+  critical: { label: 'Overdue', shortLabel: 'late', color: 'var(--st-red)', soft: 'var(--st-red-soft)' },
+  stalled: { label: 'Stalled', shortLabel: 'stalled', color: 'var(--st-amber)', soft: 'var(--st-amber-soft)' },
+  atRisk: { label: 'Due soon', shortLabel: 'due soon', color: 'var(--st-indigo)', soft: 'var(--st-indigo-soft)' },
+  onTrack: { label: 'On track', shortLabel: '', color: 'var(--muted)', soft: 'var(--bg-alt)' },
+  done: { label: 'Done', shortLabel: '', color: 'var(--st-green)', soft: 'var(--st-green-soft)' },
+};
+
 export const PULSE_WINDOWS = [
   { label: 'Since start', days: null },
   { label: 'Last 6 months', days: 182 },
