@@ -16,8 +16,26 @@ import {
 } from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Options offered by the app-role picker popup, in display order. */
-const ROLE_OPTIONS: (AppRole | null)[] = [null, 'User', 'Admin'];
+/** Audit & CAPA is the one app with its own role vocabulary (CQA/Depot) instead of the generic
+ * User/Admin pair every other app uses — see roleOptionsFor/isElevatedRole below. */
+const AUDIT_CAPA_APP_ID = 'audit-capa';
+/** Mirrors embedded-apps/audit-capa/src/data/depots.js — kept in sync by hand since depots change
+ * rarely; add a new one here too if it's ever added there, so it's selectable from Manage Access. */
+const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
+
+/** Options offered by the app-role picker popup, in display order — per-app, since Audit & CAPA
+ * uses CQA/Depot (CQA = the elevated/admin-equivalent role, Depot = the base/user-equivalent role,
+ * which also carries which depot that person belongs to) instead of User/Admin. */
+function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
+  if (appId === AUDIT_CAPA_APP_ID) return [null, 'Depot', 'CQA'];
+  return [null, 'User', 'Admin'];
+}
+
+/** Whether `role` is the elevated/admin-equivalent role for `appId` — drives the checkmark shown
+ * on an app chip. 'Admin' for the generic pair, 'CQA' for Audit & CAPA. */
+function isElevatedRole(appId: string, role: AppRole | null): boolean {
+  return appId === AUDIT_CAPA_APP_ID ? role === 'CQA' : role === 'Admin';
+}
 /** Hub-wide levels an admin can actually grant through this screen — 'Super Admin' is never
  * offered here at all, it only ever exists on the one permanently-seeded email (see db.js). */
 const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
@@ -30,10 +48,16 @@ type PendingChanges = {
   isActive?: boolean;
   accessLevel?: AccessLevel;
   roles: Record<string, AppRole | null>;
+  /** Only meaningful for Audit & CAPA's 'Depot' role — see AUDIT_CAPA_DEPOTS. */
+  depots?: Record<string, string | null>;
 };
 
 function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
   return user.apps.find((a) => a.appId === appId)?.role ?? null;
+}
+
+function depotOf(user: UserAccessEntry, appId: string): string | null {
+  return user.apps.find((a) => a.appId === appId)?.depot ?? null;
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -105,6 +129,7 @@ export default function UserAccessScreen() {
   const [bulkEmailsText, setBulkEmailsText] = useState('');
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [newUserRoles, setNewUserRoles] = useState<Record<string, AppRole | null>>({});
+  const [newUserDepots, setNewUserDepots] = useState<Record<string, string | null>>({});
   const [dialogError, setDialogError] = useState('');
   const [addingUser, setAddingUser] = useState(false);
 
@@ -124,6 +149,7 @@ export default function UserAccessScreen() {
     setNewUserEmail('');
     setBulkEmailsText('');
     setNewUserRoles({});
+    setNewUserDepots({});
     setDialogError('');
     setShowAddModal(true);
   };
@@ -136,6 +162,10 @@ export default function UserAccessScreen() {
 
   const setNewUserRole = (appId: string, role: AppRole | null) => {
     setNewUserRoles((prev) => ({ ...prev, [appId]: role }));
+  };
+
+  const setNewUserDepot = (appId: string, depot: string | null) => {
+    setNewUserDepots((prev) => ({ ...prev, [appId]: depot }));
   };
 
   const submitNewUser = async () => {
@@ -158,8 +188,12 @@ export default function UserAccessScreen() {
         return;
       }
       const grantedRoles = Object.entries(newUserRoles).filter((entry): entry is [string, AppRole] => !!entry[1]);
-      const roleResults = await Promise.all(grantedRoles.map(([appId, role]) => setAppAccess(value, appId, role)));
-      const apps = grantedRoles.filter((_, i) => roleResults[i].ok).map(([appId, role]) => ({ appId, role }));
+      const roleResults = await Promise.all(
+        grantedRoles.map(([appId, role]) => setAppAccess(value, appId, role, newUserDepots[appId] ?? null))
+      );
+      const apps = grantedRoles
+        .filter((_, i) => roleResults[i].ok)
+        .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
       setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', apps }]);
       const failedRole = roleResults.find((r) => !r.ok);
       setShowAddModal(false);
@@ -193,8 +227,12 @@ export default function UserAccessScreen() {
           batch.map(async (email) => {
             const res = await addAuthorizedUser(email);
             if (!res.ok) return { email, ok: false as const };
-            const roleResults = await Promise.all(grantedRoles.map(([appId, role]) => setAppAccess(email, appId, role)));
-            const apps = grantedRoles.filter((_, i) => roleResults[i].ok).map(([appId, role]) => ({ appId, role }));
+            const roleResults = await Promise.all(
+              grantedRoles.map(([appId, role]) => setAppAccess(email, appId, role, newUserDepots[appId] ?? null))
+            );
+            const apps = grantedRoles
+              .filter((_, i) => roleResults[i].ok)
+              .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
             return { email, ok: true as const, apps };
           })
         );
@@ -241,6 +279,10 @@ export default function UserAccessScreen() {
     const p = pending[user.email]?.roles[appId];
     return p !== undefined ? p : roleOf(user, appId);
   };
+  const effectiveDepot = (user: UserAccessEntry, appId: string) => {
+    const p = pending[user.email]?.depots?.[appId];
+    return p !== undefined ? p : depotOf(user, appId);
+  };
   const effectiveAccessLevel = (user: UserAccessEntry): AccessLevel =>
     pending[user.email]?.accessLevel ?? user.accessLevel;
   const isDirty = (user: UserAccessEntry) => {
@@ -248,7 +290,9 @@ export default function UserAccessScreen() {
     if (!p) return false;
     if (p.isActive !== undefined && p.isActive !== user.isActive) return true;
     if (p.accessLevel !== undefined && p.accessLevel !== user.accessLevel) return true;
-    return Object.entries(p.roles).some(([appId, role]) => role !== roleOf(user, appId));
+    if (Object.entries(p.roles).some(([appId, role]) => role !== roleOf(user, appId))) return true;
+    if (p.depots && Object.entries(p.depots).some(([appId, depot]) => depot !== depotOf(user, appId))) return true;
+    return false;
   };
 
   // Same matrix server.js's PATCH /access/users/:email/access-level enforces — this only gates
@@ -263,6 +307,13 @@ export default function UserAccessScreen() {
     setPending((prev) => {
       const existing = prev[user.email] ?? { roles: {} };
       return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: role } } };
+    });
+  };
+
+  const setPendingDepot = (user: UserAccessEntry, appId: string, depot: string | null) => {
+    setPending((prev) => {
+      const existing = prev[user.email] ?? { roles: {} };
+      return { ...prev, [user.email]: { ...existing, depots: { ...(existing.depots ?? {}), [appId]: depot } } };
     });
   };
 
@@ -295,9 +346,16 @@ export default function UserAccessScreen() {
       if (changes.accessLevel !== undefined && changes.accessLevel !== user.accessLevel && userEmail) {
         calls.push(setAccessLevel(user.email, changes.accessLevel, userEmail));
       }
-      for (const [appId, role] of Object.entries(changes.roles)) {
-        if (role !== roleOf(user, appId)) {
-          calls.push(setAppAccess(user.email, appId, role));
+      // Union of apps touched by either a role change or a depot-only change (e.g. moving an
+      // existing Depot user to a different depot without changing their role).
+      const touchedAppIds = new Set([...Object.keys(changes.roles), ...Object.keys(changes.depots ?? {})]);
+      for (const appId of touchedAppIds) {
+        const role = changes.roles[appId] !== undefined ? changes.roles[appId] : roleOf(user, appId);
+        const depot = changes.depots?.[appId] !== undefined ? changes.depots[appId] : depotOf(user, appId);
+        const roleChanged = changes.roles[appId] !== undefined && changes.roles[appId] !== roleOf(user, appId);
+        const depotChanged = changes.depots?.[appId] !== undefined && changes.depots[appId] !== depotOf(user, appId);
+        if (roleChanged || depotChanged) {
+          calls.push(role ? setAppAccess(user.email, appId, role, depot) : setAppAccess(user.email, appId, null));
         }
       }
       const results = await Promise.all(calls);
@@ -309,9 +367,11 @@ export default function UserAccessScreen() {
       setUsers((prev) =>
         prev.map((u) => {
           if (u.email !== user.email) return u;
-          const nextApps = u.apps.filter((a) => changes.roles[a.appId] === undefined);
-          for (const [appId, role] of Object.entries(changes.roles)) {
-            if (role) nextApps.push({ appId, role });
+          const nextApps = u.apps.filter((a) => !touchedAppIds.has(a.appId));
+          for (const appId of touchedAppIds) {
+            const role = changes.roles[appId] !== undefined ? changes.roles[appId] : roleOf(user, appId);
+            const depot = changes.depots?.[appId] !== undefined ? changes.depots[appId] : depotOf(user, appId);
+            if (role) nextApps.push({ appId, role, depot: depot ?? undefined });
           }
           return { ...u, isActive: changes.isActive ?? u.isActive, accessLevel: changes.accessLevel ?? u.accessLevel, apps: nextApps };
         })
@@ -457,7 +517,7 @@ export default function UserAccessScreen() {
           <Text style={styles.deniedText}>Manage Access is only available to Super Admin and Admin users.</Text>
           <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
             <ArrowLeft size={13} color={colors.ink} />
-            <Text style={styles.backText}>Back to Hub</Text>
+            <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
         </View>
       </ScreenScaffold>
@@ -477,7 +537,7 @@ export default function UserAccessScreen() {
         <View style={styles.topRow}>
           <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
             <ArrowLeft size={13} color={colors.ink} />
-            <Text style={styles.backText}>Back to Hub</Text>
+            <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
           <Text style={styles.pageTitle}>Manage Access</Text>
         </View>
@@ -619,12 +679,20 @@ export default function UserAccessScreen() {
                 {!!bulkTargetApp && (
                   <View style={styles.bulkRow}>
                     <Text style={styles.bulkLabel}>Set to</Text>
-                    <Pressable onPress={() => bulkSetAppRole('User')} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Set role to User for selected users">
-                      <Text style={styles.bulkChipText}>User</Text>
-                    </Pressable>
-                    <Pressable onPress={() => bulkSetAppRole('Admin')} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Set role to Admin for selected users">
-                      <Text style={styles.bulkChipText}>Admin</Text>
-                    </Pressable>
+                    {roleOptionsFor(bulkTargetApp)
+                      .filter((role): role is AppRole => role !== null)
+                      .map((role) => (
+                        <Pressable
+                          key={role}
+                          onPress={() => bulkSetAppRole(role)}
+                          disabled={bulkBusy}
+                          style={styles.bulkChip}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Set role to ${role} for selected users`}
+                        >
+                          <Text style={styles.bulkChipText}>{role}</Text>
+                        </Pressable>
+                      ))}
                     <Pressable onPress={() => bulkSetAppRole(null)} disabled={bulkBusy} style={styles.bulkChip} accessibilityRole="button" accessibilityLabel="Remove role for selected users">
                       <Text style={styles.bulkChipText}>None</Text>
                     </Pressable>
@@ -857,11 +925,39 @@ export default function UserAccessScreen() {
                     <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
                       {app.name}{role ? ` · ${role}` : ''}
                     </Text>
-                    {role === 'Admin' && <Check size={12} color={accent} />}
+                    {isElevatedRole(app.id, role) && <Check size={12} color={accent} />}
                   </Pressable>
                 );
               })}
             </View>
+
+            {newUserRoles[AUDIT_CAPA_APP_ID] === 'Depot' && (
+              <>
+                <Text style={styles.dialogSectionLabel}>Depot</Text>
+                <View style={styles.appChipsRow}>
+                  {AUDIT_CAPA_DEPOTS.map((depot) => {
+                    const isCurrent = (newUserDepots[AUDIT_CAPA_APP_ID] ?? null) === depot;
+                    return (
+                      <Pressable
+                        key={depot}
+                        onPress={() => setNewUserDepot(AUDIT_CAPA_APP_ID, depot)}
+                        style={[
+                          styles.appChip,
+                          { borderColor: isCurrent ? colors.rust : colors.border },
+                          isCurrent && { backgroundColor: `${colors.rust}14` },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Set depot to ${depot}`}
+                        accessibilityState={{ selected: isCurrent }}
+                      >
+                        <Text style={[styles.appChipText, { color: isCurrent ? colors.rust : colors.inkSoft }]}>{depot}</Text>
+                        {isCurrent && <Check size={12} color={colors.rust} />}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
             {!!dialogError && <Text style={styles.errorText}>{dialogError}</Text>}
             {!!bulkProgress && <Text style={styles.bulkParseHint}>Adding {bulkProgress.done}/{bulkProgress.total}…</Text>}
@@ -965,11 +1061,39 @@ export default function UserAccessScreen() {
                         <Text style={[styles.appChipText, { color: role ? accent : colors.inkSoft }]}>
                           {app.name}{role ? ` · ${role}` : ''}
                         </Text>
-                        {role === 'Admin' && <Check size={12} color={accent} />}
+                        {isElevatedRole(app.id, role) && <Check size={12} color={accent} />}
                       </Pressable>
                     );
                   })}
                 </View>
+
+                {effectiveRole(editTarget, AUDIT_CAPA_APP_ID) === 'Depot' && (
+                  <>
+                    <Text style={styles.dialogSectionLabel}>Depot</Text>
+                    <View style={styles.appChipsRow}>
+                      {AUDIT_CAPA_DEPOTS.map((depot) => {
+                        const isCurrent = effectiveDepot(editTarget, AUDIT_CAPA_APP_ID) === depot;
+                        return (
+                          <Pressable
+                            key={depot}
+                            onPress={() => setPendingDepot(editTarget, AUDIT_CAPA_APP_ID, depot)}
+                            style={[
+                              styles.appChip,
+                              { borderColor: isCurrent ? colors.rust : colors.border },
+                              isCurrent && { backgroundColor: `${colors.rust}14` },
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set depot to ${depot} for ${editTarget.email}`}
+                            accessibilityState={{ selected: isCurrent }}
+                          >
+                            <Text style={[styles.appChipText, { color: isCurrent ? colors.rust : colors.inkSoft }]}>{depot}</Text>
+                            {isCurrent && <Check size={12} color={colors.rust} />}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
 
                 {!!error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -1032,7 +1156,7 @@ export default function UserAccessScreen() {
                     </Pressable>
                   </View>
                   <Text style={styles.rolePickerHint}>Choose this person's access for {app.name}</Text>
-                  {ROLE_OPTIONS.map((role) => {
+                  {roleOptionsFor(rolePickerFor.appId).map((role) => {
                     const isCurrent = currentRole === role;
                     const label = role ?? 'None';
                     return (

@@ -12,7 +12,7 @@ const initialFilters = { search: '', status: 'ALL', hires: 'ALL' };
 const getAvatarColor = (name) => {
   const colors = [
     'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500', 
-    'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 
+    'bg-emerald-500', 'bg-rc-indigo-500', 'bg-cyan-500', 'bg-sky-500', 
     'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 
     'bg-fuchsia-500', 'bg-pink-500', 'bg-rose-500'
   ];
@@ -188,12 +188,12 @@ export default function Dashboard() {
           icon={UserCheck} 
           onClick={() => handleKpiClick('active')} 
           active={filters.status === 'ACTIVE'} 
-          bgClass="bg-gradient-to-br from-[#800A36] to-[#5c0626] border border-[#9E0D43]/40 shadow-md" 
+          bgClass="bg-gradient-to-br from-[#4F3FD6] to-[#3B2FB0] border border-[#6D5BF5]/40 shadow-md"
           titleClass="text-white/90 font-bold" 
           subtitleClass="text-white/70" 
           valueClass="text-white font-black" 
           iconBgClass="bg-white/20 text-white" 
-          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#800A36]" 
+          arrowBgClass="bg-white/20 text-white group-hover:bg-white group-hover:text-[#4F3FD6]" 
         />
         <KpiTile 
           title="Total Hires" 
@@ -275,7 +275,7 @@ export default function Dashboard() {
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto max-h-[580px] overflow-y-auto">
           <table className="min-w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase shadow-sm">
+            <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white font-bold tracking-wider text-xs uppercase shadow-sm">
               <tr>
                 <th 
                   onClick={() => toggleSort('ConsuName')}
@@ -344,7 +344,7 @@ export default function Dashboard() {
                             {(item.ConsuName || '?').charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <span className="font-bold text-slate-900 group-hover:text-[#800A36] transition-colors">{highlightText(item.ConsuName, filters.search)}</span>
+                            <span className="font-bold text-slate-900 group-hover:text-[#4F3FD6] transition-colors">{highlightText(item.ConsuName, filters.search)}</span>
                           </div>
                         </div>
                       </td>
@@ -376,10 +376,10 @@ export default function Dashboard() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => navigate(`/consultants/${item.ConsultantId || item.ConsuId}`)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer group/view"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-1.5 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer group/view"
                             title="View Details"
                           >
-                            <Eye className="h-3.5 w-3.5 text-[#800A36] group-hover/view:text-white transition-colors" /> View
+                            <Eye className="h-3.5 w-3.5 text-[#4F3FD6] group-hover/view:text-white transition-colors" /> View
                           </button>
                           {item.Status === 'ACTIVE' && (
                             <button
@@ -406,7 +406,7 @@ export default function Dashboard() {
             <div 
               key={item.ConsultantId || item.ConsuId} 
               onClick={() => navigate(`/consultants/${item.ConsultantId || item.ConsuId}`)} 
-              className="overflow-hidden rounded-2xl border-2 border-rose-200/80 bg-gradient-to-br from-white via-rose-50/20 to-pink-50/30 shadow-sm active:scale-[0.99] transition-all cursor-pointer border-l-[4px] border-l-[#800A36]"
+              className="overflow-hidden rounded-2xl border-2 border-rose-200/80 bg-gradient-to-br from-white via-rose-50/20 to-pink-50/30 shadow-sm active:scale-[0.99] transition-all cursor-pointer border-l-[4px] border-l-[#4F3FD6]"
             >
               {/* Card Header Banner */}
               <div className="flex items-center justify-between border-b border-rose-100 bg-gradient-to-r from-rose-50/90 via-pink-50/60 to-rose-50/80 px-4 py-3">
@@ -416,7 +416,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <div className="text-sm font-black text-slate-900 tracking-tight">{highlightText(item.ConsuName, filters.search)}</div>
-                    <div className="mt-0.5 inline-block rounded-md bg-rose-100/90 px-2 py-0.5 font-mono text-[10px] font-extrabold text-[#800A36] border border-rose-200/80">
+                    <div className="mt-0.5 inline-block rounded-md bg-rose-100/90 px-2 py-0.5 font-mono text-[10px] font-extrabold text-[#4F3FD6] border border-rose-200/80">
                       {item.DummyVendor || 'No Vendor'}
                     </div>
                   </div>
@@ -429,8 +429,8 @@ export default function Dashboard() {
               {/* Body Details Grid */}
               <div className="p-3.5 grid grid-cols-3 gap-2.5">
                 <div className="col-span-2 p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-[#800A36] flex items-center gap-1">
-                    <Calendar className="h-3 w-3 text-[#800A36]" /> Contract Period
+                  <div className="text-[10px] font-black uppercase tracking-wider text-[#4F3FD6] flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-[#4F3FD6]" /> Contract Period
                   </div>
                   <div className="mt-1 text-xs font-bold text-slate-800">
                     {item.ContStart ? `${formatDate(item.ContStart)} - ${formatDate(item.ContEnd)}` : '-'}
@@ -438,19 +438,19 @@ export default function Dashboard() {
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-rose-50/80 border border-rose-200/80 text-right shadow-2xs flex flex-col justify-center">
-                  <div className="text-[10px] font-black uppercase tracking-wider text-[#800A36]">Hires</div>
-                  <div className="mt-0.5 text-base font-black text-[#800A36]">{item.TotalHires || 0}</div>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-[#4F3FD6]">Hires</div>
+                  <div className="mt-0.5 text-base font-black text-[#4F3FD6]">{item.TotalHires || 0}</div>
                 </div>
               </div>
               
               {/* Card Footer Bar */}
               <div className="flex items-center justify-between px-4 py-2.5 bg-rose-50/40 border-t border-rose-100">
                 <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
-                  Tap card for details <ChevronRight className="h-3 w-3 text-[#800A36]" />
+                  Tap card for details <ChevronRight className="h-3 w-3 text-[#4F3FD6]" />
                 </span>
                 <button 
                   onClick={(e) => { e.stopPropagation(); navigate(`/consultants/${item.ConsultantId || item.ConsuId}`); }} 
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#800A36] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#600727] transition"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4F3FD6] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#3B2FB0] transition"
                 >
                   <Eye className="h-3.5 w-3.5" /> View Details
                 </button>
@@ -462,13 +462,13 @@ export default function Dashboard() {
         {/* Crisp, Highly Visible Pagination Footer */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-slate-200 bg-slate-100/90 text-slate-800">
           <div className="text-xs font-bold text-slate-700">
-            Showing <span className="font-extrabold text-[#800A36]">{filteredConsultants.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredConsultants.length)}</span> of <span className="font-extrabold text-slate-900">{filteredConsultants.length}</span> consultants
+            Showing <span className="font-extrabold text-[#4F3FD6]">{filteredConsultants.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filteredConsultants.length)}</span> of <span className="font-extrabold text-slate-900">{filteredConsultants.length}</span> consultants
           </div>
           <div className="flex items-center gap-2">
             <button 
               disabled={page <= 1} 
               onClick={() => setPage(page - 1)} 
-              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#800A36] hover:text-white hover:border-[#800A36] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
             >
               <ChevronLeft className="h-4 w-4" /> Prev
             </button>
@@ -478,7 +478,7 @@ export default function Dashboard() {
             <button 
               disabled={page >= totalPages} 
               onClick={() => setPage(page + 1)} 
-              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#800A36] hover:text-white hover:border-[#800A36] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>

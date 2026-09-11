@@ -9,6 +9,7 @@ const capaRoutes = require("./routes/capas");
 const notificationRoutes = require("./routes/notifications");
 const sapNotifyRoutes = require("./routes/sapNotify");
 const authRoutes = require("./routes/auth");
+const internalRoutes = require("./routes/internal");
 const pool = require("./postgres");
 
 // Fire-and-forget on module load — idempotent, so a request racing ahead of it is harmless.
@@ -76,6 +77,7 @@ app.get("/api/health/db", async (req, res) => {
   }
 });
 app.use("/api/auth", authRoutes);
+app.use("/api/internal", internalRoutes);
 
 app.use("/api/audits", auditRoutes);
 app.use("/api/capas", capaRoutes);

@@ -5,34 +5,29 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import { apiPost } from "../../api/client";
+import { EMAMI_APPS_URL, IS_LOCAL_HOST } from "./emamiAppsUrl";
 
 // AsyncStorage's web backend writes straight to localStorage under this exact key, unprefixed —
 // see the hub's src/context/AuthContext.tsx. Audit & CAPA runs same-origin under /apps/audit-capa
 // on the hub's own domain, so it can read that same key directly.
 const HUB_SESSION_TOKEN_KEY = "emami_apps_session_token";
 
-// Local dev servers (localhost / 127.0.0.1) must never bounce out to the real
-// Emami Apps hub — there's nothing there for a locally-run app to exchange a
-// session with. Only genuinely deployed dev/prod hostnames redirect, and each
-// one only ever goes to its own environment.
-const HOSTNAME = window.location.hostname;
-const IS_LOCAL_HOST = HOSTNAME === "localhost" || HOSTNAME === "127.0.0.1";
-const EMAMI_APPS_URL = HOSTNAME.includes("dev")
-  ? "https://dev.emamiapps.in/"
-  : "https://www.emamiapps.in/";
-
 /**
  * Audit & CAPA has no login screen of its own — every route in this app is gated here instead.
  * A user is already authenticated by signing in to the Emami Apps hub; this exchanges that hub
  * session for an Audit & CAPA session (backend/controllers/authController.js, which looks the
- * email up in audit_capa.users for access + role) the first time it's needed, then renders the
- * real app. Role-based gating (RoleGuard, Sidebar's per-role menus) is untouched — it still reads
- * the same `currentUser` localStorage entry this just populates.
+ * email up in audit_capa.users for access + role) every time this component mounts (a fresh page
+ * load), then renders the real app. Role-based gating (RoleGuard, Sidebar's per-role menus) is
+ * untouched — it still reads the same `currentUser` localStorage entry this just populates.
+ *
+ * Deliberately does NOT short-circuit to "ready" just because a `currentUser` is already cached in
+ * localStorage from an earlier visit — access/role/depot can change server-side (Manage Access) at
+ * any time, and re-running this exchange on every load is what makes a freshly-granted (or
+ * freshly-revoked) access take effect immediately, instead of only after signing out of the hub
+ * itself and back in.
  */
 export default function Layout() {
-  const [status, setStatus] = useState(() =>
-    localStorage.getItem("currentUser") ? "ready" : "checking"
-  );
+  const [status, setStatus] = useState("checking");
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -69,6 +64,17 @@ export default function Layout() {
           "Sign-in via Emami Apps session failed:",
           error
         );
+
+        // 403 means the hub session itself is fine, but this person has no Audit & CAPA access
+        // (backend/controllers/authController.js) — show it in place instead of bouncing back to
+        // the hub, so it reads as "you're not authorized here" rather than a random redirect.
+        if (error?.status === 403) {
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("currentUser");
+          setErrorMessage(error?.message || "You do not have authorization to use this application.");
+          setStatus("unauthorized");
+          return;
+        }
 
         if (IS_LOCAL_HOST) {
           setErrorMessage(
@@ -121,6 +127,40 @@ export default function Layout() {
       >
         <Typography variant="h6" color="#3730A3" fontWeight={700}>
           Sign-in required
+        </Typography>
+        <Typography color="error">{errorMessage}</Typography>
+        <Button
+          variant="contained"
+          onClick={() => { window.location.href = EMAMI_APPS_URL; }}
+          sx={{
+            borderRadius: 3,
+            background: "linear-gradient(135deg,#3730A3,#7C3AED)",
+            fontWeight: 700,
+          }}
+        >
+          Go to Emami Apps
+        </Button>
+      </Box>
+    );
+  }
+
+  if (status === "unauthorized") {
+    return (
+      <Box
+        sx={{
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+          bgcolor: "#F8FAFC",
+          textAlign: "center",
+          px: 3,
+        }}
+      >
+        <Typography variant="h6" color="#3730A3" fontWeight={700}>
+          Access Denied
         </Typography>
         <Typography color="error">{errorMessage}</Typography>
         <Button

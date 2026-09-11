@@ -1,4 +1,13 @@
 .ru-stage { padding: 36px 52px 48px; }
+
+@media (max-width: 768px) {
+  .ru-stage { padding: 20px 18px 32px; }
+  /* The timeline is date-positioned by percentage across a fixed-width side column + flexible
+     track — squeezing that below its legible width would overlap the bars, so let it scroll
+     horizontally instead, same pattern as the Kanban board's .board { overflow-x: auto }. */
+  .card { overflow-x: auto; }
+  .axis-header, .row { min-width: 640px; }
+}
 .ru-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
 .ru-asof { display: flex; align-items: center; gap: 8px; }
 .ru-asof input[type="date"] { border: 1px solid var(--border-strong); border-radius: 9px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; }

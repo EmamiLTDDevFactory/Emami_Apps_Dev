@@ -78,11 +78,10 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-/** Shared across the Pending/Dispatched/Completed/Returned/Cancelled tabs' Fiscal Year, From
- *  Date, and To Date filters — sent as SAP OData $filter properties (FiscalYear/FrmDate/ToDate)
- *  on every one of the five invoice entity sets, alongside the existing Email filter. */
+/** The one shared From Date / To Date, set via the Depot Panel's filter row (see TopBar) — sent
+ *  as SAP OData $filter properties (FrmDate/ToDate) on every one of the five invoice entity
+ *  sets, alongside the existing Email filter. */
 export interface InvoiceListFilter {
-  fiscalYear?: string;
   frmDate?: string;
   toDate?: string;
 }
@@ -96,7 +95,6 @@ function sapDateTimeLiteral(isoDateStr: string): string {
 
 async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const parts = [`Email eq '${email}'`];
-  if (filter.fiscalYear) parts.push(`FiscalYear eq '${filter.fiscalYear}'`);
   if (filter.frmDate) parts.push(`FrmDate eq ${sapDateTimeLiteral(filter.frmDate)}`);
   if (filter.toDate) parts.push(`ToDate eq ${sapDateTimeLiteral(filter.toDate)}`);
   const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
@@ -108,17 +106,31 @@ async function fetchInvoicesRaw(entitySet: string, email: string, filter: Invoic
  * Primes SAP's backend custom tables (Pending/Dispatched/Completed/Returned/Cancelled) with live
  * data for this Email + Fiscal Year + date range. Per the backend's design, InvoicePendSet/
  * InvoiceDispSet/etc. only read whatever is already sitting in those tables — LoginSet is what
- * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Sent as a
- * plain POST (no Otp field — this app has no OTP flow, see AuthContext.tsx). Non-fatal: a failure
- * here shouldn't block reading whatever's already in the tables.
+ * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Non-fatal: a
+ * failure here shouldn't block reading whatever's already in the tables.
+ *
+ * What actually dispatches this POST to CREATE_DEEP_ENTITY (not the auto-generated
+ * LOGINSET_CREATE_ENTITY stub) is a genuine deep-insert body — the NAV_LoginToDepot/
+ * NAV_LoginToInv navigation properties present in the payload itself, not $expand (that's a
+ * read-time option, for GET_EXPANDED_ENTITYSET). Confirmed working with this exact shape via SAP
+ * Gateway Client, called directly against SAP.
+ *
+ * KNOWN RISK: this same shape, sent through the Azure middleware this app actually calls through
+ * (as opposed to direct-to-SAP), has hung indefinitely in testing — SAP itself handles it fine,
+ * so the suspected fault is in that middleware's relay of array-valued JSON properties, not here.
  */
 async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
-  if (!filter.fiscalYear || !filter.frmDate || !filter.toDate) return;
+  if (!filter.frmDate || !filter.toDate) return;
+  // No user-facing Fiscal Year field anymore — derived from To Date's year, since LoginSet's
+  // payload still needs one.
+  const fiscalYear = String(new Date(filter.toDate).getFullYear());
   const body = {
     Email: email,
-    FiscalYear: filter.fiscalYear,
+    FiscalYear: fiscalYear,
     FrmDate: formatSAPDate(filter.frmDate),
     ToDate: formatSAPDate(filter.toDate),
+    NAV_LoginToDepot: [],
+    NAV_LoginToInv: [],
   };
   await fetch(`${API_BASE_URL}/LoginSet?$format=json`, {
     method: 'POST',

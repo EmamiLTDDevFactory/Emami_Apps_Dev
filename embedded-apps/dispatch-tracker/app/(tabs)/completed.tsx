@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { PodRecord, PodViewModal } from '@/components/modals/PodViewModal';
@@ -13,7 +13,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { fd, finr, fmtCw, isoDate, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -54,8 +54,6 @@ export default function CompletedScreen() {
     errors,
     ensureCompleted,
     invalidate,
-    dateFilter,
-    setDateFilter,
   } = useData();
 
   useFocusEffect(
@@ -145,16 +143,6 @@ export default function CompletedScreen() {
     return count(pendCache) + count(dispCache) + count(compCache) + count(retCache) + count(cancCache);
   }, [readOnly, filterDepot, pendCache, dispCache, compCache, retCache, cancCache]);
 
-  if (!allRows.length) {
-    return (
-      <ScrollView contentContainerStyle={styles.container}>
-        {loading.comp ? <Text style={styles.loadingText}>Loading completed invoices…</Text> : null}
-        {errors.comp ? <Text style={styles.errorText}>{errors.comp}</Text> : null}
-        <EmptyState message="No completed invoices yet" icon="✅" />
-      </ScrollView>
-    );
-  }
-
   const gsv = filteredSorted.reduce((s, r) => s + (Number(r.invoice_value) || 0), 0);
   const totalCases = filteredSorted.reduce((s, r) => s + (Number(r.no_of_cases) || 0), 0);
   const onTimeCount = filteredSorted.filter((r) => isOnTimeExact(Number(r.total_delay) || 0)).length;
@@ -182,6 +170,9 @@ export default function CompletedScreen() {
             </Text>
           </Pressable>
         ) : null}
+
+        {loading.comp && !compCache ? <Text style={styles.loadingText}>Loading completed invoices…</Text> : null}
+        {errors.comp ? <Text style={styles.errorText}>{errors.comp}</Text> : null}
 
         <FilterRow>
           <SearchInput value={search} onChangeText={setSearch} placeholder="🔍  Invoice · Customer · Town · LR" />
@@ -215,15 +206,6 @@ export default function CompletedScreen() {
           </Pressable>
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
-        />
-
         {period === 'Custom' && (
           <View style={styles.customRow}>
             <View style={{ flex: 1 }}>
@@ -252,7 +234,9 @@ export default function CompletedScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {filteredSorted.length === 0 ? (
+        {allRows.length === 0 ? (
+          <EmptyState message="No completed invoices" icon="✅" hint="Try a different date range at the top" />
+        ) : filteredSorted.length === 0 ? (
           <EmptyState message="No invoices match filters" icon="🔍" />
         ) : (
           <>

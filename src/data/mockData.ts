@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  CalendarClock,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
@@ -57,13 +58,11 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // (ZMM_PO_FOLLOWUP_SRV, entity set ZProvisionTrackSet), distinguished from Delivery Confirmation
   // purely by the Potype SAP filter ('9' here vs 'M' there).
   'payment-tracking': '/apps/payment-tracking', // IBD Provision Tracking
-  // Timesheet (see embedded-apps/timesheet) has no separate native deployment either — same
-  // relative path either way, same reasoning as Market Rate/Development Tracker above. Unlike
-  // Dev Tracker it DOES have a bundler, so rather than hardcoding the host it reads
-  // VITE_TIMESHEET_API_URL at build time (set in the Amplify console) and calls its own
-  // Express/Postgres backend at that absolute host directly, unaffected by where this
-  // frontend is served from.
-  timesheet: '/apps/timesheet', // Timesheet
+  // TimeSheet has no separate native deployment either (see embedded-apps/timesheet) — same
+  // relative path either way, same reasoning as Market Rate/Development Tracker above. It has its
+  // own Postgres-backed backend (embedded-apps/timesheet/server), same pattern as Non CTC Expense,
+  // RC Portal and Audit & CAPA.
+  timesheet: '/apps/timesheet', // TimeSheet
 };
 
 const RAW_APPS: AppItem[] = [
@@ -76,7 +75,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
-  { id: 'timesheet', name: 'Timesheet', desc: 'Fill, submit and approve monthly timesheets against projects and tasks, with team reports and Excel export.', cat: 'Operations', icon: Clock, uses: 0 },
+  { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
@@ -97,7 +96,7 @@ export const NAV: NavItem[] = [
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Recent', label: 'Recently Used', icon: Clock },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'Settings', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
   { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];

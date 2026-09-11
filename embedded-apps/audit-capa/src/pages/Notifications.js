@@ -10,7 +10,7 @@ import {
   Typography,
   Button,
 } from "@mui/material";
-import emamiLogo from '../assets/emami-logo.jpg';
+import NotificationsIcon from "@mui/icons-material/Notifications";
 import {
   getNotifications,
   markAsRead,
@@ -124,20 +124,21 @@ export default function Notifications() {
             }}
           >
             <Box
-              component="img"
-              src={emamiLogo}
-              alt="Emami Logo"
               sx={{
                 width: 110,
                 height: 90,
-                objectFit: "contain",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 background: "#fff",
                 borderRadius: 2,
                 p: 1,
                 boxShadow:
                   "0px 4px 12px rgba(0,0,0,0.15)",
               }}
-            />
+            >
+              <NotificationsIcon sx={{ fontSize: 44, color: "#7C3AED" }} />
+            </Box>
             <Box>
 
               <Typography

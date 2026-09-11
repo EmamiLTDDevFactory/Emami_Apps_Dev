@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
-import { fd, finr, isoDate, toDate, todayDate } from '@/lib/format';
+import { fd, finr, toDate } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { DispatchDetail } from '@/types/models';
 import { EmptyState } from '@/components/EmptyState';
 import { KPICard } from '@/components/KPICard';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { ActionButton } from '@/components/ActionButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Pagination } from '@/components/Pagination';
@@ -88,7 +88,7 @@ function truncate(v: string | null | undefined, max: number, ellipsis: boolean):
 
 export default function DispatchedScreen() {
   const { session, readOnly } = useAuth();
-  const { dispCache, errors, ensureDispatched, dateFilter, setDateFilter } = useData();
+  const { dispCache, errors, ensureDispatched } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -197,14 +197,6 @@ export default function DispatchedScreen() {
     );
   }
 
-  if (rows.length === 0) {
-    return (
-      <View style={styles.page}>
-        <EmptyState message="No dispatched invoices" icon="🚚" hint="Dispatch records from SAP will appear here" />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.page}>
       <View style={styles.sticky}>
@@ -229,15 +221,6 @@ export default function DispatchedScreen() {
           <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
-        />
-
         <View style={styles.kpiRow}>
           <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
           <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
@@ -261,43 +244,51 @@ export default function DispatchedScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.list}>
-          {pageRows.map((row) => {
-            const isSelected = row.invoice_no === selectedInvoiceNo;
-            const badge = statusBadgeFor(row.status);
-            const eddColor = eddVsTodayColor(row.edd, 'green-future');
-            return (
-              <Pressable
-                key={row.invoice_no}
-                style={[styles.card, shadow.sm, isSelected && styles.cardSelected]}
-                onPress={() => setSelectedInvoiceNo(isSelected ? null : row.invoice_no)}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.invoiceNo} numberOfLines={1}>
-                    {row.invoice_no}
-                  </Text>
-                  <StatusBadge status={badge.status} label={badge.label} />
-                </View>
+        {rows.length === 0 ? (
+          <EmptyState message="No dispatched invoices" icon="🚚" hint="Try a different date range at the top" />
+        ) : filtered.length === 0 ? (
+          <EmptyState message="No invoices match" icon="🔍" />
+        ) : (
+          <>
+            <View style={styles.list}>
+              {pageRows.map((row) => {
+                const isSelected = row.invoice_no === selectedInvoiceNo;
+                const badge = statusBadgeFor(row.status);
+                const eddColor = eddVsTodayColor(row.edd, 'green-future');
+                return (
+                  <Pressable
+                    key={row.invoice_no}
+                    style={[styles.card, shadow.sm, isSelected && styles.cardSelected]}
+                    onPress={() => setSelectedInvoiceNo(isSelected ? null : row.invoice_no)}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.invoiceNo} numberOfLines={1}>
+                        {row.invoice_no}
+                      </Text>
+                      <StatusBadge status={badge.status} label={badge.label} />
+                    </View>
 
-                <View style={styles.grid}>
-                  <Info label="Depot" value={row.depot || '—'} chip />
-                  <Info label="Customer" value={truncate(row.customer_name, 23, false)} />
-                  <Info label="Town" value={row.town || '—'} />
-                  <Info label="Cases" value={fmtCases(row.no_of_cases)} />
-                  <Info label="Gross WT" value={fmtWeight(row.gross_weight_kg)} />
-                  <Info label="Value ₹" value={finr(row.invoice_value)} valueColor={colors.amber} bold />
-                  <Info label="EDD" value={fd(row.edd)} valueColor={eddColor} bold />
-                  <Info label="LR No" value={row.lr_no || '—'} />
-                  <Info label="Dispatch Date" value={fd(row.dispatch_date)} />
-                  <Info label="Transporter" value={truncate(row.transporter, 21, true)} />
-                  <Info label="Vehicle No" value={row.vehicle_no || '—'} />
-                  <Info label="Vehicle Type" value={row.vehicle_type || '—'} />
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
+                    <View style={styles.grid}>
+                      <Info label="Depot" value={row.depot || '—'} chip />
+                      <Info label="Customer" value={truncate(row.customer_name, 23, false)} />
+                      <Info label="Town" value={row.town || '—'} />
+                      <Info label="Cases" value={fmtCases(row.no_of_cases)} />
+                      <Info label="Gross WT" value={fmtWeight(row.gross_weight_kg)} />
+                      <Info label="Value ₹" value={finr(row.invoice_value)} valueColor={colors.amber} bold />
+                      <Info label="EDD" value={fd(row.edd)} valueColor={eddColor} bold />
+                      <Info label="LR No" value={row.lr_no || '—'} />
+                      <Info label="Dispatch Date" value={fd(row.dispatch_date)} />
+                      <Info label="Transporter" value={truncate(row.transporter, 21, true)} />
+                      <Info label="Vehicle No" value={row.vehicle_no || '—'} />
+                      <Info label="Vehicle Type" value={row.vehicle_type || '—'} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-        <Pagination variant="full" showJump={false} page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage} />
+            <Pagination variant="full" showJump={false} page={page} totalItems={filtered.length} pageSize={pageSize} onPageChange={setPage} />
+          </>
+        )}
       </ScrollView>
 
       {selectedRow && deliverOpen && (

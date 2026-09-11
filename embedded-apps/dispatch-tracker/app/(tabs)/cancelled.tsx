@@ -4,12 +4,12 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { fd, finr, fmtCw, isoDate, sv, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, sv, toDate } from '@/lib/format';
 import { CancelledInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 
 /**
  * Ported 1:1 from dis_shared_components.py's render_cancelled(). Read-only on
@@ -76,8 +76,6 @@ export default function CancelledScreen() {
     loading,
     errors,
     ensureCancelled,
-    dateFilter,
-    setDateFilter,
   } = useData();
 
   useFocusEffect(
@@ -151,14 +149,6 @@ export default function CancelledScreen() {
     );
   }
 
-  if (!dcRows.length) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <EmptyState message="No cancelled invoices yet" icon="✕" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -172,19 +162,12 @@ export default function CancelledScreen() {
           {readOnly && <FilterSelect value={depot} options={depotOptions} onChange={setDepot} minWidth={120} />}
           <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
         </FilterRow>
-
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
-        />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {!filtered.length ? (
+        {!dcRows.length ? (
+          <EmptyState message="No cancelled invoices" icon="✕" hint="Try a different date range at the top" />
+        ) : !filtered.length ? (
           <EmptyState message="No results" icon="🔍" />
         ) : (
           <>

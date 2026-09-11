@@ -11,7 +11,8 @@ import {
     Grid,
     Chip,
 } from "@mui/material";
-import emamiLogo from '../assets/emami-logo.jpg';
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import { KpiSegment, KpiBar } from "../components/common/KpiBar";
 // import {
 //     getCertification
 // } from "../utils/certificationUtils";
@@ -38,6 +39,7 @@ import AssignmentLateIcon from "@mui/icons-material/AssignmentLate";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 
 
 
@@ -694,20 +696,21 @@ export default function AuditList() {
                             }}
                         >
                             <Box
-                                component="img"
-                                src={emamiLogo}
-                                alt="Emami Logo"
                                 sx={{
                                     width: 110,
                                     height: 90,
-                                    objectFit: "contain",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
                                     background: "#fff",
                                     borderRadius: 2,
                                     p: 1,
                                     boxShadow:
                                         "0px 4px 12px rgba(0,0,0,0.15)",
                                 }}
-                            />
+                            >
+                                <AssignmentIcon sx={{ fontSize: 44, color: "#7C3AED" }} />
+                            </Box>
                             <Box>
                                 {/* <Typography variant="h4">
                                 Audit Management
@@ -817,420 +820,84 @@ export default function AuditList() {
                 </Grid>
             </Grid> */}
 
-            <Grid
-                container
-                spacing={3}
-                sx={{ mb: 3 }}
-            >
+            <Box sx={{ mb: 3 }}>
+                <KpiBar>
+                    <KpiSegment
+                        label="Total Audits"
+                        value={visibleAudits.length}
+                        color="#2563EB"
+                        icon={<AssignmentTurnedInIcon fontSize="small" />}
+                        active={selectedKPI === "All"}
+                        onClick={() => setSelectedKPI("All")}
+                    />
 
-                {/* Total Audits */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI("All")
+                    <KpiSegment
+                        label="Open Audits"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "Open"
+                            ).length
                         }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            height: "100%",
-                            minHeight: isCQATablet ? 120 : 100,
-                            border:
-                                selectedKPI === "All"
-                                    ? "2px solid #2563EB"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
+                        color="#F59E0B"
+                        icon={<AssignmentLateIcon fontSize="small" />}
+                        active={selectedKPI === "Open"}
+                        onClick={() => setSelectedKPI("Open")}
+                    />
 
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Total Audits
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#2563EB"
-
-                                >
-                                    {visibleAudits.length}
-                                    {/* {audits.length} */}
-                                </Typography>
-                            </Box>
-                            <AssignmentTurnedInIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#2563EB",
-                                }}
-                            />
-
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Open */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI("Open")
+                    <KpiSegment
+                        label="In Progress"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "In Progress"
+                            ).length
                         }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI === "Open"
-                                    ? "2px solid #F59E0B"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        {/* <CardContent>
-                            <Typography
-                                color="text.secondary"
-                            >
-                                Open Audits
-                            </Typography>
+                        color="#06B6D4"
+                        icon={<AutorenewIcon fontSize="small" />}
+                        active={selectedKPI === "In Progress"}
+                        onClick={() => setSelectedKPI("In Progress")}
+                    />
 
-                            <Typography
-                                variant="h4"
-                                fontWeight={700}
-                                color="#F59E0B"
-                            >
-                                {
-                                    audits.filter(
-                                        a =>
-                                            a.status ===
-                                            "Open"
-                                    ).length
-                                }
-                            </Typography>
-                        </CardContent> */}
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}
-                        >
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Open Audits
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#F59E0B"
-                                >
-                                    {/* {
-                                        audits.filter(
-                                            a =>
-                                                a.status === "Open"
-                                        ).length
-                                    } */}
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Open"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-
-                            <AssignmentLateIcon
-                                sx={{
-                                    fontSize: 42,
-                                    color: "#F59E0B",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* In Progress */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "In Progress"
-                            )
+                    <KpiSegment
+                        label="Completed"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "Completed"
+                            ).length
                         }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "In Progress"
-                                    ? "2px solid #06B6D4"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
+                        color="#8B5CF6"
+                        icon={<TaskAltIcon fontSize="small" />}
+                        active={selectedKPI === "Completed"}
+                        onClick={() => setSelectedKPI("Completed")}
+                    />
 
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    In Progress
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#06B6D4"
-                                >
-                                    {/* {
-                                        audits.filter(
-                                            a =>
-                                                a.status ===
-                                                "In Progress"
-                                        ).length
-                                    } */}
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "In Progress"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <AutorenewIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#06B6D4",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Completed */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "Completed"
-                            )
+                    <KpiSegment
+                        label="CAPA Open"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "CAPA Open"
+                            ).length
                         }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "Completed"
-                                    ? "2px solid #8B5CF6"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
+                        color="#7C3AED"
+                        icon={<FactCheckIcon fontSize="small" />}
+                        active={selectedKPI === "CAPA Open"}
+                        onClick={() => setSelectedKPI("CAPA Open")}
+                    />
 
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Completed
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#8B5CF6"
-                                >
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Completed"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <TaskAltIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#8B5CF6",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Closed */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "Closed"
-                            )
+                    <KpiSegment
+                        label="Closed Audits"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "Closed"
+                            ).length
                         }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "Closed"
-                                    ? "2px solid #22C55E"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Closed Audits
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#22C55E"
-                                >
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Closed"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <CheckCircleIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#22C55E",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-            </Grid>
+                        color="#22C55E"
+                        icon={<CheckCircleIcon fontSize="small" />}
+                        active={selectedKPI === "Closed"}
+                        onClick={() => setSelectedKPI("Closed")}
+                        isLast
+                    />
+                </KpiBar>
+            </Box>
 
             {/* <Box
                 sx={{

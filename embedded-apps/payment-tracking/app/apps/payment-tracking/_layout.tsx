@@ -24,17 +24,17 @@ type Href =
   | '/apps/payment-tracking/provision-details'
   | '/apps/payment-tracking/calendar'
   | '/apps/payment-tracking/pending-approval'
-  | '/apps/payment-tracking/ses-status';
+  | '/apps/payment-tracking/admin-upcoming';
 type NavItem = SidePaneItem & { href: Href };
 
 // Matches the hub's own useIsWideScreen breakpoint and Market Rate's own copy of this constant —
 // this app's side pane docks at the same viewport width both of those do.
 const WIDE_BREAKPOINT = 768;
 
-// Home ('/') is the one tab every role shares — the command-center landing page. Past that, two
-// completely different side panes by role, not one list with an adminOnly filter (unlike Market
-// Rate's Master Data / this app's old Pending PO) — an Admin gets the cross-org Dashboard/Provision
-// Details/Calendar set, everyone else gets their own Upcoming/Missed items, never both.
+// Home ('/') used to be the one tab every role shared — the command-center landing page. Per
+// instruction, Users no longer need it (see index.tsx's redirect to Upcoming Provision for that
+// role) — only Admin still gets it, alongside the cross-org Dashboard/Provision Details/Calendar
+// set; Users get their own Upcoming/Missed items, never both.
 const HOME_NAV_ITEM: NavItem = { href: '/apps/payment-tracking/', label: 'Home', icon: 'home-outline' };
 const ADMIN_NAV_ITEMS: NavItem[] = [
   HOME_NAV_ITEM,
@@ -42,12 +42,13 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
   { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
-  { href: '/apps/payment-tracking/ses-status', label: 'Overall SES Status', icon: 'analytics-outline' },
+  { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
+  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
-  HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/missed-delivery', label: 'Missed Provision', icon: 'alert-circle-outline' },
+  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 
 function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: () => void; isWideScreen: boolean }) {
@@ -187,7 +188,7 @@ function LayoutContent() {
               <Stack.Screen name="provision-details" />
               <Stack.Screen name="calendar" />
               <Stack.Screen name="pending-approval" />
-              <Stack.Screen name="ses-status" />
+              <Stack.Screen name="admin-upcoming" />
             </Stack>
           </SafeAreaView>
         </View>

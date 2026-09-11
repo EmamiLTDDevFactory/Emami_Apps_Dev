@@ -28,11 +28,17 @@ export interface NavItem {
 export type SortOption = 'Alphabetical' | 'Most Used' | 'Recently Used';
 export type CategoryFilter = 'All' | Category;
 
-export type AppRole = 'User' | 'Admin';
+/** Most apps use the generic 'User'/'Admin' pair. Audit & CAPA is the one app with its own
+ * domain-specific role vocabulary — 'CQA' (quality-assurance side, equivalent to 'Admin') and
+ * 'Depot' (depot/site side, equivalent to 'User') — see UserAccessScreen.tsx's roleOptionsFor. */
+export type AppRole = 'User' | 'Admin' | 'CQA' | 'Depot';
 
 export interface UserAppGrant {
   appId: string;
   role: AppRole;
+  /** Only meaningful for Audit & CAPA's 'Depot' role — which depot that person belongs to (see
+   * embedded-apps/audit-capa/src/data/depots.js). Unused by every other app/role. */
+  depot?: string | null;
 }
 
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from AppRole above, which

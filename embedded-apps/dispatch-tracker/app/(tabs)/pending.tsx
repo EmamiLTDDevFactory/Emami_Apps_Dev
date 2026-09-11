@@ -5,14 +5,14 @@ import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { PendingInvoice } from '@/types/models';
-import { fd, finr, fmtCw, isoDate, sfloat, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, sfloat, toDate } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
 import { ActionButton } from '@/components/ActionButton';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { DispatchModal } from '@/components/modals/DispatchModal';
 import { PendingCancelModal } from '@/components/modals/PendingCancelModal';
 
@@ -27,7 +27,7 @@ const GROUP_FIELD: Record<string, keyof PendingInvoice> = {
 /** Ported 1:1 from render_pending() in streamlit_app/dis_shared_components.py. */
 export default function PendingScreen() {
   const { readOnly } = useAuth();
-  const { pendCache, loading, errors, ensurePending, dateFilter, setDateFilter } = useData();
+  const { pendCache, loading, errors, ensurePending } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -125,14 +125,6 @@ export default function PendingScreen() {
     );
   }
 
-  if (!pendCache || pendCache.length === 0) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
-        <EmptyState message="No pending invoices" icon="✅" hint="All invoices have been dispatched or completed" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -158,15 +150,6 @@ export default function PendingScreen() {
           </Pressable>
         </FilterRow>
 
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
-        />
-
         <View style={styles.kpiRow}>
           <KPICard icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
           <KPICard icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
@@ -178,7 +161,13 @@ export default function PendingScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      {filtered.length === 0 ? (
+      {!pendCache || pendCache.length === 0 ? (
+        <EmptyState
+          message="No pending invoices"
+          icon="✅"
+          hint="Try a different date range at the top, or all invoices have been dispatched"
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState message="No invoices match" icon="🔍" />
       ) : groupBy === 'None' ? (
         <UngroupedList

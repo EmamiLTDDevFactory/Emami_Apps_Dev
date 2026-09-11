@@ -118,7 +118,7 @@ export default function EmpSearchHelpModal({ open, onClose, onSelect }) {
                           onSelect({ empId, name: empName });
                           onClose();
                         }}
-                        className="hover:bg-teal-50/60 cursor-pointer transition-colors group"
+                        className="hover:bg-rc-indigo-50/60 cursor-pointer transition-colors group"
                       >
                         <td className="py-3 px-4 font-mono font-bold text-slate-900 group-hover:text-rc-teal">
                           {empId}

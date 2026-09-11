@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = require('./db');
 const { formatTimeSpent } = require('./userProfile');
+const { syncAuditCapaAccess, revokeAuditCapaAccess } = require('./auditCapaSync');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -54,8 +55,15 @@ apiRouter.use(require('./stockQuote'));
 apiRouter.use('/dev-tracker', require('./devTracker'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = ['User', 'Admin'];
-/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app VALID_ROLES
+/** Most apps use the generic User/Admin pair. Audit & CAPA has its own role vocabulary — CQA
+ * (elevated, equivalent to Admin) and Depot (base, equivalent to User) — see auditCapaSync.js,
+ * which is what actually makes this role take effect inside that app. */
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'] };
+const DEFAULT_VALID_ROLES = ['User', 'Admin'];
+function validRolesForApp(appId) {
+    return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
+}
+/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app roles
  * above. Order matters for the permission checks in the access-level route below. */
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
 
@@ -90,7 +98,7 @@ apiRouter.get('/access/users', async (req, res) => {
                    au.is_active,
                    au.access_level,
                    COALESCE(
-                       json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps
             FROM emami_apps.authorized_users au
@@ -174,7 +182,7 @@ apiRouter.get('/admin/roster', async (req, res) => {
                    au.is_active,
                    au.access_level,
                    COALESCE(
-                       json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps,
                    ups.name,
@@ -412,17 +420,29 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
 /** Grant (or change the role on) one app for an existing authorized user. */
 apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
     const role = req.body?.role;
-    if (!VALID_ROLES.includes(role)) {
-        return res.status(400).json({ success: false, error: `Role must be one of: ${VALID_ROLES.join(', ')}.` });
+    const depot = req.body?.depot || null;
+    const appId = req.params.appId;
+    const validRoles = validRolesForApp(appId);
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({ success: false, error: `Role must be one of: ${validRoles.join(', ')}.` });
     }
+    const email = req.params.email.toLowerCase();
     try {
         await pool.query(
-            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role`,
-            [req.params.email.toLowerCase(), req.params.appId, role]
+            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot`,
+            [email, appId, role, depot]
         );
-        res.json({ success: true, role });
+        // Audit & CAPA maintains its own separate Postgres-backed role table, historically only
+        // ever updated by hand — push this grant through so it takes effect immediately. See
+        // auditCapaSync.js's own comment for why this never fails the response above.
+        if (appId === 'audit-capa') {
+            syncAuditCapaAccess(pool, email, role, depot).catch((err) => {
+                console.error('[access] Could not sync Audit & CAPA role for', email, ':', err.message);
+            });
+        }
+        res.json({ success: true, role, depot });
     } catch (err) {
         if (err.code === '23503') {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
@@ -434,11 +454,18 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
 
 /** Revoke one app from an existing authorized user. */
 apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
+    const email = req.params.email.toLowerCase();
+    const appId = req.params.appId;
     try {
         await pool.query(
             'DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
-            [req.params.email.toLowerCase(), req.params.appId]
+            [email, appId]
         );
+        if (appId === 'audit-capa') {
+            revokeAuditCapaAccess(email).catch((err) => {
+                console.error('[access] Could not revoke Audit & CAPA access for', email, ':', err.message);
+            });
+        }
         res.json({ success: true });
     } catch (err) {
         console.error('[access] Failed to revoke app access:', err.message);

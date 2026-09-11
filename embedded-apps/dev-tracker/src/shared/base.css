@@ -12,6 +12,10 @@
 }
 .account-strip-brand { display: flex; align-items: center; gap: 14px; }
 .account-strip-logo { height: 64px; width: 64px; object-fit: contain; flex-shrink: 0; }
+
+@media (max-width: 768px) {
+  .account-strip { padding: 12px 20px; }
+}
 .account-strip-inner { display: flex; align-items: center; gap: 9px; position: relative; }
 .avatar {
   width: 28px; height: 28px; border-radius: 50%;

@@ -44,10 +44,33 @@ export function breakdownBy(
 /** Narrows rows to a calendar month by their Eindt (delivery date) — 'all' (or empty) is a no-op.
  * `deliveryDate` is stored as 'YYYY-MM-DD' (see paymentTrackingApi.ts's toPaymentTrackingRow), so
  * this is a plain string-slice compare, no Date parsing/timezone risk. Applied on top of whatever
- * the SAP Gjahr filter already scoped the fetch to (see useMonthYear's header comment). */
-export function filterByMonth(rows: PaymentTrackingRow[], month: string): PaymentTrackingRow[] {
+ * the SAP Gjahr filter already scoped the fetch to (see useMonthYear's header comment). Generic so
+ * it also works on VendorPOFollowupRow (Pending Approval), not just PaymentTrackingRow. */
+export function filterByMonth<T extends { deliveryDate: string }>(rows: T[], month: string): T[] {
   if (!month || month === 'all') return rows;
   return rows.filter((r) => r.deliveryDate && r.deliveryDate.slice(5, 7) === month);
+}
+
+// Matches MonthYearContext's own FY_START_MONTH — kept as a second constant rather than importing
+// it, since that context module also carries React/state concerns this pure-helpers file otherwise
+// stays free of.
+const FY_START_MONTH = 4;
+
+/** GJAHR (financial year start year) for a 'YYYY-MM-DD' delivery date, Apr-Mar fiscal year. '' if
+ * unparseable. */
+export function fiscalYearOf(deliveryDate: string): string {
+  if (!deliveryDate) return '';
+  const [y, m] = deliveryDate.split('-').map(Number);
+  if (!y || !m) return '';
+  return String(m >= FY_START_MONTH ? y : y - 1);
+}
+
+/** Narrows rows to a financial year by their delivery date, client-side — for entities like
+ * ZVendorPOFollowupSet (Pending Approval) that don't expose a Gjahr server filter the way
+ * ZProvisionTrackSet does (see paymentTrackingApi.ts's fetchProvisionPOs). */
+export function filterByFiscalYear<T extends { deliveryDate: string }>(rows: T[], year: string): T[] {
+  if (!year) return rows;
+  return rows.filter((r) => fiscalYearOf(r.deliveryDate) === year);
 }
 
 /** 'YYYY-MM-DD' -> 'DD Mon YYYY' for display; '' for a blank/unparseable date rather than

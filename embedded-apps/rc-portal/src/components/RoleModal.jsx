@@ -164,7 +164,7 @@ export default function RoleModal({ open, onClose, onSave }) {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                <tr className="border-b border-slate-100 hover:bg-teal-50/20 transition-colors">
+                <tr className="border-b border-slate-100 hover:bg-rc-indigo-50/20 transition-colors">
                   {/* Column 1: NAME with Live Typeahead Search & Search Help Button */}
                   <td className="py-4 px-5 overflow-visible">
                     <div className="relative flex items-center" ref={dropdownRef}>
@@ -183,7 +183,7 @@ export default function RoleModal({ open, onClose, onSave }) {
                         type="button"
                         onClick={() => setShowSearchHelp(true)}
                         title="Search Help (Lookup EmpSet)"
-                        className="absolute right-1.5 p-1 rounded-lg text-slate-400 hover:text-rc-teal hover:bg-teal-50 transition"
+                        className="absolute right-1.5 p-1 rounded-lg text-slate-400 hover:text-rc-teal hover:bg-rc-indigo-50 transition"
                       >
                         {loadingEmployees ? <Loader2 className="h-4 w-4 animate-spin text-rc-teal" /> : <Search className="h-4 w-4" />}
                       </button>
@@ -196,12 +196,12 @@ export default function RoleModal({ open, onClose, onSave }) {
                               key={emp.empId || emp.EmpId}
                               type="button"
                               onClick={() => handleEmployeeSelect(emp)}
-                              className="w-full px-3 py-2 text-left hover:bg-teal-50/80 transition-colors flex items-center justify-between gap-2 border-b border-slate-50 last:border-0"
+                              className="w-full px-3 py-2 text-left hover:bg-rc-indigo-50/80 transition-colors flex items-center justify-between gap-2 border-b border-slate-50 last:border-0"
                             >
                               <span className="text-xs font-bold text-slate-900 truncate">
                                 {emp.name || emp.Ename}
                               </span>
-                              <span className="text-[11px] font-mono font-bold text-rc-teal bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200 shrink-0">
+                              <span className="text-[11px] font-mono font-bold text-rc-teal bg-rc-indigo-50 px-2 py-0.5 rounded-md border border-rc-indigo-200 shrink-0">
                                 {emp.empId || emp.EmpId}
                               </span>
                             </button>

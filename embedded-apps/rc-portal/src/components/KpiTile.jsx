@@ -10,16 +10,16 @@ export default function KpiTile({
   bgClass = 'bg-white',
   titleClass = 'text-slate-500',
   subtitleClass = 'text-slate-400',
-  valueClass = 'text-slate-900',
+  valueClass = 'text-[#1F1B33]',
   iconBgClass = 'bg-slate-100/80 text-slate-600',
-  arrowBgClass = 'bg-slate-100 text-slate-400 group-hover:bg-slate-900 group-hover:text-white'
+  arrowBgClass = 'bg-slate-100 text-slate-400 group-hover:bg-[#4F3FD6] group-hover:text-white'
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl p-5 text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md border border-slate-200/60 ${bgClass} ${
-        active ? 'ring-2 ring-slate-800 ring-offset-2 scale-[1.01]' : ''
+      className={`group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl p-5 text-left shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md border border-[#E6E3F5] ${bgClass} ${
+        active ? 'ring-2 ring-[#4F3FD6] ring-offset-2 scale-[1.01]' : ''
       }`}
     >
       <div className="flex items-start justify-between gap-3">

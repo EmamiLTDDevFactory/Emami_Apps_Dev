@@ -5,12 +5,12 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { getRetVal } from '@/lib/api';
-import { fd, finr, fmtCw, isoDate, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, toDate } from '@/lib/format';
 import { ReturnedInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
-import { FilterRow, FilterSelect, FiscalYearDateRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 
 /**
  * Ported 1:1 from dis_shared_components.py's render_returned(). Read-only on
@@ -81,8 +81,7 @@ function parseReason(reason: string, key: string): string {
 
 export default function ReturnedScreen() {
   const { session, readOnly } = useAuth();
-  const { retCache, pendCache, dispCache, compCache, cancCache, loading, errors, ensureReturned, dateFilter, setDateFilter } =
-    useData();
+  const { retCache, pendCache, dispCache, compCache, cancCache, loading, errors, ensureReturned } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -182,14 +181,6 @@ export default function ReturnedScreen() {
     );
   }
 
-  if (!drRows.length) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <EmptyState message="No returned invoices yet" icon="↩" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -206,19 +197,12 @@ export default function ReturnedScreen() {
           <FilterSelect value={period} options={PERIODS} onChange={setPeriod} minWidth={120} />
           <FilterSelect value={type} options={TYPES} onChange={setType} minWidth={130} />
         </FilterRow>
-
-        <FiscalYearDateRow
-          fiscalYear={dateFilter.fiscalYear}
-          fromDate={toDate(dateFilter.frmDate) ?? todayDate()}
-          toDate={toDate(dateFilter.toDate) ?? todayDate()}
-          onFiscalYearChange={(v) => setDateFilter({ fiscalYear: v })}
-          onFromDateChange={(d) => setDateFilter({ frmDate: isoDate(d) })}
-          onToDateChange={(d) => setDateFilter({ toDate: isoDate(d) })}
-        />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {!filtered.length ? (
+        {!drRows.length ? (
+          <EmptyState message="No returned invoices" icon="↩" hint="Try a different date range at the top" />
+        ) : !filtered.length ? (
           <EmptyState message="No results" icon="🔍" />
         ) : (
           <>

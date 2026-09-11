@@ -43,8 +43,8 @@ export default function Layout({ children }) {
       name: 'Dashboard',
       path: '/',
       icon: LayoutDashboard,
-      color: 'text-teal-400',
-      activeBg: 'bg-teal-500/10 text-teal-300 border-teal-500/30'
+      color: 'text-rc-indigo-400',
+      activeBg: 'bg-rc-indigo-500/10 text-rc-indigo-300 border-rc-indigo-500/30'
     },
     {
       name: 'Document Hub',
@@ -83,12 +83,12 @@ export default function Layout({ children }) {
   ];
 
   return (
-    <div className="min-h-screen bg-rc-gradient text-slate-800 flex flex-col">
+    <div className="min-h-screen bg-rc-gradient text-rc-plum-800 flex flex-col">
       
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-700/60 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shadow-md shrink-0">
+      <header className="sticky top-0 z-40 w-full border-b border-rc-plum-700/60 bg-gradient-to-r from-rc-plum-900 via-rc-plum-800 to-rc-plum-900 shadow-md shrink-0">
         {/* Top Glowing Accent Line */}
-        <div className="h-0.5 w-full bg-gradient-to-r from-teal-500 via-emerald-400 to-cyan-500" />
+        <div className="h-0.5 w-full bg-gradient-to-r from-rc-indigo-500 via-emerald-400 to-cyan-500" />
         
         <div className="flex h-16 w-full items-center justify-between px-3 sm:px-6">
           
@@ -98,7 +98,7 @@ export default function Layout({ children }) {
             {/* Desktop Collapse Toggle (≥md) */}
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="hidden md:flex p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 transition cursor-pointer active:scale-95"
+              className="hidden md:flex p-2 rounded-xl bg-rc-plum-800 hover:bg-rc-plum-700 text-rc-plum-300 hover:text-white border border-rc-plum-700/80 transition cursor-pointer active:scale-95"
               title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
               {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -107,10 +107,10 @@ export default function Layout({ children }) {
             {/* Mobile Hamburger Drawer Toggle (<md) */}
             <button
               onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
-              className="md:hidden p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 transition cursor-pointer active:scale-95"
+              className="md:hidden p-2 rounded-xl bg-rc-plum-800 hover:bg-rc-plum-700 text-rc-plum-200 border border-rc-plum-700/80 transition cursor-pointer active:scale-95"
               title="Toggle Mobile Navigation"
             >
-              {isMobileDrawerOpen ? <X className="h-5 w-5 text-rose-300" /> : <Menu className="h-5 w-5 text-teal-300" />}
+              {isMobileDrawerOpen ? <X className="h-5 w-5 text-rose-300" /> : <Menu className="h-5 w-5 text-rc-indigo-300" />}
             </button>
 
             {/* Brand Logo */}
@@ -125,11 +125,11 @@ export default function Layout({ children }) {
 
           {/* Right: User Profile Badge Only */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-800/90 px-3 sm:px-3.5 py-1.5 shadow-xs">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-teal-500/20 text-teal-300 text-[10px] font-bold border border-teal-500/30 shrink-0">
-                <User className="h-3.5 w-3.5 text-teal-300" />
+            <div className="flex items-center gap-2 rounded-xl border border-rc-plum-700/80 bg-rc-plum-800/90 px-3 sm:px-3.5 py-1.5 shadow-xs">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-rc-indigo-500/20 text-rc-indigo-300 text-[10px] font-bold border border-rc-indigo-500/30 shrink-0">
+                <User className="h-3.5 w-3.5 text-rc-indigo-300" />
               </div>
-              <span className="font-mono text-[11px] sm:text-xs font-bold text-slate-200 truncate max-w-[130px] sm:max-w-none">
+              <span className="font-mono text-[11px] sm:text-xs font-bold text-rc-plum-200 truncate max-w-[130px] sm:max-w-none">
                 {employeeName ? `${employeeName} (${employeeId})` : `ID: ${employeeId}`}
               </span>
               {userRole && (
@@ -148,14 +148,14 @@ export default function Layout({ children }) {
         
         {/* DESKTOP SIDEBAR (≥md) */}
         <aside 
-          className={`hidden md:flex sticky top-[4.25rem] h-[calc(100vh-4.25rem)] bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-slate-800 text-slate-200 flex-col justify-between transition-all duration-300 z-30 shrink-0 overflow-x-hidden ${
+          className={`hidden md:flex sticky top-[4.25rem] h-[calc(100vh-4.25rem)] bg-gradient-to-b from-rc-plum-900 via-rc-plum-900 to-rc-plum-950 border-r border-rc-plum-800 text-rc-plum-200 flex-col justify-between transition-all duration-300 z-30 shrink-0 overflow-x-hidden ${
             isCollapsed ? 'w-20' : 'w-64'
           }`}
         >
           {/* Top Navigation Links */}
           <div className="p-3 space-y-2 overflow-x-hidden overflow-y-auto scrollbar-none">
             {!isCollapsed && (
-              <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400/80">
+              <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-rc-plum-400/80">
                 Main Menu
               </div>
             )}
@@ -173,7 +173,7 @@ export default function Layout({ children }) {
                         w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold transition-all group relative cursor-pointer border
                         ${isChatOpen
                           ? (item.activeBg || 'bg-rose-500/10 text-rose-300 border-rose-500/30 shadow-xs') 
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border-slate-800/60'
+                          : 'text-rc-plum-300 hover:text-white hover:bg-rc-plum-800/80 border-rc-plum-800/60'
                         }
                         ${isCollapsed ? 'justify-center px-0' : ''}
                       `}
@@ -181,7 +181,7 @@ export default function Layout({ children }) {
                     >
                       <div className="relative flex items-center justify-center">
                         <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
-                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400 border border-slate-900 animate-pulse" />
+                        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400 border border-rc-plum-900 animate-pulse" />
                       </div>
 
                       {!isCollapsed && (
@@ -195,7 +195,7 @@ export default function Layout({ children }) {
 
                       {/* Tooltip on Collapsed Hover */}
                       {isCollapsed && (
-                        <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xl border border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        <div className="absolute left-full ml-3 px-3 py-1.5 bg-rc-plum-900 text-white text-xs font-bold rounded-xl shadow-xl border border-rc-plum-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
                           {item.name} (AI Assistant)
                         </div>
                       )}
@@ -212,10 +212,10 @@ export default function Layout({ children }) {
                     className={({ isActive }) => `
                       flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold transition-all group relative cursor-pointer border
                       ${isActive 
-                        ? (item.activeBg || 'bg-teal-500/10 text-teal-300 border-teal-500/30 shadow-xs') 
+                        ? (item.activeBg || 'bg-rc-indigo-500/10 text-rc-indigo-300 border-rc-indigo-500/30 shadow-xs') 
                         : item.isHighlight
-                          ? 'bg-gradient-to-r from-emerald-600/90 to-teal-600/90 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/40 shadow-sm'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border-transparent'
+                          ? 'bg-gradient-to-r from-emerald-600/90 to-rc-indigo-600/90 hover:from-emerald-500 hover:to-rc-indigo-500 text-white border-emerald-400/40 shadow-sm'
+                          : 'text-rc-plum-300 hover:text-white hover:bg-rc-plum-800/80 border-transparent'
                       }
                       ${isCollapsed ? 'justify-center px-0' : ''}
                     `}
@@ -229,7 +229,7 @@ export default function Layout({ children }) {
 
                     {/* Tooltip on Collapsed Hover */}
                     {isCollapsed && (
-                      <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xl border border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      <div className="absolute left-full ml-3 px-3 py-1.5 bg-rc-plum-900 text-white text-xs font-bold rounded-xl shadow-xl border border-rc-plum-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
                         {item.name}
                       </div>
                     )}
@@ -240,15 +240,15 @@ export default function Layout({ children }) {
           </div>
 
           {/* Bottom Sidebar Footer (Anchored Logout Button) */}
-          <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
+          <div className="p-3 border-t border-rc-plum-800/80 bg-rc-plum-950/60">
             <button
               onClick={handleLogout}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold text-slate-300 hover:text-red-300 bg-slate-800/50 hover:bg-red-950/60 border border-slate-700/60 hover:border-red-500/50 transition-all cursor-pointer group active:scale-95 ${
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-xs font-bold text-rc-plum-300 hover:text-red-300 bg-rc-plum-800/50 hover:bg-red-950/60 border border-rc-plum-700/60 hover:border-red-500/50 transition-all cursor-pointer group active:scale-95 ${
                 isCollapsed ? 'justify-center px-0' : ''
               }`}
               title="Log Out"
             >
-              <LogOut className="h-5 w-5 text-slate-400 group-hover:text-red-400 shrink-0 transition-colors" />
+              <LogOut className="h-5 w-5 text-rc-plum-400 group-hover:text-red-400 shrink-0 transition-colors" />
               {!isCollapsed && <span>Log Out</span>}
             </button>
           </div>
@@ -260,21 +260,21 @@ export default function Layout({ children }) {
           <div className="md:hidden fixed inset-0 z-50 flex animate-fadeIn">
             {/* Backdrop Blur Overlay */}
             <div 
-              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity" 
+              className="fixed inset-0 bg-rc-plum-950/70 backdrop-blur-xs transition-opacity" 
               onClick={() => setIsMobileDrawerOpen(false)}
             />
 
             {/* Slide-out Left Menu */}
-            <div className="relative w-72 max-w-[80vw] bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-slate-200 h-full shadow-2xl flex flex-col justify-between p-4 border-r border-slate-800 z-10">
+            <div className="relative w-72 max-w-[80vw] bg-gradient-to-b from-rc-plum-900 via-rc-plum-900 to-rc-plum-950 text-rc-plum-200 h-full shadow-2xl flex flex-col justify-between p-4 border-r border-rc-plum-800 z-10">
               <div>
-                <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-800">
+                <div className="flex items-center justify-between pb-4 mb-3 border-b border-rc-plum-800">
                   <div className="flex items-center gap-2">
                     <TransparentLogo src="/apps/rc-portal/emami-logo-new.jpg" alt="Emami" className="h-9 w-auto object-contain" />
                     <span className="text-xs font-black tracking-tight text-white">RC Portal Navigation</span>
                   </div>
                   <button 
                     onClick={() => setIsMobileDrawerOpen(false)}
-                    className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                    className="p-1.5 rounded-xl bg-rc-plum-800 text-rc-plum-400 hover:text-white"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -291,7 +291,7 @@ export default function Layout({ children }) {
                             item.onClick();
                             setIsMobileDrawerOpen(false);
                           }}
-                          className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-800/80 text-xs font-bold text-slate-200 border border-slate-700/80 hover:bg-slate-800"
+                          className="w-full flex items-center justify-between p-3 rounded-2xl bg-rc-plum-800/80 text-xs font-bold text-rc-plum-200 border border-rc-plum-700/80 hover:bg-rc-plum-800"
                         >
                           <div className="flex items-center gap-3">
                             <Icon className={`h-5 w-5 ${item.color}`} />
@@ -314,10 +314,10 @@ export default function Layout({ children }) {
                         className={({ isActive }) => `
                           flex items-center gap-3 p-3 rounded-2xl text-xs font-bold transition-all border
                           ${isActive 
-                            ? 'bg-teal-500/20 text-teal-300 border-teal-500/40' 
+                            ? 'bg-rc-indigo-500/20 text-rc-indigo-300 border-rc-indigo-500/40' 
                             : item.isHighlight
-                              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400/40 shadow-sm'
-                              : 'text-slate-300 hover:bg-slate-800 border-transparent'
+                              ? 'bg-gradient-to-r from-emerald-600 to-rc-indigo-600 text-white border-emerald-400/40 shadow-sm'
+                              : 'text-rc-plum-300 hover:bg-rc-plum-800 border-transparent'
                           }
                         `}
                       >
@@ -330,7 +330,7 @@ export default function Layout({ children }) {
               </div>
 
               {/* Mobile Drawer Logout */}
-              <div className="pt-3 border-t border-slate-800">
+              <div className="pt-3 border-t border-rc-plum-800">
                 <button
                   onClick={() => {
                     setIsMobileDrawerOpen(false);
@@ -357,10 +357,10 @@ export default function Layout({ children }) {
       <RcChatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
       {busy && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-rc-plum-900/40 backdrop-blur-xs">
           <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-5 shadow-xl">
             <Loader2 className="h-8 w-8 animate-spin text-rc-teal" />
-            <span className="text-sm font-medium text-slate-600">Loading...</span>
+            <span className="text-sm font-medium text-rc-plum-600">Loading...</span>
           </div>
         </div>
       )}

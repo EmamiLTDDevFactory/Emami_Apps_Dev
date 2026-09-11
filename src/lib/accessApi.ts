@@ -72,15 +72,22 @@ export async function setUserActive(email: string, isActive: boolean): Promise<A
   }
 }
 
-/** Grants (or changes the role on) one app for a user. Pass role=null to revoke it entirely. */
-export async function setAppAccess(email: string, appId: string, role: AppRole | null): Promise<ApiResult> {
+/** Grants (or changes the role on) one app for a user. Pass role=null to revoke it entirely.
+ * `depot` only matters for Audit & CAPA's 'Depot' role (see UserAccessScreen.tsx) — ignored by the
+ * server for every other app/role. */
+export async function setAppAccess(
+  email: string,
+  appId: string,
+  role: AppRole | null,
+  depot?: string | null
+): Promise<ApiResult> {
   try {
     const url = `${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/apps/${encodeURIComponent(appId)}`;
     const res = role
       ? await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role }),
+          body: JSON.stringify({ role, depot: depot ?? null }),
         })
       : await fetch(url, { method: 'DELETE' });
     return await parseResult(res);
