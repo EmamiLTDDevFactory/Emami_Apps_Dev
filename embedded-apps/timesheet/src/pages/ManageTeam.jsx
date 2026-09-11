@@ -4,6 +4,8 @@ import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
 import BackButton from '../components/BackButton'
 import LeaveDetailsModal from '../components/LeaveDetailsModal'
+import { currentMonthStartIso } from '../utils/date'
+import { exportTimesheetToExcel } from '../utils/exportTimesheet'
 
 export default function ManageTeam({ navigate }) {
   const {
@@ -22,8 +24,11 @@ export default function ManageTeam({ navigate }) {
     fetchAddEmployeeCandidates,
     unassignedEmployees,
     claimEmployee,
+    removeDirectReport,
     getLeaveBalance,
     setLeaveAllocation,
+    getTimesheet,
+    getAssignedTasks,
     timesheets,
   } = useApp()
   const { isMinimal } = useTheme()
@@ -60,6 +65,9 @@ export default function ManageTeam({ navigate }) {
   const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [addingReport, setAddingReport] = useState(false)
   const [claimingUserId, setClaimingUserId] = useState(null)
+  const [removingUserId, setRemovingUserId] = useState(null)
+  const [downloadingUserId, setDownloadingUserId] = useState(null)
+  const thisMonth = currentMonthStartIso()
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
   const [savingLeaveUserId, setSavingLeaveUserId] = useState(null)
   const [viewingLeaveUserId, setViewingLeaveUserId] = useState(null)
@@ -225,6 +233,36 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
+  async function handleDownloadExcel(user) {
+    setDownloadingUserId(user.id)
+    try {
+      const timesheet = getTimesheet(user.id, thisMonth)
+      const userTasks = getAssignedTasks(user.id).map((t) => ({
+        ...t,
+        projectName: projects.find((p) => p.id === t.projectId)?.name || 'Unknown project',
+      }))
+      await exportTimesheetToExcel({ entries: timesheet?.entries || [], tasks: userTasks, monthStartDate: thisMonth, userName: user.name })
+      showToast('Timesheet downloaded.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to download timesheet.', 'error')
+    } finally {
+      setDownloadingUserId(null)
+    }
+  }
+
+  async function handleRemove(user) {
+    if (!window.confirm(`Remove ${user.name} from your team? Their timesheets and leave history will be kept.`)) return
+    setRemovingUserId(user.id)
+    try {
+      await removeDirectReport(user.id)
+      showToast('Employee removed from your team.', 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to remove employee.', 'error')
+    } finally {
+      setRemovingUserId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <BackButton onClick={() => navigate('dashboard')} />
@@ -317,9 +355,29 @@ export default function ManageTeam({ navigate }) {
         <div className="space-y-5">
           {directReports.map((user) => (
             <div key={user.id} className="border border-slate-100 dark:border-slate-800 rounded-lg p-4">
-              <div className="mb-2">
-                <p className="font-medium text-slate-800 dark:text-slate-100">{user.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-slate-800 dark:text-slate-100">{user.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                </div>
+                <span className="flex shrink-0 items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadExcel(user)}
+                    disabled={downloadingUserId === user.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {downloadingUserId === user.id ? 'Preparing…' : '⬇ Download Excel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(user)}
+                    disabled={removingUserId === user.id}
+                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium focus:outline-none focus-visible:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {removingUserId === user.id ? 'Removing…' : 'Remove'}
+                  </button>
+                </span>
               </div>
               <fieldset>
                 <legend className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5">Assigned tasks</legend>
