@@ -22,7 +22,9 @@ const request = async (path, options = {}) => {
       // Keep the default message when the response is not JSON.
     }
 
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   if (response.status === 204) {

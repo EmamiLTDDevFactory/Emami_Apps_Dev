@@ -170,6 +170,7 @@ export function AppProvider({ children }) {
       refresh()
       return () => {}
     }
+
     setHubEmailDetected(false)
     setHubBootstrapped(true)
     // The demo "log in as" picker only makes sense for a genuinely standalone dev run

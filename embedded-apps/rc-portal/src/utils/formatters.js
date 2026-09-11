@@ -32,17 +32,17 @@ export function statusText(status) {
 export function statusColor(status) {
   switch (status) {
     case 'ACTIVE':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     case 'ONHOLD':
-      return 'bg-amber-100 text-amber-700';
+      return 'bg-amber-50 text-amber-700 border border-amber-200';
     case 'INACTIVE':
-      return 'bg-slate-100 text-slate-600';
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
     case 'BLACKLISTED':
-      return 'bg-red-100 text-red-700';
+      return 'bg-red-50 text-red-700 border border-red-200';
     case 'EXPIRED':
-      return 'bg-slate-100 text-slate-600';
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
     default:
-      return 'bg-slate-100 text-slate-600';
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
   }
 }
 
@@ -58,12 +58,12 @@ export function paymentStatusText(status) {
 export function paymentStatusColor(status) {
   switch (status) {
     case 'PAID':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     case 'PARTIAL':
-      return 'bg-amber-100 text-amber-700';
+      return 'bg-amber-50 text-amber-700 border border-amber-200';
     case 'FLAGGED':
-      return 'bg-red-100 text-red-700';
+      return 'bg-red-50 text-red-700 border border-red-200';
     default:
-      return 'bg-slate-100 text-slate-600';
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
   }
 }

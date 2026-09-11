@@ -186,21 +186,21 @@ export default function FilesModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fadeIn">
-      <div className="relative w-full max-w-4xl rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
+      <div className="relative w-full max-w-4xl rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
         
-        {/* Header with Deep Maroon Gradient Accent */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] px-6 py-5 text-white">
+        {/* Header */}
+        <div className="flex items-center justify-between bg-slate-900 px-6 py-5 text-white">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-white/10 border border-white/20 text-rose-200">
-              <Folder className="h-6 w-6 text-rose-200" />
+            <div className="p-2.5 rounded-xl bg-white/10 border border-white/20 text-white">
+              <Folder className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black tracking-tight text-white">File Repository (FileSet)</h2>
+              <h2 className="text-xl font-semibold tracking-tight text-white">File Repository (FileSet)</h2>
             </div>
           </div>
-          <button 
+          <button
             onClick={onClose}
-            className="rounded-2xl border border-white/20 bg-white/10 p-2 text-white hover:bg-white/20 transition cursor-pointer"
+            className="rounded-lg border border-white/20 bg-white/10 p-2 text-white hover:bg-white/20 transition cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -216,7 +216,7 @@ export default function FilesModal({ isOpen, onClose }) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search file name, consultant ID..."
-                className="rc-input w-full pl-9 bg-white font-medium text-slate-900 border-slate-300 focus:border-[#4F3FD6] focus:ring-2 focus:ring-rose-300 text-xs sm:text-sm"
+                className="rc-input w-full pl-9 bg-white font-medium text-slate-900 border-slate-300 focus:border-rc-teal focus:ring-2 focus:ring-rc-teal/20 text-xs sm:text-sm"
               />
             </div>
             <select 
@@ -239,7 +239,7 @@ export default function FilesModal({ isOpen, onClose }) {
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-sm cursor-pointer ${
                 showUploadForm 
                   ? 'bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-300' 
-                  : 'bg-[#4F3FD6] text-white hover:bg-[#3B2FB0] border border-[#6D5BF5]/40'
+                  : 'bg-rc-teal text-white hover:bg-rc-teal-dark border border-rc-indigo-400/40'
               }`}
             >
               <UploadCloud className="h-4 w-4" /> {showUploadForm ? 'Cancel Upload' : 'Upload File'}
@@ -248,16 +248,16 @@ export default function FilesModal({ isOpen, onClose }) {
             <button 
               onClick={fetchFiles}
               disabled={loading}
-              className="flex items-center gap-2 rounded-xl bg-white border border-slate-300 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-2xs cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-white border border-slate-300 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-sm cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 text-[#4F3FD6] ${loading ? 'animate-spin' : ''}`} /> Refresh
+              <RefreshCw className={`h-4 w-4 text-rc-teal ${loading ? 'animate-spin' : ''}`} /> Refresh
             </button>
           </div>
         </div>
 
         {/* Upload Form Box (Clean & Compact) */}
         {showUploadForm && (
-          <div className="border-b border-rose-200 bg-rose-50/70 p-5 animate-fadeIn">
+          <div className="border-b border-slate-200 bg-slate-50 p-5 animate-fadeIn">
             {uploadMessage && (
               <div className={`mb-4 p-3 rounded-xl border text-xs font-bold flex items-center gap-2 ${
                 uploadMessage.type === 'success' 
@@ -281,7 +281,7 @@ export default function FilesModal({ isOpen, onClose }) {
                   type="file"
                   accept=".pdf, .xlsx, .xls, .csv, application/pdf, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv"
                   onChange={handleFileSelect}
-                  className="rc-input bg-white text-xs font-bold text-slate-800 border-slate-300 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-rose-100 file:text-[#4F3FD6] hover:file:bg-rose-200 cursor-pointer"
+                  className="rc-input bg-white text-xs font-bold text-slate-800 border-slate-300 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-rc-indigo-50 file:text-rc-teal hover:file:bg-rc-indigo-100 cursor-pointer"
                 />
                 <p className="text-[11px] font-medium text-slate-500">Allowed formats: .pdf, .xlsx, .xls, .csv (Max 40 chars filename)</p>
               </div>
@@ -300,7 +300,7 @@ export default function FilesModal({ isOpen, onClose }) {
                 <button
                   type="submit"
                   disabled={uploading || !selectedUploadFile}
-                  className="flex items-center gap-2 rounded-xl bg-[#4F3FD6] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#3B2FB0] transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  className="flex items-center gap-2 rounded-xl bg-rc-teal px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {uploading ? (
                     <>
@@ -322,12 +322,12 @@ export default function FilesModal({ isOpen, onClose }) {
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="h-10 w-10 border-4 border-[#4F3FD6]/30 border-t-[#4F3FD6] rounded-full animate-spin mb-4" />
+              <div className="h-10 w-10 border-4 border-rc-teal/30 border-t-rc-teal rounded-full animate-spin mb-4" />
               <p className="text-sm font-bold text-slate-700">Calling FILESET_GET_ENTITYSET from SAP...</p>
               <p className="text-xs text-slate-400 mt-1">Please wait while documents are fetched.</p>
             </div>
           ) : fetchError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
               <ShieldAlert className="mx-auto h-8 w-8 text-red-500 mb-2" />
               <p className="text-sm font-bold text-red-700">{fetchError}</p>
               <button onClick={fetchFiles} className="mt-3 rounded-xl bg-red-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-red-700">Retry Request</button>
@@ -340,16 +340,16 @@ export default function FilesModal({ isOpen, onClose }) {
               {!showUploadForm && (
                 <button 
                   onClick={() => setShowUploadForm(true)} 
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#4F3FD6] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#3B2FB0]"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rc-teal px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark"
                 >
                   <UploadCloud className="h-4 w-4" /> Upload First File
                 </button>
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white font-bold tracking-wider text-xs uppercase">
+                <thead className="bg-slate-50 text-slate-600 font-semibold tracking-wider text-xs uppercase border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-3.5">Filename / Document</th>
                     <th className="px-4 py-3.5">Consultant ID</th>
@@ -371,7 +371,7 @@ export default function FilesModal({ isOpen, onClose }) {
                       <tr key={file.DocId || file.ConsultantId || idx} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl border ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-[#4F3FD6] border-rose-200'}`}>
+                            <div className={`p-2 rounded-xl border ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rc-indigo-50 text-rc-teal border-rc-indigo-100'}`}>
                               {isExcelDoc ? <FileSpreadsheet className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
                             </div>
                             <div>
@@ -405,7 +405,7 @@ export default function FilesModal({ isOpen, onClose }) {
                                 alert(`Downloading ${filename} from SAP FileSet...`);
                               }
                             }}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white transition cursor-pointer"
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rc-indigo-200 bg-rc-indigo-50 px-3 py-1.5 text-xs font-bold text-rc-teal hover:bg-rc-teal hover:text-white transition cursor-pointer"
                           >
                             <Download className="h-3.5 w-3.5" /> Download
                           </button>
