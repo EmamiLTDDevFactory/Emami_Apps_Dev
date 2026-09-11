@@ -188,10 +188,20 @@ export function AppProvider({ children }) {
 
   useEffect(() => bootstrapFromHub(), [bootstrapFromHub])
 
+  // Clears only this app's OWN two local keys (never the hub's shared session token - clearing
+  // that here would sign someone out of every embedded app, not just this one) and does a real
+  // full page reload rather than an in-place retry. A plain in-place retry re-runs the same code
+  // in the same already-running tab, which can't shake loose anything genuinely stuck; a full
+  // reload guarantees a completely fresh read of whatever the hub currently has stored, the same
+  // effect a manual "clear site data + reload" had, minus ever touching the hub's own session.
   function retryHubBootstrap() {
-    setHubBootstrapped(false)
-    setHubError(null)
-    bootstrapFromHub()
+    try {
+      localStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(TOKEN_KEY)
+    } catch {
+      // ignore - worst case the reload below still helps on its own
+    }
+    window.location.reload()
   }
 
   // What Login.jsx's picker actually calls - no real verification (this only ever runs when
