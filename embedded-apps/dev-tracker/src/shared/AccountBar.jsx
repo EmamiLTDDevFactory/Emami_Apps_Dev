@@ -2,6 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { getCurrentUserEmail, getLoginMethod, apiMe } from './api.js';
 import { HUB_AUTH_API_BASE } from './constants.js';
 import { initialsHome } from './utils.js';
+import emamiLogo from './assets/emami-logo.png';
+
+// Leaves the app and returns to the Emami Apps hub itself - distinct from
+// clearHubSessionAndRedirect below, which actually signs the user out.
+function backToEmamiApps() {
+  window.location.href = '/';
+}
 
 export function clearHubSessionAndRedirect() {
   const loginMethod = getLoginMethod();
@@ -43,6 +50,13 @@ export default function AccountBar({ showSignOut = false }) {
 
   return (
     <div className="account-strip">
+      <div className="account-strip-brand">
+        <img src={emamiLogo} alt="Emami Apps" className="account-strip-logo" />
+        <button type="button" className="btn btn-ghost" onClick={backToEmamiApps}>
+          <span aria-hidden="true">🏠</span>
+          Back to Emami Apps
+        </button>
+      </div>
       <div className="account-strip-inner">
         <div className="avatar mono">{initialsHome(displayName)}</div>
         <span className="account-name">{displayName}</span>
