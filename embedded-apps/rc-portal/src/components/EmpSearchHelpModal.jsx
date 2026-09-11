@@ -55,7 +55,7 @@ export default function EmpSearchHelpModal({ open, onClose, onSelect }) {
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs" onClick={onClose} />
       
       {/* Modal Dialog */}
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] animate-fadeIn">
+      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] animate-fadeIn">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50">
           <div>
@@ -80,7 +80,7 @@ export default function EmpSearchHelpModal({ open, onClose, onSelect }) {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by ID (e.g. 90007422) or Name..."
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-2.5 text-sm focus:border-rc-teal focus:bg-white focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-10 pr-4 py-2.5 text-sm focus:border-rc-teal focus:bg-white focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition"
             />
           </div>
         </div>
