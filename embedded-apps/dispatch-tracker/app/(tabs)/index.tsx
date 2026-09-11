@@ -7,33 +7,16 @@ import { GsvBarChart } from '@/components/charts/GsvBarChart';
 import { HBarChart } from '@/components/charts/HBarChart';
 import { DepotDelayChart, SlaBreachChart } from '@/components/charts/SlaCharts';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect } from '@/components/FilterBar';
-import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { colors, radius, shadow, slaBuckets } from '@/constants/theme';
 import { dashboardDelayColor } from '@/lib/delay';
-import { finr, gsvFmt, toDate, todayDate } from '@/lib/format';
+import { finr, gsvFmt } from '@/lib/format';
 import { AnyInvoiceRow } from '@/types/models';
 
 /** Ported 1:1 from dis_shared_components.py's render_dashboard(). */
-
-const BASE_PERIODS = ['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'All Time', 'Custom'] as const;
-type Period = (typeof BASE_PERIODS)[number];
-
-function dayStart(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-function sameDay(a: Date, b: Date): boolean {
-  return dayStart(a).getTime() === dayStart(b).getTime();
-}
 
 function dedupeUnion(...lists: AnyInvoiceRow[][]): AnyInvoiceRow[] {
   const seen = new Set<string>();
@@ -46,33 +29,6 @@ function dedupeUnion(...lists: AnyInvoiceRow[][]): AnyInvoiceRow[] {
     }
   }
   return out;
-}
-
-function matchesPeriod(row: AnyInvoiceRow, period: Period, today: Date, customStart: Date, customEnd: Date): boolean {
-  if (period === 'All Time') return true;
-  const dt = toDate(row.invoice_date);
-  if (!dt) return false;
-  switch (period) {
-    case 'Today':
-      return sameDay(dt, today);
-    case 'Yesterday':
-      return sameDay(dt, addDays(today, -1));
-    case 'Last 7 Days':
-      return dayStart(dt).getTime() >= dayStart(addDays(today, -7)).getTime();
-    case 'Last 30 Days':
-      return dayStart(dt).getTime() >= dayStart(addDays(today, -30)).getTime();
-    case 'This Month':
-      return dt.getMonth() === today.getMonth() && dt.getFullYear() === today.getFullYear();
-    case 'Custom':
-      return dayStart(dt).getTime() >= dayStart(customStart).getTime() && dayStart(dt).getTime() <= dayStart(customEnd).getTime();
-    default:
-      return true;
-  }
-}
-
-function countForPeriod(rows: AnyInvoiceRow[], period: Exclude<Period, 'Custom'>, today: Date): number {
-  if (period === 'All Time') return rows.length;
-  return rows.filter((r) => matchesPeriod(r, period, today, today, today)).length;
 }
 
 function num(v: unknown): number {
@@ -176,8 +132,8 @@ export default function DashboardScreen() {
   // Re-checked on focus (staleness-guarded in DataContext), so returning to this tab after an
   // action shows SAP's committed state instead of whatever was cached when it first mounted.
   // Fires immediately on entry too (tile click → this tab mounts) — LoginSet + the five entity
-  // sets go out right away using the current Fiscal Year/From/To (defaults: current year,
-  // today-30, today), set from the Pending/Dispatched/Completed/Returned/Cancelled tabs.
+  // sets go out right away using the current From/To Date (set via the Depot Panel's filter +
+  // Go button in TopBar, defaults: today-30 to today).
   useFocusEffect(
     useCallback(() => {
       loadDashboard();
@@ -192,38 +148,12 @@ export default function DashboardScreen() {
   const ret = retCache ?? [];
   const canc = cancCache ?? [];
 
-  const today = todayDate();
-
-  const [periodBase, setPeriodBase] = useState<Period>('All Time');
-  const [customStart, setCustomStart] = useState<Date>(addDays(today, -30));
-  const [customEnd, setCustomEnd] = useState<Date>(today);
-
   const unionAll = useMemo(() => dedupeUnion(pend, disp, comp, ret, canc), [pend, disp, comp, ret, canc]);
 
-  const customInvalid = periodBase === 'Custom' && customEnd.getTime() < customStart.getTime();
-  const effectiveCustomEnd = customInvalid ? customStart : customEnd;
-
-  const periodCounts = useMemo(() => {
-    const out: Partial<Record<Period, number>> = {};
-    for (const p of BASE_PERIODS) {
-      if (p === 'Custom') continue;
-      out[p] = countForPeriod(unionAll, p, today);
-    }
-    return out;
-  }, [unionAll]);
-
-  const periodOptions = BASE_PERIODS.map((p) => (p === 'Custom' ? 'Custom' : `${p} (${periodCounts[p] ?? 0})`));
-  const selectedLabel = periodBase === 'Custom' ? 'Custom' : `${periodBase} (${periodCounts[periodBase] ?? 0})`;
-
-  function handlePeriodChange(v: string) {
-    const base = v.replace(/\s*\(\d+\)$/, '').trim() as Period;
-    setPeriodBase(base);
-  }
-
-  const d = useMemo(
-    () => unionAll.filter((r) => matchesPeriod(r, periodBase, today, customStart, effectiveCustomEnd)),
-    [unionAll, periodBase, customStart, effectiveCustomEnd]
-  );
+  // No more client-side period sub-filter here — the server-side From/To Date filter (Depot
+  // Panel's Go button, see TopBar) already scopes what unionAll contains, so the charts/KPIs
+  // below just use it directly.
+  const d = unionAll;
 
   const df_p = useMemo(() => d.filter((r) => r.status === 'Pending' && !hasDispatchDate(r)), [d]);
   const df_dp = useMemo(() => d.filter((r) => r.status === 'Pending' && hasDispatchDate(r)), [d]);
@@ -250,10 +180,8 @@ export default function DashboardScreen() {
   // ---- KPI Grid ----------------------------------------------------------
   const kpi = session?.sap_kpi;
 
-  // Ported from the original's cache_counts→sap_kpi→period-filtered-bucket
-  // priority: once the status caches are loaded (the normal case), these
-  // counts are the FULL cache length and intentionally ignore the period
-  // selector — only the charts/insights below are period-filtered. See
+  // Ported from the original's cache_counts→sap_kpi→bucket-length priority: once the status
+  // caches are loaded (the normal case), these counts are the FULL cache length. See
   // spec_dis_shared_components.md §1.3 ("_pend_n resolved via
   // cache_counts['pend'] → sap_kpi['pend_no'] → len(df_p)").
   function resolveCount(bucket: AnyInvoiceRow[], rawCache: AnyInvoiceRow[], kpiVal: number | null | undefined): number {
@@ -413,25 +341,6 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      {/* 1. Period selector */}
-      <FilterRow>
-        <FilterSelect value={selectedLabel} options={periodOptions} onChange={handlePeriodChange} minWidth={190} />
-      </FilterRow>
-
-      {periodBase === 'Custom' && (
-        <View style={styles.customRow}>
-          <View style={styles.customField}>
-            <Text style={styles.customLabel}>Start</Text>
-            <DateField value={customStart} onChange={setCustomStart} maximumDate={today} />
-          </View>
-          <View style={styles.customField}>
-            <Text style={styles.customLabel}>End</Text>
-            <DateField value={customEnd} onChange={setCustomEnd} minimumDate={customStart} maximumDate={today} />
-          </View>
-        </View>
-      )}
-      {customInvalid && <Text style={styles.warning}>⚠ End date before start date</Text>}
-
       {/* 3. KPI Grid */}
       <KpiRow>
         <KPICard icon="📥" label="Total Invoices" value={String(totalInvoices)} color={colors.navy} sub="imported" />
@@ -464,53 +373,47 @@ export default function DashboardScreen() {
         <KPICard icon="✕" label="Cancel Rate" value={cancelRateValue} color={colors.red} sub={`${cancelledCount} cancelled`} />
       </KpiRow>
 
-      {d.length === 0 ? (
-        <EmptyState message="No data for selected period" icon="📭" hint="Try a different date range" />
-      ) : (
+      {/* 4. Business Insights */}
+      <SectionHeader title="Business Insights" />
+      <View style={styles.insightRow}>
+        <InsightCard label="Best Depot" value={bestDepot?.depot ?? '—'} sub={`${(bestDepot?.otPct ?? 0).toFixed(1)}% on-time`} color={colors.green} />
+        <InsightCard
+          label="Highest GSV Customer"
+          value={truncate(custTop?.key ?? '—', 28)}
+          sub={finr(custTop?.sum ?? 0)}
+          color={colors.navy}
+        />
+      </View>
+      <View style={styles.insightRow}>
+        <InsightCard
+          label="Highest Volume Town"
+          value={truncate(townTop?.key ?? '—', 24)}
+          sub={`${townTop?.count ?? 0} invoices`}
+          color={colors.teal}
+        />
+        <InsightCard label="Worst Depot" value={worstDepot?.depot ?? '—'} sub={`${(worstDepot?.otPct ?? 0).toFixed(1)}% on-time`} color={colors.red} />
+      </View>
+
+      {/* 5. Analytics */}
+      <SectionHeader title="Analytics" />
+      <DonutChart title="Invoice Status Mix" data={donutData} />
+      <GsvBarChart title="GSV by Status (₹)" data={gsvByStatus} />
+
+      {/* 6. Depot-role charts (depot users) */}
+      {!readOnly && (
         <>
-          {/* 4. Business Insights */}
-          <SectionHeader title="Business Insights" subtitle={periodBase} />
-          <View style={styles.insightRow}>
-            <InsightCard label="Best Depot" value={bestDepot?.depot ?? '—'} sub={`${(bestDepot?.otPct ?? 0).toFixed(1)}% on-time`} color={colors.green} />
-            <InsightCard
-              label="Highest GSV Customer"
-              value={truncate(custTop?.key ?? '—', 28)}
-              sub={finr(custTop?.sum ?? 0)}
-              color={colors.navy}
-            />
-          </View>
-          <View style={styles.insightRow}>
-            <InsightCard
-              label="Highest Volume Town"
-              value={truncate(townTop?.key ?? '—', 24)}
-              sub={`${townTop?.count ?? 0} invoices`}
-              color={colors.teal}
-            />
-            <InsightCard label="Worst Depot" value={worstDepot?.depot ?? '—'} sub={`${(worstDepot?.otPct ?? 0).toFixed(1)}% on-time`} color={colors.red} />
-          </View>
+          <HBarChart title="Top Towns" data={topTowns} />
+          <HBarChart title="Top Customers" data={topCustomers} />
+        </>
+      )}
 
-          {/* 5. Analytics */}
-          <SectionHeader title="Analytics" />
-          <DonutChart title="Invoice Status Mix" data={donutData} />
-          <GsvBarChart title="GSV by Status (₹)" data={gsvByStatus} />
-
-          {/* 6. Depot-role charts (depot users) */}
-          {!readOnly && (
-            <>
-              <HBarChart title="Top Towns" data={topTowns} />
-              <HBarChart title="Top Customers" data={topCustomers} />
-            </>
-          )}
-
-          {/* 7. HQ-only SLA Analysis */}
-          {showSla && (
-            <>
-              <DepotDelayChart rows={depotDelayRows} />
-              <SlaBreachChart buckets={slaRows.map((r) => ({ label: r.label, count: r.count, pct: r.pctOrders }))} />
-              <SlaSummaryTable rows={slaRows} totalGsv={totalGsvAll} />
-              {transporterTableRows.length > 0 && <TransporterTable rows={transporterTableRows} />}
-            </>
-          )}
+      {/* 7. HQ-only SLA Analysis */}
+      {showSla && (
+        <>
+          <DepotDelayChart rows={depotDelayRows} />
+          <SlaBreachChart buckets={slaRows.map((r) => ({ label: r.label, count: r.count, pct: r.pctOrders }))} />
+          <SlaSummaryTable rows={slaRows} totalGsv={totalGsvAll} />
+          {transporterTableRows.length > 0 && <TransporterTable rows={transporterTableRows} />}
         </>
       )}
 
@@ -681,10 +584,6 @@ const styles = StyleSheet.create({
   screen: { padding: 12, paddingBottom: 40, gap: 0 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-  customRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  customField: { flex: 1 },
-  customLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, textTransform: 'uppercase', marginBottom: 4 },
-  warning: { fontSize: 11, color: colors.amberDk, marginBottom: 8 },
   insightRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   insightCard: {
     flex: 1,

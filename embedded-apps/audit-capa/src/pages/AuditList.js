@@ -870,20 +870,18 @@ export default function AuditList() {
                         onClick={() => setSelectedKPI("Completed")}
                     />
 
-                    {isDepot && (
-                        <KpiSegment
-                            label="CAPA Open"
-                            value={
-                                visibleAudits.filter(
-                                    a => a.status === "CAPA Open"
-                                ).length
-                            }
-                            color="#7C3AED"
-                            icon={<FactCheckIcon fontSize="small" />}
-                            active={selectedKPI === "CAPA Open"}
-                            onClick={() => setSelectedKPI("CAPA Open")}
-                        />
-                    )}
+                    <KpiSegment
+                        label="CAPA Open"
+                        value={
+                            visibleAudits.filter(
+                                a => a.status === "CAPA Open"
+                            ).length
+                        }
+                        color="#7C3AED"
+                        icon={<FactCheckIcon fontSize="small" />}
+                        active={selectedKPI === "CAPA Open"}
+                        onClick={() => setSelectedKPI("CAPA Open")}
+                    />
 
                     <KpiSegment
                         label="Closed Audits"

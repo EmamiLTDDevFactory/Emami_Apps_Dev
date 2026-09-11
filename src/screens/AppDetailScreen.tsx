@@ -7,6 +7,7 @@ import { Lock } from 'lucide-react-native';
 import { appById } from '../data/mockData';
 import { colors, fonts, radii } from '../theme/tokens';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList } from '../navigation/types';
 import EmbeddedWebView from '../components/EmbeddedWebView';
 
@@ -25,10 +26,20 @@ export default function AppDetailScreen({ route }: Props) {
   const insets = useSafeAreaInsets();
   const app = appById(route.params.appId);
   const unlockedAppIds = useUnlockedAppIds();
+  const { refreshAccess } = useAuth();
   // Tiles already block taps on a locked app (AppCard.tsx), but this guards the route itself too —
   // a deep link, a stale Recently-Used entry, or a favorite added before access was revoked could
   // all still land here directly.
   const locked = !!app && !unlockedAppIds.has(app.id);
+
+  // `access` (and so `unlockedAppIds`) is otherwise only refetched once per session/tab-focus (see
+  // AuthContext.tsx) — re-checking right when someone navigates to a specific app means a grant an
+  // admin just made in Manage Access opens this app immediately, without waiting for either of
+  // those to happen to fire first.
+  useEffect(() => {
+    refreshAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params.appId]);
 
   useEffect(() => {
     if (app?.url && !locked && isSameOriginRoute(app.url)) {

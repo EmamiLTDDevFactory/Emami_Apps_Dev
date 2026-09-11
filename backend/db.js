@@ -56,7 +56,13 @@ async function runMigrations() {
             ALTER TABLE emami_apps.authorized_user_apps
                 ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'User'
         `);
-        console.log('[postgres] Manage Access schema up to date (is_active, role).');
+        // Only meaningful for Audit & CAPA's 'Depot' role (which depot that person belongs to) —
+        // null for every other app/role. See server.js's syncAuditCapaAccess.
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_user_apps
+                ADD COLUMN IF NOT EXISTS depot text
+        `);
+        console.log('[postgres] Manage Access schema up to date (is_active, role, depot).');
     } catch (err) {
         console.error('[postgres] Migration failed:', err.message);
     }
