@@ -9,6 +9,49 @@ import { addMonths, currentMonthStartIso, isOffDay, parseISODate, toISODate } fr
 import { expectedHoursToDate, getDisplayStatus, isReadOnly, wasEverRejected } from '../utils/timesheet'
 import { exportTimesheetToExcel } from '../utils/exportTimesheet'
 
+// A small ticking "kiosk clock" + today's punch status, purely presentational - the actual
+// Clock In/Out buttons live in TimesheetGrid's today row, which is what actually writes this
+// data. Reads straight off liveEntries so it never drifts from what's about to be saved.
+function TodayStatusCard({ entry }) {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const timeLabel = now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+
+  let statusText = 'Not clocked in yet'
+  let statusDot = 'bg-slate-400'
+  if (entry?.inTime && !entry.outTime) {
+    const [h, m] = entry.inTime.split(':').map(Number)
+    const clockedInAt = new Date(now)
+    clockedInAt.setHours(h, m, 0, 0)
+    const elapsedMin = Math.max(0, Math.round((now.getTime() - clockedInAt.getTime()) / 60000))
+    const eh = Math.floor(elapsedMin / 60)
+    const em = elapsedMin % 60
+    statusText = `Clocked in at ${entry.inTime}${entry.inLocation ? ` · 📍 ${entry.inLocation}` : ''} — ${eh}h ${em}m so far`
+    statusDot = 'bg-emerald-500'
+  } else if (entry?.inTime && entry.outTime) {
+    statusText = `Completed ${entry.inTime}–${entry.outTime}${entry.outLocation ? ` · 📍 ${entry.outLocation}` : ''}`
+    statusDot = 'bg-violet-500'
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/60 px-5 py-4 shadow-sm">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{dateLabel}</p>
+        <p className="mt-1 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot}`} />
+          {statusText}
+        </p>
+      </div>
+      <div className="font-mono text-2xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">{timeLabel}</div>
+    </div>
+  )
+}
+
 export default function MyTimesheet({ monthParam, navigate }) {
   const { currentUser, getTimesheet, getAssignedTasks, projects, saveDraftEntries, submitForApproval } = useApp()
   const { isMinimal } = useTheme()
@@ -18,6 +61,7 @@ export default function MyTimesheet({ monthParam, navigate }) {
     : 'bg-gradient-to-r from-violet-600 to-purple-600 shadow-violet-200 dark:shadow-none hover:from-violet-500 hover:to-purple-500 focus-visible:ring-violet-500'
   const { showToast } = useToast()
   const thisMonth = currentMonthStartIso()
+  const todayIso = toISODate(new Date())
   const [viewedMonth, setViewedMonth] = useState(monthParam || thisMonth)
   const [liveEntries, setLiveEntries] = useState([])
   const [liveTotal, setLiveTotal] = useState(0)
@@ -93,6 +137,8 @@ export default function MyTimesheet({ monthParam, navigate }) {
   const incomplete = liveTotal < expected
   const showSubmit = !readOnly
   const rejected = timesheet?.status === 'Rejected'
+  const todayEntry = liveEntries.find((e) => e.date === todayIso && !e.leaveType)
+  const showTodayCard = !readOnly && viewedMonth === thisMonth
 
   return (
     <div className="space-y-5">
@@ -108,6 +154,8 @@ export default function MyTimesheet({ monthParam, navigate }) {
         </div>
         <MonthSelector monthStartDate={viewedMonth} onChange={setViewedMonth} maxMonthStartDate={thisMonth} />
       </div>
+
+      {showTodayCard && <TodayStatusCard entry={todayEntry} />}
 
       {rejected && timesheet?.managerComment && (
         <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4">

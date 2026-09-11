@@ -13,18 +13,30 @@ function emptyLine() {
 }
 
 function emptyRow() {
-  return { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME, location: '', locationAt: '', lines: [emptyLine()], leaveType: '', leaveNote: '' }
+  return {
+    inTime: DEFAULT_IN_TIME,
+    outTime: DEFAULT_OUT_TIME,
+    inLocation: '',
+    inLocationAt: '',
+    outLocation: '',
+    outLocationAt: '',
+    lines: [emptyLine()],
+    leaveType: '',
+    leaveNote: '',
+  }
 }
 
 // Pre-fills every working day that has no saved entries yet with the default
 // in/out time, so a fresh month starts at the standard 10-18 shift instead of
-// a blank grid.
-function withDefaultTimes(map, days) {
+// a blank grid. Today is left blank instead - it's clocked in/out live (see
+// `punch` below), so it should start showing the "Clock In" button, not a
+// pre-filled shift nobody actually walked in for.
+function withDefaultTimes(map, days, todayIso) {
   const next = { ...map }
   days.forEach((dateIso) => {
     if (next[dateIso]) return
     if (isOffDay(parseISODate(dateIso))) return
-    next[dateIso] = emptyRow()
+    next[dateIso] = dateIso === todayIso ? { ...emptyRow(), inTime: '', outTime: '' } : emptyRow()
   })
   return next
 }
@@ -35,7 +47,19 @@ function withDefaultTimes(map, days) {
 function entriesToDayMap(entries) {
   const map = {}
   entries.forEach((e) => {
-    if (!map[e.date]) map[e.date] = { inTime: e.inTime || '', outTime: e.outTime || '', location: e.location || '', locationAt: e.locationAt || '', lines: [], leaveType: '', leaveNote: '' }
+    if (!map[e.date]) {
+      map[e.date] = {
+        inTime: e.inTime || '',
+        outTime: e.outTime || '',
+        inLocation: e.inLocation || '',
+        inLocationAt: e.inLocationAt || '',
+        outLocation: e.outLocation || '',
+        outLocationAt: e.outLocationAt || '',
+        lines: [],
+        leaveType: '',
+        leaveNote: '',
+      }
+    }
     if (e.leaveType) {
       map[e.date].leaveType = e.leaveType
       map[e.date].leaveNote = e.note || ''
@@ -82,37 +106,51 @@ function LeaveSelect({ dateIso, value, onChange }) {
   )
 }
 
-function LocationField({ dateIso, value, capturedAt, locating, onCapture, compact, disabled }) {
-  const title = disabled ? 'Location can only be captured for today' : undefined
-  if (value) {
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 break-words">📍 {value}</span>
-        {capturedAt && <span className="text-[10px] text-slate-400 dark:text-slate-500">at {formatTime(capturedAt)}</span>}
-        <button
-          type="button"
-          onClick={() => onCapture(dateIso)}
-          disabled={locating || disabled}
-          title={title}
-          className="text-[10px] text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 font-medium focus:outline-none focus-visible:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
-        >
-          {locating ? 'Locating…' : 'Update'}
-        </button>
-      </div>
-    )
-  }
+// One-tap "Clock In" / "Clock Out" action - stamps the current time immediately and geotags it
+// in the background (see `punch` below). Green for in, rose for out, matching the color most
+// attendance apps use for start/stop.
+function PunchButton({ label, tone, locating, disabled, disabledTitle, onClick, compact }) {
+  const toneCls =
+    tone === 'in'
+      ? 'border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 focus-visible:ring-emerald-500'
+      : 'border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/20 focus-visible:ring-rose-500'
   return (
     <button
       type="button"
-      onClick={() => onCapture(dateIso)}
-      disabled={locating || disabled}
-      title={title}
-      className={`inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
-        compact ? 'px-2 py-1.5 text-sm w-full justify-center' : 'px-2 py-1 text-[11px]'
+      onClick={onClick}
+      disabled={disabled || locating}
+      title={disabled ? disabledTitle : undefined}
+      className={`inline-flex items-center gap-1 rounded-full border font-semibold transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-40 disabled:cursor-not-allowed ${toneCls} ${
+        compact ? 'w-full justify-center px-3 py-2 text-sm' : 'px-2.5 py-1.5 text-[11px]'
       }`}
     >
-      📍 {locating ? 'Locating…' : 'Capture'}
+      {locating ? 'Locating…' : `${tone === 'in' ? '🟢' : '🔴'} ${label}`}
     </button>
+  )
+}
+
+// Displays a captured punch (time + geotagged place). `onReset` (today only, still editable)
+// clears it so a mis-tap can be redone; without it (read-only, or a past day) it's plain display.
+function PunchResult({ time, location, capturedAt, onReset, compact }) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${compact ? 'items-start' : 'items-center'}`}>
+      <span className={`font-semibold text-slate-800 dark:text-slate-100 ${compact ? 'text-sm' : ''}`}>{time}</span>
+      {location ? (
+        <span className="text-[10px] text-emerald-700 dark:text-emerald-400 break-words">📍 {location}</span>
+      ) : (
+        <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">No location captured</span>
+      )}
+      {capturedAt && <span className="text-[9px] text-slate-400 dark:text-slate-500">at {formatTime(capturedAt)}</span>}
+      {onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 focus:outline-none focus-visible:underline"
+        >
+          Reset
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -124,11 +162,12 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
   const todayIso = toISODate(new Date())
   const initDayMap = (entries) => {
     const map = entriesToDayMap(entries)
-    return readOnly ? map : withDefaultTimes(map, days)
+    return readOnly ? map : withDefaultTimes(map, days, todayIso)
   }
   const [dayMap, setDayMap] = useState(() => initDayMap(initialEntries))
   const [saveState, setSaveState] = useState('idle') // idle | saving | saved
-  const [locatingDate, setLocatingDate] = useState(null)
+  // `${date}_in` or `${date}_out` while that punch's geolocation lookup is in flight.
+  const [locatingKey, setLocatingKey] = useState(null)
   const saveTimer = useRef(null)
   const savedAtTimer = useRef(null)
   const { showToast } = useToast()
@@ -175,8 +214,10 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
           date,
           inTime: '',
           outTime: '',
-          location: '',
-          locationAt: '',
+          inLocation: '',
+          inLocationAt: '',
+          outLocation: '',
+          outLocationAt: '',
           hours: 0,
           note: row.leaveNote || '',
           leaveType: row.leaveType,
@@ -201,8 +242,10 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
           date,
           inTime: row.inTime,
           outTime: row.outTime,
-          location: row.location || '',
-          locationAt: row.locationAt || '',
+          inLocation: row.inLocation || '',
+          inLocationAt: row.inLocationAt || '',
+          outLocation: row.outLocation || '',
+          outLocationAt: row.outLocationAt || '',
           hours: perLineHours,
           note: line.description || '',
         })
@@ -285,30 +328,57 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
     }
   }
 
-  function captureLocation(date) {
+  function nowHHMM() {
+    const d = new Date()
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
+  // One-tap Clock In / Clock Out: stamps the time immediately (that's the part that must never
+  // fail or wait on a GPS fix), then geotags it in the background. A denied/unsupported/timed-out
+  // location never blocks the punch itself - it just leaves that punch's location blank.
+  function punch(date, which) {
+    const timeField = which === 'in' ? 'inTime' : 'outTime'
+    const locationField = which === 'in' ? 'inLocation' : 'outLocation'
+    const locationAtField = which === 'in' ? 'inLocationAt' : 'outLocationAt'
+    const time = nowHHMM()
+    updateDayField(date, { [timeField]: time })
+
     if (!navigator.geolocation) {
-      showToast('Location is not supported on this device/browser.', 'error')
+      showToast(`Clocked ${which} at ${time}. Location isn't supported on this device/browser.`, 'info')
       return
     }
-    setLocatingDate(date)
+    const key = `${date}_${which}`
+    setLocatingKey(key)
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords
         const place = await resolvePlaceName(latitude, longitude)
-        updateDayField(date, { location: place, locationAt: new Date().toISOString() })
-        setLocatingDate(null)
+        updateDayField(date, { [locationField]: place, [locationAtField]: new Date().toISOString() })
+        setLocatingKey((k) => (k === key ? null : k))
+        showToast(`Clocked ${which} at ${time} · 📍 ${place}`, 'success')
       },
       (error) => {
-        setLocatingDate(null)
-        showToast(error.message || 'Could not capture location.', 'error')
+        setLocatingKey((k) => (k === key ? null : k))
+        showToast(`Clocked ${which} at ${time}. ${error.message || 'Could not capture location.'}`, 'info')
       },
       { enableHighAccuracy: true, timeout: 10000 },
     )
   }
 
+  // Clears a mis-tapped punch (time + its location) so it can be redone - today only, before the
+  // day is locked in by submission.
+  function resetPunch(date, which) {
+    const timeField = which === 'in' ? 'inTime' : 'outTime'
+    const locationField = which === 'in' ? 'inLocation' : 'outLocation'
+    const locationAtField = which === 'in' ? 'inLocationAt' : 'outLocationAt'
+    updateDayField(date, { [timeField]: '', [locationField]: '', [locationAtField]: '' })
+  }
+
   // Setting a leave type clears any time/task entries for that day (leave
   // and working hours are mutually exclusive); clearing it (back to
-  // "Present") restores the default in/out time for re-entry.
+  // "Present") restores the default in/out time for re-entry - except for today, which is
+  // clocked in/out live and so goes back to blank (showing the "Clock In" button) instead of a
+  // pre-filled shift.
   function setLeaveType(date, value) {
     // Only Sick/Casual/Earned draw from the yearly pool - adjust the optimistic balance
     // display the instant one of those is picked or cleared, same tick as the day's own
@@ -320,9 +390,10 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
     }
     setDayMap((prev) => {
       const current = prev[date] || emptyRow()
+      const clearedTimes = date === todayIso ? { inTime: '', outTime: '' } : { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME }
       const nextRow = value
-        ? { ...current, leaveType: value, inTime: '', outTime: '', location: '', locationAt: '', lines: [emptyLine()] }
-        : { ...current, leaveType: '', leaveNote: '', inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME }
+        ? { ...current, leaveType: value, inTime: '', outTime: '', inLocation: '', inLocationAt: '', outLocation: '', outLocationAt: '', lines: [emptyLine()] }
+        : { ...current, leaveType: '', leaveNote: '', ...clearedTimes }
       const nextMap = { ...prev, [date]: nextRow }
       scheduleAutosave(nextMap)
       return nextMap
@@ -404,9 +475,8 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
             <tr className="border-b-2 border-violet-100 dark:border-violet-500/20 bg-gradient-to-b from-slate-50 dark:from-slate-800/60 to-white dark:to-slate-900">
               <th scope="col" className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 text-left font-semibold text-slate-600 dark:text-slate-300 px-3 py-3 min-w-[92px] whitespace-nowrap">Date</th>
               <th scope="col" className="text-left font-semibold text-slate-600 dark:text-slate-300 px-3 py-3 min-w-[140px]">Day</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[110px]">In Time</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[110px]">Out Time</th>
-              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[120px]">Location</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[130px]">In Time</th>
+              <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[130px]">Out Time</th>
               <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[90px]">Hours of Work</th>
               <th scope="col" className="text-center font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[170px]">Task</th>
               <th scope="col" className="text-left font-semibold text-slate-600 dark:text-slate-300 px-2 py-3 min-w-[200px]">Task Description</th>
@@ -439,7 +509,6 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                       </div>
                       {!readOnly && !isOffDay(date) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
                     </td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center">
@@ -486,7 +555,6 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                     <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
-                    <td className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500">-</td>
                     <td colSpan={2} className="px-2 py-2 align-top text-center text-slate-400 dark:text-slate-500 italic">
                       Non-working day
                     </td>
@@ -522,7 +590,17 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
                         {readOnly ? (
-                          <span className="text-slate-700 dark:text-slate-200">{row.inTime || '-'}</span>
+                          row.inTime ? (
+                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} />
+                          ) : (
+                            <span className="text-slate-700 dark:text-slate-200">-</span>
+                          )
+                        ) : dateIso === todayIso ? (
+                          row.inTime ? (
+                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} />
+                          ) : (
+                            <PunchButton label="Clock In" tone="in" locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
+                          )
                         ) : (
                           <input
                             type="time"
@@ -535,7 +613,24 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
                         {readOnly ? (
-                          <span className="text-slate-700 dark:text-slate-200">{row.outTime || '-'}</span>
+                          row.outTime ? (
+                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} />
+                          ) : (
+                            <span className="text-slate-700 dark:text-slate-200">-</span>
+                          )
+                        ) : dateIso === todayIso ? (
+                          row.outTime ? (
+                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} />
+                          ) : (
+                            <PunchButton
+                              label="Clock Out"
+                              tone="out"
+                              locating={locatingKey === `${dateIso}_out`}
+                              disabled={!row.inTime}
+                              disabledTitle="Clock in first"
+                              onClick={() => punch(dateIso, 'out')}
+                            />
+                          )
                         ) : (
                           <input
                             type="time"
@@ -543,27 +638,6 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                             value={row.outTime}
                             onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
                             className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-1.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
-                          />
-                        )}
-                      </td>
-                      <td rowSpan={rowSpan} className="px-2 py-2 align-top text-center">
-                        {readOnly ? (
-                          row.location ? (
-                            <span className="text-[11px] text-slate-700 dark:text-slate-200 break-words">
-                              📍 {row.location}
-                              {row.locationAt && <span className="block text-slate-400 dark:text-slate-500">at {formatTime(row.locationAt)}</span>}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">-</span>
-                          )
-                        ) : (
-                          <LocationField
-                            dateIso={dateIso}
-                            value={row.location}
-                            capturedAt={row.locationAt}
-                            locating={locatingDate === dateIso}
-                            onCapture={captureLocation}
-                            disabled={dateIso !== todayIso}
                           />
                         )}
                       </td>
@@ -638,7 +712,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
           </tbody>
           <tfoot>
             <tr className="bg-gradient-to-r from-violet-50/70 dark:from-violet-500/10 to-violet-50/70 dark:to-violet-500/10 border-t-2 border-violet-100 dark:border-violet-500/20">
-              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-3">
+              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-3">
                 Total hours this month
               </th>
               <td className="px-2 py-3 text-center font-bold text-violet-700 dark:text-violet-300">
@@ -647,7 +721,7 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
               <td colSpan={2}></td>
             </tr>
             <tr className="bg-violet-50/70 dark:bg-violet-500/10 border-t border-violet-100 dark:border-violet-500/20">
-              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-2.5">
+              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-violet-50/90 dark:bg-slate-900 text-left font-semibold text-slate-700 dark:text-slate-200 px-3 py-2.5">
                 Total leave this month
               </th>
               <td className="px-2 py-2.5 text-center font-bold text-violet-700 dark:text-violet-300">
@@ -738,7 +812,17 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                     <label className="block">
                       <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">In Time</span>
                       {readOnly ? (
-                        <span className="block text-sm text-slate-700 dark:text-slate-200">{row.inTime || '-'}</span>
+                        row.inTime ? (
+                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} compact />
+                        ) : (
+                          <span className="block text-sm text-slate-700 dark:text-slate-200">-</span>
+                        )
+                      ) : dateIso === todayIso ? (
+                        row.inTime ? (
+                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} compact />
+                        ) : (
+                          <PunchButton label="Clock In" tone="in" compact locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
+                        )
                       ) : (
                         <input
                           type="time"
@@ -751,7 +835,25 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                     <label className="block">
                       <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Out Time</span>
                       {readOnly ? (
-                        <span className="block text-sm text-slate-700 dark:text-slate-200">{row.outTime || '-'}</span>
+                        row.outTime ? (
+                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} compact />
+                        ) : (
+                          <span className="block text-sm text-slate-700 dark:text-slate-200">-</span>
+                        )
+                      ) : dateIso === todayIso ? (
+                        row.outTime ? (
+                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} compact />
+                        ) : (
+                          <PunchButton
+                            label="Clock Out"
+                            tone="out"
+                            compact
+                            locating={locatingKey === `${dateIso}_out`}
+                            disabled={!row.inTime}
+                            disabledTitle="Clock in first"
+                            onClick={() => punch(dateIso, 'out')}
+                          />
+                        )
                       ) : (
                         <input
                           type="time"
@@ -761,30 +863,6 @@ const TimesheetGrid = forwardRef(function TimesheetGrid(
                         />
                       )}
                     </label>
-                  </div>
-
-                  <div className="mt-3">
-                    <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Location</span>
-                    {readOnly ? (
-                      row.location ? (
-                        <span className="block text-sm text-slate-700 dark:text-slate-200 break-words">
-                          📍 {row.location}
-                          {row.locationAt && <span className="block text-xs text-slate-400 dark:text-slate-500">at {formatTime(row.locationAt)}</span>}
-                        </span>
-                      ) : (
-                        <span className="block text-sm text-slate-400 dark:text-slate-500">-</span>
-                      )
-                    ) : (
-                      <LocationField
-                        dateIso={dateIso}
-                        value={row.location}
-                        capturedAt={row.locationAt}
-                        locating={locatingDate === dateIso}
-                        onCapture={captureLocation}
-                        disabled={dateIso !== todayIso}
-                        compact
-                      />
-                    )}
                   </div>
 
                   <div className="mt-3 space-y-3">
