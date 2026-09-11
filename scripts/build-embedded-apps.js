@@ -6,6 +6,16 @@ const { spawn } = require('child_process');
 const EMBEDDED_APPS_DIR = path.join(__dirname, '..', 'embedded-apps');
 const MAIN_DIST = path.join(__dirname, '..', 'dist');
 
+// Shared npm package cache (compressed tarballs, content-addressed and deduped across all 9
+// apps) that every embedded app's `npm install` below reads/writes via --cache. Caching THIS
+// instead of each app's own unpacked node_modules is what keeps Amplify's cache artifact under
+// its 5GB hard limit — 9 separate node_modules directories (many sharing the same Expo/RN/React
+// versions, each copy fully unpacked with platform-specific native binaries) measured ~3.1GB
+// combined even on a Mac; the actual Linux build container's own copies pushed the whole cache
+// artifact over 5GB, which fails to upload and silently falls back to a cold reinstall next
+// build. One deduped tarball cache holds the same effective packages in a fraction of the size.
+const NPM_CACHE_DIR = path.join(__dirname, '..', '.npm-cache');
+
 // _expo/ and assets/ are shared static folders using content-hashed
 // filenames, so merging them from any embedded app can't collide with the
 // hub's own files or another embedded app's.
@@ -186,7 +196,7 @@ async function main() {
     // in between. One call per app keeps each app's whole block atomic.
     let log = `\n=== [${app}] npm install ===\n`;
     try {
-      log += await runCommand('npm install --legacy-peer-deps', appDir, env);
+      log += await runCommand(`npm install --legacy-peer-deps --cache "${NPM_CACHE_DIR}"`, appDir, env);
       log += `\n=== [${app}] npm run build ===\n`;
       log += await runCommand('npm run build', appDir, env);
       console.log(log);
