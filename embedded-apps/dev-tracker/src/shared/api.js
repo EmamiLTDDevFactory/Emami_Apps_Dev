@@ -34,11 +34,11 @@ async function json(res) {
 }
 
 // --- Items -----------------------------------------------------------
-export async function apiList() {
-  return json(await fetch(`${API_BASE}/items`));
+export async function apiList(email) {
+  return json(await fetch(`${API_BASE}/items`, { headers: { 'X-User-Email': email || '' } }));
 }
-export async function apiHistory(id) {
-  return json(await fetch(`${API_BASE}/items/${id}/history`));
+export async function apiHistory(id, email) {
+  return json(await fetch(`${API_BASE}/items/${id}/history`, { headers: { 'X-User-Email': email || '' } }));
 }
 export async function apiCreate(fields, email) {
   return json(
@@ -58,14 +58,13 @@ export async function apiUpdate(id, fields, email) {
     })
   );
 }
-export async function apiDelete(id) {
-  // Matches the original exactly: no X-User-Email header sent on delete.
-  return json(await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE' }));
+export async function apiDelete(id, email) {
+  return json(await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
 }
 
 // --- Master data -------------------------------------------------------
-export async function apiMasterData() {
-  return json(await fetch(`${API_BASE}/master-data`));
+export async function apiMasterData(email) {
+  return json(await fetch(`${API_BASE}/master-data`, { headers: { 'X-User-Email': email || '' } }));
 }
 export async function apiMasterDataCreate(payload, email) {
   return json(
@@ -87,14 +86,14 @@ export async function apiMasterDataUpdate(id, payload, email) {
 }
 
 // --- Activity / AI -----------------------------------------------------
-export async function apiActivity() {
-  return json(await fetch(`${API_BASE}/activity`));
+export async function apiActivity(email) {
+  return json(await fetch(`${API_BASE}/activity`, { headers: { 'X-User-Email': email || '' } }));
 }
-export async function apiAiCommand(message) {
+export async function apiAiCommand(message, email) {
   return json(
     await fetch(`${API_BASE}/ai/command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
       body: JSON.stringify({ message }),
     })
   );
