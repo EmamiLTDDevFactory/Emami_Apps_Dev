@@ -3,7 +3,7 @@ import { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import {
   Loader2, LogOut, User, LayoutDashboard, Folder, Users, Plus,
-  ChevronLeft, ChevronRight, Menu, X, ShieldCheck, FileText, Bot
+  ChevronLeft, ChevronRight, Menu, X, ShieldCheck, FileText, Bot, BarChart3
 } from 'lucide-react';
 import RcChatbot from './RcChatbot';
 import TransparentLogo from './TransparentLogo';
@@ -44,6 +44,17 @@ export default function Layout({ children }) {
       icon: LayoutDashboard,
     },
     {
+      name: 'Analytics',
+      path: '/analytics',
+      icon: BarChart3,
+    },
+    {
+      name: 'Add Consultant',
+      path: '/onboarding',
+      icon: Plus,
+      isHighlight: true
+    },
+    {
       name: 'Document Hub',
       path: '/files',
       icon: Folder,
@@ -62,20 +73,15 @@ export default function Layout({ children }) {
       },
       icon: Bot,
       isAi: true
-    },
-    {
-      name: 'Add Consultant',
-      path: '/onboarding',
-      icon: Plus,
-      isHighlight: true
     }
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
 
-      {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-slate-900 shadow-sm shrink-0">
+      {/* Top Header Bar — light, matching the hub's own Header.tsx (white surface, hairline
+          border) and the now-white sidebar, instead of a mismatched dark strip. */}
+      <header className="sticky top-0 z-40 w-full border-b border-rc-indigo-100 bg-white/90 backdrop-blur-sm shadow-sm shrink-0">
         <div className="flex h-16 w-full items-center justify-between px-3 sm:px-6">
 
           {/* Left: Mobile Hamburger Toggle / Desktop Collapse Toggle + Brand Logo */}
@@ -84,7 +90,7 @@ export default function Layout({ children }) {
             {/* Desktop Collapse Toggle (≥md) */}
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="hidden md:flex p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer active:scale-95"
+              className="hidden md:flex p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-500 hover:text-slate-900 border border-slate-200 transition cursor-pointer active:scale-95"
               title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
               {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -93,33 +99,35 @@ export default function Layout({ children }) {
             {/* Mobile Hamburger Drawer Toggle (<md) */}
             <button
               onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
-              className="md:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer active:scale-95"
+              className="md:hidden p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-500 border border-slate-200 transition cursor-pointer active:scale-95"
               title="Toggle Mobile Navigation"
             >
-              {isMobileDrawerOpen ? <X className="h-5 w-5 text-slate-300" /> : <Menu className="h-5 w-5 text-slate-300" />}
+              {isMobileDrawerOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
-            {/* Brand Logo */}
-            <div className="flex items-center cursor-pointer relative" onClick={() => navigate('/')}>
-              <TransparentLogo
+            {/* Brand Logo — only shown here on mobile; the desktop sidebar carries its own,
+                matching the EmamiApps hub where the drawer (not a top bar) is the one place
+                the logo lives. Plain <img>, same as the hub's own unprocessed rendering. */}
+            <div className="md:hidden flex items-center cursor-pointer relative" onClick={() => navigate('/')}>
+              <img
                 src="/apps/rc-portal/emami-logo-new.jpg"
                 alt="Emami Group"
-                className="h-8 sm:h-10 w-auto object-contain"
+                className="h-8 w-auto object-contain"
               />
             </div>
           </div>
 
           {/* Right: User Profile Badge Only */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 sm:px-3.5 py-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-rc-indigo-500/20 text-rc-indigo-300 text-[10px] font-semibold border border-rc-indigo-500/30 shrink-0">
-                <User className="h-3.5 w-3.5 text-rc-indigo-300" />
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 pl-1.5 pr-3 sm:pr-3.5 py-1">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-rc-teal text-white text-[10px] font-semibold shrink-0">
+                <User className="h-3.5 w-3.5" />
               </div>
-              <span className="font-mono text-[11px] sm:text-xs font-medium text-slate-300 truncate max-w-[130px] sm:max-w-none">
+              <span className="font-mono text-[11px] sm:text-xs font-medium text-slate-700 truncate max-w-[130px] sm:max-w-none">
                 {employeeName ? `${employeeName} (${employeeId})` : `ID: ${employeeId}`}
               </span>
               {userRole && (
-                <span className="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider bg-rc-indigo-500/15 text-rc-indigo-300 border border-rc-indigo-500/30">
+                <span className="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider bg-rc-teal/10 text-rc-teal border border-rc-indigo-100">
                   {isSuperadmin ? 'Superadmin' : 'Admin'}
                 </span>
               )}
@@ -139,8 +147,25 @@ export default function Layout({ children }) {
             isCollapsed ? 'w-20' : 'w-[218px]'
           }`}
         >
+          {/* Brand Logo — matches the hub drawer's brandRow: centered, own row at the very top
+              of the sidebar (the hub has no separate top app-bar; the drawer itself carries the
+              only logo). Sized 172px wide like the hub's EmpAppMark, shrinking when collapsed.
+              Plain <img>, not TransparentLogo — the hub renders this asset completely unprocessed
+              (plain <Image resizeMode="contain">), so matching it means skipping the brightness/
+              contrast boost and tight content-crop TransparentLogo applies for dark surfaces. */}
+          <div
+            className={`flex items-center justify-center cursor-pointer pt-4 ${isCollapsed ? 'px-2 pb-2' : 'px-4 pb-[18px]'}`}
+            onClick={() => navigate('/')}
+          >
+            <img
+              src="/apps/rc-portal/emami-logo-new.jpg"
+              alt="Emami Group"
+              className={`h-auto object-contain ${isCollapsed ? 'w-10' : 'w-[172px]'}`}
+            />
+          </div>
+
           {/* Top Navigation Links */}
-          <div className="p-2.5 space-y-2 overflow-x-hidden overflow-y-auto scrollbar-none">
+          <div className="px-2.5 pb-2.5 space-y-2 overflow-x-hidden overflow-y-auto scrollbar-none">
             {!isCollapsed && (
               <div className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-widest text-gray-400">
                 Main Menu
@@ -262,14 +287,20 @@ export default function Layout({ children }) {
             {/* Slide-out Left Menu */}
             <div className="relative w-72 max-w-[80vw] bg-white text-gray-500 h-full shadow-xl flex flex-col justify-between p-4 border-r border-rc-indigo-100 z-10">
               <div>
-                <div className="flex items-center justify-between pb-4 mb-3 border-b border-rc-indigo-100">
-                  <div className="flex items-center gap-2">
-                    <TransparentLogo src="/apps/rc-portal/emami-logo-new.jpg" alt="Emami" className="h-9 w-auto object-contain" />
-                    <span className="text-xs font-semibold tracking-tight text-slate-900">RC Portal Navigation</span>
+                <div className="relative flex items-center justify-center pt-1 pb-[18px] mb-3 border-b border-rc-indigo-100">
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => { setIsMobileDrawerOpen(false); navigate('/'); }}
+                  >
+                    <img
+                      src="/apps/rc-portal/emami-logo-new.jpg"
+                      alt="Emami Group"
+                      className="w-[152px] h-auto object-contain"
+                    />
                   </div>
                   <button
                     onClick={() => setIsMobileDrawerOpen(false)}
-                    className="p-1.5 rounded-lg bg-slate-100 text-gray-500 hover:text-slate-900"
+                    className="absolute right-0 top-0 p-1.5 rounded-lg bg-slate-100 text-gray-500 hover:text-slate-900"
                   >
                     <X className="h-4 w-4" />
                   </button>
