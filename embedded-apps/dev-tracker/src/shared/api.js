@@ -3,21 +3,8 @@ import { API_BASE, ACCESS_API_BASE, HUB_EMAIL_STORAGE_KEY } from './constants.js
 // Reads the hub's logged-in user email straight out of localStorage. Dev Tracker is
 // served same-origin under /apps/dev-tracker (not in an iframe/WebView), so it shares
 // the hub shell's localStorage exactly like the original app did.
-//
-// The `?devEmail=` override only exists so `npm run dev` can be previewed standalone,
-// outside the hub shell that would normally have already set this key — every page here
-// redirects to '/' the instant it finds no email, so there's no other in-app moment to set
-// it by hand. Gated on import.meta.env.DEV, which Vite statically replaces with `false` in
-// `vite build`, so this whole branch is dead code (and stripped) in the real production build.
 export function getCurrentUserEmail() {
   try {
-    if (import.meta.env.DEV) {
-      const devEmail = new URLSearchParams(window.location.search).get('devEmail');
-      if (devEmail) {
-        localStorage.setItem(HUB_EMAIL_STORAGE_KEY, devEmail);
-        return devEmail;
-      }
-    }
     return localStorage.getItem(HUB_EMAIL_STORAGE_KEY) || null;
   } catch {
     return null;
