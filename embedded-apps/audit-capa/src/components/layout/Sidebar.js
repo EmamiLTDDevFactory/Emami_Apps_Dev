@@ -222,8 +222,7 @@ export default function Sidebar() {
             <Box
                 sx={{
                     display: "flex",
-                    justifyContent: collapsed ? "center" : "flex-start",
-                    px: collapsed ? 0 : 2.5,
+                    justifyContent: "center",
                     py: collapsed ? 1.5 : 2,
                 }}
             >
@@ -232,8 +231,8 @@ export default function Sidebar() {
                     src={emamiAppsLogo}
                     alt="Emami Apps"
                     sx={{
-                        width: collapsed ? 40 : 140,
-                        height: collapsed ? 40 : 140,
+                        width: collapsed ? 40 : 170,
+                        height: collapsed ? 40 : 170,
                         objectFit: "contain",
                         transition: "all 0.3s ease",
                     }}
@@ -244,8 +243,7 @@ export default function Sidebar() {
                 variant="caption"
                 sx={{
                     display: "block",
-                    textAlign: collapsed ? "center" : "left",
-                    pl: collapsed ? 0 : 2.5,
+                    textAlign: "center",
                     mb: 2,
                     color: "#64748B",
                 }}
