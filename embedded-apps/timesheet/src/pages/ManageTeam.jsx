@@ -214,12 +214,20 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
+  // A search result with an `id` is an existing Timesheet user with no manager yet (claim them,
+  // don't create a duplicate) - one without an `id` has never opened Timesheet before (create
+  // them fresh). See server/src/routes/users.js's GET /candidates for where that distinction
+  // comes from.
   async function handleAddReport(e) {
     e.preventDefault()
     if (!selectedCandidate) return
     setAddingReport(true)
     try {
-      await addDirectReport(selectedCandidate.name, selectedCandidate.email)
+      if (selectedCandidate.id) {
+        await claimEmployee(selectedCandidate.id)
+      } else {
+        await addDirectReport(selectedCandidate.name, selectedCandidate.email)
+      }
       setCandidates((c) => c.filter((cand) => cand.email !== selectedCandidate.email))
       setSearchQuery('')
       setSelectedCandidate(null)

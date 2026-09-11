@@ -130,23 +130,30 @@ router.get('/unassigned', async (_req, res, next) => {
   }
 })
 
-// The live-search pool for Manage Team's "Add employee" box: everyone the hub's Manage Access
-// currently grants Timesheet to, who ISN'T a Timesheet user of any kind yet (not an employee, not
-// a manager, not sitting unassigned) - those people have their own paths already (claim, or
-// they're already on a team), so this form is only ever for someone genuinely new to Timesheet.
-// Names are guessed from email since Manage Access has no name field of its own. Manager-only,
-// same reasoning as the routes around it - this exists to feed that one form, not as a general
-// people directory.
+// The live-search pool for Manage Team's "Add employee" box: everyone a manager could type in
+// here and grab. Two kinds of person, told apart by whether `id` is present:
+//   - No `id`: genuinely new to Timesheet - the hub's Manage Access grants them access, but
+//     they've never opened the app, so there's no user row to attach to yet. Picking one calls
+//     POST / (addDirectReport) to create them.
+//   - Has `id`: an existing Timesheet user with no manager yet - either the old "waiting to be
+//     claimed" pool, or someone brand-new who hasn't picked a manager for themselves yet (see
+//     PUT /me/manager). Picking one calls PUT /:id/claim (claimEmployee) instead of creating a
+//     duplicate - same self-service trust model as that route already has.
+// Names for the "no id" group are guessed from email since Manage Access has no name field of
+// its own. Manager-only, same reasoning as the routes around it.
 router.get('/candidates', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can see this' })
     const grantedEmails = await fetchAllTimesheetGrantedEmails()
     const existing = await pool.query('SELECT email FROM users')
     const existingEmails = new Set(existing.rows.map((r) => r.email))
-    const candidates = grantedEmails
+    const brandNew = grantedEmails
       .filter((email) => !existingEmails.has(email))
       .map((email) => ({ name: nameFromEmail(email), email }))
-    res.json(candidates)
+    const { rows: unassigned } = await pool.query(
+      `SELECT id, name, email FROM users WHERE role = 'employee' AND manager_id IS NULL ORDER BY name`,
+    )
+    res.json([...unassigned, ...brandNew])
   } catch (err) {
     next(err)
   }
