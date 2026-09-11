@@ -178,8 +178,33 @@ async function seedMasterDataIfEmpty() {
 
 initSchema().catch((err) => console.error('[dev-tracker] Schema init failed:', err.message));
 
+// Gates every Dev Tracker data route (item CRUD, master-data reads, activity, AI command) to
+// users granted access to the 'dev-tracker' app (any role — User or Admin) in the hub's own
+// Manage Access screen (src/screens/UserAccessScreen.tsx, emami_apps.authorized_user_apps) — the
+// same table useUnlockedAppIds() reads to decide whether the Dev Tracker tile even shows for a
+// user, so a real user always already has a row here. Before this, these routes had no identity
+// check of any kind: pasting the API URL directly, without ever signing into the hub, was enough
+// to read, create, edit, and delete every item. Same "email as identity, no bearer token" posture
+// as requireDevTrackerAdmin below and the rest of this hub (see /me, /access/me) — good enough to
+// close the "no auth at all" gap without changing the hub's existing trust model.
+async function requireDevTrackerAccess(req, res, next) {
+    const email = String(req.get('x-user-email') || req.query.email || '').trim().toLowerCase();
+    if (!email) return res.status(401).json({ error: 'Sign-in required' });
+    try {
+        const { rows } = await pool.query(
+            `SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = 'dev-tracker'`,
+            [email]
+        );
+        if (rows.length === 0) return res.status(403).json({ error: 'Not authorized to access Dev Tracker' });
+        next();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to verify access' });
+    }
+}
+
 // GET all items
-router.get('/items', async (req, res) => {
+router.get('/items', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM dev_tracker.items ORDER BY "createdAt" ASC');
         res.json(result.rows);
@@ -190,7 +215,7 @@ router.get('/items', async (req, res) => {
 });
 
 // GET single item's change history (lightweight audit trail)
-router.get('/items/:id/history', async (req, res) => {
+router.get('/items/:id/history', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT field, "oldValue", "newValue", "changedAt" FROM dev_tracker.item_history
@@ -205,7 +230,7 @@ router.get('/items/:id/history', async (req, res) => {
 });
 
 // CREATE item
-router.post('/items', async (req, res) => {
+router.post('/items', requireDevTrackerAccess, async (req, res) => {
     const id = crypto.randomUUID();
     const row = normalize(req.body);
     if (!row.devList || !String(row.devList).trim()) {
@@ -235,7 +260,7 @@ router.post('/items', async (req, res) => {
 });
 
 // UPDATE item (also writes a diff-based history entry per changed field)
-router.put('/items/:id', async (req, res) => {
+router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
     try {
         const existingResult = await pool.query('SELECT * FROM dev_tracker.items WHERE id = $1', [req.params.id]);
         const existing = existingResult.rows[0];
@@ -273,7 +298,7 @@ router.put('/items/:id', async (req, res) => {
 });
 
 // DELETE item
-router.delete('/items/:id', async (req, res) => {
+router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM dev_tracker.items WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'Item not found' });
@@ -314,7 +339,7 @@ async function requireDevTrackerAdmin(req, res, next) {
 
 // GET all master data (active + inactive) — the admin screen needs both; app.js filters
 // down to active=true itself when building each field's dropdown options.
-router.get('/master-data', async (req, res) => {
+router.get('/master-data', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM dev_tracker.master_data ORDER BY category, "sortOrder", value');
         res.json(result.rows);
@@ -390,7 +415,7 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
 // items, with who made them, shown on the home page's "Recent
 // activity" card.
 // ============================================================
-router.get('/activity', async (req, res) => {
+router.get('/activity', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT h.field, h."oldValue", h."newValue", h."changedAt", h."changedByUsername", i."devList"
@@ -568,7 +593,7 @@ async function computeStatsContext() {
         `By area: ${JSON.stringify(byArea)}. By status: ${JSON.stringify(byStatus)}.`;
 }
 
-router.post('/ai/command', async (req, res) => {
+router.post('/ai/command', requireDevTrackerAccess, async (req, res) => {
     const { message } = req.body || {};
     if (!message || !message.trim()) {
         return res.status(400).json({ error: 'Message is required' });
