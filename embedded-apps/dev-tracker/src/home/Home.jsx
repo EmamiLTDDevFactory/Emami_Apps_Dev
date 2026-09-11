@@ -33,8 +33,13 @@ export default function Home() {
   const email = getCurrentUserEmail();
 
   useEffect(() => {
+    if (!email) window.location.href = '/';
+  }, [email]);
+
+  useEffect(() => {
+    if (!email) return;
     let cancelled = false;
-    Promise.all([apiList(), apiMasterData(), apiActivity()])
+    Promise.all([apiList(email), apiMasterData(email), apiActivity(email)])
       .then(([itemRows, mdRows, activityRows]) => {
         if (cancelled) return;
         setItems(itemRows || []);
@@ -115,7 +120,7 @@ export default function Home() {
     if (!message) return;
     setCommandResponse({ text: 'Thinking…' });
     try {
-      const data = await apiAiCommand(message);
+      const data = await apiAiCommand(message, email);
       if (data.intent === 'filter') {
         const f = data.filters || {};
         const params = new URLSearchParams();
@@ -144,6 +149,8 @@ export default function Home() {
     : emailFirstName
       ? emailFirstName[0].toUpperCase() + emailFirstName.slice(1)
       : 'there';
+
+  if (!email) return null;
 
   return (
     <div>

@@ -2,7 +2,6 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Download, Eye, Plus, UserCheck, Users, CreditCard, AlertTriangle, Search, ShieldCheck, FileText, Folder, ChevronLeft, ChevronRight, Calendar, ArrowUpDown } from 'lucide-react';
 import KpiTile from '../components/KpiTile';
-import ConsultantAnalytics from '../components/ConsultantAnalytics';
 import { AppContext } from '../context/AppContext';
 import { getConsultants } from '../services/odataService';
 import { formatCurrency, formatDate, statusColor, statusText } from '../utils/formatters';
@@ -178,8 +177,21 @@ export default function Dashboard() {
   const userRole = (localStorage.getItem('employeeRole') || '').trim();
   const isSuperadmin = userRole === 'S' || userRole === 'Superadmin';
 
+  const employeeName = localStorage.getItem('employeeName') || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+
   return (
     <div className="space-y-6">
+      <div className="flex items-start justify-between gap-3 pb-[18px] mb-[2px] border-b border-rc-indigo-100">
+        <div>
+          <h1 className="text-lg font-bold text-slate-900">{greeting}, {employeeName}</h1>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">Manage and track your consultant network.</p>
+        </div>
+        <p className="text-[11px] font-medium text-slate-500 shrink-0 pt-0.5">{today}</p>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-4">
         <KpiTile
           title="Active Consultants"
@@ -216,8 +228,6 @@ export default function Dashboard() {
           iconBgClass="bg-amber-50 text-amber-600"
         />
       </div>
-
-      <ConsultantAnalytics consultants={consultants} />
 
       <div className="rc-card overflow-hidden border border-slate-200/80 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-5 py-4">

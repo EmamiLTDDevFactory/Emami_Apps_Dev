@@ -57,7 +57,7 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
   useEffect(() => {
     if (mode !== 'edit' || !item) return;
     let cancelled = false;
-    apiHistory(item.id)
+    apiHistory(item.id, email)
       .then((rows) => !cancelled && setHistory({ loading: false, rows: (rows || []).slice(0, 8) }))
       .catch(() => !cancelled && setHistory({ loading: false, rows: null }));
     return () => {
@@ -105,7 +105,7 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-      await apiDelete(item.id);
+      await apiDelete(item.id, email);
       onSaved(null, { deletedId: item.id });
     } catch (e) {
       setError(e.message || 'Failed to delete item');

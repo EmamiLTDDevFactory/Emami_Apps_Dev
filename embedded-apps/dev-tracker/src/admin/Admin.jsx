@@ -33,7 +33,7 @@ export default function Admin() {
   }, [email]);
 
   function loadMasterData() {
-    apiMasterData().then((r) => setRows(r || []));
+    apiMasterData(email).then((r) => setRows(r || []));
   }
 
   const grouped = useMemo(() => groupMasterData(rows), [rows]);

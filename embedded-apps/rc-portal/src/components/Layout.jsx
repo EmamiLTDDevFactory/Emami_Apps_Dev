@@ -1,9 +1,9 @@
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
-import { 
-  Loader2, LogOut, User, LayoutDashboard, Folder, Users, Plus, 
-  ChevronLeft, ChevronRight, Menu, X, ShieldCheck, FileText, Bot
+import {
+  Loader2, LogOut, LayoutDashboard, Folder, Users, Plus,
+  ChevronLeft, ChevronRight, Menu, X, ShieldCheck, FileText, Bot, BarChart3
 } from 'lucide-react';
 import RcChatbot from './RcChatbot';
 import TransparentLogo from './TransparentLogo';
@@ -11,14 +11,11 @@ import TransparentLogo from './TransparentLogo';
 export default function Layout({ children }) {
   const { busy } = useContext(AppContext);
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const employeeId = localStorage.getItem('employeeId') || '';
-  const employeeName = localStorage.getItem('employeeName') || '';
   const userRole = (localStorage.getItem('employeeRole') || '').trim();
   const isSuperadmin = userRole === 'S' || userRole === 'Superadmin';
 
@@ -43,22 +40,27 @@ export default function Layout({ children }) {
       name: 'Dashboard',
       path: '/',
       icon: LayoutDashboard,
-      color: 'text-slate-400',
-      activeBg: 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30'
+    },
+    {
+      name: 'Analytics',
+      path: '/analytics',
+      icon: BarChart3,
+    },
+    {
+      name: 'Add Consultant',
+      path: '/onboarding',
+      icon: Plus,
+      isHighlight: true
     },
     {
       name: 'Document Hub',
       path: '/files',
       icon: Folder,
-      color: 'text-slate-400',
-      activeBg: 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30'
     },
     ...(isSuperadmin ? [{
       name: 'Manage Roles',
       path: '/roles',
       icon: ShieldCheck,
-      color: 'text-slate-400',
-      activeBg: 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30'
     }] : []),
     {
       name: 'RC Assistant',
@@ -68,25 +70,16 @@ export default function Layout({ children }) {
         setIsMobileDrawerOpen(false);
       },
       icon: Bot,
-      color: 'text-slate-400',
-      activeBg: 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30',
       isAi: true
-    },
-    {
-      name: 'Add Consultant',
-      path: '/onboarding',
-      icon: Plus,
-      color: 'text-white',
-      activeBg: 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30',
-      isHighlight: true
     }
   ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col">
 
-      {/* Top Header Bar */}
-      <header className="sticky top-0 z-40 w-full border-b border-slate-800 bg-slate-900 shadow-sm shrink-0">
+      {/* Top Header Bar — light, matching the hub's own Header.tsx (white surface, hairline
+          border) and the now-white sidebar, instead of a mismatched dark strip. */}
+      <header className="sticky top-0 z-40 w-full border-b border-rc-indigo-100 bg-white/90 backdrop-blur-sm shadow-sm shrink-0">
         <div className="flex h-16 w-full items-center justify-between px-3 sm:px-6">
 
           {/* Left: Mobile Hamburger Toggle / Desktop Collapse Toggle + Brand Logo */}
@@ -95,7 +88,7 @@ export default function Layout({ children }) {
             {/* Desktop Collapse Toggle (≥md) */}
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="hidden md:flex p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer active:scale-95"
+              className="hidden md:flex p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-500 hover:text-slate-900 border border-slate-200 transition cursor-pointer active:scale-95"
               title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
               {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
@@ -104,36 +97,21 @@ export default function Layout({ children }) {
             {/* Mobile Hamburger Drawer Toggle (<md) */}
             <button
               onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
-              className="md:hidden p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer active:scale-95"
+              className="md:hidden p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-500 border border-slate-200 transition cursor-pointer active:scale-95"
               title="Toggle Mobile Navigation"
             >
-              {isMobileDrawerOpen ? <X className="h-5 w-5 text-slate-300" /> : <Menu className="h-5 w-5 text-slate-300" />}
+              {isMobileDrawerOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
-            {/* Brand Logo */}
-            <div className="flex items-center cursor-pointer relative" onClick={() => navigate('/')}>
-              <TransparentLogo
+            {/* Brand Logo — only shown here on mobile; the desktop sidebar carries its own,
+                matching the EmamiApps hub where the drawer (not a top bar) is the one place
+                the logo lives. Plain <img>, same as the hub's own unprocessed rendering. */}
+            <div className="md:hidden flex items-center cursor-pointer relative" onClick={() => navigate('/')}>
+              <img
                 src="/apps/rc-portal/emami-logo-new.jpg"
                 alt="Emami Group"
-                className="h-8 sm:h-10 w-auto object-contain"
+                className="h-8 w-auto object-contain"
               />
-            </div>
-          </div>
-
-          {/* Right: User Profile Badge Only */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 sm:px-3.5 py-1.5">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-rc-indigo-500/20 text-rc-indigo-300 text-[10px] font-semibold border border-rc-indigo-500/30 shrink-0">
-                <User className="h-3.5 w-3.5 text-rc-indigo-300" />
-              </div>
-              <span className="font-mono text-[11px] sm:text-xs font-medium text-slate-300 truncate max-w-[130px] sm:max-w-none">
-                {employeeName ? `${employeeName} (${employeeId})` : `ID: ${employeeId}`}
-              </span>
-              {userRole && (
-                <span className="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider bg-rc-indigo-500/15 text-rc-indigo-300 border border-rc-indigo-500/30">
-                  {isSuperadmin ? 'Superadmin' : 'Admin'}
-                </span>
-              )}
             </div>
           </div>
 
@@ -143,16 +121,34 @@ export default function Layout({ children }) {
       {/* Main Body with Sidebar & Content Workspace */}
       <div className="flex flex-1 relative min-h-[calc(100vh-4.25rem)]">
         
-        {/* DESKTOP SIDEBAR (≥md) */}
+        {/* DESKTOP SIDEBAR (≥md) — matches the EmamiApps hub drawer: white surface, lavender
+            hairline border, indigo left-rail + icon-chip active state. */}
         <aside
-          className={`hidden md:flex sticky top-[4.25rem] h-[calc(100vh-4.25rem)] bg-slate-900 border-r border-slate-800 text-slate-300 flex-col justify-between transition-all duration-300 z-30 shrink-0 overflow-x-hidden ${
-            isCollapsed ? 'w-20' : 'w-64'
+          className={`hidden md:flex sticky top-[4.25rem] h-[calc(100vh-4.25rem)] bg-white border-r border-rc-indigo-100 text-gray-500 flex-col justify-between transition-all duration-300 z-30 shrink-0 overflow-x-hidden ${
+            isCollapsed ? 'w-20' : 'w-[218px]'
           }`}
         >
+          {/* Brand Logo — matches the hub drawer's brandRow: centered, own row at the very top
+              of the sidebar (the hub has no separate top app-bar; the drawer itself carries the
+              only logo). Sized 172px wide like the hub's EmpAppMark, shrinking when collapsed.
+              Plain <img>, not TransparentLogo — the hub renders this asset completely unprocessed
+              (plain <Image resizeMode="contain">), so matching it means skipping the brightness/
+              contrast boost and tight content-crop TransparentLogo applies for dark surfaces. */}
+          <div
+            className={`flex items-center justify-center cursor-pointer pt-4 ${isCollapsed ? 'px-2 pb-2' : 'px-4 pb-[18px]'}`}
+            onClick={() => navigate('/')}
+          >
+            <img
+              src="/apps/rc-portal/emami-logo-new.jpg"
+              alt="Emami Group"
+              className={`h-auto object-contain ${isCollapsed ? 'w-10' : 'w-[172px]'}`}
+            />
+          </div>
+
           {/* Top Navigation Links */}
-          <div className="p-3 space-y-2 overflow-x-hidden overflow-y-auto scrollbar-none">
+          <div className="px-2.5 pb-2.5 space-y-2 overflow-x-hidden overflow-y-auto scrollbar-none">
             {!isCollapsed && (
-              <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              <div className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-widest text-gray-400">
                 Main Menu
               </div>
             )}
@@ -167,21 +163,23 @@ export default function Layout({ children }) {
                       key={item.name}
                       onClick={item.onClick}
                       className={`
-                        w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all group relative cursor-pointer border
+                        w-full flex items-center gap-2 py-2 px-1.5 rounded-xl text-[13px] transition-all group relative cursor-pointer border-l-[3px]
                         ${isChatOpen
-                          ? (item.activeBg || 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30')
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800 border-transparent'
+                          ? 'bg-rc-teal/10 border-l-rc-teal text-rc-teal font-bold'
+                          : 'border-l-transparent text-gray-500 font-medium hover:bg-slate-50'
                         }
                         ${isCollapsed ? 'justify-center px-0' : ''}
                       `}
                       title={isCollapsed ? item.name : undefined}
                     >
-                      <Icon className={`h-5 w-5 shrink-0 ${item.color}`} />
+                      <span className={`flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[9px] transition-colors ${isChatOpen ? 'bg-rc-teal text-white' : 'text-gray-400'}`}>
+                        <Icon className="h-4 w-4" strokeWidth={2.2} />
+                      </span>
 
                       {!isCollapsed && (
                         <span className="truncate flex-1 text-left flex items-center justify-between">
                           <span>{item.name}</span>
-                          <span className="px-1.5 py-0.5 rounded-md bg-rc-indigo-500/15 text-rc-indigo-300 text-[9px] font-semibold uppercase border border-rc-indigo-500/30">
+                          <span className="px-1.5 py-0.5 rounded-md bg-rc-teal/10 text-rc-teal text-[9px] font-bold uppercase border border-rc-indigo-100">
                             AI
                           </span>
                         </span>
@@ -189,7 +187,7 @@ export default function Layout({ children }) {
 
                       {/* Tooltip on Collapsed Hover */}
                       {isCollapsed && (
-                        <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg shadow-lg border border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
                           {item.name} (AI Assistant)
                         </div>
                       )}
@@ -197,35 +195,39 @@ export default function Layout({ children }) {
                   );
                 }
 
-                const isActive = location.pathname === item.path;
-
                 return (
                   <NavLink
                     key={item.name}
                     to={item.path}
                     className={({ isActive }) => `
-                      flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all group relative cursor-pointer border
-                      ${isActive
-                        ? (item.activeBg || 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30')
-                        : item.isHighlight
-                          ? 'bg-rc-teal hover:bg-rc-teal-dark text-white border-transparent shadow-sm'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800 border-transparent'
+                      flex items-center gap-2 py-2 px-1.5 rounded-xl text-[13px] transition-all group relative cursor-pointer border-l-[3px]
+                      ${item.isHighlight
+                        ? 'bg-rc-teal hover:bg-rc-teal-dark text-white font-bold border-l-transparent shadow-sm'
+                        : isActive
+                          ? 'bg-rc-teal/10 border-l-rc-teal text-rc-teal font-bold'
+                          : 'border-l-transparent text-gray-500 font-medium hover:bg-slate-50'
                       }
                       ${isCollapsed ? 'justify-center px-0' : ''}
                     `}
                     title={isCollapsed ? item.name : undefined}
                   >
-                    <Icon className={`h-5 w-5 shrink-0 ${item.isHighlight ? 'text-white' : item.color}`} />
+                    {({ isActive }) => (
+                      <>
+                        <span className={`flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[9px] transition-colors ${
+                          item.isHighlight ? 'text-white' : isActive ? 'bg-rc-teal text-white' : 'text-gray-400'
+                        }`}>
+                          <Icon className="h-4 w-4" strokeWidth={2.2} />
+                        </span>
 
-                    {!isCollapsed && (
-                      <span className="truncate">{item.name}</span>
-                    )}
+                        {!isCollapsed && <span className="truncate">{item.name}</span>}
 
-                    {/* Tooltip on Collapsed Hover */}
-                    {isCollapsed && (
-                      <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg shadow-lg border border-slate-700 whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-                        {item.name}
-                      </div>
+                        {/* Tooltip on Collapsed Hover */}
+                        {isCollapsed && (
+                          <div className="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                            {item.name}
+                          </div>
+                        )}
+                      </>
                     )}
                   </NavLink>
                 );
@@ -234,17 +236,22 @@ export default function Layout({ children }) {
           </div>
 
           {/* Bottom Sidebar Footer (Anchored Logout Button) */}
-          <div className="p-3 border-t border-slate-800">
+          <div className="p-2.5 border-t border-rc-indigo-100">
             <button
               onClick={handleLogout}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-red-300 hover:bg-red-950/40 border border-transparent hover:border-red-900/50 transition-all cursor-pointer group ${
+              className={`w-full flex items-center gap-2 py-2 px-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer group ${
                 isCollapsed ? 'justify-center px-0' : ''
               }`}
               title="Log Out"
             >
-              <LogOut className="h-5 w-5 text-slate-400 group-hover:text-red-400 shrink-0 transition-colors" />
+              <span className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[9px] text-gray-400 group-hover:text-red-500 transition-colors">
+                <LogOut className="h-4 w-4" strokeWidth={2.2} />
+              </span>
               {!isCollapsed && <span>Log Out</span>}
             </button>
+            {!isCollapsed && (
+              <p className="mt-2 px-1.5 text-[11px] text-gray-400">&copy; {new Date().getFullYear()} Emami Limited</p>
+            )}
           </div>
 
         </aside>
@@ -259,16 +266,22 @@ export default function Layout({ children }) {
             />
 
             {/* Slide-out Left Menu */}
-            <div className="relative w-72 max-w-[80vw] bg-slate-900 text-slate-300 h-full shadow-xl flex flex-col justify-between p-4 border-r border-slate-800 z-10">
+            <div className="relative w-72 max-w-[80vw] bg-white text-gray-500 h-full shadow-xl flex flex-col justify-between p-4 border-r border-rc-indigo-100 z-10">
               <div>
-                <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <TransparentLogo src="/apps/rc-portal/emami-logo-new.jpg" alt="Emami" className="h-9 w-auto object-contain" />
-                    <span className="text-xs font-semibold tracking-tight text-white">RC Portal Navigation</span>
+                <div className="relative flex items-center justify-center pt-1 pb-[18px] mb-3 border-b border-rc-indigo-100">
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => { setIsMobileDrawerOpen(false); navigate('/'); }}
+                  >
+                    <img
+                      src="/apps/rc-portal/emami-logo-new.jpg"
+                      alt="Emami Group"
+                      className="w-[152px] h-auto object-contain"
+                    />
                   </div>
                   <button
                     onClick={() => setIsMobileDrawerOpen(false)}
-                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                    className="absolute right-0 top-0 p-1.5 rounded-lg bg-slate-100 text-gray-500 hover:text-slate-900"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -285,20 +298,20 @@ export default function Layout({ children }) {
                             item.onClick();
                             setIsMobileDrawerOpen(false);
                           }}
-                          className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-800 text-sm font-medium text-slate-200 border border-slate-700 hover:bg-slate-700"
+                          className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-50 text-[13px] font-medium text-gray-500 border-l-[3px] border-l-transparent hover:bg-slate-100"
                         >
                           <div className="flex items-center gap-3">
-                            <Icon className={`h-5 w-5 ${item.color}`} />
+                            <span className="flex h-[27px] w-[27px] items-center justify-center rounded-[9px] text-gray-400">
+                              <Icon className="h-4 w-4" strokeWidth={2.2} />
+                            </span>
                             <span>{item.name}</span>
                           </div>
-                          <span className="px-2 py-0.5 rounded-md bg-rc-indigo-500/15 text-rc-indigo-300 text-[9px] font-semibold uppercase border border-rc-indigo-500/30">
+                          <span className="px-2 py-0.5 rounded-md bg-rc-teal/10 text-rc-teal text-[9px] font-bold uppercase border border-rc-indigo-100">
                             AI
                           </span>
                         </button>
                       );
                     }
-
-                    const isActive = location.pathname === item.path;
 
                     return (
                       <NavLink
@@ -306,17 +319,25 @@ export default function Layout({ children }) {
                         to={item.path}
                         onClick={() => setIsMobileDrawerOpen(false)}
                         className={({ isActive }) => `
-                          flex items-center gap-3 p-3 rounded-lg text-sm font-medium transition-all border
-                          ${isActive
-                            ? 'bg-rc-indigo-500/15 text-rc-indigo-300 border-rc-indigo-500/30'
-                            : item.isHighlight
-                              ? 'bg-rc-teal text-white border-transparent shadow-sm'
-                              : 'text-slate-300 hover:bg-slate-800 border-transparent'
+                          flex items-center gap-3 p-3 rounded-xl text-[13px] transition-all border-l-[3px]
+                          ${item.isHighlight
+                            ? 'bg-rc-teal text-white font-bold border-l-transparent shadow-sm'
+                            : isActive
+                              ? 'bg-rc-teal/10 border-l-rc-teal text-rc-teal font-bold'
+                              : 'text-gray-500 font-medium border-l-transparent hover:bg-slate-50'
                           }
                         `}
                       >
-                        <Icon className={`h-5 w-5 ${item.isHighlight ? 'text-white' : item.color}`} />
-                        <span>{item.name}</span>
+                        {({ isActive }) => (
+                          <>
+                            <span className={`flex h-[27px] w-[27px] items-center justify-center rounded-[9px] ${
+                              item.isHighlight ? 'text-white' : isActive ? 'bg-rc-teal text-white' : 'text-gray-400'
+                            }`}>
+                              <Icon className="h-4 w-4" strokeWidth={2.2} />
+                            </span>
+                            <span>{item.name}</span>
+                          </>
+                        )}
                       </NavLink>
                     );
                   })}
@@ -324,17 +345,20 @@ export default function Layout({ children }) {
               </div>
 
               {/* Mobile Drawer Logout */}
-              <div className="pt-3 border-t border-slate-800">
+              <div className="pt-3 border-t border-rc-indigo-100">
                 <button
                   onClick={() => {
                     setIsMobileDrawerOpen(false);
                     handleLogout();
                   }}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg text-sm font-medium text-red-300 bg-red-950/30 border border-red-900/40 hover:bg-red-950/60 transition cursor-pointer"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl text-[13px] font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
                 >
-                  <LogOut className="h-5 w-5 text-red-400" />
+                  <span className="flex h-[27px] w-[27px] items-center justify-center rounded-[9px] text-gray-400">
+                    <LogOut className="h-4 w-4" strokeWidth={2.2} />
+                  </span>
                   <span>Log Out</span>
                 </button>
+                <p className="mt-2 px-1 text-[11px] text-gray-400">&copy; {new Date().getFullYear()} Emami Limited</p>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AccountBar from '../shared/AccountBar.jsx';
-import { apiList, apiMasterData } from '../shared/api.js';
+import { apiList, apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { areaColorMap } from '../shared/masterData.js';
 import { buildRoster, computeConcurrency, remainingDays } from '../shared/roster.js';
 import { fmtDate, initialsRoster } from '../shared/utils.js';
@@ -55,9 +55,14 @@ export default function ResourceUtilization() {
   const [asOf, setAsOf] = useState(todayLocalMidnight());
   const [flipped, setFlipped] = useState({});
   const [generatedAt] = useState(new Date());
+  const email = getCurrentUserEmail();
 
   useEffect(() => {
-    Promise.all([apiList(), apiMasterData()])
+    if (!email) {
+      window.location.href = '/';
+      return;
+    }
+    Promise.all([apiList(email), apiMasterData(email)])
       .then(([itemRows, mdRows]) => {
         setItems(itemRows || []);
         setMasterData(mdRows || []);
@@ -81,6 +86,7 @@ export default function ResourceUtilization() {
     setFlipped((f) => ({ ...f, [key]: !f[key] }));
   }
 
+  if (!email) return null;
   if (loading) return <div className="empty-state">Loading resource data…</div>;
   if (failed) return <div className="empty-state">Couldn't load live data — try refreshing the page.</div>;
 

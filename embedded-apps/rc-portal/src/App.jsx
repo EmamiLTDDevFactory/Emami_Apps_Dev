@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
 import Onboarding from './pages/Onboarding';
 import ConsultantDetail from './pages/ConsultantDetail';
 import Closure from './pages/Closure';
@@ -194,6 +195,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/consultants" element={<Dashboard />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/consultants/:consultantId" element={<ConsultantDetail />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/onboarding/:consultantId/edit" element={<Onboarding />} />

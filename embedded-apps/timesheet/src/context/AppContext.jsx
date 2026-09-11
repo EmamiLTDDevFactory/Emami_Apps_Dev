@@ -496,6 +496,17 @@ export function AppProvider({ children }) {
     return updated
   }
 
+  // Removes an employee from the current manager's team - the inverse of claimEmployee above.
+  // Server-side this also sends them back to 'pending' (see requestManager above) - they'll see
+  // the pick-a-manager screen again the next time they open Timesheet, same as a brand-new
+  // employee, rather than landing in unassignedEmployees with full access still intact. Their
+  // timesheets, leave history, and task assignments all stay untouched.
+  async function removeDirectReport(userId) {
+    const updated = await api(`/users/${userId}/team`, { method: 'DELETE' })
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
+    return updated
+  }
+
   function resetDemoData() {
     refresh()
   }
@@ -614,6 +625,7 @@ export function AppProvider({ children }) {
     fetchPendingRequests,
     approveEmployee,
     rejectEmployee,
+    removeDirectReport,
     resetDemoData,
   }
 

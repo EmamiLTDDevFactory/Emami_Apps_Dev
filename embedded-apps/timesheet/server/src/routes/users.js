@@ -114,10 +114,15 @@ router.post('/', async (req, res, next) => {
 // team yet - e.g. someone the hub's Manage Access already grants Timesheet access to, but who
 // hasn't been claimed into a manager's team here. Surfaced in Manage Team as "add to my team"
 // candidates, distinct from the "Add employee" form which only ever creates brand-new people.
+//
+// status = 'active' on purpose - this is the legacy passive pool for people who predate the
+// pick-a-manager flow (see PUT /me/manager above). A 'pending' employee (brand-new, or just
+// removed from a team - see DELETE /:id/team below) goes through that self-service flow instead
+// of showing up here for a manager to claim; the two pools don't overlap.
 router.get('/unassigned', async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM users WHERE role = 'employee' AND manager_id IS NULL ORDER BY name`,
+      `SELECT * FROM users WHERE role = 'employee' AND manager_id IS NULL AND status = 'active' ORDER BY name`,
     )
     res.json(rows.map(mapUser))
   } catch (err) {
@@ -247,6 +252,28 @@ router.put('/:id/reject', async (req, res, next) => {
       [req.params.id, req.user.userId],
     )
     if (!rows[0]) return res.status(404).json({ error: 'No pending request found for this employee' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// Removes an employee from the requesting manager's team - the inverse of /:id/claim above. Also
+// sends them back to 'pending' (see PUT /me/manager above), same as a brand-new employee - having
+// no approved manager means no access everywhere, not just on day one, so someone removed here
+// goes straight to the pick-a-manager screen again instead of quietly sitting in the old
+// unassigned pool with full access still intact. Their timesheets, leave history, and task
+// assignments all stay untouched server-side either way - only manager_id and status change.
+// Scoped to `manager_id = req.user.userId` so a manager can only remove their own reports, not
+// someone else's.
+router.delete('/:id/team', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can remove employees' })
+    const { rows } = await pool.query(
+      `UPDATE users SET manager_id = NULL, status = 'pending' WHERE id = $1 AND manager_id = $2 RETURNING *`,
+      [req.params.id, req.user.userId],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
     res.json(mapUser(rows[0]))
   } catch (err) {
     next(err)
