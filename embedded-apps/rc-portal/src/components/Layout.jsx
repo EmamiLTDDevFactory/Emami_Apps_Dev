@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import {
-  Loader2, LogOut, User, LayoutDashboard, Folder, Users, Plus,
+  Loader2, LogOut, LayoutDashboard, Folder, Users, Plus,
   ChevronLeft, ChevronRight, Menu, X, ShieldCheck, FileText, Bot, BarChart3
 } from 'lucide-react';
 import RcChatbot from './RcChatbot';
@@ -16,8 +16,6 @@ export default function Layout({ children }) {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const employeeId = localStorage.getItem('employeeId') || '';
-  const employeeName = localStorage.getItem('employeeName') || '';
   const userRole = (localStorage.getItem('employeeRole') || '').trim();
   const isSuperadmin = userRole === 'S' || userRole === 'Superadmin';
 
@@ -114,23 +112,6 @@ export default function Layout({ children }) {
                 alt="Emami Group"
                 className="h-8 w-auto object-contain"
               />
-            </div>
-          </div>
-
-          {/* Right: User Profile Badge Only */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 pl-1.5 pr-3 sm:pr-3.5 py-1">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-rc-teal text-white text-[10px] font-semibold shrink-0">
-                <User className="h-3.5 w-3.5" />
-              </div>
-              <span className="font-mono text-[11px] sm:text-xs font-medium text-slate-700 truncate max-w-[130px] sm:max-w-none">
-                {employeeName ? `${employeeName} (${employeeId})` : `ID: ${employeeId}`}
-              </span>
-              {userRole && (
-                <span className="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider bg-rc-teal/10 text-rc-teal border border-rc-indigo-100">
-                  {isSuperadmin ? 'Superadmin' : 'Admin'}
-                </span>
-              )}
             </div>
           </div>
 
