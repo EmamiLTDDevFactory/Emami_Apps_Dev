@@ -148,8 +148,10 @@ export default function RoleModal({ open, onClose, onSave }) {
             </button>
           </div>
 
-          {/* Table Container */}
-          <div className="mt-6 overflow-visible border border-slate-200 rounded-xl shadow-sm">
+          {/* Table Container — overflow-x-auto so the min-w-[950px] table scrolls horizontally
+              on phones instead of blowing out the modal; overflow-y-visible kept explicitly so
+              the employee-search suggestion dropdown below (absolute, top-full) isn't clipped. */}
+          <div className="mt-6 overflow-x-auto overflow-y-visible border border-slate-200 rounded-xl shadow-sm">
             <table className="w-full text-left border-collapse table-fixed min-w-[950px]">
               <thead>
                 <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-700">

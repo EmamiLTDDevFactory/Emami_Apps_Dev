@@ -243,10 +243,11 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-fadeIn">
-      {/* Floating Chatbot Window */}
+    <div className="fixed inset-x-4 bottom-6 sm:inset-x-auto sm:right-6 z-50 animate-fadeIn flex sm:block justify-end">
+      {/* Floating Chatbot Window — full-width-minus-gutters below sm instead of a fixed 360px,
+          which would overflow off-screen on a 375px/360px phone alongside the 24px inset. */}
       {isOpen && (
-        <div className="relative w-[360px] sm:w-[420px] h-[580px] rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-fadeIn">
+        <div className="relative w-full sm:w-[420px] h-[min(580px,70vh)] rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-fadeIn">
           
           {/* Header Bar */}
           <div className="bg-slate-900 p-4 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
