@@ -27,12 +27,22 @@ export function nameFromEmail(email) {
  * re-synced on every hub sign-in, so a Manage Access change takes effect on their next open here
  * instead of waiting on anything else. A brand-new email gets no manager assigned (manager_id
  * stays NULL) - same as any other user, assignable later via /:id/claim. An existing user's name
- * is left untouched on repeat sign-ins, in case it was edited here since. */
+ * is left untouched on repeat sign-ins, in case it was edited here since.
+ *
+ * Being promoted to manager also clears manager_id - managers don't report to other managers in
+ * this flat structure, and leaving an old manager_id behind left a promoted employee still stuck
+ * on their former manager's team (task assignments, an approvals list expecting a timesheet they
+ * can no longer submit as a manager, "Reports to X" showing on their own sidebar). Only touched
+ * when the NEW role is 'manager' - demoting someone back to employee deliberately does NOT try to
+ * guess who they should report to now; they land back in the unassigned pool to be claimed fresh,
+ * same as any other employee with no manager yet. */
 export async function upsertHubUser(email, role) {
   const { rows } = await pool.query(
     `INSERT INTO users (id, name, email, role, manager_id)
      VALUES ($1, $2, $3, $4, NULL)
-     ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role
+     ON CONFLICT (email) DO UPDATE SET
+       role = EXCLUDED.role,
+       manager_id = CASE WHEN EXCLUDED.role = 'manager' THEN NULL ELSE users.manager_id END
      RETURNING *`,
     [`u_${randomUUID()}`, nameFromEmail(email), email, role],
   )
