@@ -160,6 +160,7 @@ export default function Sidebar() {
     return (
         <Box
             sx={{
+                position: "relative",
                 width: collapsed ? 80 : 240,
                 height: "100vh",
                 bgcolor: "#fff",
