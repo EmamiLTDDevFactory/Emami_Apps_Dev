@@ -117,61 +117,73 @@ export function AppProvider({ children }) {
   }, [])
 
   // Establishes this tab's session token before anything else can load. Three cases:
-  //  1. Already logged in (persisted from last time) - reuse the token already in localStorage
-  //     and just load data; an expired/invalid token surfaces as the ordinary load-error retry.
-  //  2. A hub session token is present (see src/lib/hubAccess.js) - verify it against this app's
-  //     own backend (POST /auth/hub-login), which checks the token's signature server-side, looks
-  //     up the Manage Access role for 'timesheet', and hands back this app's own session token.
-  //     Only the real fallback here is the retryable error screen below (hubError) - never the
-  //     demo picker, which would let anyone free-pick who to sign in as.
-  //  3. No hub token at all - genuinely standalone (e.g. `npm run dev`). Fetch the demo user list
-  //     (unauthenticated) so Login.jsx has someone to pick from; demoLogin (below) is what
-  //     actually gets a token once someone's picked.
+  //  1. A hub session token is present (see src/lib/hubAccess.js) - ALWAYS re-verify it against
+  //     this app's own backend (POST /auth/hub-login), even if we already have a working session
+  //     from earlier. That re-check is what re-reads the current Manage Access role every time,
+  //     so promoting/demoting someone there takes effect the next time they open Timesheet,
+  //     instead of being stuck behind whatever role got baked into a session token that can
+  //     otherwise live for 30 days. If this re-check fails for a transient reason (network
+  //     hiccup) but we already had a working session, fall back to that rather than hard-failing
+  //     someone who was already in.
+  //  2. No hub token, but a session persists from last time (demo login, standalone dev) - reuse
+  //     it; an expired/invalid token surfaces as the ordinary load-error retry.
+  //  3. No hub token and no session at all - genuinely standalone (e.g. `npm run dev`). Fetch
+  //     the demo user list (unauthenticated) so Login.jsx has someone to pick from; demoLogin
+  //     (below) is what actually gets a token once someone's picked.
   const bootstrapFromHub = useCallback(() => {
+    const hubToken = getHubSessionToken()
+
+    if (hubToken) {
+      setHubEmailDetected(true)
+      setHubError(null)
+
+      let cancelled = false
+      api('/auth/hub-login', { method: 'POST', body: JSON.stringify({ hubToken }) })
+        .then(async ({ user, token }) => {
+          if (cancelled) return
+          saveToken(token)
+          await refresh()
+          login(user.id)
+        })
+        .catch((err) => {
+          if (cancelled) return
+          if (session.isLoggedIn) {
+            // Already had a working session before this re-check - don't block on a transient
+            // failure, just keep using what we have.
+            refresh()
+            return
+          }
+          console.error('[auth] Could not verify hub access:', err.message)
+          setHubError(err.message || 'Could not verify your access.')
+        })
+        .finally(() => {
+          if (!cancelled) setHubBootstrapped(true)
+        })
+
+      return () => {
+        cancelled = true
+      }
+    }
+
     if (session.isLoggedIn) {
       setHubBootstrapped(true)
       refresh()
       return () => {}
     }
-    const hubToken = getHubSessionToken()
-    if (!hubToken) {
-      setHubEmailDetected(false)
-      setHubBootstrapped(true)
-      // The demo "log in as" picker only makes sense for a genuinely standalone dev run
-      // (`npm run dev`, no hub around it at all) - on the real deployed site, someone with no
-      // hub token just opened this URL directly instead of through the hub, and should see the
-      // "sign in through the hub" screen below instead (see the render guard further down).
-      // Skipping this call there too, since /auth/demo-users 404s outright once deployed anyway.
-      if (import.meta.env.DEV) {
-        api('/auth/demo-users')
-          .then(setDemoUsers)
-          .catch((err) => console.error('[auth] Could not load demo users:', err.message))
-      }
-      return () => {}
-    }
-    setHubEmailDetected(true)
-    setHubError(null)
 
-    let cancelled = false
-    api('/auth/hub-login', { method: 'POST', body: JSON.stringify({ hubToken }) })
-      .then(async ({ user, token }) => {
-        if (cancelled) return
-        saveToken(token)
-        await refresh()
-        login(user.id)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error('[auth] Could not verify hub access:', err.message)
-        setHubError(err.message || 'Could not verify your access.')
-      })
-      .finally(() => {
-        if (!cancelled) setHubBootstrapped(true)
-      })
-
-    return () => {
-      cancelled = true
+    setHubEmailDetected(false)
+    setHubBootstrapped(true)
+    // The demo "log in as" picker only makes sense for a genuinely standalone dev run
+    // (`npm run dev`, no hub around it at all) - on the real deployed site, someone with no
+    // hub token just opened this URL directly instead of through the hub, and should see the
+    // "sign in through the hub" screen below instead (see the render guard further down).
+    // Skipping this call there too, since /auth/demo-users 404s outright once deployed anyway.
+    if (import.meta.env.DEV) {
+      api('/auth/demo-users')
+        .then(setDemoUsers)
+        .catch((err) => console.error('[auth] Could not load demo users:', err.message))
     }
+    return () => {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
