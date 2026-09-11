@@ -19,6 +19,7 @@ export default function ManageTeam({ navigate }) {
     deleteTask,
     setUserAssignments,
     addDirectReport,
+    fetchAddEmployeeCandidates,
     unassignedEmployees,
     claimEmployee,
     getLeaveBalance,
@@ -50,8 +51,13 @@ export default function ManageTeam({ navigate }) {
   const [editingProjectId, setEditingProjectId] = useState(null)
   const [editingTaskId, setEditingTaskId] = useState(null)
   const [draftName, setDraftName] = useState('')
-  const [newReportName, setNewReportName] = useState('')
-  const [newReportEmail, setNewReportEmail] = useState('')
+  // Everyone the hub already grants Timesheet access to, who isn't a Timesheet user yet - the
+  // pool "Add employee"'s live search filters client-side as the manager types. Fetched once on
+  // mount rather than per-keystroke, since this list only changes when someone's Manage Access
+  // grant changes or someone gets added - not something that needs re-checking on every letter.
+  const [candidates, setCandidates] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCandidate, setSelectedCandidate] = useState(null)
   const [addingReport, setAddingReport] = useState(false)
   const [claimingUserId, setClaimingUserId] = useState(null)
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
@@ -80,6 +86,34 @@ export default function ManageTeam({ navigate }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects])
+
+  useEffect(() => {
+    fetchAddEmployeeCandidates()
+      .then(setCandidates)
+      .catch((err) => console.error('Failed to load employee search candidates:', err.message))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Matches on name OR email, case-insensitive - live-filtered client-side on every keystroke for
+  // an instant type-ahead feel. Nothing shown at all until at least 2 characters are typed, so the
+  // whole candidate list doesn't dump onto the screen the moment the box is focused.
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (q.length < 2) return []
+    return candidates.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)).slice(0, 8)
+  }, [searchQuery, candidates])
+
+  function selectCandidate(candidate) {
+    setSelectedCandidate(candidate)
+    setSearchQuery(`${candidate.name} (${candidate.email})`)
+  }
+
+  function handleSearchChange(value) {
+    setSearchQuery(value)
+    // Editing the text after picking someone un-confirms that pick, rather than silently
+    // submitting whoever was selected before against now-different-looking text.
+    if (selectedCandidate) setSelectedCandidate(null)
+  }
 
   function handleAddProject(e) {
     e.preventDefault()
@@ -160,12 +194,13 @@ export default function ManageTeam({ navigate }) {
 
   async function handleAddReport(e) {
     e.preventDefault()
-    if (!newReportName.trim() || !newReportEmail.trim()) return
+    if (!selectedCandidate) return
     setAddingReport(true)
     try {
-      await addDirectReport(newReportName.trim(), newReportEmail.trim())
-      setNewReportName('')
-      setNewReportEmail('')
+      await addDirectReport(selectedCandidate.name, selectedCandidate.email)
+      setCandidates((c) => c.filter((cand) => cand.email !== selectedCandidate.email))
+      setSearchQuery('')
+      setSelectedCandidate(null)
       showToast('Employee added.', 'success')
     } catch (err) {
       showToast(err.message || 'Failed to add employee.', 'error')
@@ -201,36 +236,46 @@ export default function ManageTeam({ navigate }) {
       <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100 mb-3">Direct reports & task assignments</h2>
 
-        <form onSubmit={handleAddReport} className="flex flex-wrap items-end gap-2 mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex-1 min-w-[160px]">
-            <label htmlFor="new-report-name" className="block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
-              Name
+        <form onSubmit={handleAddReport} className="flex flex-wrap items-start gap-2 mb-5 pb-5 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex-1 min-w-[260px] relative">
+            <label htmlFor="employee-search" className="block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
+              Search by name or email
             </label>
             <input
-              id="new-report-name"
+              id="employee-search"
               type="text"
-              value={newReportName}
-              onChange={(e) => setNewReportName(e.target.value)}
-              placeholder="Employee name"
+              autoComplete="off"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Start typing a name or email…"
               className={`w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:outline-none ${inputFocus}`}
             />
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label htmlFor="new-report-email" className="block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
-              Email
-            </label>
-            <input
-              id="new-report-email"
-              type="email"
-              value={newReportEmail}
-              onChange={(e) => setNewReportEmail(e.target.value)}
-              placeholder="employee@emamigroup.com"
-              className={`w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:outline-none ${inputFocus}`}
-            />
+            {!selectedCandidate && searchQuery.trim().length >= 2 && (
+              <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg">
+                {searchResults.length > 0 ? (
+                  searchResults.map((candidate) => (
+                    <li key={candidate.email}>
+                      <button
+                        type="button"
+                        onClick={() => selectCandidate(candidate)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-slate-700"
+                      >
+                        <span className="font-medium text-slate-800 dark:text-slate-100">{candidate.name}</span>
+                        <span className="block text-xs text-slate-400 dark:text-slate-500">{candidate.email}</span>
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li className="px-3 py-2 text-xs text-slate-400 dark:text-slate-500">
+                    No matching people found. They need Timesheet access granted in Manage Access first.
+                  </li>
+                )}
+              </ul>
+            )}
           </div>
           <button
             type="submit"
-            disabled={addingReport || !newReportName.trim() || !newReportEmail.trim()}
+            disabled={addingReport || !selectedCandidate}
             className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed ${solidBtn}`}
           >
             {addingReport ? 'Adding…' : 'Add employee'}

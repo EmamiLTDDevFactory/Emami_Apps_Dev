@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
+import { fetchHubRoleForTimesheet, fetchAllTimesheetGrantedEmails } from './auth.js'
 
 const router = Router()
+
+// A plain, ordinary-looking email address - "someone@somewhere.something". Not trying to cover
+// every edge case the real email spec allows, just enough to catch an obvious typo (missing @,
+// no dot in the domain) before ever bothering the hub with it.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function mapUser(row) {
   return { id: row.id, name: row.name, email: row.email, role: row.role, managerId: row.manager_id }
@@ -27,12 +33,22 @@ export function nameFromEmail(email) {
  * re-synced on every hub sign-in, so a Manage Access change takes effect on their next open here
  * instead of waiting on anything else. A brand-new email gets no manager assigned (manager_id
  * stays NULL) - same as any other user, assignable later via /:id/claim. An existing user's name
- * is left untouched on repeat sign-ins, in case it was edited here since. */
+ * is left untouched on repeat sign-ins, in case it was edited here since.
+ *
+ * Being promoted to manager also clears manager_id - managers don't report to other managers in
+ * this flat structure, and leaving an old manager_id behind left a promoted employee still stuck
+ * on their former manager's team (task assignments, an approvals list expecting a timesheet they
+ * can no longer submit as a manager, "Reports to X" showing on their own sidebar). Only touched
+ * when the NEW role is 'manager' - demoting someone back to employee deliberately does NOT try to
+ * guess who they should report to now; they land back in the unassigned pool to be claimed fresh,
+ * same as any other employee with no manager yet. */
 export async function upsertHubUser(email, role) {
   const { rows } = await pool.query(
     `INSERT INTO users (id, name, email, role, manager_id)
      VALUES ($1, $2, $3, $4, NULL)
-     ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role
+     ON CONFLICT (email) DO UPDATE SET
+       role = EXCLUDED.role,
+       manager_id = CASE WHEN EXCLUDED.role = 'manager' THEN NULL ELSE users.manager_id END
      RETURNING *`,
     [`u_${randomUUID()}`, nameFromEmail(email), email, role],
   )
@@ -53,6 +69,13 @@ router.get('/', async (_req, res, next) => {
 // someone's report. The manager is req.user (verified by requireAuth), same reasoning as
 // /:id/claim below - otherwise anyone calling this endpoint could create a report under whichever
 // manager account they felt like naming.
+//
+// Two checks happen before anything is created, in order (cheapest first):
+//   1. Does this look like a real email address at all - catches an obvious typo instantly,
+//      without spending a network call on it.
+//   2. Does the hub's own Manage Access actually grant this email Timesheet access - without
+//      this, a manager could type any email and create a phantom employee who could never
+//      actually sign in (Manage Access gates every embedded app before someone even reaches it).
 router.post('/', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can add employees' })
@@ -60,6 +83,15 @@ router.post('/', async (req, res, next) => {
     const email = String(req.body?.email || '').trim().toLowerCase()
     if (!name) return res.status(400).json({ error: 'name is required' })
     if (!email) return res.status(400).json({ error: 'email is required' })
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' })
+
+    const hubRole = await fetchHubRoleForTimesheet(email)
+    if (!hubRole) {
+      return res.status(400).json({
+        error: 'This email has not been granted Timesheet access yet. Ask a hub admin to add it in Manage Access first.',
+      })
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO users (id, name, email, role, manager_id) VALUES ($1, $2, $3, 'employee', $4) RETURNING *`,
       [`u_${randomUUID()}`, name, email, req.user.userId],
@@ -81,6 +113,28 @@ router.get('/unassigned', async (_req, res, next) => {
       `SELECT * FROM users WHERE role = 'employee' AND manager_id IS NULL ORDER BY name`,
     )
     res.json(rows.map(mapUser))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// The live-search pool for Manage Team's "Add employee" box: everyone the hub's Manage Access
+// currently grants Timesheet to, who ISN'T a Timesheet user of any kind yet (not an employee, not
+// a manager, not sitting unassigned) - those people have their own paths already (claim, or
+// they're already on a team), so this form is only ever for someone genuinely new to Timesheet.
+// Names are guessed from email since Manage Access has no name field of its own. Manager-only,
+// same reasoning as the routes around it - this exists to feed that one form, not as a general
+// people directory.
+router.get('/candidates', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can see this' })
+    const grantedEmails = await fetchAllTimesheetGrantedEmails()
+    const existing = await pool.query('SELECT email FROM users')
+    const existingEmails = new Set(existing.rows.map((r) => r.email))
+    const candidates = grantedEmails
+      .filter((email) => !existingEmails.has(email))
+      .map((email) => ({ name: nameFromEmail(email), email }))
+    res.json(candidates)
   } catch (err) {
     next(err)
   }
