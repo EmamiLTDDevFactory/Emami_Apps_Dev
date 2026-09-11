@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
-import { fetchHubRoleForTimesheet } from './auth.js'
+import { fetchHubRoleForTimesheet, fetchAllTimesheetGrantedEmails } from './auth.js'
 
 const router = Router()
 
@@ -113,6 +113,28 @@ router.get('/unassigned', async (_req, res, next) => {
       `SELECT * FROM users WHERE role = 'employee' AND manager_id IS NULL ORDER BY name`,
     )
     res.json(rows.map(mapUser))
+  } catch (err) {
+    next(err)
+  }
+})
+
+// The live-search pool for Manage Team's "Add employee" box: everyone the hub's Manage Access
+// currently grants Timesheet to, who ISN'T a Timesheet user of any kind yet (not an employee, not
+// a manager, not sitting unassigned) - those people have their own paths already (claim, or
+// they're already on a team), so this form is only ever for someone genuinely new to Timesheet.
+// Names are guessed from email since Manage Access has no name field of its own. Manager-only,
+// same reasoning as the routes around it - this exists to feed that one form, not as a general
+// people directory.
+router.get('/candidates', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can see this' })
+    const grantedEmails = await fetchAllTimesheetGrantedEmails()
+    const existing = await pool.query('SELECT email FROM users')
+    const existingEmails = new Set(existing.rows.map((r) => r.email))
+    const candidates = grantedEmails
+      .filter((email) => !existingEmails.has(email))
+      .map((email) => ({ name: nameFromEmail(email), email }))
+    res.json(candidates)
   } catch (err) {
     next(err)
   }

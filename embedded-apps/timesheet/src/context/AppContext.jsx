@@ -432,6 +432,14 @@ export function AppProvider({ children }) {
     return user
   }
 
+  // The live-search pool for Manage Team's "Add employee" box - see server/src/routes/users.js's
+  // GET /users/candidates. Fetched on demand by that screen (not part of loadAllData, since
+  // nothing else needs it) and filtered client-side as the manager types, for an instant
+  // type-ahead feel instead of a network round-trip per keystroke.
+  async function fetchAddEmployeeCandidates() {
+    return api('/users/candidates')
+  }
+
   // Claims an employee who already exists (synced from a hub sign-in with no manager yet) onto
   // the current manager's team, instead of the "Add employee" form above which only ever creates
   // brand-new people. Self-service - the server 409s if someone else claimed them first.
@@ -555,6 +563,7 @@ export function AppProvider({ children }) {
     deleteTask,
     setUserAssignments,
     addDirectReport,
+    fetchAddEmployeeCandidates,
     claimEmployee,
     resetDemoData,
   }

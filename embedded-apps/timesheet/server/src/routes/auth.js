@@ -26,6 +26,24 @@ const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true'
 const HUB_ACCESS_API_BASE = process.env.HUB_ACCESS_API_BASE || 'https://audit-capa-api.emamiapps.in/dev-api/api'
 const APP_ID = 'timesheet'
 
+/** Everyone the hub's Manage Access currently grants Timesheet to (Admin or User), active only -
+ * the searchable pool for Manage Team's "Add employee" live search (see routes/users.js's
+ * GET /candidates), so a manager picks a real, already-authorized person instead of free-typing
+ * an email that might be wrong. Keeps HUB_ACCESS_API_BASE/APP_ID knowledge in this one file rather
+ * than leaking those constants into users.js too. */
+export async function fetchAllTimesheetGrantedEmails() {
+  try {
+    const res = await fetch(`${HUB_ACCESS_API_BASE}/access/users`)
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data?.success) return []
+    return (data.users || [])
+      .filter((u) => u.isActive && (u.apps || []).some((a) => a.appId === APP_ID))
+      .map((u) => u.email)
+  } catch {
+    return []
+  }
+}
+
 /** Server-side counterpart of the old client-side src/lib/hubAccess.js's getHubRoleForTimesheet -
  * moved here so the browser never has to be trusted with an already-verified email; this backend
  * looks up the hub's Manage Access grant for 'timesheet' itself once it already knows who's
