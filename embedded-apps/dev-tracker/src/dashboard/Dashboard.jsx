@@ -40,12 +40,16 @@ export default function Dashboard() {
   const loadedRef = useRef(false);
 
   async function reload() {
-    const [itemRows, mdRows] = await Promise.all([apiList(), apiMasterData()]);
+    const [itemRows, mdRows] = await Promise.all([apiList(email), apiMasterData(email)]);
     setItems(itemRows || []);
     setMasterData(mdRows || []);
   }
 
   useEffect(() => {
+    if (!email) {
+      window.location.href = '/';
+      return;
+    }
     reload().finally(() => setLoading(false));
   }, []);
 
@@ -118,7 +122,7 @@ export default function Dashboard() {
     if (!message) return;
     setCommandResponse({ text: 'Thinking…' });
     try {
-      const data = await apiAiCommand(message);
+      const data = await apiAiCommand(message, email);
       if (data.intent === 'filter') {
         // Matches the original: every filter field is overwritten (not merged) on each
         // response, so an earlier AI-set filter doesn't silently linger into the next one.
@@ -240,6 +244,8 @@ export default function Dashboard() {
       setDragError(e2.message || 'Failed to move item');
     }
   }
+
+  if (!email) return null;
 
   return (
     <div className="dash-stage">
