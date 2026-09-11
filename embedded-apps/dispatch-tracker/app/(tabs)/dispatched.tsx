@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
-import { fd, finr, isoDate, toDate, todayDate } from '@/lib/format';
+import { fd, finr, toDate } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { DispatchDetail } from '@/types/models';
 import { EmptyState } from '@/components/EmptyState';
 import { KPICard } from '@/components/KPICard';
-import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { ActionButton } from '@/components/ActionButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Pagination } from '@/components/Pagination';
@@ -88,24 +88,12 @@ function truncate(v: string | null | undefined, max: number, ellipsis: boolean):
 
 export default function DispatchedScreen() {
   const { session, readOnly } = useAuth();
-  const { dispCache, errors, ensureDispatched, refreshEntitySet } = useData();
+  const { dispCache, errors, ensureDispatched } = useData();
 
-  const [frmDate, setFrmDate] = useState<Date>(() => {
-    const d = todayDate();
-    d.setDate(d.getDate() - 30);
-    return d;
-  });
-  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
-
-  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
-  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
-  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensureDispatched();
-      refreshEntitySet('disp', isoDate(frmDate), isoDate(dateTo));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ensureDispatched, refreshEntitySet])
+    }, [ensureDispatched])
   );
 
   const [search, setSearch] = useState('');
@@ -233,19 +221,6 @@ export default function DispatchedScreen() {
           <FilterSelect value={String(pageSize)} options={PAGE_SIZE_OPTIONS} onChange={(v) => setPageSize(Number(v))} minWidth={70} />
         </FilterRow>
 
-        <DateRangeRow
-          fromDate={frmDate}
-          toDate={dateTo}
-          onFromDateChange={(d) => {
-            setFrmDate(d);
-            refreshEntitySet('disp', isoDate(d), isoDate(dateTo));
-          }}
-          onToDateChange={(d) => {
-            setDateTo(d);
-            refreshEntitySet('disp', isoDate(frmDate), isoDate(d));
-          }}
-        />
-
         <View style={styles.kpiRow}>
           <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
           <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
@@ -270,7 +245,7 @@ export default function DispatchedScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {rows.length === 0 ? (
-          <EmptyState message="No dispatched invoices" icon="🚚" hint="Try a different date range above" />
+          <EmptyState message="No dispatched invoices" icon="🚚" hint="Try a different date range at the top" />
         ) : filtered.length === 0 ? (
           <EmptyState message="No invoices match" icon="🔍" />
         ) : (

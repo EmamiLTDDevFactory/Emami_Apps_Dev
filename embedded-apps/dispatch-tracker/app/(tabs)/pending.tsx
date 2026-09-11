@@ -5,14 +5,14 @@ import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { PendingInvoice } from '@/types/models';
-import { fd, finr, fmtCw, isoDate, sfloat, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, sfloat, toDate } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
 import { ActionButton } from '@/components/ActionButton';
-import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { DispatchModal } from '@/components/modals/DispatchModal';
 import { PendingCancelModal } from '@/components/modals/PendingCancelModal';
 
@@ -27,24 +27,12 @@ const GROUP_FIELD: Record<string, keyof PendingInvoice> = {
 /** Ported 1:1 from render_pending() in streamlit_app/dis_shared_components.py. */
 export default function PendingScreen() {
   const { readOnly } = useAuth();
-  const { pendCache, loading, errors, ensurePending, refreshEntitySet } = useData();
+  const { pendCache, loading, errors, ensurePending } = useData();
 
-  const [frmDate, setFrmDate] = useState<Date>(() => {
-    const d = todayDate();
-    d.setDate(d.getDate() - 30);
-    return d;
-  });
-  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
-
-  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
-  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
-  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensurePending();
-      refreshEntitySet('pend', isoDate(frmDate), isoDate(dateTo));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ensurePending, refreshEntitySet])
+    }, [ensurePending])
   );
 
   const [search, setSearch] = useState('');
@@ -162,19 +150,6 @@ export default function PendingScreen() {
           </Pressable>
         </FilterRow>
 
-        <DateRangeRow
-          fromDate={frmDate}
-          toDate={dateTo}
-          onFromDateChange={(d) => {
-            setFrmDate(d);
-            refreshEntitySet('pend', isoDate(d), isoDate(dateTo));
-          }}
-          onToDateChange={(d) => {
-            setDateTo(d);
-            refreshEntitySet('pend', isoDate(frmDate), isoDate(d));
-          }}
-        />
-
         <View style={styles.kpiRow}>
           <KPICard icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
           <KPICard icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
@@ -190,7 +165,7 @@ export default function PendingScreen() {
         <EmptyState
           message="No pending invoices"
           icon="✅"
-          hint="Try a different date range above, or all invoices have been dispatched"
+          hint="Try a different date range at the top, or all invoices have been dispatched"
         />
       ) : filtered.length === 0 ? (
         <EmptyState message="No invoices match" icon="🔍" />

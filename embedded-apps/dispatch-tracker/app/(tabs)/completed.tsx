@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ActionButton } from '@/components/ActionButton';
 import { EmptyState } from '@/components/EmptyState';
-import { FilterRow, FilterSelect, DateRangeRow, SearchInput } from '@/components/FilterBar';
+import { FilterRow, FilterSelect, SearchInput } from '@/components/FilterBar';
 import { DateField } from '@/components/Form';
 import { KPICard } from '@/components/KPICard';
 import { PodRecord, PodViewModal } from '@/components/modals/PodViewModal';
@@ -13,7 +13,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { fd, finr, fmtCw, isoDate, toDate, todayDate } from '@/lib/format';
+import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -54,25 +54,12 @@ export default function CompletedScreen() {
     errors,
     ensureCompleted,
     invalidate,
-    refreshEntitySet,
   } = useData();
 
-  const [frmDate, setFrmDate] = useState<Date>(() => {
-    const d = todayDate();
-    d.setDate(d.getDate() - 30);
-    return d;
-  });
-  const [dateTo, setDateTo] = useState<Date>(() => todayDate());
-
-  // Every time this tab is opened, it refreshes its own entity set (Email + FrmDate + ToDate,
-  // no LoginSet) with whatever From/To Date is currently set — starts at the default 30-day
-  // window, same call the DateRangeRow's onChange handlers below trigger when that changes.
   useFocusEffect(
     useCallback(() => {
       ensureCompleted();
-      refreshEntitySet('comp', isoDate(frmDate), isoDate(dateTo));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ensureCompleted, refreshEntitySet])
+    }, [ensureCompleted])
   );
 
   const [search, setSearch] = useState('');
@@ -219,19 +206,6 @@ export default function CompletedScreen() {
           </Pressable>
         </FilterRow>
 
-        <DateRangeRow
-          fromDate={frmDate}
-          toDate={dateTo}
-          onFromDateChange={(d) => {
-            setFrmDate(d);
-            refreshEntitySet('comp', isoDate(d), isoDate(dateTo));
-          }}
-          onToDateChange={(d) => {
-            setDateTo(d);
-            refreshEntitySet('comp', isoDate(frmDate), isoDate(d));
-          }}
-        />
-
         {period === 'Custom' && (
           <View style={styles.customRow}>
             <View style={{ flex: 1 }}>
@@ -261,7 +235,7 @@ export default function CompletedScreen() {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         {allRows.length === 0 ? (
-          <EmptyState message="No completed invoices" icon="✅" hint="Try a different date range above" />
+          <EmptyState message="No completed invoices" icon="✅" hint="Try a different date range at the top" />
         ) : filteredSorted.length === 0 ? (
           <EmptyState message="No invoices match filters" icon="🔍" />
         ) : (
