@@ -454,17 +454,56 @@ export function AppProvider({ children }) {
     return updated
   }
 
+  // Everyone who could be picked as "my reporting manager" - see PickManager.jsx, the screen a
+  // brand-new employee sees before anything else. Fetched on demand rather than in loadAllData
+  // since it's only ever needed by that one screen.
+  async function fetchManagers() {
+    return api('/users/managers')
+  }
+
+  // A pending employee's own pick of who they report to (or a change of mind while still
+  // pending - see AwaitingApproval.jsx). Updates the in-memory user record so the app can move
+  // straight from "pick a manager" to "waiting for approval" without a full refetch.
+  async function requestManager(managerId) {
+    const updated = await api('/users/me/manager', { method: 'PUT', body: JSON.stringify({ managerId }) })
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
+    return updated
+  }
+
+  // Re-reads one user's current record - used by AwaitingApproval.jsx to notice, without a full
+  // page reload, the moment a manager approves them (status flips 'pending' -> 'active').
+  async function refreshUser(userId) {
+    const updated = await api(`/users/${userId}`)
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
+    return updated
+  }
+
+  // Manage Team's "Requests waiting for your approval" section - people who've named the current
+  // manager as theirs but aren't approved yet. Fetched on demand like fetchAddEmployeeCandidates.
+  async function fetchPendingRequests() {
+    return api('/users/pending-requests')
+  }
+
+  async function approveEmployee(userId) {
+    const updated = await api(`/users/${userId}/approve`, { method: 'PUT' })
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
+    return updated
+  }
+
+  async function rejectEmployee(userId) {
+    const updated = await api(`/users/${userId}/reject`, { method: 'PUT' })
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
+    return updated
+  }
+
   // Removes an employee from the current manager's team - the inverse of claimEmployee above.
-  // The employee, their timesheets, and their task assignments all stay intact server-side; they
-  // just fall out of directReports (managerId cleared) and back into unassignedEmployees, same
-  // place someone lands before ever being claimed.
+  // Server-side this also sends them back to 'pending' (see requestManager above) - they'll see
+  // the pick-a-manager screen again the next time they open Timesheet, same as a brand-new
+  // employee, rather than landing in unassignedEmployees with full access still intact. Their
+  // timesheets, leave history, and task assignments all stay untouched.
   async function removeDirectReport(userId) {
     const updated = await api(`/users/${userId}/team`, { method: 'DELETE' })
-    setData((d) => ({
-      ...d,
-      users: d.users.map((u) => (u.id === updated.id ? updated : u)),
-      unassignedEmployees: [...d.unassignedEmployees, updated],
-    }))
+    setData((d) => ({ ...d, users: d.users.map((u) => (u.id === updated.id ? updated : u)) }))
     return updated
   }
 
@@ -580,6 +619,12 @@ export function AppProvider({ children }) {
     addDirectReport,
     fetchAddEmployeeCandidates,
     claimEmployee,
+    fetchManagers,
+    requestManager,
+    refreshUser,
+    fetchPendingRequests,
+    approveEmployee,
+    rejectEmployee,
     removeDirectReport,
     resetDemoData,
   }

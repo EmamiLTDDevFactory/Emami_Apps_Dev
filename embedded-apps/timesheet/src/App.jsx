@@ -4,6 +4,8 @@ import { ToastProvider } from './context/ToastContext'
 import { ThemeProvider } from './context/ThemeContext'
 import Sidebar from './components/Sidebar'
 import Login from './pages/Login'
+import PickManager from './pages/PickManager'
+import AwaitingApproval from './pages/AwaitingApproval'
 import Dashboard from './pages/Dashboard'
 import MyTimesheet from './pages/MyTimesheet'
 import TimesheetHistory from './pages/TimesheetHistory'
@@ -34,6 +36,13 @@ function AppShell() {
   }, [currentUser?.id])
 
   if (!isLoggedIn) return <Login />
+
+  // A brand-new (or just-rejected) employee is blocked behind these two screens until a manager
+  // approves them - see AppContext.jsx's status field and server/src/routes/users.js. Managers
+  // are never gated (upsertHubUser always gives them status 'active').
+  if (currentUser.role === 'employee' && currentUser.status === 'pending') {
+    return currentUser.managerId ? <AwaitingApproval currentUser={currentUser} /> : <PickManager />
+  }
 
   function navigate(nextPage, params = {}) {
     setPage(nextPage)
