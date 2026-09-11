@@ -14,7 +14,7 @@ import { formatCurrency, formatDate, paymentStatusColor, paymentStatusText, stat
 const getAvatarColor = (name) => {
   const colors = [
     'bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500', 
-    'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 
+    'bg-emerald-500', 'bg-rc-indigo-500', 'bg-cyan-500', 'bg-sky-500', 
     'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 
     'bg-fuchsia-500', 'bg-pink-500', 'bg-rose-500'
   ];
@@ -262,7 +262,7 @@ export default function ConsultantDetail() {
   if (!consultant || !detail) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="h-10 w-10 border-4 border-[#800A36]/30 border-t-[#800A36] rounded-full animate-spin mb-4" />
+        <div className="h-10 w-10 border-4 border-[#4F3FD6]/30 border-t-[#4F3FD6] rounded-full animate-spin mb-4" />
         <p className="text-sm font-bold text-slate-700">Loading consultant details...</p>
       </div>
     );
@@ -279,15 +279,15 @@ export default function ConsultantDetail() {
       
       {/* Top Header Banner */}
       <div className="relative overflow-hidden rounded-3xl border border-rose-200/80 bg-gradient-to-r from-white via-rose-50/60 to-pink-50/70 p-6 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#800A36] via-[#9E0D43] to-rose-400" />
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#4F3FD6] via-[#6D5BF5] to-rose-400" />
         
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer group"
+              className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer group"
             >
-              <ArrowLeft className="h-4 w-4 text-[#800A36] group-hover:text-white transition-colors" />
+              <ArrowLeft className="h-4 w-4 text-[#4F3FD6] group-hover:text-white transition-colors" />
               <span className="text-xs font-black uppercase tracking-wider">Back</span>
             </button>
             <div className="flex items-center gap-3.5">
@@ -302,7 +302,7 @@ export default function ConsultantDetail() {
                   </span>
                 </div>
                 <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                  Consultant ID: <span className="font-mono text-[#800A36] font-bold">{consultant.ConsultantId}</span> • Type: <span className="font-bold text-slate-800">{consultant.ConsuType}</span>
+                  Consultant ID: <span className="font-mono text-[#4F3FD6] font-bold">{consultant.ConsultantId}</span> • Type: <span className="font-bold text-slate-800">{consultant.ConsuType}</span>
                 </p>
               </div>
             </div>
@@ -312,7 +312,7 @@ export default function ConsultantDetail() {
             {consultant.Status === 'ACTIVE' && (
               <button 
                 onClick={() => navigate(`/closure/${consultantId}`)}
-                className="flex items-center gap-2 rounded-xl bg-[#800A36] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#600727] transition cursor-pointer"
+                className="flex items-center gap-2 rounded-xl bg-[#4F3FD6] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#3B2FB0] transition cursor-pointer"
               >
                 <FileSignature className="h-4 w-4" /> Log Closure
               </button>
@@ -320,7 +320,7 @@ export default function ConsultantDetail() {
 
             <button 
               onClick={downloadAgreement}
-              className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+              className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white transition shadow-2xs cursor-pointer"
             >
               <Download className="h-4 w-4" /> Agreement
             </button>
@@ -356,7 +356,7 @@ export default function ConsultantDetail() {
         </div>
 
         {/* Tile 2: Total Hires */}
-        <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/90 via-teal-50/40 to-white p-5 shadow-2xs hover:shadow-md transition-all relative overflow-hidden">
+        <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/90 via-rc-indigo-50/40 to-white p-5 shadow-2xs hover:shadow-md transition-all relative overflow-hidden">
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-extrabold uppercase tracking-wider text-emerald-900/70">Total Hires</p>
@@ -364,7 +364,7 @@ export default function ConsultantDetail() {
                 {consultant.TotalHires || 0}
               </h4>
             </div>
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-xs">
+            <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-600 to-rc-indigo-600 text-white shadow-xs">
               <Users className="h-5 w-5" />
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function ConsultantDetail() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-extrabold transition shadow-2xs cursor-pointer ${
                   isActive 
-                    ? 'bg-[#800A36] text-white shadow-sm' 
+                    ? 'bg-[#4F3FD6] text-white shadow-sm' 
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -478,15 +478,15 @@ export default function ConsultantDetail() {
                 </div>
 
                 {/* Module Access Flags */}
-                <div className="rounded-2xl border-2 border-slate-200 bg-white overflow-hidden shadow-2xs hover:border-[#800A36]/40 hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-slate-200 bg-white overflow-hidden shadow-2xs hover:border-[#4F3FD6]/40 hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/80 border-b border-rose-200/80 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Module Access Flags</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Module Access Flags</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white flex items-center gap-1.5 flex-wrap">
-                    {hasTa && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#800A36] shadow-2xs">TA</span>}
-                    {hasTm && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#800A36] shadow-2xs">TM</span>}
-                    {hasLd && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#800A36] shadow-2xs">L&amp;D</span>}
-                    {hasOd && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#800A36] shadow-2xs">OD</span>}
+                    {hasTa && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#4F3FD6] shadow-2xs">TA</span>}
+                    {hasTm && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#4F3FD6] shadow-2xs">TM</span>}
+                    {hasLd && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#4F3FD6] shadow-2xs">L&amp;D</span>}
+                    {hasOd && <span className="inline-flex items-center rounded-full bg-rose-100 border border-rose-300 px-3 py-0.5 text-xs font-extrabold text-[#4F3FD6] shadow-2xs">OD</span>}
                     {!hasTa && !hasTm && !hasLd && !hasOd && <span className="text-xs font-bold text-slate-500">None</span>}
                   </div>
                 </div>
@@ -510,7 +510,7 @@ export default function ConsultantDetail() {
                     {consultant.PanNumber && (
                       <button
                         onClick={() => copyToClipboard(consultant.PanNumber, 'pan')}
-                        className="text-slate-400 hover:text-[#800A36] transition cursor-pointer"
+                        className="text-slate-400 hover:text-[#4F3FD6] transition cursor-pointer"
                         title="Copy PAN"
                       >
                         {copiedField === 'pan' ? (
@@ -535,7 +535,7 @@ export default function ConsultantDetail() {
                     {consultant.GstNumber && (
                       <button
                         onClick={() => copyToClipboard(consultant.GstNumber, 'gst')}
-                        className="text-slate-400 hover:text-[#800A36] transition cursor-pointer"
+                        className="text-slate-400 hover:text-[#4F3FD6] transition cursor-pointer"
                         title="Copy GST"
                       >
                         {copiedField === 'gst' ? (
@@ -554,26 +554,26 @@ export default function ConsultantDetail() {
                 </div>
 
                 {/* Dummy Vendor Code */}
-                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:border-[#800A36] hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:border-[#4F3FD6] hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/90 border-b border-rose-200 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Dummy Vendor Code</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Dummy Vendor Code</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white">
-                    <span className="font-mono text-xs font-black text-[#800A36] bg-rose-100/90 px-3 py-1 rounded-lg border border-rose-300 inline-block shadow-2xs">
+                    <span className="font-mono text-xs font-black text-[#4F3FD6] bg-rose-100/90 px-3 py-1 rounded-lg border border-rose-300 inline-block shadow-2xs">
                       {consultant.DummyVendor || '-'}
                     </span>
                   </div>
                 </div>
 
                 {/* Actual SAP Vendor Code */}
-                <div className="rounded-2xl border-2 border-rose-200 bg-white overflow-hidden shadow-2xs hover:border-[#800A36] hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-rose-200 bg-white overflow-hidden shadow-2xs hover:border-[#4F3FD6] hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/90 border-b border-rose-200 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Actual Vendor Code</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Actual Vendor Code</span>
                   </div>
                   <div className="px-4 py-2 bg-white">
                     <div className="flex items-center gap-2">
                       <input
-                        className="rc-input w-full bg-slate-50 font-mono text-xs font-black text-slate-900 border-rose-300 focus:border-[#800A36] focus:ring-2 focus:ring-rose-200 shadow-2xs h-8 p-2"
+                        className="rc-input w-full bg-slate-50 font-mono text-xs font-black text-slate-900 border-rose-300 focus:border-[#4F3FD6] focus:ring-2 focus:ring-rose-200 shadow-2xs h-8 p-2"
                         placeholder="e.g. VEND1234"
                         maxLength={15}
                         value={vendorCode}
@@ -590,7 +590,7 @@ export default function ConsultantDetail() {
                         disabled={!vendorCodeDirty || vendorSaving}
                         title={vendorCodeDirty ? 'Save vendor code' : 'No changes to save'}
                         aria-label="Save vendor code"
-                        className="shrink-0 grid h-10 w-10 sm:h-8 sm:w-8 place-items-center rounded-lg border border-[#800A36] bg-[#800A36] text-white shadow-2xs transition-all touch-manipulation hover:bg-[#66082b] disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-400"
+                        className="shrink-0 grid h-10 w-10 sm:h-8 sm:w-8 place-items-center rounded-lg border border-[#4F3FD6] bg-[#4F3FD6] text-white shadow-2xs transition-all touch-manipulation hover:bg-[#3B2FB0] disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-400"
                       >
                         {vendorSaving
                           ? <span className="h-4 w-4 sm:h-3.5 sm:w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -604,7 +604,7 @@ export default function ConsultantDetail() {
 
             {/* Section 2: Contact Information */}
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-              <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white px-5 py-4 flex items-center justify-between">
+              <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-rc-indigo-800 text-white px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-white/10 text-emerald-200 border border-white/20">
                     <Phone className="h-5 w-5" />
@@ -630,7 +630,7 @@ export default function ConsultantDetail() {
                     <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900">Contact Email</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white">
-                    <a href={`mailto:${consultant.ContactEmail}`} className="text-sm font-black text-[#800A36] hover:underline">
+                    <a href={`mailto:${consultant.ContactEmail}`} className="text-sm font-black text-[#4F3FD6] hover:underline">
                       {consultant.ContactEmail || '-'}
                     </a>
                   </div>
@@ -640,7 +640,7 @@ export default function ConsultantDetail() {
 
             {/* Section 3: Contract & Fees */}
             <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-              <div className="bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white px-5 py-4 flex items-center justify-between">
+              <div className="bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white px-5 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-white/10 text-rose-200 border border-white/20">
                     <FileSignature className="h-5 w-5" />
@@ -651,9 +651,9 @@ export default function ConsultantDetail() {
 
               <div className="p-6 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {/* Contract Start */}
-                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/90 border-b border-rose-200 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Contract Start</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Contract Start</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white">
                     <span className="text-sm font-black text-slate-900">{formatDate(consultant.ContStart) || '-'}</span>
@@ -661,9 +661,9 @@ export default function ConsultantDetail() {
                 </div>
 
                 {/* Contract End */}
-                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/90 border-b border-rose-200 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Contract End</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Contract End</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white">
                     <span className="text-sm font-black text-slate-900">{formatDate(consultant.ContEnd) || '-'}</span>
@@ -683,12 +683,12 @@ export default function ConsultantDetail() {
                 </div>
 
                 {/* Fee Value */}
-                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#800A36]">
+                <div className="rounded-2xl border-2 border-rose-200/90 bg-white overflow-hidden shadow-2xs hover:shadow-sm transition-all border-l-[3px] border-l-[#4F3FD6]">
                   <div className="px-4 py-2 bg-rose-50/90 border-b border-rose-200 flex items-center justify-between">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-[#800A36]">Fee Value</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#4F3FD6]">Fee Value</span>
                   </div>
                   <div className="px-4 py-3.5 bg-white">
-                    <span className="text-base font-black text-[#800A36]">
+                    <span className="text-base font-black text-[#4F3FD6]">
                       {consultant.FeeType === 'PERCENT_CTC' ? `${consultant.FeeValue}%` : formatCurrency(consultant.FeeValue || 0)}
                     </span>
                   </div>
@@ -768,7 +768,7 @@ export default function ConsultantDetail() {
                                 ? 'And Above'
                                 : formatCurrency(slab.ToAmount)}
                             </td>
-                            <td className="px-5 py-3.5 text-[#800A36] font-black">{slab.FeePersent || slab.FeePercent || 0}%</td>
+                            <td className="px-5 py-3.5 text-[#4F3FD6] font-black">{slab.FeePersent || slab.FeePercent || 0}%</td>
                           </tr>
                         ))}
                       </tbody>
@@ -796,7 +796,7 @@ export default function ConsultantDetail() {
                 {/* Desktop View: Table */}
                 <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase">
+                    <thead className="bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white font-bold tracking-wider text-xs uppercase">
                       <tr>
                         <th className="px-5 py-3.5">Candidate Name</th>
                         <th className="px-5 py-3.5">Designation</th>
@@ -843,7 +843,7 @@ export default function ConsultantDetail() {
                       className="rounded-2xl border-2 border-rose-100/70 bg-gradient-to-br from-rose-50/10 via-white to-white p-5 transition-all cursor-pointer hover:border-rose-300 relative overflow-hidden shadow-2xs hover:shadow-xs space-y-3.5"
                     >
                       {/* Accent top strip */}
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-[#800A36]" />
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-[#4F3FD6]" />
                       
                       {/* Header Row: Candidate Name and Status Pill */}
                       <div className="flex items-center justify-between gap-3">
@@ -875,7 +875,7 @@ export default function ConsultantDetail() {
 
                       {/* Invoice Row */}
                       <div className="flex items-center justify-between bg-rose-50/50 rounded-xl px-4 py-2.5 border border-rose-100">
-                        <span className="text-[11px] font-black uppercase text-[#800A36] tracking-wider">Invoice Amount</span>
+                        <span className="text-[11px] font-black uppercase text-[#4F3FD6] tracking-wider">Invoice Amount</span>
                         <span className="font-black text-sm text-slate-900">{formatCurrency(item.InvAmount)}</span>
                       </div>
                     </div>
@@ -898,7 +898,7 @@ export default function ConsultantDetail() {
                 {/* Desktop View: Table */}
                 <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase">
+                    <thead className="bg-gradient-to-r from-[#4F3FD6] via-[#3B2FB0] to-[#151129] text-white font-bold tracking-wider text-xs uppercase">
                       <tr>
                         <th className="px-5 py-3.5">Invoice #</th>
                         <th className="px-5 py-3.5">Inv Date</th>
@@ -916,7 +916,7 @@ export default function ConsultantDetail() {
                         const isPaid = (item.PaymtStatus || '').trim().toUpperCase() === 'X';
                         return (
                           <tr key={item.InvNumber} className={`transition-colors ${isEven ? 'bg-white hover:bg-rose-50/40' : 'bg-slate-50/60 hover:bg-rose-50/50'}`}>
-                            <td className="px-5 py-4 font-mono text-xs font-extrabold text-[#800A36]">{item.InvNumber}</td>
+                            <td className="px-5 py-4 font-mono text-xs font-extrabold text-[#4F3FD6]">{item.InvNumber}</td>
                             <td className="px-5 py-4 text-xs font-semibold text-slate-600">{formatDate(item.InvDate)}</td>
                             <td className="px-5 py-4 text-xs font-bold text-slate-800">
                               <div className="flex items-center gap-1.5">
@@ -937,7 +937,7 @@ export default function ConsultantDetail() {
                             <td className="px-5 py-4 text-right">
                               <button 
                                 onClick={() => downloadInvoice(item)}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white transition shadow-2xs cursor-pointer"
                               >
                                 <FileText className="h-3.5 w-3.5" /> PDF
                               </button>
@@ -959,13 +959,13 @@ export default function ConsultantDetail() {
                         className="rounded-2xl border-2 border-rose-100/70 bg-gradient-to-br from-rose-50/10 via-white to-white p-5 hover:border-rose-300 relative overflow-hidden shadow-2xs hover:shadow-xs space-y-3.5"
                       >
                         {/* Accent top strip */}
-                        <div className="absolute top-0 left-0 right-0 h-1 bg-[#800A36]" />
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-[#4F3FD6]" />
 
                         {/* Header Row: Invoice ID and Status Pill */}
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-1.5">
-                            <FileText className="h-4.5 w-4.5 text-[#800A36]" />
-                            <span className="font-mono text-xs font-black text-[#800A36] tracking-tight">{item.InvNumber}</span>
+                            <FileText className="h-4.5 w-4.5 text-[#4F3FD6]" />
+                            <span className="font-mono text-xs font-black text-[#4F3FD6] tracking-tight">{item.InvNumber}</span>
                           </div>
                           <span className={`rc-status-pill text-[10px] px-2 py-0.5 font-extrabold uppercase ${isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                             {isPaid ? 'Paid' : 'Pending'}
@@ -1006,7 +1006,7 @@ export default function ConsultantDetail() {
                         
                         <button 
                           onClick={() => downloadInvoice(item)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-xs font-bold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white transition shadow-2xs cursor-pointer"
                         >
                           <Download className="h-3.5 w-3.5" /> PDF
                         </button>
@@ -1122,7 +1122,7 @@ export default function ConsultantDetail() {
                           setTempSlabs(newSlabs);
                         }}
                         placeholder="e.g. 8.5"
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#800A36] focus:border-purple-600 focus:ring-2 focus:ring-purple-600/20 focus:outline-none"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-[#4F3FD6] focus:border-purple-600 focus:ring-2 focus:ring-purple-600/20 focus:outline-none"
                       />
                     </div>
                   </div>

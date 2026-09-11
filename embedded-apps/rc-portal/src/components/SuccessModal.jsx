@@ -7,7 +7,7 @@ export default function SuccessModal({ isOpen, onClose, title = "Success!", mess
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="relative overflow-hidden w-full max-w-sm rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl text-center transform scale-100 transition-all">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-400 to-teal-500" />
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-400 to-rc-indigo-500" />
         
         {/* Animated Check Circle */}
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 border-4 border-emerald-100 animate-bounce">

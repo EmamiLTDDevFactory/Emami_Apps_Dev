@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useIsWideScreen } from '../hooks/useIsWideScreen';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useTypewriterPlaceholder } from '../hooks/useTypewriterPlaceholder';
+import { useIsScrolling } from '../hooks/useScrollActivity';
 import Avatar from './Avatar';
 
 const SEARCH_EXAMPLES = ['Dispatch Tracker', 'Recruitment Consultant Management Portal', 'Non CTC Expense', 'Mould Health Inspection'];
@@ -37,7 +38,8 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onSign
     setInstallOpen(true);
   };
 
-  const showAnimatedPlaceholder = !searchValue && !searchFocused;
+  const isScrolling = useIsScrolling();
+  const showAnimatedPlaceholder = !searchValue && !searchFocused && !isScrolling;
   const animatedExample = useTypewriterPlaceholder(SEARCH_EXAMPLES, showAnimatedPlaceholder);
 
   return (

@@ -96,7 +96,7 @@ export const NAV: NavItem[] = [
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Recent', label: 'Recently Used', icon: Clock },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'Settings', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
   { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];

@@ -117,7 +117,7 @@ export default function AdministrationScreen() {
           <Text style={styles.deniedText}>Administration is only available to Super Admin and Admin users.</Text>
           <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
             <ArrowLeft size={13} color={colors.ink} />
-            <Text style={styles.backText}>Back to Hub</Text>
+            <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
         </View>
       </ScreenScaffold>
@@ -145,7 +145,7 @@ export default function AdministrationScreen() {
         <View style={styles.topRow}>
           <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
             <ArrowLeft size={13} color={colors.ink} />
-            <Text style={styles.backText}>Back to Hub</Text>
+            <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
           <Text style={styles.pageTitle}>Administration</Text>
         </View>

@@ -257,10 +257,10 @@ export default function Closure() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between rounded-3xl bg-gradient-to-r from-white via-rose-50/50 to-pink-50/60 p-6 shadow-sm border border-rose-200/80 text-slate-900 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#800A36] via-rose-500 to-pink-400" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#4F3FD6] via-rose-500 to-pink-400" />
         <div className="flex items-center gap-4">
-          <button className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer group" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4 text-[#800A36] group-hover:text-white transition-colors" />
+          <button className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer group" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 text-[#4F3FD6] group-hover:text-white transition-colors" />
             <span className="text-xs font-black uppercase tracking-wider">Back</span>
           </button>
           <div>
@@ -272,7 +272,7 @@ export default function Closure() {
       <div className="rc-card p-6 bg-white border border-slate-200/90 shadow-sm rounded-3xl">
         {showVarianceWarning && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">Variance Warning - invoice amount differs from calculated fee by more than 2%.</div>}
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#9E0D43] via-[#800A36] to-[#600727] p-6 md:p-8 shadow-xl text-white relative overflow-hidden">
+          <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#6D5BF5] via-[#4F3FD6] to-[#3B2FB0] p-6 md:p-8 shadow-xl text-white relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-amber-300" />
             <div className="mb-6 flex items-center gap-3 border-b border-white/20 pb-4">
               <div className="h-6 w-1.5 rounded-full bg-amber-300"></div>
@@ -282,27 +282,27 @@ export default function Closure() {
             <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>Candidate Name <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. John Doe" value={formData.CandName} onChange={(e) => updateField('CandName', e.target.value)} />
+                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. John Doe" value={formData.CandName} onChange={(e) => updateField('CandName', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>Designation <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. Senior Developer" value={formData.Designation} onChange={(e) => updateField('Designation', e.target.value)} />
+                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. Senior Developer" value={formData.Designation} onChange={(e) => updateField('Designation', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>CTC Offered (₹) <span className="text-amber-300">*</span></span>
-                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 1500000" value={formData.CtcOffered} onChange={(e) => updateField('CtcOffered', e.target.value)} />
+                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 1500000" value={formData.CtcOffered} onChange={(e) => updateField('CtcOffered', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>Joining Date <span className="text-amber-300">*</span></span>
-                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.Doj} onChange={(e) => updateField('Doj', e.target.value)} />
+                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.Doj} onChange={(e) => updateField('Doj', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100 sm:col-span-2 md:col-span-1">
                 <span>Band/Grade <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. L3" value={formData.BandGrade} onChange={(e) => updateField('BandGrade', e.target.value)} />
+                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. L3" value={formData.BandGrade} onChange={(e) => updateField('BandGrade', e.target.value)} />
               </label>
 
               {consultant?.FeeType === 'PERCENT_CTC' && (
@@ -332,7 +332,7 @@ export default function Closure() {
                               name="slabBandWidth"
                               checked={selectedSlabId === slab.FeeId}
                               onChange={() => setSelectedSlabId(slab.FeeId)}
-                              className="h-4 w-4 border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer"
+                              className="h-4 w-4 border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer"
                             />
                             <span className="text-xs font-bold text-white group-hover:text-rose-200">
                               {slabDisplay}
@@ -355,7 +355,7 @@ export default function Closure() {
                       disabled={!canSelectTa}
                       checked={canSelectTa && formData.Ta === 'X'}
                       onChange={(e) => canSelectTa && updateField('Ta', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                     />
                     <span className={`text-sm font-black ${canSelectTa ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                       TA {!canSelectTa && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -368,7 +368,7 @@ export default function Closure() {
                       disabled={!canSelectTm}
                       checked={canSelectTm && formData.Tm === 'X'}
                       onChange={(e) => canSelectTm && updateField('Tm', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                     />
                     <span className={`text-sm font-black ${canSelectTm ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                       TM {!canSelectTm && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -381,7 +381,7 @@ export default function Closure() {
                       disabled={!canSelectLd}
                       checked={canSelectLd && formData.Ld === 'X'}
                       onChange={(e) => canSelectLd && updateField('Ld', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                     />
                     <span className={`text-sm font-black ${canSelectLd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                       L&D {!canSelectLd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -394,7 +394,7 @@ export default function Closure() {
                       disabled={!canSelectOd}
                       checked={canSelectOd && formData.Od === 'X'}
                       onChange={(e) => canSelectOd && updateField('Od', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-rose-300 text-[#4F3FD6] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
                     />
                     <span className={`text-sm font-black ${canSelectOd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
                       OD {!canSelectOd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
@@ -412,17 +412,17 @@ export default function Closure() {
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>Invoice Number</span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. INV-2026-001" value={formData.InvNumber} onChange={(e) => updateField('InvNumber', e.target.value)} />
+                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. INV-2026-001" value={formData.InvNumber} onChange={(e) => updateField('InvNumber', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
                 <span>Invoice Date</span>
-                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.InvDate} onChange={(e) => updateField('InvDate', e.target.value)} />
+                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.InvDate} onChange={(e) => updateField('InvDate', e.target.value)} />
               </label>
               
               <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100 sm:col-span-2 md:col-span-1">
                 <span>Invoice Amount (₹)</span>
-                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 125000" value={formData.InvAmount} onChange={(e) => updateField('InvAmount', e.target.value)} />
+                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#4F3FD6] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 125000" value={formData.InvAmount} onChange={(e) => updateField('InvAmount', e.target.value)} />
               </label>
               
               <div className="my-2 border-t border-white/10 sm:col-span-2"></div>
@@ -454,7 +454,7 @@ export default function Closure() {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <button type="button" className="rounded-2xl border-2 border-rose-200 bg-rose-50/40 px-6 py-2.5 text-xs font-extrabold text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer" onClick={() => navigate(-1)}>Cancel</button>
+            <button type="button" className="rounded-2xl border-2 border-rose-200 bg-rose-50/40 px-6 py-2.5 text-xs font-extrabold text-[#4F3FD6] hover:bg-[#4F3FD6] hover:text-white hover:border-[#4F3FD6] transition shadow-2xs cursor-pointer" onClick={() => navigate(-1)}>Cancel</button>
             <button type="submit" className="rc-btn-primary rounded-2xl px-6 py-2.5 text-xs font-bold text-white shadow-md transition hover:scale-[1.01]">Submit Closure</button>
           </div>
         </form>

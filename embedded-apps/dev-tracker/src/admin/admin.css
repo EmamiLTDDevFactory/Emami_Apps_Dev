@@ -1,4 +1,8 @@
 .admin-stage { padding: 40px 56px 56px; }
+
+@media (max-width: 768px) {
+  .admin-stage { padding: 20px 18px 36px; }
+}
 .admin-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 20px; flex-wrap: wrap; }
 .shelf { padding: 20px 28px; border-bottom: 1px solid var(--border); }
 .shelf:last-child { border-bottom: none; }

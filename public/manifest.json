@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Emami Apps",
   "short_name": "Emami Apps",
-  "description": "Single sign-on hub for all Emami Group applications.",
+  "description": "Emami Apps — single sign-on for all Emami Group applications.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

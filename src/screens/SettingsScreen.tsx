@@ -153,7 +153,7 @@ export default function SettingsScreen() {
         <View style={styles.topRow}>
           <Pressable style={styles.backBtn} onPress={() => navigation.navigate('Home' as never)}>
             <ArrowLeft size={13} color={colors.ink} />
-            <Text style={styles.backText}>Back to Hub</Text>
+            <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
           <Text style={styles.pageTitle}>My Profile</Text>
           <View style={styles.flex1} />
