@@ -40,6 +40,8 @@ import AutorenewIcon from "@mui/icons-material/Autorenew";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
+import RateReviewIcon from "@mui/icons-material/RateReview";
+import ReplayIcon from "@mui/icons-material/Replay";
 
 
 
@@ -85,6 +87,36 @@ export default function AuditList() {
                     currentUser.depot
             )
             : audits;
+
+    const openCount =
+        visibleAudits.filter(a => a.status === "Open").length;
+
+    const inProgressCount =
+        visibleAudits.filter(a => a.status === "In Progress").length;
+
+    const selfAssessmentCount =
+        visibleAudits.filter(a => a.status === "Self Assessment Submitted").length;
+
+    const reworkRequiredCount =
+        visibleAudits.filter(a => a.status === "Rework Required").length;
+
+    const capaOpenCount =
+        visibleAudits.filter(a => a.status === "CAPA Open").length;
+
+    const completedCount =
+        visibleAudits.filter(a => a.status === "Completed").length;
+
+    const closedCount =
+        visibleAudits.filter(a => a.status === "Closed").length;
+
+    const totalAuditsCount =
+        openCount +
+        inProgressCount +
+        selfAssessmentCount +
+        reworkRequiredCount +
+        capaOpenCount +
+        completedCount +
+        closedCount;
 
     const filteredAudits = visibleAudits.filter(
         (audit) => {
@@ -824,7 +856,7 @@ export default function AuditList() {
                 <KpiBar>
                     <KpiSegment
                         label="Total Audits"
-                        value={visibleAudits.length}
+                        value={totalAuditsCount}
                         color="#2563EB"
                         icon={<AssignmentTurnedInIcon fontSize="small" />}
                         active={selectedKPI === "All"}
@@ -833,11 +865,7 @@ export default function AuditList() {
 
                     <KpiSegment
                         label="Open Audits"
-                        value={
-                            visibleAudits.filter(
-                                a => a.status === "Open"
-                            ).length
-                        }
+                        value={openCount}
                         color="#F59E0B"
                         icon={<AssignmentLateIcon fontSize="small" />}
                         active={selectedKPI === "Open"}
@@ -846,11 +874,7 @@ export default function AuditList() {
 
                     <KpiSegment
                         label="In Progress"
-                        value={
-                            visibleAudits.filter(
-                                a => a.status === "In Progress"
-                            ).length
-                        }
+                        value={inProgressCount}
                         color="#06B6D4"
                         icon={<AutorenewIcon fontSize="small" />}
                         active={selectedKPI === "In Progress"}
@@ -858,25 +882,26 @@ export default function AuditList() {
                     />
 
                     <KpiSegment
-                        label="Completed"
-                        value={
-                            visibleAudits.filter(
-                                a => a.status === "Completed"
-                            ).length
-                        }
-                        color="#8B5CF6"
-                        icon={<TaskAltIcon fontSize="small" />}
-                        active={selectedKPI === "Completed"}
-                        onClick={() => setSelectedKPI("Completed")}
+                        label="Self Assessment"
+                        value={selfAssessmentCount}
+                        color="#0EA5E9"
+                        icon={<RateReviewIcon fontSize="small" />}
+                        active={selectedKPI === "Self Assessment Submitted"}
+                        onClick={() => setSelectedKPI("Self Assessment Submitted")}
+                    />
+
+                    <KpiSegment
+                        label="Rework Required"
+                        value={reworkRequiredCount}
+                        color="#F97316"
+                        icon={<ReplayIcon fontSize="small" />}
+                        active={selectedKPI === "Rework Required"}
+                        onClick={() => setSelectedKPI("Rework Required")}
                     />
 
                     <KpiSegment
                         label="CAPA Open"
-                        value={
-                            visibleAudits.filter(
-                                a => a.status === "CAPA Open"
-                            ).length
-                        }
+                        value={capaOpenCount}
                         color="#7C3AED"
                         icon={<FactCheckIcon fontSize="small" />}
                         active={selectedKPI === "CAPA Open"}
@@ -884,12 +909,17 @@ export default function AuditList() {
                     />
 
                     <KpiSegment
+                        label="Completed"
+                        value={completedCount}
+                        color="#8B5CF6"
+                        icon={<TaskAltIcon fontSize="small" />}
+                        active={selectedKPI === "Completed"}
+                        onClick={() => setSelectedKPI("Completed")}
+                    />
+
+                    <KpiSegment
                         label="Closed Audits"
-                        value={
-                            visibleAudits.filter(
-                                a => a.status === "Closed"
-                            ).length
-                        }
+                        value={closedCount}
                         color="#22C55E"
                         icon={<CheckCircleIcon fontSize="small" />}
                         active={selectedKPI === "Closed"}
