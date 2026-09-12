@@ -48,17 +48,26 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
         <div className="fixed inset-0 z-30 bg-plumDeep/50 backdrop-blur-sm" onClick={onClose} />
       )}
       <aside className={paneClasses}>
-        <div className="flex items-center justify-between px-4 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={30} height={26} className="rounded" />
-            <span className="text-sm font-extrabold text-ink">PO Deviation</span>
-          </div>
+        <div className="border-b border-border">
           {!isWideScreen && (
-            <button onClick={onClose} aria-label="Close menu" className="p-1 text-inkSoft hover:text-ink">
-              <X size={20} />
-            </button>
+            <div className="flex justify-end px-3 pt-3">
+              <button onClick={onClose} aria-label="Close menu" className="p-1 text-inkSoft hover:text-ink">
+                <X size={20} />
+              </button>
+            </div>
           )}
+          {/* Same "Emami Apps" wordmark, sized to fill the sidebar width with no app name beside
+              it, as the hub's own sidebar (see src/navigation/CustomDrawerContent.tsx's EmpAppMark
+              usage) — one consistent brand mark across the hub and every embedded app. */}
+          <Link
+            href="/"
+            onClick={() => { if (!isWideScreen) onClose(); }}
+            className={`flex items-center justify-center px-4 ${isWideScreen ? 'pt-5' : 'pt-1'} pb-5`}
+            aria-label="Go to PO Deviation Approval home"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
+          </Link>
         </div>
         <nav className="p-3 flex flex-col gap-1">
           {NAV_ITEMS.map((item) => {
@@ -128,8 +137,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Menu size={22} />
               </button>
             )}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={32} height={26} className="rounded" />
             <h1 className="truncate text-[15px] font-extrabold text-ink">PO Deviation Approval</h1>
             <span className="hidden sm:inline-flex rounded-full bg-rust/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rust">
               Command Center
