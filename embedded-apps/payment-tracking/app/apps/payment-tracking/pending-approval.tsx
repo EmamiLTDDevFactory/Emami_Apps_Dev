@@ -33,13 +33,12 @@ function initialRowState(): RowState {
   return { deciding: null, decided: null, error: null, attachmentError: null };
 }
 
-type DecisionFilter = 'all' | 'pending' | 'A' | 'R';
+type DecisionFilter = 'all' | 'pending' | 'A';
 
 const DECISION_FILTERS: { key: DecisionFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'A', label: 'Approved' },
-  { key: 'R', label: 'Rejected' },
 ];
 
 type ActionFilter = 'all' | PendingApprovalAction;
@@ -64,21 +63,17 @@ function actionLabelFor(zaction: string) {
   return PENDING_APPROVAL_ACTION_LABELS[zaction as PendingApprovalAction] || zaction || 'Unknown';
 }
 
-/** Approve/Reject button copy per approval type, so Admin knows exactly what they're approving
- * without reading the fields first — e.g. "Approve Revised Delivery Date" instead of a bare
- * "Approve" that could mean the delivery date change or the SES itself. Only RD/SA are specified;
- * any other type (or an unrecognized code) falls back to the generic Approve/Reject. */
-const APPROVAL_BUTTON_LABELS: Partial<Record<PendingApprovalAction, { approve: string; reject: string }>> = {
-  RD: { approve: 'Approve Revised Delivery Date', reject: 'Reject Revised Date' },
-  SA: { approve: 'Approve for SES', reject: 'Reject for SES' },
+/** Approve button copy per approval type, so Admin knows exactly what they're approving without
+ * reading the fields first — e.g. "Approve Revised Delivery Date" instead of a bare "Approve" that
+ * could mean the delivery date change or the SES itself. Only RD/SA are specified; any other type
+ * (or an unrecognized code) falls back to the generic "Approve". */
+const APPROVAL_BUTTON_LABELS: Partial<Record<PendingApprovalAction, { approve: string }>> = {
+  RD: { approve: 'Approve Revised Delivery Date' },
+  SA: { approve: 'Approve for SES' },
 };
 
 function approveLabelFor(zaction: string) {
   return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.approve || 'Approve';
-}
-
-function rejectLabelFor(zaction: string) {
-  return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.reject || 'Reject';
 }
 
 /** Full-width, un-truncated banner naming what this tile is actually asking the Admin to approve
@@ -164,12 +159,12 @@ function AttachmentPreviewModal({
 /** Admin's Pending Approval — every ZVendorPOFollowupSet row scoped to the signed-in Admin's own
  * login email and Zaction 'PA' (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
  * Provisional Value/Currency/Revised Del Date/Delivery date/Comments/Invoice No/Invoice Date/
- * Invoice Amount, with Approve/Reject actions — row-wise or as a multi-select mass batch — both
- * calling the same ZProvHeader POST as Upcoming Provision's "send for approval" (see
- * paymentTrackingApi.ts's submitApprovalDecision/submitApprovalDecisionBatch), just with Zaction
- * set to 'A'/'R' instead of echoed back. Also filtered by the shared Month/Year bar and by SAP's
- * own Stat field (Pending/Approved tabs — see effectiveStatus below), not just this session's own
- * in-memory decisions. */
+ * Invoice Amount, with an Approve action — row-wise or as a multi-select mass batch — calling the
+ * same ZProvHeader POST as Upcoming Provision's "send for approval" (see paymentTrackingApi.ts's
+ * submitApprovalDecision/submitApprovalDecisionBatch), just with Zaction set to 'A' instead of
+ * echoed back. Reject was removed per instruction — there is no reject action on this screen
+ * anymore. Also filtered by the shared Month/Year bar and by SAP's own Stat field (Pending/Approved
+ * tabs — see effectiveStatus below), not just this session's own in-memory decisions. */
 export default function PendingApproval() {
   const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
@@ -201,8 +196,7 @@ export default function PendingApproval() {
         data.forEach((r) => {
           const s = initialRowState();
           // Seed decided from SAP's own Stat so a row already approved in an earlier session (or
-          // by someone else) renders as Approved on load, not as still-actionable — Stat has no
-          // 'R' value (rejections aren't tracked there), so Rejected stays session-only.
+          // by someone else) renders as Approved on load, not as still-actionable.
           if ((r.status || '').trim() === 'A') s.decided = 'A';
           state[r.key] = s;
         });
@@ -249,7 +243,7 @@ export default function PendingApproval() {
     const q = search.trim().toLowerCase();
     return monthYearRows.filter((row) => {
       if (decisionFilter === 'pending' && effectiveStatus(row) !== 'P') return false;
-      if ((decisionFilter === 'A' || decisionFilter === 'R') && effectiveStatus(row) !== decisionFilter) return false;
+      if (decisionFilter === 'A' && effectiveStatus(row) !== 'A') return false;
       if (currencyFilter !== 'all' && row.currency !== currencyFilter) return false;
       if (actionFilter !== 'all' && row.zaction !== actionFilter) return false;
       if (q) {
@@ -525,18 +519,6 @@ export default function PendingApproval() {
                     <Text style={styles.massBarText}>{selected.size} selected</Text>
                     <View style={styles.massBarActions}>
                       <Pressable
-                        style={[styles.massBtn, styles.massBtnReject, massDeciding !== null && styles.btnDisabled]}
-                        onPress={() => decideSelected('R')}
-                        disabled={massDeciding !== null}
-                        accessibilityRole="button"
-                      >
-                        {massDeciding === 'R' ? (
-                          <ActivityIndicator size="small" color={colors.white} />
-                        ) : (
-                          <Text style={styles.massBtnText}>Reject Selected</Text>
-                        )}
-                      </Pressable>
-                      <Pressable
                         style={[styles.massBtn, styles.massBtnApprove, massDeciding !== null && styles.btnDisabled]}
                         onPress={() => decideSelected('A')}
                         disabled={massDeciding !== null}
@@ -616,15 +598,9 @@ export default function PendingApproval() {
                       )
                     ) : null}
                     {state.decided && (
-                      <View style={[styles.decidedBadge, state.decided === 'A' ? styles.decidedBadgeApprove : styles.decidedBadgeReject]}>
-                        <Ionicons
-                          name={state.decided === 'A' ? 'checkmark-circle' : 'close-circle'}
-                          size={13}
-                          color={state.decided === 'A' ? colors.green : colors.red}
-                        />
-                        <Text style={[styles.decidedBadgeText, { color: state.decided === 'A' ? colors.green : colors.red }]}>
-                          {state.decided === 'A' ? 'Approved' : 'Rejected'}
-                        </Text>
+                      <View style={[styles.decidedBadge, styles.decidedBadgeApprove]}>
+                        <Ionicons name="checkmark-circle" size={13} color={colors.green} />
+                        <Text style={[styles.decidedBadgeText, { color: colors.green }]}>Approved</Text>
                       </View>
                     )}
                   </View>
@@ -664,19 +640,7 @@ export default function PendingApproval() {
                   {!state.decided && (
                     <View style={styles.rowActions}>
                       <Pressable
-                        style={[styles.rejectBtn, busy && styles.btnDisabled]}
-                        onPress={() => decideRow(row, 'R')}
-                        disabled={busy}
-                        accessibilityRole="button"
-                      >
-                        {state.deciding === 'R' ? (
-                          <ActivityIndicator size="small" color={colors.red} />
-                        ) : (
-                          <Text style={styles.rejectBtnText}>{rejectLabelFor(row.zaction)}</Text>
-                        )}
-                      </Pressable>
-                      <Pressable
-                        style={[styles.approveBtn, busy && styles.btnDisabled]}
+                        style={[styles.approveBtn, styles.approveBtnFull, busy && styles.btnDisabled]}
                         onPress={() => decideRow(row, 'A')}
                         disabled={busy}
                         accessibilityRole="button"
@@ -866,9 +830,6 @@ const styles = StyleSheet.create({
   massBtnApprove: {
     backgroundColor: colors.green,
   },
-  massBtnReject: {
-    backgroundColor: colors.red,
-  },
   massBtnText: {
     color: colors.white,
     fontSize: 12.5,
@@ -920,9 +881,6 @@ const styles = StyleSheet.create({
   },
   decidedBadgeApprove: {
     backgroundColor: `${colors.green}14`,
-  },
-  decidedBadgeReject: {
-    backgroundColor: `${colors.red}14`,
   },
   decidedBadgeText: {
     fontSize: 9.5,
@@ -1043,20 +1001,12 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 12,
   },
+  approveBtnFull: {
+    flex: 1,
+    alignItems: 'center',
+  },
   approveBtnText: {
     color: colors.white,
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  rejectBtn: {
-    borderWidth: 1,
-    borderColor: colors.red,
-    borderRadius: radii.md,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  rejectBtnText: {
-    color: colors.red,
     fontSize: 11.5,
     fontWeight: '700',
   },

@@ -611,7 +611,14 @@ export const PROVISION_LOG_STATUS_LABELS: Record<ProvisionLogStatus, string> = {
 };
 
 /** One submission-history entry from ZProvisionLogSet — see this section's header comment on why
- * these field names are a best-effort guess, not a confirmed mapping. */
+ * these field names are a best-effort guess, not a confirmed mapping. entrySheetNo/materialCode/
+ * materialDesc/currency/filename/mimetype/attachmentBase64 are a SECOND round of guesses (added
+ * for the "Reverse SES"/"Mail for P2P" actions + attachment view on SES-created rows) — same
+ * approach as the rest of this entity: reuse the exact casing already CONFIRMED live on
+ * ZVendorPOFollowupSet (Lblni/Matnr/Maktx/Waers/Filename/Mimetype/Value, see toVendorPOFollowupRow
+ * above), since these two entities share the same underlying PO-item shape. Not yet confirmed live
+ * on ZProvisionLogSet itself — if the new actions/attachment silently do nothing, check these field
+ * names against a real response first. */
 export interface ProvisionLogRow {
   key: string;
   email: string; // Email
@@ -632,6 +639,18 @@ export interface ProvisionLogRow {
   invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
   invoiceAmount: string; // ZzinvAmt
   remarks: string; // Comments
+  /** Lblni — NOT confirmed live on this entity. Needed as the ZProvHeader POST's header key trio
+   * (Lifnr/Ebeln/Ebelp/Lblni) for submitLogAction below, same as VendorPOFollowupRow.entrySheetNo. */
+  entrySheetNo: string; // Lblni
+  materialCode: string; // Matnr — NOT confirmed live on this entity
+  materialDesc: string; // Maktx — NOT confirmed live on this entity
+  currency: string; // Waers — NOT confirmed live on this entity
+  /** Attachment, if any — NOT confirmed live on this entity (see ProvisionLogRow's own header
+   * comment). Empty filename means either no attachment, or the field genuinely isn't returned
+   * here — same "unavailable" treatment as Pending Approval's attachmentBtnDisabled either way. */
+  filename: string; // Filename
+  mimetype: string; // Mimetype
+  attachmentBase64: string; // Value
 }
 
 function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLogRow {
@@ -655,6 +674,13 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
     invoiceDate: parseODataDate(raw.ZinvDate),
     invoiceAmount: str(raw.ZzinvAmt),
     remarks: str(raw.Comments),
+    entrySheetNo: str(raw.Lblni),
+    materialCode: str(raw.Matnr),
+    materialDesc: str(raw.Maktx),
+    currency: str(raw.Waers),
+    filename: str(raw.Filename),
+    mimetype: str(raw.Mimetype),
+    attachmentBase64: str(raw.Value),
   };
 }
 
@@ -667,4 +693,67 @@ export async function fetchProvisionLog(email: string): Promise<ProvisionLogRow[
   const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   return Array.isArray(results) ? results.map(toProvisionLogRow) : [];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Submission History row actions — for a row already in the 'AS' (SES Created) state, the next
+// step is either reversing that SES or notifying P2P, not an approve/reject decision (that already
+// happened earlier, which is how the row got to 'AS' in the first place). Same ZProvHeaderSet POST
+// as every other write in this app ("call create entityset with different actions", per
+// instruction), just with Zaction set to 'RS' or 'MS'.
+export type LogAction = 'RS' | 'MS';
+
+export const LOG_ACTION_LABELS: Record<LogAction, string> = {
+  RS: 'Reverse SES',
+  MS: 'Mail for P2P',
+};
+
+function toLogActionItem(row: ProvisionLogRow, action: LogAction) {
+  return {
+    Lifnr: row.vendor,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.serviceText,
+    Name1: row.vendorName,
+    Zaction: action,
+    RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: row.invoiceNo,
+    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
+    ZzinvAmt: row.invoiceAmount,
+    Comments: row.remarks,
+    // Delivery was already confirmed well before this row ever reached 'AS' (SES Created) — same
+    // posture as toApprovalItem's own hardcoded 'Y' for Pending Approval decisions.
+    DelvConf: 'Y',
+  };
+}
+
+/** One Submission History row (already 'AS'/SES Created), reversed or mailed to P2P by the
+ * signed-in user — same ZProvHeaderSet POST/header-key-trio shape as submitApprovalDecision.
+ * `row.entrySheetNo` (Lblni) is NOT yet confirmed live on ZProvisionLogSet — see ProvisionLogRow's
+ * header comment; if this 404s/silently no-ops, that's the first thing to check. */
+export async function submitLogAction(row: ProvisionLogRow, email: string, action: LogAction): Promise<void> {
+  const payload = {
+    Lifnr: row.vendor,
+    Email: email,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Lblni: row.entrySheetNo,
+    ToProvItems: [toLogActionItem(row, action)],
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    const fallback = action === 'RS' ? 'Could not reverse this SES.' : 'Could not send mail to P2P.';
+    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+  }
 }
