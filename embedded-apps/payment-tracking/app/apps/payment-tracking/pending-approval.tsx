@@ -600,14 +600,18 @@ export default function PendingApproval() {
                           <Text style={styles.attachmentBtnText}>Attachment</Text>
                         </Pressable>
                       ) : (
-                        // Backend skips sending content over 2MB — filename comes through so we
-                        // can at least say a file exists, but there's nothing to open here. Full
-                        // opacity + an info icon (not the attach icon) so this reads as an
-                        // intentional status message, not a washed-out/broken button — it isn't
-                        // one, there's no onPress at all.
-                        <View style={styles.attachmentBtnDisabled} accessibilityLabel={`Attachment "${row.filename}" is over 2MB and can't be previewed here`}>
+                        // Filename comes through with no content (Value empty) — originally assumed
+                        // to mean "backend skips anything over 2MB" (see git history), but that's
+                        // been confirmed wrong for at least one case where the actual file is well
+                        // under 2MB and still comes back this way. So this no longer asserts a
+                        // specific reason — SAP just isn't returning the bytes, for whatever cause,
+                        // and that needs SAP Basis to look at GET_ENTITYSET directly. Full opacity +
+                        // an info icon (not the attach icon) so this still reads as an intentional
+                        // status message rather than a washed-out/broken button — it isn't one,
+                        // there's no onPress at all.
+                        <View style={styles.attachmentBtnDisabled} accessibilityLabel={`Attachment "${row.filename}" has no content available to preview`}>
                           <Ionicons name="information-circle-outline" size={13} color={colors.inkSoft} />
-                          <Text style={styles.attachmentBtnDisabledText}>Too large to preview (2MB+)</Text>
+                          <Text style={styles.attachmentBtnDisabledText}>Attachment unavailable</Text>
                         </View>
                       )
                     ) : null}

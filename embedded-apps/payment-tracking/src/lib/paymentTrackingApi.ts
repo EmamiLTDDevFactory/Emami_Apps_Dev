@@ -271,10 +271,12 @@ export interface VendorPOFollowupRow {
   status: string;
   /** Attachment, if any — returned inline on the same GET as every other field (confirmed live
    * 2026-09-10, per the backend's GET_ENTITYSET), not via a separate media/$value call. `filename`
-   * is set whenever a file exists on the server side even if `attachmentBase64` isn't (the backend
-   * skips sending content over 2MB to keep the response small — filename-only in that case, so the
-   * UI can at least say an attachment exists without being able to open it). Empty filename means
-   * no attachment for this PO item. */
+   * is set whenever a file exists on the server side even if `attachmentBase64` isn't. This used to
+   * be assumed to mean "the backend skips sending content over 2MB" (filename-only past that size),
+   * but that's now confirmed WRONG for at least one case — a file well under 2MB still came back
+   * with an empty Value. So filename-without-content doesn't reliably mean "too large"; it just
+   * means SAP didn't return the bytes, for a reason GET_ENTITYSET itself needs to be checked for.
+   * Empty filename means no attachment for this PO item. */
   filename: string; // Filename
   mimetype: string; // Mimetype
   attachmentBase64: string; // Value
