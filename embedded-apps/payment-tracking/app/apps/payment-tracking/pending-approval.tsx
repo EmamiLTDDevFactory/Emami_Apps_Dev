@@ -601,10 +601,13 @@ export default function PendingApproval() {
                         </Pressable>
                       ) : (
                         // Backend skips sending content over 2MB — filename comes through so we
-                        // can at least say a file exists, but there's nothing to open here.
-                        <View style={styles.attachmentBtnDisabled}>
-                          <Ionicons name="attach-outline" size={13} color={colors.inkSoft} />
-                          <Text style={styles.attachmentBtnDisabledText}>Too large to preview</Text>
+                        // can at least say a file exists, but there's nothing to open here. Full
+                        // opacity + an info icon (not the attach icon) so this reads as an
+                        // intentional status message, not a washed-out/broken button — it isn't
+                        // one, there's no onPress at all.
+                        <View style={styles.attachmentBtnDisabled} accessibilityLabel={`Attachment "${row.filename}" is over 2MB and can't be previewed here`}>
+                          <Ionicons name="information-circle-outline" size={13} color={colors.inkSoft} />
+                          <Text style={styles.attachmentBtnDisabledText}>Too large to preview (2MB+)</Text>
                         </View>
                       )
                     ) : null}
@@ -955,11 +958,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     borderWidth: 1,
+    borderStyle: 'dashed',
     borderColor: colors.border,
+    backgroundColor: colors.appBg,
     borderRadius: radii.pill,
     paddingVertical: 3,
     paddingHorizontal: 7,
-    opacity: 0.7,
   },
   attachmentBtnDisabledText: {
     fontSize: 10,
