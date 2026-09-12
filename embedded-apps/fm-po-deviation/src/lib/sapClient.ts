@@ -6,8 +6,26 @@
 // (501), matching the source app's own filtered-GET fallback for it.
 import axios from 'axios';
 import type { PoAction, PoRow, PoUser } from '../types/po';
+import * as mock from './mockData';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFMPODEVIATION_SRV';
+
+/** Mock mode — lets the UI be reviewed with realistic data before SAP Basis adds the Email field
+ * PoSet needs (see src/types/po.ts's header comment). Defaults ON (opt-out, not opt-in) so this
+ * shows something useful immediately rather than the empty states real SAP calls return right now
+ * regardless — set NEXT_PUBLIC_MOCK_DATA=false (in this app's .env / the Amplify build env) once
+ * that field is live, to switch back to real SAP calls with no other code change. */
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA !== 'false';
+
+export function isMockDataEnabled(): boolean {
+  return USE_MOCK_DATA;
+}
+
+/** A believable network delay so the loading states (spinners, disabled buttons) get exercised
+ * too, rather than every mock call resolving instantly. */
+function mockDelay<T>(value: T, ms = 350): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
 
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
@@ -90,14 +108,17 @@ function escapeODataString(value: string): string {
  * src/types/po.ts's header comment); this sends the filter regardless, per instruction, so it
  * starts working the moment SAP Basis adds the field, with no further app changes needed. */
 export async function fetchMyApprovals(email: string): Promise<PoRow[]> {
+  if (USE_MOCK_DATA) return mockDelay(mock.mockPending().map(toPoRow));
   return readPoSet(`Email eq '${escapeODataString(email)}'`);
 }
 
 export async function fetchApprovedHistory(email: string): Promise<PoRow[]> {
+  if (USE_MOCK_DATA) return mockDelay(mock.mockApproved().map(toPoRow));
   return readPoSet(`Email eq '${escapeODataString(email)}' and Status eq 'A'`);
 }
 
 export async function fetchRejectedHistory(email: string): Promise<PoRow[]> {
+  if (USE_MOCK_DATA) return mockDelay(mock.mockRejected().map(toPoRow));
   return readPoSet(`Email eq '${escapeODataString(email)}' and Status eq 'R'`);
 }
 
@@ -105,7 +126,9 @@ export async function fetchRejectedHistory(email: string): Promise<PoRow[]> {
  * know the PO number (from an already-scoped list above, or a direct link), its own line items
  * belong to it regardless of who's viewing. */
 export async function fetchPoByNumber(poNumber: string): Promise<{ header: PoRow | null; items: PoRow[] }> {
-  const rows = await readPoSet(`Ebeln eq '${escapeODataString(poNumber)}'`);
+  const rows = USE_MOCK_DATA
+    ? await mockDelay(mock.mockPoByNumber(poNumber).map(toPoRow))
+    : await readPoSet(`Ebeln eq '${escapeODataString(poNumber)}'`);
   const header = rows.find((r) => r.ebelp === '00000') ?? rows[0] ?? null;
   const items = rows.filter((r) => r.ebelp !== '00000');
   return { header, items };
@@ -114,6 +137,7 @@ export async function fetchPoByNumber(poNumber: string): Promise<{ header: PoRow
 /** The full action/comment log for one PO (Status 'L' rows) — same shape regardless of who's
  * viewing, so not scoped by Email either. */
 export async function fetchHistoryLog(poNumber: string): Promise<PoRow[]> {
+  if (USE_MOCK_DATA) return mockDelay(mock.mockHistoryLog(poNumber).map(toPoRow));
   return readPoSet(`Ebeln eq '${escapeODataString(poNumber)}' and Status eq 'L'`);
 }
 
@@ -121,6 +145,11 @@ export async function fetchHistoryLog(poNumber: string): Promise<PoRow[]> {
  * Status override" pattern as every other write in this repo's SAP integrations. `reason` is
  * mandatory (enforced by the caller's UI) for Reject, stored back as AddInfo. */
 export async function submitPoAction(header: PoRow, action: PoAction, reason?: string): Promise<void> {
+  if (USE_MOCK_DATA) {
+    await mockDelay(null, 500);
+    mock.mockSubmitAction(header.ebeln, action, reason);
+    return;
+  }
   const payload: Record<string, unknown> = {
     ...header.raw,
     Action: action,
@@ -159,6 +188,7 @@ export async function fetchUsers(): Promise<PoUser[]> {
  * is filtered by Ebeln rather than a plain list read). Returns a Blob ready for
  * URL.createObjectURL, or null if neither path produced a file. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
+  if (USE_MOCK_DATA) return mockDelay(mock.mockPrintformPdf(), 500);
   const key = `PrintformSet('${escapeODataString(poNumber)}')`;
   try {
     const res = await sapClient.get(`/${key}/$value`, {
