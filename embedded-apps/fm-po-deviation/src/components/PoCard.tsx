@@ -1,9 +1,25 @@
 'use client';
 
-import { CheckCircle2, XCircle, RotateCcw, History, Printer, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, RotateCcw, History, Printer, Loader2, Clock, Gem } from 'lucide-react';
 import type { PoRow } from '../types/po';
-import { formatCurrency, formatDateTime, releaseStatusLabel } from '../lib/formatters';
+import { formatCurrency, formatDateTime, releaseStatusLabel, daysSince, isHighValue } from '../lib/formatters';
 import StatusBadge from './StatusBadge';
+
+/** SLA/aging indicator for a pending item — 0-2 days is healthy, 3-6 is worth watching, 7+ is
+ * overdue and colored to match. A common pattern in approval-workflow tools (ServiceNow, Jira
+ * Service Management, etc.) so an approver's own dashboard tells them what's actually urgent
+ * instead of a flat, unordered list. */
+function AgingBadge({ erdat }: { erdat: string }) {
+  const days = daysSince(erdat);
+  if (days === null) return null;
+  const label = days === 0 ? 'Today' : days === 1 ? '1 day' : `${days} days`;
+  const tone = days <= 2 ? 'text-green' : days <= 6 ? 'text-amber' : 'text-red';
+  return (
+    <span className={`flex items-center gap-1 text-[10.5px] font-bold ${tone}`}>
+      <Clock size={11} /> {label} pending
+    </span>
+  );
+}
 
 interface PoCardProps {
   row: PoRow;
@@ -40,7 +56,14 @@ export default function PoCard({
         )}
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <p className="text-[11px] font-semibold text-inkSoft">{formatDateTime(row.erdat, row.uzeit)}</p>
-          <p className="mt-0.5 text-lg font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
+          <div className="mt-0.5 flex items-center gap-2">
+            <p className="text-lg font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
+            {isHighValue(row.netwr) && (
+              <span className="pill bg-rust/10 text-rust !py-0.5" title={`Above the ₹2,00,000 high-value review threshold`}>
+                <Gem size={10} /> High Value
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 truncate text-sm font-bold text-rust">
             {row.ebeln} <span className="text-inkSoft font-medium">/ {row.lifnr} / {row.name1}</span>
           </p>
@@ -52,6 +75,7 @@ export default function PoCard({
               {releaseStatusLabel(row.zpoInd)}
             </span>
           )}
+          {variant === 'pending' && <AgingBadge erdat={row.erdat} />}
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ClipboardCheck, LayoutDashboard, Menu, X, ArrowLeft, User, Calendar } from 'lucide-react';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
 import { isMockDataEnabled } from '../lib/sapClient';
+import { PendingCountProvider, usePendingCount } from '../context/PendingCountContext';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
 
@@ -37,6 +38,7 @@ function useIsWideScreen() {
 
 function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: () => void; isWideScreen: boolean }) {
   const pathname = usePathname();
+  const { count: pendingCount } = usePendingCount();
 
   const paneClasses = isWideScreen
     ? 'relative w-64 shrink-0 border-r border-border bg-white'
@@ -83,7 +85,12 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
                 }`}
               >
                 <Icon size={18} />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === '/' && pendingCount > 0 && (
+                  <span className="rounded-full bg-rust px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white">
+                    {pendingCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -118,6 +125,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <PendingCountProvider>
     <div className="flex min-h-screen flex-col bg-plum">
       <div className="flex flex-1">
         <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isWideScreen={isWideScreen} />
@@ -166,5 +174,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </div>
+    </PendingCountProvider>
   );
 }

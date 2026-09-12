@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, CheckCircle2, XCircle, IndianRupee, Download, Building2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { fetchApprovedHistory, fetchMyApprovals, fetchRejectedHistory } from '../../lib/sapClient';
 import { getHubEmail } from '../../lib/hubEmailLogin';
+import { exportPoRowsToExcel } from '../../lib/exportExcel';
 import type { PoRow } from '../../types/po';
-import { formatCurrency, formatDate } from '../../lib/formatters';
+import { formatCurrency } from '../../lib/formatters';
 
 function KpiCard({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent: string }) {
   return (
@@ -66,21 +66,7 @@ export default function DashboardPage() {
   const currency = pending[0]?.waers || approved[0]?.waers || 'INR';
 
   const exportHistory = () => {
-    const rows = [...approved, ...rejected].map((r) => ({
-      'PO Number': r.ebeln,
-      Vendor: r.name1,
-      'Vendor Code': r.lifnr,
-      Description: r.stxt,
-      Amount: r.netwr,
-      Currency: r.waers,
-      Status: r.status === 'A' ? 'Approved' : 'Rejected',
-      Date: formatDate(r.erdat),
-      Remarks: r.addInfo,
-    }));
-    const sheet = XLSX.utils.json_to_sheet(rows);
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, sheet, 'Approval History');
-    XLSX.writeFile(book, `PO_Approval_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    exportPoRowsToExcel([...approved, ...rejected], 'Approval History', 'PO_Approval_History');
   };
 
   if (loading) {

@@ -36,3 +36,28 @@ export function formatDateTime(iso: string, time: string): string {
 export function releaseStatusLabel(zpoInd: string): string {
   return zpoInd === 'R' ? 'Released' : 'Unreleased';
 }
+
+/** Whole days between a 'YYYY-MM-DD' date and now — the basis for the pending-approvals SLA/aging
+ * indicator (see AgingBadge in PoCard.tsx). Negative/unparseable input returns null rather than a
+ * misleading number, since a PO dated in the future or with an unparseable date has no meaningful
+ * "age". */
+export function daysSince(iso: string): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  const diff = Date.now() - then;
+  if (diff < 0) return null;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+/** Threshold above which a PO is flagged "High Value" for extra scrutiny — a common
+ * segregation-of-duties practice in approval workflows (a second look for anything unusually
+ * large, regardless of who it's assigned to). Currency-agnostic on purpose: this app's data is
+ * overwhelmingly INR, and a single fixed threshold is simpler and more predictable than a
+ * per-currency table for a first cut — revisit if a real multi-currency case shows up. */
+export const HIGH_VALUE_THRESHOLD = 200000;
+
+export function isHighValue(netwr: string): boolean {
+  const n = parseFloat(netwr);
+  return !Number.isNaN(n) && n >= HIGH_VALUE_THRESHOLD;
+}

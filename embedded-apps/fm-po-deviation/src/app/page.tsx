@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ClipboardCheck, CheckCircle2, XCircle, Inbox, X } from 'lucide-react';
+import { Search, ClipboardCheck, CheckCircle2, XCircle, Inbox, X, RefreshCw, Download, ArrowDownUp } from 'lucide-react';
 import {
   fetchMyApprovals, fetchApprovedHistory, fetchRejectedHistory, fetchHistoryLog,
   fetchPrintformPdf, submitPoAction,
 } from '../lib/sapClient';
 import { getHubEmail } from '../lib/hubEmailLogin';
+import { exportPoRowsToExcel } from '../lib/exportExcel';
+import { usePendingCount } from '../context/PendingCountContext';
 import type { PoRow } from '../types/po';
 import PoCard from '../components/PoCard';
 import { RejectDialog, HistoryLogModal, PdfPreviewModal } from '../components/Modals';
@@ -15,6 +17,18 @@ import { RejectDialog, HistoryLogModal, PdfPreviewModal } from '../components/Mo
 type MainTab = 'pending' | 'history';
 type HistoryTab = 'approved' | 'rejected';
 type ActingAction = 'A' | 'R' | 'U' | 'print' | null;
+type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc';
+
+const SORT_OPTIONS: { key: SortOption; label: string }[] = [
+  { key: 'date-desc', label: 'Date: Newest first' },
+  { key: 'date-asc', label: 'Date: Oldest first' },
+  { key: 'amount-desc', label: 'Amount: High to Low' },
+  { key: 'amount-asc', label: 'Amount: Low to High' },
+];
+
+// Remembered per browser so switching tabs (or coming back tomorrow) keeps the sort an approver
+// actually wanted, instead of resetting to the default every time.
+const SORT_STORAGE_KEY = 'fm-po-deviation-sort-prefs';
 
 function filterRows(rows: PoRow[], query: string): PoRow[] {
   const q = query.trim().toLowerCase();
@@ -22,6 +36,44 @@ function filterRows(rows: PoRow[], query: string): PoRow[] {
   return rows.filter((r) =>
     [r.ebeln, r.lifnr, r.name1, r.stxt].join(' ').toLowerCase().includes(q)
   );
+}
+
+function sortRows(rows: PoRow[], sort: SortOption): PoRow[] {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    if (sort === 'amount-desc' || sort === 'amount-asc') {
+      const diff = (parseFloat(a.netwr) || 0) - (parseFloat(b.netwr) || 0);
+      return sort === 'amount-asc' ? diff : -diff;
+    }
+    const aTime = new Date(`${a.erdat || '1970-01-01'}T${a.uzeit || '00:00:00'}`).getTime();
+    const bTime = new Date(`${b.erdat || '1970-01-01'}T${b.uzeit || '00:00:00'}`).getTime();
+    const diff = aTime - bTime;
+    return sort === 'date-asc' ? diff : -diff;
+  });
+  return sorted;
+}
+
+function SortSelect({ value, onChange }: { value: SortOption; onChange: (v: SortOption) => void }) {
+  return (
+    <div className="flex items-center gap-1.5 rounded-xl border border-border bg-white px-2.5 py-2">
+      <ArrowDownUp size={14} className="text-inkSoft shrink-0" />
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as SortOption)}
+        className="bg-transparent text-sm font-semibold text-ink outline-none"
+        aria-label="Sort by"
+      >
+        {SORT_OPTIONS.map((opt) => (
+          <option key={opt.key} value={opt.key}>{opt.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function formatLastUpdated(d: Date | null): string {
+  if (!d) return '';
+  return `Updated ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 export default function HomePage() {
@@ -39,6 +91,10 @@ export default function HomePage() {
 
   const [pendingSearch, setPendingSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
+  const [pendingSort, setPendingSort] = useState<SortOption>('date-desc');
+  const [historySort, setHistorySort] = useState<SortOption>('date-desc');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const { setCount: setPendingCount } = usePendingCount();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rowActing, setRowActing] = useState<Record<string, ActingAction>>({});
@@ -51,12 +107,34 @@ export default function HomePage() {
 
   useEffect(() => {
     setEmail(getHubEmail());
+    try {
+      const saved = localStorage.getItem(SORT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { pending?: SortOption; history?: SortOption };
+        if (parsed.pending) setPendingSort(parsed.pending);
+        if (parsed.history) setHistorySort(parsed.history);
+      }
+    } catch {
+      // ignore malformed/unavailable storage — defaults already set
+    }
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify({ pending: pendingSort, history: historySort }));
+    } catch {
+      // best-effort only — a private-browsing tab or a full storage quota shouldn't break sorting
+    }
+  }, [pendingSort, historySort]);
+
+  useEffect(() => {
+    setPendingCount(pending.length);
+  }, [pending, setPendingCount]);
 
   const loadPending = (userEmail: string) => {
     setLoading((s) => ({ ...s, pending: true }));
     fetchMyApprovals(userEmail)
-      .then((rows) => { setPending(rows); setLoadError(null); })
+      .then((rows) => { setPending(rows); setLoadError(null); setLastUpdated(new Date()); })
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Could not load pending approvals.'))
       .finally(() => setLoading((s) => ({ ...s, pending: false })));
   };
@@ -88,11 +166,21 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email]);
 
-  const filteredPending = useMemo(() => filterRows(pending, pendingSearch), [pending, pendingSearch]);
-  const filteredHistory = useMemo(
-    () => filterRows(historyTab === 'approved' ? approved : rejected, historySearch),
-    [historyTab, approved, rejected, historySearch]
+  const filteredPending = useMemo(
+    () => sortRows(filterRows(pending, pendingSearch), pendingSort),
+    [pending, pendingSearch, pendingSort]
   );
+  const filteredHistory = useMemo(
+    () => sortRows(filterRows(historyTab === 'approved' ? approved : rejected, historySearch), historySort),
+    [historyTab, approved, rejected, historySearch, historySort]
+  );
+
+  const handleRefresh = () => {
+    if (!email) return;
+    loadPending(email);
+    loadApproved(email);
+    loadRejected(email);
+  };
 
   const patchActing = (ebeln: string, action: ActingAction) => {
     setRowActing((prev) => ({ ...prev, [ebeln]: action }));
@@ -211,15 +299,37 @@ export default function HomePage() {
 
       {mainTab === 'pending' ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
-            <Search size={15} className="text-inkSoft" />
-            <input
-              value={pendingSearch}
-              onChange={(e) => setPendingSearch(e.target.value)}
-              placeholder="Find PO or Vendor..."
-              className="flex-1 text-sm text-ink outline-none placeholder:text-inkSoft"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-1 min-w-[200px] items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
+              <Search size={15} className="text-inkSoft" />
+              <input
+                value={pendingSearch}
+                onChange={(e) => setPendingSearch(e.target.value)}
+                placeholder="Find PO or Vendor..."
+                className="flex-1 text-sm text-ink outline-none placeholder:text-inkSoft"
+              />
+            </div>
+            <SortSelect value={pendingSort} onChange={setPendingSort} />
+            <button
+              onClick={handleRefresh}
+              disabled={loading.pending}
+              className="btn-ghost !px-3"
+              aria-label="Refresh"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={loading.pending ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => exportPoRowsToExcel(filteredPending, 'Pending Approvals', 'PO_Pending_Approvals')}
+              disabled={filteredPending.length === 0}
+              className="btn-ghost !px-3"
+              aria-label="Export to Excel"
+              title="Export to Excel"
+            >
+              <Download size={15} />
+            </button>
           </div>
+          {lastUpdated && <p className="-mt-1 px-1 text-[11px] font-semibold text-inkSoft">{formatLastUpdated(lastUpdated)}</p>}
 
           {selectableCount > 0 && (
             <label className="flex items-center gap-2 px-1 text-sm font-semibold text-ink">
@@ -302,14 +412,26 @@ export default function HomePage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
-            <Search size={15} className="text-inkSoft" />
-            <input
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="Search history..."
-              className="flex-1 text-sm text-ink outline-none placeholder:text-inkSoft"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-1 min-w-[200px] items-center gap-2 rounded-xl border border-border bg-white px-3 py-2">
+              <Search size={15} className="text-inkSoft" />
+              <input
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder="Search history..."
+                className="flex-1 text-sm text-ink outline-none placeholder:text-inkSoft"
+              />
+            </div>
+            <SortSelect value={historySort} onChange={setHistorySort} />
+            <button
+              onClick={() => exportPoRowsToExcel(filteredHistory, historyTab === 'approved' ? 'Approved' : 'Rejected', `PO_${historyTab === 'approved' ? 'Approved' : 'Rejected'}`)}
+              disabled={filteredHistory.length === 0}
+              className="btn-ghost !px-3"
+              aria-label="Export to Excel"
+              title="Export to Excel"
+            >
+              <Download size={15} />
+            </button>
           </div>
 
           {loading[historyTab] ? (
