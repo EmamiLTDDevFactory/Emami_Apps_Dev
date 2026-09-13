@@ -493,7 +493,26 @@ export async function submitProvisionApprovalBatch(
 // same as toProvItem.
 export type ApprovalDecision = 'A' | 'R';
 
-function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
+/** Admin-entered overrides for a row's four invoice fields — per instruction, Admin can fill these
+ * in on Pending Approval (and on Submission History's Mail for P2P, see InvoiceEditOverrides'
+ * sibling use in submitLogAction below) before the row goes out, same fields as Upcoming
+ * Provision's own editable trio + attachment. Undefined/blank means "leave whatever the row
+ * already had" — these are optional overlays on top of the row's own GET data, not a replacement
+ * for it. */
+export interface InvoiceEditOverrides {
+  invoiceNo?: string;
+  invoiceDate?: string;
+  invoiceAmount?: string;
+  attachmentBase64?: string;
+  attachmentMimeType?: string;
+  attachmentName?: string;
+}
+
+function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision, overrides?: InvoiceEditOverrides) {
+  const invoiceNo = overrides?.invoiceNo ?? row.invoiceNo;
+  const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
+  const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
+  const hasAttachment = !!overrides?.attachmentBase64;
   return {
     Lifnr: row.lifnr,
     Ebeln: row.poNumber,
@@ -507,21 +526,27 @@ function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
     Brtwr: row.provisionValue,
-    ZzinvNo: row.invoiceNo,
-    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
-    ZzinvAmt: row.invoiceAmount,
+    ZzinvNo: invoiceNo,
+    ZinvDate: invoiceDate ? toODataDate(invoiceDate) : null,
+    ZzinvAmt: invoiceAmount,
     Comments: row.comments,
     DelvConf: 'Y',
+    Value: hasAttachment ? overrides!.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && overrides?.attachmentName ? overrides.attachmentName.slice(0, 90) : null,
   };
 }
 
 /** One or more Pending Approval rows, approved or rejected by the signed-in Admin — same
  * ZProvHeaderSet POST as submitProvisionApproval (header's Lifnr/Ebeln/Ebelp/Lblni taken from the
- * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email. */
+ * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email.
+ * `overridesByKey` (row.key -> InvoiceEditOverrides) lets Admin's own edited invoice fields/
+ * attachment ride along on the same POST, per row. */
 export async function submitApprovalDecision(
   rows: VendorPOFollowupRow[],
   email: string,
-  decision: ApprovalDecision
+  decision: ApprovalDecision,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
 ): Promise<void> {
   if (rows.length === 0) return;
   const first = rows[0];
@@ -531,7 +556,7 @@ export async function submitApprovalDecision(
     Ebeln: first.poNumber,
     Ebelp: first.poItemNo,
     Lblni: first.entrySheetNo,
-    ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
+    ToProvItems: rows.map((r) => toApprovalItem(r, decision, overridesByKey?.[r.key])),
   };
   try {
     const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
@@ -553,7 +578,8 @@ export async function submitApprovalDecision(
 export async function submitApprovalDecisionBatch(
   rows: VendorPOFollowupRow[],
   email: string,
-  decision: ApprovalDecision
+  decision: ApprovalDecision,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
 ): Promise<{ lifnr: string; error: string }[]> {
   const groups = new Map<string, VendorPOFollowupRow[]>();
   rows.forEach((r) => {
@@ -565,7 +591,7 @@ export async function submitApprovalDecisionBatch(
   const failures: { lifnr: string; error: string }[] = [];
   for (const [lifnr, group] of groups) {
     try {
-      await submitApprovalDecision(group, email, decision);
+      await submitApprovalDecision(group, email, decision, overridesByKey);
     } catch (err) {
       const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
       failures.push({ lifnr, error: err instanceof Error ? err.message : fallback });
@@ -708,7 +734,11 @@ export const LOG_ACTION_LABELS: Record<LogAction, string> = {
   MS: 'Mail for P2P',
 };
 
-function toLogActionItem(row: ProvisionLogRow, action: LogAction) {
+function toLogActionItem(row: ProvisionLogRow, action: LogAction, overrides?: InvoiceEditOverrides) {
+  const invoiceNo = overrides?.invoiceNo ?? row.invoiceNo;
+  const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
+  const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
+  const hasAttachment = !!overrides?.attachmentBase64;
   return {
     Lifnr: row.vendor,
     Ebeln: row.poNumber,
@@ -722,28 +752,38 @@ function toLogActionItem(row: ProvisionLogRow, action: LogAction) {
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
     Brtwr: row.provisionValue,
-    ZzinvNo: row.invoiceNo,
-    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
-    ZzinvAmt: row.invoiceAmount,
+    ZzinvNo: invoiceNo,
+    ZinvDate: invoiceDate ? toODataDate(invoiceDate) : null,
+    ZzinvAmt: invoiceAmount,
     Comments: row.remarks,
     // Delivery was already confirmed well before this row ever reached 'AS' (SES Created) — same
     // posture as toApprovalItem's own hardcoded 'Y' for Pending Approval decisions.
     DelvConf: 'Y',
+    Value: hasAttachment ? overrides!.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && overrides?.attachmentName ? overrides.attachmentName.slice(0, 90) : null,
   };
 }
 
 /** One Submission History row (already 'AS'/SES Created), reversed or mailed to P2P by the
  * signed-in user — same ZProvHeaderSet POST/header-key-trio shape as submitApprovalDecision.
  * `row.entrySheetNo` (Lblni) is NOT yet confirmed live on ZProvisionLogSet — see ProvisionLogRow's
- * header comment; if this 404s/silently no-ops, that's the first thing to check. */
-export async function submitLogAction(row: ProvisionLogRow, email: string, action: LogAction): Promise<void> {
+ * header comment; if this 404s/silently no-ops, that's the first thing to check. `overrides` lets
+ * Admin's own edited Invoice Number/Date/Amount + attachment (filled in before Mail for P2P, see
+ * history.tsx) ride along on this same POST. */
+export async function submitLogAction(
+  row: ProvisionLogRow,
+  email: string,
+  action: LogAction,
+  overrides?: InvoiceEditOverrides
+): Promise<void> {
   const payload = {
     Lifnr: row.vendor,
     Email: email,
     Ebeln: row.poNumber,
     Ebelp: row.poItemNo,
     Lblni: row.entrySheetNo,
-    ToProvItems: [toLogActionItem(row, action)],
+    ToProvItems: [toLogActionItem(row, action, overrides)],
   };
   try {
     const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchPendingApprovals,
@@ -9,10 +11,11 @@ import {
   PENDING_APPROVAL_ACTIONS,
   PENDING_APPROVAL_ACTION_LABELS,
   type ApprovalDecision,
+  type InvoiceEditOverrides,
   type PendingApprovalAction,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
-import { base64ToBlob, base64ToBytes, looksLikePdf } from '../../../src/lib/pdfAttachment';
+import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../../src/context/MonthYearContext';
@@ -21,16 +24,117 @@ import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../../
 /** Per-row decision state — 'idle' until the Admin acts on it, then locks into whichever decision
  * went through (or an error, which leaves it actionable again). attachmentError is only for the
  * rare case opening an in-hand attachment fails (e.g. malformed base64) — whether one exists at
- * all is read straight off the row (see AttachmentControl below), not tracked here. */
+ * all is read straight off the row (see AttachmentControl below), not tracked here. The four
+ * invoice fields (invoiceNo/invoiceDate/invoiceAmount/attachment) are editable here too, per
+ * instruction — seeded from whatever the row already had, same posture as Submission History's own
+ * RowState. */
 interface RowState {
   deciding: ApprovalDecision | null; // which action is in flight, if any
   decided: ApprovalDecision | null; // which action has gone through
   error: string | null;
   attachmentError: string | null;
+  invoiceNo: string;
+  invoiceDate: string;
+  invoiceAmount: string;
+  attachmentName: string;
+  attachmentBase64: string;
+  attachmentMimeType: string;
+  attaching: boolean;
 }
 
-function initialRowState(): RowState {
-  return { deciding: null, decided: null, error: null, attachmentError: null };
+function initialRowState(row: VendorPOFollowupRow): RowState {
+  return {
+    deciding: null,
+    decided: null,
+    error: null,
+    attachmentError: null,
+    invoiceNo: row.invoiceNo,
+    invoiceDate: row.invoiceDate,
+    invoiceAmount: row.invoiceAmount,
+    attachmentName: row.filename,
+    attachmentBase64: row.attachmentBase64,
+    attachmentMimeType: row.mimetype,
+    attaching: false,
+  };
+}
+
+/** Same date-input pattern as Upcoming Provision's DateField — duplicated per this app's own
+ * convention of keeping each screen's small helpers self-contained. */
+function DateField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === 'web') {
+    return (
+      <input
+        type="date"
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        aria-label={label}
+        style={{
+          width: '100%',
+          height: 32,
+          padding: '4px 6px',
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          backgroundColor: colors.white,
+          color: colors.ink,
+          fontSize: 12,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
+  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View>
+      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
+        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Text style={styles.dateBtnText}>{value || 'Select date'}</Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display={Platform.OS === 'android' ? 'spinner' : 'default'}
+          onChange={(_event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (selected) onChange(selected.toISOString().split('T')[0]);
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function EditableField({
+  label, value, onChange, keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  keyboardType?: 'decimal-pad';
+}) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    </View>
+  );
+}
+
+function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
+      <Pressable style={styles.attachEditBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={13} color={colors.rust} />
+        <Text style={styles.attachEditBtnText} numberOfLines={1}>
+          {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
 type DecisionFilter = 'all' | 'pending' | 'A';
@@ -194,7 +298,7 @@ export default function PendingApproval() {
         setRows(data);
         const state: Record<string, RowState> = {};
         data.forEach((r) => {
-          const s = initialRowState();
+          const s = initialRowState(r);
           // Seed decided from SAP's own Stat so a row already approved in an earlier session (or
           // by someone else) renders as Approved on load, not as still-actionable.
           if ((r.status || '').trim() === 'A') s.decided = 'A';
@@ -274,10 +378,58 @@ export default function PendingApproval() {
     });
   };
 
+  // Whatever the Admin typed into the four invoice fields for this row rides along on the same
+  // POST as the decision itself (see submitApprovalDecision's overridesByKey param) — undefined
+  // fields mean "leave whatever the row already had".
+  const overridesFor = (key: string): InvoiceEditOverrides => {
+    const state = rowState[key];
+    return {
+      invoiceNo: state?.invoiceNo,
+      invoiceDate: state?.invoiceDate,
+      invoiceAmount: state?.invoiceAmount,
+      attachmentBase64: state?.attachmentBase64,
+      attachmentMimeType: state?.attachmentMimeType,
+      attachmentName: state?.attachmentName,
+    };
+  };
+
+  // Attach Invoice (PDF) — same picker/compress/limit flow as Upcoming Provision's
+  // handlePickAttachment (see pdfAttachment.ts).
+  const handlePickAttachment = async (key: string) => {
+    patchRow(key, { error: null });
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = (result as any).assets?.[0] ?? result;
+      if (!asset?.uri) return;
+      const name: string = asset.name || 'invoice.pdf';
+      const mimeType: string = asset.mimeType || 'application/pdf';
+      if (!name.toLowerCase().endsWith('.pdf') || (mimeType && mimeType !== 'application/pdf')) {
+        patchRow(key, { error: 'Only a PDF file can be attached as the invoice.' });
+        return;
+      }
+      patchRow(key, { attaching: true });
+      const picked = await readAttachmentAsBase64(asset.uri);
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchRow(key, {
+          attaching: false,
+          error: Platform.OS === 'web'
+            ? 'This PDF could not be compressed under 70KB. Please attach a smaller file.'
+            : 'This PDF is larger than 70KB. Please attach a smaller file — compression is only available on the web app.',
+        });
+        return;
+      }
+      patchRow(key, { attaching: false, attachmentName: name, attachmentBase64: base64, attachmentMimeType: mimeType });
+    } catch {
+      patchRow(key, { attaching: false, error: 'Could not attach this file. Please try again.' });
+    }
+  };
+
   const decideRow = async (row: VendorPOFollowupRow, decision: ApprovalDecision) => {
     patchRow(row.key, { deciding: decision, error: null });
     try {
-      await submitApprovalDecision([row], email || '', decision);
+      await submitApprovalDecision([row], email || '', decision, { [row.key]: overridesFor(row.key) });
       patchRow(row.key, { deciding: null, decided: decision });
       setBanner({
         type: 'success',
@@ -295,7 +447,9 @@ export default function PendingApproval() {
     setMassDeciding(decision);
     targets.forEach((r) => patchRow(r.key, { deciding: decision, error: null }));
 
-    const failures = await submitApprovalDecisionBatch(targets, email || '', decision);
+    const overridesByKey: Record<string, InvoiceEditOverrides> = {};
+    targets.forEach((r) => { overridesByKey[r.key] = overridesFor(r.key); });
+    const failures = await submitApprovalDecisionBatch(targets, email || '', decision, overridesByKey);
     const failedLifnrs = new Set(failures.map((f) => f.lifnr));
     targets.forEach((row) => {
       if (failedLifnrs.has(row.lifnr)) {
@@ -626,11 +780,32 @@ export default function PendingApproval() {
                     {!row.revisedDeliveryDate && <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />}
                     <InfoField label="Comments" value={row.comments} />
                     {row.zaction !== 'RD' && (
-                      <>
-                        <InfoField label="Invoice No" value={row.invoiceNo} />
-                        <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
-                        <InfoField label="Invoice Amount" value={row.invoiceAmount} />
-                      </>
+                      state.decided ? (
+                        <>
+                          <InfoField label="Invoice No" value={state.invoiceNo} />
+                          <InfoField label="Invoice Date" value={formatDeliveryDate(state.invoiceDate)} />
+                          <InfoField label="Invoice Amount" value={state.invoiceAmount} />
+                        </>
+                      ) : (
+                        <>
+                          <EditableField label="Invoice No" value={state.invoiceNo} onChange={(v) => patchRow(row.key, { invoiceNo: v })} />
+                          <View style={styles.infoField}>
+                            <Text style={styles.infoLabel}>Invoice Date</Text>
+                            <DateField value={state.invoiceDate} onChange={(v) => patchRow(row.key, { invoiceDate: v })} label="Invoice Date" />
+                          </View>
+                          <EditableField
+                            label="Invoice Amount"
+                            value={state.invoiceAmount}
+                            onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
+                            keyboardType="decimal-pad"
+                          />
+                          <AttachField
+                            fileName={state.attachmentName}
+                            attaching={state.attaching}
+                            onPick={() => handlePickAttachment(row.key)}
+                          />
+                        </>
+                      )
                     )}
                   </View>
 
@@ -980,6 +1155,49 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.ink,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 7,
+    fontSize: 12,
+    color: colors.ink,
+    backgroundColor: colors.white,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  dateBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+  },
+  attachEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  attachEditBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   rowErrorText: {
     fontSize: 11,

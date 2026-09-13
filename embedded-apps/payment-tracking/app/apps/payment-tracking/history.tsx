@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchProvisionLog,
@@ -12,22 +14,122 @@ import {
   type ProvisionLogStatus,
   type LogAction,
 } from '../../../src/lib/paymentTrackingApi';
-import { base64ToBlob, base64ToBytes, looksLikePdf } from '../../../src/lib/pdfAttachment';
+import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { formatDeliveryDate } from '../../../src/lib/provisionMetrics';
 
 /** Per-row action state for the 'AS' (SES Created) rows' Reverse SES / Mail for P2P buttons —
- * mirrors Pending Approval's RowState. attachmentError is for the rare case opening an in-hand
+ * mirrors Pending Approval's RowState, plus the four invoice fields Admin can edit before Mail for
+ * P2P (per instruction — seeded from whatever the row already had, not blank, same posture as
+ * Upcoming Provision's own RowState). attachmentError is for the rare case opening an in-hand
  * attachment fails (e.g. malformed base64). */
 interface RowState {
   acting: LogAction | null; // which action is in flight, if any
   actionError: string | null;
   attachmentError: string | null;
+  invoiceNo: string;
+  invoiceDate: string;
+  invoiceAmount: string;
+  attachmentName: string;
+  attachmentBase64: string;
+  attachmentMimeType: string;
+  attaching: boolean;
 }
 
-function initialRowState(): RowState {
-  return { acting: null, actionError: null, attachmentError: null };
+function initialRowState(row: ProvisionLogRow): RowState {
+  return {
+    acting: null,
+    actionError: null,
+    attachmentError: null,
+    invoiceNo: row.invoiceNo,
+    invoiceDate: row.invoiceDate,
+    invoiceAmount: row.invoiceAmount,
+    attachmentName: row.filename,
+    attachmentBase64: row.attachmentBase64,
+    attachmentMimeType: row.mimetype,
+    attaching: false,
+  };
+}
+
+/** Same date-input pattern as Upcoming Provision's DateField (raw HTML date input on web, native
+ * community picker everywhere else) — duplicated per this app's own convention of keeping each
+ * screen's small helpers self-contained. */
+function DateField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === 'web') {
+    return (
+      <input
+        type="date"
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        aria-label={label}
+        style={{
+          width: '100%',
+          height: 32,
+          padding: '4px 6px',
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          backgroundColor: colors.white,
+          color: colors.ink,
+          fontSize: 12,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
+  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View>
+      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
+        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Text style={styles.dateBtnText}>{value || 'Select date'}</Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display={Platform.OS === 'android' ? 'spinner' : 'default'}
+          onChange={(_event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (selected) onChange(selected.toISOString().split('T')[0]);
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function EditableField({
+  label, value, onChange, keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  keyboardType?: 'decimal-pad';
+}) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    </View>
+  );
+}
+
+function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
+      <Pressable style={styles.attachEditBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={13} color={colors.rust} />
+        <Text style={styles.attachEditBtnText} numberOfLines={1}>
+          {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
 /** In-app attachment preview — same approach as Pending Approval's AttachmentPreviewModal (an
@@ -228,7 +330,7 @@ export default function PaymentTrackingHistory() {
       .then((data) => {
         setRows(data);
         const state: Record<string, RowState> = {};
-        data.forEach((r) => { state[r.key] = initialRowState(); });
+        data.forEach((r) => { state[r.key] = initialRowState(r); });
         setRowState(state);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load submission history.'))
@@ -236,7 +338,7 @@ export default function PaymentTrackingHistory() {
   }, [email, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
-    setRowState((prev) => ({ ...prev, [key]: { ...(prev[key] ?? initialRowState()), ...patch } }));
+    setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }, []);
 
   const filteredRows = useMemo(() => {
@@ -254,15 +356,69 @@ export default function PaymentTrackingHistory() {
   // same "acted-on row updates immediately" posture as Pending Approval's decideRow.
   const [doneActions, setDoneActions] = useState<Record<string, LogAction>>({});
   const runLogAction = async (row: ProvisionLogRow, action: LogAction) => {
+    const state = rowState[row.key];
     patchRow(row.key, { acting: action, actionError: null });
     try {
-      await submitLogAction(row, email || '', action);
+      await submitLogAction(row, email || '', action, {
+        invoiceNo: state?.invoiceNo,
+        invoiceDate: state?.invoiceDate,
+        invoiceAmount: state?.invoiceAmount,
+        attachmentBase64: state?.attachmentBase64,
+        attachmentMimeType: state?.attachmentMimeType,
+        attachmentName: state?.attachmentName,
+      });
       patchRow(row.key, { acting: null });
       setDoneActions((prev) => ({ ...prev, [row.key]: action }));
     } catch (e) {
       patchRow(row.key, { acting: null, actionError: e instanceof Error ? e.message : 'Could not complete this action.' });
     }
   };
+
+  // Attach Invoice (PDF) — same picker/compress/limit flow as Upcoming Provision's
+  // handlePickAttachment (see pdfAttachment.ts), so Admin can add or replace the invoice attachment
+  // right here before Mail for P2P.
+  const handlePickAttachment = async (key: string) => {
+    patchRow(key, { actionError: null });
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = (result as any).assets?.[0] ?? result;
+      if (!asset?.uri) return;
+      const name: string = asset.name || 'invoice.pdf';
+      const mimeType: string = asset.mimeType || 'application/pdf';
+      if (!name.toLowerCase().endsWith('.pdf') || (mimeType && mimeType !== 'application/pdf')) {
+        patchRow(key, { actionError: 'Only a PDF file can be attached as the invoice.' });
+        return;
+      }
+      patchRow(key, { attaching: true });
+      const picked = await readAttachmentAsBase64(asset.uri);
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchRow(key, {
+          attaching: false,
+          actionError: Platform.OS === 'web'
+            ? 'This PDF could not be compressed under 70KB. Please attach a smaller file.'
+            : 'This PDF is larger than 70KB. Please attach a smaller file — compression is only available on the web app.',
+        });
+        return;
+      }
+      patchRow(key, { attaching: false, attachmentName: name, attachmentBase64: base64, attachmentMimeType: mimeType });
+    } catch {
+      patchRow(key, { attaching: false, actionError: 'Could not attach this file. Please try again.' });
+    }
+  };
+
+  // Mail for P2P is greyed out until all four invoice fields (Invoice Number/Date/Amount +
+  // attachment) are filled in, per instruction — Reverse SES has no such requirement.
+  function canMailP2P(state: RowState): boolean {
+    return (
+      !!state.invoiceNo.trim() &&
+      !!state.invoiceDate &&
+      !!state.invoiceAmount.trim() &&
+      !Number.isNaN(Number(state.invoiceAmount)) &&
+      !!state.attachmentBase64
+    );
+  }
 
   // Attachment (if any) comes back inline on the row itself, same as Pending Approval — decoding
   // base64 already in hand, no extra request.
@@ -372,9 +528,10 @@ export default function PaymentTrackingHistory() {
           </Text>
         ) : (
           filteredRows.map((row) => {
-            const state = rowState[row.key] ?? initialRowState();
+            const state = rowState[row.key] ?? initialRowState(row);
             const doneAction = doneActions[row.key];
             const busy = state.acting !== null;
+            const editable = row.zstatus === 'AS' && !doneAction;
             return (
             <View key={row.key} style={styles.card}>
               <View style={styles.cardHeader}>
@@ -405,15 +562,44 @@ export default function PaymentTrackingHistory() {
 
               <View style={styles.fieldGrid}>
                 <InfoField label="Service" value={row.serviceText} />
+                {row.entrySheetNo ? <InfoField label="Service Entry Sheet No" value={row.entrySheetNo} /> : null}
                 <InfoField label="Action Date" value={formatDeliveryDate(row.actionDate)} />
                 <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />
                 <InfoField label="Revised Delivery Date" value={formatDeliveryDate(row.revisedDeliveryDate)} />
                 <InfoField label="Provision Amount" value={row.provisionValue} />
-                <InfoField label="Invoice Number" value={row.invoiceNo} />
-                <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
-                <InfoField label="Invoice Amount" value={row.invoiceAmount} />
+                {editable ? (
+                  <>
+                    <EditableField label="Invoice Number" value={state.invoiceNo} onChange={(v) => patchRow(row.key, { invoiceNo: v })} />
+                    <View style={styles.infoField}>
+                      <Text style={styles.infoLabel}>Invoice Date</Text>
+                      <DateField value={state.invoiceDate} onChange={(v) => patchRow(row.key, { invoiceDate: v })} label="Invoice Date" />
+                    </View>
+                    <EditableField
+                      label="Invoice Amount"
+                      value={state.invoiceAmount}
+                      onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
+                      keyboardType="decimal-pad"
+                    />
+                    <AttachField
+                      fileName={state.attachmentName}
+                      attaching={state.attaching}
+                      onPick={() => handlePickAttachment(row.key)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <InfoField label="Invoice Number" value={row.invoiceNo} />
+                    <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
+                    <InfoField label="Invoice Amount" value={row.invoiceAmount} />
+                  </>
+                )}
                 <InfoField label="Remarks" value={row.remarks} />
               </View>
+              {editable && (
+                <Text style={styles.helperText}>
+                  Invoice Number, Invoice Date, Invoice Amount and the attachment must all be filled in before Mail for P2P.
+                </Text>
+              )}
 
               {state.actionError && <Text style={styles.rowErrorText}>{state.actionError}</Text>}
               {state.attachmentError && <Text style={styles.rowErrorText}>{state.attachmentError}</Text>}
@@ -439,10 +625,11 @@ export default function PaymentTrackingHistory() {
                       )}
                     </Pressable>
                     <Pressable
-                      style={[styles.logActionBtn, styles.logActionBtnMail, busy && styles.btnDisabled]}
+                      style={[styles.logActionBtn, styles.logActionBtnMail, (busy || !canMailP2P(state)) && styles.btnDisabled]}
                       onPress={() => runLogAction(row, 'MS')}
-                      disabled={busy}
+                      disabled={busy || !canMailP2P(state)}
                       accessibilityRole="button"
+                      accessibilityLabel={!canMailP2P(state) ? 'Mail for P2P — fill in Invoice Number, Date, Amount and attachment first' : 'Mail for P2P'}
                     >
                       {state.acting === 'MS' ? (
                         <ActivityIndicator size="small" color={colors.white} />
@@ -604,6 +791,55 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.ink,
+  },
+  editInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 7,
+    fontSize: 12,
+    color: colors.ink,
+    backgroundColor: colors.white,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  dateBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+  },
+  attachEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  attachEditBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  helperText: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    fontStyle: 'italic',
   },
   attachmentBtn: {
     flexDirection: 'row',
