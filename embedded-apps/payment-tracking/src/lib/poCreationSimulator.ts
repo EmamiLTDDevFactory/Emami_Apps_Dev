@@ -103,12 +103,13 @@ function toDateString(value: any): string {
 }
 
 /** Same validation a real PO-creation BAPI would reject on — required master data present, a
- * positive quantity/non-negative price, and a real delivery date. Anything else (Plant/Purchase
- * Org/Cost Center/GL Account) is optional, defaulted blank rather than flagged. */
+ * positive quantity/non-negative price, and a real delivery date. Material Code/Description are
+ * NOT required: every PO created here is a Service PO, which has no material master line, so
+ * those two columns are optional metadata only. Anything else (Plant/Purchase Org/Cost Center/GL
+ * Account) is likewise optional, defaulted blank rather than flagged. */
 function validateRow(row: Omit<UploadedPoRow, 'key' | 'status' | 'errorMessage'>): { status: 'success' | 'error'; errorMessage: string } {
   const errors: string[] = [];
   if (!row.vendorCode.trim()) errors.push('Vendor Code is required');
-  if (!row.materialCode.trim()) errors.push('Material Code is required');
   const qty = Number(row.quantity);
   if (!row.quantity.trim() || Number.isNaN(qty) || qty <= 0) errors.push('Quantity must be a positive number');
   const price = Number(row.unitPrice);

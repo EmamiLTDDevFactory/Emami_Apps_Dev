@@ -97,13 +97,41 @@ function DateField({ value, onChange, label }: { value: string; onChange: (v: st
   );
 }
 
-function EditField({ label, value, onChange, keyboardType }: {
-  label: string; value: string; onChange: (v: string) => void; keyboardType?: 'decimal-pad';
+/** Column widths for the "2. Review line items" report table — required columns (marked with a
+ * trailing * in the header) come first; Material Code/Description (optional — a Service PO has
+ * no material master line) sit last. */
+const TABLE_COLUMNS = {
+  row: 30,
+  status: 80,
+  vendorCode: 104,
+  vendorName: 120,
+  quantity: 68,
+  unitPrice: 84,
+  currency: 64,
+  plant: 64,
+  purchaseOrg: 88,
+  deliveryDate: 118,
+  costCenter: 96,
+  glAccount: 96,
+  materialCode: 104,
+  materialDesc: 150,
+  remove: 36,
+} as const;
+
+function TableHeaderCell({ width, children }: { width: number; children: React.ReactNode }) {
+  return (
+    <View style={[styles.tableHeaderCell, { width }]}>
+      <Text style={styles.tableHeaderText}>{children}</Text>
+    </View>
+  );
+}
+
+function TableCellInput({ width, value, onChange, keyboardType }: {
+  width: number; value: string; onChange: (v: string) => void; keyboardType?: 'decimal-pad';
 }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    <View style={[styles.tableCell, { width }]}>
+      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.tableCellInput} />
     </View>
   );
 }
@@ -559,7 +587,7 @@ export default function PurchaseOrderCreation() {
           </View>
           {fetchError && <Text style={styles.rowErrorText}>{fetchError}</Text>}
           <Text style={styles.helperText}>
-            Expected columns: Vendor Code, Vendor Name, Material Code, Material Description, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account.
+            Expected columns: Vendor Code, Vendor Name, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account. Material Code and Material Description are optional — not required for a Service PO.
           </Text>
         </View>
         )}
@@ -580,49 +608,82 @@ export default function PurchaseOrderCreation() {
               </View>
             </View>
 
-            {uploadedRows.map((row) => (
-              <View
-                key={row.key}
-                style={[styles.card, { borderLeftWidth: 3, borderLeftColor: row.status === 'success' ? colors.green : colors.red }]}
-              >
-                <View style={styles.cardHeader}>
-                  <View style={[styles.statusBadge, { backgroundColor: row.status === 'success' ? `${colors.green}14` : `${colors.red}14` }]}>
-                    <Ionicons
-                      name={row.status === 'success' ? 'checkmark-circle' : 'alert-circle'}
-                      size={12}
-                      color={row.status === 'success' ? colors.green : colors.red}
-                    />
-                    <Text style={[styles.statusBadgeText, { color: row.status === 'success' ? colors.green : colors.red }]}>
-                      {row.status === 'success' ? 'Success' : 'Error'}
-                    </Text>
-                  </View>
-                  <View style={styles.flex1} />
-                  <Pressable onPress={() => removeUploadedRow(row.key)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove this row">
-                    <Ionicons name="trash-outline" size={15} color={colors.inkSoft} />
-                  </Pressable>
+            <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+              <View>
+                <View style={styles.tableHeaderRow}>
+                  <TableHeaderCell width={TABLE_COLUMNS.row}>#</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.status}>Status</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.vendorCode}>Vendor Code *</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.vendorName}>Vendor Name</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.quantity}>Qty *</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.unitPrice}>Unit Price *</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.currency}>Currency</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.plant}>Plant</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.purchaseOrg}>Purch. Org</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.deliveryDate}>Delivery Date *</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.glAccount}>GL Account</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.materialCode}>Material Code (opt.)</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.materialDesc}>Material Desc. (opt.)</TableHeaderCell>
+                  <TableHeaderCell width={TABLE_COLUMNS.remove}> </TableHeaderCell>
                 </View>
 
-                {row.errorMessage ? <Text style={styles.rowErrorText}>{row.errorMessage}</Text> : null}
-
-                <View style={styles.fieldGrid}>
-                  <EditField label="Vendor Code" value={row.vendorCode} onChange={(v) => patchUploadedRow(row.key, { vendorCode: v })} />
-                  <EditField label="Vendor Name" value={row.vendorName} onChange={(v) => patchUploadedRow(row.key, { vendorName: v })} />
-                  <EditField label="Material Code" value={row.materialCode} onChange={(v) => patchUploadedRow(row.key, { materialCode: v })} />
-                  <EditField label="Material Description" value={row.materialDesc} onChange={(v) => patchUploadedRow(row.key, { materialDesc: v })} />
-                  <EditField label="Quantity" value={row.quantity} onChange={(v) => patchUploadedRow(row.key, { quantity: v })} keyboardType="decimal-pad" />
-                  <EditField label="Unit Price" value={row.unitPrice} onChange={(v) => patchUploadedRow(row.key, { unitPrice: v })} keyboardType="decimal-pad" />
-                  <EditField label="Currency" value={row.currency} onChange={(v) => patchUploadedRow(row.key, { currency: v })} />
-                  <EditField label="Plant" value={row.plant} onChange={(v) => patchUploadedRow(row.key, { plant: v })} />
-                  <EditField label="Purchase Org" value={row.purchaseOrg} onChange={(v) => patchUploadedRow(row.key, { purchaseOrg: v })} />
-                  <View style={styles.infoField}>
-                    <Text style={styles.infoLabel}>Delivery Date</Text>
-                    <DateField value={row.deliveryDate} onChange={(v) => patchUploadedRow(row.key, { deliveryDate: v })} label="Delivery Date" />
+                {uploadedRows.map((row, index) => (
+                  <View
+                    key={row.key}
+                    style={[
+                      styles.tableRow,
+                      { backgroundColor: row.status === 'success' ? `${colors.green}0A` : `${colors.red}0A` },
+                    ]}
+                  >
+                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.row }]}>
+                      <Text style={styles.rowNumberText}>{index + 1}</Text>
+                    </View>
+                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.status }]}>
+                      <View style={[styles.statusBadge, { backgroundColor: row.status === 'success' ? `${colors.green}14` : `${colors.red}14` }]}>
+                        <Ionicons
+                          name={row.status === 'success' ? 'checkmark-circle' : 'alert-circle'}
+                          size={11}
+                          color={row.status === 'success' ? colors.green : colors.red}
+                        />
+                        <Text style={[styles.statusBadgeText, { color: row.status === 'success' ? colors.green : colors.red }]}>
+                          {row.status === 'success' ? 'OK' : 'Error'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TableCellInput width={TABLE_COLUMNS.vendorCode} value={row.vendorCode} onChange={(v) => patchUploadedRow(row.key, { vendorCode: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.vendorName} value={row.vendorName} onChange={(v) => patchUploadedRow(row.key, { vendorName: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.quantity} value={row.quantity} onChange={(v) => patchUploadedRow(row.key, { quantity: v })} keyboardType="decimal-pad" />
+                    <TableCellInput width={TABLE_COLUMNS.unitPrice} value={row.unitPrice} onChange={(v) => patchUploadedRow(row.key, { unitPrice: v })} keyboardType="decimal-pad" />
+                    <TableCellInput width={TABLE_COLUMNS.currency} value={row.currency} onChange={(v) => patchUploadedRow(row.key, { currency: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.plant} value={row.plant} onChange={(v) => patchUploadedRow(row.key, { plant: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.purchaseOrg} value={row.purchaseOrg} onChange={(v) => patchUploadedRow(row.key, { purchaseOrg: v })} />
+                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.deliveryDate }]}>
+                      <DateField value={row.deliveryDate} onChange={(v) => patchUploadedRow(row.key, { deliveryDate: v })} label="Delivery Date" />
+                    </View>
+                    <TableCellInput width={TABLE_COLUMNS.costCenter} value={row.costCenter} onChange={(v) => patchUploadedRow(row.key, { costCenter: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.glAccount} value={row.glAccount} onChange={(v) => patchUploadedRow(row.key, { glAccount: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.materialCode} value={row.materialCode} onChange={(v) => patchUploadedRow(row.key, { materialCode: v })} />
+                    <TableCellInput width={TABLE_COLUMNS.materialDesc} value={row.materialDesc} onChange={(v) => patchUploadedRow(row.key, { materialDesc: v })} />
+                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.remove }]}>
+                      <Pressable onPress={() => removeUploadedRow(row.key)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove this row">
+                        <Ionicons name="trash-outline" size={15} color={colors.inkSoft} />
+                      </Pressable>
+                    </View>
                   </View>
-                  <EditField label="Cost Center" value={row.costCenter} onChange={(v) => patchUploadedRow(row.key, { costCenter: v })} />
-                  <EditField label="GL Account" value={row.glAccount} onChange={(v) => patchUploadedRow(row.key, { glAccount: v })} />
-                </View>
+                ))}
               </View>
-            ))}
+            </ScrollView>
+
+            {errorCount > 0 && (
+              <View style={styles.tableErrorsList}>
+                {uploadedRows.map((row, index) => (
+                  row.status === 'error'
+                    ? <Text key={row.key} style={styles.rowErrorText}>Row {index + 1}: {row.errorMessage}</Text>
+                    : null
+                ))}
+              </View>
+            )}
 
             <Pressable
               style={[styles.saveBtn, (!canSave || saving) && styles.btnDisabled]}
@@ -938,15 +999,58 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.ink,
   },
-  editInput: {
+  tableScroll: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: radii.lg,
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.appBg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderCell: {
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+  },
+  tableHeaderText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tableCell: {
+    paddingVertical: 5,
+    paddingHorizontal: 5,
+    justifyContent: 'center',
+  },
+  tableCellInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
     paddingVertical: 4,
-    paddingHorizontal: 7,
-    fontSize: 12,
+    paddingHorizontal: 6,
+    fontSize: 11.5,
     color: colors.ink,
     backgroundColor: colors.white,
+  },
+  rowNumberText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    textAlign: 'center',
+  },
+  tableErrorsList: {
+    gap: 3,
+    paddingTop: 2,
   },
   dateBtn: {
     flexDirection: 'row',
