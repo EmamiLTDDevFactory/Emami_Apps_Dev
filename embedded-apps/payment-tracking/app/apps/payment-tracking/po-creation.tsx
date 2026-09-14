@@ -411,24 +411,44 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                   return amt != null ? sum + amt : sum;
                 }, 0);
             const errorRows = rows.filter((r) => r.type === 'E');
+            const first = rows[0];
             return (
-              <View key={ebeln} style={{ gap: 5 }}>
-                <View style={styles.reviewHeader}>
-                  <Text style={styles.groupHeaderText}>
-                    {ebeln === '—' ? `Not created (${rows.length})` : `PO ${ebeln} · ${rows.length} item${rows.length === 1 ? '' : 's'}`}
-                  </Text>
-                  {groupTotal != null && <Text style={styles.groupHeaderText}>Total: {formatAmount(groupTotal)}</Text>}
-                </View>
+              <View key={ebeln} style={{ gap: 6 }}>
+                {ebeln === '—' ? (
+                  <Text style={styles.groupHeaderText}>Not created ({rows.length})</Text>
+                ) : (
+                  <View style={styles.poHeaderCard}>
+                    <View style={styles.poHeaderTopRow}>
+                      <Text style={styles.poHeaderTitle}>PO {ebeln}</Text>
+                      {errorRows.length === 0 ? (
+                        <View style={[styles.statusBadge, { backgroundColor: `${colors.green}14` }]}>
+                          <Ionicons name="checkmark-circle" size={11} color={colors.green} />
+                          <Text style={[styles.statusBadgeText, { color: colors.green }]}>All items posted</Text>
+                        </View>
+                      ) : (
+                        <View style={[styles.statusBadge, { backgroundColor: `${colors.red}14` }]}>
+                          <Ionicons name="alert-circle" size={11} color={colors.red} />
+                          <Text style={[styles.statusBadgeText, { color: colors.red }]}>{errorRows.length} failed</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.fieldGrid}>
+                      <InfoField label="Vendor" value={stripLeadingZeros(first.lifnr)} />
+                      <InfoField label="Items" value={String(rows.length)} />
+                      <InfoField label="Total Amount" value={groupTotal != null ? formatAmount(groupTotal) : '—'} />
+                    </View>
+                  </View>
+                )}
 
+                <Text style={styles.itemDetailsLabel}>{ebeln === '—' ? 'Line Items' : 'Item Details'}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
                   <View>
                     <View style={styles.tableHeaderRow}>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.row}>Row</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendor}>Vendor</TableHeaderCell>
+                      {ebeln === '—' && <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendor}>Vendor</TableHeaderCell>}
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.description}>Description</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.qty}>Qty</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount}>Amount</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.po}>PO</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.item}>Item</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.glAccount}>GL Account</TableHeaderCell>
@@ -441,11 +461,10 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                         style={[styles.tableRow, { backgroundColor: row.type === 'E' ? `${colors.red}0A` : `${colors.green}0A` }]}
                       >
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.row}>{row.rowno}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
+                        {ebeln === '—' && <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>}
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.description}>{row.txz01 || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.po}>{row.ebeln || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.item}>{formatEbelp(row.ebelp)}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.costCenter}>{stripLeadingZeros(row.kostl) || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.glAccount}>{stripLeadingZeros(row.sakto) || '—'}</ResultCell>
@@ -944,6 +963,35 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
+  },
+  poHeaderCard: {
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.rust,
+    padding: 10,
+    gap: 6,
+  },
+  poHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  poHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  itemDetailsLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 2,
   },
   templateLinkRow: {
     flexDirection: 'row',
