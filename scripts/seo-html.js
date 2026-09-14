@@ -10,6 +10,13 @@ const SEO_DESCRIPTION =
 
 function buildSeoHeadTags() {
   return `
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512x512.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <meta name="description" content="${SEO_DESCRIPTION}">
     <link rel="canonical" href="${SITE_URL}/">
     <meta property="og:title" content="${SEO_TITLE}">
@@ -36,9 +43,13 @@ function buildSeoHeadTags() {
 function injectSeoTags(html) {
   if (html.includes('name="description"')) return html;
 
-  const withTitle = html.includes('<title>')
-    ? html.replace(/<title>[^<]*<\/title>/, `<title>${SEO_TITLE}</title>`)
-    : html.replace('</head>', `  <title>${SEO_TITLE}</title>\n  </head>`);
+  // Expo's own web build injects a single generic <link rel="icon" ...> —
+  // strip it so it doesn't fight with the sized set below in the browser tab.
+  const withoutDefaultIcon = html.replace(/\s*<link rel="(?:shortcut icon|icon)"[^>]*>\n?/gi, '');
+
+  const withTitle = withoutDefaultIcon.includes('<title>')
+    ? withoutDefaultIcon.replace(/<title>[^<]*<\/title>/, `<title>${SEO_TITLE}</title>`)
+    : withoutDefaultIcon.replace('</head>', `  <title>${SEO_TITLE}</title>\n  </head>`);
 
   return withTitle.replace('</head>', `${buildSeoHeadTags()}  </head>`);
 }
