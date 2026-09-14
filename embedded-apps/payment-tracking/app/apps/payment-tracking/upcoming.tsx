@@ -82,7 +82,6 @@ function DateField({
 
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error — raw DOM element, valid under react-native-web
       <input
         type="date"
         value={value}
@@ -148,19 +147,19 @@ function EditableField({
 }) {
   return (
     <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label} *</Text>
+      <Text style={styles.infoLabel}>{label}</Text>
       <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
     </View>
   );
 }
 
 /** Attach Invoice (PDF) — restricted to `application/pdf` at the picker level (native picker and
- * web's underlying `<input accept>` both honor it), mandatory whenever the invoice fields
- * themselves are (see rowMandatoryError). */
+ * web's underlying `<input accept>` both honor it). Optional, per instruction — no longer gates
+ * "Send for Invoice Approval" (see rowMandatoryError). */
 function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
   return (
     <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>Attach Invoice (PDF) *</Text>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
       <Pressable style={styles.attachBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
         <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={15} color={colors.rust} />
         <Text style={styles.attachBtnText} numberOfLines={1}>
@@ -282,15 +281,14 @@ export default function UpcomingProvision() {
     setModalKey(null);
   };
 
-  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are the mandatory ones; Delivery
-  // Confirmed = No -> those are hidden entirely (see the fieldGrid render below) and instead the
-  // Revised Delivery Date + Comments popup (already mandatory via confirmModal) is what's required.
+  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are optional (per instruction, no
+  // longer required to send for invoice approval — only validated if something was actually typed
+  // in, so a stray non-numeric Invoice Amount still gets caught). Delivery Confirmed = No -> those
+  // are hidden entirely (see the fieldGrid render below) and instead the Revised Delivery Date +
+  // Comments popup (already mandatory via confirmModal) is what's required.
   function rowMandatoryError(state: RowState): string | null {
     if (state.delvConf) {
-      if (!state.invoiceNo.trim()) return 'Invoice Number is required.';
-      if (!state.invoiceDate) return 'Invoice Date is required.';
-      if (!state.invoiceAmount.trim() || Number.isNaN(Number(state.invoiceAmount))) return 'A valid Invoice Amount is required.';
-      if (!state.attachmentBase64) return 'An invoice attachment (PDF) is required.';
+      if (state.invoiceAmount.trim() && Number.isNaN(Number(state.invoiceAmount))) return 'Invoice Amount must be a valid number.';
     } else {
       if (!state.revisedDelDate) return 'Revised Delivery Date is required when delivery is not confirmed.';
       if (!state.comments.trim()) return 'Comments are required when delivery is not confirmed.';
@@ -482,7 +480,7 @@ export default function UpcomingProvision() {
                           onChange={(v) => patchRow(row.key, { invoiceNo: v })}
                         />
                         <View style={styles.infoField}>
-                          <Text style={styles.infoLabel}>Invoice Date *</Text>
+                          <Text style={styles.infoLabel}>Invoice Date</Text>
                           <DateField
                             value={state.invoiceDate}
                             onChange={(v) => patchRow(row.key, { invoiceDate: v })}

@@ -24,7 +24,8 @@ type Href =
   | '/apps/payment-tracking/provision-details'
   | '/apps/payment-tracking/calendar'
   | '/apps/payment-tracking/pending-approval'
-  | '/apps/payment-tracking/admin-upcoming';
+  | '/apps/payment-tracking/admin-upcoming'
+  | '/apps/payment-tracking/po-creation';
 type NavItem = SidePaneItem & { href: Href };
 
 // Matches the hub's own useIsWideScreen breakpoint and Market Rate's own copy of this constant —
@@ -32,18 +33,17 @@ type NavItem = SidePaneItem & { href: Href };
 const WIDE_BREAKPOINT = 768;
 
 // Home ('/') used to be the one tab every role shared — the command-center landing page. Per
-// instruction, Users no longer need it (see index.tsx's redirect to Upcoming Provision for that
-// role) — only Admin still gets it, alongside the cross-org Dashboard/Provision Details/Calendar
-// set; Users get their own Upcoming/Missed items, never both.
-const HOME_NAV_ITEM: NavItem = { href: '/apps/payment-tracking/', label: 'Home', icon: 'home-outline' };
+// instruction, neither role needs it any more (Users already got their own redirect to Upcoming
+// Provision; Admin now bounces straight to Dashboard instead — see index.tsx) — Home is dropped
+// from both nav lists entirely.
 const ADMIN_NAV_ITEMS: NavItem[] = [
-  HOME_NAV_ITEM,
   { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
   { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
   { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
+  { href: '/apps/payment-tracking/po-creation', label: 'Purchase Order Creation and Details', icon: 'construct-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
@@ -189,6 +189,7 @@ function LayoutContent() {
               <Stack.Screen name="calendar" />
               <Stack.Screen name="pending-approval" />
               <Stack.Screen name="admin-upcoming" />
+              <Stack.Screen name="po-creation" />
             </Stack>
           </SafeAreaView>
         </View>

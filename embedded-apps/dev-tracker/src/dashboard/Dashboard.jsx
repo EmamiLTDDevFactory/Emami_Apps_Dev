@@ -3,8 +3,8 @@ import AccountBar from '../shared/AccountBar.jsx';
 import ItemPanel from './ItemPanel.jsx';
 import { apiList, apiMasterData, apiAiCommand, apiUpdate, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
-import { statusProgress, currentStageInfo, revisedTarget, isOverdue, fmtDate } from '../shared/utils.js';
-import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, STAGE_PIPELINE } from '../shared/constants.js';
+import { statusProgress, currentStageInfo, revisedTarget, isOverdue, fmtDate, riskLevel, daysSinceUpdate, daysBetween, todayStr } from '../shared/utils.js';
+import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, STAGE_PIPELINE, RISK_META } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 
 const AREA_FALLBACK = { color: 'var(--mod-fallback)', softColor: 'var(--mod-fallback-soft)' };
@@ -103,7 +103,10 @@ export default function Dashboard() {
     const done = scopedRows.filter((i) => i.status === 'Completed').length;
     const active = scopedRows.filter((i) => !['Completed', 'Cancelled'].includes(i.status)).length;
     const overdue = scopedRows.filter(isOverdue).length;
-    return { total, done, active, overdue };
+    const critical = scopedRows.filter((i) => riskLevel(i) === 'critical').length;
+    const stalled = scopedRows.filter((i) => riskLevel(i) === 'stalled').length;
+    const atRisk = scopedRows.filter((i) => riskLevel(i) === 'atRisk').length;
+    return { total, done, active, overdue, critical, stalled, atRisk };
   }, [scopedRows]);
 
   const areaCounts = useMemo(() => {
@@ -111,6 +114,28 @@ export default function Dashboard() {
     for (const it of items) counts[it.area] = (counts[it.area] || 0) + 1;
     return counts;
   }, [items]);
+
+  // Escalation strip — the riskiest items across the current module scope, worst first
+  // (critical > stalled > atRisk), independent of the board's own status/priority/search
+  // filters below so a narrowed board view never hides something that needs attention.
+  const SEVERITY_RANK = { critical: 0, stalled: 1, atRisk: 2 };
+  const escalations = useMemo(() => {
+    return scopedRows
+      .map((it) => ({ item: it, level: riskLevel(it) }))
+      .filter((e) => e.level in SEVERITY_RANK)
+      .sort((a, b) => {
+        if (SEVERITY_RANK[a.level] !== SEVERITY_RANK[b.level]) return SEVERITY_RANK[a.level] - SEVERITY_RANK[b.level];
+        // Within a severity, worst-first: most days overdue, most days stalled, or fewest days left for atRisk.
+        const severityDays = (e) => {
+          const rt = revisedTarget(e.item);
+          if (e.level === 'critical') return rt ? daysBetween(rt, todayStr()) : 0;
+          if (e.level === 'atRisk') return rt ? -daysBetween(todayStr(), rt) : 0;
+          return daysSinceUpdate(e.item) ?? 0;
+        };
+        return severityDays(b) - severityDays(a);
+      })
+      .slice(0, 8);
+  }, [scopedRows]);
 
   const columns = useMemo(() => KANBAN_COLUMNS.map((col) => ({
     ...col,
@@ -257,7 +282,7 @@ export default function Dashboard() {
             Home
           </a>
           <div className="eyebrow">SAP Change &amp; Development Log</div>
-          <h1 className="h1">Development Tracker</h1>
+          <h1 className="h1">Delivery Command Centre</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn btn-ghost" onClick={exportCsv}>
@@ -286,7 +311,11 @@ export default function Dashboard() {
           <span className="stat-sep" />
           <span className="stat-pill"><b style={{ color: 'var(--st-green)' }}>{stats.done}</b>&nbsp;done</span>
           <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-red)' }}>{stats.overdue}</b>&nbsp;overdue</span>
+          <span className="stat-pill"><b style={{ color: 'var(--st-red)' }}>{stats.critical}</b>&nbsp;critical</span>
+          <span className="stat-sep" />
+          <span className="stat-pill"><b style={{ color: 'var(--st-amber)' }}>{stats.stalled}</b>&nbsp;stalled</span>
+          <span className="stat-sep" />
+          <span className="stat-pill"><b style={{ color: 'var(--st-indigo)' }}>{stats.atRisk}</b>&nbsp;due soon</span>
         </div>
       </div>
       {commandResponse && (
@@ -302,6 +331,50 @@ export default function Dashboard() {
           <button onClick={() => setModuleArea('')}>Clear view</button>
         </div>
       )}
+
+      <div className="escalation-panel">
+        <div className="escalation-head">
+          <span className="escalation-title">Escalations</span>
+          <span className="escalation-sub">
+            {escalations.length
+              ? `${stats.critical} critical · ${stats.stalled} stalled · ${stats.atRisk} due soon`
+              : 'Nothing needs attention right now'}
+          </span>
+        </div>
+        {escalations.length > 0 && (
+          <div className="escalation-strip">
+            {escalations.map(({ item: it, level }) => {
+              const meta = RISK_META[level];
+              const area = areaColors[it.area] || AREA_FALLBACK;
+              const rt = revisedTarget(it);
+              const detail = level === 'critical'
+                ? `${daysBetween(rt, todayStr())}d overdue`
+                : level === 'stalled'
+                  ? `${daysSinceUpdate(it)}d no update`
+                  : rt ? `due ${fmtDate(rt, { withYear: false })}` : 'due soon';
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  className="esc-card"
+                  style={{ borderLeftColor: meta.color }}
+                  onClick={() => setPanel({ mode: 'edit', item: it })}
+                >
+                  <div className="esc-card-top">
+                    <span className="esc-badge" style={{ background: meta.soft, color: meta.color }}>{meta.label}</span>
+                    <span className="badge" style={{ background: area.softColor, color: area.color }}>{it.area || '—'}</span>
+                  </div>
+                  <div className="esc-card-title">{it.devList}</div>
+                  <div className="esc-card-bottom">
+                    <span>{it.status}</span>
+                    <span className="mono" style={{ color: meta.color, fontWeight: 600 }}>{detail}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="toolbar">
         <div className="module-dropdown">
@@ -352,6 +425,8 @@ export default function Dashboard() {
               {col.cards.map((it) => {
                 const progress = statusProgress(it.status);
                 const overdue = isOverdue(it);
+                const lvl = riskLevel(it);
+                const lvlMeta = RISK_META[lvl];
                 const rt = revisedTarget(it);
                 const pri = PRIORITY_STYLE[it.priority] || PRIORITY_STYLE.P3;
                 const area = areaColors[it.area] || AREA_FALLBACK;
@@ -380,7 +455,10 @@ export default function Dashboard() {
                           <span className="badge" style={{ background: area.softColor, color: area.color }}>{it.area || '—'}</span>
                           <span className="priority-pill" style={{ background: pri.bg, color: pri.fg }}>{it.priority || '—'}</span>
                         </div>
-                        <div className="kcard-title">{it.devList}</div>
+                        <div className="kcard-title">
+                          {it.devList}
+                          {lvl !== 'onTrack' && lvl !== 'done' && <span className="risk-dot" style={{ background: lvlMeta.color }} title={lvlMeta.label} />}
+                        </div>
                         <div className="kcard-status">{it.status}</div>
                         <div className="kcard-track"><div className="kcard-fill" style={{ width: `${progress}%`, background: overdue ? 'var(--st-red)' : 'var(--st-blue)' }} /></div>
                         <div className="kcard-bottom">
@@ -389,8 +467,8 @@ export default function Dashboard() {
                           ) : (
                             <div className="avatar-empty">—</div>
                           )}
-                          <span className="mono" style={{ fontSize: 11, color: overdue ? 'var(--st-red)' : 'var(--muted)', fontWeight: overdue ? 700 : 400 }}>
-                            {rt ? fmtDate(rt, { withYear: false }) : '—'}{overdue ? ' · late' : ''}
+                          <span className="mono" style={{ fontSize: 11, color: lvl === 'onTrack' || lvl === 'done' ? 'var(--muted)' : lvlMeta.color, fontWeight: lvl === 'onTrack' || lvl === 'done' ? 400 : 700 }}>
+                            {rt ? fmtDate(rt, { withYear: false }) : '—'}{lvlMeta.shortLabel ? ` · ${lvlMeta.shortLabel}` : ''}
                           </span>
                         </div>
                       </div>

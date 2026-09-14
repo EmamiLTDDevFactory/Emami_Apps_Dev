@@ -96,6 +96,14 @@ CREATE TABLE IF NOT EXISTS timesheet.timesheet_entries (
 CREATE INDEX IF NOT EXISTS idx_entries_timesheet ON timesheet.timesheet_entries(timesheet_id);
 CREATE INDEX IF NOT EXISTS idx_entries_user_date ON timesheet.timesheet_entries(user_id, entry_date);
 
+-- Punch-clock geotagging: location is now captured separately at clock-in and clock-out
+-- (rather than once per day via the old location/location_at pair above, kept in place
+-- so existing rows don't lose data on this upgrade).
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS in_location TEXT;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS in_location_at TIMESTAMPTZ;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS out_location TEXT;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS out_location_at TIMESTAMPTZ;
+
 -- One yearly leave pool per employee, set by their manager (defaults to 24 days, same as any
 -- new hire gets before a manager adjusts it). Remaining balance is always allocated minus
 -- however many timesheet_entries already carry an accrual leave_type (Sick/Casual/Earned -

@@ -6,7 +6,9 @@ frontend:
         # npm install (not ci) so the cached root node_modules/ below actually gets reused —
         # npm ci always wipes and reinstalls from scratch regardless of what's on disk, same
         # reasoning build-embedded-apps.js already documents for the embedded apps' installs.
-        - npm install
+        # --no-audit --no-fund skip the vulnerability/funding lookups npm does by default on
+        # every install — pure informational output, never required for a working build.
+        - npm install --no-audit --no-fund
     build:
       commands:
         - echo "EXPO_PUBLIC_AUTH_API_URL=$EXPO_PUBLIC_AUTH_API_URL" > .env
@@ -33,3 +35,9 @@ frontend:
       # `npm install` at this ONE shared, deduped npm tarball cache instead (see NPM_CACHE_DIR) —
       # same effective packages, a fraction of the size, comfortably under the limit.
       - .npm-cache/**/*
+      # Each embedded app's own build OUTPUT (not its node_modules) — tiny (a few MB to ~10MB
+      # each, ~100MB combined for all 9, nowhere near the 5GB limit). build-embedded-apps.js
+      # skips an app's install+build entirely when nothing under its own directory changed since
+      # this cached dist/ was produced (tracked via a marker file inside it), which is the actual
+      # dominant remaining build-time cost — most deploys only touch 1-2 of these 9 apps.
+      - embedded-apps/*/dist/**/*

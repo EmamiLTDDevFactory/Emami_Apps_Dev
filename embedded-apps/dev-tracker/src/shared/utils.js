@@ -1,4 +1,4 @@
-import { STATUS_PROGRESS_ORDER, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, PRIORITY_RANK } from './constants.js';
+import { STATUS_PROGRESS_ORDER, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, PRIORITY_RANK, AT_RISK_WINDOW_DAYS, STALLED_DAYS } from './constants.js';
 
 // --- Dates -------------------------------------------------------------
 // todayStr() intentionally mirrors the original app.js/home.js behavior: it reads the
@@ -31,6 +31,34 @@ export function daysBetween(a, b) {
   const d1 = new Date(a + 'T00:00:00');
   const d2 = new Date(b + 'T00:00:00');
   return Math.round((d2 - d1) / 86400000);
+}
+
+// Days since the item's row was last written (createdAt on a brand-new item, updatedAt on
+// anything touched since) — a proxy for "nobody has moved this forward lately" that needs no
+// extra history query, since dev_tracker.items already carries both timestamps.
+export function daysSinceUpdate(row) {
+  const stamp = row.updatedAt || row.createdAt;
+  if (!stamp) return null;
+  const then = new Date(stamp).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86400000);
+}
+
+// Command-centre severity for one item: 'done' (Completed/Cancelled, never escalated),
+// 'critical' (past its revised target date), 'stalled' (active but untouched for
+// STALLED_DAYS+), 'atRisk' (revised target lands within AT_RISK_WINDOW_DAYS), else 'onTrack'.
+// Checked in that order so a genuinely overdue item is never downgraded to merely "stalled".
+export function riskLevel(row) {
+  if (['Completed', 'Cancelled'].includes(row.status)) return 'done';
+  if (isOverdue(row)) return 'critical';
+  const stale = daysSinceUpdate(row);
+  if (stale != null && stale >= STALLED_DAYS) return 'stalled';
+  const rt = revisedTarget(row);
+  if (rt) {
+    const diff = daysBetween(todayStr(), rt);
+    if (diff >= 0 && diff <= AT_RISK_WINDOW_DAYS) return 'atRisk';
+  }
+  return 'onTrack';
 }
 
 export function fmtDate(dateStr, { withYear = true } = {}) {
