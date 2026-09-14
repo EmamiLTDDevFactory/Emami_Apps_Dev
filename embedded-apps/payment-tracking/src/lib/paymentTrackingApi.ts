@@ -849,7 +849,7 @@ export interface PoUploadResultRow {
   poId: number; // PoId — this row's group id within the upload, not a PO number
   txz01: string; // Txz01 — line text
   menge: string; // Menge — quantity, STRING
-  grPrice: string; // GrPrice — price, STRING
+  grPrice: string; // wire field is "Grprice" (not "GrPrice" as originally specified) — price, STRING
   werks: string; // Werks — plant
   sakto: string; // Sakto — GL account, zero-padded
   kostl: string; // Kostl — cost center, zero-padded
@@ -930,7 +930,11 @@ function toPoUploadRow(raw: Record<string, any>): PoUploadResultRow {
     poId: Number(raw.PoId ?? 0),
     txz01: str(raw.Txz01),
     menge: str(raw.Menge),
-    grPrice: str(raw.GrPrice),
+    // The backend contract as originally specified calls this field "GrPrice", but the live SAP
+    // response actually sends "Grprice" (only the leading G capitalized) — confirmed 2026-09-15
+    // after Amount showed blank while Qty (Menge, which does match) worked fine. JS property
+    // access is case-sensitive, so this must match the real wire field, not the written spec.
+    grPrice: str(raw.Grprice),
     werks: str(raw.Werks),
     sakto: str(raw.Sakto),
     kostl: str(raw.Kostl),
