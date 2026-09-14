@@ -446,6 +446,7 @@ export default function CAPAManagement() {
             totalCapa: updatedCAPA.length,
             capaSubm: updatedCAPA.length - openAfterClose,
             capaOpen: openAfterClose,
+            email: currentUser?.email ?? "",
         });
 
     };
@@ -562,7 +563,10 @@ export default function CAPAManagement() {
                 totalCapa: freshCapas.length,
                 capaSubm: freshCapas.length - openAfterSubmit,
                 capaOpen: openAfterSubmit,
-                usrId: currentUser?.id ?? "",
+                // SAP's UsrId is capped at 12 chars — send just the depot name
+                // ("Bangalore" not "Bangalore Depot") so it never needs truncating.
+                usrId: currentUser?.depot?.replace(/\s*Depot$/i, "") ?? "",
+                email: currentUser?.email ?? "",
             });
 
         } catch (error) {
@@ -765,6 +769,7 @@ export default function CAPAManagement() {
             totalCapa: updatedCAPA.length,
             capaSubm: updatedCAPA.length - openAfterSendBack,
             capaOpen: openAfterSendBack,
+            email: currentUser?.email ?? "",
         });
 
         alert(
