@@ -154,25 +154,12 @@ export async function fetchUsers(): Promise<PoUser[]> {
   }
 }
 
-/** PDF printform for a PO — tries the media $value stream first (binary), falls back to a
- * filtered JSON GET reading an inline base64 Value field, matching the source app's own two-step
- * resilience (its own comments note PrintformSet's GET_ENTITYSET returns 501, so the JSON fallback
- * is filtered by Ebeln rather than a plain list read). Returns a Blob ready for
- * URL.createObjectURL, or null if neither path produced a file. */
+/** PDF printform for a PO — per instruction, calls only PrintformSet's own filtered JSON GET
+ * (reading an inline base64 Value field), never the media $value stream: PrintformSet's
+ * GET_ENTITYSET is not implemented (501) for a plain list read, but a $filter'd GET against the
+ * entity set itself works and is the only call this makes. Returns a Blob ready for
+ * URL.createObjectURL, or null if no matching row/Value was found. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
-  const key = `PrintformSet('${escapeODataString(poNumber)}')`;
-  try {
-    const res = await sapClient.get(`/${key}/$value`, {
-      responseType: 'arraybuffer',
-      headers: { Accept: 'application/pdf' },
-    });
-    if (res.status === 200 && res.data) {
-      return new Blob([res.data], { type: 'application/pdf' });
-    }
-  } catch {
-    // fall through to the JSON fallback below
-  }
-
   try {
     const { data } = await sapClient.get('/PrintformSet', {
       params: { '$format': 'json', '$filter': `Ebeln eq '${escapeODataString(poNumber)}'` },
