@@ -261,9 +261,9 @@ export default function HomePage() {
     try {
       const blob = await fetchPrintformPdf(row.ebeln);
       if (!blob) {
-        // Distinct from the catch block below: this is PrintformSet legitimately returning no
-        // row for this PO (confirmed live, 2026-09-15 — the filtered GET responds 200 with an
-        // empty result set), not a network/gateway failure, so retry-wording would be misleading.
+        // Distinct from the catch block below: fetchPrintformPdf only returns null for a 404 on
+        // the keyed entity read — SAP genuinely has no printform for this PO — not for a real
+        // gateway/backend error, so retry-wording would be misleading here.
         setBanner({ type: 'error', message: 'No printform is available for this PO yet.' });
         return;
       }
