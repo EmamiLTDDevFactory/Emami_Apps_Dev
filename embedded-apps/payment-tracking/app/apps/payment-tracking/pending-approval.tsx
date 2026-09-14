@@ -40,6 +40,9 @@ interface RowState {
   attachmentBase64: string;
   attachmentMimeType: string;
   attaching: boolean;
+  /** In flight for the standalone "Save" button (Zaction 'S') — separate from `deciding`, since
+   * saving the edited invoice fields never decides the row (see saveInvoiceRow below). */
+  savingInvoice: boolean;
 }
 
 function initialRowState(row: VendorPOFollowupRow): RowState {
@@ -55,6 +58,7 @@ function initialRowState(row: VendorPOFollowupRow): RowState {
     attachmentBase64: row.attachmentBase64,
     attachmentMimeType: row.mimetype,
     attaching: false,
+    savingInvoice: false,
   };
 }
 
@@ -469,6 +473,20 @@ export default function PendingApproval() {
     }
   };
 
+  // Standalone Save — Zaction 'S' on the same ZProvHeaderSet POST, per instruction, so Admin can
+  // persist an edited invoice field/attachment without also deciding the row (unlike decideRow,
+  // this never touches `decided`, so Approve stays available afterward).
+  const saveInvoiceRow = async (row: VendorPOFollowupRow) => {
+    patchRow(row.key, { savingInvoice: true, error: null });
+    try {
+      await submitApprovalDecision([row], email || '', 'S', { [row.key]: overridesFor(row.key) });
+      patchRow(row.key, { savingInvoice: false });
+      setBanner({ type: 'success', message: `Invoice details saved for PO ${row.poNumber} / Item ${row.poItemNo}.` });
+    } catch (e) {
+      patchRow(row.key, { savingInvoice: false, error: e instanceof Error ? e.message : 'Could not save the invoice details.' });
+    }
+  };
+
   // The attachment (if any) comes back inline on the row itself — Filename/Mimetype/Value on the
   // same GET as every other field (see paymentTrackingApi.ts) — so opening it is just decoding the
   // base64 already in hand, no extra request. Opens in-app (AttachmentPreviewModal) rather than a
@@ -814,10 +832,24 @@ export default function PendingApproval() {
 
                   {!state.decided && (
                     <View style={styles.rowActions}>
+                      {row.zaction !== 'RD' && (
+                        <Pressable
+                          style={[styles.saveInvoiceBtn, (busy || state.savingInvoice) && styles.btnDisabled]}
+                          onPress={() => saveInvoiceRow(row)}
+                          disabled={busy || state.savingInvoice}
+                          accessibilityRole="button"
+                        >
+                          {state.savingInvoice ? (
+                            <ActivityIndicator size="small" color={colors.rust} />
+                          ) : (
+                            <Text style={styles.saveInvoiceBtnText}>Save Invoice Details</Text>
+                          )}
+                        </Pressable>
+                      )}
                       <Pressable
-                        style={[styles.approveBtn, styles.approveBtnFull, busy && styles.btnDisabled]}
+                        style={[styles.approveBtn, styles.approveBtnFull, (busy || state.savingInvoice) && styles.btnDisabled]}
                         onPress={() => decideRow(row, 'A')}
-                        disabled={busy}
+                        disabled={busy || state.savingInvoice}
                         accessibilityRole="button"
                       >
                         {state.deciding === 'A' ? (
@@ -1225,6 +1257,20 @@ const styles = StyleSheet.create({
   },
   approveBtnText: {
     color: colors.white,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  saveInvoiceBtn: {
+    borderWidth: 1,
+    borderColor: colors.rust,
+    borderRadius: radii.md,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveInvoiceBtnText: {
+    color: colors.rust,
     fontSize: 11.5,
     fontWeight: '700',
   },

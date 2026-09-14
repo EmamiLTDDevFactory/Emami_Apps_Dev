@@ -35,6 +35,9 @@ interface RowState {
   attachmentBase64: string;
   attachmentMimeType: string;
   attaching: boolean;
+  /** Transient confirmation after a standalone Save (Zaction 'S') — cleared the next time any
+   * action runs on this row, so it never lingers stale next to a later Reverse SES/Mail for P2P. */
+  savedNotice: boolean;
 }
 
 function initialRowState(row: ProvisionLogRow): RowState {
@@ -49,6 +52,7 @@ function initialRowState(row: ProvisionLogRow): RowState {
     attachmentBase64: row.attachmentBase64,
     attachmentMimeType: row.mimetype,
     attaching: false,
+    savedNotice: false,
   };
 }
 
@@ -357,7 +361,7 @@ export default function PaymentTrackingHistory() {
   const [doneActions, setDoneActions] = useState<Record<string, LogAction>>({});
   const runLogAction = async (row: ProvisionLogRow, action: LogAction) => {
     const state = rowState[row.key];
-    patchRow(row.key, { acting: action, actionError: null });
+    patchRow(row.key, { acting: action, actionError: null, savedNotice: false });
     try {
       await submitLogAction(row, email || '', action, {
         invoiceNo: state?.invoiceNo,
@@ -371,6 +375,27 @@ export default function PaymentTrackingHistory() {
       setDoneActions((prev) => ({ ...prev, [row.key]: action }));
     } catch (e) {
       patchRow(row.key, { acting: null, actionError: e instanceof Error ? e.message : 'Could not complete this action.' });
+    }
+  };
+
+  // Standalone Save (Zaction 'S') — same POST as Reverse SES/Mail for P2P above, but unlike those
+  // this never marks the row done (setDoneActions), since saving the edited invoice fields doesn't
+  // complete anything — Reverse SES/Mail for P2P stay available afterward.
+  const saveInvoiceRow = async (row: ProvisionLogRow) => {
+    const state = rowState[row.key];
+    patchRow(row.key, { acting: 'S', actionError: null, savedNotice: false });
+    try {
+      await submitLogAction(row, email || '', 'S', {
+        invoiceNo: state?.invoiceNo,
+        invoiceDate: state?.invoiceDate,
+        invoiceAmount: state?.invoiceAmount,
+        attachmentBase64: state?.attachmentBase64,
+        attachmentMimeType: state?.attachmentMimeType,
+        attachmentName: state?.attachmentName,
+      });
+      patchRow(row.key, { acting: null, savedNotice: true });
+    } catch (e) {
+      patchRow(row.key, { acting: null, actionError: e instanceof Error ? e.message : 'Could not save the invoice details.' });
     }
   };
 
@@ -603,6 +628,12 @@ export default function PaymentTrackingHistory() {
 
               {state.actionError && <Text style={styles.rowErrorText}>{state.actionError}</Text>}
               {state.attachmentError && <Text style={styles.rowErrorText}>{state.attachmentError}</Text>}
+              {state.savedNotice && (
+                <View style={styles.savedNoticeRow}>
+                  <Ionicons name="checkmark-circle" size={12} color={colors.green} />
+                  <Text style={styles.savedNoticeText}>Invoice details saved.</Text>
+                </View>
+              )}
 
               {row.zstatus === 'AS' && (
                 doneAction ? (
@@ -612,6 +643,18 @@ export default function PaymentTrackingHistory() {
                   </View>
                 ) : (
                   <View style={styles.rowActions}>
+                    <Pressable
+                      style={[styles.logActionBtn, styles.logActionBtnSave, busy && styles.btnDisabled]}
+                      onPress={() => saveInvoiceRow(row)}
+                      disabled={busy}
+                      accessibilityRole="button"
+                    >
+                      {state.acting === 'S' ? (
+                        <ActivityIndicator size="small" color={colors.rust} />
+                      ) : (
+                        <Text style={styles.logActionBtnSaveText}>{LOG_ACTION_LABELS.S}</Text>
+                      )}
+                    </Pressable>
                     <Pressable
                       style={[styles.logActionBtn, styles.logActionBtnReverse, busy && styles.btnDisabled]}
                       onPress={() => runLogAction(row, 'RS')}
@@ -924,5 +967,24 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 11.5,
     fontWeight: '700',
+  },
+  logActionBtnSave: {
+    borderWidth: 1,
+    borderColor: colors.rust,
+  },
+  logActionBtnSaveText: {
+    color: colors.rust,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  savedNoticeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  savedNoticeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.green,
   },
 });

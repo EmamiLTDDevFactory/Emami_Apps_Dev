@@ -392,7 +392,14 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     Maktx: row.materialDesc,
     Txz01: row.serviceText,
     Name1: row.vendorName,
-    Zaction: row.zaction,
+    // Per instruction: "Send for Invoice Approval" (DelvConf Yes) requests SES approval, so it's
+    // sent as Zaction 'SA' ("Approval for SES" per the ZROLE_ACTION domain — see
+    // PENDING_APPROVAL_ACTION_LABELS below) rather than echoing the row's original Zaction ('U').
+    // "Send for Revised Date Approval" (DelvConf No) is the matching 'RD' bucket ("Approval for
+    // Revised Delivery Date") — not separately called out in this round of instructions, but the
+    // same domain code Pending Approval's own RD tiles already expect, so both branches now write
+    // a real ZROLE_ACTION code instead of the stale 'U'.
+    Zaction: c.delvConf ? 'SA' : 'RD',
     RevisedDelDate: c.delvConf ? null : toODataDate(c.revisedDelDate),
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
@@ -485,13 +492,18 @@ export async function submitProvisionApprovalBatch(
 // ---------------------------------------------------------------------------------------------
 // Admin's Pending Approval decision — same ZProvHeader POST endpoint and same header/deep-insert
 // shape as submitProvisionApproval above ("the same POST method, same way", per instruction), just
-// with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
-// Zaction — that field is already how this entity carries a row's state, so an Admin decision is
-// just a different Zaction value on the same write. Every other field is echoed back from what the
-// GET already returned for that row, same posture as toProvItem above — nothing invented. Null
-// fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at the POST call site,
-// same as toProvItem.
-export type ApprovalDecision = 'A' | 'R';
+// with Zaction overridden instead of echoing the row's original Zaction — that field is already how
+// this entity carries a row's state, so an Admin decision is just a different Zaction value on the
+// same write. Approving a row already in the 'SA' (Approval for SES) bucket writes Zaction 'AS'
+// (SES Created) — the domain's own next-state code — rather than a bare 'A'; every other approval
+// (e.g. an 'RD' Revised Delivery Date row) still writes 'A'/'R' as before, since only the SES case
+// was called out. 'S' is a third decision value — Save, used when Admin just wants the edited
+// invoice fields/attachment persisted without deciding the row at all (see submitApprovalDecision's
+// callers in pending-approval.tsx, which never set `decided` for an 'S' call). Every other field is
+// echoed back from what the GET already returned for that row, same posture as toProvItem above —
+// nothing invented. Null fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at
+// the POST call site, same as toProvItem.
+export type ApprovalDecision = 'A' | 'R' | 'S';
 
 /** Admin-entered overrides for a row's four invoice fields — per instruction, Admin can fill these
  * in on Pending Approval (and on Submission History's Mail for P2P, see InvoiceEditOverrides'
@@ -513,6 +525,10 @@ function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision, ov
   const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
   const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
   const hasAttachment = !!overrides?.attachmentBase64;
+  // Approving (decision 'A') a row already in the 'SA' bucket (Approval for SES) is the point the
+  // SES actually gets created, so it writes 'AS' — every other decision (approving an 'RD' row,
+  // rejecting, or a plain 'S' save) writes the decision value itself unchanged.
+  const zaction = decision === 'A' && row.zaction === 'SA' ? 'AS' : decision;
   return {
     Lifnr: row.lifnr,
     Ebeln: row.poNumber,
@@ -521,7 +537,7 @@ function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision, ov
     Maktx: row.materialDesc,
     Txz01: row.serviceText,
     Name1: row.vendorName,
-    Zaction: decision,
+    Zaction: zaction,
     RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
@@ -566,9 +582,14 @@ export async function submitApprovalDecision(
     }
   } catch (err: any) {
     const sapMessage = err?.response?.data?.error?.message?.value;
-    const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
-    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+    throw new Error(sapMessage || (err instanceof Error ? err.message : approvalFallbackMessage(decision)));
   }
+}
+
+function approvalFallbackMessage(decision: ApprovalDecision): string {
+  if (decision === 'A') return 'Could not approve this item.';
+  if (decision === 'R') return 'Could not reject this item.';
+  return 'Could not save the invoice details.';
 }
 
 /** Mass approve/reject — groups the selected rows by vendor (Lifnr), one ZProvHeader POST per
@@ -593,8 +614,7 @@ export async function submitApprovalDecisionBatch(
     try {
       await submitApprovalDecision(group, email, decision, overridesByKey);
     } catch (err) {
-      const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
-      failures.push({ lifnr, error: err instanceof Error ? err.message : fallback });
+      failures.push({ lifnr, error: err instanceof Error ? err.message : approvalFallbackMessage(decision) });
     }
   }
   return failures;
@@ -726,12 +746,16 @@ export async function fetchProvisionLog(email: string): Promise<ProvisionLogRow[
 // step is either reversing that SES or notifying P2P, not an approve/reject decision (that already
 // happened earlier, which is how the row got to 'AS' in the first place). Same ZProvHeaderSet POST
 // as every other write in this app ("call create entityset with different actions", per
-// instruction), just with Zaction set to 'RS' or 'MS'.
-export type LogAction = 'RS' | 'MS';
+// instruction), just with Zaction set to 'RS' or 'MS'. 'S' is a third action — Save — used when
+// Admin just wants the edited invoice fields/attachment persisted without reversing the SES or
+// mailing P2P (see history.tsx's own Save button, which calls this without ever touching
+// doneActions the way RS/MS do, since a save doesn't complete/hide the row).
+export type LogAction = 'RS' | 'MS' | 'S';
 
 export const LOG_ACTION_LABELS: Record<LogAction, string> = {
   RS: 'Reverse SES',
   MS: 'Mail for P2P',
+  S: 'Save Invoice Details',
 };
 
 function toLogActionItem(row: ProvisionLogRow, action: LogAction, overrides?: InvoiceEditOverrides) {
@@ -793,7 +817,11 @@ export async function submitLogAction(
     }
   } catch (err: any) {
     const sapMessage = err?.response?.data?.error?.message?.value;
-    const fallback = action === 'RS' ? 'Could not reverse this SES.' : 'Could not send mail to P2P.';
+    const fallback = action === 'RS'
+      ? 'Could not reverse this SES.'
+      : action === 'MS'
+        ? 'Could not send mail to P2P.'
+        : 'Could not save the invoice details.';
     throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
   }
 }
