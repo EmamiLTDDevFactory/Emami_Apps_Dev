@@ -290,7 +290,7 @@ export default function HomePage() {
   const allSelected = selectableCount > 0 && filteredPending.filter((r) => r.zpoInd !== 'R').every((r) => selected.has(r.ebeln));
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6">
+    <div className="mx-auto max-w-7xl p-4 sm:p-6">
       {banner && (
         <div
           className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${
@@ -309,7 +309,7 @@ export default function HomePage() {
           <button
             key={tab}
             onClick={() => setMainTab(tab)}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+            className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-sm font-bold transition-colors ${
               mainTab === tab ? 'bg-rust text-white shadow-sm' : 'text-inkSoft hover:text-ink'
             }`}
           >
@@ -396,7 +396,7 @@ export default function HomePage() {
           ) : filteredPending.length === 0 ? (
             <EmptyState message="No pending approvals" />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredPending.map((row) => (
                 <PoCard
                   key={row.ebeln}
@@ -461,7 +461,7 @@ export default function HomePage() {
           ) : filteredHistory.length === 0 ? (
             <EmptyState message={`No ${historyTab} items yet.`} />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredHistory.map((row) => (
                 <PoCard
                   key={row.ebeln}
@@ -512,7 +512,7 @@ export default function HomePage() {
 
 function LoadingRows() {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="h-32 animate-pulse rounded-2xl bg-white/60" />
       ))}

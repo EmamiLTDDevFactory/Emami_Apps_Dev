@@ -43,7 +43,7 @@ export default function PoCard({
 
   return (
     <div className="card group relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-cardHover">
-      <div className="flex items-start gap-3 p-4">
+      <div className="flex items-start gap-2.5 p-3.5">
         {variant === 'pending' && onToggleSelect && (
           <input
             type="checkbox"
@@ -56,10 +56,10 @@ export default function PoCard({
         )}
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <p className="text-[11px] font-semibold text-inkSoft">{formatDateTime(row.erdat, row.uzeit)}</p>
-          <div className="mt-0.5 flex items-center gap-2">
-            <p className="text-lg font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            <p className="min-w-0 truncate text-base font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
             {isHighValue(row.netwr) && (
-              <span className="pill bg-rust/10 text-rust !py-0.5" title={`Above the ₹2,00,000 high-value review threshold`}>
+              <span className="pill shrink-0 whitespace-nowrap bg-rust/10 text-rust !py-0.5" title={`Above the ₹2,00,000 high-value review threshold`}>
                 <Gem size={10} /> High Value
               </span>
             )}
@@ -79,7 +79,7 @@ export default function PoCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-appBg/50 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-appBg/50 px-3.5 py-2">
         <button onClick={onHistory} className="btn-ghost !py-1.5 !px-3 text-xs">
           <History size={13} /> History
         </button>
