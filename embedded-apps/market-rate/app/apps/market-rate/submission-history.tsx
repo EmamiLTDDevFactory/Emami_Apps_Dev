@@ -111,6 +111,91 @@ function matchesQuery(row: MatrixRow, query: string): boolean {
   );
 }
 
+interface VendorMaterialRate {
+  vendorCode: string;
+  vendorName: string;
+  materialCode: string;
+  materialDesc: string;
+  rate: number;
+  ratePer: string;
+  zmonth: string;
+  submittedOn: string;
+}
+
+/** One quote per vendor+material — the LATEST submitted month within the loaded year, since a
+ * vendor can resubmit a fresh rate every month and comparing "current" pricing means each pair's
+ * most recent quote, not its whole history. Rows with no submission, or a rate that doesn't
+ * parse, are skipped — there's nothing to compare for those. */
+function buildLatestVendorMaterialRates(submissions: SubmissionRecord[]): VendorMaterialRate[] {
+  const byKey = new Map<string, VendorMaterialRate>();
+  for (const s of submissions) {
+    if (!s.submitted) continue;
+    const rate = parseFloat(s.rate);
+    if (Number.isNaN(rate)) continue;
+    const key = `${s.vendorCode}|${s.materialCode}`;
+    const existing = byKey.get(key);
+    if (!existing || s.zmonth > existing.zmonth) {
+      byKey.set(key, {
+        vendorCode: s.vendorCode,
+        vendorName: s.vendorName,
+        materialCode: s.materialCode,
+        materialDesc: s.materialDesc,
+        rate,
+        ratePer: s.ratePer,
+        zmonth: s.zmonth,
+        submittedOn: s.submittedOn,
+      });
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+interface MaterialRateGroup {
+  materialCode: string;
+  materialDesc: string;
+  /** Every vendor's latest quote for this material, ascending by rate — quotes[0] is the best price. */
+  quotes: VendorMaterialRate[];
+  lowest: number;
+  highest: number;
+  /** (highest - lowest) / lowest, as a percent — 0 when there's only one vendor quote, since a
+   * single price has nothing to spread against. */
+  spreadPct: number;
+}
+
+/** Groups the latest quotes by material, ranked cheapest-first within each group, and orders
+ * materials with the most competing vendor quotes first — those are the ones a rate comparison
+ * actually helps decide on; a material only one vendor quotes has nothing to compare. */
+function groupRatesByMaterial(rates: VendorMaterialRate[]): MaterialRateGroup[] {
+  const byMaterial = new Map<string, VendorMaterialRate[]>();
+  for (const r of rates) {
+    const list = byMaterial.get(r.materialCode) ?? [];
+    list.push(r);
+    byMaterial.set(r.materialCode, list);
+  }
+  return Array.from(byMaterial.entries())
+    .map(([materialCode, quotes]) => {
+      const sorted = [...quotes].sort((a, b) => a.rate - b.rate);
+      const lowest = sorted[0].rate;
+      const highest = sorted[sorted.length - 1].rate;
+      return {
+        materialCode,
+        materialDesc: sorted[0].materialDesc,
+        quotes: sorted,
+        lowest,
+        highest,
+        spreadPct: lowest > 0 ? ((highest - lowest) / lowest) * 100 : 0,
+      };
+    })
+    .sort((a, b) => b.quotes.length - a.quotes.length || a.materialCode.localeCompare(b.materialCode));
+}
+
+function matchesRateQuery(group: MaterialRateGroup, query: string): boolean {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  if (group.materialCode.toLowerCase().includes(q) || group.materialDesc.toLowerCase().includes(q)) return true;
+  return group.quotes.some((v) => v.vendorCode.toLowerCase().includes(q) || v.vendorName.toLowerCase().includes(q));
+}
+
 /** The matrix only keeps a submitted/not boolean per month (see buildMatrixRows) — this looks the
  * original SubmissionRecord back up from the full year's records already sitting in state, so
  * tapping a green tick can show the Rate without a second API call. */
@@ -345,8 +430,137 @@ function RateDetailModal({
   );
 }
 
+/** Admin-only summary + detail dashboard, inside the Submission History screen's "Vendor Rate
+ * Comparison" tab — for each material, ranks every vendor's latest quote cheapest-first so an
+ * Admin can see at a glance who to buy from. Built entirely off the SubmissionRecord[] the screen
+ * already loaded (see buildLatestVendorMaterialRates/groupRatesByMaterial above), no extra call. */
+function VendorRateComparisonSection({
+  groups,
+  totalGroups,
+  comparedCount,
+  vendorsQuoting,
+  avgSpreadPct,
+  topVendor,
+  query,
+  setQuery,
+  year,
+}: {
+  groups: MaterialRateGroup[];
+  totalGroups: number;
+  comparedCount: number;
+  vendorsQuoting: number;
+  avgSpreadPct: number;
+  topVendor: { vendorCode: string; vendorName: string; wins: number } | null;
+  query: string;
+  setQuery: (v: string) => void;
+  year: string;
+}) {
+  if (totalGroups === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="pricetags-outline" size={22} color={colors.inkSoft} />
+        <Text style={styles.emptyText}>No submitted rates found for {year} to compare.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.kpiGrid}>
+        <KpiCard icon="cube-outline" label="Materials with rates" value={String(totalGroups)} />
+        <KpiCard icon="git-compare-outline" label="Materials with 2+ vendors" value={String(comparedCount)} accent={colors.rust} />
+        <KpiCard icon="people-outline" label="Vendors quoting" value={String(vendorsQuoting)} />
+        <KpiCard icon="trending-down-outline" label="Avg rate spread" value={`${Math.round(avgSpreadPct)}%`} accent={colors.green} />
+        {topVendor && (
+          <KpiCard
+            icon="trophy-outline"
+            label="Most best-price wins"
+            value={`${topVendor.vendorName || topVendor.vendorCode} (${topVendor.wins})`}
+            accent={colors.green}
+          />
+        )}
+      </View>
+
+      <View style={styles.matrixHeaderRow}>
+        <View style={styles.flex1}>
+          <Text style={styles.cardTitle}>Rate comparison by material — {year}</Text>
+          <Text style={styles.cardSubtitle}>
+            {groups.length} material{groups.length === 1 ? '' : 's'}. Each vendor's latest submitted rate this year, cheapest first.
+          </Text>
+        </View>
+        <View style={styles.matrixSearchWrap}>
+          <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search vendor or material"
+            placeholderTextColor={colors.inkSoft}
+            style={styles.matrixSearchInput}
+            accessibilityLabel="Search vendor or material"
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      {groups.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Ionicons name="search-outline" size={22} color={colors.inkSoft} />
+          <Text style={styles.emptyText}>No materials match this search.</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {groups.map((group) => (
+            <View key={group.materialCode} style={styles.card}>
+              <View style={styles.matrixHeaderRow}>
+                <View style={styles.flex1}>
+                  <Text style={styles.cardTitle}>{group.materialDesc || group.materialCode}</Text>
+                  <Text style={styles.cardSubtitle}>
+                    {group.materialCode} · {group.quotes.length} vendor{group.quotes.length === 1 ? '' : 's'} quoting
+                  </Text>
+                </View>
+                {group.quotes.length > 1 && (
+                  <View style={styles.spreadBadge}>
+                    <Ionicons name="trending-down-outline" size={12} color={colors.rust} />
+                    <Text style={styles.spreadBadgeText}>{Math.round(group.spreadPct)}% spread</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={{ gap: 4 }}>
+                {group.quotes.map((q, i) => (
+                  <View
+                    key={`${group.materialCode}-${q.vendorCode}`}
+                    style={[styles.quoteRow, i === 0 && group.quotes.length > 1 && styles.quoteRowBest]}
+                  >
+                    <View style={styles.quoteRankBadge}>
+                      <Text style={styles.quoteRankText}>{i + 1}</Text>
+                    </View>
+                    <View style={styles.flex1}>
+                      <Text style={styles.quoteVendorText} numberOfLines={1}>{q.vendorName || q.vendorCode}</Text>
+                      <Text style={styles.quoteVendorCodeText}>{q.vendorCode}</Text>
+                    </View>
+                    <Text style={[styles.quoteRateText, i === 0 && group.quotes.length > 1 && styles.quoteRateTextBest]}>
+                      {q.rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {q.ratePer ? ` / ${q.ratePer}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+}
+
 export default function SubmissionHistoryScreen() {
   const { email, role, roleLoading } = useMarketRateAuth();
+  const [activeView, setActiveView] = useState<'compliance' | 'rates'>('compliance');
   const [year, setYear] = useState(String(CURRENT_YEAR));
   const [month, setMonth] = useState(CURRENT_MONTH_VALUE);
   const [status, setStatus] = useState<'all' | 'submitted' | 'pending'>('all');
@@ -417,6 +631,29 @@ export default function SubmissionHistoryScreen() {
   const ytdAvgCompliancePct =
     trendData.slice(0, monthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / Math.max(1, monthIdx + 1);
 
+  // Vendor Rate Comparison — independent of the Month/Status filters above (those are compliance-
+  // specific); only Year and the shared search box apply. Built straight off the same `submissions`
+  // already in state, no second API call.
+  const latestRates = useMemo(() => buildLatestVendorMaterialRates(submissions), [submissions]);
+  const rateGroups = useMemo(() => groupRatesByMaterial(latestRates), [latestRates]);
+  const filteredRateGroups = useMemo(() => rateGroups.filter((g) => matchesRateQuery(g, query)), [rateGroups, query]);
+  const comparedMaterials = useMemo(() => rateGroups.filter((g) => g.quotes.length >= 2), [rateGroups]);
+  const vendorsQuoting = useMemo(() => new Set(latestRates.map((r) => r.vendorCode)).size, [latestRates]);
+  const avgSpreadPct = comparedMaterials.length
+    ? comparedMaterials.reduce((sum, g) => sum + g.spreadPct, 0) / comparedMaterials.length
+    : 0;
+  const topVendor = useMemo(() => {
+    const wins = new Map<string, { vendorName: string; wins: number }>();
+    comparedMaterials.forEach((g) => {
+      const winner = g.quotes[0];
+      const cur = wins.get(winner.vendorCode) ?? { vendorName: winner.vendorName, wins: 0 };
+      cur.wins += 1;
+      wins.set(winner.vendorCode, cur);
+    });
+    const sorted = Array.from(wins.entries()).sort((a, b) => b[1].wins - a[1].wins);
+    return sorted[0] ? { vendorCode: sorted[0][0], ...sorted[0][1] } : null;
+  }, [comparedMaterials]);
+
   if (roleLoading) {
     return (
       <View style={styles.centerWrap}>
@@ -448,10 +685,30 @@ export default function SubmissionHistoryScreen() {
         </View>
       </View>
 
+      <View style={styles.tabRow}>
+        {([
+          { key: 'compliance', label: 'Compliance' },
+          { key: 'rates', label: 'Vendor Rate Comparison' },
+        ] as const).map((tab) => (
+          <Pressable
+            key={tab.key}
+            style={[styles.tabBtn, activeView === tab.key && styles.tabBtnActive]}
+            onPress={() => { setActiveView(tab.key); setQuery(''); }}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabBtnText, activeView === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       <View style={styles.filterBar}>
         <FilterSelect label="Year" value={year} onChange={setYear} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} />
-        <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
-        <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
+        {activeView === 'compliance' && (
+          <>
+            <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
+            <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
+          </>
+        )}
       </View>
 
       {loading ? (
@@ -464,6 +721,18 @@ export default function SubmissionHistoryScreen() {
           <Ionicons name="alert-circle" size={16} color={colors.red} />
           <Text style={[styles.statusText, { color: colors.red }]}>{error}</Text>
         </View>
+      ) : activeView === 'rates' ? (
+        <VendorRateComparisonSection
+          groups={filteredRateGroups}
+          totalGroups={rateGroups.length}
+          comparedCount={comparedMaterials.length}
+          vendorsQuoting={vendorsQuoting}
+          avgSpreadPct={avgSpreadPct}
+          topVendor={topVendor}
+          query={query}
+          setQuery={setQuery}
+          year={year}
+        />
       ) : totalExpected === 0 ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="file-tray-outline" size={22} color={colors.inkSoft} />
@@ -655,6 +924,90 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 1,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: colors.white,
+    borderRadius: radii.pill,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  tabBtn: {
+    borderRadius: radii.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  tabBtnActive: {
+    backgroundColor: colors.rust,
+  },
+  tabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.inkSoft,
+  },
+  tabBtnTextActive: {
+    color: colors.white,
+  },
+  spreadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: `${colors.rust}14`,
+  },
+  spreadBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.rust,
+  },
+  quoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: radii.md,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: colors.appBg,
+  },
+  quoteRowBest: {
+    backgroundColor: `${colors.green}12`,
+  },
+  quoteRankBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: radii.pill,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quoteRankText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: colors.inkSoft,
+  },
+  quoteVendorText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  quoteVendorCodeText: {
+    fontSize: 10.5,
+    color: colors.inkSoft,
+    marginTop: 1,
+  },
+  quoteRateText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  quoteRateTextBest: {
+    color: colors.green,
   },
   filterBar: {
     flexDirection: 'row',
