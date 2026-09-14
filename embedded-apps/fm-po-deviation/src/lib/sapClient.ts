@@ -8,6 +8,7 @@
 // SAP directly, same as every other screen in this app.
 import axios from 'axios';
 import type { PoAction, PoRow, PoUser } from '../types/po';
+import type { PoUploadResult, PoUploadResultRow } from '../types/poUpload';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFMPODEVIATION_SRV';
 
@@ -152,6 +153,108 @@ export async function fetchUsers(): Promise<PoUser[]> {
   } catch {
     return [];
   }
+}
+
+/** Distinguishes the three upload failure modes the Upload screen must show differently: a
+ * timed-out request (never retry automatically — the backend may have already created POs), a
+ * network failure (safe to retry), and a real SAP/Gateway error body (safe to retry). */
+export class PoUploadError extends Error {
+  kind: 'timeout' | 'network' | 'sap';
+  constructor(kind: PoUploadError['kind'], message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+const SERVICE_PO_UPLOAD_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** SAP RAW16/CHAR32 wants 32 uppercase hex characters, no dashes. crypto.randomUUID() returns
+ * dashed lowercase, so strip and uppercase it. Called fresh inside uploadServicePoFile for every
+ * attempt, including a manual retry, since Guid is the backend's dedup key for one upload. */
+function generatePoUploadGuid(): string {
+  return crypto.randomUUID().replace(/-/g, '').toUpperCase();
+}
+
+function toPoUploadRow(raw: Record<string, any>): PoUploadResultRow {
+  return {
+    rowno: Number(raw.Rowno ?? 0),
+    lifnr: str(raw.Lifnr),
+    bukrs: str(raw.Bukrs),
+    poId: Number(raw.PoId ?? 0),
+    txz01: str(raw.Txz01),
+    menge: str(raw.Menge),
+    grPrice: str(raw.GrPrice),
+    werks: str(raw.Werks),
+    sakto: str(raw.Sakto),
+    kostl: str(raw.Kostl),
+    ebeln: str(raw.Ebeln),
+    ebelp: str(raw.Ebelp),
+    type: (str(raw.Type) as PoUploadResultRow['type']) || 'E',
+    message: str(raw.Message),
+  };
+}
+
+/** Bulk Service-PO upload — a single POST to the deep entity ZSrvPOUploadSet; there is no
+ * separate GET, the POST response itself carries the full per-row result (see PoUploadResult).
+ *
+ * Assumes ZSrvPOUploadSet lives on this same ZFMPODEVIATION_SRV service — the backend contract
+ * for this feature only names the entity set, not a service host, and this is the only SAP
+ * service this app talks to. Confirm with SAP Basis; if it's actually a different service, only
+ * SAP_BASE_URL above needs to change for this call.
+ *
+ * Timeout is 120s: the backend calls BAPI_PO_CREATE1 once per PO group and can legitimately take
+ * a minute on a large file. Never retry automatically on a timeout — the backend may have already
+ * created POs, and a second attempt would create duplicates (see PoUploadError). */
+export async function uploadServicePoFile(
+  email: string,
+  filename: string,
+  base64: string,
+  onProgress?: (pct: number) => void,
+): Promise<PoUploadResult> {
+  const payload = {
+    Guid: generatePoUploadGuid(),
+    Email: email,
+    Filename: filename,
+    Mimetype: SERVICE_PO_UPLOAD_MIMETYPE,
+    Value: base64,
+    ToUploadItems: [],
+  };
+
+  let data: any;
+  try {
+    const res = await sapClient.post('/ZSrvPOUploadSet', payload, {
+      params: { '$format': 'json' },
+      timeout: 120000,
+      onUploadProgress: (evt) => {
+        if (onProgress && evt.total) onProgress(Math.round((evt.loaded / evt.total) * 100));
+      },
+    });
+    data = res.data;
+  } catch (err: any) {
+    if (err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message ?? '')) {
+      throw new PoUploadError(
+        'timeout',
+        'The upload is taking longer than expected. Check whether the POs were created before retrying.'
+      );
+    }
+    if (!err?.response) {
+      throw new PoUploadError('network', 'Network error — could not reach the server. Check your connection and try again.');
+    }
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new PoUploadError('sap', sapMessage || (err instanceof Error ? err.message : 'Upload failed.'));
+  }
+
+  const body = data?.d;
+  const results = body?.ToUploadItems?.results;
+  return {
+    guid: str(body?.Guid),
+    status: (str(body?.Status) as PoUploadResult['status']) || 'E',
+    message: str(body?.Message),
+    totalRows: Number(body?.TotalRows ?? 0),
+    successCnt: Number(body?.SuccessCnt ?? 0),
+    errorCnt: Number(body?.ErrorCnt ?? 0),
+    rows: Array.isArray(results) ? results.map(toPoUploadRow) : [],
+  };
 }
 
 /** PDF printform for a PO — tries the media $value stream first (binary), falls back to a

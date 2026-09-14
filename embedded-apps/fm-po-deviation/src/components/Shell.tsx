@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardCheck, LayoutDashboard, Menu, X, ArrowLeft, User, Calendar } from 'lucide-react';
+import { ClipboardCheck, LayoutDashboard, UploadCloud, Menu, X, ArrowLeft, User, Calendar } from 'lucide-react';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
 import { PendingCountProvider, usePendingCount } from '../context/PendingCountContext';
 
@@ -18,6 +18,7 @@ const BASE_PATH = '/apps/fm-po-deviation';
 const NAV_ITEMS = [
   { href: '/', label: 'Approvals', icon: ClipboardCheck },
   { href: '/dashboard/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/upload/', label: 'Bulk PO Upload', icon: UploadCloud },
 ];
 
 function formatDateCompact(d: Date): string {
