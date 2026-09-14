@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
@@ -16,7 +16,7 @@ function formatDateCompact(d: Date): string {
 type NavItem = SidePaneItem & {
   href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
   adminOnly?: boolean;
-  userOnly?: boolean;
+  hiddenForAdmin?: boolean;
 };
 
 // Matches the hub's own useIsWideScreen breakpoint (src/hooks/useIsWideScreen.ts) so this app's
@@ -24,8 +24,10 @@ type NavItem = SidePaneItem & {
 const WIDE_BREAKPOINT = 768;
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', userOnly: true },
-  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', userOnly: true },
+  // Admin already lands on Submission History (never uses the entry form or its History view),
+  // so hide these two for Admin while keeping them for the regular submitting User.
+  { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', hiddenForAdmin: true },
+  { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
@@ -39,11 +41,8 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
   const pathname = usePathname();
   const router = useRouter();
 
-  const items = NAV_ITEMS.filter((item) => {
-    if (item.adminOnly) return !roleLoading && role === 'Admin';
-    if (item.userOnly) return roleLoading || role !== 'Admin';
-    return true;
-  });
+  const isAdmin = !roleLoading && role === 'Admin';
+  const items = NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && (!item.hiddenForAdmin || !isAdmin));
   const activeHref = pathname === '/apps/market-rate' ? '/apps/market-rate/' : pathname;
 
   return (
@@ -140,11 +139,6 @@ export default function MarketRateLayout() {
                     <Ionicons name="menu" size={22} color={colors.ink} />
                   </TouchableOpacity>
                 )}
-                <Image
-                  source={require('../../../assets/images/emami-apps-logo.png')}
-                  style={styles.titleLogo}
-                  resizeMode="contain"
-                />
                 <Text style={styles.title} numberOfLines={1}>Current Market Rate</Text>
                 <View style={styles.flex1} />
                 <View style={styles.infoItem}>
@@ -226,10 +220,6 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  titleLogo: {
-    width: 32,
-    height: 26,
   },
   title: {
     fontSize: 15,

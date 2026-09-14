@@ -125,14 +125,6 @@ export default function PendingScreen() {
     );
   }
 
-  if (!pendCache || pendCache.length === 0) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
-        <EmptyState message="No pending invoices" icon="✅" hint="All invoices have been dispatched or completed" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -169,7 +161,13 @@ export default function PendingScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      {filtered.length === 0 ? (
+      {!pendCache || pendCache.length === 0 ? (
+        <EmptyState
+          message="No pending invoices"
+          icon="✅"
+          hint="Try a different date range at the top, or all invoices have been dispatched"
+        />
+      ) : filtered.length === 0 ? (
         <EmptyState message="No invoices match" icon="🔍" />
       ) : groupBy === 'None' ? (
         <UngroupedList

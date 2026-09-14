@@ -57,8 +57,40 @@
 
 const pool = require("../config/db");
 
+// Depot notifications must reach only the one Depot user assigned to the
+// audit's depot (a Depot user's `depot` column is 1:1 with a depot name in
+// practice) — CQA notifications stay a shared, role-wide feed by design.
+const resolveDepotRecipient = async (auditId) => {
+
+  if (!auditId) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `
+    SELECT u.id
+    FROM audit_capa.audits a
+    JOIN audit_capa.users u
+        ON u.depot = a.depot
+        AND u.role = 'Depot'
+        AND u.is_active = TRUE
+    WHERE a.id = $1
+    LIMIT 1
+    `,
+    [auditId]
+  );
+
+  return result.rows[0]?.id ?? null;
+};
+
 const createNotification =
   async (notification) => {
+
+    let recipientUserId = notification.recipientUserId ?? null;
+
+    if (!recipientUserId && notification.role === "Depot") {
+      recipientUserId = await resolveDepotRecipient(notification.auditId);
+    }
 
     const result =
       await pool.query(
@@ -84,7 +116,7 @@ RETURNING *
         [
           notification.role,
           notification.userId,
-          notification.recipientUserId,
+          recipientUserId !== null ? String(recipientUserId) : null,
           notification.auditId,
           notification.title,
           notification.message,
@@ -99,17 +131,27 @@ RETURNING *
   };
 
 const getAllNotifications =
-  async (role) => {
+  async (role, recipientUserId) => {
+
+    // Depot's feed is per-user; CQA stays a shared, role-wide feed.
+    const scopeToRecipient = role === "Depot" && recipientUserId;
 
     const result =
       await pool.query(
-        `
-        SELECT *
-        FROM audit_capa.notifications
-        WHERE role = $1
-        ORDER BY created_at DESC
-        `,
-        [role]
+        scopeToRecipient
+          ? `
+            SELECT *
+            FROM audit_capa.notifications
+            WHERE role = $1 AND recipient_user_id = $2
+            ORDER BY created_at DESC
+            `
+          : `
+            SELECT *
+            FROM audit_capa.notifications
+            WHERE role = $1
+            ORDER BY created_at DESC
+            `,
+        scopeToRecipient ? [role, String(recipientUserId)] : [role]
       );
 
     // return result.rows;
@@ -144,6 +186,36 @@ const markAsRead =
     return result.rows[0];
   };
 
+const markAllAsRead =
+  async (role, recipientUserId) => {
+
+    const scopeToRecipient = role === "Depot" && recipientUserId;
+
+    const result =
+      await pool.query(
+        scopeToRecipient
+          ? `
+            UPDATE audit_capa.notifications
+            SET
+                is_read = TRUE,
+                read_at = CURRENT_TIMESTAMP
+            WHERE role = $1 AND recipient_user_id = $2 AND is_read = FALSE
+            RETURNING id
+            `
+          : `
+            UPDATE audit_capa.notifications
+            SET
+                is_read = TRUE,
+                read_at = CURRENT_TIMESTAMP
+            WHERE role = $1 AND is_read = FALSE
+            RETURNING id
+            `,
+        scopeToRecipient ? [role, String(recipientUserId)] : [role]
+      );
+
+    return result.rowCount;
+  };
+
 const getNotificationWithEmail =
   async (notificationId) => {
 
@@ -168,5 +240,6 @@ module.exports = {
   getAllNotifications,
   createNotification,
   markAsRead,
+  markAllAsRead,
   getNotificationWithEmail
 };

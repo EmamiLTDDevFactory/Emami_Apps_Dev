@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = require('./db');
+const { formatTimeSpent } = require('./userProfile');
+const { syncAuditCapaAccess, revokeAuditCapaAccess } = require('./auditCapaSync');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -53,8 +55,15 @@ apiRouter.use(require('./stockQuote'));
 apiRouter.use('/dev-tracker', require('./devTracker'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = ['User', 'Admin'];
-/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app VALID_ROLES
+/** Most apps use the generic User/Admin pair. Audit & CAPA has its own role vocabulary — CQA
+ * (elevated, equivalent to Admin) and Depot (base, equivalent to User) — see auditCapaSync.js,
+ * which is what actually makes this role take effect inside that app. */
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'] };
+const DEFAULT_VALID_ROLES = ['User', 'Admin'];
+function validRolesForApp(appId) {
+    return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
+}
+/** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app roles
  * above. Order matters for the permission checks in the access-level route below. */
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
 
@@ -89,7 +98,7 @@ apiRouter.get('/access/users', async (req, res) => {
                    au.is_active,
                    au.access_level,
                    COALESCE(
-                       json_agg(json_build_object('appId', a.app_id, 'role', a.role)) FILTER (WHERE a.app_id IS NOT NULL),
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps
             FROM emami_apps.authorized_users au
@@ -104,6 +113,153 @@ apiRouter.get('/access/users', async (req, res) => {
     } catch (err) {
         console.error('[access] Failed to list authorized users:', err.message);
         res.status(500).json({ success: false, error: 'Could not load authorized users.' });
+    }
+});
+
+/** Administration tab — org-wide KPI summary. Scoped to `authorized_users` (the hub's actual
+ * roster), not the raw `emami_apps.users` table, so someone who logged in once and was later
+ * revoked doesn't inflate these numbers. "Active" for the 7d/30d counts means both currently
+ * authorized (is_active) AND recently logged in — a deactivated user who logged in yesterday
+ * doesn't count, since they can no longer sign in. One round trip via scalar subqueries. */
+apiRouter.get('/admin/overview', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            WITH scope AS (
+                SELECT au.email, u.user_id, u.last_login_at
+                FROM emami_apps.authorized_users au
+                LEFT JOIN emami_apps.users u ON u.email = au.email
+                WHERE au.is_active = true
+            ),
+            app_opens AS (
+                SELECT e.app_id, COUNT(*) AS opens
+                FROM emami_apps.events e
+                JOIN scope s ON s.user_id = e.user_id
+                WHERE e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+                GROUP BY e.app_id
+                ORDER BY opens DESC
+                LIMIT 1
+            )
+            SELECT
+                (SELECT COUNT(*) FROM emami_apps.authorized_users) AS total_authorized_users,
+                (SELECT COUNT(*) FROM emami_apps.authorized_users WHERE is_active) AS active_authorized_users,
+                (SELECT COUNT(*) FROM scope WHERE last_login_at >= now() - interval '7 days') AS active_last_7d,
+                (SELECT COUNT(*) FROM scope WHERE last_login_at >= now() - interval '30 days') AS active_last_30d,
+                (SELECT COUNT(*) FROM scope WHERE user_id IS NULL) AS never_logged_in,
+                (SELECT COUNT(*) FROM emami_apps.events e JOIN scope s ON s.user_id = e.user_id WHERE e.event_type = 'LOGIN') AS total_logins,
+                (SELECT COUNT(*) FROM emami_apps.events e JOIN scope s ON s.user_id = e.user_id WHERE e.event_type = 'APP_OPEN') AS total_app_opens,
+                (SELECT app_id FROM app_opens) AS most_used_app,
+                (SELECT opens FROM app_opens) AS most_used_app_opens
+        `);
+        const r = rows[0];
+        res.json({
+            success: true,
+            overview: {
+                totalAuthorizedUsers: Number(r.total_authorized_users || 0),
+                activeAuthorizedUsers: Number(r.active_authorized_users || 0),
+                activeLast7Days: Number(r.active_last_7d || 0),
+                activeLast30Days: Number(r.active_last_30d || 0),
+                neverLoggedIn: Number(r.never_logged_in || 0),
+                totalLogins: Number(r.total_logins || 0),
+                totalAppOpens: Number(r.total_app_opens || 0),
+                mostUsedApp: r.most_used_app ? { appId: r.most_used_app, opens: Number(r.most_used_app_opens) } : null,
+            },
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load overview:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load the administration overview.' });
+    }
+});
+
+/** Administration tab — every authorized user (same base shape as GET /access/users: email,
+ * isActive, accessLevel, apps) plus a usage summary per row, sourced from
+ * emami_apps.user_profile_stats. LEFT JOINed (not INNER) against both authorized_user_apps and
+ * user_profile_stats so a user with zero app grants or who has never logged in still appears
+ * (with an empty apps array / null usage) instead of being dropped. One query, no N+1. */
+apiRouter.get('/admin/roster', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT au.email,
+                   au.is_active,
+                   au.access_level,
+                   COALESCE(
+                       json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
+                       '[]'
+                   ) AS apps,
+                   ups.name,
+                   ups.last_login_at,
+                   ups.sessions_total,
+                   ups.logins,
+                   ups.time_spent,
+                   ups.apps_opened,
+                   ups.most_used_app
+            FROM emami_apps.authorized_users au
+            LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
+            LEFT JOIN emami_apps.user_profile_stats ups ON ups.email = au.email
+            GROUP BY au.email, au.is_active, au.access_level, au.created_at,
+                     ups.name, ups.last_login_at, ups.sessions_total, ups.logins, ups.time_spent,
+                     ups.apps_opened, ups.most_used_app
+            ORDER BY au.created_at ASC
+        `);
+        res.json({
+            success: true,
+            users: rows.map((r) => ({
+                email: r.email,
+                isActive: r.is_active,
+                accessLevel: r.access_level,
+                apps: r.apps,
+                usage: {
+                    name: r.name || null,
+                    lastLogin: r.last_login_at,
+                    sessionsTotal: Number(r.sessions_total || 0),
+                    logins: Number(r.logins || 0),
+                    timeSpent: formatTimeSpent(r.time_spent),
+                    appsOpened: Number(r.apps_opened || 0),
+                    mostUsedApp: r.most_used_app || null,
+                    hasLoggedIn: r.last_login_at != null,
+                },
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load roster:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load the user roster.' });
+    }
+});
+
+/** Administration tab — per-app drill-down for one user, shown when an admin taps an app tile in
+ * the roster's user-detail dialog. Same visit-count-not-duration honesty as userProfile.js's
+ * getTopApps: only APP_OPEN events carry a reliable app_id today (FAVORITE_ADD/REMOVE don't), so
+ * opens/first/last-opened is what's actually available. Covers every app the user has ever opened,
+ * not just their currently-granted ones — useful if a grant was since revoked. */
+apiRouter.get('/admin/user/:email/apps', async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT e.app_id,
+                    COUNT(*) AS opens,
+                    MIN(e.occurred_at) AS first_opened,
+                    MAX(e.occurred_at) AS last_opened
+             FROM emami_apps.users u
+             JOIN emami_apps.events e ON e.user_id = u.user_id
+             WHERE u.email = $1 AND e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+             GROUP BY e.app_id
+             ORDER BY opens DESC`,
+            [email]
+        );
+        res.json({
+            success: true,
+            apps: rows.map((r) => ({
+                appId: r.app_id,
+                opens: Number(r.opens || 0),
+                firstOpened: r.first_opened,
+                lastOpened: r.last_opened,
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load per-app stats for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load per-app stats.' });
     }
 });
 
@@ -264,17 +420,29 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
 /** Grant (or change the role on) one app for an existing authorized user. */
 apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
     const role = req.body?.role;
-    if (!VALID_ROLES.includes(role)) {
-        return res.status(400).json({ success: false, error: `Role must be one of: ${VALID_ROLES.join(', ')}.` });
+    const depot = req.body?.depot || null;
+    const appId = req.params.appId;
+    const validRoles = validRolesForApp(appId);
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({ success: false, error: `Role must be one of: ${validRoles.join(', ')}.` });
     }
+    const email = req.params.email.toLowerCase();
     try {
         await pool.query(
-            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role`,
-            [req.params.email.toLowerCase(), req.params.appId, role]
+            `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role, depot = EXCLUDED.depot`,
+            [email, appId, role, depot]
         );
-        res.json({ success: true, role });
+        // Audit & CAPA maintains its own separate Postgres-backed role table, historically only
+        // ever updated by hand — push this grant through so it takes effect immediately. See
+        // auditCapaSync.js's own comment for why this never fails the response above.
+        if (appId === 'audit-capa') {
+            syncAuditCapaAccess(pool, email, role, depot).catch((err) => {
+                console.error('[access] Could not sync Audit & CAPA role for', email, ':', err.message);
+            });
+        }
+        res.json({ success: true, role, depot });
     } catch (err) {
         if (err.code === '23503') {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
@@ -286,11 +454,18 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
 
 /** Revoke one app from an existing authorized user. */
 apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
+    const email = req.params.email.toLowerCase();
+    const appId = req.params.appId;
     try {
         await pool.query(
             'DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
-            [req.params.email.toLowerCase(), req.params.appId]
+            [email, appId]
         );
+        if (appId === 'audit-capa') {
+            revokeAuditCapaAccess(email).catch((err) => {
+                console.error('[access] Could not revoke Audit & CAPA access for', email, ':', err.message);
+            });
+        }
         res.json({ success: true });
     } catch (err) {
         console.error('[access] Failed to revoke app access:', err.message);

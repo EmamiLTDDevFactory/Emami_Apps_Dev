@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, ArrowLeft, ShieldCheck, Loader2, Pencil, Edit3, Check, X, Lock } from 'lucide-react';
 import { getRoles, createRole } from '../services/odataService';
 import RoleModal from '../components/RoleModal';
+import PageHeader from '../components/PageHeader';
 
 export default function RoleMaintenance() {
   const navigate = useNavigate();
@@ -158,38 +159,35 @@ export default function RoleMaintenance() {
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Header Banner - Light Breathable Theme */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-gradient-to-r from-white via-rose-50/50 to-pink-50/60 p-6 shadow-sm border border-rose-200/80 text-slate-900 relative overflow-hidden">
-        {/* Top glowing accent line */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#800A36] via-rose-500 to-pink-400" />
+      <PageHeader>
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-rose-100/70 border border-rose-200 text-[#800A36]">
+            <div className="p-2.5 rounded-xl bg-rc-indigo-50 border border-rc-indigo-100 text-rc-teal">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Role Maintenance</h1>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Role Maintenance</h1>
           </div>
           <p className="mt-1 text-xs sm:text-sm font-medium text-slate-600 ml-12">
             Manage module authorization access matrix and active statuses across platform users.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            type="button" 
-            onClick={() => navigate(-1)} 
-            className="flex items-center gap-1.5 rounded-2xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-[#800A36] hover:bg-rose-50 transition shadow-2xs cursor-pointer"
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm cursor-pointer"
           >
-            <ArrowLeft className="h-4 w-4 text-[#800A36]" /> Back
+            <ArrowLeft className="h-4 w-4" /> Back
           </button>
-          <button 
-            type="button" 
-            onClick={() => setShowRoleModal(true)} 
-            className="rc-btn-primary flex items-center gap-2 rounded-2xl px-5 py-2 text-xs font-bold text-white shadow-md transition hover:scale-[1.01]"
+          <button
+            type="button"
+            onClick={() => setShowRoleModal(true)}
+            className="rc-btn-primary flex items-center gap-2 px-5 py-2 text-xs font-bold text-white shadow-sm transition"
           >
             <Plus className="h-4 w-4" /> Add Role
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {/* Role Creation Table Modal */}
       <RoleModal 
@@ -199,21 +197,21 @@ export default function RoleMaintenance() {
       />
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700 animate-fadeIn">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700 animate-fadeIn">
           {error}
         </div>
       )}
 
       {/* Main Assigned Roles Container */}
-      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         {/* Table Header Title Bar */}
         <div className="border-b border-slate-200 bg-slate-50/90 px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800">ASSIGNED USER PERMISSIONS</h2>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800">ASSIGNED USER PERMISSIONS</h2>
               <p className="text-xs font-medium text-slate-500 mt-0.5">Current authorization matrix for module permissions.</p>
             </div>
-            <div className="text-xs font-bold text-rc-teal bg-teal-50 border border-teal-200/80 px-3.5 py-1 rounded-full">
+            <div className="text-xs font-bold text-rc-teal bg-rc-indigo-50 border border-rc-indigo-200/80 px-3.5 py-1 rounded-full">
               {roles.length} role{roles.length === 1 ? '' : 's'} assigned
             </div>
           </div>
@@ -234,8 +232,8 @@ export default function RoleMaintenance() {
             {/* Desktop Wide Table View (`hidden md:block`) */}
             <div className="hidden md:block overflow-x-auto max-h-[580px] overflow-y-auto">
               <table className="w-full text-left border-collapse table-fixed min-w-[950px]">
-                <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase shadow-sm">
-                  <tr className="border-b border-[#9E0D43]/40">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600 font-semibold tracking-wider text-xs uppercase border-b border-slate-200 shadow-sm">
+                  <tr className="border-b border-rc-indigo-400/40">
                     <th className="py-4 px-5 w-[20%]">NAME</th>
                     <th className="py-4 px-5 w-[14%]">EMP ID</th>
                     <th className="py-4 px-5 w-[14%]">ROLE</th>
@@ -264,16 +262,16 @@ export default function RoleMaintenance() {
                         key={roleItem.id} 
                         className={`transition-colors border-b border-slate-200/80 ${
                           isEditing 
-                            ? 'bg-rose-50/90 border-l-4 border-[#800A36]' 
+                            ? 'bg-rc-indigo-50 border-l-4 border-rc-teal' 
                             : isEven 
-                            ? 'bg-white hover:bg-rose-50/40' 
-                            : 'bg-slate-50/70 hover:bg-rose-50/50'
+                            ? 'bg-white hover:bg-slate-50' 
+                            : 'bg-slate-50/70 hover:bg-slate-50'
                         }`}
                       >
                         {/* Name - Column 1 with Avatar Circle */}
                         <td className="py-3.5 px-5 text-sm font-bold text-slate-900">
                           <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#800A36] to-rose-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
+                            <div className="h-8 w-8 rounded-full bg-rc-teal text-white font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
                               {initial}
                             </div>
                             <span className="line-clamp-1">{empName}</span>
@@ -291,19 +289,19 @@ export default function RoleMaintenance() {
                             <select
                               value={editFormData?.role || 'Admin'}
                               onChange={(e) => handleInlineRoleChange(e.target.value)}
-                              className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-[#800A36] focus:outline-none focus:ring-2 focus:ring-rose-300 transition cursor-pointer shadow-2xs"
+                              className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-rc-teal focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition cursor-pointer shadow-sm"
                             >
                               <option value="Superadmin">Superadmin</option>
                               <option value="Admin">Admin</option>
                               <option value="TA">TA</option>
                             </select>
                           ) : (
-                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-black border shadow-2xs ${
+                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold border shadow-sm ${
                               roleItem.role === 'Superadmin'
-                                ? 'bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-900 border-purple-300'
+                                ? 'bg-purple-50 text-purple-800 border-purple-200'
                                 : roleItem.role === 'TA'
-                                ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-900 border-emerald-300'
-                                : 'bg-gradient-to-r from-sky-100 to-blue-100 text-blue-900 border-blue-300'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
                             }`}>
                               {roleItem.role || 'Admin'}
                             </span>
@@ -318,10 +316,10 @@ export default function RoleMaintenance() {
                               checked={Boolean(editFormData?.ta)}
                               disabled={editFormData?.role === 'Superadmin'}
                               onChange={(e) => setEditFormData(prev => ({ ...prev, ta: e.target.checked }))}
-                              className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
+                              className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
                             />
                           ) : roleItem.ta ? (
-                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-2xs">
+                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-sm">
                               <Check className="h-4 w-4 stroke-[3]" />
                             </span>
                           ) : (
@@ -337,10 +335,10 @@ export default function RoleMaintenance() {
                               checked={Boolean(editFormData?.tm)}
                               disabled={editFormData?.role === 'Superadmin'}
                               onChange={(e) => setEditFormData(prev => ({ ...prev, tm: e.target.checked }))}
-                              className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
+                              className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
                             />
                           ) : roleItem.tm ? (
-                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-2xs">
+                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-sm">
                               <Check className="h-4 w-4 stroke-[3]" />
                             </span>
                           ) : (
@@ -356,10 +354,10 @@ export default function RoleMaintenance() {
                               checked={Boolean(editFormData?.ld)}
                               disabled={editFormData?.role === 'Superadmin'}
                               onChange={(e) => setEditFormData(prev => ({ ...prev, ld: e.target.checked }))}
-                              className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
+                              className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
                             />
                           ) : roleItem.ld ? (
-                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-2xs">
+                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-sm">
                               <Check className="h-4 w-4 stroke-[3]" />
                             </span>
                           ) : (
@@ -375,10 +373,10 @@ export default function RoleMaintenance() {
                               checked={Boolean(editFormData?.od)}
                               disabled={editFormData?.role === 'Superadmin'}
                               onChange={(e) => setEditFormData(prev => ({ ...prev, od: e.target.checked }))}
-                              className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
+                              className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 transition"
                             />
                           ) : roleItem.od ? (
-                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-2xs">
+                            <span className="inline-flex items-center justify-center h-6.5 w-6.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold shadow-sm">
                               <Check className="h-4 w-4 stroke-[3]" />
                             </span>
                           ) : (
@@ -392,13 +390,13 @@ export default function RoleMaintenance() {
                             <select
                               value={editFormData?.status || 'Active'}
                               onChange={(e) => setEditFormData(prev => ({ ...prev, status: e.target.value }))}
-                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-[#800A36] focus:outline-none focus:ring-2 focus:ring-rose-300 transition cursor-pointer shadow-2xs"
+                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-800 focus:border-rc-teal focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition cursor-pointer shadow-sm"
                             >
                               <option value="Active">Active</option>
                               <option value="Inactive">Inactive</option>
                             </select>
                           ) : (
-                            <span className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold border shadow-2xs ${
+                            <span className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border shadow-sm ${
                               (roleItem.status || 'Active') === 'Active'
                                 ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                                 : 'border-slate-300 bg-slate-100 text-slate-600'
@@ -418,7 +416,7 @@ export default function RoleMaintenance() {
                               <button
                                 type="button"
                                 onClick={() => handleSaveEdit(roleItem)}
-                                className="inline-flex items-center gap-1 rounded-xl bg-[#800A36] px-3.5 py-1.5 text-xs font-bold text-white hover:bg-[#600727] transition shadow-xs cursor-pointer"
+                                className="inline-flex items-center gap-1 rounded-xl bg-rc-teal px-3.5 py-1.5 text-xs font-bold text-white hover:bg-rc-teal-dark transition shadow-sm cursor-pointer"
                               >
                                 <Check className="h-3.5 w-3.5" /> Save
                               </button>
@@ -433,7 +431,7 @@ export default function RoleMaintenance() {
                             </div>
                           ) : isSelfAccount ? (
                             <span 
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-1.5 text-xs font-extrabold text-slate-400 cursor-not-allowed select-none" 
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-1.5 text-xs font-semibold text-slate-400 cursor-not-allowed select-none" 
                               title="You cannot edit your own logged-in account"
                             >
                               <Lock className="h-3.5 w-3.5 text-slate-400" /> Protected
@@ -442,7 +440,7 @@ export default function RoleMaintenance() {
                             <button
                               type="button"
                               onClick={() => handleStartEdit(roleItem)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 px-3.5 py-1.5 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-rc-indigo-200 bg-rc-indigo-50 px-3.5 py-1.5 text-xs font-bold text-rc-teal hover:bg-rc-teal hover:text-white transition shadow-sm cursor-pointer"
                             >
                               <Edit3 className="h-3.5 w-3.5" /> Edit
                             </button>
@@ -470,30 +468,30 @@ export default function RoleMaintenance() {
                 return (
                   <div 
                     key={roleItem.id} 
-                    className={`overflow-hidden rounded-2xl border-2 transition-all shadow-sm ${
+                    className={`overflow-hidden rounded-xl border transition-all shadow-sm ${
                       isEditing 
-                        ? 'border-[#800A36] bg-rose-50/40 ring-2 ring-rose-200 p-4' 
-                        : 'border-rose-200/80 bg-white p-4 border-l-[4px] border-l-[#800A36]'
+                        ? 'border-rc-teal bg-rc-indigo-50 ring-2 ring-rc-teal/20 p-4' 
+                        : 'border-slate-200 bg-white p-4 border-l-[4px] border-l-rc-teal'
                     }`}
                   >
                     {/* Card Header Banner */}
                     <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#800A36] via-[#9E0D43] to-rose-700 text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0 ring-2 ring-white">
+                        <div className="h-10 w-10 rounded-xl bg-rc-teal text-white font-bold text-sm flex items-center justify-center shadow-sm shrink-0 ring-2 ring-white">
                           {initial}
                         </div>
                         <div>
-                          <h4 className="text-sm font-black text-slate-900 leading-snug">{empName}</h4>
+                          <h4 className="text-sm font-bold text-slate-900 leading-snug">{empName}</h4>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="font-mono text-xs font-extrabold text-[#800A36] bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/60">
+                            <span className="font-mono text-xs font-semibold text-rc-teal bg-rc-indigo-50 px-2 py-0.5 rounded-md border border-rc-indigo-100">
                               {roleItem.employeeId}
                             </span>
-                            <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-[10px] font-black border shadow-2xs ${
+                            <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-[10px] font-bold border shadow-sm ${
                               roleItem.role === 'Superadmin'
-                                ? 'bg-purple-50 text-purple-900 border-purple-300'
+                                ? 'bg-purple-50 text-purple-800 border-purple-200'
                                 : roleItem.role === 'TA'
-                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                                : 'bg-blue-50 text-blue-900 border-blue-300'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
                             }`}>
                               {roleItem.role || 'Admin'}
                             </span>
@@ -508,7 +506,7 @@ export default function RoleMaintenance() {
                             <button
                               type="button"
                               onClick={() => handleSaveEdit(roleItem)}
-                              className="inline-flex items-center gap-1 rounded-xl bg-[#800A36] px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-[#600727] cursor-pointer"
+                              className="inline-flex items-center gap-1 rounded-xl bg-rc-teal px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark cursor-pointer"
                             >
                               <Check className="h-3.5 w-3.5" /> Save
                             </button>
@@ -523,7 +521,7 @@ export default function RoleMaintenance() {
                           </div>
                         ) : isSelfAccount ? (
                           <span 
-                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-extrabold text-slate-400 cursor-not-allowed select-none" 
+                            className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 cursor-not-allowed select-none" 
                             title="You cannot edit your own logged-in account"
                           >
                             <Lock className="h-3.5 w-3.5 text-slate-400" /> Protected
@@ -532,7 +530,7 @@ export default function RoleMaintenance() {
                           <button
                             type="button"
                             onClick={() => handleStartEdit(roleItem)}
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-3.5 py-1.5 text-xs font-bold text-[#800A36] bg-rose-50/80 hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+                            className="inline-flex items-center gap-1 rounded-xl border border-rc-indigo-200 px-3.5 py-1.5 text-xs font-bold text-rc-teal bg-rc-indigo-50 hover:bg-rc-teal hover:text-white transition shadow-sm cursor-pointer"
                           >
                             <Edit3 className="h-3.5 w-3.5" /> Edit
                           </button>
@@ -543,43 +541,43 @@ export default function RoleMaintenance() {
                     {/* Permissions & Controls Grid */}
                     {isEditing ? (
                       <div className="mt-3 grid grid-cols-2 gap-2.5 pt-2">
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm cursor-pointer">
                           <input
                             type="checkbox"
                             checked={Boolean(editFormData?.ta)}
                             disabled={editFormData?.role === 'Superadmin'}
                             onChange={(e) => setEditFormData(prev => ({ ...prev, ta: e.target.checked }))}
-                            className="h-4 w-4 rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="h-4 w-4 rounded border-slate-300 text-rc-teal focus:ring-rc-teal disabled:cursor-not-allowed disabled:opacity-60"
                           />
                           <span>TA Access</span>
                         </label>
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm cursor-pointer">
                           <input
                             type="checkbox"
                             checked={Boolean(editFormData?.tm)}
                             disabled={editFormData?.role === 'Superadmin'}
                             onChange={(e) => setEditFormData(prev => ({ ...prev, tm: e.target.checked }))}
-                            className="h-4 w-4 rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="h-4 w-4 rounded border-slate-300 text-rc-teal focus:ring-rc-teal disabled:cursor-not-allowed disabled:opacity-60"
                           />
                           <span>TM Access</span>
                         </label>
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm cursor-pointer">
                           <input
                             type="checkbox"
                             checked={Boolean(editFormData?.ld)}
                             disabled={editFormData?.role === 'Superadmin'}
                             onChange={(e) => setEditFormData(prev => ({ ...prev, ld: e.target.checked }))}
-                            className="h-4 w-4 rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="h-4 w-4 rounded border-slate-300 text-rc-teal focus:ring-rc-teal disabled:cursor-not-allowed disabled:opacity-60"
                           />
                           <span>L&D Access</span>
                         </label>
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm cursor-pointer">
                           <input
                             type="checkbox"
                             checked={Boolean(editFormData?.od)}
                             disabled={editFormData?.role === 'Superadmin'}
                             onChange={(e) => setEditFormData(prev => ({ ...prev, od: e.target.checked }))}
-                            className="h-4 w-4 rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] disabled:cursor-not-allowed disabled:opacity-60"
+                            className="h-4 w-4 rounded border-slate-300 text-rc-teal focus:ring-rc-teal disabled:cursor-not-allowed disabled:opacity-60"
                           />
                           <span>OD Access</span>
                         </label>
@@ -610,21 +608,21 @@ export default function RoleMaintenance() {
                     ) : (
                       <div className="mt-3 flex items-center justify-between gap-2 pt-3">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.ta ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.ta ? 'bg-rc-indigo-50 text-rc-indigo-800 border-rc-indigo-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {roleItem.ta ? '✓ TA' : '— TA'}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.tm ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.tm ? 'bg-rc-indigo-50 text-rc-indigo-800 border-rc-indigo-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {roleItem.tm ? '✓ TM' : '— TM'}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.ld ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.ld ? 'bg-rc-indigo-50 text-rc-indigo-800 border-rc-indigo-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {roleItem.ld ? '✓ L&D' : '— L&D'}
                           </span>
-                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.od ? 'bg-teal-50 text-teal-800 border-teal-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                          <span className={`px-2 py-0.5 rounded-lg font-bold text-[11px] border ${roleItem.od ? 'bg-rc-indigo-50 text-rc-indigo-800 border-rc-indigo-300' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
                             {roleItem.od ? '✓ OD' : '— OD'}
                           </span>
                         </div>
 
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-black border shadow-2xs shrink-0 ${
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border shadow-sm shrink-0 ${
                           (roleItem.status || 'Active') === 'Active' 
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
                             : 'bg-slate-100 text-slate-600 border-slate-300'

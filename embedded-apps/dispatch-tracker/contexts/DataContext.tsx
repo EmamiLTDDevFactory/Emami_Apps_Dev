@@ -22,6 +22,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import * as api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { isoDate, todayDate } from '@/lib/format';
 import {
   CancelledInvoice,
   CompletedInvoice,
@@ -32,6 +33,26 @@ import {
 } from '@/types/models';
 
 const INV_CACHE_TTL_MS = 90 * 1000;
+
+/**
+ * From Date / To Date for the ONE combined fetch (LoginSet + all five entity sets) — set once
+ * at the top of the app (see TopBar's Depot Panel filter row), not per tab. Every tab reads the
+ * same shared snapshot; there is deliberately no per-tab date filter or per-tab entity-set call
+ * anymore — that design caused a feedback loop (each tab's own focus effect re-fired whenever
+ * ANY tab's fetch touched the shared invCache) and left different tabs showing data fetched
+ * under different date ranges. Defaults: today-30 to today.
+ */
+export interface DateFilterState {
+  frmDate: string;
+  toDate: string;
+}
+
+function defaultDateFilter(): DateFilterState {
+  const to = todayDate();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 30);
+  return { frmDate: isoDate(from), toDate: isoDate(to) };
+}
 
 export type CacheKey = 'inv' | 'pend' | 'disp' | 'comp' | 'ret' | 'canc';
 
@@ -50,6 +71,8 @@ interface DataState {
   cancCache: CancelledInvoice[] | null;
   loading: Partial<Record<CacheKey, boolean>>;
   errors: Partial<Record<CacheKey, string>>;
+  /** Currently-applied From/To Date — only changes when runSearch() commits a new one. */
+  dateFilter: DateFilterState;
   loadDashboard: () => Promise<void>;
   ensurePending: () => Promise<void>;
   ensureDispatched: () => Promise<void>;
@@ -57,6 +80,10 @@ interface DataState {
   ensureReturned: () => Promise<void>;
   ensureCancelled: () => Promise<void>;
   reloadInvoices: () => Promise<void>;
+  /** The Depot Panel's Go button: commits a new From/To Date and immediately re-runs the full
+   *  combined fetch (LoginSet + all five entity sets) with it — the only way the date range
+   *  ever changes. */
+  runSearch: (frmDate: string, toDate: string) => Promise<void>;
   invalidate: (...keys: CacheKey[]) => void;
   /** Move one invoice to a new status locally, so the UI updates without waiting on SAP. */
   applyLocalStatus: (invoiceNo: string, status: string, patch?: Partial<Invoice>) => void;
@@ -74,6 +101,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const [loading, setLoading] = useState<Partial<Record<CacheKey, boolean>>>({});
   const [errors, setErrors] = useState<Partial<Record<CacheKey, string>>>({});
+  const [dateFilter, setDateFilter] = useState<DateFilterState>(defaultDateFilter);
 
   useEffect(() => {
     if (!session) {
@@ -85,27 +113,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [session]);
 
-  const reloadInvoices = useCallback(async (): Promise<void> => {
-    if (inFlight.current) return inFlight.current;
+  /** Accepts an optional override so runSearch() below can pass the just-committed filter
+   *  directly, instead of racing the async state update that would otherwise still read the
+   *  previous dateFilter value on this same call. */
+  const reloadInvoices = useCallback(
+    async (overrideFilter?: DateFilterState): Promise<void> => {
+      if (inFlight.current) return inFlight.current;
 
-    const run = (async () => {
-      setLoading(everyKey(true));
-      setErrors({});
-      try {
-        const rows = await api.refreshInvoices();
-        setInvCache(rows);
-        cacheTs.current = Date.now();
-      } catch (e) {
-        setErrors(everyKey(e instanceof Error ? e.message : 'Could not reach SAP.'));
-      } finally {
-        setLoading({});
-        inFlight.current = null;
-      }
-    })();
+      const run = (async () => {
+        setLoading(everyKey(true));
+        setErrors({});
+        try {
+          const rows = await api.refreshInvoices(overrideFilter ?? dateFilter);
+          setInvCache(rows);
+          cacheTs.current = Date.now();
+        } catch (e) {
+          setErrors(everyKey(e instanceof Error ? e.message : 'Could not reach SAP.'));
+        } finally {
+          setLoading({});
+          inFlight.current = null;
+        }
+      })();
 
-    inFlight.current = run;
-    return run;
-  }, []);
+      inFlight.current = run;
+      return run;
+    },
+    [dateFilter]
+  );
+
+  /** The Depot Panel's Go button. Commits the new range and re-runs the full combined fetch
+   *  (LoginSet + all five entity sets) with it — the only place the date range ever changes. */
+  const runSearch = useCallback(
+    (frmDate: string, toDate: string): Promise<void> => {
+      const next: DateFilterState = { frmDate, toDate };
+      setDateFilter(next);
+      cacheTs.current = null;
+      return reloadInvoices(next);
+    },
+    [reloadInvoices]
+  );
 
   /** load_df(): reuse the one-shot LoginSet rows first, else refetch when missing/stale. */
   const ensureInvoices = useCallback(async () => {
@@ -191,6 +237,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         cancCache,
         loading,
         errors,
+        dateFilter,
         loadDashboard,
         ensurePending,
         ensureDispatched,
@@ -198,6 +245,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ensureReturned,
         ensureCancelled,
         reloadInvoices,
+        runSearch,
         invalidate,
         applyLocalStatus,
       }}>

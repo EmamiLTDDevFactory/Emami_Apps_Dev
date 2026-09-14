@@ -181,14 +181,6 @@ export default function ReturnedScreen() {
     );
   }
 
-  if (!drRows.length) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <EmptyState message="No returned invoices yet" icon="↩" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -208,7 +200,9 @@ export default function ReturnedScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {!filtered.length ? (
+        {!drRows.length ? (
+          <EmptyState message="No returned invoices" icon="↩" hint="Try a different date range at the top" />
+        ) : !filtered.length ? (
           <EmptyState message="No results" icon="🔍" />
         ) : (
           <>

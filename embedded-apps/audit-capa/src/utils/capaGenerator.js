@@ -10,11 +10,15 @@ export const generateCAPANumber = (
     .toString()
     .slice(-2);
 
+  const finding = String(
+    findingNo
+  ).padStart(2, "0");
+
   const serial = String(
     findingNo
   ).padStart(4, "0");
 
-  return `CAPA/F${findingNo}/${month}/${year}/${serial}`;
+  return `CAPA/F${finding}/${month}/${year}/${serial}`;
 };
 
 export const generateCAPA = (
@@ -32,8 +36,16 @@ export const generateCAPA = (
     .map((item, index) => ({
       id: Date.now() + index,
 
-      capaNo:
-        `CAPA-${index + 1}`,
+      // capaNo:
+      //   `CAPA-${index + 1}`,
+
+      capaNo: generateCAPANumber(index + 1),
+
+      category: item.category,
+
+      section: item.section,
+
+      parameter: item.parameter,
 
       observationArea:
         item.category,

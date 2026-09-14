@@ -10,11 +10,11 @@ import {
 import Chip from "@mui/material/Chip";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
+import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
+import { KpiSegment, KpiBar } from "../components/common/KpiBar";
 // import {
 //     generateCAPA,
 // } from "../utils/capaGenerator";
-import emamiLogo from '../assets/emami-logo.jpg';
-
 import {
     Dialog,
     DialogTitle,
@@ -798,7 +798,7 @@ export default function CAPAManagement() {
                     mb: 3,
                     // background:
                     //     "linear-gradient(135deg,#2563EB,#60A5FA)",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     // background:
                     //     "linear-gradient(135deg,#1565c0,#42a5f5)",
                     color: "white",
@@ -816,20 +816,21 @@ export default function CAPAManagement() {
                         }}
                     >
                         <Box
-                            component="img"
-                            src={emamiLogo}
-                            alt="Emami Logo"
                             sx={{
                                 width: 110,
                                 height: 90,
-                                objectFit: "contain",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                                 background: "#fff",
                                 borderRadius: 2,
                                 p: 1,
                                 boxShadow:
                                     "0px 4px 12px rgba(0,0,0,0.15)",
                             }}
-                        />
+                        >
+                            <AssignmentTurnedInIcon sx={{ fontSize: 44, color: "#7C3AED" }} />
+                        </Box>
                         <Box>
                             <Typography variant="h4">
                                 CAPA Management
@@ -992,156 +993,45 @@ export default function CAPAManagement() {
                     flexWrap: "wrap",
                 }}
             >
-                <Box
-                    sx={{
-                        display: "flex",
-                        gap: 2,
-                        flexWrap: "wrap",
-                        mb: 3,
-                    }}
-                >
+                <Box sx={{ mb: 3, width: "100%" }}>
+                    <KpiBar>
+                        <KpiSegment
+                            label="Open"
+                            value={openCount}
+                            color="#F59E0B"
+                            icon={<WarningAmberIcon fontSize="small" />}
+                            active={tab === 0}
+                            onClick={() => setTab(0)}
+                        />
 
-                    <Card
-                        sx={{
-                            minWidth: 180,
-                            borderLeft: "5px solid #F59E0B",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                            }}
-                        >
-                            <WarningAmberIcon
-                                sx={{
-                                    color: "#F59E0B",
-                                    fontSize: 35,
-                                }}
-                            />
+                        <KpiSegment
+                            label="In Progress"
+                            value={inProgressCount}
+                            color="#06B6D4"
+                            icon={<AutorenewIcon fontSize="small" />}
+                            active={tab === 1}
+                            onClick={() => setTab(1)}
+                        />
 
-                            <Box>
-                                <Typography>
-                                    Open
-                                </Typography>
+                        <KpiSegment
+                            label="Closed"
+                            value={closedCount}
+                            color="#22C55E"
+                            icon={<CheckCircleIcon fontSize="small" />}
+                            active={tab === 2}
+                            onClick={() => setTab(2)}
+                        />
 
-                                <Typography
-                                    variant="h5"
-                                    fontWeight={700}
-                                >
-                                    {openCount}
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-
-                    <Card
-                        sx={{
-                            minWidth: 180,
-                            borderLeft: "5px solid #06B6D4",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                            }}
-                        >
-                            <AutorenewIcon
-                                sx={{
-                                    color: "#06B6D4",
-                                    fontSize: 35,
-                                }}
-                            />
-
-                            <Box>
-                                <Typography>
-                                    In Progress
-                                </Typography>
-
-                                <Typography
-                                    variant="h5"
-                                    fontWeight={700}
-                                >
-                                    {inProgressCount}
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-
-                    <Card
-                        sx={{
-                            minWidth: 180,
-                            borderLeft: "5px solid #22C55E",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                            }}
-                        >
-                            <CheckCircleIcon
-                                sx={{
-                                    color: "#22C55E",
-                                    fontSize: 35,
-                                }}
-                            />
-
-                            <Box>
-                                <Typography>
-                                    Closed
-                                </Typography>
-
-                                <Typography
-                                    variant="h5"
-                                    fontWeight={700}
-                                >
-                                    {closedCount}
-                                </Typography>
-                            </Box>
-                        </CardContent>
-                    </Card>
-
-                    <Card
-                        sx={{
-                            minWidth: 180,
-                            borderLeft: "5px solid #EF4444",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                            }}
-                        >
-                            <AccessTimeFilledIcon
-                                sx={{
-                                    color: "#EF4444",
-                                    fontSize: 35,
-                                }}
-                            />
-
-                            <Box>
-                                <Typography>
-                                    Delayed
-                                </Typography>
-
-                                <Typography
-                                    variant="h5"
-                                    fontWeight={700}
-                                >
-                                    {delayedCount}
-                                </Typography>
-                            </Box>
-
-
-                        </CardContent>
-                    </Card>
+                        <KpiSegment
+                            label="Delayed"
+                            value={delayedCount}
+                            color="#EF4444"
+                            icon={<AccessTimeFilledIcon fontSize="small" />}
+                            active={tab === 3}
+                            onClick={() => setTab(3)}
+                            isLast
+                        />
+                    </KpiBar>
                 </Box>
                 {/* <TextField
                     size="small"
@@ -1180,7 +1070,7 @@ export default function CAPAManagement() {
                             },
 
                             "&:hover fieldset": {
-                                borderColor: "#6366F1",
+                                borderColor: "#7C3AED",
                             },
                         },
                     }}
@@ -1278,10 +1168,26 @@ export default function CAPAManagement() {
                                 />
                             </Box>
 
-                            <Typography>
+                            <Typography
+                                sx={{
+                                    mb: 2,
+                                    p: 1.5,
+                                    bgcolor: "#F8FAFC",
+                                    borderRadius: 1,
+                                    fontWeight: 500,
+                                }}
+                            >
+                                {item.category}
+                                {" > "}
+                                {item.section}
+                                {" > "}
+                                {item.parameter}
+                            </Typography>
+
+                            {/* <Typography>
                                 Observation Area:
                                 {item.observationArea}
-                            </Typography>
+                            </Typography> */}
 
                             <Typography sx={{ mb: 2 }}>
                                 Observation:
@@ -1416,6 +1322,11 @@ export default function CAPAManagement() {
                                                         : null
                                                 )
                                             }
+                                            // Calendar-only — typing a date section-by-section
+                                            // could fire onChange with an invalid intermediate
+                                            // value, which crashed on .toISOString().
+                                            readOnly
+                                            disabled={isDepot}
                                             slotProps={{
                                                 textField: {
                                                     fullWidth: false,

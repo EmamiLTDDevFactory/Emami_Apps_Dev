@@ -82,6 +82,25 @@ export function AuthProvider({
     getMyAccess(userEmail).then((a) => { if (a) setAccess(a); });
   }, [isLoggedIn, userEmail]);
 
+  // `access` is otherwise only fetched once per session (above), so an app grant made by an admin
+  // in Manage Access never reached an already-open tab until that person signed out and back in.
+  // Re-fetching whenever the tab regains focus — the moment someone comes back to try an app again
+  // after being told they don't have access yet — closes that gap without any push/polling infra.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const onFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      refreshAccess();
+      refreshProfile();
+    };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshAccess, refreshProfile]);
+
   const value = useMemo(
     () => ({
       isLoggedIn,

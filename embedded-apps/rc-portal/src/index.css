@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  color: #0f172a;
-  background: linear-gradient(135deg, #f0f3f6 0%, #e2e8f0 100%);
+  color: #1F1B33;
+  background: #F8FAFC;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,7 +14,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'IBM Plex Sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 #root {
@@ -23,13 +23,13 @@ body {
 
 @layer components {
   .rc-card {
-    @apply bg-white rounded-2xl shadow-rc border border-slate-100;
+    @apply bg-white rounded-xl shadow-sm border border-slate-200;
   }
   .rc-kpi-tile {
-    @apply bg-white rounded-xl border border-slate-200 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md;
+    @apply bg-white rounded-xl border border-slate-200 shadow-sm transition hover:shadow-md;
   }
   .rc-section-header {
-    @apply rounded-2xl border-l-4 border-rc-teal bg-gradient-to-r from-slate-300 to-emerald-200;
+    @apply rounded-xl border-l-4 border-rc-teal bg-white border-t border-r border-b border-slate-200;
   }
   .rc-input {
     @apply h-[38px] rounded-lg border border-slate-300 px-3 text-sm focus:border-rc-teal focus:outline-none focus:ring-2 focus:ring-rc-teal/20;
@@ -38,7 +38,7 @@ body {
     @apply rounded-lg bg-rc-teal px-4 py-2 text-white hover:bg-rc-teal-dark;
   }
   .rc-table-header {
-    @apply bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase;
+    @apply bg-slate-50 text-slate-600 font-semibold tracking-wider text-xs uppercase border-b border-slate-200;
   }
   .rc-status-pill {
     @apply rounded-full px-3 py-1 text-sm font-semibold;

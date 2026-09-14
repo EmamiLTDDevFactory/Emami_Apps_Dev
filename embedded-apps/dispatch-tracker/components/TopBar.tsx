@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '@/constants/theme';
+import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
+import { DateRangeRow } from '@/components/FilterBar';
+import { isoDate, toDate, todayDate } from '@/lib/format';
 
 /**
  * Ported from top_bar() in main_panel.py. Date/time/email are dropped on
@@ -10,36 +14,57 @@ import { useAuth } from '@/contexts/AuthContext';
  */
 export function TopBar() {
   const { session, readOnly, signOut } = useAuth();
+  const { dateFilter, runSearch, loading } = useData();
   const isHq = readOnly;
   const initials = isHq
     ? 'HQ'
     : (session?.depot_number || session?.email || 'D').slice(0, 2).toUpperCase();
   const avatarGradientStart = isHq ? colors.purple : colors.navy;
 
+  // Local, uncommitted UI state — only applied (via runSearch) when Go is pressed. This is the
+  // ONE place the date range lives now: no per-tab filter, no auto-fetch on every date pick.
+  const [frmDate, setFrmDate] = useState<Date>(() => toDate(dateFilter.frmDate) ?? todayDate());
+  const [dateTo, setDateTo] = useState<Date>(() => toDate(dateFilter.toDate) ?? todayDate());
+  const searching = !!loading.inv;
+
   return (
-    <View style={styles.bar}>
-      <View style={styles.leftCluster}>
-        <View style={styles.logoBlock}>
-          <Image source={require('@/assets/images/emami-logo.png')} style={styles.logo} resizeMode="contain" />
+    <View>
+      <View style={styles.bar}>
+        <View style={styles.leftCluster}>
+          <View style={styles.logoBlock}>
+            <Image source={require('@/assets/images/emami-logo.png')} style={styles.logo} resizeMode="contain" />
+          </View>
+          <View style={styles.wordmarkBlock}>
+            <Text style={styles.system}>Dispatch Intelligence System</Text>
+          </View>
+          <View style={styles.panelChip}>
+            <Text style={styles.panelChipText}>{isHq ? 'HQ VIEW' : 'DEPOT PANEL'}</Text>
+          </View>
         </View>
-        <View style={styles.wordmarkBlock}>
-          <Text style={styles.system}>Dispatch Intelligence System</Text>
-        </View>
-        <View style={styles.panelChip}>
-          <Text style={styles.panelChipText}>{isHq ? 'HQ VIEW' : 'DEPOT PANEL'}</Text>
+
+        <View style={styles.rightCluster}>
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>LIVE</Text>
+          </View>
+          <View style={[styles.avatar, { backgroundColor: avatarGradientStart }]}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <Pressable style={styles.signOutBtn} onPress={signOut}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </Pressable>
         </View>
       </View>
 
-      <View style={styles.rightCluster}>
-        <View style={styles.liveBadge}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>LIVE</Text>
+      <View style={styles.filterBar}>
+        <View style={{ flex: 1 }}>
+          <DateRangeRow fromDate={frmDate} toDate={dateTo} onFromDateChange={setFrmDate} onToDateChange={setDateTo} />
         </View>
-        <View style={[styles.avatar, { backgroundColor: avatarGradientStart }]}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-        <Pressable style={styles.signOutBtn} onPress={signOut}>
-          <Text style={styles.signOutText}>Sign Out</Text>
+        <Pressable
+          style={[styles.goBtn, searching && styles.goBtnDisabled]}
+          disabled={searching}
+          onPress={() => runSearch(isoDate(frmDate), isoDate(dateTo))}>
+          <Text style={styles.goBtnText}>{searching ? '…' : 'Go'}</Text>
         </Pressable>
       </View>
     </View>
@@ -72,4 +97,25 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   signOutBtn: { backgroundColor: colors.green, borderRadius: 6, height: 26, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   signOutText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.g200,
+  },
+  goBtn: {
+    height: 34,
+    minWidth: 64,
+    paddingHorizontal: 16,
+    borderRadius: radius.sm,
+    backgroundColor: colors.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goBtnDisabled: { opacity: 0.6 },
+  goBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });

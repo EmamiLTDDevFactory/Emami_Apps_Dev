@@ -243,23 +243,24 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-fadeIn">
-      {/* Floating Chatbot Window */}
+    <div className="fixed inset-x-4 bottom-6 sm:inset-x-auto sm:right-6 z-50 animate-fadeIn flex sm:block justify-end">
+      {/* Floating Chatbot Window — full-width-minus-gutters below sm instead of a fixed 360px,
+          which would overflow off-screen on a 375px/360px phone alongside the 24px inset. */}
       {isOpen && (
-        <div className="relative w-[360px] sm:w-[420px] h-[580px] rounded-3xl bg-white shadow-2xl border border-rose-200 overflow-hidden flex flex-col animate-fadeIn">
+        <div className="relative w-full sm:w-[420px] h-[min(580px,70vh)] rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-fadeIn">
           
           {/* Header Bar */}
-          <div className="bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] p-4 text-white flex items-center justify-between border-b border-rose-900/40 shrink-0">
+          <div className="bg-slate-900 p-4 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="relative p-2 rounded-2xl bg-white/10 border border-white/20">
-                <Bot className="h-6 w-6 text-rose-200" />
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-[#800A36]" />
+              <div className="relative p-2 rounded-xl bg-white/10 border border-white/20">
+                <Bot className="h-6 w-6 text-white" />
+                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-400 border-2 border-rc-teal" />
               </div>
               <div>
-                <h3 className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                <h3 className="text-sm font-bold tracking-tight flex items-center gap-1.5">
                   Emami RC AI Assistant <Sparkles className="h-3.5 w-3.5 text-amber-300" />
                 </h3>
-                <p className="text-[10px] font-bold text-rose-200/90 flex items-center gap-1">
+                <p className="text-[10px] font-bold text-white/90 flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block" /> Active • Connected to SAP Gateway
                 </p>
               </div>
@@ -268,14 +269,14 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
             <div className="flex items-center gap-1">
               <button
                 onClick={handleResetChat}
-                className="p-2 rounded-xl text-rose-200 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="p-2 rounded-xl text-white hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Reset Chat"
               >
                 <RefreshCw className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-2 rounded-xl text-rose-200 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                className="p-2 rounded-xl text-white hover:text-white hover:bg-white/10 transition cursor-pointer"
                 title="Close"
               >
                 <X className="h-5 w-5" />
@@ -288,9 +289,9 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
             {messages.map((msg) => (
               <div key={msg.id} className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl p-3.5 shadow-2xs whitespace-pre-line leading-relaxed ${
+                  className={`max-w-[85%] rounded-xl p-3.5 shadow-sm whitespace-pre-line leading-relaxed ${
                     msg.sender === 'user'
-                      ? 'bg-[#800A36] text-white rounded-br-none font-medium'
+                      ? 'bg-rc-teal text-white rounded-br-none font-medium'
                       : 'bg-white text-slate-800 border border-slate-200/80 rounded-bl-none font-normal'
                   }`}
                 >
@@ -304,7 +305,7 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
                           setIsOpen(false);
                           navigate(msg.link);
                         }}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#800A36] hover:underline cursor-pointer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-rc-teal hover:underline cursor-pointer"
                       >
                         {msg.linkText} <ExternalLink className="h-3 w-3" />
                       </button>
@@ -317,22 +318,22 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
                 {/* Predefined Quick Questions List */}
                 {msg.options && (
                   <div className="mt-3 space-y-2 w-full">
-                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Quick Questions:</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Quick Questions:</p>
                     {msg.options.map((opt) => {
                       const IconComp = opt.icon;
                       return (
                         <button
                           key={opt.id}
                           onClick={() => handleQuestionSelect(opt)}
-                          className="w-full text-left p-2.5 rounded-xl bg-white border border-rose-200/80 hover:border-[#800A36] hover:bg-rose-50/60 transition flex items-center justify-between group shadow-2xs cursor-pointer"
+                          className="w-full text-left p-2.5 rounded-xl bg-white border border-slate-200 hover:border-rc-teal hover:bg-rc-indigo-50 transition flex items-center justify-between group shadow-sm cursor-pointer"
                         >
                           <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 rounded-lg bg-rose-100/70 text-[#800A36] group-hover:bg-[#800A36] group-hover:text-white transition">
+                            <div className="p-1.5 rounded-lg bg-rc-indigo-50 text-rc-teal group-hover:bg-rc-teal group-hover:text-white transition">
                               <IconComp className="h-3.5 w-3.5" />
                             </div>
-                            <span className="text-xs font-bold text-slate-800 group-hover:text-[#800A36] transition">{opt.label}</span>
+                            <span className="text-xs font-bold text-slate-800 group-hover:text-rc-teal transition">{opt.label}</span>
                           </div>
-                          <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-[#800A36] group-hover:translate-x-0.5 transition" />
+                          <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-rc-teal group-hover:translate-x-0.5 transition" />
                         </button>
                       );
                     })}
@@ -343,8 +344,8 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
 
             {/* Bot Typing Indicator */}
             {isTyping && (
-              <div className="flex items-center gap-2 text-slate-400 p-2 bg-white rounded-2xl border border-slate-200/80 w-24">
-                <Bot className="h-4 w-4 text-[#800A36] animate-spin" />
+              <div className="flex items-center gap-2 text-slate-400 p-2 bg-white rounded-xl border border-slate-200/80 w-24">
+                <Bot className="h-4 w-4 text-rc-teal animate-spin" />
                 <span className="text-[10px] font-bold">Typing...</span>
               </div>
             )}
@@ -356,7 +357,7 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
               <button
                 key={q.id}
                 onClick={() => handleQuestionSelect(q)}
-                className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-slate-300 text-[10px] font-bold text-slate-700 hover:border-[#800A36] hover:text-[#800A36] transition cursor-pointer"
+                className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white border border-slate-300 text-[10px] font-bold text-slate-700 hover:border-rc-teal hover:text-rc-teal transition cursor-pointer"
               >
                 {q.label.split('?')[0]}
               </button>
@@ -370,12 +371,12 @@ export default function RcChatbot({ isOpen: externalIsOpen, onClose: externalOnC
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Ask a question about Emami RC Portal..."
-              className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-900 focus:border-[#800A36] focus:bg-white focus:outline-none"
+              className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-900 focus:border-rc-teal focus:bg-white focus:outline-none"
             />
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="p-2.5 rounded-xl bg-[#800A36] text-white hover:bg-[#600727] transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              className="p-2.5 rounded-xl bg-rc-teal text-white hover:bg-rc-teal-dark transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <Send className="h-4 w-4" />
             </button>

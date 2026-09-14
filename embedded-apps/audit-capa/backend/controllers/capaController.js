@@ -191,9 +191,35 @@ const uploadCAPAEvidenceController = async (
   }
 };
 
+const deleteCAPAsForAudit = async (req, res) => {
+  try {
+
+    const { auditId } = req.query;
+
+    if (!auditId) {
+      return res.status(400).json({
+        message: "auditId is required"
+      });
+    }
+
+    const deletedCount =
+      await capaModel.deleteCAPAsByAudit(auditId);
+
+    res.json({ deletedCount });
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      message: "Error deleting CAPAs"
+    });
+  }
+};
+
 module.exports = {
   getCAPAs,
   createCAPAs,
   updateCAPA,
-  uploadCAPAEvidenceController
+  uploadCAPAEvidenceController,
+  deleteCAPAsForAudit
 };

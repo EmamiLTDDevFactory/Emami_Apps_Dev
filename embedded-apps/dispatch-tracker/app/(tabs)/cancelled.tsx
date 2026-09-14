@@ -67,7 +67,16 @@ function invTotalForDepot(depot: string, caches: (Array<{ depot?: string }> | nu
 
 export default function CancelledScreen() {
   const { session, readOnly } = useAuth();
-  const { cancCache, pendCache, dispCache, compCache, retCache, loading, errors, ensureCancelled } = useData();
+  const {
+    cancCache,
+    pendCache,
+    dispCache,
+    compCache,
+    retCache,
+    loading,
+    errors,
+    ensureCancelled,
+  } = useData();
 
   useFocusEffect(
     useCallback(() => {
@@ -140,14 +149,6 @@ export default function CancelledScreen() {
     );
   }
 
-  if (!dcRows.length) {
-    return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-        <EmptyState message="No cancelled invoices yet" icon="✕" />
-      </ScrollView>
-    );
-  }
-
   return (
     <View style={styles.screen}>
       <View style={styles.sticky}>
@@ -164,7 +165,9 @@ export default function CancelledScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {!filtered.length ? (
+        {!dcRows.length ? (
+          <EmptyState message="No cancelled invoices" icon="✕" hint="Try a different date range at the top" />
+        ) : !filtered.length ? (
           <EmptyState message="No results" icon="🔍" />
         ) : (
           <>

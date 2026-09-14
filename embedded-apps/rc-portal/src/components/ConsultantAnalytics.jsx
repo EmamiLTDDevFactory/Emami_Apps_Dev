@@ -6,16 +6,11 @@ import { formatCurrency } from '../utils/formatters';
 // (getConsultants()) — no new API calls, no mock data. Self-contained component: deleting this
 // file plus the two lines that import/render it in Dashboard.jsx fully reverts this feature.
 //
-// Rebuilt to match a supplied ApexCharts reference exactly: dark navy cards, no inline bar
-// labels, a floating top-right value per panel, two bold glowing lines (not one faint one), all
-// status rings actually populated, and vendor rows as individual gradient progress bars instead
-// of one combined chart.
-const NEON = { yellow: '#FCCF31', cyan: '#17ead9', magenta: '#f02fc2', orange: '#F55555', blue: '#6078ea' };
-const PAGE_DARK = '#1B213B';
-const CARD_DARK = '#262D47';
-const GRID_DARK = '#40475D';
-const TEXT_LIGHT = '#e8e8f0';
-const TEXT_MUTED = '#9aa0b8';
+// Validated categorical palette (CVD-safe adjacent ordering) — see the dataviz skill's
+// reference palette. Reused for status shares, the fees/contracts trend, and vendor rows.
+const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100'];
+const GRID_LIGHT = '#e2e8f0';
+const TEXT_MUTED = '#64748b';
 
 function parseDateMs(val) {
   if (!val) return null;
@@ -36,13 +31,13 @@ const pctOfMax = (arr) => { const max = Math.max(1, ...arr); return arr.map((v) 
 // subtitle pair, not a chart element, so it works identically across every chart type below.
 function ChartCard({ title, subtitle, value, children }) {
   return (
-    <div className="rounded-lg p-4" style={{ backgroundColor: CARD_DARK }}>
+    <div className="rc-card p-4">
       <div className="mb-1 flex items-start justify-between">
         <div>
-          <div className="text-sm font-bold" style={{ color: TEXT_LIGHT }}>{title}</div>
-          {subtitle && <div className="mt-0.5 text-xs font-medium" style={{ color: TEXT_MUTED }}>{subtitle}</div>}
+          <div className="text-sm font-semibold text-slate-900">{title}</div>
+          {subtitle && <div className="mt-0.5 text-xs font-medium text-slate-500">{subtitle}</div>}
         </div>
-        {value != null && <div className="text-2xl font-black" style={{ color: TEXT_LIGHT }}>{value}</div>}
+        {value != null && <div className="text-2xl font-semibold text-slate-900">{value}</div>}
       </div>
       {children}
     </div>
@@ -51,26 +46,25 @@ function ChartCard({ title, subtitle, value, children }) {
 
 function EmptyChartState({ message }) {
   return (
-    <div className="flex h-[200px] items-center justify-center px-6 text-center text-xs font-medium" style={{ color: TEXT_MUTED }}>
+    <div className="flex h-[200px] items-center justify-center px-6 text-center text-xs font-medium text-slate-400">
       {message}
     </div>
   );
 }
 
 // One row of the reference's "Process 1/2/3" progress-bar pattern — plain HTML/CSS, not a chart
-// instance, since each one is just a title + gradient bar + percentage (matches the reference's
-// visual exactly without spinning up N extra ApexCharts mounts for something this simple).
-function ProgressRow({ label, valueLabel, pct, gradient }) {
+// instance, since each one is just a title + bar + percentage.
+function ProgressRow({ label, valueLabel, pct, color }) {
   return (
     <div className="mb-4 last:mb-0">
       <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-sm font-bold" style={{ color: TEXT_LIGHT }}>{label}</span>
-        <span className="text-sm font-black" style={{ color: TEXT_LIGHT }}>{valueLabel}</span>
+        <span className="text-sm font-semibold text-slate-700">{label}</span>
+        <span className="text-sm font-semibold text-slate-900">{valueLabel}</span>
       </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: GRID_DARK }}>
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
         <div
           className="h-full rounded-full"
-          style={{ width: `${Math.max(2, pct)}%`, backgroundImage: `linear-gradient(90deg, ${gradient[0]}, ${gradient[1]})` }}
+          style={{ width: `${Math.max(2, pct)}%`, backgroundColor: color }}
         />
       </div>
     </div>
@@ -86,11 +80,11 @@ export default function ConsultantAnalytics({ consultants }) {
     });
     const total = consultants.length || 1;
     const labels = ['Active', 'On Hold', 'Inactive'];
-    const colors = [NEON.orange, NEON.cyan, NEON.magenta];
+    const colors = [SERIES[0], SERIES[1], SERIES[2]];
     const series = [counts.ACTIVE, counts.ONHOLD, counts.INACTIVE];
     if (counts.OTHER > 0) {
       labels.push('Other');
-      colors.push(TEXT_MUTED);
+      colors.push(SERIES[3]);
       series.push(counts.OTHER);
     }
     return {
@@ -161,13 +155,13 @@ export default function ConsultantAnalytics({ consultants }) {
   const hasFeesTrend = feesTrendData.fees.length > 1;
 
   const statusOptions = {
-    chart: { type: 'radialBar', foreColor: TEXT_LIGHT, toolbar: { show: false } },
+    chart: { type: 'radialBar', foreColor: TEXT_MUTED, toolbar: { show: false } },
     colors: statusData.colors,
     labels: statusData.labels,
     plotOptions: {
       radialBar: {
         hollow: { margin: 5, size: '38%', background: 'transparent' },
-        track: { show: true, background: GRID_DARK, strokeWidth: '10%', opacity: 1, margin: 4 },
+        track: { show: true, background: GRID_LIGHT, strokeWidth: '10%', opacity: 1, margin: 4 },
         dataLabels: { name: { show: false }, value: { show: false } },
       },
     },
@@ -175,52 +169,39 @@ export default function ConsultantAnalytics({ consultants }) {
       show: true,
       position: 'left',
       offsetY: 10,
-      labels: { colors: TEXT_LIGHT },
+      labels: { colors: '#334155' },
       formatter: (val, opts) => `${val} - ${opts.w.globals.series[opts.seriesIndex]}%`,
-    },
-    fill: {
-      type: 'gradient',
-      gradient: { shade: 'dark', type: 'horizontal', shadeIntensity: 0.5, inverseColors: true, opacityFrom: 1, opacityTo: 1, stops: [0, 100] },
     },
     stroke: { lineCap: 'round' },
   };
 
   const hiresOptions = {
-    chart: { type: 'bar', toolbar: { show: false }, foreColor: TEXT_LIGHT },
-    colors: [NEON.yellow],
-    plotOptions: { bar: { borderRadius: 6, columnWidth: '45%' } },
+    chart: { type: 'bar', toolbar: { show: false }, foreColor: TEXT_MUTED },
+    colors: [SERIES[0]],
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '45%' } },
     dataLabels: { enabled: false },
     stroke: { width: 0 },
-    grid: { borderColor: GRID_DARK, strokeDashArray: 0 },
+    grid: { borderColor: GRID_LIGHT, strokeDashArray: 0 },
     xaxis: {
       categories: ['Zero', '1–5', '5+'],
-      axisTicks: { color: GRID_DARK },
-      axisBorder: { color: GRID_DARK },
+      axisTicks: { color: GRID_LIGHT },
+      axisBorder: { color: GRID_LIGHT },
       labels: { style: { colors: TEXT_MUTED } },
     },
     yaxis: { labels: { style: { colors: TEXT_MUTED } }, forceNiceScale: true },
-    fill: {
-      type: 'gradient',
-      gradient: { shade: 'dark', type: 'vertical', shadeIntensity: 0.5, gradientToColors: [NEON.orange], inverseColors: false, opacityFrom: 1, opacityTo: 0.85, stops: [0, 100] },
-    },
-    tooltip: { theme: 'dark', y: { formatter: (v) => `${v} consultants` } },
+    tooltip: { theme: 'light', y: { formatter: (v) => `${v} consultants` } },
   };
 
   const feesTrendOptions = {
-    chart: {
-      type: 'line',
-      toolbar: { show: false },
-      foreColor: TEXT_LIGHT,
-      dropShadow: { enabled: true, opacity: 0.55, blur: 6, left: -5, top: 12 },
-    },
-    colors: [NEON.yellow, NEON.cyan],
-    stroke: { curve: 'smooth', width: 5 },
+    chart: { type: 'line', toolbar: { show: false }, foreColor: TEXT_MUTED },
+    colors: [SERIES[0], SERIES[1]],
+    stroke: { curve: 'smooth', width: 2 },
     markers: { size: 0 },
-    grid: { borderColor: GRID_DARK },
+    grid: { borderColor: GRID_LIGHT },
     xaxis: {
       categories: feesTrendData.categories,
-      axisTicks: { color: GRID_DARK },
-      axisBorder: { color: GRID_DARK },
+      axisTicks: { color: GRID_LIGHT },
+      axisBorder: { color: GRID_LIGHT },
       labels: { style: { colors: TEXT_MUTED } },
     },
     yaxis: {
@@ -228,9 +209,9 @@ export default function ConsultantAnalytics({ consultants }) {
       max: 100,
       labels: { style: { colors: TEXT_MUTED }, formatter: (v) => `${v}%` },
     },
-    legend: { show: true, labels: { colors: TEXT_LIGHT }, markers: { radius: 12 } },
+    legend: { show: true, labels: { colors: '#334155' }, markers: { radius: 12 } },
     tooltip: {
-      theme: 'dark',
+      theme: 'light',
       y: {
         formatter: (_v, { seriesIndex, dataPointIndex }) =>
           seriesIndex === 0 ? formatCurrency(feesTrendData.fees[dataPointIndex]) : `${feesTrendData.contracts[dataPointIndex]} contracts`,
@@ -239,7 +220,7 @@ export default function ConsultantAnalytics({ consultants }) {
   };
 
   return (
-    <div className="rounded-2xl p-4" style={{ backgroundColor: PAGE_DARK }}>
+    <div>
       {/* The "Analytics / Visual breakdown of consultant status, engagement, and spend" heading
           block that used to sit here was removed to reclaim its vertical space — each chart card
           already carries its own title and subtitle, so the section heading was redundant. */}
@@ -281,7 +262,7 @@ export default function ConsultantAnalytics({ consultants }) {
                   label={v.vendor}
                   valueLabel={formatCurrency(v.fees)}
                   pct={v.pct}
-                  gradient={[[NEON.orange, NEON.yellow], [NEON.cyan, NEON.blue], [NEON.blue, NEON.magenta]][i % 3]}
+                  color={SERIES[i % SERIES.length]}
                 />
               ))}
             </div>

@@ -29,6 +29,7 @@ import {
 import LogoutIcon from "@mui/icons-material/Logout";
 
 import emamiAppsLogo from "../../assets/emami-apps-logo.png";
+import { EMAMI_APPS_URL } from "./emamiAppsUrl";
 
 export default function Sidebar() {
     const location = useLocation();
@@ -159,13 +160,13 @@ export default function Sidebar() {
     return (
         <Box
             sx={{
+                position: "relative",
                 width: collapsed ? 80 : 240,
                 height: "100vh",
-                // bgcolor: "#1565c0",
-                bgcolor: "#0F172A",
-                color: "white",
-                boxShadow: 4,
-                borderRight: "1px solid rgba(255,255,255,0.08)",
+                bgcolor: "#fff",
+                color: "#1E293B",
+                boxShadow: 1,
+                borderRight: "1px solid #E5E7EB",
                 transition: "all 0.3s ease",
                 overflow: "hidden",
             }}
@@ -192,7 +193,7 @@ export default function Sidebar() {
                         }, 350);
                     }}
                     sx={{
-                        color: "white",
+                        color: "#1E293B",
                     }}
                 >
                     <MenuIcon />
@@ -223,7 +224,7 @@ export default function Sidebar() {
                 sx={{
                     display: "flex",
                     justifyContent: "center",
-                    p: collapsed ? 1.5 : 3,
+                    py: collapsed ? 1.5 : 2,
                 }}
             >
                 <Box
@@ -231,8 +232,8 @@ export default function Sidebar() {
                     src={emamiAppsLogo}
                     alt="Emami Apps"
                     sx={{
-                        width: collapsed ? 48 : 180,
-                        height: collapsed ? 40 : 149,
+                        width: collapsed ? 40 : 170,
+                        height: collapsed ? 40 : 170,
                         objectFit: "contain",
                         transition: "all 0.3s ease",
                     }}
@@ -245,8 +246,7 @@ export default function Sidebar() {
                     display: "block",
                     textAlign: "center",
                     mb: 2,
-                    color:
-                        "rgba(255,255,255,0.7)",
+                    color: "#64748B",
                 }}
             >
                 {collapsed
@@ -276,7 +276,7 @@ export default function Sidebar() {
                                 item.path
                             }
                             sx={{
-                                color: "white",
+                                color: "#1E293B",
                                 mx: 1,
                                 mb: 1,
                                 borderRadius: 2,
@@ -286,22 +286,20 @@ export default function Sidebar() {
                                         ? "center"
                                         : "flex-start",
 
-                                // "&.Mui-selected":
-                                // {
-                                //     backgroundColor:
-                                //         "rgba(255,255,255,0.2)",
-                                // },
                                 "&.Mui-selected": {
-                                    backgroundColor:
-                                        "#3e57a9",
+                                    backgroundColor: "#7C3AED",
+                                    color: "#fff",
 
                                     boxShadow:
-                                        "0 4px 12px rgba(0,0,0,0.2)",
+                                        "0 4px 12px rgba(124,58,237,0.35)",
+
+                                    "&:hover": {
+                                        backgroundColor: "#7C3AED",
+                                    },
                                 },
 
                                 "&:hover": {
-                                    backgroundColor:
-                                        "rgba(59,130,246,0.15)",
+                                    backgroundColor: "#F3F0FF",
 
                                     transform:
                                         "translateX(4px)",
@@ -309,16 +307,11 @@ export default function Sidebar() {
                                     transition:
                                         "all 0.25s ease",
                                 },
-
-                                // "&:hover": {
-                                //   backgroundColor:
-                                //     "rgba(255,255,255,0.1)",
-                                // },
                             }}
                         >
                             <ListItemIcon
                                 sx={{
-                                    color: "white",
+                                    color: "inherit",
                                     minWidth:
                                         collapsed
                                             ? 0
@@ -381,24 +374,15 @@ export default function Sidebar() {
                             <Typography
                                 variant="body2"
                                 fontWeight={600}
+                                sx={{ color: "#1E293B" }}
                             >
                                 {(currentUser?.userId || "")
                                     .split("@")[0]}
                             </Typography>
-                            {/* <Typography
-                                variant="caption"
-                                sx={{
-                                    color:
-                                        "rgba(255,255,255,0.7)",
-                                }}
-                            >
-                                Auditor
-                            </Typography> */}
                             <Typography
                                 variant="caption"
                                 sx={{
-                                    color:
-                                        "rgba(255,255,255,0.7)",
+                                    color: "#64748B",
                                 }}
                             >
                                 {currentUser?.role}
@@ -421,22 +405,20 @@ export default function Sidebar() {
                             "authToken"
                         );
 
-                        window.location.href = "https://www.emamiapps.in/";
+                        window.location.href = EMAMI_APPS_URL;
                     }}
                     sx={{
-                        color: "white",
+                        color: "#1E293B",
                         borderRadius: 1,
 
                         "&:hover": {
-                            backgroundColor:
-                                "rgba(255,255,255,0.1)",
-
+                            backgroundColor: "#F3F0FF",
                         },
                     }}
                 >
                     <ListItemIcon
                         sx={{
-                            color: "white",
+                            color: "inherit",
                             minWidth:
                                 collapsed ? 0 : 40,
                         }}

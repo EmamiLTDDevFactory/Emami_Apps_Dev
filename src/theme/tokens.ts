@@ -40,6 +40,7 @@ export const categoryColors: Record<string, string> = {
   Operations: '#0D9488',
   Sales: '#EA580C',
   Insights: '#7C3AED',
+  IBD: '#B45309',
 } as const;
 
 // Distinct pastel accent per real app, so the 4 cards read like the

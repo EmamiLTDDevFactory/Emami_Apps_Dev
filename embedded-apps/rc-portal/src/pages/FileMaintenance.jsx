@@ -7,6 +7,7 @@ import {
   ArrowUpDown, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import SuccessModal from '../components/SuccessModal';
+import PageHeader from '../components/PageHeader';
 import * as XLSX from 'xlsx';
 
 // Direct SAP OData gateway base — same anonymous-access door as odataService.js. FileSet is
@@ -437,7 +438,7 @@ export default function FileMaintenance() {
       <span>
         {parts.map((part, i) => 
           regex.test(part) 
-            ? <mark key={i} className="bg-amber-100 text-[#800A36] font-extrabold rounded-xs px-0.5">{part}</mark> 
+            ? <mark key={i} className="bg-amber-100 text-rc-teal font-semibold rounded-xs px-0.5">{part}</mark> 
             : <span key={i}>{part}</span>
         )}
       </span>
@@ -482,27 +483,24 @@ export default function FileMaintenance() {
   return (
     <div className="space-y-6">
       
-      {/* Top Breathable Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-r from-white via-rose-50/50 to-pink-50/60 p-6 shadow-sm">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#800A36] via-[#9E0D43] to-rose-400" />
-        
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button 
+      {/* Top Header Banner */}
+      <PageHeader>
+        <div className="flex items-center gap-4">
+            <button
               onClick={() => navigate('/')}
-              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-pointer"
             >
-              <ArrowLeft className="h-4 w-4 text-[#800A36]" /> Dashboard
+              <ArrowLeft className="h-4 w-4 text-rc-teal" /> Dashboard
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-rose-100 text-[#800A36]">
+                <div className="p-1.5 rounded-lg bg-rc-indigo-50 text-rc-teal">
                   <Folder className="h-5 w-5" />
                 </div>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">Document Hub (FileSet)</h1>
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight">Document Hub (FileSet)</h1>
               </div>
             </div>
-          </div>
+        </div>
 
           <div className="flex items-center gap-2.5">
             {selectedFileNos.length > 0 && (
@@ -522,7 +520,7 @@ export default function FileMaintenance() {
               className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-sm cursor-pointer ${
                 showUploadForm 
                   ? 'bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-300' 
-                  : 'bg-[#800A36] text-white hover:bg-[#600727] border border-[#9E0D43]/40'
+                  : 'bg-rc-teal text-white hover:bg-rc-teal-dark border border-rc-indigo-400/40'
               }`}
             >
               <UploadCloud className="h-4 w-4" /> {showUploadForm ? 'Cancel Upload' : 'Upload File'}
@@ -531,17 +529,16 @@ export default function FileMaintenance() {
             <button 
               onClick={fetchFiles}
               disabled={loading}
-              className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`h-4 w-4 text-[#800A36] ${loading ? 'animate-spin' : ''}`} /> Refresh
+              <RefreshCw className={`h-4 w-4 text-rc-teal ${loading ? 'animate-spin' : ''}`} /> Refresh
             </button>
           </div>
-        </div>
-      </div>
+      </PageHeader>
 
       {/* Global Toast Message Feedback */}
       {uploadMessage && (
-        <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between gap-3 shadow-xs animate-fadeIn ${
+        <div className={`p-4 rounded-xl border text-xs font-bold flex items-center justify-between gap-3 shadow-sm animate-fadeIn ${
           uploadMessage.type === 'success' 
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
             : uploadMessage.type === 'info'
@@ -562,10 +559,10 @@ export default function FileMaintenance() {
 
       {/* Upload File Form Drawer */}
       {showUploadForm && (
-        <div className="rounded-2xl border border-rose-200 bg-white p-6 shadow-md animate-fadeIn">
-          <div className="flex items-center gap-2 pb-3 mb-4 border-b border-rose-100">
-            <UploadCloud className="h-5 w-5 text-[#800A36]" />
-            <h3 className="text-base font-black text-slate-900">Upload Document to SAP FileSet</h3>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm animate-fadeIn">
+          <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-200">
+            <UploadCloud className="h-5 w-5 text-rc-teal" />
+            <h3 className="text-base font-bold text-slate-900">Upload Document to SAP FileSet</h3>
           </div>
 
           <form onSubmit={handleUploadSubmit} className="space-y-4">
@@ -577,15 +574,15 @@ export default function FileMaintenance() {
                   onDragOver={handleDrag}
                   onDragLeave={handleDrag}
                   onDrop={handleDrop}
-                  className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
+                  className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
                     isDragging 
-                      ? 'border-amber-400 bg-rose-50/20 scale-[1.01]' 
-                      : 'border-rose-200/50 bg-rose-50/5 hover:bg-rose-50/15'
+                      ? 'border-rc-teal bg-rc-indigo-50 scale-[1.01]' 
+                      : 'border-slate-300 bg-white hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
-                    <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-amber-500' : 'text-[#800A36]'}`} />
-                    <p className="mb-1 text-sm text-slate-700 font-bold"><span className="font-extrabold text-[#800A36]">Click to upload</span> or drag and drop</p>
+                    <UploadCloud className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-rc-teal' : 'text-slate-400'}`} />
+                    <p className="mb-1 text-sm text-slate-700 font-bold"><span className="font-semibold text-rc-teal">Click to upload</span> or drag and drop</p>
                     <p className="text-xs font-medium text-slate-400">PDF, XLSX, XLS, or CSV files</p>
                   </div>
                   <input
@@ -597,7 +594,7 @@ export default function FileMaintenance() {
                 </label>
               </div>
               {selectedUploadFile && (
-                <p className="text-sm font-extrabold text-[#800A36] mt-1 flex items-center gap-2">
+                <p className="text-sm font-semibold text-rc-teal mt-1 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" /> {selectedUploadFile.name}
                 </p>
               )}
@@ -617,7 +614,7 @@ export default function FileMaintenance() {
               <button
                 type="submit"
                 disabled={uploading || !selectedUploadFile}
-                className="flex items-center gap-2 rounded-xl bg-[#800A36] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#600727] transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="flex items-center gap-2 rounded-xl bg-rc-teal px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {uploading ? (
                   <>
@@ -636,7 +633,7 @@ export default function FileMaintenance() {
       )}
 
       {/* Main Files Table Card */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         
         {/* Search & Filter Bar */}
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/80 flex flex-wrap items-center justify-between gap-3">
@@ -648,7 +645,7 @@ export default function FileMaintenance() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search by file name, FileNo, doc type..."
-                className="rc-input w-full pl-9 bg-white font-medium text-slate-900 border-slate-300 focus:border-[#800A36] focus:ring-2 focus:ring-rose-300 text-xs sm:text-sm"
+                className="rc-input w-full pl-9 bg-white font-medium text-slate-900 border-slate-300 focus:border-rc-teal focus:ring-2 focus:ring-rc-teal/20 text-xs sm:text-sm"
               />
             </div>
             <select 
@@ -665,11 +662,11 @@ export default function FileMaintenance() {
           <div className="flex items-center gap-4 text-xs font-bold text-slate-600">
             {selectedFileNos.length > 0 && (
               <span className="text-red-700 bg-red-50 border border-red-200 px-3 py-1 rounded-lg">
-                Selected: <strong className="font-extrabold">{selectedFileNos.length}</strong> file(s)
+                Selected: <strong className="font-semibold">{selectedFileNos.length}</strong> file(s)
               </span>
             )}
             <div>
-              Total Files: <span className="font-extrabold text-[#800A36]">{filteredFiles.length}</span>
+              Total Files: <span className="font-semibold text-rc-teal">{filteredFiles.length}</span>
             </div>
           </div>
         </div>
@@ -678,12 +675,12 @@ export default function FileMaintenance() {
         <div className="p-0">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="h-10 w-10 border-4 border-[#800A36]/30 border-t-[#800A36] rounded-full animate-spin mb-4" />
+              <div className="h-10 w-10 border-4 border-rc-teal/30 border-t-rc-teal rounded-full animate-spin mb-4" />
               <p className="text-sm font-bold text-slate-700">Fetching FileSet records from SAP...</p>
               <p className="text-xs text-slate-400 mt-1">Please wait while documents are loaded.</p>
             </div>
           ) : fetchError ? (
-            <div className="m-6 rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <div className="m-6 rounded-xl border border-red-200 bg-red-50 p-6 text-center">
               <ShieldAlert className="mx-auto h-8 w-8 text-red-500 mb-2" />
               <p className="text-sm font-bold text-red-700">{fetchError}</p>
               <button onClick={fetchFiles} className="mt-3 rounded-xl bg-red-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-red-700 cursor-pointer">Retry Request</button>
@@ -696,7 +693,7 @@ export default function FileMaintenance() {
               {!showUploadForm && (
                 <button 
                   onClick={() => setShowUploadForm(true)} 
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#800A36] px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#600727] cursor-pointer"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rc-teal px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark cursor-pointer"
                 >
                   <UploadCloud className="h-4 w-4" /> Upload First File
                 </button>
@@ -707,14 +704,14 @@ export default function FileMaintenance() {
               {/* Desktop View: Table */}
               <div className="hidden md:block overflow-x-auto max-h-[580px] overflow-y-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-gradient-to-r from-[#800A36] via-[#600727] to-[#40041a] text-white font-bold tracking-wider text-xs uppercase shadow-sm">
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-slate-600 font-semibold tracking-wider text-xs uppercase border-b border-slate-200 shadow-sm">
                     <tr>
                       <th className="px-4 py-4 w-10 text-center">
                         <input 
                           type="checkbox"
                           checked={isAllSelected}
                           onChange={handleSelectAll}
-                          className="rounded border-rose-300 text-[#800A36] focus:ring-[#800A36] h-4 w-4 cursor-pointer"
+                          className="rounded border-slate-300 text-rc-teal focus:ring-rc-teal h-4 w-4 cursor-pointer"
                         />
                       </th>
                       <th 
@@ -770,9 +767,9 @@ export default function FileMaintenance() {
                           onMouseLeave={() => setHoveredFileIndex(null)}
                           className={`relative transition-all cursor-pointer ${
                             isSelected 
-                              ? 'bg-rose-50/80 border-l-4 border-l-[#800A36]' 
+                              ? 'bg-rc-indigo-50 border-l-4 border-l-rc-teal' 
                               : isHovered 
-                              ? 'bg-rose-50/40 shadow-xs' 
+                              ? 'bg-slate-50 shadow-sm' 
                               : isEven 
                               ? 'bg-white' 
                               : 'bg-slate-50/60'
@@ -784,24 +781,24 @@ export default function FileMaintenance() {
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelect(fileNo)}
-                              className="rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] h-4 w-4 cursor-pointer"
+                              className="rounded border-slate-300 text-rc-teal focus:ring-rc-teal h-4 w-4 cursor-pointer"
                             />
                           </td>
 
                            {/* FileNo Key Column */}
-                          <td className="px-5 py-4 font-mono text-xs font-extrabold text-[#800A36]">
+                          <td className="px-5 py-4 font-mono text-xs font-semibold text-rc-teal">
                             {highlightText(fileNo, searchTerm)}
                           </td>
 
                           {/* Filename & Icon Column */}
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <div className={`p-2 rounded-xl border shrink-0 ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-[#800A36] border-rose-200'}`}>
+                              <div className={`p-2 rounded-xl border shrink-0 ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rc-indigo-50 text-rc-teal border-rc-indigo-100'}`}>
                                 {isExcelDoc ? <FileSpreadsheet className="h-4.5 w-4.5" /> : <FileText className="h-4.5 w-4.5" />}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900 text-sm tracking-tight flex items-center gap-1.5 group" title={`Click to view glance preview of ${filename}`}>
-                                  <span className="hover:text-[#800A36] transition">{highlightText(filename, searchTerm)}</span>
+                                  <span className="hover:text-rc-teal transition">{highlightText(filename, searchTerm)}</span>
                                   <Eye className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition" />
                                 </div>
                                 <div className="text-[11px] font-medium text-slate-500 mt-0.5">{highlightText(docType, searchTerm)}</div>
@@ -811,7 +808,7 @@ export default function FileMaintenance() {
 
                           {/* MIME Type Badge */}
                           <td className="px-5 py-4">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold border shadow-2xs ${
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold border shadow-sm ${
                               isExcelDoc ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-700 border-slate-300'
                             }`}>
                               {highlightText(mime, searchTerm)}
@@ -828,7 +825,7 @@ export default function FileMaintenance() {
                             <div className="flex items-center justify-end gap-2">
                               <button 
                                 onClick={() => downloadFileItem(file, filename, mime, fileNo)}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-1.5 text-xs font-bold text-[#800A36] hover:bg-[#800A36] hover:text-white transition shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rc-indigo-200 bg-rc-indigo-50 px-3 py-1.5 text-xs font-bold text-rc-teal hover:bg-rc-teal hover:text-white transition shadow-sm cursor-pointer"
                                 title="Download File"
                               >
                                 <Download className="h-3.5 w-3.5" /> Download
@@ -836,7 +833,7 @@ export default function FileMaintenance() {
 
                               <button 
                                 onClick={(e) => promptSingleDelete(file, idx, e)}
-                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50/80 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-600 hover:text-white transition shadow-2xs cursor-pointer"
+                                className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50/80 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-600 hover:text-white transition shadow-sm cursor-pointer"
                                 title="Delete File from SAP FileSet"
                               >
                                 <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -867,20 +864,16 @@ export default function FileMaintenance() {
                     <div 
                       key={fileNo}
                       onClick={() => setGlanceFile(itemPayload)}
-                      className={`rounded-2xl border-2 p-4 pt-5 transition-all cursor-pointer space-y-3.5 relative overflow-hidden ${
+                      className={`rounded-xl border p-4 transition-all cursor-pointer space-y-3.5 relative overflow-hidden ${
                         isExcelDoc
                           ? isSelected
-                            ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-300/40 shadow-xs'
-                            : 'bg-gradient-to-br from-emerald-50/20 via-white to-white border-emerald-100 hover:border-emerald-300 hover:shadow-xs'
+                            ? 'bg-emerald-50 border-emerald-600 ring-2 ring-emerald-300/40 shadow-sm'
+                            : 'bg-white border-emerald-100 hover:border-emerald-300 hover:shadow-sm'
                           : isSelected
-                            ? 'bg-rose-50/70 border-[#800A36] ring-2 ring-rose-200 shadow-xs'
-                            : 'bg-gradient-to-br from-rose-50/10 via-white to-white border-rose-100 hover:border-rose-300 hover:shadow-xs'
+                            ? 'bg-rc-indigo-50 border-rc-teal ring-2 ring-rc-teal/20 shadow-sm'
+                            : 'bg-white border-slate-200 hover:border-rc-teal/40 hover:shadow-sm'
                       }`}
                     >
-                      {/* Decorative colored top line */}
-                      <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${
-                        isExcelDoc ? 'from-emerald-400 to-teal-500' : 'from-[#800A36] via-[#9E0D43] to-rose-400'
-                      }`} />
                       {/* Top row: Checkbox, FileNo, and MIME Badge */}
                       <div className="flex items-center justify-between gap-2.5">
                         <div className="flex items-center gap-2.5" onClick={(e) => e.stopPropagation()}>
@@ -888,13 +881,13 @@ export default function FileMaintenance() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelect(fileNo)}
-                            className="rounded border-slate-300 text-[#800A36] focus:ring-[#800A36] h-4.5 w-4.5 cursor-pointer"
+                            className="rounded border-slate-300 text-rc-teal focus:ring-rc-teal h-4.5 w-4.5 cursor-pointer"
                           />
-                          <span className="font-mono text-[11px] font-extrabold text-[#800A36]">
+                          <span className="font-mono text-[11px] font-semibold text-rc-teal">
                             {highlightText(fileNo, searchTerm)}
                           </span>
                         </div>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black border uppercase ${
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border uppercase ${
                           isExcelDoc ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-300'
                         }`}>
                           {highlightText(mime.split('/').pop() || mime, searchTerm)}
@@ -903,7 +896,7 @@ export default function FileMaintenance() {
 
                       {/* Middle row: File Icon and Filename */}
                       <div className="flex items-start gap-3">
-                        <div className={`p-2.5 rounded-xl border shrink-0 ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-[#800A36] border-rose-200'}`}>
+                        <div className={`p-2.5 rounded-xl border shrink-0 ${isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rc-indigo-50 text-rc-teal border-rc-indigo-100'}`}>
                           {isExcelDoc ? <FileSpreadsheet className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -917,13 +910,13 @@ export default function FileMaintenance() {
                       {/* Bottom row: Date and Quick Action Buttons */}
                       <div className="flex items-center justify-between gap-4 pt-3 border-t border-slate-100">
                         <div className="text-[10px] font-bold text-slate-400">
-                          Uploaded: <span className="text-slate-600 font-extrabold">{uploadDate !== '-' && !isNaN(new Date(uploadDate)) ? new Date(uploadDate).toLocaleDateString() : String(uploadDate)}</span>
+                          Uploaded: <span className="text-slate-600 font-semibold">{uploadDate !== '-' && !isNaN(new Date(uploadDate)) ? new Date(uploadDate).toLocaleDateString() : String(uploadDate)}</span>
                         </div>
 
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button 
                             onClick={() => downloadFileItem(file, filename, mime, fileNo)}
-                            className="inline-flex items-center justify-center p-2 rounded-xl border border-rose-200 bg-rose-50/80 text-[#800A36] hover:bg-[#800A36] hover:text-white transition cursor-pointer"
+                            className="inline-flex items-center justify-center p-2 rounded-xl border border-rc-indigo-200 bg-rc-indigo-50 text-rc-teal hover:bg-rc-teal hover:text-white transition cursor-pointer"
                             title="Download File"
                           >
                             <Download className="h-3.5 w-3.5" />
@@ -949,23 +942,23 @@ export default function FileMaintenance() {
           {filteredFiles.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-t border-slate-200 bg-slate-100/90 text-slate-800">
               <div className="text-xs font-bold text-slate-700">
-                Showing <span className="font-extrabold text-[#800A36]">{filteredFiles.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredFiles.length)}</span> of <span className="font-extrabold text-slate-900">{filteredFiles.length}</span> documents
+                Showing <span className="font-semibold text-rc-teal">{filteredFiles.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredFiles.length)}</span> of <span className="font-semibold text-slate-900">{filteredFiles.length}</span> documents
               </div>
               <div className="flex items-center gap-2">
                 <button 
                   disabled={currentPage <= 1} 
                   onClick={() => setCurrentPage(currentPage - 1)} 
-                  className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#800A36] hover:text-white hover:border-[#800A36] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-sm hover:bg-rc-teal hover:text-white hover:border-rc-teal disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
                 >
                   <ChevronLeft className="h-4 w-4" /> Prev
                 </button>
-                <span className="text-xs font-extrabold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-xs font-semibold text-slate-800 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
                   Page {currentPage} / {totalPages || 1}
                 </span>
                 <button 
                   disabled={currentPage >= totalPages} 
                   onClick={() => setCurrentPage(currentPage + 1)} 
-                  className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold text-slate-800 shadow-2xs hover:bg-[#800A36] hover:text-white hover:border-[#800A36] disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 shadow-sm hover:bg-rc-teal hover:text-white hover:border-rc-teal disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
                 >
                   Next <ChevronRight className="h-4 w-4" />
                 </button>
@@ -981,19 +974,16 @@ export default function FileMaintenance() {
       {/* Glance View Modal / Mobile Tap Popup */}
       {glanceFile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl border border-slate-200 overflow-hidden">
-            
-            {/* Top Accent Strip */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#800A36] via-[#9E0D43] to-rose-400" />
-            
+          <div className="relative w-full max-w-lg rounded-xl bg-white p-6 shadow-lg border border-slate-200 overflow-hidden">
+
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-2xl border ${glanceFile.isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-[#800A36] border-rose-200'}`}>
+                <div className={`p-2.5 rounded-xl border ${glanceFile.isExcelDoc ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rc-indigo-50 text-rc-teal border-rc-indigo-100'}`}>
                   {glanceFile.isExcelDoc ? <FileSpreadsheet className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900 leading-snug">{glanceFile.filename}</h3>
-                  <p className="text-xs font-mono font-bold text-[#800A36]">FileNo: {glanceFile.fileNo}</p>
+                  <h3 className="text-base font-bold text-slate-900 leading-snug">{glanceFile.filename}</h3>
+                  <p className="text-xs font-mono font-bold text-rc-teal">FileNo: {glanceFile.fileNo}</p>
                 </div>
               </div>
               <button 
@@ -1013,8 +1003,8 @@ export default function FileMaintenance() {
                   const bodyRows = parsedExcel.rows.slice(1);
 
                   return (
-                    <div className="mb-4 overflow-hidden rounded-2xl border border-emerald-300 bg-white shadow-xs">
-                      <div className="bg-gradient-to-r from-emerald-800 to-teal-800 px-3.5 py-2 text-white flex items-center justify-between">
+                    <div className="mb-4 overflow-hidden rounded-xl border border-emerald-300 bg-white shadow-sm">
+                      <div className="bg-emerald-700 px-3.5 py-2 text-white flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-xs font-bold">
                           <FileSpreadsheet className="h-4 w-4 text-emerald-300" />
                           Spreadsheet Preview ({parsedExcel.sheetName})
@@ -1026,7 +1016,7 @@ export default function FileMaintenance() {
 
                       <div className="max-h-56 overflow-auto border-t border-emerald-100">
                         <table className="w-full text-left text-xs border-collapse">
-                          <thead className="bg-emerald-50 text-emerald-950 font-extrabold sticky top-0 border-b border-emerald-200 z-10">
+                          <thead className="bg-emerald-50 text-emerald-950 font-semibold sticky top-0 border-b border-emerald-200 z-10">
                             <tr>
                               <th className="p-2 w-8 text-center text-[10px] text-slate-400 border-r border-emerald-200 bg-emerald-100/60">#</th>
                               {headers.map((h, i) => (
@@ -1038,7 +1028,7 @@ export default function FileMaintenance() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {bodyRows.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-teal-50/50 transition">
+                              <tr key={rIdx} className="hover:bg-rc-indigo-50/50 transition">
                                 <td className="p-2 text-center text-[10px] font-mono text-slate-400 bg-slate-50 border-r border-slate-200">{rIdx + 1}</td>
                                 {headers.map((_, cIdx) => (
                                   <td key={cIdx} className="p-2 text-slate-800 font-medium border-r border-slate-100 whitespace-nowrap truncate max-w-[160px]">
@@ -1055,13 +1045,13 @@ export default function FileMaintenance() {
                 }
 
                 return (
-                  <div className="mb-4 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-teal-50/40 to-slate-50 p-4 shadow-xs">
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-2xl bg-emerald-600 text-white shadow-sm shrink-0">
+                      <div className="p-3 rounded-xl bg-emerald-600 text-white shadow-sm shrink-0">
                         <FileSpreadsheet className="h-6 w-6" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-black text-emerald-950 uppercase tracking-wide">Excel Spreadsheet Document</h4>
+                        <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">Excel Spreadsheet Document</h4>
                         <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
                           Microsoft Excel binary spreadsheet format ({glanceFile.mime}). Click <strong className="text-emerald-800">Download File</strong> below to open workbooks and formulas.
                         </p>
@@ -1071,8 +1061,8 @@ export default function FileMaintenance() {
                 );
               })()
             ) : glanceFile.base64Data ? (
-              <div className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-inner">
-                <div className="bg-slate-800 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-rose-300 flex items-center justify-between border-b border-slate-700">
+              <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-900 shadow-inner">
+                <div className="bg-slate-800 px-3.5 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-300 flex items-center justify-between border-b border-slate-700">
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                     Live PDF Content Preview
@@ -1086,7 +1076,7 @@ export default function FileMaintenance() {
                 />
               </div>
             ) : (
-              <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/80 text-amber-900 text-xs font-semibold mb-4 flex items-center gap-2">
+              <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-amber-900 text-xs font-semibold mb-4 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
                 <span>Binary preview unavailable for this legacy record. Click <strong>Download File</strong> to save local copy.</span>
               </div>
@@ -1094,16 +1084,16 @@ export default function FileMaintenance() {
 
             {/* Document Details Grid */}
             <div className="grid grid-cols-2 gap-3 mb-5">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">Document Category</span>
-                <span className="text-xs font-black text-slate-800">{glanceFile.docType}</span>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Document Category</span>
+                <span className="text-xs font-bold text-slate-800">{glanceFile.docType}</span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">Upload Date</span>
-                <span className="text-xs font-black text-slate-800">{glanceFile.uploadDate}</span>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                <span className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Upload Date</span>
+                <span className="text-xs font-bold text-slate-800">{glanceFile.uploadDate}</span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 col-span-2">
-                <span className="text-[10px] font-extrabold uppercase text-slate-400 block mb-1">MIME Type</span>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 col-span-2">
+                <span className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">MIME Type</span>
                 <span className="font-mono text-xs font-bold text-slate-800 break-all">{glanceFile.mime}</span>
               </div>
             </div>
@@ -1126,7 +1116,7 @@ export default function FileMaintenance() {
                 </button>
                 <button
                   onClick={() => downloadFileItem(glanceFile.file, glanceFile.filename, glanceFile.mime, glanceFile.fileNo)}
-                  className="flex items-center gap-2 rounded-xl bg-[#800A36] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#600727] transition cursor-pointer"
+                  className="flex items-center gap-2 rounded-xl bg-rc-teal px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-rc-teal-dark transition cursor-pointer"
                 >
                   <Download className="h-4 w-4" /> Download File
                 </button>
@@ -1140,19 +1130,19 @@ export default function FileMaintenance() {
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fadeIn">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-200">
+          <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-2xl border border-slate-200">
             <div className="flex items-center gap-3 text-red-600 mb-3">
-              <div className="p-2.5 rounded-2xl bg-red-100 border border-red-200">
+              <div className="p-2.5 rounded-xl bg-red-100 border border-red-200">
                 <Trash2 className="h-6 w-6 text-red-600" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">Confirm Deletion</h3>
+                <h3 className="text-lg font-bold text-slate-900">Confirm Deletion</h3>
                 <p className="text-xs font-bold text-red-600">FILESET_DELETE_ENTITY</p>
               </div>
             </div>
 
             <p className="text-sm font-medium text-slate-700 mb-4">
-              Are you sure you want to delete <strong className="text-slate-900">{deleteConfirm.fileNos.length}</strong> file(s) from SAP FileSet? This operation will pass <code className="font-mono bg-slate-100 text-rose-800 px-1.5 py-0.5 rounded text-xs font-bold">FileNo</code> into SAP Gateway <code className="font-mono bg-slate-100 text-rose-800 px-1.5 py-0.5 rounded text-xs font-bold">IT_KEY_TAB</code>.
+              Are you sure you want to delete <strong className="text-slate-900">{deleteConfirm.fileNos.length}</strong> file(s) from SAP FileSet? This operation will pass <code className="font-mono bg-slate-100 text-rc-teal px-1.5 py-0.5 rounded text-xs font-bold">FileNo</code> into SAP Gateway <code className="font-mono bg-slate-100 text-rc-teal px-1.5 py-0.5 rounded text-xs font-bold">IT_KEY_TAB</code>.
             </p>
 
             <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 mb-5 space-y-1">

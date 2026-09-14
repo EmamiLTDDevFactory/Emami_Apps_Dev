@@ -1,11 +1,12 @@
 import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
+  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  CalendarClock, FileCheck2,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations'];
+export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD'];
 
 /**
  * Live app URLs. Every real app renders inside a WebView on the launch screen
@@ -52,11 +53,22 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // relative path either way, same reasoning as Market Rate/Development Tracker above. Calls SAP
   // (ZMM_PO_FOLLOWUP_SRV) directly from the client, no backend of its own.
   'po-followup': '/apps/po-followup', // PO Followup
-  // Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as "payment-tracking"
-  // for routing stability) is PO Followup's sibling app — same service (ZMM_PO_FOLLOWUP_SRV,
-  // entity set ZProvisionTrackSet), distinguished from Delivery Confirmation purely by the Potype
-  // SAP filter ('9' here vs 'M' there).
-  'payment-tracking': '/apps/payment-tracking', // Provision Tracking
+  // IBD Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as
+  // "payment-tracking" for routing stability) is PO Followup's sibling app — same service
+  // (ZMM_PO_FOLLOWUP_SRV, entity set ZProvisionTrackSet), distinguished from Delivery Confirmation
+  // purely by the Potype SAP filter ('9' here vs 'M' there).
+  'payment-tracking': '/apps/payment-tracking', // IBD Provision Tracking
+  // TimeSheet has no separate native deployment either (see embedded-apps/timesheet) — same
+  // relative path either way, same reasoning as Market Rate/Development Tracker above. It has its
+  // own Postgres-backed backend (embedded-apps/timesheet/server), same pattern as Non CTC Expense,
+  // RC Portal and Audit & CAPA.
+  timesheet: '/apps/timesheet', // TimeSheet
+  // PO Deviation Approval has no separate native deployment either (see embedded-apps/
+  // fm-po-deviation) — same relative path either way, same reasoning as every other same-origin
+  // embedded app above. A Next.js static export (the rest of this repo's embedded apps are Expo
+  // web or Vite) calling SAP (ZFMPODEVIATION_SRV) directly from the client, no backend of its own —
+  // converted from the source Fiori app at github.com/EmamiOrg/fm_po_deviation.
+  'fm-po-deviation': '/apps/fm-po-deviation', // PO Deviation Approval
 };
 
 const RAW_APPS: AppItem[] = [
@@ -68,7 +80,9 @@ const RAW_APPS: AppItem[] = [
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'Finance', icon: TrendingUp, uses: 0 },
   { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
-  { id: 'payment-tracking', name: 'Provision Tracking', desc: 'Payment progress tracking related.', cat: 'Finance', icon: Wallet, uses: 0 },
+  { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
+  { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
+  { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Finance', icon: FileCheck2, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
@@ -89,8 +103,9 @@ export const NAV: NavItem[] = [
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Recent', label: 'Recently Used', icon: Clock },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'Settings', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
+  { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];
 
 export function appById(id: string) {

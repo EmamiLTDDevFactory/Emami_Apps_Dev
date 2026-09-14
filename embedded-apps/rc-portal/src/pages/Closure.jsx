@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { AppContext } from '../context/AppContext';
 import { createClosure, getClosure, updateClosure, getConsultant, getFeeSlabs } from '../services/odataService';
 import SuccessModal from '../components/SuccessModal';
+import PageHeader from '../components/PageHeader';
 
 const initModel = () => ({
   CandName: '',
@@ -256,62 +257,60 @@ export default function Closure() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between rounded-3xl bg-gradient-to-r from-white via-rose-50/50 to-pink-50/60 p-6 shadow-sm border border-rose-200/80 text-slate-900 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#800A36] via-rose-500 to-pink-400" />
+      <PageHeader>
         <div className="flex items-center gap-4">
-          <button className="flex items-center gap-1.5 rounded-2xl border-2 border-rose-200 bg-rose-50/60 px-3.5 py-2.5 text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer group" onClick={() => navigate(-1)}>
-            <ArrowLeft className="h-4 w-4 text-[#800A36] group-hover:text-white transition-colors" />
-            <span className="text-xs font-black uppercase tracking-wider">Back</span>
+          <button className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-slate-600 hover:bg-rc-teal hover:text-white hover:border-rc-teal transition shadow-sm cursor-pointer group" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 group-hover:text-white transition-colors" />
+            <span className="text-xs font-semibold uppercase tracking-wider">Back</span>
           </button>
           <div>
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">{isEditMode ? 'Edit Closure' : 'Log Closure'}</h2>
+            <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">{isEditMode ? 'Edit Closure' : 'Log Closure'}</h2>
             <p className="text-sm font-medium text-slate-600">Consultant: {consultant?.ConsuName || consultantId}</p>
           </div>
         </div>
-      </div>
-      <div className="rc-card p-6 bg-white border border-slate-200/90 shadow-sm rounded-3xl">
+      </PageHeader>
+      <div className="rc-card p-6 bg-white border border-slate-200 shadow-sm rounded-xl">
         {showVarianceWarning && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">Variance Warning - invoice amount differs from calculated fee by more than 2%.</div>}
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="rounded-3xl border border-rose-400/40 bg-gradient-to-br from-[#9E0D43] via-[#800A36] to-[#600727] p-6 md:p-8 shadow-xl text-white relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-300 via-pink-400 to-amber-300" />
-            <div className="mb-6 flex items-center gap-3 border-b border-white/20 pb-4">
-              <div className="h-6 w-1.5 rounded-full bg-amber-300"></div>
-              <div className="text-xl font-black text-white tracking-tight">Candidate Joining Details</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 md:p-8">
+            <div className="mb-6 flex items-center gap-3 border-b border-slate-200 pb-4">
+              <div className="h-6 w-1.5 rounded-full bg-rc-teal"></div>
+              <div className="text-xl font-semibold text-slate-900 tracking-tight">Candidate Joining Details</div>
             </div>
-            
+
             <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
-                <span>Candidate Name <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. John Doe" value={formData.CandName} onChange={(e) => updateField('CandName', e.target.value)} />
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                <span>Candidate Name <span className="text-red-500">*</span></span>
+                <input className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. John Doe" value={formData.CandName} onChange={(e) => updateField('CandName', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
-                <span>Designation <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. Senior Developer" value={formData.Designation} onChange={(e) => updateField('Designation', e.target.value)} />
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                <span>Designation <span className="text-red-500">*</span></span>
+                <input className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. Senior Developer" value={formData.Designation} onChange={(e) => updateField('Designation', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
-                <span>CTC Offered (₹) <span className="text-amber-300">*</span></span>
-                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 1500000" value={formData.CtcOffered} onChange={(e) => updateField('CtcOffered', e.target.value)} />
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                <span>CTC Offered (₹) <span className="text-red-500">*</span></span>
+                <input type="number" className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. 1500000" value={formData.CtcOffered} onChange={(e) => updateField('CtcOffered', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
-                <span>Joining Date <span className="text-amber-300">*</span></span>
-                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.Doj} onChange={(e) => updateField('Doj', e.target.value)} />
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                <span>Joining Date <span className="text-red-500">*</span></span>
+                <input type="date" className="rc-input w-full font-medium text-slate-900 bg-white cursor-pointer" value={formData.Doj} onChange={(e) => updateField('Doj', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100 sm:col-span-2 md:col-span-1">
-                <span>Band/Grade <span className="text-amber-300">*</span></span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. L3" value={formData.BandGrade} onChange={(e) => updateField('BandGrade', e.target.value)} />
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 sm:col-span-2 md:col-span-1">
+                <span>Band/Grade <span className="text-red-500">*</span></span>
+                <input className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. L3" value={formData.BandGrade} onChange={(e) => updateField('BandGrade', e.target.value)} />
               </label>
 
               {consultant?.FeeType === 'PERCENT_CTC' && (
-                <div className="flex flex-col gap-2 sm:col-span-2 bg-white/10 border border-white/20 p-4 rounded-2xl backdrop-blur-xs">
-                  <label className="text-xs font-bold uppercase tracking-wider text-rose-100">
-                    Band Width (Select Slab) <span className="text-amber-300">*</span>
+                <div className="flex flex-col gap-2 sm:col-span-2 bg-white border border-slate-200 p-4 rounded-xl">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    Band Width (Select Slab) <span className="text-red-500">*</span>
                   </label>
                   {slabs.length === 0 ? (
-                    <div className="text-xs text-rose-200 font-semibold italic">
+                    <div className="text-xs text-slate-500 font-medium italic">
                       No slab configuration matrix found in SAP.
                     </div>
                   ) : (
@@ -324,17 +323,17 @@ export default function Closure() {
                           : `₹${fromVal.toLocaleString('en-IN')} - ₹${toVal.toLocaleString('en-IN')}`;
                         const percent = slab.FeePersent || slab.FeePercent || 0;
                         const slabDisplay = `${label} (${percent}%)`;
-                        
+
                         return (
-                          <label key={slab.FeeId} className="inline-flex items-center gap-2.5 cursor-pointer group bg-white/5 border border-white/10 p-2.5 rounded-xl hover:bg-white/15 transition-all">
+                          <label key={slab.FeeId} className="inline-flex items-center gap-2.5 cursor-pointer group bg-slate-50 border border-slate-200 p-2.5 rounded-lg hover:bg-rc-indigo-50 transition-all">
                             <input
                               type="radio"
                               name="slabBandWidth"
                               checked={selectedSlabId === slab.FeeId}
                               onChange={() => setSelectedSlabId(slab.FeeId)}
-                              className="h-4 w-4 border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer"
+                              className="h-4 w-4 border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer"
                             />
-                            <span className="text-xs font-bold text-white group-hover:text-rose-200">
+                            <span className="text-xs font-semibold text-slate-700 group-hover:text-rc-teal">
                               {slabDisplay}
                             </span>
                           </label>
@@ -346,8 +345,8 @@ export default function Closure() {
               )}
 
               {/* Module Type Checkboxes - Disabled if user login permission is blank */}
-              <div className="flex flex-col gap-2 sm:col-span-2 bg-white/10 border border-white/20 p-4 rounded-2xl backdrop-blur-xs">
-                <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Module Type</label>
+              <div className="flex flex-col gap-2 sm:col-span-2 bg-white border border-slate-200 p-4 rounded-xl">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">Module Type</label>
                 <div className="flex items-center gap-7 pt-1.5 flex-wrap">
                   <label className={`inline-flex items-center gap-2.5 transition-colors ${canSelectTa ? 'cursor-pointer group' : 'opacity-40 cursor-not-allowed'}`}>
                     <input
@@ -355,10 +354,10 @@ export default function Closure() {
                       disabled={!canSelectTa}
                       checked={canSelectTa && formData.Ta === 'X'}
                       onChange={(e) => canSelectTa && updateField('Ta', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed transition"
                     />
-                    <span className={`text-sm font-black ${canSelectTa ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
-                      TA {!canSelectTa && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
+                    <span className={`text-sm font-semibold ${canSelectTa ? 'text-slate-700 group-hover:text-rc-teal' : 'text-slate-400'}`}>
+                      TA {!canSelectTa && <span className="text-[10px] font-semibold text-slate-400 ml-0.5">(No Access)</span>}
                     </span>
                   </label>
 
@@ -368,10 +367,10 @@ export default function Closure() {
                       disabled={!canSelectTm}
                       checked={canSelectTm && formData.Tm === 'X'}
                       onChange={(e) => canSelectTm && updateField('Tm', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed transition"
                     />
-                    <span className={`text-sm font-black ${canSelectTm ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
-                      TM {!canSelectTm && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
+                    <span className={`text-sm font-semibold ${canSelectTm ? 'text-slate-700 group-hover:text-rc-teal' : 'text-slate-400'}`}>
+                      TM {!canSelectTm && <span className="text-[10px] font-semibold text-slate-400 ml-0.5">(No Access)</span>}
                     </span>
                   </label>
 
@@ -381,10 +380,10 @@ export default function Closure() {
                       disabled={!canSelectLd}
                       checked={canSelectLd && formData.Ld === 'X'}
                       onChange={(e) => canSelectLd && updateField('Ld', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed transition"
                     />
-                    <span className={`text-sm font-black ${canSelectLd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
-                      L&D {!canSelectLd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
+                    <span className={`text-sm font-semibold ${canSelectLd ? 'text-slate-700 group-hover:text-rc-teal' : 'text-slate-400'}`}>
+                      L&D {!canSelectLd && <span className="text-[10px] font-semibold text-slate-400 ml-0.5">(No Access)</span>}
                     </span>
                   </label>
 
@@ -394,72 +393,72 @@ export default function Closure() {
                       disabled={!canSelectOd}
                       checked={canSelectOd && formData.Od === 'X'}
                       onChange={(e) => canSelectOd && updateField('Od', e.target.checked ? 'X' : '')}
-                      className="h-5 w-5 rounded border-rose-300 text-[#800A36] focus:ring-rose-300 cursor-pointer disabled:cursor-not-allowed transition"
+                      className="h-5 w-5 rounded border-slate-300 text-rc-teal focus:ring-rc-teal/30 cursor-pointer disabled:cursor-not-allowed transition"
                     />
-                    <span className={`text-sm font-black ${canSelectOd ? 'text-white group-hover:text-rose-200' : 'text-rose-200/50'}`}>
-                      OD {!canSelectOd && <span className="text-[10px] font-bold text-rose-200/50 ml-0.5">(No Access)</span>}
+                    <span className={`text-sm font-semibold ${canSelectOd ? 'text-slate-700 group-hover:text-rc-teal' : 'text-slate-400'}`}>
+                      OD {!canSelectOd && <span className="text-[10px] font-semibold text-slate-400 ml-0.5">(No Access)</span>}
                     </span>
                   </label>
                 </div>
               </div>
-              
-              <div className="flex flex-col justify-center rounded-2xl border border-white/20 bg-white/10 p-4 sm:col-span-2 backdrop-blur-xs">
-                <div className="text-[10px] font-black uppercase tracking-wider text-rose-200">Calculated Fee (Auto)</div>
-                <div className="mt-1 text-2xl font-black text-white">₹{calculatedFee}</div>
+
+              <div className="flex flex-col justify-center rounded-xl border border-slate-200 bg-white p-4 sm:col-span-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Calculated Fee (Auto)</div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900">₹{calculatedFee}</div>
               </div>
-              
-              <div className="my-2 border-t border-white/10 sm:col-span-2"></div>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
+
+              <div className="my-2 border-t border-slate-200 sm:col-span-2"></div>
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 <span>Invoice Number</span>
-                <input className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. INV-2026-001" value={formData.InvNumber} onChange={(e) => updateField('InvNumber', e.target.value)} />
+                <input className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. INV-2026-001" value={formData.InvNumber} onChange={(e) => updateField('InvNumber', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100">
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 <span>Invoice Date</span>
-                <input type="date" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner cursor-pointer" value={formData.InvDate} onChange={(e) => updateField('InvDate', e.target.value)} />
+                <input type="date" className="rc-input w-full font-medium text-slate-900 bg-white cursor-pointer" value={formData.InvDate} onChange={(e) => updateField('InvDate', e.target.value)} />
               </label>
-              
-              <label className="flex flex-col gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-100 sm:col-span-2 md:col-span-1">
+
+              <label className="flex flex-col gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 sm:col-span-2 md:col-span-1">
                 <span>Invoice Amount (₹)</span>
-                <input type="number" className="rc-input w-full font-bold text-slate-900 border-2 border-rose-200 focus:border-[#800A36] focus:ring-4 focus:ring-rose-300/50 transition-all bg-white shadow-inner" placeholder="e.g. 125000" value={formData.InvAmount} onChange={(e) => updateField('InvAmount', e.target.value)} />
+                <input type="number" className="rc-input w-full font-medium text-slate-900 bg-white" placeholder="e.g. 125000" value={formData.InvAmount} onChange={(e) => updateField('InvAmount', e.target.value)} />
               </label>
-              
-              <div className="my-2 border-t border-white/10 sm:col-span-2"></div>
-              
+
+              <div className="my-2 border-t border-slate-200 sm:col-span-2"></div>
+
               <div className="flex flex-col gap-2 sm:col-span-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-rose-100">Document Upload (Invoice PDF or Resume Doc/PDF) <span className="text-amber-300">*</span></label>
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-600">Document Upload (Invoice PDF or Resume Doc/PDF) <span className="text-red-500">*</span></label>
                 <div className="flex items-center justify-center w-full">
-                  <label 
+                  <label
                     onDragEnter={handleDrag}
                     onDragOver={handleDrag}
                     onDragLeave={handleDrag}
                     onDrop={handleDrop}
-                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-2xl cursor-pointer transition-colors ${
-                      isDragging 
-                        ? 'border-amber-400 bg-white/20 scale-[1.01]' 
-                        : 'border-rose-200/50 bg-white/10 hover:bg-white/20'
+                    className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+                      isDragging
+                        ? 'border-rc-teal bg-rc-indigo-50 scale-[1.01]'
+                        : 'border-slate-300 bg-white hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6 pointer-events-none">
-                      <svg className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-amber-300' : 'text-rose-200'}`} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16"><path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/></svg>
-                      <p className="mb-1 text-sm text-white font-bold"><span className="font-extrabold text-amber-300">Click to upload</span> or drag and drop</p>
-                      <p className="text-xs font-medium text-rose-200">PDF, DOC, or DOCX documents</p>
+                      <svg className={`w-8 h-8 mb-3 transition-colors ${isDragging ? 'text-rc-teal' : 'text-slate-400'}`} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16"><path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/></svg>
+                      <p className="mb-1 text-sm text-slate-700 font-semibold"><span className="font-semibold text-rc-teal">Click to upload</span> or drag and drop</p>
+                      <p className="text-xs font-medium text-slate-500">PDF, DOC, or DOCX documents</p>
                     </div>
                     <input type="file" className="hidden" accept="application/pdf,.doc,.docx" onChange={handleUpload} />
                   </label>
                 </div>
-                {formData.Filename && <p className="text-sm font-extrabold text-amber-300 mt-1 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> {formData.Filename}</p>}
+                {formData.Filename && <p className="text-sm font-semibold text-rc-teal mt-1 flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> {formData.Filename}</p>}
               </div>
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <button type="button" className="rounded-2xl border-2 border-rose-200 bg-rose-50/40 px-6 py-2.5 text-xs font-extrabold text-[#800A36] hover:bg-[#800A36] hover:text-white hover:border-[#800A36] transition shadow-2xs cursor-pointer" onClick={() => navigate(-1)}>Cancel</button>
-            <button type="submit" className="rc-btn-primary rounded-2xl px-6 py-2.5 text-xs font-bold text-white shadow-md transition hover:scale-[1.01]">Submit Closure</button>
+            <button type="button" className="rounded-lg border border-slate-300 bg-white px-6 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition shadow-sm cursor-pointer" onClick={() => navigate(-1)}>Cancel</button>
+            <button type="submit" className="rc-btn-primary px-6 py-2.5 text-xs font-semibold text-white shadow-sm transition">Submit Closure</button>
           </div>
         </form>
       </div>
-      <SuccessModal 
+      <SuccessModal
         isOpen={Boolean(successModalData)} 
         title={successModalData?.title} 
         message={successModalData?.message} 

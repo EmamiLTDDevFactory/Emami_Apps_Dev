@@ -20,7 +20,11 @@ export default function AppRoutes() {
       <Route element={<Layout />}>
         <Route
           path="/"
-          element={<Dashboard />}
+          element={
+            <RoleGuard role="CQA" redirectTo="/audits">
+              <Dashboard />
+            </RoleGuard>
+          }
         />
 
         <Route

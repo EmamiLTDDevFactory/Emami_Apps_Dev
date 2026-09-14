@@ -25,7 +25,7 @@ export default function ComplianceChart({
         <Line
           type="monotone"
           dataKey="compliance"
-          stroke="#1565c0"
+          stroke="#7C3AED"
           strokeWidth={3}
         />
       </LineChart>

@@ -1,0 +1,25 @@
+.admin-stage { padding: 40px 56px 56px; }
+
+@media (max-width: 768px) {
+  .admin-stage { padding: 20px 18px 36px; }
+}
+.admin-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 20px; flex-wrap: wrap; }
+.shelf { padding: 20px 28px; border-bottom: 1px solid var(--border); }
+.shelf:last-child { border-bottom: none; }
+.shelf-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 13px; }
+.shelf-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.shelf-count { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+.chips { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; padding: 7px 13px; border-radius: 999px; background: var(--bg-alt); color: var(--text-2); border: 1px solid transparent; position: relative; }
+.chip.inactive { opacity: .5; text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.swatch-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px oklch(100% 0 0 / 0.7); position: relative; overflow: hidden; }
+.swatch-dot input[type="color"] { position: absolute; inset: -4px; width: 20px; height: 20px; opacity: 0; cursor: pointer; border: none; padding: 0; }
+.chip-add { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1.5px dashed var(--border-strong); color: var(--muted); background: none; cursor: pointer; }
+.chip-rename-btn, .chip-toggle { background: none; border: none; padding: 0; margin-left: 2px; cursor: pointer; color: inherit; opacity: 0.55; display: inline-flex; }
+.chip-rename-btn:hover, .chip-toggle:hover { opacity: 1; }
+.chip input.rename-input { border: none; background: oklch(100% 0 0 / 0.7); border-radius: 6px; font: inherit; font-size: 12.5px; width: 130px; padding: 1px 4px; }
+.add-inline { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-alt); padding: 5px 8px; border-radius: 999px; }
+.add-inline input[type="text"] { border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 10px; font-size: 12.5px; font-family: inherit; }
+.add-inline input[type="color"] { width: 24px; height: 24px; border: none; padding: 0; border-radius: 50%; overflow: hidden; }
+.add-inline button { background: var(--accent); color: white; border: none; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.md-error { color: var(--st-red); font-size: 12px; margin-top: 8px; }

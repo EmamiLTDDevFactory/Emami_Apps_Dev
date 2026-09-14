@@ -11,7 +11,8 @@ import {
     Grid,
     Chip,
 } from "@mui/material";
-import emamiLogo from '../assets/emami-logo.jpg';
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import { KpiSegment, KpiBar } from "../components/common/KpiBar";
 // import {
 //     getCertification
 // } from "../utils/certificationUtils";
@@ -38,6 +39,9 @@ import AssignmentLateIcon from "@mui/icons-material/AssignmentLate";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import TaskAltIcon from "@mui/icons-material/TaskAlt";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import RateReviewIcon from "@mui/icons-material/RateReview";
+import ReplayIcon from "@mui/icons-material/Replay";
 
 
 
@@ -80,9 +84,39 @@ export default function AuditList() {
             ? audits.filter(
                 (audit) =>
                     audit.depot ===
-                    currentUser.name
+                    currentUser.depot
             )
             : audits;
+
+    const openCount =
+        visibleAudits.filter(a => a.status === "Open").length;
+
+    const inProgressCount =
+        visibleAudits.filter(a => a.status === "In Progress").length;
+
+    const selfAssessmentCount =
+        visibleAudits.filter(a => a.status === "Self Assessment Submitted").length;
+
+    const reworkRequiredCount =
+        visibleAudits.filter(a => a.status === "Rework Required").length;
+
+    const capaOpenCount =
+        visibleAudits.filter(a => a.status === "CAPA Open").length;
+
+    const completedCount =
+        visibleAudits.filter(a => a.status === "Completed").length;
+
+    const closedCount =
+        visibleAudits.filter(a => a.status === "Closed").length;
+
+    const totalAuditsCount =
+        openCount +
+        inProgressCount +
+        selfAssessmentCount +
+        reworkRequiredCount +
+        capaOpenCount +
+        completedCount +
+        closedCount;
 
     const filteredAudits = visibleAudits.filter(
         (audit) => {
@@ -406,7 +440,7 @@ export default function AuditList() {
                         </IconButton>
                     </Tooltip>
 
-                    {!isDepot && (
+                    {/* {!isDepot && (
                         <Tooltip title="Delete Audit">
                             <IconButton
                                 size={
@@ -425,7 +459,28 @@ export default function AuditList() {
                                 <DeleteIcon />
                             </IconButton>
                         </Tooltip>
-                    )}
+                    )} */}
+
+                    {currentUser?.role === "CQA" &&
+                        ["Open", "In Progress"].includes(params.row.status) && (
+                            <Tooltip title="Delete Audit">
+                                <IconButton
+                                    size={
+                                        isCQATablet
+                                            ? "large"
+                                            : "medium"
+                                    }
+                                    color="error"
+                                    onClick={() =>
+                                        handleDeleteAudit(
+                                            params.row.id
+                                        )
+                                    }
+                                >
+                                    <DeleteIcon />
+                                </IconButton>
+                            </Tooltip>
+                        )}
                 </Box>
             ),
         },
@@ -639,7 +694,7 @@ export default function AuditList() {
                     mb: 3,
                     // background:
                     //     "linear-gradient(135deg,#2563EB,#60A5FA)",
-                    background: "linear-gradient(135deg,#4F46E5,#6366F1)",
+                    background: "linear-gradient(135deg,#3730A3,#7C3AED)",
                     // background:
                     //     "linear-gradient(135deg,#1565c0,#42a5f5)",
                     color: "white",
@@ -673,20 +728,21 @@ export default function AuditList() {
                             }}
                         >
                             <Box
-                                component="img"
-                                src={emamiLogo}
-                                alt="Emami Logo"
                                 sx={{
                                     width: 110,
                                     height: 90,
-                                    objectFit: "contain",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
                                     background: "#fff",
                                     borderRadius: 2,
                                     p: 1,
                                     boxShadow:
                                         "0px 4px 12px rgba(0,0,0,0.15)",
                                 }}
-                            />
+                            >
+                                <AssignmentIcon sx={{ fontSize: 44, color: "#7C3AED" }} />
+                            </Box>
                             <Box>
                                 {/* <Typography variant="h4">
                                 Audit Management
@@ -717,7 +773,7 @@ export default function AuditList() {
                                 }
                                 sx={{
                                     bgcolor: "white",
-                                    color: "#1565c0",
+                                    color: "#7C3AED",
                                     fontWeight: 600,
                                     justifyContent: "flex-end",
                                     // alignItems: "flex-end",
@@ -796,420 +852,82 @@ export default function AuditList() {
                 </Grid>
             </Grid> */}
 
-            <Grid
-                container
-                spacing={3}
-                sx={{ mb: 3 }}
-            >
+            <Box sx={{ mb: 3 }}>
+                <KpiBar>
+                    <KpiSegment
+                        label="Total Audits"
+                        value={totalAuditsCount}
+                        color="#2563EB"
+                        icon={<AssignmentTurnedInIcon fontSize="small" />}
+                        active={selectedKPI === "All"}
+                        onClick={() => setSelectedKPI("All")}
+                    />
 
-                {/* Total Audits */}
+                    <KpiSegment
+                        label="Open Audits"
+                        value={openCount}
+                        color="#F59E0B"
+                        icon={<AssignmentLateIcon fontSize="small" />}
+                        active={selectedKPI === "Open"}
+                        onClick={() => setSelectedKPI("Open")}
+                    />
 
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI("All")
-                        }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            height: "100%",
-                            minHeight: isCQATablet ? 120 : 100,
-                            border:
-                                selectedKPI === "All"
-                                    ? "2px solid #2563EB"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
+                    <KpiSegment
+                        label="In Progress"
+                        value={inProgressCount}
+                        color="#06B6D4"
+                        icon={<AutorenewIcon fontSize="small" />}
+                        active={selectedKPI === "In Progress"}
+                        onClick={() => setSelectedKPI("In Progress")}
+                    />
 
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
+                    <KpiSegment
+                        label="Self Assessment"
+                        value={selfAssessmentCount}
+                        color="#0EA5E9"
+                        icon={<RateReviewIcon fontSize="small" />}
+                        active={selectedKPI === "Self Assessment Submitted"}
+                        onClick={() => setSelectedKPI("Self Assessment Submitted")}
+                    />
 
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
+                    <KpiSegment
+                        label="Rework Required"
+                        value={reworkRequiredCount}
+                        color="#F97316"
+                        icon={<ReplayIcon fontSize="small" />}
+                        active={selectedKPI === "Rework Required"}
+                        onClick={() => setSelectedKPI("Rework Required")}
+                    />
 
-                                gap: 2,
+                    <KpiSegment
+                        label="CAPA Open"
+                        value={capaOpenCount}
+                        color="#7C3AED"
+                        icon={<FactCheckIcon fontSize="small" />}
+                        active={selectedKPI === "CAPA Open"}
+                        onClick={() => setSelectedKPI("CAPA Open")}
+                    />
 
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Total Audits
-                                </Typography>
+                    <KpiSegment
+                        label="Completed"
+                        value={completedCount}
+                        color="#8B5CF6"
+                        icon={<TaskAltIcon fontSize="small" />}
+                        active={selectedKPI === "Completed"}
+                        onClick={() => setSelectedKPI("Completed")}
+                    />
 
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#2563EB"
-
-                                >
-                                    {visibleAudits.length}
-                                    {/* {audits.length} */}
-                                </Typography>
-                            </Box>
-                            <AssignmentTurnedInIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#2563EB",
-                                }}
-                            />
-
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Open */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI("Open")
-                        }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI === "Open"
-                                    ? "2px solid #F59E0B"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        {/* <CardContent>
-                            <Typography
-                                color="text.secondary"
-                            >
-                                Open Audits
-                            </Typography>
-
-                            <Typography
-                                variant="h4"
-                                fontWeight={700}
-                                color="#F59E0B"
-                            >
-                                {
-                                    audits.filter(
-                                        a =>
-                                            a.status ===
-                                            "Open"
-                                    ).length
-                                }
-                            </Typography>
-                        </CardContent> */}
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}
-                        >
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Open Audits
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#F59E0B"
-                                >
-                                    {/* {
-                                        audits.filter(
-                                            a =>
-                                                a.status === "Open"
-                                        ).length
-                                    } */}
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Open"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-
-                            <AssignmentLateIcon
-                                sx={{
-                                    fontSize: 42,
-                                    color: "#F59E0B",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* In Progress */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "In Progress"
-                            )
-                        }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "In Progress"
-                                    ? "2px solid #06B6D4"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    In Progress
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#06B6D4"
-                                >
-                                    {/* {
-                                        audits.filter(
-                                            a =>
-                                                a.status ===
-                                                "In Progress"
-                                        ).length
-                                    } */}
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "In Progress"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <AutorenewIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#06B6D4",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Completed */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "Completed"
-                            )
-                        }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "Completed"
-                                    ? "2px solid #8B5CF6"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Completed
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#8B5CF6"
-                                >
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Completed"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <TaskAltIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#8B5CF6",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                {/* Closed */}
-
-                {/* <Grid item xs={12} sm={6} md={3}> */}
-                <Grid
-                    item
-                    xs={12}
-                    sm={6}
-                    md={4}
-                    lg={3}
-                >
-                    <Card
-                        onClick={() =>
-                            setSelectedKPI(
-                                "Closed"
-                            )
-                        }
-                        sx={{
-                            cursor: "pointer",
-                            borderRadius: 1,
-                            border:
-                                selectedKPI ===
-                                    "Closed"
-                                    ? "2px solid #22C55E"
-                                    : "1px solid #E5E7EB",
-                            boxShadow:
-                                "0px 8px 20px rgba(15,23,42,0.06)",
-                        }}
-                    >
-                        <CardContent
-                            sx={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                // alignItems: "center",
-                                flexDirection:
-                                    isCQATablet
-                                        ? "column"
-                                        : "row",
-
-                                alignItems:
-                                    isCQATablet
-                                        ? "flex-start"
-                                        : "center",
-
-                                gap: 2,
-
-                            }}>
-                            <Box>
-                                <Typography
-                                    color="text.secondary"
-                                >
-                                    Closed Audits
-                                </Typography>
-
-                                <Typography
-                                    variant="h4"
-                                    fontWeight={700}
-                                    color="#22C55E"
-                                >
-                                    {
-                                        visibleAudits.filter(
-                                            a => a.status === "Closed"
-                                        ).length
-                                    }
-                                </Typography>
-                            </Box>
-                            <CheckCircleIcon
-                                sx={{
-                                    fontSize: 40,
-                                    color: "#22C55E",
-                                }}
-                            />
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-            </Grid>
+                    <KpiSegment
+                        label="Closed Audits"
+                        value={closedCount}
+                        color="#22C55E"
+                        icon={<CheckCircleIcon fontSize="small" />}
+                        active={selectedKPI === "Closed"}
+                        onClick={() => setSelectedKPI("Closed")}
+                        isLast
+                    />
+                </KpiBar>
+            </Box>
 
             {/* <Box
                 sx={{
@@ -1457,7 +1175,7 @@ export default function AuditList() {
                                                         <VisibilityIcon />
                                                     </IconButton>
 
-                                                    {!isDepot && (
+                                                    {/* {!isDepot && (
                                                         <IconButton
                                                             color="error"
                                                             onClick={() =>
@@ -1468,7 +1186,21 @@ export default function AuditList() {
                                                         >
                                                             <DeleteIcon />
                                                         </IconButton>
-                                                    )}
+                                                    )} */}
+
+                                                    {currentUser?.role === "CQA" &&
+                                                        ["Open", "In Progress"].includes(audit.status) && (
+                                                            <IconButton
+                                                                color="error"
+                                                                onClick={() =>
+                                                                    handleDeleteAudit(
+                                                                        audit.id
+                                                                    )
+                                                                }
+                                                            >
+                                                                <DeleteIcon />
+                                                            </IconButton>
+                                                        )}
                                                 </Box>
                                             </Box>
 

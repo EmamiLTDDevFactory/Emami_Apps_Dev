@@ -1,10 +1,44 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
-const EMBEDDED_APPS_DIR = path.join(__dirname, '..', 'embedded-apps');
-const MAIN_DIST = path.join(__dirname, '..', 'dist');
+const REPO_ROOT = path.join(__dirname, '..');
+const EMBEDDED_APPS_DIR = path.join(REPO_ROOT, 'embedded-apps');
+const MAIN_DIST = path.join(REPO_ROOT, 'dist');
+const BUILD_MARKER_FILE = '.build-commit';
+
+// Last commit that touched a given repo-relative path — used to skip an embedded app's
+// install+build entirely when nothing under its own directory changed since the cached `dist/`
+// (see BUILD_MARKER_FILE below) was produced. `git log -1` on an unchanged path is a few
+// milliseconds; re-running npm install + a bundler for an untouched app is 10s-2min wasted on
+// every single deploy, for 8 of 9 apps on a typical single-app change. Returns null (never
+// matches, so the app always rebuilds) if git isn't available or the path has no history yet —
+// fails toward "rebuild", never toward "skip a real change".
+function lastCommitTouching(relativePath) {
+  try {
+    return execSync(`git log -1 --format=%H -- ${JSON.stringify(relativePath)}`, { cwd: REPO_ROOT })
+      .toString()
+      .trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// Folded into every app's marker so editing THIS script's own build/merge logic invalidates
+// every app's cache once, rather than serving stale dist/ output built by whatever this file
+// used to do. Computed once up front, not per-app.
+const SCRIPT_COMMIT = lastCommitTouching('scripts/build-embedded-apps.js');
+
+// Shared npm package cache (compressed tarballs, content-addressed and deduped across all 9
+// apps) that every embedded app's `npm install` below reads/writes via --cache. Caching THIS
+// instead of each app's own unpacked node_modules is what keeps Amplify's cache artifact under
+// its 5GB hard limit — 9 separate node_modules directories (many sharing the same Expo/RN/React
+// versions, each copy fully unpacked with platform-specific native binaries) measured ~3.1GB
+// combined even on a Mac; the actual Linux build container's own copies pushed the whole cache
+// artifact over 5GB, which fails to upload and silently falls back to a cold reinstall next
+// build. One deduped tarball cache holds the same effective packages in a fraction of the size.
+const NPM_CACHE_DIR = path.join(__dirname, '..', '.npm-cache');
 
 // _expo/ and assets/ are shared static folders using content-hashed
 // filenames, so merging them from any embedded app can't collide with the
@@ -161,6 +195,23 @@ async function main() {
 
   await runWithConcurrency(apps, concurrency, async (app) => {
     const appDir = path.join(EMBEDDED_APPS_DIR, app);
+    const appDist = path.join(appDir, 'dist');
+    const markerPath = path.join(appDist, BUILD_MARKER_FILE);
+
+    // Skip install+build entirely when nothing under this app's own directory (or this script)
+    // has changed since the cached dist/ we'd be restoring was built. embedded-apps/*/dist is
+    // cached the same way node_modules/.npm-cache is (see amplify.yml) — the merge step below
+    // reads straight from appDist regardless of whether this app just built or was skipped, so
+    // a stale-but-current cached dist merges in exactly as if it had just been rebuilt.
+    const appCommit = lastCommitTouching(path.relative(REPO_ROOT, appDir));
+    const currentMarker = appCommit && SCRIPT_COMMIT ? `${appCommit}:${SCRIPT_COMMIT}` : null;
+    const cachedMarker = fs.existsSync(markerPath) ? fs.readFileSync(markerPath, 'utf8').trim() : null;
+
+    if (currentMarker && cachedMarker === currentMarker && fs.readdirSync(appDist).length > 0) {
+      console.log(`\n=== [${app}] unchanged since last build — reusing cached dist/, skipping install+build ===`);
+      return;
+    }
+
     // Metro's default disk cache (metro-config's FileStore) lives at a single
     // fixed path, `path.join(os.tmpdir(), 'metro-cache')` — the SAME directory
     // for every Metro process on the machine, regardless of which project
@@ -186,9 +237,13 @@ async function main() {
     // in between. One call per app keeps each app's whole block atomic.
     let log = `\n=== [${app}] npm install ===\n`;
     try {
-      log += await runCommand('npm install --legacy-peer-deps', appDir, env);
+      log += await runCommand(`npm install --legacy-peer-deps --cache "${NPM_CACHE_DIR}" --no-audit --no-fund`, appDir, env);
       log += `\n=== [${app}] npm run build ===\n`;
       log += await runCommand('npm run build', appDir, env);
+      // Only written on a successful build, and only once dist/ genuinely reflects appCommit —
+      // a failed or skipped-above build never reaches here, so the marker can't ever claim a
+      // dist/ that doesn't match what it says it does.
+      if (currentMarker) fs.writeFileSync(markerPath, currentMarker);
       console.log(log);
     } catch (err) {
       console.error(log + (err.output || ''));

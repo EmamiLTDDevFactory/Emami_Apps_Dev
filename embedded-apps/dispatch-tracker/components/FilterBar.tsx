@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Portal from './Portal';
+import { DateField } from './Form';
 import { colors, radius } from '@/constants/theme';
 
 export function SearchInput({
@@ -95,6 +96,34 @@ export function FilterRow({ children }: { children: React.ReactNode }) {
   return <View style={styles.row}>{children}</View>;
 }
 
+/** From Date / To Date filter — used by the Pending/Dispatched/Completed/Returned/Cancelled
+ *  tabs. Maps to the SAP OData FrmDate/ToDate filter fields (see lib/api.ts's
+ *  InvoiceListFilter) — no Fiscal Year field; the date range alone scopes the query. */
+export function DateRangeRow({
+  fromDate,
+  toDate,
+  onFromDateChange,
+  onToDateChange,
+}: {
+  fromDate: Date;
+  toDate: Date;
+  onFromDateChange: (d: Date) => void;
+  onToDateChange: (d: Date) => void;
+}) {
+  return (
+    <View style={styles.dateFilterRow}>
+      <View style={{ flex: 1, minWidth: 130 }}>
+        <Text style={styles.dateFilterLabel}>From Date</Text>
+        <DateField value={fromDate} onChange={onFromDateChange} />
+      </View>
+      <View style={{ flex: 1, minWidth: 130 }}>
+        <Text style={styles.dateFilterLabel}>To Date</Text>
+        <DateField value={toDate} onChange={onToDateChange} />
+      </View>
+    </View>
+  );
+}
+
 export function ActiveFilterChip({ label }: { label: string }) {
   return (
     <View style={styles.activeChip}>
@@ -149,4 +178,6 @@ const styles = StyleSheet.create({
   dropdownItem: { paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.g100 },
   activeChip: { backgroundColor: colors.navyLt, borderWidth: 1, borderColor: colors.navyBd, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
   activeChipText: { fontSize: 10, fontWeight: '700', color: colors.navy },
+  dateFilterRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', paddingBottom: 8 },
+  dateFilterLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, marginBottom: 4, textTransform: 'uppercase' },
 });

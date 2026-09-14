@@ -12,6 +12,7 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useFilteredApps } from '../hooks/useFilteredApps';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
+import { setScrollActivity } from '../hooks/useScrollActivity';
 import { logEvent } from '../lib/authApi';
 import { RECENT, appById } from '../data/mockData';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
@@ -48,7 +49,15 @@ export default function HomeScreen() {
 
   return (
     <ScreenScaffold searchValue={query} onSearchChange={setQuery}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => setScrollActivity(true)}
+        onScrollEndDrag={() => setScrollActivity(false)}
+        onMomentumScrollBegin={() => setScrollActivity(true)}
+        onMomentumScrollEnd={() => setScrollActivity(false)}
+      >
         <DashboardHero
           name={profile?.name || userEmail || ''}
           lastLogin={profile?.lastLogin ? new Date(profile.lastLogin).toLocaleString() : '—'}
