@@ -4,10 +4,10 @@
 // 2026-09-12), so there is no ground-truth EDMX to check these against. Confirmed a subset live
 // against the real gateway (https://emdcindpwebapp1-.../api/NGD/ZFMPODEVIATION_SRV): PoSet and
 // UserSet respond correctly, PrintformSet's GET_ENTITYSET is not implemented (501) — matching the
-// original app's own fallback-to-filtered-GET logic for it. `Email` on Po is being added to the
-// backend per instruction (2026-09-12) so this app can scope "my approvals" the same way every
-// other SAP-integrated app in this repo does (see src/lib/sapClient.ts) — every Po row read here
-// sends that filter, and will need SAP Basis's field genuinely in place to return anything.
+// original app's own fallback-to-filtered-GET logic for it. `Email` on Po is now confirmed live
+// (per instruction, 2026-09-14), so this app scopes "my approvals" the same way every other
+// SAP-integrated app in this repo does (see src/lib/sapClient.ts) — every Po row read here sends
+// that filter for real, mock mode has been removed entirely.
 
 /** Status on a Po row — 'A' approved, 'R' rejected, 'L' a history-log entry (not a real PO row),
  * blank/other = pending. */
@@ -41,7 +41,7 @@ export interface PoRow {
   meins: string; // Meins — unit of measure
   order: string; // Order — internal order
   loekz: boolean; // Loekz — deletion indicator
-  email: string; // Email — NOT yet confirmed live; being added per instruction, see header comment
+  email: string; // Email — confirmed live, see header comment
   raw: Record<string, unknown>; // the untouched OData row, so a write-back can echo fields this
   // type doesn't otherwise model (matches the source app's `Object.assign({}, ...getObject())`
   // approach of round-tripping the full row rather than reconstructing a payload from scratch).

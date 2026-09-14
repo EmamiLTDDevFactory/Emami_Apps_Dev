@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ClipboardCheck, LayoutDashboard, Menu, X, ArrowLeft, User, Calendar } from 'lucide-react';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
-import { isMockDataEnabled } from '../lib/sapClient';
 import { PendingCountProvider, usePendingCount } from '../context/PendingCountContext';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
@@ -149,14 +148,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <span className="hidden sm:inline-flex rounded-full bg-rust/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rust">
               Command Center
             </span>
-            {isMockDataEnabled() && (
-              <span
-                className="inline-flex rounded-full bg-amberBg px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber"
-                title="Showing sample data — set NEXT_PUBLIC_MOCK_DATA=false once SAP's Email field is live"
-              >
-                Mock Data
-              </span>
-            )}
             <div className="flex-1" />
             <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-border bg-appBg px-2.5 py-1">
               <User size={13} className="text-rust" />
