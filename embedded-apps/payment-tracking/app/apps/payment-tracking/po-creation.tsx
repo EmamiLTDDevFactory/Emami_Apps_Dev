@@ -127,16 +127,19 @@ const TABLE_COLUMNS = {
  * web-only (react-native-web passes 'sticky' straight through to CSS; RN's own ViewStyle type
  * doesn't know that position, hence the cast), used by the Service PO Bulk Upload report to freeze
  * columns through Vendor Name. Omit it for a normal, non-frozen header cell. */
-function TableHeaderCell({ width, sticky, children }: { width: number; sticky?: number; children: React.ReactNode }) {
+function TableHeaderCell({ width, sticky, align, children }: {
+  width: number; sticky?: number; align?: 'center'; children: React.ReactNode;
+}) {
   return (
     <View
       style={[
         styles.tableHeaderCell,
         { width },
+        align === 'center' && styles.tableCellCenter,
         sticky != null && ({ position: 'sticky', left: sticky, zIndex: 3, backgroundColor: colors.appBg } as any),
       ]}
     >
-      <Text style={styles.tableHeaderText}>{children}</Text>
+      <Text style={[styles.tableHeaderText, align === 'center' && styles.resultCellTextCenter]}>{children}</Text>
     </View>
   );
 }
@@ -242,7 +245,7 @@ const UPLOAD_FROZEN_LEFT = {
 } as const;
 
 function ResultCell({ width, align, sticky, background, children }: {
-  width: number; align?: 'right'; sticky?: number; background?: string; children: React.ReactNode;
+  width: number; align?: 'right' | 'center'; sticky?: number; background?: string; children: React.ReactNode;
 }) {
   return (
     <View
@@ -250,10 +253,11 @@ function ResultCell({ width, align, sticky, background, children }: {
         styles.tableCell,
         { width },
         align === 'right' && styles.tableCellRight,
+        align === 'center' && styles.tableCellCenter,
         sticky != null && ({ position: 'sticky', left: sticky, zIndex: 2, backgroundColor: background || colors.white } as any),
       ]}
     >
-      <Text style={styles.resultCellText} numberOfLines={2}>{children}</Text>
+      <Text style={[styles.resultCellText, align === 'center' && styles.resultCellTextCenter]} numberOfLines={2}>{children}</Text>
     </View>
   );
 }
@@ -335,11 +339,20 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
   };
 
   const handleDownloadTemplate = () => {
-    if (SERVICE_PO_TEMPLATE_URL) {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(SERVICE_PO_TEMPLATE_URL, '_blank');
+    if (!SERVICE_PO_TEMPLATE_URL) {
+      setTemplateNotice("Template isn't hosted yet — check back soon.");
       return;
     }
-    setTemplateNotice("Template isn't hosted yet — check back soon.");
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    // Per instruction: this needs to actually save to the local system, not just open in a new
+    // tab/viewer (which is all window.open does, especially for a type the browser can preview
+    // inline). Same anchor + download-attribute pattern exportCsv.ts already uses.
+    const a = document.createElement('a');
+    a.href = SERVICE_PO_TEMPLATE_URL;
+    a.download = 'ZMM_SRV_PO_Upload_Template.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const handleExportFailedRows = () => {
@@ -477,7 +490,12 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                     <View style={styles.fieldGrid}>
                       <InfoField label="Vendor" value={stripLeadingZeros(first.lifnr)} />
                       <InfoField label="Items" value={String(rows.length)} />
-                      <InfoField label="Total Amount" value={groupTotal != null ? formatAmount(groupTotal) : '—'} />
+                      <View style={styles.infoField}>
+                        <Text style={styles.infoLabel}>Total Amount</Text>
+                        <Text style={styles.poTotal}>
+                          {groupTotal != null ? `${first.waers || ''} ${formatAmount(groupTotal)}`.trim() : '—'}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 )}
@@ -492,9 +510,9 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendorName} sticky={UPLOAD_FROZEN_LEFT.vendorName}>Vendor Name</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.purchGroup}>Purch. Group</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.purchOrg}>Purch. Org</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.qty}>Qty</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount}>Amount</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.currency}>Currency</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.qty} align="center">Qty</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount} align="center">Amount</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.currency} align="center">Currency</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.glAccount}>GL Account</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.internalOrder}>Internal Order</TableHeaderCell>
@@ -503,17 +521,23 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
 
                     {rows.map((row, i) => {
                       const rowBg = row.type === 'E' ? `${colors.red}0A` : `${colors.green}0A`;
+                      // Sticky (frozen) cells need a fully OPAQUE background — a translucent tint
+                      // lets whatever is scrolling underneath show through as it passes behind
+                      // them, which is exactly what looked like "overlapping data" while
+                      // scrolling horizontally. Non-sticky cells keep the translucent rowBg above
+                      // since nothing scrolls underneath them.
+                      const rowBgSolid = row.type === 'E' ? '#FBEEEE' : '#EEF6F1';
                       return (
                         <View key={`${ebeln}-${row.rowno}-${i}`} style={[styles.tableRow, { backgroundColor: rowBg }]}>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.item} sticky={UPLOAD_FROZEN_LEFT.item} background={rowBg}>{formatEbelp(row.ebelp)}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.description} sticky={UPLOAD_FROZEN_LEFT.description} background={rowBg}>{row.txz01 || '—'}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor} sticky={UPLOAD_FROZEN_LEFT.vendor} background={rowBg}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendorName} sticky={UPLOAD_FROZEN_LEFT.vendorName} background={rowBg}>{row.name1 || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.item} sticky={UPLOAD_FROZEN_LEFT.item} background={rowBgSolid}>{formatEbelp(row.ebelp)}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.description} sticky={UPLOAD_FROZEN_LEFT.description} background={rowBgSolid}>{row.txz01 || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor} sticky={UPLOAD_FROZEN_LEFT.vendor} background={rowBgSolid}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendorName} sticky={UPLOAD_FROZEN_LEFT.vendorName} background={rowBgSolid}>{row.name1 || '—'}</ResultCell>
                           <ResultCell width={UPLOAD_RESULT_COLUMNS.purchGroup}>{stripLeadingZeros(row.ekgrp) || '—'}</ResultCell>
                           <ResultCell width={UPLOAD_RESULT_COLUMNS.purchOrg}>{stripLeadingZeros(row.ekorg) || '—'}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
-                          <ResultCell width={UPLOAD_RESULT_COLUMNS.currency}>{row.waers || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="center">{formatUploadNumber(row.menge)}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="center">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.currency} align="center">{row.waers || '—'}</ResultCell>
                           <ResultCell width={UPLOAD_RESULT_COLUMNS.glAccount}>{stripLeadingZeros(row.sakto) || '—'}</ResultCell>
                           <ResultCell width={UPLOAD_RESULT_COLUMNS.costCenter}>{stripLeadingZeros(row.kostl) || '—'}</ResultCell>
                           <ResultCell width={UPLOAD_RESULT_COLUMNS.internalOrder}>{stripLeadingZeros(row.orderid) || '—'}</ResultCell>
@@ -1200,9 +1224,15 @@ const styles = StyleSheet.create({
   tableCellRight: {
     alignItems: 'flex-end',
   },
+  tableCellCenter: {
+    alignItems: 'center',
+  },
   resultCellText: {
     fontSize: 11.5,
     color: colors.ink,
+  },
+  resultCellTextCenter: {
+    textAlign: 'center',
   },
   tableCellInput: {
     borderWidth: 1,
