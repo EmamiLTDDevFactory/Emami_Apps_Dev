@@ -61,16 +61,3 @@ export function isHighValue(netwr: string): boolean {
   const n = parseFloat(netwr);
   return !Number.isNaN(n) && n >= HIGH_VALUE_THRESHOLD;
 }
-
-/** Lifnr/Sakto/Kostl arrive ALPHA-padded with leading zeros ("0000220856") — strip for display
- * only, never re-pad or send this back to SAP. */
-export function stripLeadingZeros(value: string): string {
-  if (!value) return '';
-  return value.replace(/^0+/, '') || '0';
-}
-
-/** Ebelp arrives as "00010" — display as "10". Empty (failed row) renders a dash, not "0". */
-export function formatEbelp(ebelp: string): string {
-  if (!ebelp) return '—';
-  return stripLeadingZeros(ebelp);
-}
