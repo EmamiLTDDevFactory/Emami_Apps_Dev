@@ -97,9 +97,9 @@ function DateField({ value, onChange, label }: { value: string; onChange: (v: st
   );
 }
 
-/** Column widths for the "2. Review line items" report table — required columns (marked with a
- * trailing * in the header) come first; Material Code/Description (optional — a Service PO has
- * no material master line) sit last. */
+/** Column widths for the "2. Review line items" report table — only the template's own columns
+ * (required ones marked with a trailing * in the header); no Material Code/Description, since a
+ * Service PO has no material master line and the template doesn't carry those fields. */
 const TABLE_COLUMNS = {
   row: 30,
   status: 80,
@@ -113,8 +113,6 @@ const TABLE_COLUMNS = {
   deliveryDate: 118,
   costCenter: 96,
   glAccount: 96,
-  materialCode: 104,
-  materialDesc: 150,
   remove: 36,
 } as const;
 
@@ -180,6 +178,42 @@ function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][
   }
   // Real PO groups first (in first-seen order), rows that never became a PO last.
   return Array.from(map.entries()).sort((a, b) => (a[0] === '—' ? 1 : b[0] === '—' ? -1 : 0));
+}
+
+/** Line amount = Menge × GrPrice (both arrive as strings — parseFloat first, never used
+ * directly). GrPrice is the only price field the backend sends, so this is the "Net amount" for
+ * the line; falls back to GrPrice alone if Menge doesn't parse. */
+function computeLineAmount(menge: string, grPrice: string): number | null {
+  const price = parseFloat(grPrice);
+  if (Number.isNaN(price)) return null;
+  const qty = parseFloat(menge);
+  return Number.isNaN(qty) ? price : qty * price;
+}
+
+function formatAmount(value: number | null): string {
+  if (value == null) return '—';
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Column widths for the Service PO Bulk Upload's result table — Row | Vendor | Description |
+ * Qty | Amount | PO | Item | Status, per spec. */
+const UPLOAD_RESULT_COLUMNS = {
+  row: 44,
+  vendor: 100,
+  description: 170,
+  qty: 70,
+  amount: 100,
+  po: 110,
+  item: 56,
+  status: 84,
+} as const;
+
+function ResultCell({ width, align, children }: { width: number; align?: 'right'; children: React.ReactNode }) {
+  return (
+    <View style={[styles.tableCell, { width }, align === 'right' && styles.tableCellRight]}>
+      <Text style={styles.resultCellText} numberOfLines={2}>{children}</Text>
+    </View>
+  );
 }
 
 const STATUS_BANNER_STYLE: Record<PoUploadResult['status'], { bg: string; border: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
@@ -369,45 +403,75 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
             </Pressable>
           )}
 
-          {groups.map(([ebeln, rows]) => (
-            <View key={ebeln} style={{ gap: 6 }}>
-              <Text style={styles.groupHeaderText}>
-                {ebeln === '—' ? `Not created (${rows.length})` : `PO ${ebeln} (${rows.length} item${rows.length === 1 ? '' : 's'})`}
-              </Text>
-              {rows.map((row, i) => (
-                <View
-                  key={`${ebeln}-${row.rowno}-${i}`}
-                  style={[styles.card, { borderLeftWidth: 3, borderLeftColor: row.type === 'E' ? colors.red : colors.green }]}
-                >
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.infoLabel}>Row {row.rowno}</Text>
-                    <View style={styles.flex1} />
-                    <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
-                      <Ionicons
-                        name={row.type === 'E' ? 'alert-circle' : 'checkmark-circle'}
-                        size={12}
-                        color={row.type === 'E' ? colors.red : colors.green}
-                      />
-                      <Text style={[styles.statusBadgeText, { color: row.type === 'E' ? colors.red : colors.green }]}>
-                        {row.type === 'E' ? 'Failed' : 'Posted'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.fieldGrid}>
-                    <InfoField label="Vendor" value={stripLeadingZeros(row.lifnr)} />
-                    <InfoField label="Description" value={row.txz01} />
-                    <InfoField label="Qty" value={formatUploadNumber(row.menge)} />
-                    <InfoField label="Amount" value={formatUploadNumber(row.grPrice)} />
-                    <InfoField label="PO" value={row.ebeln || '—'} />
-                    <InfoField label="Item" value={formatEbelp(row.ebelp)} />
-                  </View>
-
-                  {row.type === 'E' && <Text style={styles.rowErrorText}>{row.message}</Text>}
+          {groups.map(([ebeln, rows]) => {
+            const groupTotal = ebeln === '—'
+              ? null
+              : rows.reduce((sum, r) => {
+                  const amt = computeLineAmount(r.menge, r.grPrice);
+                  return amt != null ? sum + amt : sum;
+                }, 0);
+            const errorRows = rows.filter((r) => r.type === 'E');
+            return (
+              <View key={ebeln} style={{ gap: 5 }}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.groupHeaderText}>
+                    {ebeln === '—' ? `Not created (${rows.length})` : `PO ${ebeln} · ${rows.length} item${rows.length === 1 ? '' : 's'}`}
+                  </Text>
+                  {groupTotal != null && <Text style={styles.groupHeaderText}>Total: {formatAmount(groupTotal)}</Text>}
                 </View>
-              ))}
-            </View>
-          ))}
+
+                <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+                  <View>
+                    <View style={styles.tableHeaderRow}>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.row}>Row</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendor}>Vendor</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.description}>Description</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.qty}>Qty</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount}>Amount</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.po}>PO</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.item}>Item</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.status}>Status</TableHeaderCell>
+                    </View>
+
+                    {rows.map((row, i) => (
+                      <View
+                        key={`${ebeln}-${row.rowno}-${i}`}
+                        style={[styles.tableRow, { backgroundColor: row.type === 'E' ? `${colors.red}0A` : `${colors.green}0A` }]}
+                      >
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.row}>{row.rowno}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.description}>{row.txz01 || '—'}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(computeLineAmount(row.menge, row.grPrice))}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.po}>{row.ebeln || '—'}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.item}>{formatEbelp(row.ebelp)}</ResultCell>
+                        <View style={[styles.tableCell, { width: UPLOAD_RESULT_COLUMNS.status }]}>
+                          <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
+                            <Ionicons
+                              name={row.type === 'E' ? 'alert-circle' : 'checkmark-circle'}
+                              size={11}
+                              color={row.type === 'E' ? colors.red : colors.green}
+                            />
+                            <Text style={[styles.statusBadgeText, { color: row.type === 'E' ? colors.red : colors.green }]}>
+                              {row.type === 'E' ? 'Failed' : 'Posted'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                {errorRows.length > 0 && (
+                  <View style={styles.tableErrorsList}>
+                    {errorRows.map((r) => (
+                      <Text key={r.rowno} style={styles.rowErrorText}>Row {r.rowno}: {r.message}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
     </View>
@@ -487,23 +551,40 @@ export default function PurchaseOrderCreation() {
 
   const successCount = uploadedRows.filter((r) => r.status === 'success').length;
   const errorCount = uploadedRows.length - successCount;
-  const canSave = uploadedRows.length > 0 && errorCount === 0;
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (uploadedRows.length === 0) return;
     setSaving(true);
-    const newPos = createPurchaseOrders(uploadedRows, createdPos);
+    // If any line item in a PO group has an error, that whole PO is skipped (not just the bad
+    // row) — remainingRows hands back every row from a skipped group so it stays in the review
+    // table for the Admin to fix or remove and save again; other, error-free groups are created.
+    const { created: newPos, remainingRows, skippedGroupCount } = createPurchaseOrders(uploadedRows, createdPos);
     const merged = [...newPos, ...createdPos];
     setCreatedPos(merged);
     saveStoredPos(merged);
-    setUploadedRows([]);
-    setPickedFileName('');
-    setPickedUri('');
+    setUploadedRows(remainingRows);
+    if (remainingRows.length === 0) {
+      setPickedFileName('');
+      setPickedUri('');
+    }
     setSaving(false);
-    setBanner({
-      type: 'success',
-      message: `${newPos.length} purchase order${newPos.length === 1 ? '' : 's'} created: ${newPos.map((p) => p.poNumber).join(', ')}.`,
-    });
+
+    if (newPos.length > 0 && skippedGroupCount === 0) {
+      setBanner({
+        type: 'success',
+        message: `${newPos.length} purchase order${newPos.length === 1 ? '' : 's'} created: ${newPos.map((p) => p.poNumber).join(', ')}.`,
+      });
+    } else if (newPos.length > 0) {
+      setBanner({
+        type: 'error',
+        message: `${newPos.length} purchase order${newPos.length === 1 ? '' : 's'} created: ${newPos.map((p) => p.poNumber).join(', ')}. ${skippedGroupCount} PO${skippedGroupCount === 1 ? '' : 's'} skipped — every line item in a PO must be error-free. Fix or remove the error rows below and save again.`,
+      });
+    } else {
+      setBanner({
+        type: 'error',
+        message: 'No purchase orders created — every group has at least one error row. Fix or remove the error rows below and save again.',
+      });
+    }
   };
 
   const toggleExpand = (poNumber: string) => {
@@ -587,7 +668,7 @@ export default function PurchaseOrderCreation() {
           </View>
           {fetchError && <Text style={styles.rowErrorText}>{fetchError}</Text>}
           <Text style={styles.helperText}>
-            Expected columns: Vendor Code, Vendor Name, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account. Material Code and Material Description are optional — not required for a Service PO.
+            Expected columns: Vendor Code, Vendor Name, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account.
           </Text>
         </View>
         )}
@@ -623,8 +704,6 @@ export default function PurchaseOrderCreation() {
                   <TableHeaderCell width={TABLE_COLUMNS.deliveryDate}>Delivery Date *</TableHeaderCell>
                   <TableHeaderCell width={TABLE_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
                   <TableHeaderCell width={TABLE_COLUMNS.glAccount}>GL Account</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.materialCode}>Material Code (opt.)</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.materialDesc}>Material Desc. (opt.)</TableHeaderCell>
                   <TableHeaderCell width={TABLE_COLUMNS.remove}> </TableHeaderCell>
                 </View>
 
@@ -663,8 +742,6 @@ export default function PurchaseOrderCreation() {
                     </View>
                     <TableCellInput width={TABLE_COLUMNS.costCenter} value={row.costCenter} onChange={(v) => patchUploadedRow(row.key, { costCenter: v })} />
                     <TableCellInput width={TABLE_COLUMNS.glAccount} value={row.glAccount} onChange={(v) => patchUploadedRow(row.key, { glAccount: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.materialCode} value={row.materialCode} onChange={(v) => patchUploadedRow(row.key, { materialCode: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.materialDesc} value={row.materialDesc} onChange={(v) => patchUploadedRow(row.key, { materialDesc: v })} />
                     <View style={[styles.tableCell, { width: TABLE_COLUMNS.remove }]}>
                       <Pressable onPress={() => removeUploadedRow(row.key)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove this row">
                         <Ionicons name="trash-outline" size={15} color={colors.inkSoft} />
@@ -686,19 +763,22 @@ export default function PurchaseOrderCreation() {
             )}
 
             <Pressable
-              style={[styles.saveBtn, (!canSave || saving) && styles.btnDisabled]}
+              style={[styles.saveBtn, saving && styles.btnDisabled]}
               onPress={handleSave}
-              disabled={!canSave || saving}
+              disabled={saving}
               accessibilityRole="button"
             >
               {saving ? (
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
-                <Text style={styles.saveBtnText}>
-                  {canSave ? `Confirm & Create Purchase Order${successCount === 1 ? '' : 's'}` : 'Fix all error rows to continue'}
-                </Text>
+                <Text style={styles.saveBtnText}>Confirm & Create Purchase Order{successCount === 1 ? '' : 's'}</Text>
               )}
             </Pressable>
+            {errorCount > 0 && (
+              <Text style={styles.helperText}>
+                Rows still in error will not be turned into a PO — any PO group containing one of them is skipped entirely.
+              </Text>
+            )}
           </View>
         )}
 
@@ -747,8 +827,6 @@ export default function PurchaseOrderCreation() {
                         <View key={item.itemNo} style={styles.itemRow}>
                           <View style={styles.fieldGrid}>
                             <InfoField label="Item No" value={item.itemNo} />
-                            <InfoField label="Material Code" value={item.materialCode} />
-                            <InfoField label="Material Description" value={item.materialDesc} />
                             <InfoField label="Quantity" value={item.quantity} />
                             <InfoField label="Unit Price" value={item.unitPrice} />
                             <InfoField label="Net Value" value={item.netValue} />
@@ -947,23 +1025,6 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
   },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 9,
-    gap: 5,
-    ...Platform.select({
-      web: { boxShadow: '0 1px 4px rgba(31,27,51,0.05)' },
-      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
-    }),
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1031,6 +1092,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 5,
     justifyContent: 'center',
+  },
+  tableCellRight: {
+    alignItems: 'flex-end',
+  },
+  resultCellText: {
+    fontSize: 11.5,
+    color: colors.ink,
   },
   tableCellInput: {
     borderWidth: 1,
