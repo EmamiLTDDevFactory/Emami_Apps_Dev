@@ -71,6 +71,17 @@ function SortSelect({ value, onChange }: { value: SortOption; onChange: (v: Sort
   );
 }
 
+/** A history card's real approve/reject outcome, not just which tab it's being viewed under -
+ * row.status is the ground truth (see sapClient.ts), historyTab is only a fallback for the rare
+ * row that hasn't got a Status value back from SAP yet. Keeps a card from ever silently relabeling
+ * to match whichever tab happens to be open if a query ever returns a row that doesn't actually
+ * belong there. */
+function historyVariant(row: PoRow, historyTab: HistoryTab): 'approved' | 'rejected' {
+  if (row.status === 'A') return 'approved';
+  if (row.status === 'R') return 'rejected';
+  return historyTab;
+}
+
 function formatLastUpdated(d: Date | null): string {
   if (!d) return '';
   return `Updated ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -455,8 +466,8 @@ export default function HomePage() {
                 <PoCard
                   key={row.ebeln}
                   row={row}
-                  variant={historyTab}
-                  onOpen={() => openDetails(row, historyTab === 'approved' ? 'A' : 'R')}
+                  variant={historyVariant(row, historyTab)}
+                  onOpen={() => openDetails(row, historyVariant(row, historyTab) === 'approved' ? 'A' : 'R')}
                   onHistory={() => handleHistory(row)}
                   onPrint={() => handlePrint(row)}
                   acting={rowActing[row.ebeln] ?? null}
