@@ -57,7 +57,7 @@ export default function PoCard({
         <button onClick={onOpen} className="min-w-0 flex-1 text-left">
           <p className="text-[11px] font-semibold text-inkSoft">{formatDateTime(row.erdat, row.uzeit)}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            <p className="min-w-0 truncate text-base font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
+            <p className="text-base font-extrabold tracking-tight text-ink">{formatCurrency(row.waers, row.netwr)}</p>
             {isHighValue(row.netwr) && (
               <span className="pill shrink-0 whitespace-nowrap bg-rust/10 text-rust !py-0.5" title={`Above the ₹2,00,000 high-value review threshold`}>
                 <Gem size={10} /> High Value

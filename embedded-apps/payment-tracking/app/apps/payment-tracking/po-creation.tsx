@@ -25,8 +25,15 @@ import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuth
 const STORAGE_KEY = 'payment-tracking-created-pos';
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// TODO: point this at the hosted .xlsx template once Basis/SharePoint gives us a stable URL.
-const SERVICE_PO_TEMPLATE_URL: string | null = null;
+// Bundled via Metro (see metro.config.js's assetExts) from assets/files/ — same mechanism the
+// sidebar logo already uses (see _layout.tsx's require of emami-apps-logo.png), so it merges into
+// the hub's shared dist/assets/ at build time (see scripts/build-embedded-apps.js's
+// SHARED_FOLDERS) without needing separate hosting. On web this resolves directly to a servable
+// URI string; the object-with-.uri shape is handled too in case a native build ever reaches here.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const SERVICE_PO_TEMPLATE_ASSET = require('../../../assets/files/ZMM_SRV_PO_Upload_Template.xlsx');
+const SERVICE_PO_TEMPLATE_URL: string =
+  typeof SERVICE_PO_TEMPLATE_ASSET === 'string' ? SERVICE_PO_TEMPLATE_ASSET : (SERVICE_PO_TEMPLATE_ASSET?.uri ?? '');
 
 function loadStoredPos(): CreatedPo[] {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return [];
@@ -116,9 +123,19 @@ const TABLE_COLUMNS = {
   remove: 36,
 } as const;
 
-function TableHeaderCell({ width, children }: { width: number; children: React.ReactNode }) {
+/** `sticky` (a left offset in px) freezes this header cell while its table scrolls horizontally —
+ * web-only (react-native-web passes 'sticky' straight through to CSS; RN's own ViewStyle type
+ * doesn't know that position, hence the cast), used by the Service PO Bulk Upload report to freeze
+ * columns through Vendor Name. Omit it for a normal, non-frozen header cell. */
+function TableHeaderCell({ width, sticky, children }: { width: number; sticky?: number; children: React.ReactNode }) {
   return (
-    <View style={[styles.tableHeaderCell, { width }]}>
+    <View
+      style={[
+        styles.tableHeaderCell,
+        { width },
+        sticky != null && ({ position: 'sticky', left: sticky, zIndex: 3, backgroundColor: colors.appBg } as any),
+      ]}
+    >
       <Text style={styles.tableHeaderText}>{children}</Text>
     </View>
   );
@@ -193,24 +210,49 @@ function formatAmount(value: number | null): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Column widths for the Service PO Bulk Upload's result table — Row | Vendor | Description |
- * Qty | Amount | PO | Item | Cost Center | GL | Status. */
+/** ALV-style report column widths for the Service PO Bulk Upload's Item Details table (per
+ * instruction, 2026-09-15) — PO Number/PO Item live in the group's header card, not repeated per
+ * row, so this starts at PO Item (Ebelp still varies per line within a PO). The first four
+ * (through Vendor Name) are frozen while scrolling; Status is appended beyond the requested list
+ * since a failed row must stay visible (dropping it would undo the "don't create a PO with any
+ * errored item" behavior). No Row/serial column, per instruction. */
 const UPLOAD_RESULT_COLUMNS = {
-  row: 44,
-  vendor: 100,
+  item: 60,
   description: 170,
-  qty: 70,
-  amount: 100,
-  po: 110,
-  item: 56,
-  costCenter: 96,
-  glAccount: 96,
+  vendor: 100,
+  vendorName: 140,
+  purchGroup: 84,
+  purchOrg: 84,
+  qty: 72,
+  amount: 104,
+  currency: 74,
+  glAccount: 100,
+  costCenter: 100,
+  internalOrder: 104,
   status: 84,
 } as const;
 
-function ResultCell({ width, align, children }: { width: number; align?: 'right'; children: React.ReactNode }) {
+/** Cumulative left offsets for the frozen columns (item -> vendorName), in the same order they
+ * render — each sticky cell's `left` is where it should land once pinned. */
+const UPLOAD_FROZEN_LEFT = {
+  item: 0,
+  description: UPLOAD_RESULT_COLUMNS.item,
+  vendor: UPLOAD_RESULT_COLUMNS.item + UPLOAD_RESULT_COLUMNS.description,
+  vendorName: UPLOAD_RESULT_COLUMNS.item + UPLOAD_RESULT_COLUMNS.description + UPLOAD_RESULT_COLUMNS.vendor,
+} as const;
+
+function ResultCell({ width, align, sticky, background, children }: {
+  width: number; align?: 'right'; sticky?: number; background?: string; children: React.ReactNode;
+}) {
   return (
-    <View style={[styles.tableCell, { width }, align === 'right' && styles.tableCellRight]}>
+    <View
+      style={[
+        styles.tableCell,
+        { width },
+        align === 'right' && styles.tableCellRight,
+        sticky != null && ({ position: 'sticky', left: sticky, zIndex: 2, backgroundColor: background || colors.white } as any),
+      ]}
+    >
       <Text style={styles.resultCellText} numberOfLines={2}>{children}</Text>
     </View>
   );
@@ -444,44 +486,52 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                 <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
                   <View>
                     <View style={styles.tableHeaderRow}>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.row}>Row</TableHeaderCell>
-                      {ebeln === '—' && <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendor}>Vendor</TableHeaderCell>}
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.description}>Description</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.item} sticky={UPLOAD_FROZEN_LEFT.item}>Item</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.description} sticky={UPLOAD_FROZEN_LEFT.description}>Service Text</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendor} sticky={UPLOAD_FROZEN_LEFT.vendor}>Vendor</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.vendorName} sticky={UPLOAD_FROZEN_LEFT.vendorName}>Vendor Name</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.purchGroup}>Purch. Group</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.purchOrg}>Purch. Org</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.qty}>Qty</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount}>Amount</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.item}>Item</TableHeaderCell>
-                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.currency}>Currency</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.glAccount}>GL Account</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.internalOrder}>Internal Order</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.status}>Status</TableHeaderCell>
                     </View>
 
-                    {rows.map((row, i) => (
-                      <View
-                        key={`${ebeln}-${row.rowno}-${i}`}
-                        style={[styles.tableRow, { backgroundColor: row.type === 'E' ? `${colors.red}0A` : `${colors.green}0A` }]}
-                      >
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.row}>{row.rowno}</ResultCell>
-                        {ebeln === '—' && <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>}
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.description}>{row.txz01 || '—'}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.item}>{formatEbelp(row.ebelp)}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.costCenter}>{stripLeadingZeros(row.kostl) || '—'}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.glAccount}>{stripLeadingZeros(row.sakto) || '—'}</ResultCell>
-                        <View style={[styles.tableCell, { width: UPLOAD_RESULT_COLUMNS.status }]}>
-                          <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
-                            <Ionicons
-                              name={row.type === 'E' ? 'alert-circle' : 'checkmark-circle'}
-                              size={11}
-                              color={row.type === 'E' ? colors.red : colors.green}
-                            />
-                            <Text style={[styles.statusBadgeText, { color: row.type === 'E' ? colors.red : colors.green }]}>
-                              {row.type === 'E' ? 'Failed' : 'Posted'}
-                            </Text>
+                    {rows.map((row, i) => {
+                      const rowBg = row.type === 'E' ? `${colors.red}0A` : `${colors.green}0A`;
+                      return (
+                        <View key={`${ebeln}-${row.rowno}-${i}`} style={[styles.tableRow, { backgroundColor: rowBg }]}>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.item} sticky={UPLOAD_FROZEN_LEFT.item} background={rowBg}>{formatEbelp(row.ebelp)}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.description} sticky={UPLOAD_FROZEN_LEFT.description} background={rowBg}>{row.txz01 || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor} sticky={UPLOAD_FROZEN_LEFT.vendor} background={rowBg}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.vendorName} sticky={UPLOAD_FROZEN_LEFT.vendorName} background={rowBg}>{row.name1 || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.purchGroup}>{stripLeadingZeros(row.ekgrp) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.purchOrg}>{stripLeadingZeros(row.ekorg) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.currency}>{row.waers || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.glAccount}>{stripLeadingZeros(row.sakto) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.costCenter}>{stripLeadingZeros(row.kostl) || '—'}</ResultCell>
+                          <ResultCell width={UPLOAD_RESULT_COLUMNS.internalOrder}>{stripLeadingZeros(row.orderid) || '—'}</ResultCell>
+                          <View style={[styles.tableCell, { width: UPLOAD_RESULT_COLUMNS.status }]}>
+                            <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
+                              <Ionicons
+                                name={row.type === 'E' ? 'alert-circle' : 'checkmark-circle'}
+                                size={11}
+                                color={row.type === 'E' ? colors.red : colors.green}
+                              />
+                              <Text style={[styles.statusBadgeText, { color: row.type === 'E' ? colors.red : colors.green }]}>
+                                {row.type === 'E' ? 'Failed' : 'Posted'}
+                              </Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </ScrollView>
 
