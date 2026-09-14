@@ -841,18 +841,32 @@ export type PoUploadStatus = 'S' | 'P' | 'E';
 export type PoUploadRowType = 'S' | 'E';
 
 /** One row of ToUploadItems.results. Menge/GrPrice arrive as STRINGS (parseFloat before any
- * arithmetic or formatting); Ebeln/Ebelp are empty strings on a failed row. */
+ * arithmetic or formatting); Ebeln/Ebelp are empty strings on a failed row.
+ *
+ * name1/ekgrp/ekorg/waers/orderid were added for the ALV-style report (per instruction,
+ * 2026-09-15) — none of these were part of the originally-specified ToUploadItems.results shape,
+ * so they're an assumption the backend now also returns them. Every field name here follows the
+ * same "first letter capitalized, rest lowercase" wire casing already confirmed for every other
+ * field (Grprice, Sakto, Kostl, Ebeln, Ebelp, Txz01, Menge, Lifnr — see grPrice's own note above)
+ * and independently cross-checked against the real upload template's own column headers
+ * (EKGRP/EKORG/WAERS/ORDERID all present there) — high confidence, but unverified against a live
+ * response; if any of these render blank, that's the tell the real field name differs. */
 export interface PoUploadResultRow {
   rowno: number; // Rowno — Excel row number, header counted as row 1, so the first data row is 2
   lifnr: string; // Lifnr — vendor code, zero-padded
+  name1: string; // Name1 — vendor name
   bukrs: string; // Bukrs — company code
   poId: number; // PoId — this row's group id within the upload, not a PO number
   txz01: string; // Txz01 — line text
+  ekgrp: string; // Ekgrp — purchase group
+  ekorg: string; // Ekorg — purchase organization
   menge: string; // Menge — quantity, STRING
   grPrice: string; // wire field is "Grprice" (not "GrPrice" as originally specified) — price, STRING
+  waers: string; // Waers — currency
   werks: string; // Werks — plant
   sakto: string; // Sakto — GL account, zero-padded
   kostl: string; // Kostl — cost center, zero-padded
+  orderid: string; // Orderid — internal order
   ebeln: string; // Ebeln — PO number, empty when the row failed
   ebelp: string; // Ebelp — PO item, e.g. "00010", empty when the row failed
   type: PoUploadRowType;
@@ -926,18 +940,23 @@ function toPoUploadRow(raw: Record<string, any>): PoUploadResultRow {
   return {
     rowno: Number(raw.Rowno ?? 0),
     lifnr: str(raw.Lifnr),
+    name1: str(raw.Name1),
     bukrs: str(raw.Bukrs),
     poId: Number(raw.PoId ?? 0),
     txz01: str(raw.Txz01),
+    ekgrp: str(raw.Ekgrp),
+    ekorg: str(raw.Ekorg),
     menge: str(raw.Menge),
     // The backend contract as originally specified calls this field "GrPrice", but the live SAP
     // response actually sends "Grprice" (only the leading G capitalized) — confirmed 2026-09-15
     // after Amount showed blank while Qty (Menge, which does match) worked fine. JS property
     // access is case-sensitive, so this must match the real wire field, not the written spec.
     grPrice: str(raw.Grprice),
+    waers: str(raw.Waers),
     werks: str(raw.Werks),
     sakto: str(raw.Sakto),
     kostl: str(raw.Kostl),
+    orderid: str(raw.Orderid),
     ebeln: str(raw.Ebeln),
     ebelp: str(raw.Ebelp),
     type: raw.Type === 'S' ? 'S' : 'E',

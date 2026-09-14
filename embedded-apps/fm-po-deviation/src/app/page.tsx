@@ -261,7 +261,10 @@ export default function HomePage() {
     try {
       const blob = await fetchPrintformPdf(row.ebeln);
       if (!blob) {
-        setBanner({ type: 'error', message: 'Could not download PDF. Please try again or contact support.' });
+        // Distinct from the catch block below: this is PrintformSet legitimately returning no
+        // row for this PO (confirmed live, 2026-09-15 — the filtered GET responds 200 with an
+        // empty result set), not a network/gateway failure, so retry-wording would be misleading.
+        setBanner({ type: 'error', message: 'No printform is available for this PO yet.' });
         return;
       }
       const blobUrl = URL.createObjectURL(blob);
@@ -290,7 +293,7 @@ export default function HomePage() {
   const allSelected = selectableCount > 0 && filteredPending.filter((r) => r.zpoInd !== 'R').every((r) => selected.has(r.ebeln));
 
   return (
-    <div className="mx-auto max-w-7xl p-4 sm:p-6">
+    <div className="mx-auto max-w-[1600px] p-4 sm:p-6">
       {banner && (
         <div
           className={`mb-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold ${
@@ -396,7 +399,7 @@ export default function HomePage() {
           ) : filteredPending.length === 0 ? (
             <EmptyState message="No pending approvals" />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredPending.map((row) => (
                 <PoCard
                   key={row.ebeln}
@@ -461,7 +464,7 @@ export default function HomePage() {
           ) : filteredHistory.length === 0 ? (
             <EmptyState message={`No ${historyTab} items yet.`} />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredHistory.map((row) => (
                 <PoCard
                   key={row.ebeln}
@@ -512,7 +515,7 @@ export default function HomePage() {
 
 function LoadingRows() {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="h-32 animate-pulse rounded-2xl bg-white/60" />
       ))}
