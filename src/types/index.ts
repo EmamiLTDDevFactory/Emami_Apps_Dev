@@ -30,8 +30,12 @@ export type CategoryFilter = 'All' | Category;
 
 /** Most apps use the generic 'User'/'Admin' pair. Audit & CAPA is the one app with its own
  * domain-specific role vocabulary — 'CQA' (quality-assurance side, equivalent to 'Admin') and
- * 'Depot' (depot/site side, equivalent to 'User') — see UserAccessScreen.tsx's roleOptionsFor. */
-export type AppRole = 'User' | 'Admin' | 'CQA' | 'Depot';
+ * 'Depot' (depot/site side, equivalent to 'User') — see UserAccessScreen.tsx's roleOptionsFor.
+ * 'Finance' is Provision Tracking's own third role (Pending Approval, Upcoming Provision (All
+ * Vendors), Submission History, Purchase Order Creation and Details) — also gated per-app in
+ * roleOptionsFor, and only valid for 'payment-tracking' server-side (see backend/server.js's
+ * VALID_ROLES_BY_APP). */
+export type AppRole = 'User' | 'Admin' | 'CQA' | 'Depot' | 'Finance';
 
 export interface UserAppGrant {
   appId: string;
