@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -12,10 +12,21 @@ import {
   type CreatedPo,
   type UploadedPoRow,
 } from '../../../src/lib/poCreationSimulator';
+import {
+  uploadServicePoFile,
+  PoUploadError,
+  type PoUploadResult,
+  type PoUploadResultRow,
+} from '../../../src/lib/paymentTrackingApi';
+import { exportFailedRowsToCsv } from '../../../src/lib/exportCsv';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
 const STORAGE_KEY = 'payment-tracking-created-pos';
+const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+// TODO: point this at the hosted .xlsx template once Basis/SharePoint gives us a stable URL.
+const SERVICE_PO_TEMPLATE_URL: string | null = null;
 
 function loadStoredPos(): CreatedPo[] {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return [];
@@ -111,6 +122,270 @@ function formatMoney(value: string | number, currency: string): string {
   return `${Number.isNaN(n) ? value : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`.trim();
 }
 
+/** Lifnr/Sakto/Kostl arrive ALPHA-padded with leading zeros ("0000220856") — strip for display
+ * only, never re-pad or send this back to SAP. */
+function stripLeadingZeros(value: string): string {
+  if (!value) return '';
+  return value.replace(/^0+/, '') || '0';
+}
+
+/** Ebelp arrives as "00010" — display as "10". Empty (failed row) renders a dash. */
+function formatEbelp(ebelp: string): string {
+  if (!ebelp) return '—';
+  return stripLeadingZeros(ebelp);
+}
+
+/** Menge/GrPrice arrive as STRINGS — parseFloat before formatting, never used directly. */
+function formatUploadNumber(value: string): string {
+  if (!value) return '—';
+  const n = parseFloat(value);
+  if (Number.isNaN(n)) return value;
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][] {
+  const map = new Map<string, PoUploadResultRow[]>();
+  for (const row of rows) {
+    const key = row.ebeln || '—';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(row);
+  }
+  // Real PO groups first (in first-seen order), rows that never became a PO last.
+  return Array.from(map.entries()).sort((a, b) => (a[0] === '—' ? 1 : b[0] === '—' ? -1 : 0));
+}
+
+const STATUS_BANNER_STYLE: Record<PoUploadResult['status'], { bg: string; border: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  S: { bg: `${colors.green}12`, border: `${colors.green}40`, color: colors.green, icon: 'checkmark-circle' },
+  P: { bg: '#FFFBEB', border: `${colors.amber}40`, color: colors.amber, icon: 'alert-circle' },
+  E: { bg: `${colors.red}12`, border: `${colors.red}40`, color: colors.red, icon: 'close-circle' },
+};
+
+/** Service PO Bulk Upload — sub-tab inside the Admin PO Creation screen. Unlike the sibling
+ * "Purchase Orders" tab (an explicit client-side simulation, see poCreationSimulator.ts), this
+ * posts for real to SAP's ZSrvPOUploadSet deep entity (see uploadServicePoFile in
+ * paymentTrackingApi.ts) — a single POST whose response carries the full per-row S/P/E result.
+ * The backend owns all .xlsx parsing/validation; this screen never opens the workbook itself. */
+function ServicePoUploadSection({ email }: { email: string | null }) {
+  const [pickedFileName, setPickedFileName] = useState('');
+  const [pickedUri, setPickedUri] = useState('');
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [result, setResult] = useState<PoUploadResult | null>(null);
+  const [errorBanner, setErrorBanner] = useState<{ kind: 'timeout' | 'network' | 'sap'; message: string } | null>(null);
+  const [templateNotice, setTemplateNotice] = useState<string | null>(null);
+
+  const groups = useMemo(() => (result ? groupByEbeln(result.rows) : []), [result]);
+
+  const pickFile = async () => {
+    setFileError(null);
+    setErrorBanner(null);
+    setResult(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled) return;
+      const asset = (res as any).assets?.[0] ?? res;
+      if (!asset?.uri) return;
+      const name: string = asset.name || 'upload.xlsx';
+      if (!name.toLowerCase().endsWith('.xlsx')) {
+        setFileError('Only .xlsx files are accepted.');
+        return;
+      }
+      if (typeof asset.size === 'number' && asset.size > MAX_UPLOAD_SIZE_BYTES) {
+        setFileError(`File is ${(asset.size / (1024 * 1024)).toFixed(1)} MB — the limit is 5 MB.`);
+        return;
+      }
+      setPickedFileName(name);
+      setPickedUri(asset.uri);
+    } catch {
+      setFileError('Could not open the file picker. Please try again.');
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!pickedUri || !email) return;
+    setUploading(true);
+    setProgress(0);
+    setErrorBanner(null);
+    setResult(null);
+    try {
+      const res = await uploadServicePoFile(email, pickedFileName || 'upload.xlsx', pickedUri, setProgress);
+      setResult(res);
+      setPickedFileName('');
+      setPickedUri('');
+    } catch (err) {
+      if (err instanceof PoUploadError) {
+        setErrorBanner({ kind: err.kind, message: err.message });
+      } else {
+        setErrorBanner({ kind: 'sap', message: err instanceof Error ? err.message : 'Upload failed.' });
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    if (SERVICE_PO_TEMPLATE_URL) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.open(SERVICE_PO_TEMPLATE_URL, '_blank');
+      return;
+    }
+    setTemplateNotice("Template isn't hosted yet — check back soon.");
+  };
+
+  const handleExportFailedRows = () => {
+    if (!result) return;
+    exportFailedRowsToCsv(
+      result.rows.filter((r) => r.type === 'E').map((r) => ({ rowno: r.rowno, message: r.message })),
+      'Service_PO_Upload_Failed_Rows'
+    );
+  };
+
+  return (
+    <View style={styles.panel}>
+      <View style={styles.reviewHeader}>
+        <Text style={styles.helperText}>
+          Upload an .xlsx file to create Service POs in bulk. The backend parses and validates the
+          file — this screen does not.
+        </Text>
+        <Pressable onPress={handleDownloadTemplate} accessibilityRole="button">
+          <View style={styles.templateLinkRow}>
+            <Ionicons name="download-outline" size={13} color={colors.rust} />
+            <Text style={styles.templateLinkText}>Download template</Text>
+          </View>
+        </Pressable>
+      </View>
+      {templateNotice && <Text style={styles.helperText}>{templateNotice}</Text>}
+
+      <View style={styles.uploadCard}>
+        <Text style={styles.sectionTitle}>Upload Excel file</Text>
+        <View style={styles.uploadRow}>
+          <Pressable style={styles.uploadBtn} onPress={pickFile} accessibilityRole="button">
+            <Ionicons name="cloud-upload-outline" size={15} color={colors.rust} />
+            <Text style={styles.uploadBtnText} numberOfLines={1}>{pickedFileName || 'Choose Excel file (.xlsx)'}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.fetchBtn, (!pickedUri || uploading || !email) && styles.btnDisabled]}
+            onPress={handleUpload}
+            disabled={!pickedUri || uploading || !email}
+            accessibilityRole="button"
+          >
+            {uploading ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Text style={styles.fetchBtnText}>Upload{progress > 0 ? ` ${progress}%` : ''}</Text>
+            )}
+          </Pressable>
+        </View>
+        {fileError && <Text style={styles.rowErrorText}>{fileError}</Text>}
+
+        {uploading && (
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress}%` }]} />
+          </View>
+        )}
+
+        {errorBanner && (
+          <View style={[
+            styles.banner,
+            errorBanner.kind === 'timeout'
+              ? { backgroundColor: '#FFFBEB', borderColor: `${colors.amber}40` }
+              : styles.bannerError,
+          ]}>
+            <Ionicons
+              name={errorBanner.kind === 'timeout' ? 'alert-circle' : 'close-circle'}
+              size={16}
+              color={errorBanner.kind === 'timeout' ? colors.amber : colors.red}
+            />
+            <Text style={[styles.bannerText, { color: errorBanner.kind === 'timeout' ? colors.amber : colors.red }]}>
+              {errorBanner.message}
+            </Text>
+            {errorBanner.kind !== 'timeout' && (
+              <Pressable onPress={handleUpload} hitSlop={8} accessibilityRole="button" accessibilityLabel="Retry">
+                <Ionicons name="refresh-outline" size={16} color={colors.inkSoft} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => setErrorBanner(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+              <Ionicons name="close" size={16} color={colors.inkSoft} />
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      {result && (
+        <View style={styles.reviewSection}>
+          {(() => {
+            const tone = STATUS_BANNER_STYLE[result.status];
+            const text = result.status === 'S'
+              ? `All ${result.totalRows} row${result.totalRows === 1 ? '' : 's'} posted`
+              : result.status === 'P'
+                ? `${result.successCnt} posted, ${result.errorCnt} failed`
+                : (result.message || 'Upload failed — no rows were posted.');
+            return (
+              <View style={[styles.banner, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+                <Ionicons name={tone.icon} size={16} color={tone.color} />
+                <Text style={[styles.bannerText, { color: tone.color }]}>{text}</Text>
+              </View>
+            );
+          })()}
+
+          {result.errorCnt > 0 && (
+            <Pressable style={styles.downloadBtn} onPress={handleExportFailedRows} accessibilityRole="button">
+              <Ionicons name="download-outline" size={14} color={colors.white} />
+              <Text style={styles.downloadBtnText}>Export failed rows</Text>
+            </Pressable>
+          )}
+
+          {groups.map(([ebeln, rows]) => (
+            <View key={ebeln} style={{ gap: 6 }}>
+              <Text style={styles.groupHeaderText}>
+                {ebeln === '—' ? `Not created (${rows.length})` : `PO ${ebeln} (${rows.length} item${rows.length === 1 ? '' : 's'})`}
+              </Text>
+              {rows.map((row, i) => (
+                <View
+                  key={`${ebeln}-${row.rowno}-${i}`}
+                  style={[styles.card, { borderLeftWidth: 3, borderLeftColor: row.type === 'E' ? colors.red : colors.green }]}
+                >
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.infoLabel}>Row {row.rowno}</Text>
+                    <View style={styles.flex1} />
+                    <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
+                      <Ionicons
+                        name={row.type === 'E' ? 'alert-circle' : 'checkmark-circle'}
+                        size={12}
+                        color={row.type === 'E' ? colors.red : colors.green}
+                      />
+                      <Text style={[styles.statusBadgeText, { color: row.type === 'E' ? colors.red : colors.green }]}>
+                        {row.type === 'E' ? 'Failed' : 'Posted'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.fieldGrid}>
+                    <InfoField label="Vendor" value={stripLeadingZeros(row.lifnr)} />
+                    <InfoField label="Description" value={row.txz01} />
+                    <InfoField label="Qty" value={formatUploadNumber(row.menge)} />
+                    <InfoField label="Amount" value={formatUploadNumber(row.grPrice)} />
+                    <InfoField label="PO" value={row.ebeln || '—'} />
+                    <InfoField label="Item" value={formatEbelp(row.ebelp)} />
+                  </View>
+
+                  {row.type === 'E' && <Text style={styles.rowErrorText}>{row.message}</Text>}
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 /** Purchase Order Creation and Details — Admin-only tab. Explicitly a SIMULATION (per instruction):
  * Admin uploads an Excel file of line items, "Fetch" runs a client-side validation pass sorting
  * rows into success/error (see poCreationSimulator.ts), Admin edits rows inline until every one is
@@ -119,7 +394,8 @@ function formatMoney(value: string | number, currency: string): string {
  * since there's no confirmed real entity for this. Admin can then review each created PO's header
  * + item detail and download everything created so far as an Excel workbook. */
 export default function PurchaseOrderCreation() {
-  const { isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const [activeTab, setActiveTab] = useState<'create' | 'bulk'>('create');
   const [pickedFileName, setPickedFileName] = useState('');
   const [pickedUri, setPickedUri] = useState('');
   const [fetching, setFetching] = useState(false);
@@ -236,7 +512,25 @@ export default function PurchaseOrderCreation() {
           subtitle="Upload an Excel file of line items, review the fetched rows, then confirm to create simulated Purchase Orders."
         />
 
-        {banner && (
+        <View style={styles.tabRow}>
+          {([
+            { key: 'create', label: 'Purchase Orders' },
+            { key: 'bulk', label: 'Service PO Bulk Upload' },
+          ] as const).map((tab) => (
+            <Pressable
+              key={tab.key}
+              style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab.key)}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.tabBtnText, activeTab === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {activeTab === 'bulk' && <ServicePoUploadSection email={email} />}
+
+        {activeTab === 'create' && banner && (
           <View style={[styles.banner, banner.type === 'error' ? styles.bannerError : styles.bannerSuccess]}>
             <Ionicons name={banner.type === 'error' ? 'alert-circle' : 'checkmark-circle'} size={16} color={banner.type === 'error' ? colors.red : colors.green} />
             <Text style={[styles.bannerText, { color: banner.type === 'error' ? colors.red : colors.green }]}>{banner.message}</Text>
@@ -246,6 +540,7 @@ export default function PurchaseOrderCreation() {
           </View>
         )}
 
+        {activeTab === 'create' && (
         <View style={styles.uploadCard}>
           <Text style={styles.sectionTitle}>1. Upload Excel file</Text>
           <View style={styles.uploadRow}>
@@ -267,8 +562,9 @@ export default function PurchaseOrderCreation() {
             Expected columns: Vendor Code, Vendor Name, Material Code, Material Description, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account.
           </Text>
         </View>
+        )}
 
-        {uploadedRows.length > 0 && (
+        {activeTab === 'create' && uploadedRows.length > 0 && (
           <View style={styles.reviewSection}>
             <View style={styles.reviewHeader}>
               <Text style={styles.sectionTitle}>2. Review line items</Text>
@@ -345,6 +641,7 @@ export default function PurchaseOrderCreation() {
           </View>
         )}
 
+        {activeTab === 'create' && (
         <View style={styles.createdSection}>
           <View style={styles.reviewHeader}>
             <Text style={styles.sectionTitle}>Created Purchase Orders</Text>
@@ -407,6 +704,7 @@ export default function PurchaseOrderCreation() {
             })
           )}
         </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -458,6 +756,59 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: colors.ink,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: colors.white,
+    borderRadius: radii.pill,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+  },
+  tabBtn: {
+    borderRadius: radii.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  tabBtnActive: {
+    backgroundColor: colors.rust,
+  },
+  tabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.inkSoft,
+  },
+  tabBtnTextActive: {
+    color: colors.white,
+  },
+  progressTrack: {
+    height: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.rust,
+  },
+  groupHeaderText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  templateLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  templateLinkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.rust,
   },
   uploadCard: {
     backgroundColor: colors.white,

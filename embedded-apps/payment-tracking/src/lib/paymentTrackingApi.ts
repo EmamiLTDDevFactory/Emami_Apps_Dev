@@ -825,3 +825,189 @@ export async function submitLogAction(
     throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Service PO bulk upload — Admin PO Creation tab's "Service PO Bulk Upload" section. Unlike the
+// rest of this file (and unlike the sibling client-side PO-creation simulator in
+// poCreationSimulator.ts), this is a REAL SAP call: a single POST to the deep entity
+// ZSrvPOUploadSet, whose response carries the full per-row result — there is no separate GET.
+// ---------------------------------------------------------------------------------------------
+
+/** d.Status — 'S' every row posted, 'P' partial (some posted, some failed), 'E' nothing posted
+ * (parse failure, or every row rejected — ToUploadItems.results is empty in that case). */
+export type PoUploadStatus = 'S' | 'P' | 'E';
+
+/** Per-row Type — 'S' posted, 'E' failed. */
+export type PoUploadRowType = 'S' | 'E';
+
+/** One row of ToUploadItems.results. Menge/GrPrice arrive as STRINGS (parseFloat before any
+ * arithmetic or formatting); Ebeln/Ebelp are empty strings on a failed row. */
+export interface PoUploadResultRow {
+  rowno: number; // Rowno — Excel row number, header counted as row 1, so the first data row is 2
+  lifnr: string; // Lifnr — vendor code, zero-padded
+  bukrs: string; // Bukrs — company code
+  poId: number; // PoId — this row's group id within the upload, not a PO number
+  txz01: string; // Txz01 — line text
+  menge: string; // Menge — quantity, STRING
+  grPrice: string; // GrPrice — price, STRING
+  werks: string; // Werks — plant
+  sakto: string; // Sakto — GL account, zero-padded
+  kostl: string; // Kostl — cost center, zero-padded
+  ebeln: string; // Ebeln — PO number, empty when the row failed
+  ebelp: string; // Ebelp — PO item, e.g. "00010", empty when the row failed
+  type: PoUploadRowType;
+  message: string; // SAP message, verbatim — show unmodified, do not truncate
+}
+
+export interface PoUploadResult {
+  guid: string;
+  status: PoUploadStatus;
+  message: string;
+  totalRows: number;
+  successCnt: number;
+  errorCnt: number;
+  rows: PoUploadResultRow[]; // empty when Status === 'E' from a parse failure
+}
+
+/** Distinguishes the three upload failure modes the Service PO Bulk Upload section must show
+ * differently: a timed-out request (never retry automatically — the backend may have already
+ * created POs), a network failure (safe to retry), and a real SAP/Gateway error body (safe to
+ * retry). */
+export class PoUploadError extends Error {
+  kind: 'timeout' | 'network' | 'sap';
+  constructor(kind: PoUploadError['kind'], message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+const SERVICE_PO_UPLOAD_ENTITY_SET = 'ZSrvPOUploadSet';
+const SERVICE_PO_UPLOAD_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** SAP RAW16/CHAR32 wants 32 uppercase hex characters, no dashes. `crypto.randomUUID()` isn't
+ * reliably available on native RN/Hermes (no Web Crypto global without an extra polyfill package,
+ * which isn't installed here), so this builds the same shape from Math.random — fine for a
+ * client-generated dedup key with no cryptographic requirement. Called fresh inside
+ * uploadServicePoFile for every attempt, including a manual retry, since Guid is the backend's
+ * dedup key for one upload. */
+function generatePoUploadGuid(): string {
+  let hex = '';
+  for (let i = 0; i < 32; i += 1) {
+    hex += Math.floor(Math.random() * 16).toString(16);
+  }
+  return hex.toUpperCase();
+}
+
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Manual byte-array -> base64 encoder. expo-file-system isn't installed in this app (so there's
+ * no readAsStringAsync helper) and RN doesn't reliably expose a global btoa, so this works
+ * directly off the ArrayBuffer already returned by fetch(uri).arrayBuffer() — the same read
+ * parseExcelFile uses in poCreationSimulator.ts. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i];
+    const b2 = bytes[i + 1];
+    const b3 = bytes[i + 2];
+    const hasB2 = i + 1 < bytes.length;
+    const hasB3 = i + 2 < bytes.length;
+    chunks.push(BASE64_CHARS[b1 >> 2]);
+    chunks.push(BASE64_CHARS[((b1 & 0x03) << 4) | (hasB2 ? b2 >> 4 : 0)]);
+    chunks.push(hasB2 ? BASE64_CHARS[((b2 & 0x0f) << 2) | (hasB3 ? b3 >> 6 : 0)] : '=');
+    chunks.push(hasB3 ? BASE64_CHARS[b3 & 0x3f] : '=');
+  }
+  return chunks.join('');
+}
+
+function toPoUploadRow(raw: Record<string, any>): PoUploadResultRow {
+  const str = (v: unknown) => (v != null ? String(v) : '');
+  return {
+    rowno: Number(raw.Rowno ?? 0),
+    lifnr: str(raw.Lifnr),
+    bukrs: str(raw.Bukrs),
+    poId: Number(raw.PoId ?? 0),
+    txz01: str(raw.Txz01),
+    menge: str(raw.Menge),
+    grPrice: str(raw.GrPrice),
+    werks: str(raw.Werks),
+    sakto: str(raw.Sakto),
+    kostl: str(raw.Kostl),
+    ebeln: str(raw.Ebeln),
+    ebelp: str(raw.Ebelp),
+    type: raw.Type === 'S' ? 'S' : 'E',
+    message: str(raw.Message),
+  };
+}
+
+/** Bulk Service-PO upload — a single POST to the deep entity ZSrvPOUploadSet; there is no
+ * separate GET, the POST response itself carries the full per-row result (see PoUploadResult).
+ *
+ * Assumes ZSrvPOUploadSet lives on this same ZMM_PO_FOLLOWUP_SRV service — the backend contract
+ * for this feature only names the entity set, not a service host, and this is the only SAP
+ * service this app talks to. Confirm with SAP Basis; if it's actually a different service, only
+ * SAP_BASE_URL above needs to change for this call.
+ *
+ * `uri` is the file picked via expo-document-picker (see po-creation.tsx) — read with
+ * fetch(uri).arrayBuffer(), same as parseExcelFile in poCreationSimulator.ts, then base64 encoded
+ * here since the backend wants plain base64, no data-URI prefix, no wrapping.
+ *
+ * Timeout is 120s: the backend calls BAPI_PO_CREATE1 once per PO group and can legitimately take
+ * a minute on a large file. Never retry automatically on a timeout — the backend may have already
+ * created POs, and a second attempt would create duplicates (see PoUploadError). */
+export async function uploadServicePoFile(
+  email: string,
+  filename: string,
+  uri: string,
+  onProgress?: (pct: number) => void
+): Promise<PoUploadResult> {
+  const fileRes = await fetch(uri);
+  const buffer = await fileRes.arrayBuffer();
+  const base64 = arrayBufferToBase64(buffer);
+
+  const payload = {
+    Guid: generatePoUploadGuid(),
+    Email: email,
+    Filename: filename,
+    Mimetype: SERVICE_PO_UPLOAD_MIMETYPE,
+    Value: base64,
+    ToUploadItems: [],
+  };
+
+  let data: any;
+  try {
+    const res = await sapClient.post(`/${SERVICE_PO_UPLOAD_ENTITY_SET}`, payload, {
+      params: { '$format': 'json' },
+      timeout: 120000,
+      onUploadProgress: (evt: any) => {
+        if (onProgress && evt.total) onProgress(Math.round((evt.loaded / evt.total) * 100));
+      },
+    });
+    data = res.data;
+  } catch (err: any) {
+    if (err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message ?? '')) {
+      throw new PoUploadError(
+        'timeout',
+        'The upload is taking longer than expected. Check whether the POs were created before retrying.'
+      );
+    }
+    if (!err?.response) {
+      throw new PoUploadError('network', 'Network error — could not reach the server. Check your connection and try again.');
+    }
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new PoUploadError('sap', sapMessage || (err instanceof Error ? err.message : 'Upload failed.'));
+  }
+
+  const body = data?.d;
+  const results = body?.ToUploadItems?.results;
+  return {
+    guid: body?.Guid != null ? String(body.Guid) : '',
+    status: body?.Status === 'S' || body?.Status === 'P' ? body.Status : 'E',
+    message: body?.Message != null ? String(body.Message) : '',
+    totalRows: Number(body?.TotalRows ?? 0),
+    successCnt: Number(body?.SuccessCnt ?? 0),
+    errorCnt: Number(body?.ErrorCnt ?? 0),
+    rows: Array.isArray(results) ? results.map(toPoUploadRow) : [],
+  };
+}
