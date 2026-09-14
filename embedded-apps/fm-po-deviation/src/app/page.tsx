@@ -192,7 +192,14 @@ export default function HomePage() {
       await submitPoAction(row, action, reason);
       const msg = action === 'A' ? 'Approved successfully' : action === 'R' ? 'Rejected successfully' : 'Unreleased successfully';
       setBanner({ type: 'success', message: `PO ${row.ebeln}: ${msg}` });
-      if (email) loadPending(email);
+      if (email) {
+        loadPending(email);
+        // Approve/Reject move a PO into that specific history tab - refresh it too so it shows up
+        // there right away instead of only after a manual refresh or full reload. Unrelease just
+        // returns a PO to pending, so it has no history tab of its own to refresh.
+        if (action === 'A') loadApproved(email);
+        if (action === 'R') loadRejected(email);
+      }
     } catch (e) {
       setBanner({ type: 'error', message: e instanceof Error ? e.message : 'Action failed.' });
     } finally {
@@ -222,7 +229,11 @@ export default function HomePage() {
     } else {
       setBanner({ type: 'error', message: `${failures} of ${targets.length} item(s) failed.` });
     }
-    if (email) loadPending(email);
+    if (email) {
+      loadPending(email);
+      if (action === 'A') loadApproved(email);
+      if (action === 'R') loadRejected(email);
+    }
   };
 
   const handleHistory = async (row: PoRow) => {
