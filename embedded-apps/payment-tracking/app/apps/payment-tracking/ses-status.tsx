@@ -25,7 +25,7 @@ const STATUS_STAGES: { code: ProvisionStatus; label: string; icon: keyof typeof 
  * fetchProvisionPOs (ZProvisionTrackSet) exactly as Dashboard/Provision Details do — same Admin-
  * scoped email, same Month/Year context — so this always matches what those screens report. */
 export default function SesStatusScreen() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +35,7 @@ export default function SesStatusScreen() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Admin' || !email) {
       setLoading(false);
       return;
     }
@@ -45,7 +45,7 @@ export default function SesStatusScreen() {
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load SES status data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading, year]);
+  }, [email, role, roleLoading, year]);
 
   const monthRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
   const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
@@ -75,7 +75,7 @@ export default function SesStatusScreen() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (!isAdmin) {
+  if (role !== 'Admin') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />

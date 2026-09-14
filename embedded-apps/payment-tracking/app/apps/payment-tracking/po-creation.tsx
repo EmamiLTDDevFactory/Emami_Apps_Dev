@@ -180,14 +180,12 @@ function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][
   return Array.from(map.entries()).sort((a, b) => (a[0] === '—' ? 1 : b[0] === '—' ? -1 : 0));
 }
 
-/** Line amount = Menge × GrPrice (both arrive as strings — parseFloat first, never used
- * directly). GrPrice is the only price field the backend sends, so this is the "Net amount" for
- * the line; falls back to GrPrice alone if Menge doesn't parse. */
-function computeLineAmount(menge: string, grPrice: string): number | null {
+/** GrPrice arrives as a STRING — parseFloat before formatting, never used directly. Amount is
+ * GrPrice itself, shown as-is (not multiplied by Menge — GrPrice is the only price/amount field
+ * the backend sends, and Menge/Qty is its own separate column). */
+function parseAmount(grPrice: string): number | null {
   const price = parseFloat(grPrice);
-  if (Number.isNaN(price)) return null;
-  const qty = parseFloat(menge);
-  return Number.isNaN(qty) ? price : qty * price;
+  return Number.isNaN(price) ? null : price;
 }
 
 function formatAmount(value: number | null): string {
@@ -196,7 +194,7 @@ function formatAmount(value: number | null): string {
 }
 
 /** Column widths for the Service PO Bulk Upload's result table — Row | Vendor | Description |
- * Qty | Amount | PO | Item | Status, per spec. */
+ * Qty | Amount | PO | Item | Cost Center | GL | Status. */
 const UPLOAD_RESULT_COLUMNS = {
   row: 44,
   vendor: 100,
@@ -205,6 +203,8 @@ const UPLOAD_RESULT_COLUMNS = {
   amount: 100,
   po: 110,
   item: 56,
+  costCenter: 96,
+  glAccount: 96,
   status: 84,
 } as const;
 
@@ -407,7 +407,7 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
             const groupTotal = ebeln === '—'
               ? null
               : rows.reduce((sum, r) => {
-                  const amt = computeLineAmount(r.menge, r.grPrice);
+                  const amt = parseAmount(r.grPrice);
                   return amt != null ? sum + amt : sum;
                 }, 0);
             const errorRows = rows.filter((r) => r.type === 'E');
@@ -430,6 +430,8 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.amount}>Amount</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.po}>PO</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.item}>Item</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
+                      <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.glAccount}>GL Account</TableHeaderCell>
                       <TableHeaderCell width={UPLOAD_RESULT_COLUMNS.status}>Status</TableHeaderCell>
                     </View>
 
@@ -442,9 +444,11 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.vendor}>{stripLeadingZeros(row.lifnr) || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.description}>{row.txz01 || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.qty} align="right">{formatUploadNumber(row.menge)}</ResultCell>
-                        <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(computeLineAmount(row.menge, row.grPrice))}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.amount} align="right">{formatAmount(parseAmount(row.grPrice))}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.po}>{row.ebeln || '—'}</ResultCell>
                         <ResultCell width={UPLOAD_RESULT_COLUMNS.item}>{formatEbelp(row.ebelp)}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.costCenter}>{stripLeadingZeros(row.kostl) || '—'}</ResultCell>
+                        <ResultCell width={UPLOAD_RESULT_COLUMNS.glAccount}>{stripLeadingZeros(row.sakto) || '—'}</ResultCell>
                         <View style={[styles.tableCell, { width: UPLOAD_RESULT_COLUMNS.status }]}>
                           <View style={[styles.statusBadge, { backgroundColor: row.type === 'E' ? `${colors.red}14` : `${colors.green}14` }]}>
                             <Ionicons
@@ -486,7 +490,7 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
  * since there's no confirmed real entity for this. Admin can then review each created PO's header
  * + item detail and download everything created so far as an Excel workbook. */
 export default function PurchaseOrderCreation() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'bulk'>('create');
   const [pickedFileName, setPickedFileName] = useState('');
   const [pickedUri, setPickedUri] = useState('');
@@ -603,11 +607,13 @@ export default function PurchaseOrderCreation() {
     );
   }
 
-  if (!isAdmin) {
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
-        <Text style={styles.deniedText}>Purchase Order Creation is only available to Admins.</Text>
+        <Text style={styles.deniedText}>Purchase Order Creation is only available to Finance.</Text>
       </View>
     );
   }

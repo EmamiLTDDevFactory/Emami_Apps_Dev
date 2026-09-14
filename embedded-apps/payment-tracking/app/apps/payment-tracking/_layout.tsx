@@ -33,13 +33,20 @@ type NavItem = SidePaneItem & { href: Href };
 const WIDE_BREAKPOINT = 768;
 
 // Home ('/') used to be the one tab every role shared — the command-center landing page. Per
-// instruction, neither role needs it any more (Users already got their own redirect to Upcoming
-// Provision; Admin now bounces straight to Dashboard instead — see index.tsx) — Home is dropped
-// from both nav lists entirely.
+// instruction, no role needs it any more (User has its own redirect to Upcoming Provision, Finance
+// to Pending Approval, Admin to Dashboard — see index.tsx) — Home is dropped from every nav list.
+//
+// Three roles, three distinct tab sets (per instruction):
+//   User    — Upcoming Provision, Missed Provision, Submission History
+//   Finance — Pending Approval, Upcoming Provision (All Vendors), Submission History,
+//             Purchase Order Creation and Details
+//   Admin   — Dashboard, Provision Details, Calendar
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
   { href: '/apps/payment-tracking/provision-details', label: 'Provision Details', icon: 'layers-outline' },
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
+];
+const FINANCE_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
   { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
   { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
@@ -54,11 +61,11 @@ const USER_NAV_ITEMS: NavItem[] = [
 function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: () => void; isWideScreen: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { role, roleLoading } = usePaymentTrackingAuth();
   const activeHref = pathname === '/apps/payment-tracking' ? '/apps/payment-tracking/' : pathname;
 
   // While the role lookup is still resolving, show neither set rather than flashing the wrong one.
-  const items = roleLoading ? [] : isAdmin ? ADMIN_NAV_ITEMS : USER_NAV_ITEMS;
+  const items = roleLoading ? [] : role === 'Admin' ? ADMIN_NAV_ITEMS : role === 'Finance' ? FINANCE_NAV_ITEMS : USER_NAV_ITEMS;
 
   return (
     <SidePane
