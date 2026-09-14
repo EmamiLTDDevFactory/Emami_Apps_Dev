@@ -179,7 +179,7 @@ function AttachField({ fileName, attaching, onPick }: { fileName: string; attach
  * the PDF attachment, then send for approval (row-wise or as a multi-select mass batch) — POSTs to
  * ZProvHeader (see paymentTrackingApi.ts's submitProvisionApproval/submitProvisionApprovalBatch). */
 export default function AdminUpcomingProvision() {
-  const { email } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -192,13 +192,18 @@ export default function AdminUpcomingProvision() {
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    if (!email) {
+    if (roleLoading) return;
+    if (role !== 'Finance' || !email) {
       setLoading(false);
-      setLoadError('Not signed in.');
       return;
     }
     setLoading(true);
     setLoadError(null);
+    // NOTE: this screen's "all vendors" scope has historically relied on the backend/SAP
+    // recognizing the caller's email as an Admin and expanding the GET beyond that vendor's own
+    // rows — now that this tab moved to Finance, confirm the backend also expands scope for
+    // Finance emails, not just Admin ones; otherwise a Finance user hits this route but only gets
+    // their own vendor's rows (or none).
     fetchVendorPOFollowups(email, 'U')
       .then((data) => {
         setRows(data);
@@ -208,7 +213,7 @@ export default function AdminUpcomingProvision() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load upcoming provision items.'))
       .finally(() => setLoading(false));
-  }, [email]);
+  }, [email, role, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -376,6 +381,25 @@ export default function AdminUpcomingProvision() {
       setBanner({ type: 'error', message: `${failures.length} vendor group(s) failed — see the affected rows below.` });
     }
   };
+
+  if (roleLoading) {
+    return (
+      <View style={styles.centerWrap}>
+        <ActivityIndicator size="large" color={colors.rust} />
+      </View>
+    );
+  }
+
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
+    return (
+      <View style={styles.centerWrap}>
+        <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
+        <Text style={styles.deniedText}>Upcoming Provision (All Vendors) is only available to Finance.</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -604,6 +628,17 @@ export default function AdminUpcomingProvision() {
 }
 
 const styles = StyleSheet.create({
+  centerWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 12,
+  },
+  deniedText: {
+    fontSize: 13,
+    color: colors.inkSoft,
+  },
   scroll: {
     padding: 20,
     paddingBottom: 60,

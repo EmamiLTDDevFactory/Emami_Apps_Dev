@@ -274,7 +274,7 @@ function AttachmentPreviewModal({
  * anymore. Also filtered by the shared Month/Year bar and by SAP's own Stat field (Pending/Approved
  * tabs — see effectiveStatus below), not just this session's own in-memory decisions. */
 export default function PendingApproval() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
@@ -291,7 +291,7 @@ export default function PendingApproval() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Finance' || !email) {
       setLoading(false);
       return;
     }
@@ -312,7 +312,7 @@ export default function PendingApproval() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load pending approvals.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading]);
+  }, [email, role, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -532,13 +532,13 @@ export default function PendingApproval() {
     );
   }
 
-  // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
-  // still reachable by a typed URL.
-  if (!isAdmin) {
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
-        <Text style={styles.deniedText}>Pending Approval is only available to Admins.</Text>
+        <Text style={styles.deniedText}>Pending Approval is only available to Finance.</Text>
       </View>
     );
   }
