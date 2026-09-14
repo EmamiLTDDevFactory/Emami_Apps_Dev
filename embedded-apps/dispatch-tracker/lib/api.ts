@@ -79,22 +79,79 @@ async function requestSap<T>(path: string, options: RequestInit = {}): Promise<T
 // Invoice status caches
 // -------------------------------------------------------------------------
 
-async function fetchInvoicesRaw(entitySet: string, email: string): Promise<Invoice[]> {
-  const res: any = await requestSap(`/${entitySet}?$filter=Email eq '${email}'&$format=json`);
+/** The one shared From Date / To Date, set via the Depot Panel's filter row (see TopBar) — sent
+ *  as SAP OData $filter properties (FrmDate/ToDate) on every one of the five invoice entity
+ *  sets, alongside the existing Email filter. */
+export interface InvoiceListFilter {
+  frmDate?: string;
+  toDate?: string;
+}
+
+/** FrmDate/ToDate are Edm.DateTime on the SAP side — a plain quoted string ('2026-08-10')
+ *  gets rejected with "Invalid parametertype used at function 'eq'" (verified live against
+ *  NGD). OData v2's datetime literal (unquoted, datetime'...' prefix) is what SAP expects. */
+function sapDateTimeLiteral(isoDateStr: string): string {
+  return `datetime'${isoDateStr}T00:00:00'`;
+}
+
+async function fetchInvoicesRaw(entitySet: string, email: string, filter: InvoiceListFilter = {}): Promise<Invoice[]> {
+  const parts = [`Email eq '${email}'`];
+  if (filter.frmDate) parts.push(`FrmDate eq ${sapDateTimeLiteral(filter.frmDate)}`);
+  if (filter.toDate) parts.push(`ToDate eq ${sapDateTimeLiteral(filter.toDate)}`);
+  const res: any = await requestSap(`/${entitySet}?$filter=${parts.join(' and ')}&$format=json`);
   const results = res.d?.results || [];
   return results.map(normalizeInvoice);
 }
 
-export async function refreshInvoices(): Promise<Invoice[]> {
+/**
+ * Primes SAP's backend custom tables (Pending/Dispatched/Completed/Returned/Cancelled) with live
+ * data for this Email + Fiscal Year + date range. Per the backend's design, InvoicePendSet/
+ * InvoiceDispSet/etc. only read whatever is already sitting in those tables — LoginSet is what
+ * actually pulls live SAP data into them for this Email/FiscalYear/FrmDate/ToDate. Non-fatal: a
+ * failure here shouldn't block reading whatever's already in the tables.
+ *
+ * What actually dispatches this POST to CREATE_DEEP_ENTITY (not the auto-generated
+ * LOGINSET_CREATE_ENTITY stub) is a genuine deep-insert body — the NAV_LoginToDepot/
+ * NAV_LoginToInv navigation properties present in the payload itself, not $expand (that's a
+ * read-time option, for GET_EXPANDED_ENTITYSET). Confirmed working with this exact shape via SAP
+ * Gateway Client, called directly against SAP.
+ *
+ * KNOWN RISK: this same shape, sent through the Azure middleware this app actually calls through
+ * (as opposed to direct-to-SAP), has hung indefinitely in testing — SAP itself handles it fine,
+ * so the suspected fault is in that middleware's relay of array-valued JSON properties, not here.
+ */
+async function callLoginSet(email: string, filter: InvoiceListFilter): Promise<void> {
+  if (!filter.frmDate || !filter.toDate) return;
+  // No user-facing Fiscal Year field anymore — derived from To Date's year, since LoginSet's
+  // payload still needs one.
+  const fiscalYear = String(new Date(filter.toDate).getFullYear());
+  const body = {
+    Email: email,
+    FiscalYear: fiscalYear,
+    FrmDate: formatSAPDate(filter.frmDate),
+    ToDate: formatSAPDate(filter.toDate),
+    NAV_LoginToDepot: [],
+    NAV_LoginToInv: [],
+  };
+  await fetch(`${API_BASE_URL}/LoginSet?$format=json`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function refreshInvoices(filter: InvoiceListFilter = {}): Promise<Invoice[]> {
   const email = await getToken();
   if (!email) throw new ApiError("Not logged in", 401);
 
+  await callLoginSet(email, filter).catch(() => {});
+
   const [pend, disp, comp, ret, canc] = await Promise.all([
-    fetchInvoicesRaw("InvoicePendSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceDispSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCompSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceRetSet", email).catch(() => []),
-    fetchInvoicesRaw("InvoiceCanSet", email).catch(() => [])
+    fetchInvoicesRaw("InvoicePendSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceDispSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCompSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceRetSet", email, filter).catch(() => []),
+    fetchInvoicesRaw("InvoiceCanSet", email, filter).catch(() => [])
   ]);
 
   const mapStatus = (arr: Invoice[], status: string) => arr.map(i => ({ ...i, status }));
