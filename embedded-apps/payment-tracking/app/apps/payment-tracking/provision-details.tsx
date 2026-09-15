@@ -240,7 +240,7 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
  * in Admin's own login email always sent (never omitted — see paymentTrackingApi.ts's header
  * comment), and grouped client-side. */
 export default function ProvisionDetailsScreen() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -253,7 +253,7 @@ export default function ProvisionDetailsScreen() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Admin' || !email) {
       setLoading(false);
       return;
     }
@@ -263,7 +263,7 @@ export default function ProvisionDetailsScreen() {
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading, year]);
+  }, [email, role, roleLoading, year]);
 
   const monthRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
   const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
@@ -289,7 +289,7 @@ export default function ProvisionDetailsScreen() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (!isAdmin) {
+  if (role !== 'Admin') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />

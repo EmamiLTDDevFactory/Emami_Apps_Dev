@@ -105,11 +105,13 @@ const createNotification =
     message,
     link,
     event_type,
-    email_payload
+    email_payload,
+    type,
+    capa_id
 )
 VALUES
 (
-    $1,$2,$3,$4,$5,$6,$7,$8,$9
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11
 )
 RETURNING *
         `,
@@ -122,8 +124,10 @@ RETURNING *
           notification.message,
           notification.link,
           notification.eventType,
-          notification.emailPayload
+          notification.emailPayload,
           // JSON.stringify(notification.emailPayload)
+          notification.type ?? null,
+          notification.capaId ?? null,
         ]
       );
 
@@ -164,6 +168,8 @@ const getAllNotifications =
       link: row.link,
       read: row.is_read,
       createdOn: row.created_at,
+      type: row.type,
+      capaId: row.capa_id,
     }));
   };
 

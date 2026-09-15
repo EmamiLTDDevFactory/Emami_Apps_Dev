@@ -11,6 +11,10 @@ const depots = [
     code: "DP03",
     name: "Mumbai Depot",
   },
+  {
+    code: "DP04",
+    name: "Bangalore Depot",
+  },
 ];
 
 export default depots;

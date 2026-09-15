@@ -50,12 +50,15 @@ const toSapTime = (value) => {
   return `PT${hours.padStart(2, "0")}H${minutes}M${seconds}S`;
 };
 
-export const notifyAuditTypesSet = ({ flag, depot, dueDate, time = "" }) =>
+export const notifyAuditTypesSet = ({ flag, depot, dueDate, time = "", email = "" }) =>
   notifySap("AuditTypesSet", {
     Flag: flag,
-    Depot: depot || "",
+    // SAP's Depot field is a 4-char Plant code, not the depot's full name —
+    // never send anything longer than that, even if a caller passes one in.
+    Depot: (depot || "").slice(0, 4),
     DueDate: toSapDate(dueDate),
     Time: toSapTime(time),
+    Email: email || "",
   });
 
 export const notifyCapaSet = ({
@@ -67,6 +70,7 @@ export const notifyCapaSet = ({
   capaSubm = "",
   capaOpen = "",
   usrId = "",
+  email = "",
 }) =>
   notifySap("CapaSet", {
     Flag: flag,
@@ -76,5 +80,7 @@ export const notifyCapaSet = ({
     TotalCapa: totalCapa === "" ? "" : String(totalCapa),
     CapaSubm: capaSubm === "" ? "" : String(capaSubm),
     CapaOpen: capaOpen === "" ? "" : String(capaOpen),
-    UsrId: usrId,
+    // SAP's UsrId field is capped at 12 characters.
+    UsrId: (usrId || "").slice(0, 12),
+    Email: email || "",
   });
