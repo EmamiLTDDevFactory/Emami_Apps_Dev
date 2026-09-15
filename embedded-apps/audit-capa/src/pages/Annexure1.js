@@ -686,7 +686,7 @@ export default function Annexure1() {
 
                     responsibility: "",
 
-                    targetDate: "",
+                    targetDate: item.targetDate || "",
 
                     status: "Open",
                 }));
@@ -3030,14 +3030,6 @@ export default function Annexure1() {
                     zIndex: 10,
                 }}
             >
-                <Typography>
-                    Current Compliance:
-                    <strong>
-                        {" "}
-                        {compliancePercentage}%
-                    </strong>
-                </Typography>
-
                 {/* <Box> */}
                 <Box
                     sx={{
