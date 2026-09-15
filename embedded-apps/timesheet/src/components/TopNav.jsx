@@ -1,12 +1,6 @@
 import { useApp } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
 
-const EMPLOYEE_ITEMS = [
-  { key: 'dashboard', label: 'Dashboard', icon: '🏠' },
-  { key: 'my-timesheet', label: 'My Timesheet', icon: '🗓️' },
-  { key: 'history', label: 'My Timesheets History', icon: '📜' },
-]
-
 const MANAGER_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: '🏠' },
   { key: 'team-approvals', label: 'Team Approvals', icon: '✅' },
@@ -19,15 +13,16 @@ export default function TopNav({ page, onNavigate }) {
   const { currentUser } = useApp()
   const { isMinimal } = useTheme()
   const isManager = currentUser?.role === 'manager'
-  const items = isManager ? MANAGER_ITEMS : EMPLOYEE_ITEMS
   const activeClasses = isMinimal
     ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200'
     : 'bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-200'
 
+  if (!isManager) return null
+
   return (
     <nav className="sticky top-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800">
       <div className="max-w-6xl mx-auto flex items-center gap-1 px-4 sm:px-6 lg:px-8 overflow-x-auto">
-        {items.map((item) => {
+        {MANAGER_ITEMS.map((item) => {
           const active = page === item.key
           return (
             <button
