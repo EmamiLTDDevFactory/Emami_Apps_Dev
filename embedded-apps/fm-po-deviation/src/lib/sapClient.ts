@@ -156,25 +156,41 @@ export async function fetchUsers(): Promise<PoUser[]> {
   }
 }
 
-/** PDF printform for a PO — PrintformSet is wired server-side as an OData v2 media-resource
- * entity (confirmed 2026-09-15 from the source Fiori app's own network capture), so the
- * supported access pattern is the entity's binary $value stream, not "GET the entity as JSON and
- * pull a base64 Value field out of it" (that JSON-wrapper approach was the actual cause of the
- * "Invalid or no mapping to system data types found" 500s chased earlier — it forced the
- * media-resource entity through normal JSON entity serialization, which it isn't built for).
- * Matches the Fiori capture exactly: bare-key syntax (Ebeln is the only key property, so no
- * `Ebeln=` prefix needed) and `Accept: application/pdf` so the Gateway streams raw bytes instead
- * of attempting to wrap them. Returns a Blob ready for URL.createObjectURL, or null when SAP
- * genuinely has no printform for this PO (a 404 on the keyed read); any other failure re-throws
- * so the caller can tell "nothing to show" apart from a real error and word its message
- * accordingly. */
+/** PDF printform for a PO. The source Fiori app's own network capture (2026-09-15) shows
+ * PrintformSet configured server-side as an OData v2 media-resource entity — GET
+ * PrintformSet('...')/$value, Accept: application/pdf, raw bytes back, no JSON wrapper. That is
+ * the "correct" SAP-side access pattern, but this app's Azure proxy
+ * (emdcindpwebapp1-...azurewebsites.net/api/NGD/...) only routes plain EntitySet/EntitySet(key)
+ * requests — confirmed live: `.../PrintformSet('...')/$value` 404s at the proxy's own Express
+ * router ("Cannot GET ...") before ever reaching SAP, and no URL-encoding variant gets past it
+ * either. So $value is not usable through this app's proxy today, independent of the SAP side.
+ *
+ * Falling back to the JSON-entity read below instead, since that's the one pattern this proxy
+ * does support end-to-end for binary content — every other PDF/attachment field in this repo
+ * (payment-tracking's ZProvisionLogSet, non-ctc-expense, rc-portal) is read this exact way,
+ * through this exact same proxy, successfully. PrintformSet's GET_ENTITY is the one entity that
+ * still 500s here ("Invalid or no mapping to system data types found", SAP Note 1797736) — proven
+ * backend-side since the failure is identical whether JSON or XML is requested (confirmed live,
+ * 2026-09-15) and every sibling binary-field entity behind the identical proxy serializes fine.
+ * This is a genuine gap in PrintformSet's own ABAP GetEntity implementation, not a request-format
+ * or data-population issue — needs SAP Basis to regenerate/clear the metadata cache for this
+ * specific service per the note above. Once that's done, this JSON path starts working with no
+ * further front-end change (same code every other working PDF field in this repo already uses).
+ *
+ * Returns a Blob ready for URL.createObjectURL, or null when SAP genuinely has no printform for
+ * this PO (a 404 on the keyed read); any other failure re-throws so the caller can tell "nothing
+ * to show" apart from a real error and word its message accordingly. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
   try {
-    const { data } = await sapClient.get(`/PrintformSet('${escapeODataString(poNumber)}')/$value`, {
-      responseType: 'blob',
-      headers: { Accept: 'application/pdf' },
+    const { data } = await sapClient.get(`/PrintformSet(Ebeln='${escapeODataString(poNumber)}')`, {
+      params: { '$format': 'json' },
     });
-    return data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' });
+    const base64 = data?.d?.Value;
+    if (!base64) return null;
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: 'application/pdf' });
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;
