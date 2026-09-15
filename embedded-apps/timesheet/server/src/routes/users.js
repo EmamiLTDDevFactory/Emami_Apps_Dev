@@ -287,6 +287,24 @@ router.delete('/:id/team', async (req, res, next) => {
   }
 })
 
+// Permanently deletes an employee - unlike DELETE /:id/team above (which just unassigns them),
+// this removes the user row entirely. FK constraints (ON DELETE CASCADE) take their assignments,
+// timesheets, timesheet entries/history, and leave balance down with them. Scoped to
+// `manager_id = req.user.userId` so a manager can only delete their own direct reports.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can delete employees' })
+    const { rows } = await pool.query(
+      `DELETE FROM users WHERE id = $1 AND manager_id = $2 RETURNING *`,
+      [req.params.id, req.user.userId],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.get('/:id', async (req, res, next) => {
   try {
     const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id])
