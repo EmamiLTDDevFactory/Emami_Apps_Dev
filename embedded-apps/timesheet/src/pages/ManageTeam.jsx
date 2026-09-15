@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
 import BackButton from '../components/BackButton'
+import ConfirmDialog from '../components/ConfirmDialog'
 import LeaveDetailsModal from '../components/LeaveDetailsModal'
 import { currentMonthStartIso } from '../utils/date'
 import { exportTimesheetToExcel } from '../utils/exportTimesheet'
@@ -28,6 +29,7 @@ export default function ManageTeam({ navigate }) {
     approveEmployee,
     rejectEmployee,
     removeDirectReport,
+    deleteEmployee,
     getLeaveBalance,
     setLeaveAllocation,
     getTimesheet,
@@ -73,6 +75,9 @@ export default function ManageTeam({ navigate }) {
   const [pendingRequests, setPendingRequests] = useState([])
   const [decidingUserId, setDecidingUserId] = useState(null)
   const [removingUserId, setRemovingUserId] = useState(null)
+  const [deletingUserId, setDeletingUserId] = useState(null)
+  // The direct report queued up for the permanent-delete confirm popup - null when it's closed.
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [downloadingUserId, setDownloadingUserId] = useState(null)
   const thisMonth = currentMonthStartIso()
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
@@ -311,6 +316,21 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
+  async function handleConfirmDeleteEmployee() {
+    const user = confirmDeleteUser
+    if (!user) return
+    setDeletingUserId(user.id)
+    try {
+      await deleteEmployee(user.id)
+      showToast('Employee deleted.', 'success')
+      setConfirmDeleteUser(null)
+    } catch (err) {
+      showToast(err.message || 'Failed to delete employee.', 'error')
+    } finally {
+      setDeletingUserId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <BackButton onClick={() => navigate('dashboard')} />
@@ -466,6 +486,14 @@ export default function ManageTeam({ navigate }) {
                     className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium focus:outline-none focus-visible:underline disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {removingUserId === user.id ? 'Removing…' : 'Remove'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteUser(user)}
+                    disabled={deletingUserId === user.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 hover:border-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deletingUserId === user.id ? 'Deleting…' : 'Delete employee'}
                   </button>
                 </span>
               </div>
@@ -685,6 +713,18 @@ export default function ManageTeam({ navigate }) {
           balance={getLeaveBalance(viewingLeaveUser.id)}
           entries={leaveEntriesByUser[viewingLeaveUser.id] || []}
           onClose={() => setViewingLeaveUserId(null)}
+        />
+      )}
+
+      {confirmDeleteUser && (
+        <ConfirmDialog
+          title="Permanently delete employee?"
+          message={`This erases ${confirmDeleteUser.name}'s account and ALL of their data - timesheets, leave history, and task assignments. This cannot be undone.`}
+          confirmLabel="Delete employee"
+          danger
+          busy={deletingUserId === confirmDeleteUser.id}
+          onConfirm={handleConfirmDeleteEmployee}
+          onCancel={() => setConfirmDeleteUser(null)}
         />
       )}
     </div>
