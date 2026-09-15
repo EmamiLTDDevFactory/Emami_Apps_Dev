@@ -77,12 +77,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Tries logging in via the email the EmamiApps hub already captured (same-origin
     // localStorage), calling SAP's LoginSet with only that email — skips the Employee ID + OTP
     // screen entirely when it succeeds. Only reached when there's no existing non-ctc-expense
-    // session to restore, so it never overrides an already-active session in this tab. Returns
-    // false (falls back to the normal login screen, unchanged) if there's no hub email, or the
-    // SAP call fails for any reason — see src/lib/hubEmailLogin.ts.
+    // session to restore, so it never overrides an already-active session in this tab. See
+    // src/lib/hubEmailLogin.ts for what happens if there's no hub email or the SAP call fails.
     const tryHubEmailLogin = async (): Promise<boolean> => {
       const hubEmail = getHubEmail();
-      if (!hubEmail) return false;
+      if (!hubEmail) {
+        // No hub session at all — most likely a direct/shared link opened by someone who never
+        // signed into the hub. The Employee ID + OTP screen is legacy from before the hub/SSO
+        // integration and shouldn't be reachable anymore; bounce to the hub instead, same
+        // reasoning and same fallback-to-existing-behavior-on-native as the "hub email didn't
+        // resolve in SAP" case just below, and the same unconditional pattern MoldHealthCheck's
+        // and Dispatch Tracker's own entry gates already use.
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+          return true;
+        }
+        return false;
+      }
       const result = await loginWithHubEmail(hubEmail);
       if (!result.ok || !result.employeeId || !result.role) {
         console.warn('[hub-email-login] Hub email did not resolve in SAP:', result.error);
