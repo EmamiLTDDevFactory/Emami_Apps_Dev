@@ -11,4 +11,10 @@ config.resolver.extraNodeModules = {
   canvas: require.resolve('./src/lib/canvasStub.js'),
 };
 
+// .xlsx isn't one of Metro's default asset extensions (images/fonts only), so a plain require()
+// of the Service PO Bulk Upload template would otherwise be parsed as source code and fail to
+// bundle. Adding it here is what makes require('../assets/files/....xlsx') resolve to a servable
+// asset URI instead.
+config.resolver.assetExts = [...config.resolver.assetExts, 'xlsx'];
+
 module.exports = config;

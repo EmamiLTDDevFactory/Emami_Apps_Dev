@@ -154,37 +154,27 @@ export async function fetchUsers(): Promise<PoUser[]> {
   }
 }
 
-/** PDF printform for a PO — tries the media $value stream first (binary), falls back to a
- * filtered JSON GET reading an inline base64 Value field, matching the source app's own two-step
- * resilience (its own comments note PrintformSet's GET_ENTITYSET returns 501, so the JSON fallback
- * is filtered by Ebeln rather than a plain list read). Returns a Blob ready for
- * URL.createObjectURL, or null if neither path produced a file. */
+/** PDF printform for a PO — per instruction, reads PrintformSet as a single ENTITY keyed by
+ * Ebeln (GET_ENTITY), not an entity-SET query ($filter'd collection read, nor the $value stream).
+ * Returns a Blob ready for URL.createObjectURL, or null when SAP genuinely has no printform for
+ * this PO (a 404 on the keyed read). Any other failure (confirmed live, 2026-09-15: this entity's
+ * GET_ENTITY currently 500s with "Invalid or no mapping to system data types found" for every PO
+ * tested, both 'Ebeln' and Ebeln='...' key syntax — a backend gap, not a request-format issue)
+ * re-throws so the caller can tell "nothing to show" apart from a real error and word its message
+ * accordingly. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
-  const key = `PrintformSet('${escapeODataString(poNumber)}')`;
   try {
-    const res = await sapClient.get(`/${key}/$value`, {
-      responseType: 'arraybuffer',
-      headers: { Accept: 'application/pdf' },
+    const { data } = await sapClient.get(`/PrintformSet(Ebeln='${escapeODataString(poNumber)}')`, {
+      params: { '$format': 'json' },
     });
-    if (res.status === 200 && res.data) {
-      return new Blob([res.data], { type: 'application/pdf' });
-    }
-  } catch {
-    // fall through to the JSON fallback below
-  }
-
-  try {
-    const { data } = await sapClient.get('/PrintformSet', {
-      params: { '$format': 'json', '$filter': `Ebeln eq '${escapeODataString(poNumber)}'` },
-    });
-    const row = data?.d?.results?.[0];
-    const base64 = row?.Value;
+    const base64 = data?.d?.Value;
     if (!base64) return null;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return new Blob([bytes], { type: 'application/pdf' });
-  } catch {
-    return null;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
   }
 }

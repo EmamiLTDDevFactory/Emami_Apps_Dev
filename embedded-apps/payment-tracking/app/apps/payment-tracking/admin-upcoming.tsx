@@ -179,7 +179,7 @@ function AttachField({ fileName, attaching, onPick }: { fileName: string; attach
  * the PDF attachment, then send for approval (row-wise or as a multi-select mass batch) — POSTs to
  * ZProvHeader (see paymentTrackingApi.ts's submitProvisionApproval/submitProvisionApprovalBatch). */
 export default function AdminUpcomingProvision() {
-  const { email } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -192,13 +192,18 @@ export default function AdminUpcomingProvision() {
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    if (!email) {
+    if (roleLoading) return;
+    if (role !== 'Finance' || !email) {
       setLoading(false);
-      setLoadError('Not signed in.');
       return;
     }
     setLoading(true);
     setLoadError(null);
+    // NOTE: this screen's "all vendors" scope has historically relied on the backend/SAP
+    // recognizing the caller's email as an Admin and expanding the GET beyond that vendor's own
+    // rows — now that this tab moved to Finance, confirm the backend also expands scope for
+    // Finance emails, not just Admin ones; otherwise a Finance user hits this route but only gets
+    // their own vendor's rows (or none).
     fetchVendorPOFollowups(email, 'U')
       .then((data) => {
         setRows(data);
@@ -208,7 +213,7 @@ export default function AdminUpcomingProvision() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load upcoming provision items.'))
       .finally(() => setLoading(false));
-  }, [email]);
+  }, [email, role, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -376,6 +381,25 @@ export default function AdminUpcomingProvision() {
       setBanner({ type: 'error', message: `${failures.length} vendor group(s) failed — see the affected rows below.` });
     }
   };
+
+  if (roleLoading) {
+    return (
+      <View style={styles.centerWrap}>
+        <ActivityIndicator size="large" color={colors.rust} />
+      </View>
+    );
+  }
+
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
+    return (
+      <View style={styles.centerWrap}>
+        <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
+        <Text style={styles.deniedText}>Upcoming Provision (All Vendors) is only available to Finance.</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -604,22 +628,33 @@ export default function AdminUpcomingProvision() {
 }
 
 const styles = StyleSheet.create({
+  centerWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 12,
+  },
+  deniedText: {
+    fontSize: 13,
+    color: colors.inkSoft,
+  },
   scroll: {
-    padding: 20,
-    paddingBottom: 60,
+    padding: 14,
+    paddingBottom: 40,
   },
   panel: {
-    gap: 10,
+    gap: 8,
   },
   flex1: { flex: 1 },
   loadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    paddingVertical: 40,
+    gap: 10,
   },
   loadingText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   errorText: {
@@ -628,18 +663,18 @@ const styles = StyleSheet.create({
     color: colors.red,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
     textAlign: 'center',
-    paddingVertical: 40,
+    paddingVertical: 28,
   },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
   bannerSuccess: {
@@ -663,19 +698,19 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   massBarText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink,
   },
   massBtn: {
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   massBtnText: {
     color: colors.white,
@@ -687,11 +722,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    gap: 8,
+    padding: 9,
+    gap: 6,
     ...Platform.select({
       web: { boxShadow: '0 2px 8px rgba(31,27,51,0.06)' },
       default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
@@ -703,18 +738,18 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   checkbox: {
     padding: 2,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: colors.ink,
   },
   cardSubtitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: colors.inkSoft,
     marginTop: 1,
   },
@@ -735,61 +770,61 @@ const styles = StyleSheet.create({
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   infoField: {
-    minWidth: 130,
+    minWidth: 104,
     flexGrow: 1,
     flexBasis: '30%',
     gap: 2,
   },
   infoLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
     color: colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   infoValue: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: colors.ink,
   },
   editInput: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    fontSize: 13,
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    fontSize: 12.5,
     color: colors.ink,
     backgroundColor: colors.white,
   },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   dateBtnText: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: colors.ink,
     fontWeight: '600',
   },
   attachBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   attachBtnText: {
@@ -804,7 +839,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   delvConfLabel: {
     fontSize: 12,
@@ -850,8 +885,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   sendBtnText: {
     color: colors.white,

@@ -7,14 +7,14 @@
 // vendor+purchase org+plant+currency combination, given a made-up but SAP-shaped PO number
 // (46xxxxxxxx, matching this client's own real PO number range seen elsewhere in this app, e.g.
 // upcoming.tsx's poNumber values) — kept only in this browser (localStorage), never sent anywhere.
+// Only the template's own columns are read/shown — no Material Code/Description: every PO here is
+// a Service PO, which has no material master line at all (per instruction).
 import * as XLSX from 'xlsx';
 
 export interface UploadedPoRow {
   key: string;
   vendorCode: string;
   vendorName: string;
-  materialCode: string;
-  materialDesc: string;
   quantity: string;
   unitPrice: string;
   currency: string;
@@ -29,8 +29,6 @@ export interface UploadedPoRow {
 
 export interface CreatedPoItem {
   itemNo: string;
-  materialCode: string;
-  materialDesc: string;
   quantity: string;
   unitPrice: string;
   netValue: string;
@@ -56,8 +54,6 @@ export interface CreatedPo {
 const HEADER_ALIASES: Record<keyof Omit<UploadedPoRow, 'key' | 'status' | 'errorMessage'>, string[]> = {
   vendorCode: ['vendor code', 'vendor', 'lifnr'],
   vendorName: ['vendor name', 'name1'],
-  materialCode: ['material code', 'material', 'matnr'],
-  materialDesc: ['material description', 'material desc', 'description', 'maktx'],
   quantity: ['quantity', 'qty', 'menge'],
   unitPrice: ['unit price', 'price', 'rate', 'netpr'],
   currency: ['currency', 'waers'],
@@ -108,7 +104,6 @@ function toDateString(value: any): string {
 function validateRow(row: Omit<UploadedPoRow, 'key' | 'status' | 'errorMessage'>): { status: 'success' | 'error'; errorMessage: string } {
   const errors: string[] = [];
   if (!row.vendorCode.trim()) errors.push('Vendor Code is required');
-  if (!row.materialCode.trim()) errors.push('Material Code is required');
   const qty = Number(row.quantity);
   if (!row.quantity.trim() || Number.isNaN(qty) || qty <= 0) errors.push('Quantity must be a positive number');
   const price = Number(row.unitPrice);
@@ -146,8 +141,6 @@ export async function parseExcelFile(uri: string): Promise<UploadedPoRow[]> {
     const base = {
       vendorCode: str(raw[headerMap.vendorCode]),
       vendorName: str(raw[headerMap.vendorName]),
-      materialCode: str(raw[headerMap.materialCode]),
-      materialDesc: str(raw[headerMap.materialDesc]),
       quantity: str(raw[headerMap.quantity]),
       unitPrice: str(raw[headerMap.unitPrice]),
       currency: str(raw[headerMap.currency]) || 'INR',
@@ -170,29 +163,52 @@ function nextPoNumber(existingCount: number): string {
   return `46${String(100000 + existingCount).padStart(8, '0')}`;
 }
 
-/** Groups every 'success' row by vendor+purchase org+plant+currency (the same header-level fields
- * a real PO would require to be uniform across its items) into one simulated PO per group, numbered
- * off `existingPos.length` so repeated Save calls in the same session never reuse a PO number.
- * Error rows are silently excluded — the caller is expected to have already blocked Save while any
- * remain (see po-creation.tsx). */
-export function createPurchaseOrders(rows: UploadedPoRow[], existingPos: CreatedPo[]): CreatedPo[] {
-  const successRows = rows.filter((r) => r.status === 'success');
+export interface CreatePurchaseOrdersResult {
+  created: CreatedPo[];
+  /** Rows whose group (vendor+purchase org+plant+currency) contained at least one error row —
+   * per instruction, if any line item in a PO has an error, that whole PO must not be created,
+   * not just the bad row within it. These rows are handed back so the caller keeps them in the
+   * review table (instead of clearing them) for the Admin to fix and save again. */
+  remainingRows: UploadedPoRow[];
+  /** Count of distinct groups skipped for that reason — drives the Save result banner. */
+  skippedGroupCount: number;
+}
+
+/** Groups every row by vendor+purchase org+plant+currency (the same header-level fields a real PO
+ * would require to be uniform across its items). A group is created as one simulated PO only if
+ * EVERY row in it is 'success' — if any row in the group has an error, the entire group is
+ * skipped (not just that row), and every row in it comes back via remainingRows so the Admin can
+ * fix or remove them and save again. PO numbers are numbered off `existingPos.length` so repeated
+ * Save calls in the same session never reuse a PO number. */
+export function createPurchaseOrders(rows: UploadedPoRow[], existingPos: CreatedPo[]): CreatePurchaseOrdersResult {
   const groups = new Map<string, UploadedPoRow[]>();
-  successRows.forEach((r) => {
+  const groupOrder: string[] = [];
+  rows.forEach((r) => {
     const key = [r.vendorCode, r.purchaseOrg, r.plant, r.currency].join('|');
-    if (!groups.has(key)) groups.set(key, []);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      groupOrder.push(key);
+    }
     groups.get(key)!.push(r);
   });
 
   const today = new Date().toISOString().split('T')[0];
   const created: CreatedPo[] = [];
+  const remainingRows: UploadedPoRow[] = [];
   let counter = existingPos.length;
-  groups.forEach((groupRows) => {
+  let skippedGroupCount = 0;
+
+  groupOrder.forEach((key) => {
+    const groupRows = groups.get(key)!;
+    if (groupRows.some((r) => r.status === 'error')) {
+      skippedGroupCount += 1;
+      remainingRows.push(...groupRows);
+      return;
+    }
+
     const first = groupRows[0];
     const items: CreatedPoItem[] = groupRows.map((r, idx) => ({
       itemNo: String((idx + 1) * 10).padStart(3, '0'),
-      materialCode: r.materialCode,
-      materialDesc: r.materialDesc,
       quantity: r.quantity,
       unitPrice: r.unitPrice,
       netValue: (Number(r.quantity) * Number(r.unitPrice)).toFixed(2),
@@ -214,7 +230,8 @@ export function createPurchaseOrders(rows: UploadedPoRow[], existingPos: Created
     });
     counter += 1;
   });
-  return created;
+
+  return { created, remainingRows, skippedGroupCount };
 }
 
 /** Exports every created PO's header + item details into one workbook (two sheets: Headers,
@@ -235,8 +252,6 @@ export function exportCreatedPosToExcel(pos: CreatedPo[]): void {
     po.items.map((item) => ({
       'PO Number': po.poNumber,
       'Item No': item.itemNo,
-      'Material Code': item.materialCode,
-      'Material Description': item.materialDesc,
       Quantity: item.quantity,
       'Unit Price': item.unitPrice,
       'Net Value': item.netValue,

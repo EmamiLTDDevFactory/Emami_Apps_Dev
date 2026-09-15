@@ -22,12 +22,19 @@ const AUDIT_CAPA_APP_ID = 'audit-capa';
 /** Mirrors embedded-apps/audit-capa/src/data/depots.js — kept in sync by hand since depots change
  * rarely; add a new one here too if it's ever added there, so it's selectable from Manage Access. */
 const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
+/** Provision Tracking (IBD) is the one app with a third role — Finance — alongside the generic
+ * User/Admin pair; see embedded-apps/payment-tracking's PaymentTrackingAuthContext.tsx and
+ * _layout.tsx for what each role sees. Must stay in sync with backend/server.js's
+ * VALID_ROLES_BY_APP, which is what actually enforces this server-side. */
+const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
 
 /** Options offered by the app-role picker popup, in display order — per-app, since Audit & CAPA
  * uses CQA/Depot (CQA = the elevated/admin-equivalent role, Depot = the base/user-equivalent role,
- * which also carries which depot that person belongs to) instead of User/Admin. */
+ * which also carries which depot that person belongs to) instead of User/Admin, and Provision
+ * Tracking adds a third 'Finance' role on top of the generic pair. */
 function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
   if (appId === AUDIT_CAPA_APP_ID) return [null, 'Depot', 'CQA'];
+  if (appId === PAYMENT_TRACKING_APP_ID) return [null, 'User', 'Admin', 'Finance'];
   return [null, 'User', 'Admin'];
 }
 

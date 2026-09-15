@@ -735,6 +735,7 @@ export default function Annexure1() {
                 totalCapa: capaRecords.length,
                 capaSubm: 0,
                 capaOpen: capaRecords.length,
+                email: currentUser?.email ?? "",
             });
 
             const updatedAudit =
@@ -807,6 +808,7 @@ export default function Annexure1() {
                 notifyCapaSet({
                     flag: SAP_FLAG.SELF_ASSESSMENT_ACCEPTED,
                     auditNo: selectedAudit?.auditNo,
+                    email: currentUser?.email ?? "",
                 });
 
                 alert(
