@@ -59,6 +59,23 @@ async function runMigrations() {
     } catch (err) {
         console.error("[postgres] Migration failed:", err.message);
     }
+
+    // Due-date reminder notifications (utils/reminders.js) need to dedupe against an
+    // already-created reminder for the same CAPA — these columns were being sent by the
+    // frontend but silently dropped on insert, so the dedupe check could never match anything.
+    // Kept in its own try/catch so a failure in the (unrelated, already-known) migration above
+    // can never block this one from running.
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.notifications ADD COLUMN IF NOT EXISTS type character varying;
+        `);
+        await pool.query(`
+            ALTER TABLE audit_capa.notifications ADD COLUMN IF NOT EXISTS capa_id bigint;
+        `);
+        console.log("[postgres] audit_capa.notifications schema up to date (type, capa_id).");
+    } catch (err) {
+        console.error("[postgres] Notifications migration failed:", err.message);
+    }
 }
 
 module.exports = pool;
