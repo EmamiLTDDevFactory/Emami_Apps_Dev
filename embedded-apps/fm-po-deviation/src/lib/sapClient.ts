@@ -5,7 +5,9 @@
 // 2026-09-12: PoSet and UserSet respond correctly; PrintformSet's GET_ENTITYSET is not implemented
 // (501), matching the source app's own filtered-GET fallback for it. Email is now confirmed live on
 // PoSet (per instruction, 2026-09-14) — mock mode has been removed entirely; every call below hits
-// SAP directly, same as every other screen in this app.
+// SAP directly, same as every other screen in this app. PrintformSet is a media-resource entity
+// (confirmed 2026-09-15 via the source Fiori app's own network capture) — see fetchPrintformPdf's
+// own comment for why it's read via bare-key $value rather than a JSON entity read.
 import axios from 'axios';
 import type { PoAction, PoRow, PoUser } from '../types/po';
 
@@ -154,27 +156,28 @@ export async function fetchUsers(): Promise<PoUser[]> {
   }
 }
 
-/** PDF printform for a PO — per instruction, reads PrintformSet as a single ENTITY keyed by
- * Ebeln (GET_ENTITY), not an entity-SET query ($filter'd collection read, nor the $value stream).
- * Returns a Blob ready for URL.createObjectURL, or null when SAP genuinely has no printform for
- * this PO (a 404 on the keyed read). Any other failure (confirmed live, 2026-09-15: this entity's
- * GET_ENTITY currently 500s with "Invalid or no mapping to system data types found" for every PO
- * tested, both 'Ebeln' and Ebeln='...' key syntax — a backend gap, not a request-format issue)
- * re-throws so the caller can tell "nothing to show" apart from a real error and word its message
+/** PDF printform for a PO — PrintformSet is wired server-side as an OData v2 media-resource
+ * entity (confirmed 2026-09-15 from the source Fiori app's own network capture), so the
+ * supported access pattern is the entity's binary $value stream, not "GET the entity as JSON and
+ * pull a base64 Value field out of it" (that JSON-wrapper approach was the actual cause of the
+ * "Invalid or no mapping to system data types found" 500s chased earlier — it forced the
+ * media-resource entity through normal JSON entity serialization, which it isn't built for).
+ * Matches the Fiori capture exactly: bare-key syntax (Ebeln is the only key property, so no
+ * `Ebeln=` prefix needed) and `Accept: application/pdf` so the Gateway streams raw bytes instead
+ * of attempting to wrap them. Returns a Blob ready for URL.createObjectURL, or null when SAP
+ * genuinely has no printform for this PO (a 404 on the keyed read); any other failure re-throws
+ * so the caller can tell "nothing to show" apart from a real error and word its message
  * accordingly. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
   try {
-    const { data } = await sapClient.get(`/PrintformSet(Ebeln='${escapeODataString(poNumber)}')`, {
-      params: { '$format': 'json' },
+    const { data } = await sapClient.get(`/PrintformSet('${escapeODataString(poNumber)}')/$value`, {
+      responseType: 'blob',
+      headers: { Accept: 'application/pdf' },
     });
-    const base64 = data?.d?.Value;
-    if (!base64) return null;
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: 'application/pdf' });
+    return data instanceof Blob ? data : new Blob([data], { type: 'application/pdf' });
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;
   }
 }
+
