@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchPendingApprovals,
@@ -9,10 +11,11 @@ import {
   PENDING_APPROVAL_ACTIONS,
   PENDING_APPROVAL_ACTION_LABELS,
   type ApprovalDecision,
+  type InvoiceEditOverrides,
   type PendingApprovalAction,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
-import { base64ToBlob, base64ToBytes, looksLikePdf } from '../../../src/lib/pdfAttachment';
+import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../../src/context/MonthYearContext';
@@ -21,25 +24,129 @@ import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../../
 /** Per-row decision state — 'idle' until the Admin acts on it, then locks into whichever decision
  * went through (or an error, which leaves it actionable again). attachmentError is only for the
  * rare case opening an in-hand attachment fails (e.g. malformed base64) — whether one exists at
- * all is read straight off the row (see AttachmentControl below), not tracked here. */
+ * all is read straight off the row (see AttachmentControl below), not tracked here. The four
+ * invoice fields (invoiceNo/invoiceDate/invoiceAmount/attachment) are editable here too, per
+ * instruction — seeded from whatever the row already had, same posture as Submission History's own
+ * RowState. */
 interface RowState {
   deciding: ApprovalDecision | null; // which action is in flight, if any
   decided: ApprovalDecision | null; // which action has gone through
   error: string | null;
   attachmentError: string | null;
+  invoiceNo: string;
+  invoiceDate: string;
+  invoiceAmount: string;
+  attachmentName: string;
+  attachmentBase64: string;
+  attachmentMimeType: string;
+  attaching: boolean;
+  /** In flight for the standalone "Save" button (Zaction 'S') — separate from `deciding`, since
+   * saving the edited invoice fields never decides the row (see saveInvoiceRow below). */
+  savingInvoice: boolean;
 }
 
-function initialRowState(): RowState {
-  return { deciding: null, decided: null, error: null, attachmentError: null };
+function initialRowState(row: VendorPOFollowupRow): RowState {
+  return {
+    deciding: null,
+    decided: null,
+    error: null,
+    attachmentError: null,
+    invoiceNo: row.invoiceNo,
+    invoiceDate: row.invoiceDate,
+    invoiceAmount: row.invoiceAmount,
+    attachmentName: row.filename,
+    attachmentBase64: row.attachmentBase64,
+    attachmentMimeType: row.mimetype,
+    attaching: false,
+    savingInvoice: false,
+  };
 }
 
-type DecisionFilter = 'all' | 'pending' | 'A' | 'R';
+/** Same date-input pattern as Upcoming Provision's DateField — duplicated per this app's own
+ * convention of keeping each screen's small helpers self-contained. */
+function DateField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [showPicker, setShowPicker] = useState(false);
+
+  if (Platform.OS === 'web') {
+    return (
+      <input
+        type="date"
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        aria-label={label}
+        style={{
+          width: '100%',
+          height: 32,
+          padding: '4px 6px',
+          borderRadius: 8,
+          border: `1px solid ${colors.border}`,
+          backgroundColor: colors.white,
+          color: colors.ink,
+          fontSize: 12,
+          boxSizing: 'border-box',
+        }}
+      />
+    );
+  }
+
+  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View>
+      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
+        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
+        <Text style={styles.dateBtnText}>{value || 'Select date'}</Text>
+      </Pressable>
+      {showPicker && (
+        <DateTimePicker
+          value={dateObj}
+          mode="date"
+          display={Platform.OS === 'android' ? 'spinner' : 'default'}
+          onChange={(_event: any, selected?: Date) => {
+            setShowPicker(Platform.OS === 'ios');
+            if (selected) onChange(selected.toISOString().split('T')[0]);
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function EditableField({
+  label, value, onChange, keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  keyboardType?: 'decimal-pad';
+}) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    </View>
+  );
+}
+
+function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+  return (
+    <View style={styles.infoField}>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
+      <Pressable style={styles.attachEditBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={13} color={colors.rust} />
+        <Text style={styles.attachEditBtnText} numberOfLines={1}>
+          {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+type DecisionFilter = 'all' | 'pending' | 'A';
 
 const DECISION_FILTERS: { key: DecisionFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'A', label: 'Approved' },
-  { key: 'R', label: 'Rejected' },
 ];
 
 type ActionFilter = 'all' | PendingApprovalAction;
@@ -64,21 +171,17 @@ function actionLabelFor(zaction: string) {
   return PENDING_APPROVAL_ACTION_LABELS[zaction as PendingApprovalAction] || zaction || 'Unknown';
 }
 
-/** Approve/Reject button copy per approval type, so Admin knows exactly what they're approving
- * without reading the fields first — e.g. "Approve Revised Delivery Date" instead of a bare
- * "Approve" that could mean the delivery date change or the SES itself. Only RD/SA are specified;
- * any other type (or an unrecognized code) falls back to the generic Approve/Reject. */
-const APPROVAL_BUTTON_LABELS: Partial<Record<PendingApprovalAction, { approve: string; reject: string }>> = {
-  RD: { approve: 'Approve Revised Delivery Date', reject: 'Reject Revised Date' },
-  SA: { approve: 'Approve for SES', reject: 'Reject for SES' },
+/** Approve button copy per approval type, so Admin knows exactly what they're approving without
+ * reading the fields first — e.g. "Approve Revised Delivery Date" instead of a bare "Approve" that
+ * could mean the delivery date change or the SES itself. Only RD/SA are specified; any other type
+ * (or an unrecognized code) falls back to the generic "Approve". */
+const APPROVAL_BUTTON_LABELS: Partial<Record<PendingApprovalAction, { approve: string }>> = {
+  RD: { approve: 'Approve Revised Delivery Date' },
+  SA: { approve: 'Approve for SES' },
 };
 
 function approveLabelFor(zaction: string) {
   return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.approve || 'Approve';
-}
-
-function rejectLabelFor(zaction: string) {
-  return APPROVAL_BUTTON_LABELS[zaction as PendingApprovalAction]?.reject || 'Reject';
 }
 
 /** Full-width, un-truncated banner naming what this tile is actually asking the Admin to approve
@@ -164,14 +267,14 @@ function AttachmentPreviewModal({
 /** Admin's Pending Approval — every ZVendorPOFollowupSet row scoped to the signed-in Admin's own
  * login email and Zaction 'PA' (see fetchPendingApprovals). Each row: PO Number/PO Line Item/Service Description/
  * Provisional Value/Currency/Revised Del Date/Delivery date/Comments/Invoice No/Invoice Date/
- * Invoice Amount, with Approve/Reject actions — row-wise or as a multi-select mass batch — both
- * calling the same ZProvHeader POST as Upcoming Provision's "send for approval" (see
- * paymentTrackingApi.ts's submitApprovalDecision/submitApprovalDecisionBatch), just with Zaction
- * set to 'A'/'R' instead of echoed back. Also filtered by the shared Month/Year bar and by SAP's
- * own Stat field (Pending/Approved tabs — see effectiveStatus below), not just this session's own
- * in-memory decisions. */
+ * Invoice Amount, with an Approve action — row-wise or as a multi-select mass batch — calling the
+ * same ZProvHeader POST as Upcoming Provision's "send for approval" (see paymentTrackingApi.ts's
+ * submitApprovalDecision/submitApprovalDecisionBatch), just with Zaction set to 'A' instead of
+ * echoed back. Reject was removed per instruction — there is no reject action on this screen
+ * anymore. Also filtered by the shared Month/Year bar and by SAP's own Stat field (Pending/Approved
+ * tabs — see effectiveStatus below), not just this session's own in-memory decisions. */
 export default function PendingApproval() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
@@ -188,7 +291,7 @@ export default function PendingApproval() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Finance' || !email) {
       setLoading(false);
       return;
     }
@@ -199,10 +302,9 @@ export default function PendingApproval() {
         setRows(data);
         const state: Record<string, RowState> = {};
         data.forEach((r) => {
-          const s = initialRowState();
+          const s = initialRowState(r);
           // Seed decided from SAP's own Stat so a row already approved in an earlier session (or
-          // by someone else) renders as Approved on load, not as still-actionable — Stat has no
-          // 'R' value (rejections aren't tracked there), so Rejected stays session-only.
+          // by someone else) renders as Approved on load, not as still-actionable.
           if ((r.status || '').trim() === 'A') s.decided = 'A';
           state[r.key] = s;
         });
@@ -210,7 +312,7 @@ export default function PendingApproval() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load pending approvals.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading]);
+  }, [email, role, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -249,7 +351,7 @@ export default function PendingApproval() {
     const q = search.trim().toLowerCase();
     return monthYearRows.filter((row) => {
       if (decisionFilter === 'pending' && effectiveStatus(row) !== 'P') return false;
-      if ((decisionFilter === 'A' || decisionFilter === 'R') && effectiveStatus(row) !== decisionFilter) return false;
+      if (decisionFilter === 'A' && effectiveStatus(row) !== 'A') return false;
       if (currencyFilter !== 'all' && row.currency !== currencyFilter) return false;
       if (actionFilter !== 'all' && row.zaction !== actionFilter) return false;
       if (q) {
@@ -280,10 +382,58 @@ export default function PendingApproval() {
     });
   };
 
+  // Whatever the Admin typed into the four invoice fields for this row rides along on the same
+  // POST as the decision itself (see submitApprovalDecision's overridesByKey param) — undefined
+  // fields mean "leave whatever the row already had".
+  const overridesFor = (key: string): InvoiceEditOverrides => {
+    const state = rowState[key];
+    return {
+      invoiceNo: state?.invoiceNo,
+      invoiceDate: state?.invoiceDate,
+      invoiceAmount: state?.invoiceAmount,
+      attachmentBase64: state?.attachmentBase64,
+      attachmentMimeType: state?.attachmentMimeType,
+      attachmentName: state?.attachmentName,
+    };
+  };
+
+  // Attach Invoice (PDF) — same picker/compress/limit flow as Upcoming Provision's
+  // handlePickAttachment (see pdfAttachment.ts).
+  const handlePickAttachment = async (key: string) => {
+    patchRow(key, { error: null });
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = (result as any).assets?.[0] ?? result;
+      if (!asset?.uri) return;
+      const name: string = asset.name || 'invoice.pdf';
+      const mimeType: string = asset.mimeType || 'application/pdf';
+      if (!name.toLowerCase().endsWith('.pdf') || (mimeType && mimeType !== 'application/pdf')) {
+        patchRow(key, { error: 'Only a PDF file can be attached as the invoice.' });
+        return;
+      }
+      patchRow(key, { attaching: true });
+      const picked = await readAttachmentAsBase64(asset.uri);
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchRow(key, {
+          attaching: false,
+          error: Platform.OS === 'web'
+            ? 'This PDF could not be compressed under 70KB. Please attach a smaller file.'
+            : 'This PDF is larger than 70KB. Please attach a smaller file — compression is only available on the web app.',
+        });
+        return;
+      }
+      patchRow(key, { attaching: false, attachmentName: name, attachmentBase64: base64, attachmentMimeType: mimeType });
+    } catch {
+      patchRow(key, { attaching: false, error: 'Could not attach this file. Please try again.' });
+    }
+  };
+
   const decideRow = async (row: VendorPOFollowupRow, decision: ApprovalDecision) => {
     patchRow(row.key, { deciding: decision, error: null });
     try {
-      await submitApprovalDecision([row], email || '', decision);
+      await submitApprovalDecision([row], email || '', decision, { [row.key]: overridesFor(row.key) });
       patchRow(row.key, { deciding: null, decided: decision });
       setBanner({
         type: 'success',
@@ -301,7 +451,9 @@ export default function PendingApproval() {
     setMassDeciding(decision);
     targets.forEach((r) => patchRow(r.key, { deciding: decision, error: null }));
 
-    const failures = await submitApprovalDecisionBatch(targets, email || '', decision);
+    const overridesByKey: Record<string, InvoiceEditOverrides> = {};
+    targets.forEach((r) => { overridesByKey[r.key] = overridesFor(r.key); });
+    const failures = await submitApprovalDecisionBatch(targets, email || '', decision, overridesByKey);
     const failedLifnrs = new Set(failures.map((f) => f.lifnr));
     targets.forEach((row) => {
       if (failedLifnrs.has(row.lifnr)) {
@@ -318,6 +470,20 @@ export default function PendingApproval() {
       setBanner({ type: 'success', message: `${targets.length} item(s) ${decision === 'A' ? 'approved' : 'rejected'}.` });
     } else {
       setBanner({ type: 'error', message: `${failures.length} vendor group(s) failed — see the affected rows below.` });
+    }
+  };
+
+  // Standalone Save — Zaction 'S' on the same ZProvHeaderSet POST, per instruction, so Admin can
+  // persist an edited invoice field/attachment without also deciding the row (unlike decideRow,
+  // this never touches `decided`, so Approve stays available afterward).
+  const saveInvoiceRow = async (row: VendorPOFollowupRow) => {
+    patchRow(row.key, { savingInvoice: true, error: null });
+    try {
+      await submitApprovalDecision([row], email || '', 'S', { [row.key]: overridesFor(row.key) });
+      patchRow(row.key, { savingInvoice: false });
+      setBanner({ type: 'success', message: `Invoice details saved for PO ${row.poNumber} / Item ${row.poItemNo}.` });
+    } catch (e) {
+      patchRow(row.key, { savingInvoice: false, error: e instanceof Error ? e.message : 'Could not save the invoice details.' });
     }
   };
 
@@ -366,13 +532,13 @@ export default function PendingApproval() {
     );
   }
 
-  // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
-  // still reachable by a typed URL.
-  if (!isAdmin) {
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
-        <Text style={styles.deniedText}>Pending Approval is only available to Admins.</Text>
+        <Text style={styles.deniedText}>Pending Approval is only available to Finance.</Text>
       </View>
     );
   }
@@ -525,18 +691,6 @@ export default function PendingApproval() {
                     <Text style={styles.massBarText}>{selected.size} selected</Text>
                     <View style={styles.massBarActions}>
                       <Pressable
-                        style={[styles.massBtn, styles.massBtnReject, massDeciding !== null && styles.btnDisabled]}
-                        onPress={() => decideSelected('R')}
-                        disabled={massDeciding !== null}
-                        accessibilityRole="button"
-                      >
-                        {massDeciding === 'R' ? (
-                          <ActivityIndicator size="small" color={colors.white} />
-                        ) : (
-                          <Text style={styles.massBtnText}>Reject Selected</Text>
-                        )}
-                      </Pressable>
-                      <Pressable
                         style={[styles.massBtn, styles.massBtnApprove, massDeciding !== null && styles.btnDisabled]}
                         onPress={() => decideSelected('A')}
                         disabled={massDeciding !== null}
@@ -600,24 +754,25 @@ export default function PendingApproval() {
                           <Text style={styles.attachmentBtnText}>Attachment</Text>
                         </Pressable>
                       ) : (
-                        // Backend skips sending content over 2MB — filename comes through so we
-                        // can at least say a file exists, but there's nothing to open here.
-                        <View style={styles.attachmentBtnDisabled}>
-                          <Ionicons name="attach-outline" size={13} color={colors.inkSoft} />
-                          <Text style={styles.attachmentBtnDisabledText}>Too large to preview</Text>
+                        // Filename comes through with no content (Value empty) — originally assumed
+                        // to mean "backend skips anything over 2MB" (see git history), but that's
+                        // been confirmed wrong for at least one case where the actual file is well
+                        // under 2MB and still comes back this way. So this no longer asserts a
+                        // specific reason — SAP just isn't returning the bytes, for whatever cause,
+                        // and that needs SAP Basis to look at GET_ENTITYSET directly. Full opacity +
+                        // an info icon (not the attach icon) so this still reads as an intentional
+                        // status message rather than a washed-out/broken button — it isn't one,
+                        // there's no onPress at all.
+                        <View style={styles.attachmentBtnDisabled} accessibilityLabel={`Attachment "${row.filename}" has no content available to preview`}>
+                          <Ionicons name="information-circle-outline" size={13} color={colors.inkSoft} />
+                          <Text style={styles.attachmentBtnDisabledText}>Attachment unavailable</Text>
                         </View>
                       )
                     ) : null}
                     {state.decided && (
-                      <View style={[styles.decidedBadge, state.decided === 'A' ? styles.decidedBadgeApprove : styles.decidedBadgeReject]}>
-                        <Ionicons
-                          name={state.decided === 'A' ? 'checkmark-circle' : 'close-circle'}
-                          size={13}
-                          color={state.decided === 'A' ? colors.green : colors.red}
-                        />
-                        <Text style={[styles.decidedBadgeText, { color: state.decided === 'A' ? colors.green : colors.red }]}>
-                          {state.decided === 'A' ? 'Approved' : 'Rejected'}
-                        </Text>
+                      <View style={[styles.decidedBadge, styles.decidedBadgeApprove]}>
+                        <Ionicons name="checkmark-circle" size={13} color={colors.green} />
+                        <Text style={[styles.decidedBadgeText, { color: colors.green }]}>Approved</Text>
                       </View>
                     )}
                   </View>
@@ -643,11 +798,32 @@ export default function PendingApproval() {
                     {!row.revisedDeliveryDate && <InfoField label="Delivery Date" value={formatDeliveryDate(row.deliveryDate)} />}
                     <InfoField label="Comments" value={row.comments} />
                     {row.zaction !== 'RD' && (
-                      <>
-                        <InfoField label="Invoice No" value={row.invoiceNo} />
-                        <InfoField label="Invoice Date" value={formatDeliveryDate(row.invoiceDate)} />
-                        <InfoField label="Invoice Amount" value={row.invoiceAmount} />
-                      </>
+                      state.decided ? (
+                        <>
+                          <InfoField label="Invoice No" value={state.invoiceNo} />
+                          <InfoField label="Invoice Date" value={formatDeliveryDate(state.invoiceDate)} />
+                          <InfoField label="Invoice Amount" value={state.invoiceAmount} />
+                        </>
+                      ) : (
+                        <>
+                          <EditableField label="Invoice No" value={state.invoiceNo} onChange={(v) => patchRow(row.key, { invoiceNo: v })} />
+                          <View style={styles.infoField}>
+                            <Text style={styles.infoLabel}>Invoice Date</Text>
+                            <DateField value={state.invoiceDate} onChange={(v) => patchRow(row.key, { invoiceDate: v })} label="Invoice Date" />
+                          </View>
+                          <EditableField
+                            label="Invoice Amount"
+                            value={state.invoiceAmount}
+                            onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
+                            keyboardType="decimal-pad"
+                          />
+                          <AttachField
+                            fileName={state.attachmentName}
+                            attaching={state.attaching}
+                            onPick={() => handlePickAttachment(row.key)}
+                          />
+                        </>
+                      )
                     )}
                   </View>
 
@@ -656,22 +832,24 @@ export default function PendingApproval() {
 
                   {!state.decided && (
                     <View style={styles.rowActions}>
+                      {row.zaction !== 'RD' && (
+                        <Pressable
+                          style={[styles.saveInvoiceBtn, (busy || state.savingInvoice) && styles.btnDisabled]}
+                          onPress={() => saveInvoiceRow(row)}
+                          disabled={busy || state.savingInvoice}
+                          accessibilityRole="button"
+                        >
+                          {state.savingInvoice ? (
+                            <ActivityIndicator size="small" color={colors.rust} />
+                          ) : (
+                            <Text style={styles.saveInvoiceBtnText}>Save Invoice Details</Text>
+                          )}
+                        </Pressable>
+                      )}
                       <Pressable
-                        style={[styles.rejectBtn, busy && styles.btnDisabled]}
-                        onPress={() => decideRow(row, 'R')}
-                        disabled={busy}
-                        accessibilityRole="button"
-                      >
-                        {state.deciding === 'R' ? (
-                          <ActivityIndicator size="small" color={colors.red} />
-                        ) : (
-                          <Text style={styles.rejectBtnText}>{rejectLabelFor(row.zaction)}</Text>
-                        )}
-                      </Pressable>
-                      <Pressable
-                        style={[styles.approveBtn, busy && styles.btnDisabled]}
+                        style={[styles.approveBtn, styles.approveBtnFull, (busy || state.savingInvoice) && styles.btnDisabled]}
                         onPress={() => decideRow(row, 'A')}
-                        disabled={busy}
+                        disabled={busy || state.savingInvoice}
                         accessibilityRole="button"
                       >
                         {state.deciding === 'A' ? (
@@ -859,9 +1037,6 @@ const styles = StyleSheet.create({
   massBtnApprove: {
     backgroundColor: colors.green,
   },
-  massBtnReject: {
-    backgroundColor: colors.red,
-  },
   massBtnText: {
     color: colors.white,
     fontSize: 12.5,
@@ -914,9 +1089,6 @@ const styles = StyleSheet.create({
   decidedBadgeApprove: {
     backgroundColor: `${colors.green}14`,
   },
-  decidedBadgeReject: {
-    backgroundColor: `${colors.red}14`,
-  },
   decidedBadgeText: {
     fontSize: 9.5,
     fontWeight: '700',
@@ -955,11 +1127,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     borderWidth: 1,
+    borderStyle: 'dashed',
     borderColor: colors.border,
+    backgroundColor: colors.appBg,
     borderRadius: radii.pill,
     paddingVertical: 3,
     paddingHorizontal: 7,
-    opacity: 0.7,
   },
   attachmentBtnDisabledText: {
     fontSize: 10,
@@ -1015,6 +1188,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.ink,
   },
+  editInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 7,
+    fontSize: 12,
+    color: colors.ink,
+    backgroundColor: colors.white,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  dateBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+  },
+  attachEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    backgroundColor: colors.white,
+  },
+  attachEditBtnText: {
+    fontSize: 11.5,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   rowErrorText: {
     fontSize: 11,
     fontWeight: '600',
@@ -1035,20 +1251,26 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 12,
   },
+  approveBtnFull: {
+    flex: 1,
+    alignItems: 'center',
+  },
   approveBtnText: {
     color: colors.white,
     fontSize: 11.5,
     fontWeight: '700',
   },
-  rejectBtn: {
+  saveInvoiceBtn: {
     borderWidth: 1,
-    borderColor: colors.red,
+    borderColor: colors.rust,
     borderRadius: radii.md,
     paddingVertical: 5,
     paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rejectBtnText: {
-    color: colors.red,
+  saveInvoiceBtnText: {
+    color: colors.rust,
     fontSize: 11.5,
     fontWeight: '700',
   },

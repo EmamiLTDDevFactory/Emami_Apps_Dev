@@ -76,7 +76,7 @@ function matchesQuery(row: MatrixRow, query: string): boolean {
  * ProvisionDetailModal/PaymentTrackingTable every other Provision Tracking screen shows its rows
  * in, rather than a bespoke pop-up. */
 export default function ProvisionCalendar() {
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +86,7 @@ export default function ProvisionCalendar() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Admin' || !email) {
       setLoading(false);
       return;
     }
@@ -96,7 +96,7 @@ export default function ProvisionCalendar() {
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading, year]);
+  }, [email, role, roleLoading, year]);
 
   const allRows = useMemo(() => buildMatrixRows(rows), [rows]);
   const filteredRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
@@ -111,7 +111,7 @@ export default function ProvisionCalendar() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (!isAdmin) {
+  if (role !== 'Admin') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />

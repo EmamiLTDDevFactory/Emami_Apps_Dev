@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock,
+  CalendarClock, FileCheck2,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
@@ -63,6 +63,12 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // own Postgres-backed backend (embedded-apps/timesheet/server), same pattern as Non CTC Expense,
   // RC Portal and Audit & CAPA.
   timesheet: '/apps/timesheet', // TimeSheet
+  // PO Deviation Approval has no separate native deployment either (see embedded-apps/
+  // fm-po-deviation) — same relative path either way, same reasoning as every other same-origin
+  // embedded app above. A Next.js static export (the rest of this repo's embedded apps are Expo
+  // web or Vite) calling SAP (ZFMPODEVIATION_SRV) directly from the client, no backend of its own —
+  // converted from the source Fiori app at github.com/EmamiOrg/fm_po_deviation.
+  'fm-po-deviation': '/apps/fm-po-deviation', // PO Deviation Approval
 };
 
 const RAW_APPS: AppItem[] = [
@@ -76,6 +82,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
+  { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Finance', icon: FileCheck2, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

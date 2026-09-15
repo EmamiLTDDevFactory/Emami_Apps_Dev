@@ -82,7 +82,6 @@ function DateField({
 
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error — raw DOM element, valid under react-native-web
       <input
         type="date"
         value={value}
@@ -148,19 +147,19 @@ function EditableField({
 }) {
   return (
     <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label} *</Text>
+      <Text style={styles.infoLabel}>{label}</Text>
       <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
     </View>
   );
 }
 
 /** Attach Invoice (PDF) — restricted to `application/pdf` at the picker level (native picker and
- * web's underlying `<input accept>` both honor it), mandatory whenever the invoice fields
- * themselves are (see rowMandatoryError). */
+ * web's underlying `<input accept>` both honor it). Optional, per instruction — no longer gates
+ * "Send for Invoice Approval" (see rowMandatoryError). */
 function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
   return (
     <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>Attach Invoice (PDF) *</Text>
+      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
       <Pressable style={styles.attachBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
         <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={15} color={colors.rust} />
         <Text style={styles.attachBtnText} numberOfLines={1}>
@@ -282,15 +281,14 @@ export default function UpcomingProvision() {
     setModalKey(null);
   };
 
-  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are the mandatory ones; Delivery
-  // Confirmed = No -> those are hidden entirely (see the fieldGrid render below) and instead the
-  // Revised Delivery Date + Comments popup (already mandatory via confirmModal) is what's required.
+  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are optional (per instruction, no
+  // longer required to send for invoice approval — only validated if something was actually typed
+  // in, so a stray non-numeric Invoice Amount still gets caught). Delivery Confirmed = No -> those
+  // are hidden entirely (see the fieldGrid render below) and instead the Revised Delivery Date +
+  // Comments popup (already mandatory via confirmModal) is what's required.
   function rowMandatoryError(state: RowState): string | null {
     if (state.delvConf) {
-      if (!state.invoiceNo.trim()) return 'Invoice Number is required.';
-      if (!state.invoiceDate) return 'Invoice Date is required.';
-      if (!state.invoiceAmount.trim() || Number.isNaN(Number(state.invoiceAmount))) return 'A valid Invoice Amount is required.';
-      if (!state.attachmentBase64) return 'An invoice attachment (PDF) is required.';
+      if (state.invoiceAmount.trim() && Number.isNaN(Number(state.invoiceAmount))) return 'Invoice Amount must be a valid number.';
     } else {
       if (!state.revisedDelDate) return 'Revised Delivery Date is required when delivery is not confirmed.';
       if (!state.comments.trim()) return 'Comments are required when delivery is not confirmed.';
@@ -482,7 +480,7 @@ export default function UpcomingProvision() {
                           onChange={(v) => patchRow(row.key, { invoiceNo: v })}
                         />
                         <View style={styles.infoField}>
-                          <Text style={styles.infoLabel}>Invoice Date *</Text>
+                          <Text style={styles.infoLabel}>Invoice Date</Text>
                           <DateField
                             value={state.invoiceDate}
                             onChange={(v) => patchRow(row.key, { invoiceDate: v })}
@@ -604,21 +602,21 @@ export default function UpcomingProvision() {
 
 const styles = StyleSheet.create({
   scroll: {
-    padding: 20,
-    paddingBottom: 60,
+    padding: 14,
+    paddingBottom: 40,
   },
   panel: {
-    gap: 10,
+    gap: 8,
   },
   flex1: { flex: 1 },
   loadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    paddingVertical: 40,
+    gap: 10,
   },
   loadingText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   errorText: {
@@ -627,18 +625,18 @@ const styles = StyleSheet.create({
     color: colors.red,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
     textAlign: 'center',
-    paddingVertical: 40,
+    paddingVertical: 28,
   },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
   bannerSuccess: {
@@ -662,19 +660,19 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   massBarText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink,
   },
   massBtn: {
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   massBtnText: {
     color: colors.white,
@@ -686,11 +684,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    gap: 8,
+    padding: 9,
+    gap: 6,
     ...Platform.select({
       web: { boxShadow: '0 2px 8px rgba(31,27,51,0.06)' },
       default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
@@ -702,18 +700,18 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   checkbox: {
     padding: 2,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: colors.ink,
   },
   cardSubtitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: colors.inkSoft,
     marginTop: 1,
   },
@@ -734,61 +732,61 @@ const styles = StyleSheet.create({
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   infoField: {
-    minWidth: 130,
+    minWidth: 104,
     flexGrow: 1,
     flexBasis: '30%',
     gap: 2,
   },
   infoLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
     color: colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   infoValue: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: colors.ink,
   },
   editInput: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    fontSize: 13,
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    fontSize: 12.5,
     color: colors.ink,
     backgroundColor: colors.white,
   },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   dateBtnText: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: colors.ink,
     fontWeight: '600',
   },
   attachBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   attachBtnText: {
@@ -803,7 +801,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   delvConfLabel: {
     fontSize: 12,
@@ -849,8 +847,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   sendBtnText: {
     color: colors.white,

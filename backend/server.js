@@ -57,8 +57,10 @@ apiRouter.use('/dev-tracker', require('./devTracker'));
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Most apps use the generic User/Admin pair. Audit & CAPA has its own role vocabulary — CQA
  * (elevated, equivalent to Admin) and Depot (base, equivalent to User) — see auditCapaSync.js,
- * which is what actually makes this role take effect inside that app. */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'] };
+ * which is what actually makes this role take effect inside that app. Provision Tracking
+ * (payment-tracking) adds a third role, Finance, on top of the generic pair — see that app's own
+ * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. */
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'], 'payment-tracking': ['User', 'Admin', 'Finance'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
