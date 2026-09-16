@@ -14,9 +14,9 @@ interface AppGridProps {
   onToggleFavorite: (id: string) => void;
   ListHeaderComponent?: React.ReactElement;
   scrollEnabled?: boolean;
-  /** App IDs the signed-in user is granted (see useUnlockedAppIds) — anything not in this set is
-   * filtered out of the grid entirely. Omit to leave every app visible (e.g. a context with no
-   * access data yet). */
+  /** App IDs the signed-in user is granted (see useUnlockedAppIds) — every app still renders
+   * regardless, anything not in this set just renders locked (see AppCard's `locked` prop) rather
+   * than being hidden. Omit to leave every app unlocked (e.g. a context with no access data yet). */
   unlockedAppIds?: Set<string>;
 }
 
@@ -28,7 +28,6 @@ function chunkIntoRows<T>(items: T[], size: number): T[][] {
 
 export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFavorite, ListHeaderComponent, scrollEnabled = true, unlockedAppIds }: AppGridProps) {
   const numColumns = useColumnCount();
-  const visibleApps = unlockedAppIds ? apps.filter((a) => unlockedAppIds.has(a.id)) : apps;
 
   const renderCard = (item: AppItem) => (
     // maxWidth caps a card at what a full row's share would be, so a partial last row (e.g.
@@ -39,6 +38,7 @@ export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFav
         app={item}
         isFavorite={favorites.has(item.id)}
         isTopUsed={item.id === topUsedAppId}
+        locked={!!unlockedAppIds && !unlockedAppIds.has(item.id)}
         onPress={onOpenApp}
         onToggleFavorite={onToggleFavorite}
       />
@@ -55,7 +55,7 @@ export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFav
   // below (All Apps/Favorites, never nested in another scrollable) keeps using FlatList, which is
   // the right choice there since it IS the page's own scrollable list.
   if (!scrollEnabled) {
-    const rows = chunkIntoRows(visibleApps, numColumns);
+    const rows = chunkIntoRows(apps, numColumns);
     return (
       <View style={styles.content}>
         {ListHeaderComponent}
@@ -67,7 +67,7 @@ export default function AppGrid({ apps, favorites, query, onOpenApp, onToggleFav
   return (
     <FlatList
       key={`cols-${numColumns}`}
-      data={visibleApps}
+      data={apps}
       keyExtractor={(item) => item.id}
       numColumns={numColumns}
       columnWrapperStyle={styles.row}
