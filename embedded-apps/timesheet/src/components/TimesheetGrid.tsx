@@ -243,6 +243,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   const [locatingKey, setLocatingKey] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const savedAtTimer = useRef<ReturnType<typeof setTimeout>>();
+  // Whichever of these is actually visible at the current breakpoint (the other stays unmounted-
+  // looking via CSS only, so scrollIntoView on it is a harmless no-op) - used to jump straight to
+  // today's row/card on open instead of leaving a daily user to scroll and find it themselves.
+  const todayRowRef = useRef<HTMLTableRowElement>(null);
+  const todayCardRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
   const { getLeaveBalance } = useApp();
   // The yearly leave pool a manager has set for this person. `serverBalance` only moves once
@@ -264,6 +269,18 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     setDayMap(initDayMap(initialEntries));
     setSaveState('idle');
     setBalanceAdjustment(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthStartDate, userId]);
+
+  // Jump straight to today's row/card once, whenever a month that actually contains today is
+  // opened - self-limiting for a past/future month (todayIso just isn't in `days`, so this is a
+  // no-op) rather than needing its own separate "is this the current month" check. Deliberately
+  // scoped to the same deps as the reset effect above, not every dayMap edit, so typing into a
+  // description field doesn't yank the scroll position back to today mid-edit.
+  useEffect(() => {
+    if (!days.includes(todayIso)) return;
+    todayRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    todayCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthStartDate, userId]);
 
@@ -548,25 +565,25 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b-2 border-glassRust bg-white">
-              <th scope="col" className="sticky left-0 z-10 min-w-[92px] whitespace-nowrap bg-white px-3 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky left-0 top-0 z-30 min-w-[92px] whitespace-nowrap bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Date
               </th>
-              <th scope="col" className="min-w-[140px] px-3 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[140px] bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Day
               </th>
-              <th scope="col" className="min-w-[130px] px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[130px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 In Time
               </th>
-              <th scope="col" className="min-w-[130px] px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[130px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Out Time
               </th>
-              <th scope="col" className="min-w-[90px] px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[90px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Hours of Work
               </th>
-              <th scope="col" className="min-w-[170px] px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[170px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Task
               </th>
-              <th scope="col" className="min-w-[200px] px-2 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 min-w-[200px] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
                 Task Description
               </th>
             </tr>
@@ -582,12 +599,22 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               const zero = !onLeave && working && hours === 0;
               const over = hours > MAX_HOURS_PER_DAY;
               const rowTint = onLeave ? 'bg-tealBg/60' : tone.row;
+              // The one row a daily user actually comes here for - a left accent bar makes it
+              // findable at a glance instead of blending into the rest of the month.
+              const isToday = dateIso === todayIso;
+              const todayRowCls = isToday ? 'border-l-4 border-l-rust' : '';
+              const todayBadge = isToday && (
+                <span className="inline-block rounded-full bg-rust px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Today</span>
+              );
 
               if (onLeave) {
                 return (
-                  <tr key={dateIso} className={`border-b border-border last:border-0 ${rowTint}`}>
+                  <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
                     <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                      {formatDayOrdinal(date)}
+                      <div className="flex items-center gap-1.5">
+                        {formatDayOrdinal(date)}
+                        {todayBadge}
+                      </div>
                     </th>
                     <td className="px-3 py-2 align-top">
                       <div className="flex items-center gap-1.5">
@@ -621,9 +648,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
 
               if (!working) {
                 return (
-                  <tr key={dateIso} className={`border-b border-border last:border-0 ${rowTint}`}>
+                  <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
                     <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                      {formatDayOrdinal(date)}
+                      <div className="flex items-center gap-1.5">
+                        {formatDayOrdinal(date)}
+                        {todayBadge}
+                      </div>
                     </th>
                     <td className="px-3 py-2 align-top">
                       <div className="flex items-center gap-1.5">
@@ -644,11 +674,18 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               const lines = row.lines.length ? row.lines : [emptyLine()];
               const rowSpan = lines.length;
               return lines.map((line, lineIndex) => (
-                <tr key={`${dateIso}_${lineIndex}`} className={`border-b border-border last:border-0 ${rowTint}`}>
+                <tr
+                  key={`${dateIso}_${lineIndex}`}
+                  ref={isToday && lineIndex === 0 ? todayRowRef : undefined}
+                  className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}
+                >
                   {lineIndex === 0 && (
                     <>
                       <th scope="row" rowSpan={rowSpan} className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                        {formatDayOrdinal(date)}
+                        <div className="flex items-center gap-1.5">
+                          {formatDayOrdinal(date)}
+                          {todayBadge}
+                        </div>
                       </th>
                       <td rowSpan={rowSpan} className="px-3 py-2 align-top">
                         <div className="flex items-center gap-1.5">
@@ -805,6 +842,27 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
         </table>
       </div>
 
+      {/* Desktop: same always-visible totals mobile's card list already has below, since the
+          table's own <tfoot> above needs scrolling all the way down a full month to see. */}
+      <div className="glass-card sticky bottom-0 z-20 hidden divide-x divide-glassRust overflow-hidden md:flex md:items-stretch">
+        <div className="flex flex-1 items-center justify-between px-6 py-3">
+          <span className="text-sm font-semibold text-rustDeep">Month Total</span>
+          <span className="text-lg font-bold text-rustDeep">{totals.month.toFixed(2).replace(/\.00$/, '')}h</span>
+        </div>
+        <div className="flex flex-1 items-center justify-between px-6 py-3">
+          <span className="text-sm font-medium text-rustDeep">Total Leave</span>
+          <span className="font-bold text-rustDeep">
+            {totals.leaveDays} {totals.leaveDays === 1 ? 'day' : 'days'}
+          </span>
+        </div>
+        <div className="flex flex-1 items-center justify-between px-6 py-3">
+          <span className="text-sm font-medium text-rustDeep">Leave Balance</span>
+          <span className={`font-bold ${leaveBalance < 0 ? 'text-red' : 'text-rustDeep'}`}>
+            {leaveBalance} {Math.abs(leaveBalance) === 1 ? 'day' : 'days'}
+          </span>
+        </div>
+      </div>
+
       {/* Mobile: stacked card-per-day layout */}
       <div className="space-y-4 md:hidden">
         {days.map((dateIso) => {
@@ -818,12 +876,18 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           const zero = !onLeave && working && hours === 0;
           const over = hours > MAX_HOURS_PER_DAY;
           const cardTint = onLeave ? 'bg-tealBg' : tone.row || 'bg-white';
+          const isToday = dateIso === todayIso;
           return (
-            <div key={dateIso} className={`card p-4 ${cardTint}`}>
+            <div key={dateIso} ref={isToday ? todayCardRef : undefined} className={`card p-4 ${cardTint} ${isToday ? 'border-l-4 border-l-rust' : ''}`}>
               <div className="mb-3 flex items-center justify-between">
                 <div>
-                  <div className={`font-semibold ${tone.dayText || 'text-ink'}`}>
-                    {formatWeekday(date)} {formatDayNum(date)}
+                  <div className="flex items-center gap-1.5">
+                    <div className={`font-semibold ${tone.dayText || 'text-ink'}`}>
+                      {formatWeekday(date)} {formatDayNum(date)}
+                    </div>
+                    {isToday && (
+                      <span className="inline-block rounded-full bg-rust px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Today</span>
+                    )}
                   </div>
                   {onLeave ? (
                     <span className="mt-1 inline-block rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
