@@ -66,8 +66,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <span className="font-semibold text-ink">TimeSheet</span>
           </header>
         )}
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-        <footer className="mx-auto w-full max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <footer className="px-4 pb-8 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={resetDemoData}
