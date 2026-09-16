@@ -37,6 +37,7 @@ export function normalizeInvoice(raw: any): Invoice {
         no_of_cases: parseFloatSafe(raw.Fkimg),
         invoice_value: parseFloatSafe(raw.Netwr),
         gross_weight_kg: parseFloatSafe(raw.GrossWt),
+        distance_km: parseFloatSafe(raw.Distz),
         edd: parseDate(raw.Edd) || '',
         transporter: (raw.Transporter || raw.Tdname || raw.CarrName || raw.Lifex || raw.ForwardAgent || '').trim(),
         lr_no: raw.LrNo || '',

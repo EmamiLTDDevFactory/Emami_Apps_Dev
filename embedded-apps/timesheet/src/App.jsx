@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext'
 import { ToastProvider } from './context/ToastContext'
 import { ThemeProvider } from './context/ThemeContext'
 import Sidebar from './components/Sidebar'
+import TopNav from './components/TopNav'
 import Login from './pages/Login'
 import PickManager from './pages/PickManager'
 import AwaitingApproval from './pages/AwaitingApproval'
@@ -94,6 +95,7 @@ function AppShell() {
           </button>
           <span className="font-semibold text-slate-900 dark:text-slate-100">{PAGE_TITLES[page]}</span>
         </header>
+        <TopNav page={page} onNavigate={navigate} />
         <main className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">{content}</main>
         <footer className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
           <button

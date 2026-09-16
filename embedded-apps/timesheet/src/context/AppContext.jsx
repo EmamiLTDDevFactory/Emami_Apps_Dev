@@ -507,6 +507,25 @@ export function AppProvider({ children }) {
     return updated
   }
 
+  // Permanently deletes an employee - unlike removeDirectReport above (which just unassigns
+  // them), this erases their account and everything tied to it. The server cascades the DB
+  // delete to their assignments/timesheets/leave balance; here we mirror that by dropping them
+  // from every piece of local state that's keyed by userId, so they vanish everywhere at once
+  // instead of lingering in stale lists until the next refresh.
+  async function deleteEmployee(userId) {
+    await api(`/users/${userId}`, { method: 'DELETE' })
+    setData((d) => {
+      const { [userId]: _removedAssignments, ...assignments } = d.assignments
+      return {
+        ...d,
+        users: d.users.filter((u) => u.id !== userId),
+        assignments,
+        timesheets: d.timesheets.filter((t) => t.userId !== userId),
+        leaveBalances: d.leaveBalances.filter((b) => b.userId !== userId),
+      }
+    })
+  }
+
   function resetDemoData() {
     refresh()
   }
@@ -626,6 +645,7 @@ export function AppProvider({ children }) {
     approveEmployee,
     rejectEmployee,
     removeDirectReport,
+    deleteEmployee,
     resetDemoData,
   }
 

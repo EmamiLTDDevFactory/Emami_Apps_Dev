@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
 import BackButton from '../components/BackButton'
+import ConfirmDialog from '../components/ConfirmDialog'
 import LeaveDetailsModal from '../components/LeaveDetailsModal'
 import { currentMonthStartIso } from '../utils/date'
 import { exportTimesheetToExcel } from '../utils/exportTimesheet'
@@ -27,7 +28,7 @@ export default function ManageTeam({ navigate }) {
     fetchPendingRequests,
     approveEmployee,
     rejectEmployee,
-    removeDirectReport,
+    deleteEmployee,
     getLeaveBalance,
     setLeaveAllocation,
     getTimesheet,
@@ -45,9 +46,6 @@ export default function ManageTeam({ navigate }) {
   const gradientBtn = isMinimal
     ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 focus-visible:ring-indigo-500'
     : 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 focus-visible:ring-orange-500'
-  const linkColor = isMinimal
-    ? 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
-    : 'text-orange-600 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300'
   const chipActive = isMinimal
     ? 'border-indigo-300 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
     : 'border-orange-300 dark:border-orange-500/40 bg-orange-50 dark:bg-orange-500/15 text-orange-700 dark:text-orange-300'
@@ -72,7 +70,9 @@ export default function ManageTeam({ navigate }) {
   // distinct from unassignedEmployees below (nobody's picked those people at all yet).
   const [pendingRequests, setPendingRequests] = useState([])
   const [decidingUserId, setDecidingUserId] = useState(null)
-  const [removingUserId, setRemovingUserId] = useState(null)
+  const [deletingUserId, setDeletingUserId] = useState(null)
+  // The direct report queued up for the permanent-delete confirm popup - null when it's closed.
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(null)
   const [downloadingUserId, setDownloadingUserId] = useState(null)
   const thisMonth = currentMonthStartIso()
   const [leaveDrafts, setLeaveDrafts] = useState({}) // userId -> in-progress "allocated" input value
@@ -298,16 +298,18 @@ export default function ManageTeam({ navigate }) {
     }
   }
 
-  async function handleRemove(user) {
-    if (!window.confirm(`Remove ${user.name} from your team? Their timesheets and leave history will be kept.`)) return
-    setRemovingUserId(user.id)
+  async function handleConfirmDeleteEmployee() {
+    const user = confirmDeleteUser
+    if (!user) return
+    setDeletingUserId(user.id)
     try {
-      await removeDirectReport(user.id)
-      showToast('Employee removed from your team.', 'success')
+      await deleteEmployee(user.id)
+      showToast('Employee deleted.', 'success')
+      setConfirmDeleteUser(null)
     } catch (err) {
-      showToast(err.message || 'Failed to remove employee.', 'error')
+      showToast(err.message || 'Failed to delete employee.', 'error')
     } finally {
-      setRemovingUserId(null)
+      setDeletingUserId(null)
     }
   }
 
@@ -461,11 +463,11 @@ export default function ManageTeam({ navigate }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleRemove(user)}
-                    disabled={removingUserId === user.id}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium focus:outline-none focus-visible:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => setConfirmDeleteUser(user)}
+                    disabled={deletingUserId === user.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-600 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 hover:border-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {removingUserId === user.id ? 'Removing…' : 'Remove'}
+                    {deletingUserId === user.id ? 'Deleting…' : 'Delete employee'}
                   </button>
                 </span>
               </div>
@@ -562,18 +564,18 @@ export default function ManageTeam({ navigate }) {
                 ) : (
                   <span className="text-slate-700 dark:text-slate-200">{project.name}</span>
                 )}
-                <span className="flex items-center gap-3 shrink-0">
+                <span className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => (editingProjectId === project.id ? saveEditProject(project.id) : startEditProject(project))}
-                    className={`text-xs font-medium focus:outline-none focus-visible:underline ${linkColor}`}
+                    className="inline-flex items-center rounded-full border border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/15 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
                   >
                     {editingProjectId === project.id ? 'Save' : 'Edit'}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteProject(project)}
-                    className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium focus:outline-none focus-visible:underline"
+                    className="inline-flex items-center rounded-full border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
                   >
                     Delete
                   </button>
@@ -622,18 +624,18 @@ export default function ManageTeam({ navigate }) {
                       <span className="text-slate-400 dark:text-slate-500">{project?.name}</span> · {task.name}
                     </span>
                   )}
-                  <span className="flex items-center gap-3 shrink-0">
+                  <span className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => (editingTaskId === task.id ? saveEditTask(task.id) : startEditTask(task))}
-                      className={`text-xs font-medium focus:outline-none focus-visible:underline ${linkColor}`}
+                      className="inline-flex items-center rounded-full border border-blue-300 dark:border-blue-500/40 bg-blue-50 dark:bg-blue-500/15 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
                     >
                       {editingTaskId === task.id ? 'Save' : 'Edit'}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDeleteTask(task)}
-                      className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-xs font-medium focus:outline-none focus-visible:underline"
+                      className="inline-flex items-center rounded-full border border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/15 px-2.5 py-1 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
                     >
                       Delete
                     </button>
@@ -685,6 +687,18 @@ export default function ManageTeam({ navigate }) {
           balance={getLeaveBalance(viewingLeaveUser.id)}
           entries={leaveEntriesByUser[viewingLeaveUser.id] || []}
           onClose={() => setViewingLeaveUserId(null)}
+        />
+      )}
+
+      {confirmDeleteUser && (
+        <ConfirmDialog
+          title="Permanently delete employee?"
+          message={`This erases ${confirmDeleteUser.name}'s account and ALL of their data - timesheets, leave history, and task assignments. This cannot be undone.`}
+          confirmLabel="Delete employee"
+          danger
+          busy={deletingUserId === confirmDeleteUser.id}
+          onConfirm={handleConfirmDeleteEmployee}
+          onCancel={() => setConfirmDeleteUser(null)}
         />
       )}
     </div>
