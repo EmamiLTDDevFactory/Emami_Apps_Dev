@@ -222,9 +222,9 @@ export default function DispatchedScreen() {
         </FilterRow>
 
         <View style={styles.kpiRow}>
-          <KPICard icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
-          <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
-          <KPICard icon="💰" label="GSV" value={finr(totalGsv)} color={colors.amber} />
+          <KPICard compact icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
+          <KPICard compact icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
+          <KPICard compact icon="💰" label="GSV" value={finr(totalGsv)} color={colors.amber} />
         </View>
 
         <View style={styles.actionBar}>
@@ -336,7 +336,7 @@ function Info({
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.bg },
-  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  sticky: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 0, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 24 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   flashSuccess: { backgroundColor: colors.greenLt, borderColor: colors.greenBd },
   flashWarning: { backgroundColor: colors.amberLt, borderColor: colors.amberBd },
   flashText: { fontSize: 12, fontWeight: '700' },
-  kpiRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
+  kpiRow: { flexDirection: 'row', gap: 6, marginVertical: 6 },
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',

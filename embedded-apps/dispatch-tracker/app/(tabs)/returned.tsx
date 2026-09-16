@@ -185,10 +185,10 @@ export default function ReturnedScreen() {
     <View style={styles.screen}>
       <View style={styles.sticky}>
         <View style={styles.kpiRow}>
-          <KPICard icon="↩" label="Total Returns" value={`${drRows.length}/${totalInvR}`} color={colors.purple} />
-          <KPICard icon="📦" label="Full Returns" value={String(fullCnt)} color={colors.navy} />
-          <KPICard icon="🔄" label="Partial Returns" value={String(partialCnt)} color={colors.amber} />
-          <KPICard icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${casesR.toFixed(0)} cases`} />
+          <KPICard compact icon="↩" label="Total Returns" value={`${drRows.length}/${totalInvR}`} color={colors.purple} />
+          <KPICard compact icon="📦" label="Full Returns" value={String(fullCnt)} color={colors.navy} />
+          <KPICard compact icon="🔄" label="Partial Returns" value={String(partialCnt)} color={colors.amber} />
+          <KPICard compact icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${casesR.toFixed(0)} cases`} />
         </View>
 
         <FilterRow>
@@ -320,10 +320,10 @@ function ReturnedCard({ row, bg, retVals }: { row: ReturnedInvoice; bg: string; 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 12, paddingBottom: 28 },
-  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  sticky: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 0, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 28 },
-  kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  kpiRow: { flexDirection: 'row', gap: 6, marginBottom: 4 },
   card: {
     borderWidth: 1,
     borderColor: '#E5E7EB',

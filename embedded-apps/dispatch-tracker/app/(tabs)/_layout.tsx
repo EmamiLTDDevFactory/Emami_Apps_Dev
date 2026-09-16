@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { ColorValue, Text, View } from 'react-native';
 import { colors } from '@/constants/theme';
 import { TopBar } from '@/components/TopBar';
+import { LoadingOverlay } from '@/components/LoadingOverlay';
 import { useData } from '@/contexts/DataContext';
 
 /**
@@ -12,19 +13,20 @@ import { useData } from '@/contexts/DataContext';
  * spec_dis_shared_components.md §8 item 2, so there is nothing to count).
  */
 export default function TabsLayout() {
-  const { pendCache, dispCache, compCache, retCache, cancCache } = useData();
+  const { pendCache, dispCache, compCache, retCache, cancCache, loading } = useData();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <TopBar />
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: colors.navy,
-          tabBarInactiveTintColor: colors.g400,
-          tabBarLabelStyle: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3 },
-          tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.g200 },
-        }}>
+      <View style={{ flex: 1 }}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor: colors.navy,
+            tabBarInactiveTintColor: colors.g400,
+            tabBarLabelStyle: { fontSize: 9.5, fontWeight: '700', letterSpacing: 0.3 },
+            tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.g200 },
+          }}>
         <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <TabIcon icon="🏠" color={color} /> }} />
         <Tabs.Screen
           name="pending"
@@ -68,6 +70,8 @@ export default function TabsLayout() {
         />
         <Tabs.Screen name="reports" options={{ title: 'Reports', tabBarIcon: ({ color }) => <TabIcon icon="📊" color={color} /> }} />
       </Tabs>
+      {loading.inv ? <LoadingOverlay /> : null}
+      </View>
     </View>
   );
 }

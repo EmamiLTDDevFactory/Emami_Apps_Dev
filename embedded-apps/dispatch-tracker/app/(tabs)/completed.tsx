@@ -220,10 +220,11 @@ export default function CompletedScreen() {
         )}
 
         <View style={styles.kpiRow}>
-          <KPICard icon="✅" label="Completed" value={`${filteredSorted.length}/${totalForDepot}`} color={colors.green} />
-          <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.teal} />
-          <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
+          <KPICard compact icon="✅" label="Completed" value={`${filteredSorted.length}/${totalForDepot}`} color={colors.green} />
+          <KPICard compact icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.teal} />
+          <KPICard compact icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
           <KPICard
+            compact
             icon="🎯"
             label="On-Time"
             value={`${onTimePct.toFixed(0)}%`}
@@ -422,7 +423,7 @@ function InvoiceCard({
 const styles = StyleSheet.create({
   container: { padding: 12, paddingBottom: 40, backgroundColor: colors.bg, flexGrow: 1 },
   page: { flex: 1, backgroundColor: colors.bg },
-  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  sticky: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 0, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 40 },
   loadingText: { fontSize: 11, color: colors.g500, marginBottom: 8 },
@@ -431,7 +432,7 @@ const styles = StyleSheet.create({
   flashSuccess: { backgroundColor: colors.greenLt, borderColor: colors.greenBd },
   flashWarning: { backgroundColor: colors.amberLt, borderColor: colors.amberBd },
   flashText: { fontSize: 12, fontWeight: '600' },
-  kpiRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
+  kpiRow: { flexDirection: 'row', gap: 6, marginVertical: 6 },
   customRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   dateLabel: { fontSize: 10, fontWeight: '700', color: colors.g500, marginBottom: 4, textTransform: 'uppercase' },
   ascToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 4 },
