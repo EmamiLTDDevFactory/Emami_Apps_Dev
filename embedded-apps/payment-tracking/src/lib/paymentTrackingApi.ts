@@ -821,6 +821,54 @@ export async function submitLogAction(
   }
 }
 
+/** Mass "Mail for P2P" (or Reverse SES/Save) — same vendor-grouped batching convention as
+ * submitProvisionApprovalBatch/submitApprovalDecisionBatch: one ZProvHeader POST per vendor
+ * (Lifnr), since the header requires one representative Ebeln/Ebelp/Lblni trio, with every
+ * selected row for that vendor riding along as its own ToProvItems entry. Runs sequentially (not
+ * Promise.all) so one vendor's failure can't leave a partial, hard-to-diagnose mix of concurrent
+ * SAP writes; returns which vendor groups failed instead of throwing on the first one, same
+ * per-vendor result shape as those siblings. */
+export async function submitLogActionBatch(
+  rows: ProvisionLogRow[],
+  email: string,
+  action: LogAction,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, ProvisionLogRow[]>();
+  rows.forEach((r) => {
+    const key = r.vendor || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    const first = group[0];
+    const payload = {
+      Lifnr: first.vendor,
+      Email: email,
+      Ebeln: first.poNumber,
+      Ebelp: first.poItemNo,
+      Lblni: first.entrySheetNo,
+      ToProvItems: group.map((r) => toLogActionItem(r, action, overridesByKey?.[r.key])),
+    };
+    try {
+      const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
+      const body = result.data?.d || result.data;
+      if (body?.Type === 'E') {
+        throw new Error(body.Message || 'SAP rejected this submission.');
+      }
+    } catch (err: any) {
+      const sapMessage = err?.response?.data?.error?.message?.value;
+      failures.push({
+        lifnr,
+        error: sapMessage || (err instanceof Error ? err.message : 'Could not send mail to P2P.'),
+      });
+    }
+  }
+  return failures;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Service PO bulk upload — Admin PO Creation tab's "Service PO Bulk Upload" section. Unlike the
 // rest of this file (and unlike the sibling client-side PO-creation simulator in

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -14,6 +14,11 @@ import {
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+
+// Matches the hub's own useIsWideScreen breakpoint and this app's _layout.tsx copy of this
+// constant — a compact desktop layout kicks in at the same viewport width the side pane docks
+// at, web only (native mobile/tablet keeps the roomier spacing).
+const WIDE_BREAKPOINT = 768;
 
 function todayIso(): string {
   return new Date().toISOString().split('T')[0];
@@ -71,12 +76,13 @@ function initialRowState(row: VendorPOFollowupRow): RowState {
  * `minimumDate` — used only for Revised Delivery Date (no back-dating), never Invoice Date (a
  * real invoice is routinely dated in the past). */
 function DateField({
-  value, onChange, label, minDate,
+  value, onChange, label, minDate, compact,
 }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
   minDate?: string;
+  compact?: boolean;
 }) {
   const [showPicker, setShowPicker] = useState(false);
 
@@ -90,13 +96,13 @@ function DateField({
         aria-label={label}
         style={{
           width: '100%',
-          height: 42,
-          padding: '8px 10px',
+          height: compact ? 32 : 42,
+          padding: compact ? '4px 8px' : '8px 10px',
           borderRadius: 8,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.white,
           color: colors.ink,
-          fontSize: 13.5,
+          fontSize: compact ? 12 : 13.5,
           boxSizing: 'border-box',
         }}
       />
@@ -128,27 +134,33 @@ function DateField({
 
 /** Read-only label/value pair — wraps onto its own line on a narrow screen instead of ever
  * forcing horizontal scroll, since this screen has no wide fixed-column table anywhere. */
-function InfoField({ label, value }: { label: string; value: string }) {
+function InfoField({ label, value, compact }: { label: string; value: string; compact?: boolean }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={2}>{value || '—'}</Text>
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>{label}</Text>
+      <Text style={[styles.infoValue, compact && styles.infoValueCompact]} numberOfLines={2}>{value || '—'}</Text>
     </View>
   );
 }
 
 function EditableField({
-  label, value, onChange, keyboardType,
+  label, value, onChange, keyboardType, compact,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   keyboardType?: 'decimal-pad';
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType={keyboardType}
+        style={[styles.editInput, compact && styles.editInputCompact]}
+      />
     </View>
   );
 }
@@ -156,13 +168,20 @@ function EditableField({
 /** Attach Invoice (PDF) — restricted to `application/pdf` at the picker level (native picker and
  * web's underlying `<input accept>` both honor it). Optional, per instruction — no longer gates
  * "Send for Invoice Approval" (see rowMandatoryError). */
-function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+function AttachField({
+  fileName, attaching, onPick, compact,
+}: {
+  fileName: string;
+  attaching: boolean;
+  onPick: () => void;
+  compact?: boolean;
+}) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>Attach Invoice (PDF)</Text>
-      <Pressable style={styles.attachBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
-        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={15} color={colors.rust} />
-        <Text style={styles.attachBtnText} numberOfLines={1}>
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>Attach Invoice (PDF)</Text>
+      <Pressable style={[styles.attachBtn, compact && styles.attachBtnCompact]} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={compact ? 13 : 15} color={colors.rust} />
+        <Text style={[styles.attachBtnText, compact && styles.attachBtnTextCompact]} numberOfLines={1}>
           {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
         </Text>
       </Pressable>
@@ -190,6 +209,10 @@ export default function AdminUpcomingProvision() {
   const [modalTouched, setModalTouched] = useState(false);
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  // Compact layout only for a wide web viewport (desktop) — native/mobile keeps the roomier
+  // spacing this screen already had.
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
 
   useEffect(() => {
     if (roleLoading) return;
@@ -402,8 +425,8 @@ export default function AdminUpcomingProvision() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.panel}>
+    <ScrollView contentContainerStyle={[styles.scroll, isDesktopWeb && styles.scrollCompact]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.panel, isDesktopWeb && styles.panelCompact]}>
         <ProvisionHero
           eyebrow="Provision Tracking"
           title="Upcoming Provision — All Vendors"
@@ -438,7 +461,7 @@ export default function AdminUpcomingProvision() {
         ) : (
           <>
             {selected.size > 0 && (
-              <View style={styles.massBar}>
+              <View style={[styles.massBar, isDesktopWeb && styles.massBarCompact]}>
                 <Text style={styles.massBarText}>{selected.size} selected</Text>
                 <Pressable
                   style={[styles.massBtn, massSubmitting && styles.btnDisabled]}
@@ -459,7 +482,7 @@ export default function AdminUpcomingProvision() {
               const state = rowState[row.key];
               if (!state) return null;
               return (
-                <View key={row.key} style={[styles.card, state.submitted && styles.cardSubmitted]}>
+                <View key={row.key} style={[styles.card, state.submitted && styles.cardSubmitted, isDesktopWeb && styles.cardCompact]}>
                   <View style={styles.cardHeader}>
                     {!state.submitted && (
                       <Pressable
@@ -477,8 +500,8 @@ export default function AdminUpcomingProvision() {
                       </Pressable>
                     )}
                     <View style={styles.flex1}>
-                      <Text style={styles.cardTitle}>PO {row.poNumber} · Item {row.poItemNo}</Text>
-                      {row.materialDesc ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.materialDesc}</Text> : null}
+                      <Text style={[styles.cardTitle, isDesktopWeb && styles.cardTitleCompact]}>PO {row.poNumber} · Item {row.poItemNo}</Text>
+                      {row.materialDesc ? <Text style={[styles.cardSubtitle, isDesktopWeb && styles.cardSubtitleCompact]} numberOfLines={1}>{row.materialDesc}</Text> : null}
                     </View>
                     {state.submitted && (
                       <View style={styles.submittedBadge}>
@@ -488,16 +511,16 @@ export default function AdminUpcomingProvision() {
                     )}
                   </View>
 
-                  <View style={styles.fieldGrid}>
-                    <InfoField label="Service Text" value={row.serviceText} />
-                    <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} />
-                    <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} />
+                  <View style={[styles.fieldGrid, isDesktopWeb && styles.fieldGridCompact]}>
+                    <InfoField label="Service Text" value={row.serviceText} compact={isDesktopWeb} />
+                    <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} compact={isDesktopWeb} />
+                    <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} compact={isDesktopWeb} />
                     {state.delvConf && (state.submitted ? (
                       <>
-                        <InfoField label="Invoice Number" value={state.invoiceNo} />
-                        <InfoField label="Invoice Date" value={formatDisplayDate(state.invoiceDate)} />
-                        <InfoField label="Invoice Amount" value={state.invoiceAmount} />
-                        <InfoField label="Attach Invoice (PDF)" value={state.attachmentName} />
+                        <InfoField label="Invoice Number" value={state.invoiceNo} compact={isDesktopWeb} />
+                        <InfoField label="Invoice Date" value={formatDisplayDate(state.invoiceDate)} compact={isDesktopWeb} />
+                        <InfoField label="Invoice Amount" value={state.invoiceAmount} compact={isDesktopWeb} />
+                        <InfoField label="Attach Invoice (PDF)" value={state.attachmentName} compact={isDesktopWeb} />
                       </>
                     ) : (
                       <>
@@ -505,13 +528,15 @@ export default function AdminUpcomingProvision() {
                           label="Invoice Number"
                           value={state.invoiceNo}
                           onChange={(v) => patchRow(row.key, { invoiceNo: v })}
+                          compact={isDesktopWeb}
                         />
-                        <View style={styles.infoField}>
-                          <Text style={styles.infoLabel}>Invoice Date</Text>
+                        <View style={[styles.infoField, isDesktopWeb && styles.infoFieldCompact]}>
+                          <Text style={[styles.infoLabel, isDesktopWeb && styles.infoLabelCompact]}>Invoice Date</Text>
                           <DateField
                             value={state.invoiceDate}
                             onChange={(v) => patchRow(row.key, { invoiceDate: v })}
                             label="Invoice Date"
+                            compact={isDesktopWeb}
                           />
                         </View>
                         <EditableField
@@ -519,23 +544,25 @@ export default function AdminUpcomingProvision() {
                           value={state.invoiceAmount}
                           onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
                           keyboardType="decimal-pad"
+                          compact={isDesktopWeb}
                         />
                         <AttachField
                           fileName={state.attachmentName}
                           attaching={state.attaching}
                           onPick={() => handlePickAttachment(row.key)}
+                          compact={isDesktopWeb}
                         />
                       </>
                     ))}
                     {!state.delvConf && (
                       <>
-                        <InfoField label="Revised Delivery Date" value={formatDisplayDate(state.revisedDelDate)} />
-                        <InfoField label="Comments" value={state.comments} />
+                        <InfoField label="Revised Delivery Date" value={formatDisplayDate(state.revisedDelDate)} compact={isDesktopWeb} />
+                        <InfoField label="Comments" value={state.comments} compact={isDesktopWeb} />
                       </>
                     )}
                   </View>
 
-                  <View style={styles.delvConfRow}>
+                  <View style={[styles.delvConfRow, isDesktopWeb && styles.delvConfRowCompact]}>
                     <Text style={styles.delvConfLabel}>Delivery Confirmed?</Text>
                     <View style={styles.delvConfOptions}>
                       <Pressable
@@ -561,7 +588,7 @@ export default function AdminUpcomingProvision() {
 
                   {!state.submitted && (
                     <Pressable
-                      style={[styles.sendBtn, state.submitting && styles.btnDisabled]}
+                      style={[styles.sendBtn, state.submitting && styles.btnDisabled, isDesktopWeb && styles.sendBtnCompact]}
                       onPress={() => submitRow(row)}
                       disabled={state.submitting}
                       accessibilityRole="button"
@@ -645,6 +672,57 @@ const styles = StyleSheet.create({
   },
   panel: {
     gap: 8,
+  },
+  scrollCompact: {
+    padding: 10,
+  },
+  panelCompact: {
+    gap: 5,
+  },
+  massBarCompact: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+  },
+  cardCompact: {
+    padding: 6,
+    gap: 4,
+  },
+  cardTitleCompact: {
+    fontSize: 11.5,
+  },
+  cardSubtitleCompact: {
+    fontSize: 10,
+  },
+  fieldGridCompact: {
+    gap: 4,
+  },
+  infoFieldCompact: {
+    minWidth: 88,
+    flexBasis: '18%',
+    gap: 1,
+  },
+  infoLabelCompact: {
+    fontSize: 8.5,
+  },
+  infoValueCompact: {
+    fontSize: 11.5,
+  },
+  editInputCompact: {
+    paddingVertical: 4,
+    fontSize: 11.5,
+  },
+  attachBtnCompact: {
+    paddingVertical: 4,
+  },
+  attachBtnTextCompact: {
+    fontSize: 11.5,
+  },
+  delvConfRowCompact: {
+    paddingTop: 4,
+  },
+  sendBtnCompact: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
   },
   flex1: { flex: 1 },
   loadingWrap: {
