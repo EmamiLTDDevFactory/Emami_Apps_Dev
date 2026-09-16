@@ -56,8 +56,7 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
         accessibilityRole="button"
         accessibilityLabel={`Sort by, currently ${sort}`}
       >
-        <SlidersHorizontal size={13} color={colors.inkSoft} />
-        <Text style={styles.sortText}>{sort}</Text>
+        <SlidersHorizontal size={15} color={colors.inkSoft} />
       </Pressable>
 
       <Modal visible={sortOpen} transparent animationType="fade" onRequestClose={() => setSortOpen(false)}>
@@ -109,20 +108,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
   },
   sortBtn: {
-    flexDirection: 'row',
+    width: 34,
+    height: 34,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm + 1,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
     backgroundColor: colors.white,
-  },
-  sortText: {
-    fontSize: 12.5,
-    fontFamily: fonts.sansSemiBold,
-    color: colors.ink,
   },
   backdrop: {
     flex: 1,
