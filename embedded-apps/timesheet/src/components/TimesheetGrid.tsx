@@ -620,8 +620,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
                     <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                      <div className="flex items-center gap-1.5">
-                        {formatDayOrdinal(date)}
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
@@ -659,8 +659,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
                     <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                      <div className="flex items-center gap-1.5">
-                        {formatDayOrdinal(date)}
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
@@ -691,8 +691,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                   {lineIndex === 0 && (
                     <>
                       <th scope="row" rowSpan={rowSpan} className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                        <div className="flex items-center gap-1.5">
-                          {formatDayOrdinal(date)}
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span>{formatDayOrdinal(date)}</span>
                           {todayBadge}
                         </div>
                       </th>
