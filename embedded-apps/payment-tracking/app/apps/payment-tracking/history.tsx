@@ -7,12 +7,14 @@ import { colors, radii } from '../../../src/theme/tokens';
 import {
   fetchProvisionLog,
   submitLogAction,
+  submitLogActionBatch,
   PROVISION_LOG_STATUSES,
   PROVISION_LOG_STATUS_LABELS,
   LOG_ACTION_LABELS,
   type ProvisionLogRow,
   type ProvisionLogStatus,
   type LogAction,
+  type InvoiceEditOverrides,
 } from '../../../src/lib/paymentTrackingApi';
 import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
@@ -325,6 +327,9 @@ export default function PaymentTrackingHistory() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [preview, setPreview] = useState<{ blobUrl: string; filename: string } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [massSubmitting, setMassSubmitting] = useState(false);
+  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     if (roleLoading || !email) return;
@@ -457,6 +462,68 @@ export default function PaymentTrackingHistory() {
     );
   }
 
+  const toggleSelected = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Mass Mail for P2P — same vendor-grouped batching as Upcoming Provision's "Send Selected for
+  // Approval" (see submitLogActionBatch). Validates every selected row up front (same four fields
+  // as the per-row canMailP2P check) so a single incomplete row can't silently drop out of an
+  // otherwise-successful mass submission — the whole batch is blocked until it's fixed, same
+  // posture as Upcoming Provision's submitSelected.
+  const submitMassMailP2P = async () => {
+    const targets = rows.filter((r) => selected.has(r.key) && r.zstatus === 'AS' && !doneActions[r.key]);
+    if (targets.length === 0) return;
+
+    const badRow = targets.find((r) => !canMailP2P(rowState[r.key]));
+    if (badRow) {
+      setBanner({
+        type: 'error',
+        message: `PO ${badRow.poNumber} / Item ${badRow.poItemNo}: fill in Invoice Number, Date, Amount and attachment first.`,
+      });
+      return;
+    }
+
+    setMassSubmitting(true);
+    targets.forEach((r) => patchRow(r.key, { acting: 'MS', actionError: null, savedNotice: false }));
+    const overridesByKey: Record<string, InvoiceEditOverrides> = {};
+    targets.forEach((r) => {
+      const s = rowState[r.key];
+      overridesByKey[r.key] = {
+        invoiceNo: s.invoiceNo,
+        invoiceDate: s.invoiceDate,
+        invoiceAmount: s.invoiceAmount,
+        attachmentBase64: s.attachmentBase64,
+        attachmentMimeType: s.attachmentMimeType,
+        attachmentName: s.attachmentName,
+      };
+    });
+
+    const failures = await submitLogActionBatch(targets, email || '', 'MS', overridesByKey);
+    const failedLifnrs = new Set(failures.map((f) => f.lifnr));
+    targets.forEach((r) => {
+      if (failedLifnrs.has(r.vendor)) {
+        const failure = failures.find((f) => f.lifnr === r.vendor);
+        patchRow(r.key, { acting: null, actionError: failure?.error || 'Could not send mail to P2P.' });
+      } else {
+        patchRow(r.key, { acting: null });
+        setDoneActions((prev) => ({ ...prev, [r.key]: 'MS' }));
+      }
+    });
+    setSelected(new Set());
+    setMassSubmitting(false);
+
+    if (failures.length === 0) {
+      setBanner({ type: 'success', message: `${targets.length} item(s) mailed for P2P.` });
+    } else {
+      setBanner({ type: 'error', message: `${failures.length} vendor group(s) failed — see the affected rows below.` });
+    }
+  };
+
   // Attachment (if any) comes back inline on the row itself, same as Pending Approval — decoding
   // base64 already in hand, no extra request.
   const viewAttachment = (row: ProvisionLogRow) => {
@@ -505,6 +572,22 @@ export default function PaymentTrackingHistory() {
           title="Submission History"
           subtitle="Every action recorded against your provision submissions — filter by status to focus on one stage."
         />
+
+        {banner && (
+          <View style={[styles.banner, banner.type === 'error' ? styles.bannerError : styles.bannerSuccess]}>
+            <Ionicons
+              name={banner.type === 'error' ? 'alert-circle' : 'checkmark-circle'}
+              size={16}
+              color={banner.type === 'error' ? colors.red : colors.green}
+            />
+            <Text style={[styles.bannerText, { color: banner.type === 'error' ? colors.red : colors.green }]}>
+              {banner.message}
+            </Text>
+            <Pressable onPress={() => setBanner(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+              <Ionicons name="close" size={16} color={colors.inkSoft} />
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.filterBar}>
           <View style={styles.searchBox}>
@@ -564,7 +647,25 @@ export default function PaymentTrackingHistory() {
             {rows.length === 0 ? 'No submission history yet.' : 'No entries match your search/filter.'}
           </Text>
         ) : (
-          filteredRows.map((row) => {
+          <>
+            {selected.size > 0 && (
+              <View style={styles.massBar}>
+                <Text style={styles.massBarText}>{selected.size} selected</Text>
+                <Pressable
+                  style={[styles.massBtn, massSubmitting && styles.btnDisabled]}
+                  onPress={submitMassMailP2P}
+                  disabled={massSubmitting}
+                  accessibilityRole="button"
+                >
+                  {massSubmitting ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.massBtnText}>Mail Selected for P2P</Text>
+                  )}
+                </Pressable>
+              </View>
+            )}
+            {filteredRows.map((row) => {
             const state = rowState[row.key] ?? initialRowState(row);
             const doneAction = doneActions[row.key];
             const busy = state.acting !== null;
@@ -583,6 +684,21 @@ export default function PaymentTrackingHistory() {
             return (
             <View key={row.key} style={styles.card}>
               <View style={styles.cardHeader}>
+                {editable && (
+                  <Pressable
+                    onPress={() => toggleSelected(row.key)}
+                    style={styles.checkbox}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected.has(row.key) }}
+                    accessibilityLabel={`Select PO ${row.poNumber} item ${row.poItemNo} for Mass Mail for P2P`}
+                  >
+                    <Ionicons
+                      name={selected.has(row.key) ? 'checkbox' : 'square-outline'}
+                      size={19}
+                      color={selected.has(row.key) ? colors.rust : colors.inkSoft}
+                    />
+                  </Pressable>
+                )}
                 <View style={styles.flex1}>
                   <Text style={styles.cardTitle}>PO {row.poNumber || '—'} · Item {row.poItemNo || '—'}</Text>
                   {row.vendorName ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.vendorName}</Text> : null}
@@ -710,7 +826,8 @@ export default function PaymentTrackingHistory() {
               )}
             </View>
             );
-          })
+            })}
+          </>
         )}
       </View>
     </ScrollView>
@@ -754,6 +871,56 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     textAlign: 'center',
     paddingVertical: 40,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radii.lg,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+  },
+  bannerSuccess: {
+    backgroundColor: `${colors.green}12`,
+    borderColor: `${colors.green}40`,
+  },
+  bannerError: {
+    backgroundColor: `${colors.red}12`,
+    borderColor: `${colors.red}40`,
+  },
+  bannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  massBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  massBarText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  massBtn: {
+    backgroundColor: colors.teal,
+    borderRadius: radii.md,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  massBtnText: {
+    color: colors.white,
+    fontSize: 12.5,
+    fontWeight: '700',
   },
   filterBar: {
     gap: 6,
@@ -826,6 +993,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  checkbox: {
+    padding: 2,
   },
   cardTitle: {
     fontSize: 12,

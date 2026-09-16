@@ -38,8 +38,8 @@ const WIDE_BREAKPOINT = 768;
 //
 // Three roles, three distinct tab sets (per instruction):
 //   User    — Upcoming Provision, Missed Provision, Submission History
-//   Finance — Pending Approval, Upcoming Provision (All Vendors), Submission History,
-//             Purchase Order Creation and Details
+//   Finance — Purchase Order Creation and Details, Upcoming Provision (All Vendors),
+//             Pending Approval, Submission History (this exact order, per instruction)
 //   Admin   — Dashboard, Provision Details, Calendar
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/dashboard', label: 'Dashboard', icon: 'grid-outline' },
@@ -47,10 +47,10 @@ const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/calendar', label: 'Calendar', icon: 'calendar-number-outline' },
 ];
 const FINANCE_NAV_ITEMS: NavItem[] = [
-  { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
-  { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
-  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
   { href: '/apps/payment-tracking/po-creation', label: 'Purchase Order Creation and Details', icon: 'construct-outline' },
+  { href: '/apps/payment-tracking/admin-upcoming', label: 'Upcoming Provision (All Vendors)', icon: 'calendar-outline' },
+  { href: '/apps/payment-tracking/pending-approval', label: 'Pending Approval', icon: 'checkmark-done-outline' },
+  { href: '/apps/payment-tracking/history', label: 'Submission History', icon: 'time-outline' },
 ];
 const USER_NAV_ITEMS: NavItem[] = [
   { href: '/apps/payment-tracking/upcoming', label: 'Upcoming Provision', icon: 'calendar-outline' },
