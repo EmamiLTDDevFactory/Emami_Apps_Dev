@@ -3,16 +3,17 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndic
 import { useNavigation } from '@react-navigation/native';
 import {
   ArrowLeft, ShieldAlert, Search, X, Info, BarChart3, Users, UserCheck, LogIn,
-  MousePointerClick, TrendingUp, ShieldCheck,
+  MousePointerClick, TrendingUp, ShieldCheck, Download,
 } from 'lucide-react-native';
 import ScreenScaffold from '../components/ScreenScaffold';
 import { appById } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { getMyProfile, type UserProfile } from '../lib/authApi';
 import {
-  getAdminOverview, getAdminRoster, getAdminUserAppStats,
-  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat,
+  getAdminOverview, getAdminRoster, getAdminUserAppStats, getAdminAppStats,
+  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat, type AdminAppStat,
 } from '../lib/adminApi';
+import { exportAdministrationReportToExcel } from '../lib/exportAdminExcel';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 
 /** App ids that manage their own role internally (own DB or SAP OData), rather than being
@@ -54,6 +55,13 @@ export default function AdministrationScreen() {
   const [rosterError, setRosterError] = useState('');
   const [rosterSearch, setRosterSearch] = useState('');
 
+  // Org-wide app-wise usage — fetched alongside overview/roster purely to back the Excel export
+  // button below; the screen itself doesn't render this as its own section (yet), just downloads
+  // it. Distinct from the per-user `appStats` state below (that one's the drill-down dialog).
+  const [orgAppStats, setOrgAppStats] = useState<AdminAppStat[]>([]);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
   const [selected, setSelected] = useState<AdminRosterEntry | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
@@ -75,7 +83,27 @@ export default function AdministrationScreen() {
       if (result.ok && result.users) setRoster(result.users);
       else setRosterError(result.error || 'Could not load the user roster.');
     });
+    getAdminAppStats().then((result) => {
+      if (result.ok && result.apps) setOrgAppStats(result.apps);
+      // No visible error state for this one — it only backs the Excel export, and that button
+      // is already disabled (see canDownload below) if this fetch happens to fail.
+    });
   }, []);
+
+  const canDownload = !overviewLoading && !rosterLoading && !overviewError && !rosterError && !!overview;
+
+  const handleDownload = async () => {
+    if (!overview) return;
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      await exportAdministrationReportToExcel(overview, roster, orgAppStats);
+    } catch {
+      setDownloadError('Could not generate the report. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const openUser = (user: AdminRosterEntry) => {
     setSelected(user);
@@ -147,8 +175,19 @@ export default function AdministrationScreen() {
             <ArrowLeft size={13} color={colors.ink} />
             <Text style={styles.backText}>Back to Emami Apps</Text>
           </Pressable>
-          <Text style={styles.pageTitle}>Administration</Text>
+          <Text style={[styles.pageTitle, styles.flex1]}>Administration</Text>
+          <Pressable
+            style={[styles.downloadBtn, !canDownload && styles.downloadBtnDisabled]}
+            onPress={handleDownload}
+            disabled={!canDownload || downloading}
+            accessibilityRole="button"
+            accessibilityLabel="Download the full Administration report as Excel"
+          >
+            <Download size={13} color={colors.white} />
+            <Text style={styles.downloadBtnText}>{downloading ? 'Preparing…' : 'Download Report'}</Text>
+          </Pressable>
         </View>
+        {!!downloadError && <Text style={styles.errorText}>{downloadError}</Text>}
 
         <View style={styles.noticeCard}>
           <Info size={15} color={colors.rust} />
@@ -457,6 +496,7 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 14,
     marginBottom: 16,
   },
@@ -475,6 +515,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.sansSemiBold,
     color: colors.ink,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: colors.rust,
+  },
+  downloadBtnDisabled: {
+    opacity: 0.5,
+  },
+  downloadBtnText: {
+    fontSize: 12,
+    fontFamily: fonts.sansSemiBold,
+    color: colors.white,
   },
   pageTitle: {
     fontSize: 18,

@@ -271,6 +271,47 @@ apiRouter.get('/admin/user/:email/apps', async (req, res) => {
     }
 });
 
+/** Administration tab — app-wise usage aggregated across every user, not scoped to one (that's
+ * the per-user drill-down above). Backs the "App-wise Usage" sheet in the Excel export button.
+ * Scoped through the same `scope` (active authorized users) as /admin/overview's own app_opens
+ * CTE, so an app's total doesn't get inflated by opens from someone who's since been deactivated
+ * or removed. */
+apiRouter.get('/admin/apps', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            WITH scope AS (
+                SELECT u.user_id
+                FROM emami_apps.authorized_users au
+                JOIN emami_apps.users u ON u.email = au.email
+                WHERE au.is_active = true
+            )
+            SELECT e.app_id,
+                   COUNT(*) AS opens,
+                   COUNT(DISTINCT e.user_id) AS unique_users,
+                   MIN(e.occurred_at) AS first_opened,
+                   MAX(e.occurred_at) AS last_opened
+            FROM emami_apps.events e
+            JOIN scope s ON s.user_id = e.user_id
+            WHERE e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+            GROUP BY e.app_id
+            ORDER BY opens DESC
+        `);
+        res.json({
+            success: true,
+            apps: rows.map((r) => ({
+                appId: r.app_id,
+                opens: Number(r.opens || 0),
+                uniqueUsers: Number(r.unique_users || 0),
+                firstOpened: r.first_opened,
+                lastOpened: r.last_opened,
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load app-wise usage:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load app-wise usage.' });
+    }
+});
+
 /**
  * What the CURRENTLY LOGGED IN user themselves is allowed to see/do — their own hub-wide access
  * level (gates whether the frontend even shows the Manage Access nav item/screen — see

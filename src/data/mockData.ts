@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import {
-  Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
+  Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
   CalendarClock, FileCheck2, HeartPulse,
 } from 'lucide-react-native';
@@ -112,7 +112,6 @@ export const NAV: NavItem[] = [
   { id: 'Home', label: 'Home', icon: Home },
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
-  { id: 'Recent', label: 'Recently Used', icon: Clock },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'My Profile', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },

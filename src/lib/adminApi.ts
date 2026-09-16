@@ -80,3 +80,24 @@ export async function getAdminUserAppStats(email: string): Promise<{ ok: boolean
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }
 }
+
+export interface AdminAppStat {
+  appId: string;
+  opens: number;
+  uniqueUsers: number;
+  firstOpened: string | null;
+  lastOpened: string | null;
+}
+
+/** Org-wide, app-wise usage — every app's total opens/unique users, not scoped to one user.
+ * Backs the "App-wise Usage" sheet in the Excel export. */
+export async function getAdminAppStats(): Promise<{ ok: boolean; apps?: AdminAppStat[]; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/admin/apps`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load app-wise usage.' };
+    return { ok: true, apps: data.apps };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}

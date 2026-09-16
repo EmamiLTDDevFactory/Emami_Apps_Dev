@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Animated, AccessibilityInfo, Platfor
 import { Star } from 'lucide-react-native';
 import type { AppItem } from '../types';
 import { colors, fonts, radii, appColor, motion, focusRingWeb } from '../theme/tokens';
+import { useIsMobile } from '../hooks/useColumnCount';
 
 interface AppCardProps {
   app: AppItem;
@@ -17,6 +18,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleFavorite }: AppCardProps) {
   const Icon = app.icon;
   const accent = appColor(app.id);
+  const isMobile = useIsMobile();
 
   const [reduceMotion, setReduceMotion] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -71,6 +73,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
       {...webHoverProps}
       style={[
         styles.card,
+        isMobile && styles.cardMobile,
         { shadowColor: accent, shadowOpacity, transform: [{ scale }] },
         focused && focusRingWeb,
       ]}
@@ -83,8 +86,8 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
       accessibilityLabel={`Open ${app.name}`}
     >
       <View style={styles.headerRow}>
-        <View style={[styles.iconBox, { backgroundColor: `${accent}1f` }]}>
-          <Icon size={19} color={accent} strokeWidth={2.1} />
+        <View style={[styles.iconBox, isMobile && styles.iconBoxMobile, { backgroundColor: `${accent}1f` }]}>
+          <Icon size={isMobile ? 16 : 19} color={accent} strokeWidth={2.1} />
         </View>
         <Pressable
           hitSlop={10}
@@ -97,7 +100,12 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
         </Pressable>
       </View>
 
-      <Text style={styles.title} numberOfLines={1}>{app.name}</Text>
+      {/* Mobile shows the full app name (no truncation) per instruction — desktop/tablet keeps
+          the single-line-with-ellipsis it already had, since card width there is generous enough
+          that a long name truncating was never actually a problem there. */}
+      <Text style={[styles.title, isMobile && styles.titleMobile]} numberOfLines={isMobile ? undefined : 1}>
+        {app.name}
+      </Text>
 
       {isTopUsed && (
         <View style={[styles.miniBadge, { backgroundColor: `${accent}14` }]}>
@@ -105,7 +113,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
         </View>
       )}
 
-      <Text style={styles.desc} numberOfLines={2}>{app.desc}</Text>
+      {!isMobile && <Text style={styles.desc} numberOfLines={2}>{app.desc}</Text>}
     </AnimatedPressable>
   );
 }
@@ -123,6 +131,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
+  // Compact mobile-only variant: smaller padding/min-height (the description is hidden on mobile
+  // instead, see the render above) so a card holds a full, unclipped app name without growing
+  // tall — a phone-width grid has less room per tile than desktop/tablet, so this trims the
+  // chrome around the name rather than shrinking the name itself.
+  cardMobile: {
+    padding: 10,
+    minHeight: 92,
+    borderRadius: radii.lg,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -135,6 +152,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBoxMobile: {
+    width: 30,
+    height: 30,
+  },
   favBtn: {
     padding: 4,
   },
@@ -143,6 +164,11 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansSemiBold,
     color: colors.ink,
     marginTop: 14,
+  },
+  titleMobile: {
+    fontSize: 12.5,
+    marginTop: 8,
+    lineHeight: 16,
   },
   miniBadge: {
     alignSelf: 'flex-start',
