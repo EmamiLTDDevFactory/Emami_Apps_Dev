@@ -58,6 +58,35 @@ function appStatRows(appStats: AdminAppStat[]): Record<string, string | number>[
   }));
 }
 
+/** Just the App-wise Usage sheet, standalone — for the dedicated download button on that section
+ * of the Administration screen, separate from the combined report below. */
+export async function exportAppStatsToExcel(appStats: AdminAppStat[]): Promise<void> {
+  const worksheet = XLSX.utils.json_to_sheet(appStatRows(appStats));
+  worksheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 20 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'App-wise Usage');
+
+  const stamp = new Date();
+  const ymd = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}`;
+  const filename = `app-wise-usage-${ymd}.xlsx`;
+
+  if (Platform.OS === 'web') {
+    XLSX.writeFile(workbook, filename);
+    return;
+  }
+
+  const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+  const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: filename,
+    });
+  }
+}
+
 export async function exportAdministrationReportToExcel(
   overview: AdminOverview,
   roster: AdminRosterEntry[],

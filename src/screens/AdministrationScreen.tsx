@@ -13,7 +13,7 @@ import {
   getAdminOverview, getAdminRoster, getAdminUserAppStats, getAdminAppStats,
   type AdminOverview, type AdminRosterEntry, type AdminUserAppStat, type AdminAppStat,
 } from '../lib/adminApi';
-import { exportAdministrationReportToExcel } from '../lib/exportAdminExcel';
+import { exportAdministrationReportToExcel, exportAppStatsToExcel } from '../lib/exportAdminExcel';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 
 /** App ids that manage their own role internally (own DB or SAP OData), rather than being
@@ -55,12 +55,16 @@ export default function AdministrationScreen() {
   const [rosterError, setRosterError] = useState('');
   const [rosterSearch, setRosterSearch] = useState('');
 
-  // Org-wide app-wise usage — fetched alongside overview/roster purely to back the Excel export
-  // button below; the screen itself doesn't render this as its own section (yet), just downloads
-  // it. Distinct from the per-user `appStats` state below (that one's the drill-down dialog).
+  // Org-wide app-wise usage — its own visible section below (App-wise Usage), plus the combined
+  // report download. Distinct from the per-user `appStats` state below (that one's the
+  // roster's user-detail drill-down dialog).
   const [orgAppStats, setOrgAppStats] = useState<AdminAppStat[]>([]);
+  const [orgAppStatsLoading, setOrgAppStatsLoading] = useState(true);
+  const [orgAppStatsError, setOrgAppStatsError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [appDownloading, setAppDownloading] = useState(false);
+  const [appDownloadError, setAppDownloadError] = useState('');
 
   const [selected, setSelected] = useState<AdminRosterEntry | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
@@ -84,9 +88,9 @@ export default function AdministrationScreen() {
       else setRosterError(result.error || 'Could not load the user roster.');
     });
     getAdminAppStats().then((result) => {
+      setOrgAppStatsLoading(false);
       if (result.ok && result.apps) setOrgAppStats(result.apps);
-      // No visible error state for this one — it only backs the Excel export, and that button
-      // is already disabled (see canDownload below) if this fetch happens to fail.
+      else setOrgAppStatsError(result.error || 'Could not load app-wise usage.');
     });
   }, []);
 
@@ -102,6 +106,18 @@ export default function AdministrationScreen() {
       setDownloadError('Could not generate the report. Please try again.');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleAppStatsDownload = async () => {
+    setAppDownloading(true);
+    setAppDownloadError('');
+    try {
+      await exportAppStatsToExcel(orgAppStats);
+    } catch {
+      setAppDownloadError('Could not generate the report. Please try again.');
+    } finally {
+      setAppDownloading(false);
     }
   };
 
@@ -333,6 +349,63 @@ export default function AdministrationScreen() {
                   </View>
                 </Pressable>
               ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.baseCard, styles.card]}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardIconBox}>
+              <TrendingUp size={15} color={colors.rust} />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.cardTitle}>App-wise Usage</Text>
+              <Text style={styles.cardSubtitle}>Total opens and unique users per app, org-wide</Text>
+            </View>
+            <Pressable
+              style={[styles.downloadBtn, orgAppStats.length === 0 && styles.downloadBtnDisabled]}
+              onPress={handleAppStatsDownload}
+              disabled={orgAppStats.length === 0 || appDownloading}
+              accessibilityRole="button"
+              accessibilityLabel="Download app-wise usage as Excel"
+            >
+              <Download size={13} color={colors.white} />
+              <Text style={styles.downloadBtnText}>{appDownloading ? 'Preparing…' : 'Download'}</Text>
+            </Pressable>
+          </View>
+
+          {!!appDownloadError && <Text style={styles.errorText}>{appDownloadError}</Text>}
+          {!!orgAppStatsError && <Text style={styles.errorText}>{orgAppStatsError}</Text>}
+
+          {orgAppStatsLoading ? (
+            <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
+          ) : (
+            <View style={styles.list}>
+              {orgAppStats.length === 0 && <Text style={styles.emptyText}>No app activity recorded yet.</Text>}
+              {orgAppStats.map((stat, i) => {
+                const accent = appColor(stat.appId);
+                const app = appById(stat.appId);
+                const Icon = app?.icon;
+                return (
+                  <View
+                    key={stat.appId}
+                    style={[styles.userRow, i < orgAppStats.length - 1 && styles.userRowBorder]}
+                  >
+                    <View style={styles.userHeaderRow}>
+                      <View style={[styles.flex1, styles.appDetailTitleRow]}>
+                        {Icon && <Icon size={15} color={accent} />}
+                        <Text style={styles.userEmail}>{appLabel(stat.appId)}</Text>
+                      </View>
+                      <Text style={styles.usageStat}>Last opened {formatDateShort(stat.lastOpened)}</Text>
+                    </View>
+                    <View style={styles.usageStatsRow}>
+                      <Text style={styles.usageStat}>{stat.opens} opens</Text>
+                      <Text style={styles.usageStatDivider}>·</Text>
+                      <Text style={styles.usageStat}>{stat.uniqueUsers} unique users</Text>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
