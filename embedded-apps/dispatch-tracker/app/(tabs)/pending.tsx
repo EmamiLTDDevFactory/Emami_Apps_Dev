@@ -151,12 +151,10 @@ export default function PendingScreen() {
         </FilterRow>
 
         <View style={styles.kpiRow}>
-          <KPICard icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
-          <KPICard icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
-        </View>
-        <View style={styles.kpiRow}>
-          <KPICard icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
-          <KPICard icon="📍" label="Towns" value={String(towns)} color={colors.navy} />
+          <KPICard compact icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
+          <KPICard compact icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
+          <KPICard compact icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
+          <KPICard compact icon="📍" label="Towns" value={String(towns)} color={colors.navy} />
         </View>
       </View>
 
@@ -407,7 +405,7 @@ function PendingRowCard({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   screenContent: { padding: 12, paddingBottom: 32 },
-  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  sticky: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 0, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 32 },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.bg },
@@ -445,7 +443,7 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: colors.navy, borderColor: colors.navy },
   toggleText: { fontSize: 12, fontWeight: '600', color: colors.g500 },
   toggleTextActive: { color: '#fff' },
-  kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  kpiRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
   groupBanner: {
     backgroundColor: colors.navyLt,
     borderWidth: 1,
