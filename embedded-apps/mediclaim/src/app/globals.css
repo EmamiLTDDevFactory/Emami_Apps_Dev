@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: #eef0f4;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d9d4ee;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b9b0e0;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl2 border border-border bg-white shadow-card;
+  }
+
+  .glass-card {
+    @apply rounded-xl2 border border-glassBorder bg-glass backdrop-blur-glass shadow-glassCard transition-shadow;
+  }
+  .glass-card:hover {
+    @apply shadow-glassCardHover;
+  }
+
+  .glass-panel {
+    @apply rounded-xl3 border border-glassBorder bg-glass backdrop-blur-glassHeavy shadow-pop;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-rustLight via-rust to-rustDeep text-white shadow-card hover:shadow-cardHover focus-visible:ring-rust;
+  }
+  .btn-ghost {
+    @apply btn border border-border bg-white text-ink hover:bg-appBg focus-visible:ring-rust;
+  }
+  .btn-success {
+    @apply btn bg-green text-white hover:bg-green/90 focus-visible:ring-green;
+  }
+  .btn-danger {
+    @apply btn bg-red text-white hover:bg-red/90 focus-visible:ring-red;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold;
+  }
+
+  .field-label {
+    @apply text-[11px] font-bold uppercase tracking-wide text-inkSoft;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-rust focus:ring-1 focus:ring-rust placeholder:text-inkSoft;
+  }
+
+  .select {
+    @apply w-full rounded-lg border border-border bg-white px-2.5 py-1.5 text-sm text-ink outline-none focus:border-rust focus:ring-1 focus:ring-rust;
+  }
+}
