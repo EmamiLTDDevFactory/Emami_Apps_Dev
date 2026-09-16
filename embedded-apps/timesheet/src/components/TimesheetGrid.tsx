@@ -566,28 +566,33 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           overflow set on it, so it's a spreadsheet-style frozen header over scrolling data,
           not the page-level sticky this had before. */}
       <div className="glass-card hidden md:block md:max-h-[65vh] md:overflow-auto">
-        <table className="w-full border-collapse text-sm">
+        {/* table-fixed + percentage widths on the header row, instead of the old min-w/auto-layout
+            combo - on a full-width page (see Shell.tsx) that let the browser redistribute leftover
+            space unevenly between columns, leaving odd gaps and a wrapping "Hours of Work" header.
+            Percentages give Task/Task Description (free-text entry, the widest actual content) most
+            of the room, while the narrow fixed-value columns stay a predictable, non-wrapping size. */}
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr className="border-b-2 border-glassRust bg-white">
-              <th scope="col" className="sticky left-0 top-0 z-30 min-w-[92px] whitespace-nowrap bg-white px-3 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky left-0 top-0 z-30 w-[8%] whitespace-nowrap bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Date
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[140px] bg-white px-3 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[9%] bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Day
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[130px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 In Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[130px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Out Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[90px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Hours of Work
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[170px] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[16%] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Task
               </th>
-              <th scope="col" className="sticky top-0 z-20 min-w-[200px] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[37%] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
                 Task Description
               </th>
             </tr>
