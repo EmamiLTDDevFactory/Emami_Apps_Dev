@@ -101,3 +101,24 @@ export async function getAdminAppStats(): Promise<{ ok: boolean; apps?: AdminApp
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }
 }
+
+export interface AdminAppUserStat {
+  email: string;
+  opens: number;
+  firstOpened: string | null;
+  lastOpened: string | null;
+}
+
+/** Per-user breakdown for ONE specific app — the inverse of getAdminUserAppStats (that one's "all
+ * apps for one user"; this is "all users for one app"). Backs the App-wise Usage section's
+ * per-app drill-down dialog and its own standalone Excel export. */
+export async function getAdminAppUserStats(appId: string): Promise<{ ok: boolean; users?: AdminAppUserStat[]; error?: string }> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/admin/app/${encodeURIComponent(appId)}/users`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load per-user stats for this app.' };
+    return { ok: true, users: data.users };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}

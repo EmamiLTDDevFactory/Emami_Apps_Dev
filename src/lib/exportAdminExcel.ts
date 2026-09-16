@@ -8,7 +8,8 @@ import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
 import { Platform } from 'react-native';
 import { appById } from '../data/mockData';
-import type { AdminAppStat, AdminOverview, AdminRosterEntry } from './adminApi';
+import type { UserProfile } from './authApi';
+import type { AdminAppStat, AdminAppUserStat, AdminOverview, AdminRosterEntry, AdminUserAppStat } from './adminApi';
 
 function appLabel(appId: string): string {
   return appById(appId)?.name || appId;
@@ -16,6 +17,31 @@ function appLabel(appId: string): string {
 
 function formatDateTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
+}
+
+function dateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Shared web-download / native-share tail end for every export below — one workbook in, one
+ * downloaded/shared .xlsx file out. */
+async function writeAndShare(workbook: XLSX.WorkBook, filename: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    XLSX.writeFile(workbook, filename);
+    return;
+  }
+
+  const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+  const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: filename,
+    });
+  }
 }
 
 function overviewRows(overview: AdminOverview): Record<string, string | number>[] {
@@ -65,26 +91,7 @@ export async function exportAppStatsToExcel(appStats: AdminAppStat[]): Promise<v
   worksheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 20 }];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'App-wise Usage');
-
-  const stamp = new Date();
-  const ymd = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}`;
-  const filename = `app-wise-usage-${ymd}.xlsx`;
-
-  if (Platform.OS === 'web') {
-    XLSX.writeFile(workbook, filename);
-    return;
-  }
-
-  const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-  const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
-
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: filename,
-    });
-  }
+  await writeAndShare(workbook, `app-wise-usage-${dateStamp()}.xlsx`);
 }
 
 export async function exportAdministrationReportToExcel(
@@ -106,23 +113,71 @@ export async function exportAdministrationReportToExcel(
   appSheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 20 }, { wch: 20 }];
   XLSX.utils.book_append_sheet(workbook, appSheet, 'App-wise Usage');
 
-  const stamp = new Date();
-  const ymd = `${stamp.getFullYear()}${String(stamp.getMonth() + 1).padStart(2, '0')}${String(stamp.getDate()).padStart(2, '0')}`;
-  const filename = `administration-report-${ymd}.xlsx`;
+  await writeAndShare(workbook, `administration-report-${dateStamp()}.xlsx`);
+}
 
-  if (Platform.OS === 'web') {
-    XLSX.writeFile(workbook, filename);
-    return;
-  }
+/** Every user's usage of ONE specific app — the App-wise Usage section's per-app drill-down
+ * export (its own row's "Download" button, not the section-wide one above). */
+export async function exportAppUserStatsToExcel(appId: string, users: AdminAppUserStat[]): Promise<void> {
+  const rows = users.map((u) => ({
+    Email: u.email,
+    'Total Opens': u.opens,
+    'First Opened': formatDateTime(u.firstOpened),
+    'Last Opened': formatDateTime(u.lastOpened),
+  }));
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  worksheet['!cols'] = [{ wch: 32 }, { wch: 12 }, { wch: 20 }, { wch: 20 }];
+  const workbook = XLSX.utils.book_new();
+  // Sheet names are capped at 31 chars by the xlsx format itself.
+  XLSX.utils.book_append_sheet(workbook, worksheet, appLabel(appId).slice(0, 31));
+  await writeAndShare(workbook, `app-usage-${appId}-${dateStamp()}.xlsx`);
+}
 
-  const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-  const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+/** One specific user's full report — summary stats plus their per-app breakdown — for the
+ * "Download" button in the roster's user-detail dialog. `profile` and `appStats` may still be
+ * loading/empty (e.g. a user who's never logged in); the sheets just read "—"/0 in that case
+ * rather than the button being blocked on them. */
+export async function exportUserReportToExcel(
+  user: AdminRosterEntry,
+  profile: UserProfile | null,
+  appStats: AdminUserAppStat[]
+): Promise<void> {
+  const workbook = XLSX.utils.book_new();
 
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: filename,
-    });
-  }
+  const summaryRows: Record<string, string | number>[] = [
+    { Field: 'Email', Value: user.email },
+    { Field: 'Status', Value: user.isActive ? 'Active' : 'Inactive' },
+    { Field: 'Access Level', Value: user.accessLevel },
+    { Field: 'Last Login', Value: formatDateTime(user.usage.lastLogin) },
+    { Field: 'Total Logins', Value: user.usage.logins },
+    { Field: 'Sessions', Value: user.usage.sessionsTotal },
+    { Field: 'Time Spent', Value: user.usage.timeSpent },
+    { Field: 'Apps Opened', Value: user.usage.appsOpened },
+    { Field: 'Most Used App', Value: user.usage.mostUsedApp ? appLabel(user.usage.mostUsedApp) : '—' },
+    { Field: 'Downloads', Value: profile?.downloads ?? '—' },
+    { Field: 'Favorites Added', Value: profile?.favoritesAdded ?? '—' },
+    { Field: 'Notifications Read', Value: profile?.notificationsRead ?? '—' },
+  ];
+  const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+  summarySheet['!cols'] = [{ wch: 22 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+  const appRows = user.apps.map((grant) => {
+    const stat = appStats.find((s) => s.appId === grant.appId);
+    return {
+      App: appLabel(grant.appId),
+      Role: grant.role,
+      Opens: stat?.opens ?? 0,
+      'First Opened': formatDateTime(stat?.firstOpened ?? null),
+      'Last Opened': formatDateTime(stat?.lastOpened ?? null),
+    };
+  });
+  const appSheet = XLSX.utils.json_to_sheet(
+    appRows.length > 0 ? appRows : [{ App: 'No app grants', Role: '', Opens: '', 'First Opened': '', 'Last Opened': '' }]
+  );
+  appSheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(workbook, appSheet, 'App Usage');
+
+  const safeEmail = user.email.replace(/[^a-z0-9]+/gi, '-');
+  await writeAndShare(workbook, `user-report-${safeEmail}-${dateStamp()}.xlsx`);
 }

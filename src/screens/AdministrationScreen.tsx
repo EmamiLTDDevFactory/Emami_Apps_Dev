@@ -10,10 +10,12 @@ import { appById } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import { getMyProfile, type UserProfile } from '../lib/authApi';
 import {
-  getAdminOverview, getAdminRoster, getAdminUserAppStats, getAdminAppStats,
-  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat, type AdminAppStat,
+  getAdminOverview, getAdminRoster, getAdminUserAppStats, getAdminAppStats, getAdminAppUserStats,
+  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat, type AdminAppStat, type AdminAppUserStat,
 } from '../lib/adminApi';
-import { exportAdministrationReportToExcel, exportAppStatsToExcel } from '../lib/exportAdminExcel';
+import {
+  exportAdministrationReportToExcel, exportAppStatsToExcel, exportAppUserStatsToExcel, exportUserReportToExcel,
+} from '../lib/exportAdminExcel';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 
 /** App ids that manage their own role internally (own DB or SAP OData), rather than being
@@ -70,11 +72,22 @@ export default function AdministrationScreen() {
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [selectedLoading, setSelectedLoading] = useState(false);
   const [selectedError, setSelectedError] = useState('');
+  const [userReportDownloading, setUserReportDownloading] = useState(false);
+  const [userReportError, setUserReportError] = useState('');
 
   // Per-app drill-down — opened by tapping an app tile inside the user-detail dialog above.
   const [appStats, setAppStats] = useState<Record<string, AdminUserAppStat>>({});
   const [appStatsLoading, setAppStatsLoading] = useState(false);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+
+  // Per-user breakdown for ONE app — opened by tapping a row in the App-wise Usage section below.
+  // Distinct from selectedAppId above (that one's inside the user-detail dialog, scoped to one
+  // user's own apps; this one's org-wide, scoped to one app's own users).
+  const [appUsersFor, setAppUsersFor] = useState<string | null>(null);
+  const [appUsers, setAppUsers] = useState<AdminAppUserStat[]>([]);
+  const [appUsersLoading, setAppUsersLoading] = useState(false);
+  const [appUsersError, setAppUsersError] = useState('');
+  const [appUsersDownloading, setAppUsersDownloading] = useState(false);
 
   useEffect(() => {
     getAdminOverview().then((result) => {
@@ -149,6 +162,43 @@ export default function AdministrationScreen() {
   };
 
   const closeAppDetail = () => setSelectedAppId(null);
+
+  const handleUserReportDownload = async () => {
+    if (!selected) return;
+    setUserReportDownloading(true);
+    setUserReportError('');
+    try {
+      await exportUserReportToExcel(selected, selectedProfile, Object.values(appStats));
+    } catch {
+      setUserReportError('Could not generate the report. Please try again.');
+    } finally {
+      setUserReportDownloading(false);
+    }
+  };
+
+  const openAppUsers = (appId: string) => {
+    setAppUsersFor(appId);
+    setAppUsers([]);
+    setAppUsersError('');
+    setAppUsersLoading(true);
+    getAdminAppUserStats(appId).then((result) => {
+      setAppUsersLoading(false);
+      if (result.ok && result.users) setAppUsers(result.users);
+      else setAppUsersError(result.error || 'Could not load per-user stats for this app.');
+    });
+  };
+
+  const closeAppUsers = () => setAppUsersFor(null);
+
+  const handleAppUsersDownload = async () => {
+    if (!appUsersFor) return;
+    setAppUsersDownloading(true);
+    try {
+      await exportAppUserStatsToExcel(appUsersFor, appUsers);
+    } finally {
+      setAppUsersDownloading(false);
+    }
+  };
 
   const visibleRoster = roster.filter((u) => u.email.toLowerCase().includes(rosterSearch.trim().toLowerCase()));
 
@@ -387,9 +437,12 @@ export default function AdministrationScreen() {
                 const app = appById(stat.appId);
                 const Icon = app?.icon;
                 return (
-                  <View
+                  <Pressable
                     key={stat.appId}
+                    onPress={() => openAppUsers(stat.appId)}
                     style={[styles.userRow, i < orgAppStats.length - 1 && styles.userRowBorder]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View per-user usage for ${appLabel(stat.appId)}`}
                   >
                     <View style={styles.userHeaderRow}>
                       <View style={[styles.flex1, styles.appDetailTitleRow]}>
@@ -403,7 +456,7 @@ export default function AdministrationScreen() {
                       <Text style={styles.usageStatDivider}>·</Text>
                       <Text style={styles.usageStat}>{stat.uniqueUsers} unique users</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -416,10 +469,21 @@ export default function AdministrationScreen() {
           <Pressable style={styles.dialogCard} onPress={() => {}}>
             <View style={styles.dialogHeaderRow}>
               <Text style={styles.dialogTitle}>{selected?.email}</Text>
+              <Pressable
+                style={[styles.downloadBtn, styles.dialogDownloadBtn]}
+                onPress={handleUserReportDownload}
+                disabled={userReportDownloading}
+                accessibilityRole="button"
+                accessibilityLabel={`Download report for ${selected?.email} as Excel`}
+              >
+                <Download size={12} color={colors.white} />
+                <Text style={styles.downloadBtnText}>{userReportDownloading ? 'Preparing…' : 'Download'}</Text>
+              </Pressable>
               <Pressable onPress={closeUser} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <X size={18} color={colors.inkSoft} />
               </Pressable>
             </View>
+            {!!userReportError && <Text style={styles.errorText}>{userReportError}</Text>}
 
             {selected && !selected.usage.hasLoggedIn ? (
               <Text style={styles.emptyText}>This user hasn't signed in to EmamiApps yet.</Text>
@@ -550,6 +614,61 @@ export default function AdministrationScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Per-user breakdown for ONE app — opened by tapping a row in the App-wise Usage section
+          above. Org-wide (every user who's ever opened this app), distinct from the per-app modal
+          above (that one's scoped to a single user's own apps). */}
+      <Modal visible={!!appUsersFor} transparent animationType="fade" onRequestClose={closeAppUsers}>
+        <Pressable style={styles.backdrop} onPress={closeAppUsers}>
+          <Pressable style={styles.dialogCard} onPress={() => {}}>
+            <View style={styles.dialogHeaderRow}>
+              <View style={[styles.flex1, styles.appDetailTitleRow]}>
+                {appUsersFor &&
+                  (() => {
+                    const Icon = appById(appUsersFor)?.icon;
+                    return Icon ? <Icon size={17} color={appColor(appUsersFor)} /> : null;
+                  })()}
+                <Text style={styles.dialogTitle} numberOfLines={1}>
+                  {appUsersFor ? appLabel(appUsersFor) : ''}
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.downloadBtn, styles.dialogDownloadBtn, appUsers.length === 0 && styles.downloadBtnDisabled]}
+                onPress={handleAppUsersDownload}
+                disabled={appUsers.length === 0 || appUsersDownloading}
+                accessibilityRole="button"
+                accessibilityLabel={`Download per-user usage for ${appUsersFor ? appLabel(appUsersFor) : 'this app'} as Excel`}
+              >
+                <Download size={12} color={colors.white} />
+                <Text style={styles.downloadBtnText}>{appUsersDownloading ? 'Preparing…' : 'Download'}</Text>
+              </Pressable>
+              <Pressable onPress={closeAppUsers} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                <X size={18} color={colors.inkSoft} />
+              </Pressable>
+            </View>
+
+            {appUsersLoading ? (
+              <ActivityIndicator size="small" color={colors.rust} style={styles.loadingIndicator} />
+            ) : appUsersError ? (
+              <Text style={styles.errorText}>{appUsersError}</Text>
+            ) : appUsers.length === 0 ? (
+              <Text style={styles.emptyText}>No one has opened this app yet.</Text>
+            ) : (
+              <ScrollView style={styles.dialogScrollList}>
+                {appUsers.map((u, i) => (
+                  <View key={u.email} style={[styles.userRow, i < appUsers.length - 1 && styles.userRowBorder]}>
+                    <View style={styles.userHeaderRow}>
+                      <Text style={[styles.flex1, styles.userEmail]} numberOfLines={1}>{u.email}</Text>
+                      <Text style={styles.usageStat}>Last opened {formatDateShort(u.lastOpened)}</Text>
+                    </View>
+                    <Text style={styles.usageStat}>{u.opens} opens</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenScaffold>
   );
 }
@@ -605,6 +724,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.sansSemiBold,
     color: colors.white,
+  },
+  dialogDownloadBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 10,
   },
   pageTitle: {
     fontSize: 18,
@@ -887,6 +1011,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     backgroundColor: colors.white,
     padding: 20,
+  },
+  dialogScrollList: {
+    maxHeight: 360,
   },
   dialogHeaderRow: {
     flexDirection: 'row',
