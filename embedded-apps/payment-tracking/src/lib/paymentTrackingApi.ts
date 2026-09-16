@@ -625,20 +625,19 @@ export async function submitApprovalDecisionBatch(
 // same ZMM_PO_FOLLOWUP_SRV service. Per the ZROLE_ACTION domain (SE11), Zstatus is one of:
 //   RD = Revised Delivery Date, SA = Approval for SES, AS = SES Created,
 //   RS = SES Reversed, MS = Mail Sent to P2P
-// UNLIKE every other entity in this file, the field names below (Ebeln/Ebelp/Lifnr/Name1/Ktext1/
-// Zstatus/Zdate/Comments/Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt) are NOT confirmed
-// against the live SEGW entity — 'ZProvisionLogSet' has never been queried before now, and (per
-// this file's header comment) this service's own $metadata endpoint doesn't serve metadata at all,
-// so there's no schema to check them against offline either. They're a best-effort guess, following
-// the exact naming convention every other entity on this service already uses (Ebeln/Ebelp/Lifnr/
-// Name1/Email are identical field names on ZProvisionTrackSet and ZVendorPOFollowupSet above; the
-// delivery/provision/invoice fields below reuse the exact casing already confirmed live on
-// ZVendorPOFollowupSet's read side — Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt, see
-// toVendorPOFollowupRow above — rather than the differently-cased RevisedDelDate/ZzinvDate one
-// might otherwise guess). toProvisionLogRow() below reads every field defensively (str()/
-// parseODataDate() already no-op to '' on anything missing/unparseable), so a wrong guess here
-// degrades to blank columns rather than a thrown error — ship this and correct field names once
-// SAP Basis confirms them or a live response shows the real ones.
+// Confirmed live 2026-09-16 (a real $filter'd GetEntitySet response): Filename/Comments/Email/
+// Mimetype/Lifnr/Ebeln/Ebelp/Lblni/Eindt/Waers/Netwr/ZzinvNo/ZinvDate/ZzinvAmt/RevisedDelDate/
+// Zstatus all come back exactly as mapped below. Matnr/Maktx/Zstatustxt are confirmed NOT present
+// on this entity at all (materialCode/materialDesc/the zstatusText fallback stay blank/derived,
+// that's expected). Two things changed between an earlier capture that same day and this one —
+// the entity itself now also returns `Value` (the attachment's base64 content, previously absent
+// even on rows with a populated Filename/Mimetype) and `LogDate`/`LogTime` (new fields, not
+// present before) — so this entity's own definition was extended server-side mid-day, not a
+// client request-format issue. `LogDate` is mapped to actionDate below (replacing the earlier
+// guess of a nonexistent `Zdate`); `LogTime` isn't currently surfaced anywhere in this row shape.
+// toProvisionLogRow() below still reads every field defensively (str()/parseODataDate() already
+// no-op to '' on anything missing/unparseable), so if this entity changes shape again it degrades
+// to blank columns rather than throwing.
 const LOG_ENTITY_SET = 'ZProvisionLogSet';
 
 /** Zstatus values per the ZROLE_ACTION domain (SE11) — see this section's header comment. */
@@ -656,15 +655,10 @@ export const PROVISION_LOG_STATUS_LABELS: Record<ProvisionLogStatus, string> = {
   MS: 'Mail Sent to P2P',
 };
 
-/** One submission-history entry from ZProvisionLogSet — see this section's header comment on why
- * these field names are a best-effort guess, not a confirmed mapping. entrySheetNo/materialCode/
- * materialDesc/currency/filename/mimetype/attachmentBase64 are a SECOND round of guesses (added
- * for the "Reverse SES"/"Mail for P2P" actions + attachment view on SES-created rows) — same
- * approach as the rest of this entity: reuse the exact casing already CONFIRMED live on
- * ZVendorPOFollowupSet (Lblni/Matnr/Maktx/Waers/Filename/Mimetype/Value, see toVendorPOFollowupRow
- * above), since these two entities share the same underlying PO-item shape. Not yet confirmed live
- * on ZProvisionLogSet itself — if the new actions/attachment silently do nothing, check these field
- * names against a real response first. */
+/** One submission-history entry from ZProvisionLogSet — see this section's header comment for what
+ * a live 2026-09-16 capture confirmed. entrySheetNo/currency/filename/mimetype/attachmentBase64
+ * all read correctly now; materialCode/materialDesc are confirmed always blank (the source fields
+ * don't exist on this entity). */
 export interface ProvisionLogRow {
   key: string;
   email: string; // Email
@@ -677,26 +671,27 @@ export interface ProvisionLogRow {
   /** Display label for zstatus — the entity's own text field if it returns one (guessed as
    * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
   zstatusText: string;
-  actionDate: string; // Zdate (guessed) — 'YYYY-MM-DD', when this log entry was recorded
+  actionDate: string; // LogDate — confirmed live 2026-09-16 (previously guessed as nonexistent Zdate)
   deliveryDate: string; // Eindt, 'YYYY-MM-DD'
-  revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or ''
+  revisedDeliveryDate: string; // RevisedDelDate, 'YYYY-MM-DD' or ''
   provisionValue: string; // Netwr
   invoiceNo: string; // ZzinvNo
   invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
   invoiceAmount: string; // ZzinvAmt
   remarks: string; // Comments
-  /** Lblni — NOT confirmed live on this entity. Needed as the ZProvHeader POST's header key trio
+  /** Lblni — confirmed live 2026-09-16. Needed as the ZProvHeader POST's header key trio
    * (Lifnr/Ebeln/Ebelp/Lblni) for submitLogAction below, same as VendorPOFollowupRow.entrySheetNo. */
   entrySheetNo: string; // Lblni
-  materialCode: string; // Matnr — NOT confirmed live on this entity
-  materialDesc: string; // Maktx — NOT confirmed live on this entity
-  currency: string; // Waers — NOT confirmed live on this entity
-  /** Attachment, if any — NOT confirmed live on this entity (see ProvisionLogRow's own header
-   * comment). Empty filename means either no attachment, or the field genuinely isn't returned
-   * here — same "unavailable" treatment as Pending Approval's attachmentBtnDisabled either way. */
+  materialCode: string; // Matnr — confirmed 2026-09-16: not returned by this entity, always ''
+  materialDesc: string; // Maktx — confirmed 2026-09-16: not returned by this entity, always ''
+  currency: string; // Waers — confirmed live 2026-09-16
+  /** Attachment — filename/mimetype/attachmentBase64 (Value) all confirmed live 2026-09-16. Same
+   * "empty Value doesn't reliably mean anything specific" caveat as Pending Approval's
+   * VendorPOFollowupSet applies here too — an empty attachmentBase64 with a populated filename
+   * still gets the "Attachment unavailable" treatment rather than being treated as an error. */
   filename: string; // Filename
   mimetype: string; // Mimetype
-  attachmentBase64: string; // Value
+  attachmentBase64: string; // Value — see comment above, confirmed never populated by this read
 }
 
 function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLogRow {
@@ -712,9 +707,9 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
     serviceText: str(raw.Ktext1),
     zstatus,
     zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
-    actionDate: parseODataDate(raw.Zdate),
+    actionDate: parseODataDate(raw.LogDate),
     deliveryDate: parseODataDate(raw.Eindt),
-    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    revisedDeliveryDate: parseODataDate(raw.RevisedDelDate),
     provisionValue: str(raw.Netwr),
     invoiceNo: str(raw.ZzinvNo),
     invoiceDate: parseODataDate(raw.ZinvDate),
