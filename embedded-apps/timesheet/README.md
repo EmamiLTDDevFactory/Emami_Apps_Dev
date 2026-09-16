@@ -1,16 +1,21 @@
-# React + Vite
+# TimeSheet
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Next.js (App Router, static export) embedded app — log work hours, submit monthly timesheets,
+and manage team approvals. Served under `/apps/timesheet` once merged into the Emami Apps hub's
+build (see repo root `scripts/build-embedded-apps.js`).
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```
+npm install
+npm run dev    # next dev — reachable at http://localhost:3000/apps/timesheet (basePath applies in dev too)
+npm run build  # next build && move the static export to dist/
+```
 
-## React Compiler
+Sign-in is via the Emami Apps hub's own session (no login screen of its own on the real
+deployment) — see `src/context/AppContext.tsx`'s hub-token exchange. Running standalone with no
+hub session falls back to a demo "log in as" picker (`src/components/gates/Login.tsx`), gated
+server-side by `ALLOW_DEMO_LOGIN` (see `server/.env.example`) and off in production.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+The backend (`server/`) is a separate Express + Postgres service, deployed independently — see
+its own comments for deploy details. It is not affected by anything in this frontend.
