@@ -394,6 +394,18 @@ export default function PaymentTrackingHistory() {
         attachmentName: state?.attachmentName,
       });
       patchRow(row.key, { acting: null, savedNotice: true });
+      // Move this row's "already saved" baseline forward to what was just submitted, so Save
+      // Invoice Details hides again immediately rather than staying visible (dirty-against-stale-
+      // row) until the next full refetch.
+      setRows((prev) => prev.map((r) => (r.key === row.key ? {
+        ...r,
+        invoiceNo: state?.invoiceNo ?? r.invoiceNo,
+        invoiceDate: state?.invoiceDate ?? r.invoiceDate,
+        invoiceAmount: state?.invoiceAmount ?? r.invoiceAmount,
+        filename: state?.attachmentName ?? r.filename,
+        mimetype: state?.attachmentMimeType ?? r.mimetype,
+        attachmentBase64: state?.attachmentBase64 ?? r.attachmentBase64,
+      } : r)));
     } catch (e) {
       patchRow(row.key, { acting: null, actionError: e instanceof Error ? e.message : 'Could not save the invoice details.' });
     }
@@ -557,6 +569,17 @@ export default function PaymentTrackingHistory() {
             const doneAction = doneActions[row.key];
             const busy = state.acting !== null;
             const editable = row.zstatus === 'AS' && !doneAction;
+            // Save Invoice Details only needs to appear when there's actually something to save:
+            // either the row didn't already have all four invoice fields filled in, or the user
+            // has changed one of them since the row loaded (per instruction).
+            const allInvoiceFieldsComplete = !!row.invoiceNo.trim() && !!row.invoiceDate && !!row.invoiceAmount.trim() && !!row.attachmentBase64;
+            const invoiceFieldsDirty = (
+              state.invoiceNo !== row.invoiceNo
+              || state.invoiceDate !== row.invoiceDate
+              || state.invoiceAmount !== row.invoiceAmount
+              || state.attachmentBase64 !== row.attachmentBase64
+            );
+            const showSaveButton = !allInvoiceFieldsComplete || invoiceFieldsDirty;
             return (
             <View key={row.key} style={styles.card}>
               <View style={styles.cardHeader}>
@@ -643,18 +666,20 @@ export default function PaymentTrackingHistory() {
                   </View>
                 ) : (
                   <View style={styles.rowActions}>
-                    <Pressable
-                      style={[styles.logActionBtn, styles.logActionBtnSave, busy && styles.btnDisabled]}
-                      onPress={() => saveInvoiceRow(row)}
-                      disabled={busy}
-                      accessibilityRole="button"
-                    >
-                      {state.acting === 'S' ? (
-                        <ActivityIndicator size="small" color={colors.rust} />
-                      ) : (
-                        <Text style={styles.logActionBtnSaveText}>{LOG_ACTION_LABELS.S}</Text>
-                      )}
-                    </Pressable>
+                    {showSaveButton && (
+                      <Pressable
+                        style={[styles.logActionBtn, styles.logActionBtnSave, busy && styles.btnDisabled]}
+                        onPress={() => saveInvoiceRow(row)}
+                        disabled={busy}
+                        accessibilityRole="button"
+                      >
+                        {state.acting === 'S' ? (
+                          <ActivityIndicator size="small" color={colors.rust} />
+                        ) : (
+                          <Text style={styles.logActionBtnSaveText}>{LOG_ACTION_LABELS.S}</Text>
+                        )}
+                      </Pressable>
+                    )}
                     <Pressable
                       style={[styles.logActionBtn, styles.logActionBtnReverse, busy && styles.btnDisabled]}
                       onPress={() => runLogAction(row, 'RS')}
