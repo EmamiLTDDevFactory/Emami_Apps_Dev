@@ -154,7 +154,7 @@ export default function Home() {
 
   return (
     <div>
-      <AccountBar showSignOut />
+      <AccountBar showSignOut name={profileName} />
       <div className="home-content">
         <div className="home-hero">
           <div className="home-hero-blob-a" />

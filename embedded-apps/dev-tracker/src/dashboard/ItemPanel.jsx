@@ -88,7 +88,7 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     setError(null);
     try {
       const payload = {};
-      for (const key of FIELDS) payload[key] = form[key] === '' ? '' : form[key];
+      for (const key of FIELDS) payload[key] = form[key];
       const saved = mode === 'edit' ? await apiUpdate(item.id, payload, email) : await apiCreate(payload, email);
       onSaved(saved);
     } catch (e) {

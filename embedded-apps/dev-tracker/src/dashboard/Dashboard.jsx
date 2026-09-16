@@ -3,7 +3,7 @@ import AccountBar from '../shared/AccountBar.jsx';
 import ItemPanel from './ItemPanel.jsx';
 import { apiList, apiMasterData, apiAiCommand, apiUpdate, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
-import { statusProgress, currentStageInfo, revisedTarget, isOverdue, fmtDate, riskLevel, daysSinceUpdate, daysBetween, todayStr } from '../shared/utils.js';
+import { statusProgress, revisedTarget, isOverdue, fmtDate, riskLevel, daysSinceUpdate, daysBetween, todayStr } from '../shared/utils.js';
 import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, STAGE_PIPELINE, RISK_META } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 

@@ -28,25 +28,29 @@ export function clearHubSessionAndRedirect() {
 }
 
 /** Shared account strip: avatar + name, with a sign-out menu on pages that had one
- * in the original (Home, Resource Utilization). Dashboard/Admin render it without. */
-export default function AccountBar({ showSignOut = false }) {
-  const [name, setName] = useState(null);
+ * in the original (Home, Resource Utilization). Dashboard/Admin render it without.
+ * Pass `name` when the parent already resolves the hub profile name itself (e.g.
+ * Home, which needs it for its own greeting) so this doesn't duplicate that fetch. */
+export default function AccountBar({ showSignOut = false, name: nameProp }) {
+  const resolvesOwnName = nameProp === undefined;
+  const [fetchedName, setFetchedName] = useState(null);
   const [open, setOpen] = useState(false);
   const email = getCurrentUserEmail();
 
   useEffect(() => {
+    if (!resolvesOwnName) return;
     let cancelled = false;
     apiMe(email).then((data) => {
-      if (!cancelled && data?.success && data.profile?.name) setName(data.profile.name);
+      if (!cancelled && data?.success && data.profile?.name) setFetchedName(data.profile.name);
     });
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [email, resolvesOwnName]);
 
   if (!email) return <div className="account-strip" />;
 
-  const displayName = name || email;
+  const displayName = (resolvesOwnName ? fetchedName : nameProp) || email;
 
   return (
     <div className="account-strip">
