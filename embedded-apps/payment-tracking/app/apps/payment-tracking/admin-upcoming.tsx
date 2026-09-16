@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -14,6 +14,8 @@ import {
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth, filterByFiscalYear } from '../../../src/lib/provisionMetrics';
 
 // Matches the hub's own useIsWideScreen breakpoint and this app's _layout.tsx copy of this
 // constant — a compact desktop layout kicks in at the same viewport width the side pane docks
@@ -96,13 +98,13 @@ function DateField({
         aria-label={label}
         style={{
           width: '100%',
-          height: compact ? 32 : 42,
-          padding: compact ? '4px 8px' : '8px 10px',
+          height: compact ? 34 : 42,
+          padding: compact ? '6px 8px' : '8px 10px',
           borderRadius: 8,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.white,
           color: colors.ink,
-          fontSize: compact ? 12 : 13.5,
+          fontSize: compact ? 12.5 : 13.5,
           boxSizing: 'border-box',
         }}
       />
@@ -199,6 +201,7 @@ function AttachField({
  * ZProvHeader (see paymentTrackingApi.ts's submitProvisionApproval/submitProvisionApprovalBatch). */
 export default function AdminUpcomingProvision() {
   const { email, role, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -213,6 +216,14 @@ export default function AdminUpcomingProvision() {
   // spacing this screen already had.
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
+
+  // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
+  // delivery date client-side, same as Pending Approval's own monthYearRows; ZVendorPOFollowupSet
+  // has no Gjahr server filter to send the year to, so both dimensions apply here.
+  const monthYearRows = useMemo(
+    () => filterByFiscalYear(filterByMonth(rows, month), year),
+    [rows, month, year]
+  );
 
   useEffect(() => {
     if (roleLoading) return;
@@ -458,6 +469,8 @@ export default function AdminUpcomingProvision() {
           <Text style={styles.errorText}>{loadError}</Text>
         ) : rows.length === 0 ? (
           <Text style={styles.emptyText}>No upcoming provision items.</Text>
+        ) : monthYearRows.length === 0 ? (
+          <Text style={styles.emptyText}>No upcoming provision items for the selected month/year.</Text>
         ) : (
           <>
             {selected.size > 0 && (
@@ -478,7 +491,7 @@ export default function AdminUpcomingProvision() {
               </View>
             )}
 
-            {rows.map((row) => {
+            {monthYearRows.map((row) => {
               const state = rowState[row.key];
               if (!state) return null;
               return (
@@ -674,55 +687,64 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   scrollCompact: {
-    padding: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   panelCompact: {
-    gap: 5,
+    gap: 10,
   },
   massBarCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   cardCompact: {
-    padding: 6,
-    gap: 4,
+    padding: 12,
+    gap: 8,
   },
   cardTitleCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   cardSubtitleCompact: {
-    fontSize: 10,
+    fontSize: 10.5,
   },
+  // Fixed-width columns instead of the base infoField's flexGrow: a field like Invoice Amount
+  // has no business stretching to match Service Text's width just because there's room left in
+  // the row — that's what was producing the oversized fields and uneven-looking gaps on a wide
+  // desktop viewport. Every field gets the same stable width here; the row simply wraps to as
+  // many columns as fit, with normal (not distracting) leftover space only at a row's own end.
   fieldGridCompact: {
-    gap: 4,
+    gap: 12,
   },
   infoFieldCompact: {
-    minWidth: 88,
-    flexBasis: '18%',
-    gap: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    width: 152,
+    gap: 3,
   },
   infoLabelCompact: {
-    fontSize: 8.5,
+    fontSize: 9.5,
   },
   infoValueCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   editInputCompact: {
-    paddingVertical: 4,
-    fontSize: 11.5,
+    paddingVertical: 6,
+    fontSize: 12.5,
   },
   attachBtnCompact: {
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   attachBtnTextCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   delvConfRowCompact: {
-    paddingTop: 4,
+    paddingTop: 8,
   },
   sendBtnCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   flex1: { flex: 1 },
   loadingWrap: {
