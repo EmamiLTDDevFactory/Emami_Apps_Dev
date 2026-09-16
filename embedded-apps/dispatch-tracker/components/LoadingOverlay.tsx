@@ -6,34 +6,23 @@ import { colors } from '@/constants/theme';
  *  loading.inv in DataContext, driven by the Go button in TopBar. */
 export function LoadingOverlay() {
   const spin = useRef(new Animated.Value(0)).current;
-  const bounce = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const spinLoop = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 1100, easing: Easing.linear, useNativeDriver: true })
-    );
-    const bounceLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bounce, { toValue: 1, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(bounce, { toValue: 0, duration: 450, easing: Easing.in(Easing.quad), useNativeDriver: true }),
-      ])
+      Animated.timing(spin, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: true })
     );
     spinLoop.start();
-    bounceLoop.start();
-    return () => {
-      spinLoop.stop();
-      bounceLoop.stop();
-    };
-  }, [spin, bounce]);
+    return () => spinLoop.stop();
+  }, [spin]);
 
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const translateX = bounce.interpolate({ inputRange: [0, 1], outputRange: [-5, 5] });
 
   return (
     <View style={styles.overlay} pointerEvents="auto">
       <View style={styles.ringWrap}>
+        {/* Single rotating arc — no separate static track ring, so only one ring is ever visible. */}
         <Animated.View style={[styles.ring, { transform: [{ rotate }] }]} />
-        <Animated.Text style={[styles.truck, { transform: [{ translateX }] }]}>🚚</Animated.Text>
+        <Text style={styles.truck}>🚚</Text>
       </View>
       <Text style={styles.label}>Depot Details Loading</Text>
     </View>
@@ -52,16 +41,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 50,
   },
-  ringWrap: { width: 74, height: 74, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  ringWrap: { width: 78, height: 78, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   ring: {
     position: 'absolute',
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 5,
-    borderColor: colors.navyLt,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 4,
+    borderColor: 'transparent',
     borderTopColor: colors.navy,
+    borderRightColor: colors.navy,
   },
-  truck: { fontSize: 26 },
+  truck: { fontSize: 28 },
   label: { fontSize: 12, fontWeight: '700', color: colors.navy, letterSpacing: 0.4 },
 });
