@@ -10,7 +10,7 @@
 // off the Lambda — which would also require re-registering the SAML Reply URL (ACS URL) with
 // Microsoft Entra, since that's derived from the same base URL. Falls back to
 // EXPO_PUBLIC_AUTH_API_URL so this doesn't break if the new env var isn't set yet.
-import type { AccessLevel, AppRole, MyAccess, UserAccessEntry } from '../types';
+import type { AccessLevel, AppRole, MyAccess, UserAccessEntry, UserAppGrant } from '../types';
 
 const ACCESS_API_URL =
   process.env.EXPO_PUBLIC_ACCESS_API_URL || process.env.EXPO_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -36,14 +36,23 @@ export async function listAuthorizedUsers(): Promise<{ ok: boolean; users?: User
   }
 }
 
-export async function addAuthorizedUser(email: string): Promise<ApiResult> {
+/** `apps` on a successful result is whatever the backend auto-granted (see server.js's
+ * DEFAULT_GRANTED_APPS) on top of the bare "authorized to sign in" row — currently
+ * Mediclaim/Term Policy's base User role. Callers should fold this into whatever roles the admin
+ * additionally picked in the Add User dialog, not discard it, so the just-added row shows its
+ * true granted apps immediately instead of only after a page refresh. */
+export async function addAuthorizedUser(email: string): Promise<ApiResult & { apps?: UserAppGrant[] }> {
   try {
     const res = await fetch(`${ACCESS_API_URL}/access/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    return await parseResult(res);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      return { ok: false, error: data?.error || 'Something went wrong. Please try again.' };
+    }
+    return { ok: true, apps: data.apps };
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }

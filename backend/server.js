@@ -65,6 +65,12 @@ const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
 }
+/** Every brand-new authorized user gets the base 'User' role on these apps immediately, with no
+ * Super Admin having to grant them one by one — see POST /access/users below. Both are
+ * employee-facing forms (Mediclaim/Term Policy) everyone in the company is expected to be able to
+ * use the moment they're added to the hub; Admin access on top of this default still has to be
+ * granted explicitly through Manage Access, same as any other app. */
+const DEFAULT_GRANTED_APPS = ['mediclaim', 'term-policy'];
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app roles
  * above. Order matters for the permission checks in the access-level route below. */
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
@@ -299,7 +305,10 @@ apiRouter.get('/access/me', async (req, res) => {
     }
 });
 
-/** Grant a brand-new email access to the hub (active by default, Viewer access level, no apps granted yet). */
+/** Grant a brand-new email access to the hub (active by default, Viewer access level) — and, per
+ * DEFAULT_GRANTED_APPS above, the base User role on Mediclaim/Term Policy right away, so those two
+ * apps work the instant someone's added instead of needing a separate Manage Access grant. Every
+ * other app still starts ungranted, same as before. */
 apiRouter.post('/access/users', async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(email)) {
@@ -313,7 +322,16 @@ apiRouter.post('/access/users', async (req, res) => {
         if (rows.length === 0) {
             return res.status(409).json({ success: false, error: 'This email already has access.' });
         }
-        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps: [] });
+        if (DEFAULT_GRANTED_APPS.length > 0) {
+            await pool.query(
+                `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role)
+                 SELECT $1, app_id, 'User' FROM UNNEST($2::text[]) AS app_id
+                 ON CONFLICT (email, app_id) DO NOTHING`,
+                [email, DEFAULT_GRANTED_APPS]
+            );
+        }
+        const apps = DEFAULT_GRANTED_APPS.map((appId) => ({ appId, role: 'User' }));
+        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps });
     } catch (err) {
         console.error('[access] Failed to add authorized user:', err.message);
         res.status(500).json({ success: false, error: 'Could not add this user.' });

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD'];
+export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD', 'General'];
 
 /**
  * Live app URLs. Every real app renders inside a WebView on the launch screen
@@ -92,8 +92,8 @@ const RAW_APPS: AppItem[] = [
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
   { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Finance', icon: FileCheck2, uses: 0 },
-  { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Finance', icon: HeartPulse, uses: 0 },
-  { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'Finance', icon: ShieldCheck, uses: 0 },
+  { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'General', icon: HeartPulse, uses: 0 },
+  { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'General', icon: ShieldCheck, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
