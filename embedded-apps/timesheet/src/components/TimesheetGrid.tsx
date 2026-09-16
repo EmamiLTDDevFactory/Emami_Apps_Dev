@@ -560,8 +560,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
         </div>
       )}
 
-      {/* Desktop / tablet: one row per day (multiple lines if 2+ tasks that day) */}
-      <div className="glass-card hidden overflow-x-auto md:block">
+      {/* Desktop / tablet: one row per day (multiple lines if 2+ tasks that day). Boxed with its
+          own scrollbar (fixed height, overflow-auto) instead of growing the whole page - the
+          header row's sticky top-0 below sticks relative to THIS scrolling box once it has
+          overflow set on it, so it's a spreadsheet-style frozen header over scrolling data,
+          not the page-level sticky this had before. */}
+      <div className="glass-card hidden md:block md:max-h-[65vh] md:overflow-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b-2 border-glassRust bg-white">
@@ -842,9 +846,10 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
         </table>
       </div>
 
-      {/* Desktop: same always-visible totals mobile's card list already has below, since the
-          table's own <tfoot> above needs scrolling all the way down a full month to see. */}
-      <div className="glass-card sticky bottom-0 z-20 hidden divide-x divide-glassRust overflow-hidden md:flex md:items-stretch">
+      {/* Desktop: same always-visible totals mobile's card list already has below - the table
+          above is now its own boxed/scrolling area (not the whole page), so this sits right
+          under it without needing to be sticky itself; it's already always in view. */}
+      <div className="glass-card mt-4 hidden divide-x divide-glassRust overflow-hidden md:flex md:items-stretch">
         <div className="flex flex-1 items-center justify-between px-6 py-3">
           <span className="text-sm font-semibold text-rustDeep">Month Total</span>
           <span className="text-lg font-bold text-rustDeep">{totals.month.toFixed(2).replace(/\.00$/, '')}h</span>
