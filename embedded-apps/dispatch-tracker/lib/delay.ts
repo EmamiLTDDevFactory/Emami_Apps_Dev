@@ -63,3 +63,20 @@ export function eddVsActualColor(edd: unknown, actualDeliveryDate: unknown): str
   if (!a) return colors.g400;
   return a.getTime() <= e.getTime() ? colors.green : colors.red;
 }
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Days between EDD and actual delivery (positive = late, negative = early).
+ * SAP's own TotalDelay field has been observed returning 0/wrong values for
+ * invoices that are clearly late by EDD vs ActDelDate, so completed rows
+ * recompute it here instead of trusting SAP — see normalizeInvoice in
+ * sapMapping.ts, which falls back to SAP's value only when either date is
+ * missing (e.g. non-completed rows without an actual delivery date yet).
+ */
+export function edDeliveryDelay(edd: unknown, actualDeliveryDate: unknown): number | null {
+  const e = toDate(edd);
+  const a = toDate(actualDeliveryDate);
+  if (!e || !a) return null;
+  return Math.round((a.getTime() - e.getTime()) / MS_PER_DAY);
+}
