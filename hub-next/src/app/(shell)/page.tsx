@@ -7,7 +7,6 @@ import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
 import { useAuth } from '../../context/AuthContext';
 import { useUnlockedAppIds } from '../../hooks/useAppAccess';
-import { useColumnCount } from '../../hooks/useColumnCount';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
 import { RECENT, APPS, CATEGORIES, appById } from '../../data/mockData';
@@ -25,11 +24,18 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   General: Grid3x3,
 };
 
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  All: 'Every application in one place',
+  Finance: 'Expenses, market rates & PO deviations',
+  Operations: 'Dispatch, audits, timesheets & tracking',
+  IBD: 'IBD provision & payment tracking',
+  General: 'Mediclaim & term policy submissions',
+};
+
 export default function HomePage() {
   const router = useRouter();
   const { userEmail, profile } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
-  const numColumns = useColumnCount();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openApp = (app: AppItem) => {
@@ -76,7 +82,7 @@ export default function HomePage() {
       </div>
       <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 0, marginBottom: 10 }}>Choose a category to see its applications</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${numColumns}, minmax(0, 1fr))`, gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10, marginBottom: 20 }}>
         {CATEGORIES.map((c) => {
           const Icon = CATEGORY_ICONS[c] || Grid3x3;
           const accent = catColor(c);
@@ -93,32 +99,46 @@ export default function HomePage() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 10,
+                gap: 6,
                 aspectRatio: '1',
-                border: locked ? `1px solid ${colors.border}` : `1px solid ${colors.border}`,
-                borderRadius: radii.xl,
+                border: `1px solid ${colors.border}`,
+                borderRadius: radii.lg,
                 backgroundColor: locked ? colors.appBg : colors.white,
-                boxShadow: locked ? 'none' : `0 4px 10px 0 ${accent}1a`,
+                boxShadow: locked ? 'none' : `0 3px 8px 0 ${accent}1a`,
                 opacity: locked ? 0.6 : 1,
                 cursor: locked ? 'not-allowed' : 'pointer',
-                padding: 12,
+                padding: 10,
               }}
               aria-disabled={locked}
               aria-label={locked ? `${c}, locked — no apps in this category yet` : `Open ${c} applications in a new tab`}
             >
-              <div style={{ width: 44, height: 44, borderRadius: radii.md, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f` }}>
-                {locked ? <Lock size={19} color={accent} strokeWidth={2.1} /> : <Icon size={21} color={accent} strokeWidth={2.1} />}
+              <div style={{ width: 32, height: 32, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
+                {locked ? <Lock size={15} color={accent} strokeWidth={2.1} /> : <Icon size={16} color={accent} strokeWidth={2.1} />}
               </div>
-              <p style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: locked ? colors.inkSoft : colors.ink, margin: 0, textAlign: 'center' }}>
+              <p style={{ fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: locked ? colors.inkSoft : colors.ink, margin: 0, textAlign: 'center' }}>
                 {c}
               </p>
-              {locked && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3, borderRadius: radii.pill, padding: '2px 8px', backgroundColor: colors.white }}>
-                  <Lock size={8} color={colors.inkSoft} strokeWidth={2.4} />
-                  <span style={{ fontSize: 9, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
-                    Locked
-                  </span>
+              {locked ? (
+                <span style={{ fontSize: 8, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
+                  Locked
                 </span>
+              ) : (
+                <p
+                  style={{
+                    fontSize: 9.5,
+                    lineHeight: '12px',
+                    color: colors.inkSoft,
+                    fontFamily: fonts.sansRegular,
+                    margin: 0,
+                    textAlign: 'center',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {CATEGORY_DESCRIPTIONS[c]}
+                </p>
               )}
             </button>
           );
