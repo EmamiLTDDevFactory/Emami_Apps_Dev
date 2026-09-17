@@ -14,6 +14,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { avatarGradient } from '../utils/avatar';
 import { BASE_PATH } from './gates/BASE_PATH';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
@@ -44,13 +45,6 @@ function useIsWideScreen() {
     return () => window.removeEventListener('resize', check);
   }, []);
   return wide;
-}
-
-const AVATAR_GRADIENTS = ['from-rust to-rustLight', 'from-teal to-rust', 'from-amber to-rust', 'from-blue to-rustLight'];
-function avatarGradient(id?: string) {
-  let hash = 0;
-  for (const ch of id || '') hash = (hash * 31 + ch.charCodeAt(0)) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[hash];
 }
 
 export function useIsWideScreenExport() {
