@@ -1,29 +1,36 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { ChevronRight, LayoutGrid, Lock } from 'lucide-react';
+import React, { useRef } from 'react';
+import { ChevronRight, LayoutGrid, Landmark, Cog, Wallet, Grid3x3, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
-import FilterBar from '../../components/FilterBar';
 import { useAuth } from '../../context/AuthContext';
 import { useUnlockedAppIds } from '../../hooks/useAppAccess';
+import { useColumnCount } from '../../hooks/useColumnCount';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
-import { RECENT, APPS, appById } from '../../data/mockData';
-import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
+import { RECENT, APPS, CATEGORIES, appById } from '../../data/mockData';
+import { colors, fonts, fontWeights, radii, appColor, catColor } from '../../theme/tokens';
 import type { AppItem, CategoryFilter } from '../../types';
+
+/** One icon per category tile — 'All' isn't a real category (see catColor's fallback-to-rust for
+ * it too), so it gets a neutral catalog glyph rather than something that'd imply it's just another
+ * segment. */
+const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
+  All: LayoutGrid,
+  Finance: Landmark,
+  Operations: Cog,
+  IBD: Wallet,
+  General: Grid3x3,
+};
 
 export default function HomePage() {
   const router = useRouter();
   const { userEmail, profile } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
+  const numColumns = useColumnCount();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Home shows only the category segregation itself — clicking a tile expands an inline dropdown
-  // of that category's apps right below the tile row (no navigation); clicking it again, or a
-  // different tile, collapses/switches it. Only one open at a time.
-  const [expandedCategory, setExpandedCategory] = useState<CategoryFilter | null>(null);
 
   const openApp = (app: AppItem) => {
     // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
@@ -40,8 +47,11 @@ export default function HomePage() {
     router.push(`/apps/${app.id}`);
   };
 
-  const onCategoryChange = (c: CategoryFilter) => {
-    setExpandedCategory((prev) => (prev === c ? null : c));
+  // Home shows only the category segregation itself, as square tiles — clicking an unlocked one
+  // opens that category's own app list in a fresh tab (/my-applications already seeds its filter
+  // from ?category=), rather than navigating away from Home or expanding anything in place.
+  const openCategory = (c: CategoryFilter) => {
+    window.open(`/my-applications?category=${encodeURIComponent(c)}`, '_blank', 'noopener,noreferrer');
   };
 
   const onScroll = () => {
@@ -51,11 +61,6 @@ export default function HomePage() {
   };
 
   const visibleRecent = RECENT.filter((r) => unlockedAppIds.has(r.id));
-  const expandedApps = expandedCategory
-    ? expandedCategory === 'All'
-      ? APPS
-      : APPS.filter((a) => a.cat === expandedCategory)
-    : [];
 
   return (
     <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', padding: 16, paddingBottom: 40 }}>
@@ -71,49 +76,54 @@ export default function HomePage() {
       </div>
       <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 0, marginBottom: 10 }}>Choose a category to see its applications</p>
 
-      <FilterBar category={expandedCategory} onCategoryChange={onCategoryChange} unlockedAppIds={unlockedAppIds} hideSort expandable />
-
-      {expandedCategory && (
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden', marginBottom: 20 }}>
-          {expandedApps.map((app, i) => {
-            const Icon = app.icon;
-            const accent = appColor(app.id);
-            const locked = !unlockedAppIds.has(app.id);
-            return (
-              <button
-                key={app.id}
-                type="button"
-                onClick={() => openApp(app)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: 12,
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: i < expandedApps.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  opacity: locked ? 0.6 : 1,
-                }}
-              >
-                <div style={{ width: 30, height: 30, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1a`, flexShrink: 0 }}>
-                  {locked ? <Lock size={13} color={accent} /> : <Icon size={15} color={accent} />}
-                </div>
-                <p style={{ flex: 1, fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {app.name}
-                </p>
-                {locked ? (
-                  <span style={{ fontSize: 9, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft, flexShrink: 0 }}>Locked</span>
-                ) : (
-                  <ChevronRight size={14} color={colors.inkSoft} style={{ flexShrink: 0 }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${numColumns}, minmax(0, 1fr))`, gap: 12, marginBottom: 20 }}>
+        {CATEGORIES.map((c) => {
+          const Icon = CATEGORY_ICONS[c] || Grid3x3;
+          const accent = catColor(c);
+          const categoryApps = c === 'All' ? [] : APPS.filter((a) => a.cat === c);
+          const locked = c !== 'All' && categoryApps.length > 0 && categoryApps.every((a) => !unlockedAppIds.has(a.id));
+          return (
+            <button
+              key={c}
+              type="button"
+              disabled={locked}
+              onClick={() => openCategory(c)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                aspectRatio: '1',
+                border: locked ? `1px solid ${colors.border}` : `1px solid ${colors.border}`,
+                borderRadius: radii.xl,
+                backgroundColor: locked ? colors.appBg : colors.white,
+                boxShadow: locked ? 'none' : `0 4px 10px 0 ${accent}1a`,
+                opacity: locked ? 0.6 : 1,
+                cursor: locked ? 'not-allowed' : 'pointer',
+                padding: 12,
+              }}
+              aria-disabled={locked}
+              aria-label={locked ? `${c}, locked — no apps in this category yet` : `Open ${c} applications in a new tab`}
+            >
+              <div style={{ width: 44, height: 44, borderRadius: radii.md, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f` }}>
+                {locked ? <Lock size={19} color={accent} strokeWidth={2.1} /> : <Icon size={21} color={accent} strokeWidth={2.1} />}
+              </div>
+              <p style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: locked ? colors.inkSoft : colors.ink, margin: 0, textAlign: 'center' }}>
+                {c}
+              </p>
+              {locked && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, borderRadius: radii.pill, padding: '2px 8px', backgroundColor: colors.white }}>
+                  <Lock size={8} color={colors.inkSoft} strokeWidth={2.4} />
+                  <span style={{ fontSize: 9, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
+                    Locked
+                  </span>
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
       <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden' }}>
