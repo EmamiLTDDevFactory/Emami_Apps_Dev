@@ -83,6 +83,7 @@ export default function Home() {
   const [roleLabel, setRoleLabel] = useState(null);
   const [loading, setLoading] = useState(true);
   const [distWindowIdx, setDistWindowIdx] = useState(0);
+  const [statusWindowIdx, setStatusWindowIdx] = useState(0);
   const [profileName, setProfileName] = useState(null);
   const [notifState, setNotifState] = useState({ read: new Set(), cleared: new Set() });
   const now = useClock();
@@ -128,6 +129,7 @@ export default function Home() {
 
   const activeItems = useMemo(() => items.filter((i) => !['Completed', 'Cancelled'].includes(i.status)), [items]);
   const overdueItems = useMemo(() => items.filter(isOverdue), [items]);
+  const completedItems = useMemo(() => items.filter((i) => i.status === 'Completed'), [items]);
 
   const oneMonthAgoMs = useMemo(() => {
     const d = new Date();
@@ -137,28 +139,26 @@ export default function Home() {
   const totalTrend = useMemo(() => trendVsLastMonth(items, oneMonthAgoMs), [items, oneMonthAgoMs]);
   const activeTrend = useMemo(() => trendVsLastMonth(activeItems, oneMonthAgoMs), [activeItems, oneMonthAgoMs]);
   const overdueTrend = useMemo(() => trendVsLastMonth(overdueItems, oneMonthAgoMs), [overdueItems, oneMonthAgoMs]);
+  const completedTrend = useMemo(() => trendVsLastMonth(completedItems, oneMonthAgoMs), [completedItems, oneMonthAgoMs]);
 
   const roster = useMemo(() => computeConcurrency(buildRoster(items), new Date(new Date().toDateString())), [items]);
   const stretchedCount = roster.filter((r) => r.band.label === 'Stretched').length;
-  // Roster entries have no createdAt of their own (they're derived from concurrent items),
-  // so this re-runs the same roster math with `asOf` set to a month ago instead of reusing
-  // trendVsLastMonth — a direct count comparison, same real data either way.
-  const stretchedTrend = useMemo(() => {
-    const past = computeConcurrency(buildRoster(items), new Date(oneMonthAgoMs)).filter((r) => r.band.label === 'Stretched').length;
-    if (past === stretchedCount) return null;
-    const diff = stretchedCount - past;
-    return { pct: past === 0 ? 100 : Math.round((Math.abs(diff) / past) * 100), up: diff > 0 };
-  }, [items, stretchedCount, oneMonthAgoMs]);
 
+  // Assignment Status supports the same rolling time-window filter as Module-wise
+  // distribution below, scoped by createdAt just like that chart.
+  const statusScoped = useMemo(() => {
+    const cutoff = distWindowCutoff(DIST_WINDOWS[statusWindowIdx]);
+    return cutoff == null ? items : items.filter((it) => it.createdAt && new Date(it.createdAt).getTime() >= cutoff);
+  }, [items, statusWindowIdx]);
   const statusBuckets = useMemo(() => {
     const rows = STATUS_BUCKETS.map((b) => ({ ...b, count: 0 }));
-    for (const it of items) {
+    for (const it of statusScoped) {
       const bucket = rows.find((b) => b.test(it));
       if (bucket) bucket.count += 1;
     }
     return rows.filter((b) => b.count > 0);
-  }, [items]);
-  const statusPctBase = items.length || 1;
+  }, [statusScoped]);
+  const statusPctBase = statusScoped.length || 1;
 
   const moduleDistribution = useMemo(() => {
     const cutoff = distWindowCutoff(DIST_WINDOWS[distWindowIdx]);
@@ -274,9 +274,9 @@ export default function Home() {
 
         <div className="kpi-row">
           <KpiTile icon={LayersIcon} tone="accent" label="Total initiatives" value={items.length} trend={totalTrend} />
-          <KpiTile icon={CheckCircleIcon} tone="blue" label="Active" value={activeItems.length} trend={activeTrend} />
+          <KpiTile icon={ClockIcon} tone="blue" label="Active" value={activeItems.length} trend={activeTrend} />
           <KpiTile icon={AlertIcon} tone="red" label="Overdue" value={overdueItems.length} trend={overdueTrend} invertTrend />
-          <KpiTile icon={UsersIcon} tone="amber" label="Stretched people" value={stretchedCount} trend={stretchedTrend} invertTrend />
+          <KpiTile icon={CheckCircleIcon} tone="green" label="Completed" value={completedItems.length} trend={completedTrend} />
         </div>
 
         <div className="major-grid">
@@ -325,9 +325,18 @@ export default function Home() {
           </a>
 
           <div className="major-tile major-tile-static tone-gray">
-            <MajorTileHead icon={PieChartIcon} tone="gray" title="Assignment Status" desc={`${items.length} total`} noArrow />
+            <div className="major-tile-head with-select">
+              <div className="major-tile-icon tone-gray"><PieChartIcon size={18} /></div>
+              <div className="major-tile-heading">
+                <h2 className="major-tile-title">Assignment Status</h2>
+                <div className="major-tile-desc">{statusScoped.length} total</div>
+              </div>
+              <select className="widget-select" value={statusWindowIdx} onChange={(e) => setStatusWindowIdx(Number(e.target.value))}>
+                {DIST_WINDOWS.map((w, i) => <option key={w.label} value={i}>{w.label}</option>)}
+              </select>
+            </div>
             <div className="major-tile-body assignment-status-body">
-              <StatusDonut buckets={statusBuckets} total={items.length} />
+              <StatusDonut buckets={statusBuckets} total={statusScoped.length} />
               <div className="status-legend">
                 {statusBuckets.map((b) => (
                   <div className="status-legend-row" key={b.key}>

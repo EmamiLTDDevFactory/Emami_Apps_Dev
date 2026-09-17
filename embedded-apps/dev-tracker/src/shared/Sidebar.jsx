@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { DatabaseIcon, ShieldIcon, StarBadgeIcon, UploadCloudIcon, SettingsIcon, LogOutIcon } from './icons.jsx';
+import { DatabaseIcon, ShieldIcon, StarBadgeIcon, UploadCloudIcon, LogOutIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
 function backToEmamiApps() {
@@ -13,10 +13,9 @@ function backToEmamiApps() {
 // Dashboard major tile on Home, so they don't need their own nav entries too.
 const NAV = [
   { key: 'masterData', label: 'Master Data', href: () => ROUTES.admin, icon: DatabaseIcon, section: 'admin', adminOnly: true },
-  { key: 'qaSupport', label: 'QA Support', href: () => ROUTES.qaSupport, icon: ShieldIcon, section: 'admin', adminOnly: true },
   { key: 'importCenter', label: 'Import Center', href: () => ROUTES.importCenter, icon: UploadCloudIcon, section: 'admin', adminOnly: true },
   { key: 'evaluation', label: 'Evaluation', href: () => ROUTES.evaluation, icon: StarBadgeIcon, section: 'personal' },
-  { key: 'settings', label: 'Settings', href: () => ROUTES.settings, icon: SettingsIcon, section: 'trailing' },
+  { key: 'qaSupport', label: 'QA Support', href: () => ROUTES.qaSupport, icon: ShieldIcon, section: 'trailing' },
 ];
 
 const SECTIONS = [
@@ -63,17 +62,34 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
       </nav>
 
       <div className="sidebar-visual" aria-hidden="true">
-        <svg className="sidebar-visual-art" viewBox="0 0 200 150" fill="none" stroke="var(--accent)" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="45" y="14" width="110" height="76" rx="7" />
-          <rect x="56" y="25" width="88" height="54" rx="3" />
-          <path d="M26 106 L174 106 L190 136 L10 136 Z" />
-          <rect x="86" y="114" width="28" height="12" rx="3" />
-          <g stroke="none" fill="var(--accent)">
-            <rect x="38" y="118" width="11" height="7" rx="1.5" opacity="0.6" />
-            <rect x="54" y="118" width="11" height="7" rx="1.5" opacity="0.6" />
-            <rect x="135" y="118" width="11" height="7" rx="1.5" opacity="0.6" />
-            <rect x="151" y="118" width="11" height="7" rx="1.5" opacity="0.6" />
-          </g>
+        <svg className="sidebar-visual-art" viewBox="0 0 200 160" fill="none">
+          <defs>
+            <linearGradient id="sbCardGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="var(--accent)" stopOpacity="0.9" />
+              <stop offset="1" stopColor="var(--accent)" stopOpacity="0.45" />
+            </linearGradient>
+          </defs>
+          {/* Back cards — a loose stack, suggesting a queue of tracked items */}
+          <rect x="26" y="66" width="112" height="72" rx="13" fill="url(#sbCardGrad)" opacity="0.22" transform="rotate(-9 82 102)" />
+          <rect x="50" y="52" width="112" height="76" rx="13" fill="url(#sbCardGrad)" opacity="0.35" transform="rotate(5 106 90)" />
+          {/* Front card */}
+          <rect x="38" y="40" width="118" height="86" rx="15" fill="var(--sb-bg-2)" stroke="var(--accent)" strokeWidth="2.4" />
+          {/* Checklist rows */}
+          <circle cx="58" cy="61" r="6.5" fill="url(#sbCardGrad)" />
+          <path d="M54.5 61 L57 63.7 L62.5 57.5" stroke="var(--sb-bg-2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="71" y="57" width="62" height="7.5" rx="3.75" fill="var(--accent)" opacity="0.55" />
+
+          <circle cx="58" cy="83" r="6.5" fill="url(#sbCardGrad)" />
+          <path d="M54.5 83 L57 85.7 L62.5 79.5" stroke="var(--sb-bg-2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="71" y="79" width="46" height="7.5" rx="3.75" fill="var(--accent)" opacity="0.55" />
+
+          <circle cx="58" cy="105" r="6.5" fill="none" stroke="var(--accent)" strokeWidth="2.4" opacity="0.6" />
+          <rect x="71" y="101" width="54" height="7.5" rx="3.75" fill="var(--accent)" opacity="0.3" />
+
+          {/* Floating accent particles for depth */}
+          <circle cx="168" cy="46" r="5" fill="var(--accent)" opacity="0.5" />
+          <circle cx="180" cy="70" r="3" fill="var(--accent)" opacity="0.35" />
+          <circle cx="24" cy="48" r="3.5" fill="var(--accent)" opacity="0.3" />
         </svg>
       </div>
 

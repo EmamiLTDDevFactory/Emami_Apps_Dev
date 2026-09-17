@@ -37,7 +37,7 @@
 .sidebar-section { margin-bottom: 16px; }
 .sidebar-section-divider { border-top: 1px solid var(--sb-border); padding-top: 10px; }
 .sidebar-section-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  font-size: 11px; font-weight: 700; letter-spacing: .02em;
   color: var(--text-2); padding: 8px 10px 7px; opacity: .75;
 }
 .sidebar-link {
@@ -51,10 +51,10 @@
 .sidebar-link.active { background: var(--sb-active-bg); color: var(--sb-active-text); font-weight: 600; }
 .sidebar-link.active svg { color: var(--sb-active-text); }
 
-/* A laptop-and-keyboard line-art motif filling the dead space above the footer — drawn
-   inline (not a stock photo — nothing to license or hotlink) so it reads as "a computer"
-   rather than abstract color. Sits over a soft accent color wash, faded to transparent at
-   the top edge so it blends into --sb-bg instead of cutting in sharply. */
+/* A stacked-checklist-card motif filling the dead space above the footer — drawn inline
+   (not a stock photo — nothing to license or hotlink) so it reads as "tracked work" rather
+   than abstract color. Sits over a soft accent color wash, faded to transparent at the top
+   edge so it blends into --sb-bg instead of cutting in sharply. */
 .sidebar-visual {
   flex: 1;
   min-height: 150px;
