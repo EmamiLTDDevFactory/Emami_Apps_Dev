@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Cog, Wallet, Grid3x3 } from 'lucide-react';
+import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Cog, Wallet, Grid3x3, ChevronDown, ChevronUp } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows, catColor } from '../theme/tokens';
 import { CATEGORIES, APPS } from '../data/mockData';
 import type { CategoryFilter, SortOption } from '../types';
@@ -20,7 +20,9 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
 };
 
 interface FilterBarProps {
-  category: CategoryFilter;
+  /** null means "none selected/expanded" — used by Home, where a tile toggles an inline dropdown
+   * rather than acting as a single-select filter, so no tile is highlighted until one is opened. */
+  category: CategoryFilter | null;
   onCategoryChange: (c: CategoryFilter) => void;
   sort?: SortOption;
   onSortChange?: (s: SortOption) => void;
@@ -35,9 +37,14 @@ interface FilterBarProps {
    * segregation picker with no app grid of its own to sort, `sort`/`onSortChange` are omitted
    * entirely rather than faked. */
   hideSort?: boolean;
+  /** Home's tiles toggle an inline dropdown instead of filtering a grid in place — this swaps the
+   * pressed-state semantics for expanded-state ones (a chevron instead of just a color change,
+   * aria-expanded instead of aria-pressed) so it's clear a tile opens something rather than just
+   * selects it. */
+  expandable?: boolean;
 }
 
-export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds, hideSort }: FilterBarProps) {
+export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds, hideSort, expandable }: FilterBarProps) {
   const [sortOpen, setSortOpen] = useState(false);
 
   return (
@@ -70,7 +77,8 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
                 opacity: locked ? 0.6 : 1,
                 boxShadow: active && !locked ? shadows.sm : 'none',
               }}
-              aria-pressed={active}
+              aria-pressed={expandable ? undefined : active}
+              aria-expanded={expandable ? active : undefined}
               aria-disabled={locked}
               aria-label={locked ? `${c}, locked — no apps in this category yet` : c}
             >
@@ -86,6 +94,9 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
                 >
                   {c}
                 </span>
+                {expandable && !locked && (
+                  active ? <ChevronUp size={13} color={accent} /> : <ChevronDown size={13} color={colors.inkSoft} />
+                )}
               </span>
               {locked && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>

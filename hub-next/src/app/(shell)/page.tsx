@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { ChevronRight, LayoutGrid } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ChevronRight, LayoutGrid, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUnlockedAppIds } from '../../hooks/useAppAccess';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
-import { RECENT, appById } from '../../data/mockData';
+import { RECENT, APPS, appById } from '../../data/mockData';
 import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
 import type { AppItem, CategoryFilter } from '../../types';
 
@@ -19,6 +19,11 @@ export default function HomePage() {
   const { userEmail, profile } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Home shows only the category segregation itself — clicking a tile expands an inline dropdown
+  // of that category's apps right below the tile row (no navigation); clicking it again, or a
+  // different tile, collapses/switches it. Only one open at a time.
+  const [expandedCategory, setExpandedCategory] = useState<CategoryFilter | null>(null);
 
   const openApp = (app: AppItem) => {
     // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
@@ -35,13 +40,8 @@ export default function HomePage() {
     router.push(`/apps/${app.id}`);
   };
 
-  // Home shows only the category segregation itself — picking one routes to My Applications,
-  // pre-filtered to that category, where the actual app tiles (and the sort control, which has
-  // nothing to act on here) live. `category` is display-only below: Home never filters anything
-  // in place, so there's no "currently selected" category to track — it always shows 'All'
-  // un-highlighted-by-a-real-filter until a tile is clicked and this page is left behind.
   const onCategoryChange = (c: CategoryFilter) => {
-    router.push(c === 'All' ? '/my-applications' : `/my-applications?category=${encodeURIComponent(c)}`);
+    setExpandedCategory((prev) => (prev === c ? null : c));
   };
 
   const onScroll = () => {
@@ -51,6 +51,11 @@ export default function HomePage() {
   };
 
   const visibleRecent = RECENT.filter((r) => unlockedAppIds.has(r.id));
+  const expandedApps = expandedCategory
+    ? expandedCategory === 'All'
+      ? APPS
+      : APPS.filter((a) => a.cat === expandedCategory)
+    : [];
 
   return (
     <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', padding: 16, paddingBottom: 40 }}>
@@ -66,7 +71,49 @@ export default function HomePage() {
       </div>
       <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 0, marginBottom: 10 }}>Choose a category to see its applications</p>
 
-      <FilterBar category="All" onCategoryChange={onCategoryChange} unlockedAppIds={unlockedAppIds} hideSort />
+      <FilterBar category={expandedCategory} onCategoryChange={onCategoryChange} unlockedAppIds={unlockedAppIds} hideSort expandable />
+
+      {expandedCategory && (
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden', marginBottom: 20 }}>
+          {expandedApps.map((app, i) => {
+            const Icon = app.icon;
+            const accent = appColor(app.id);
+            const locked = !unlockedAppIds.has(app.id);
+            return (
+              <button
+                key={app.id}
+                type="button"
+                onClick={() => openApp(app)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 12,
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: i < expandedApps.length - 1 ? `1px solid ${colors.border}` : 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  opacity: locked ? 0.6 : 1,
+                }}
+              >
+                <div style={{ width: 30, height: 30, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1a`, flexShrink: 0 }}>
+                  {locked ? <Lock size={13} color={accent} /> : <Icon size={15} color={accent} />}
+                </div>
+                <p style={{ flex: 1, fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {app.name}
+                </p>
+                {locked ? (
+                  <span style={{ fontSize: 9, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft, flexShrink: 0 }}>Locked</span>
+                ) : (
+                  <ChevronRight size={14} color={colors.inkSoft} style={{ flexShrink: 0 }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
       <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden' }}>
