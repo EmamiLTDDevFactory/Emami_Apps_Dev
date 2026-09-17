@@ -1,35 +1,24 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { ChevronRight, LayoutGrid } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
 import FilterBar from '../../components/FilterBar';
-import AppGrid from '../../components/AppGrid';
-import { useFavorites } from '../../context/FavoritesContext';
 import { useAuth } from '../../context/AuthContext';
-import { useSearch } from '../../context/SearchContext';
-import { useFilteredApps } from '../../hooks/useFilteredApps';
-import { useUnlockedAppIds, useAppRoles } from '../../hooks/useAppAccess';
+import { useUnlockedAppIds } from '../../hooks/useAppAccess';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
 import { RECENT, appById } from '../../data/mockData';
 import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
-import type { AppItem, CategoryFilter, SortOption } from '../../types';
+import type { AppItem, CategoryFilter } from '../../types';
 
 export default function HomePage() {
   const router = useRouter();
-  const { favorites, toggleFavorite } = useFavorites();
   const { userEmail, profile } = useAuth();
-  const { searchValue: query } = useSearch();
   const unlockedAppIds = useUnlockedAppIds();
-  const appRoles = useAppRoles();
-  const [category, setCategory] = useState<CategoryFilter>('All');
-  const [sort, setSort] = useState<SortOption>('Alphabetical');
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const apps = useFilteredApps({ query, category, sort });
 
   const openApp = (app: AppItem) => {
     // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
@@ -40,15 +29,19 @@ export default function HomePage() {
     }
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.location.href = app.url;
+      window.open(app.url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${app.id}`);
   };
 
-  const onToggleFavorite = (id: string) => {
-    if (userEmail) logEvent(userEmail, favorites.has(id) ? 'FAVORITE_REMOVE' : 'FAVORITE_ADD');
-    toggleFavorite(id);
+  // Home shows only the category segregation itself — picking one routes to My Applications,
+  // pre-filtered to that category, where the actual app tiles (and the sort control, which has
+  // nothing to act on here) live. `category` is display-only below: Home never filters anything
+  // in place, so there's no "currently selected" category to track — it always shows 'All'
+  // un-highlighted-by-a-real-filter until a tile is clicked and this page is left behind.
+  const onCategoryChange = (c: CategoryFilter) => {
+    router.push(c === 'All' ? '/my-applications' : `/my-applications?category=${encodeURIComponent(c)}`);
   };
 
   const onScroll = () => {
@@ -65,23 +58,15 @@ export default function HomePage() {
 
       <CompanyPulseCard />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <div style={{ width: 26, height: 26, borderRadius: radii.md, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <LayoutGrid size={13} color={colors.rust} />
         </div>
         <p style={{ fontSize: 14, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>My Applications</p>
       </div>
+      <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 0, marginBottom: 10 }}>Choose a category to see its applications</p>
 
-      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} />
-      <AppGrid
-        apps={apps}
-        favorites={favorites}
-        query={query}
-        onOpenApp={openApp}
-        onToggleFavorite={onToggleFavorite}
-        unlockedAppIds={unlockedAppIds}
-        appRoles={appRoles}
-      />
+      <FilterBar category="All" onCategoryChange={onCategoryChange} unlockedAppIds={unlockedAppIds} hideSort />
 
       <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
       <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden' }}>

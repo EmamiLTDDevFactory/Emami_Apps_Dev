@@ -10,6 +10,15 @@ import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
 import EmpAppMark from './EmpAppMark';
 
+/** Strips a trailing slash (except on root `/`) so the active-route check below can't be fooled
+ * by it either way — this site's static export uses `trailingSlash: true`, so the real browser
+ * URL (and what `usePathname()` reports) is `/administration/`, not the bare `/administration`
+ * NAV_ROUTES lists; without this, the string-equality check never matched anything and no nav
+ * item ever showed as selected. */
+function normalizePath(path: string): string {
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+}
+
 interface SidebarProps {
   /** True only for the permanent desktop/laptop sidebar (see the shell layout) — shrinks the
    * brand mark a bit further than the mobile drawer's copy of this same component, to match the
@@ -28,7 +37,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
   const onOpenApp = (app: (typeof APPS)[number]) => {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
-    if (app.url) window.location.href = app.url;
+    if (app.url) window.open(app.url, '_blank', 'noopener,noreferrer');
   };
 
   // Manage Access and Administration are only for Super Admin/Admin — each of those pages also
@@ -91,7 +100,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
       <nav style={{ flex: 1, padding: '0 10px', overflowY: 'auto' }}>
         {navItems.map((item) => {
           const route = NAV_ROUTES[item.id];
-          const active = pathname === route;
+          const active = normalizePath(pathname) === normalizePath(route);
           const Icon = item.icon;
           return (
             <button

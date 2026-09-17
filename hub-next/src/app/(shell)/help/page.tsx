@@ -143,7 +143,7 @@ export default function HelpPage() {
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
     const url = APPS.find((a) => a.id === appId)?.url;
     if (url) {
-      window.location.href = url;
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${appId}`);

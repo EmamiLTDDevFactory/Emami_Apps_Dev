@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import FilterBar from './FilterBar';
 import AppGrid from './AppGrid';
 import { useFavorites } from '../context/FavoritesContext';
@@ -10,6 +10,7 @@ import { useSearch } from '../context/SearchContext';
 import { useFilteredApps } from '../hooks/useFilteredApps';
 import { useUnlockedAppIds, useAppRoles } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
+import { CATEGORIES } from '../data/mockData';
 import { colors, fonts, fontWeights } from '../theme/tokens';
 import type { AppItem, CategoryFilter, SortOption } from '../types';
 
@@ -18,14 +19,23 @@ interface AppListViewProps {
   onlyFavorites?: boolean;
 }
 
-export default function AppListView({ title, onlyFavorites }: AppListViewProps) {
+function AppListViewContent({ title, onlyFavorites }: AppListViewProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { favorites, toggleFavorite } = useFavorites();
   const { userEmail } = useAuth();
   const { searchValue: query } = useSearch();
   const unlockedAppIds = useUnlockedAppIds();
   const appRoles = useAppRoles();
-  const [category, setCategory] = useState<CategoryFilter>('All');
+
+  // Seeds the category filter from ?category=... (see the Home page's segregation tiles, which
+  // route here instead of filtering in place) — only read once, on the initial render; switching
+  // categories from the FilterBar itself after that is plain local state, same as before.
+  const requestedCategory = searchParams.get('category');
+  const initialCategory: CategoryFilter = (CATEGORIES as string[]).includes(requestedCategory || '')
+    ? (requestedCategory as CategoryFilter)
+    : 'All';
+  const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [sort, setSort] = useState<SortOption>('Alphabetical');
 
   const apps = useFilteredApps({ query, category, sort, favorites, onlyFavorites });
@@ -39,7 +49,7 @@ export default function AppListView({ title, onlyFavorites }: AppListViewProps) 
     }
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.location.href = app.url;
+      window.open(app.url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${app.id}`);
@@ -53,7 +63,7 @@ export default function AppListView({ title, onlyFavorites }: AppListViewProps) 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '16px 16px 40px' }}>
       <p style={{ fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 22, color: colors.ink, marginTop: 0, marginBottom: 16 }}>{title}</p>
-      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} />
+      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} unlockedAppIds={unlockedAppIds} />
       <AppGrid
         apps={apps}
         favorites={favorites}
@@ -64,5 +74,13 @@ export default function AppListView({ title, onlyFavorites }: AppListViewProps) 
         appRoles={appRoles}
       />
     </div>
+  );
+}
+
+export default function AppListView(props: AppListViewProps) {
+  return (
+    <Suspense fallback={null}>
+      <AppListViewContent {...props} />
+    </Suspense>
   );
 }

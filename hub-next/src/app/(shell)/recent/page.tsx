@@ -19,7 +19,7 @@ export default function RecentPage() {
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
     const url = appById(appId)?.url;
     if (url) {
-      window.location.href = url;
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${appId}`);

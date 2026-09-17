@@ -31,9 +31,10 @@ export const STATUS_STYLES = {
 }
 
 // Expected hours for a month = 8h for every working day in it (Mon-Fri, plus
-// working Saturdays - the 1st/3rd/5th of the month).
-export function expectedMonthlyHours(monthStartIso) {
-  return countWorkingDays(monthStartIso) * HOURS_PER_WEEKDAY
+// working Saturdays - the 1st/3rd/5th of the month, plus any the manager has
+// individually flipped to working - see date.js's `overrides` param).
+export function expectedMonthlyHours(monthStartIso, overrides) {
+  return countWorkingDays(monthStartIso, overrides) * HOURS_PER_WEEKDAY
 }
 
 // Whether an Approved timesheet is past the mock payroll cutoff and should be
@@ -85,8 +86,8 @@ export function computeRowTotal(entries, taskId) {
 // contribute 0h to worked-hours totals, each leave day taken on or before
 // `referenceDate` also lowers what's expected, so taking leave doesn't
 // create an artificial shortfall.
-export function expectedHoursToDate(monthStartIso, referenceDate = new Date(), leaveDaysToDate = 0) {
-  const base = countWorkingDaysUpTo(monthStartIso, referenceDate) * HOURS_PER_WEEKDAY
+export function expectedHoursToDate(monthStartIso, referenceDate = new Date(), leaveDaysToDate = 0, overrides) {
+  const base = countWorkingDaysUpTo(monthStartIso, referenceDate, overrides) * HOURS_PER_WEEKDAY
   return Math.max(0, base - leaveDaysToDate * HOURS_PER_WEEKDAY)
 }
 
