@@ -9,6 +9,7 @@
  * regardless of which path a user signs in through.
  */
 const { pool } = require('./db');
+const { recordAccessChange } = require('./accessHistory');
 
 /** Title-cases an email's local part as a last-resort display name when no real name is known
  * (direct email login has none; SAML login usually does via Azure's name claims). */
@@ -37,18 +38,28 @@ async function recordEvent(userId, eventType, appId) {
 }
 
 /** Called on every successful login. Creates the user on first login, otherwise just refreshes
- * name/status, then logs LOGIN + SESSION_START — never blocks or fails the login itself. */
+ * name/status, then logs LOGIN + SESSION_START — never blocks or fails the login itself.
+ *
+ * On a first login, carries over any mobile number an admin set for this email in the Add Users
+ * dialog before they'd ever signed in (see authorized_users.pre_registered_mobile, set by
+ * server.js's POST /access/users) — COALESCE means an existing row's own mobile (the person's own
+ * later Settings-page edit) always wins over this, so this can never clobber a real edit. */
 async function upsertLoginProfile(email, name) {
     const displayName = (name || '').trim() || nameFromEmail(email);
     try {
+        const { rows: [preReg] } = await pool.query(
+            'SELECT pre_registered_mobile FROM emami_apps.authorized_users WHERE email = $1',
+            [email]
+        );
         const { rows: [user] } = await pool.query(
-            `INSERT INTO emami_apps.users (email, name, status, last_login_at)
-             VALUES ($1, $2, 'Active', now())
+            `INSERT INTO emami_apps.users (email, name, mobile, status, last_login_at)
+             VALUES ($1, $2, $3, 'Active', now())
              ON CONFLICT (email) DO UPDATE SET
                  name = EXCLUDED.name,
+                 mobile = COALESCE(emami_apps.users.mobile, EXCLUDED.mobile),
                  last_login_at = now()
              RETURNING user_id, email, name, mobile, role, status, created_at, last_login_at`,
-            [email, displayName]
+            [email, displayName, preReg?.pre_registered_mobile || null]
         );
 
         await recordEvent(user.user_id, 'LOGIN');
@@ -298,12 +309,18 @@ router.post('/me/mobile', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Enter a valid 10-digit Indian mobile number.' });
     }
     try {
+        const { rows: [before] } = await pool.query('SELECT mobile FROM emami_apps.users WHERE email = $1', [email]);
         const { rowCount } = await pool.query(
             'UPDATE emami_apps.users SET mobile = $1 WHERE email = $2',
             [mobile, email]
         );
         if (rowCount === 0) {
             return res.status(404).json({ success: false, error: 'Unknown user.' });
+        }
+        if (before && before.mobile !== mobile) {
+            // Self-edit — changedBy is the same person the change is about, unlike every other
+            // change type here (which an admin makes on someone else's behalf).
+            recordAccessChange({ targetEmail: email, changedBy: email, changeType: 'MOBILE_SET', oldValue: before.mobile, newValue: mobile });
         }
         res.json({ success: true, mobile });
     } catch (err) {
@@ -341,3 +358,4 @@ module.exports.getProfile = getProfile;
 module.exports.recordEvent = recordEvent;
 module.exports.getUserIdByEmail = getUserIdByEmail;
 module.exports.formatTimeSpent = formatTimeSpent;
+module.exports.normalizeIndianMobile = normalizeIndianMobile;

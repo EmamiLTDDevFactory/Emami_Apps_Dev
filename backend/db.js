@@ -207,6 +207,53 @@ async function runMigrations() {
     } catch (err) {
         console.error('[postgres] user_profile_stats view migration failed:', err.message);
     }
+
+    // Lets an admin set a mobile number for someone in the Add Users dialog before that person has
+    // ever logged in (so before emami_apps.users even has a row for them to attach a mobile to).
+    // Held here until upsertLoginProfile's first-login INSERT carries it over to
+    // emami_apps.users.mobile — see userProfile.js. Never read back into the Manage Access UI as
+    // the "current" mobile once the user has logged in; users.mobile is authoritative from then on
+    // (the person's own Settings-page edits should never be clobbered by this pre-registration value).
+    try {
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_users
+                ADD COLUMN IF NOT EXISTS pre_registered_mobile text
+        `);
+        console.log('[postgres] Pre-registered mobile schema up to date (authorized_users.pre_registered_mobile).');
+    } catch (err) {
+        console.error('[postgres] Pre-registered mobile migration failed:', err.message);
+    }
+
+    // Change-history audit trail for Manage Access — every add/remove/activate-deactivate/access-
+    // level/app-role/mobile change, who made it, and what changed. Visible per-user or org-wide in
+    // the Administration tab (see server.js's GET /access/history). old_value/new_value are kept as
+    // plain text (not JSON) since every change type here is simple enough to describe as a short
+    // string (a role name, "true"/"false", an access level) — no need for a richer structure.
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS emami_apps.access_change_history (
+                id bigserial PRIMARY KEY,
+                target_email text NOT NULL,
+                changed_by text,
+                change_type text NOT NULL,
+                app_id text,
+                old_value text,
+                new_value text,
+                occurred_at timestamptz NOT NULL DEFAULT now()
+            )
+        `);
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS access_change_history_target_email_idx
+                ON emami_apps.access_change_history (target_email, occurred_at DESC)
+        `);
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS access_change_history_occurred_at_idx
+                ON emami_apps.access_change_history (occurred_at DESC)
+        `);
+        console.log('[postgres] Access change history schema up to date (emami_apps.access_change_history).');
+    } catch (err) {
+        console.error('[postgres] Access change history migration failed:', err.message);
+    }
 }
 
 module.exports = { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS };
