@@ -1,15 +1,16 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { ChevronRight, LayoutGrid, Landmark, Cog, Wallet, Grid3x3, Lock } from 'lucide-react';
+import { LayoutGrid, Landmark, Cog, Wallet, Grid3x3, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
 import { useAuth } from '../../context/AuthContext';
 import { useUnlockedAppIds } from '../../hooks/useAppAccess';
+import { useRecentApps } from '../../hooks/useRecentApps';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
-import { RECENT, APPS, CATEGORIES, appById } from '../../data/mockData';
+import { APPS, CATEGORIES, appById } from '../../data/mockData';
 import { colors, fonts, fontWeights, radii, appColor, catColor } from '../../theme/tokens';
 import type { AppItem, CategoryFilter } from '../../types';
 
@@ -36,6 +37,7 @@ export default function HomePage() {
   const router = useRouter();
   const { userEmail, profile } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
+  const recent = useRecentApps();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openApp = (app: AppItem) => {
@@ -66,7 +68,7 @@ export default function HomePage() {
     scrollTimeoutRef.current = setTimeout(() => setScrollActivity(false), 150);
   };
 
-  const visibleRecent = RECENT.filter((r) => unlockedAppIds.has(r.id));
+  const visibleRecent = recent.filter((r) => unlockedAppIds.has(r.id));
 
   return (
     <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', padding: 16, paddingBottom: 40 }}>
@@ -145,43 +147,64 @@ export default function HomePage() {
         })}
       </div>
 
-      <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, overflow: 'hidden' }}>
-        {visibleRecent.map((r, i) => {
-          const app = appById(r.id);
-          if (!app) return null;
-          const Icon = app.icon;
-          const accent = appColor(app.id);
-          return (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => openApp(app)}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: 14,
-                background: 'none',
-                border: 'none',
-                borderBottom: i < visibleRecent.length - 1 ? `1px solid ${colors.border}` : 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ width: 34, height: 34, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1a`, flexShrink: 0 }}>
-                <Icon size={16} color={accent} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{app.name}</p>
-                <p style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 2, marginBottom: 0 }}>{r.when}</p>
-              </div>
-              <ChevronRight size={15} color={colors.inkSoft} />
-            </button>
-          );
-        })}
-      </div>
+      {visibleRecent.length > 0 && (
+        <>
+          <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
+            {visibleRecent.map((r) => {
+              const app = appById(r.id);
+              if (!app) return null;
+              const Icon = app.icon;
+              const accent = appColor(app.id);
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => openApp(app)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    aspectRatio: '1',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: radii.lg,
+                    backgroundColor: colors.white,
+                    boxShadow: `0 3px 8px 0 ${accent}1a`,
+                    cursor: 'pointer',
+                    padding: 10,
+                  }}
+                  aria-label={`Open ${app.name}`}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
+                    <Icon size={16} color={accent} strokeWidth={2.1} />
+                  </div>
+                  <p style={{ fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0, textAlign: 'center' }}>
+                    {app.name}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 9.5,
+                      lineHeight: '12px',
+                      color: colors.inkSoft,
+                      fontFamily: fonts.sansRegular,
+                      margin: 0,
+                      textAlign: 'center',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {r.when}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
