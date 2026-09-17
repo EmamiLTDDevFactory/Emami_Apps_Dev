@@ -31,13 +31,9 @@ interface FilterBarProps {
    * every single app happens to be locked (that's exactly when someone most needs to see the full
    * catalog to know what to request access to). */
   unlockedAppIds: Set<string>;
-  /** Hides the sort control — for a caller (Home) that renders these tiles purely as a
-   * segregation picker with no app grid of its own to sort, `sort`/`onSortChange` are omitted
-   * entirely rather than faked. */
-  hideSort?: boolean;
 }
 
-export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds, hideSort }: FilterBarProps) {
+export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds }: FilterBarProps) {
   const [sortOpen, setSortOpen] = useState(false);
 
   return (
@@ -100,7 +96,7 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
         })}
       </div>
 
-      {!hideSort && onSortChange && (
+      {onSortChange && (
         <>
           <button
             type="button"

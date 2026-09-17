@@ -329,6 +329,37 @@ router.post('/me/mobile', async (req, res) => {
     }
 });
 
+/** Home screen's "Recently Used" tiles — the signed-in user's own most recently opened apps,
+ * deduplicated to one row per app (the most recent APP_OPEN wins) and ordered newest-first. This
+ * is real per-user activity (unlike the old hardcoded mock list), sourced from the same
+ * emami_apps.events log everything else on this router reads from. Same "email, no bearer token"
+ * auth posture as GET /me above. */
+router.get('/me/recent-apps', async (req, res) => {
+    const email = String(req.query?.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT e.app_id, MAX(e.occurred_at) AS last_opened_at
+             FROM emami_apps.users u
+             JOIN emami_apps.events e ON e.user_id = u.user_id
+             WHERE u.email = $1 AND e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+             GROUP BY e.app_id
+             ORDER BY last_opened_at DESC
+             LIMIT 8`,
+            [email]
+        );
+        res.json({
+            success: true,
+            apps: rows.map((r) => ({ appId: r.app_id, lastOpenedAt: r.last_opened_at })),
+        });
+    } catch (err) {
+        console.error('[userProfile] Failed to load recent apps for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load recently used apps.' });
+    }
+});
+
 /** Logs one activity event (app opened, favorite toggled, logout, etc.) for the ACTIVITY stats on
  * the Settings screen — fire-and-forget from the frontend's point of view, same "email, no bearer
  * token" auth posture as GET /me above. */
