@@ -22,8 +22,8 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
 interface FilterBarProps {
   category: CategoryFilter;
   onCategoryChange: (c: CategoryFilter) => void;
-  sort: SortOption;
-  onSortChange: (s: SortOption) => void;
+  sort?: SortOption;
+  onSortChange?: (s: SortOption) => void;
   /** The signed-in user's granted app ids (see useUnlockedAppIds) — a category tile whose apps are
    * ALL locked renders locked itself (dimmed, "Locked" badge) and isn't clickable, so someone
    * can't select a segregation that would only ever show them tiles they can't open anyway. 'All'
@@ -31,9 +31,13 @@ interface FilterBarProps {
    * every single app happens to be locked (that's exactly when someone most needs to see the full
    * catalog to know what to request access to). */
   unlockedAppIds: Set<string>;
+  /** Hides the sort control — for a caller (Home) that renders these tiles purely as a
+   * segregation picker with no app grid of its own to sort, `sort`/`onSortChange` are omitted
+   * entirely rather than faked. */
+  hideSort?: boolean;
 }
 
-export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds }: FilterBarProps) {
+export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds, hideSort }: FilterBarProps) {
   const [sortOpen, setSortOpen] = useState(false);
 
   return (
@@ -96,77 +100,81 @@ export default function FilterBar({ category, onCategoryChange, sort, onSortChan
         })}
       </div>
 
-      <button
-        type="button"
-        onClick={() => setSortOpen((v) => !v)}
-        style={{
-          width: 34,
-          height: 34,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          border: `1px solid ${colors.border}`,
-          borderRadius: radii.sm + 1,
-          backgroundColor: colors.white,
-          cursor: 'pointer',
-        }}
-        aria-label={`Sort by, currently ${sort}`}
-      >
-        <SlidersHorizontal size={15} color={colors.inkSoft} />
-      </button>
-
-      {sortOpen && (
+      {!hideSort && onSortChange && (
         <>
-          <div
-            onClick={() => setSortOpen(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 40 }}
-          />
-          <div
+          <button
+            type="button"
+            onClick={() => setSortOpen((v) => !v)}
             style={{
-              position: 'absolute',
-              top: 40,
-              right: 0,
-              width: 200,
-              backgroundColor: colors.white,
-              borderRadius: radii.lg,
+              width: 34,
+              height: 34,
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               border: `1px solid ${colors.border}`,
-              boxShadow: shadows.xl,
-              overflow: 'hidden',
-              zIndex: 50,
+              borderRadius: radii.sm + 1,
+              backgroundColor: colors.white,
+              cursor: 'pointer',
             }}
+            aria-label={`Sort by, currently ${sort}`}
           >
-            <p style={{ fontSize: 11, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5, padding: 14, margin: 0 }}>
-              Sort by
-            </p>
-            {SORT_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => {
-                  onSortChange(opt);
-                  setSortOpen(false);
-                }}
+            <SlidersHorizontal size={15} color={colors.inkSoft} />
+          </button>
+
+          {sortOpen && (
+            <>
+              <div
+                onClick={() => setSortOpen(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+              />
+              <div
                 style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '11px 16px',
-                  borderTop: `1px solid ${colors.border}`,
-                  background: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13.5,
-                  fontFamily: fonts.sansMedium,
-                  fontWeight: fontWeights.sansMedium,
-                  color: colors.ink,
+                  position: 'absolute',
+                  top: 40,
+                  right: 0,
+                  width: 200,
+                  backgroundColor: colors.white,
+                  borderRadius: radii.lg,
+                  border: `1px solid ${colors.border}`,
+                  boxShadow: shadows.xl,
+                  overflow: 'hidden',
+                  zIndex: 50,
                 }}
               >
-                {opt}
-                {sort === opt && <Check size={16} color={colors.rust} />}
-              </button>
-            ))}
-          </div>
+                <p style={{ fontSize: 11, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5, padding: 14, margin: 0 }}>
+                  Sort by
+                </p>
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => {
+                      onSortChange(opt);
+                      setSortOpen(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '11px 16px',
+                      borderTop: `1px solid ${colors.border}`,
+                      background: 'none',
+                      cursor: 'pointer',
+                      fontSize: 13.5,
+                      fontFamily: fonts.sansMedium,
+                      fontWeight: fontWeights.sansMedium,
+                      color: colors.ink,
+                    }}
+                  >
+                    {opt}
+                    {sort === opt && <Check size={16} color={colors.rust} />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
