@@ -11,7 +11,6 @@ import {
   Users,
   BarChart3,
   X,
-  ArrowLeft,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { BASE_PATH } from './gates/BASE_PATH';
@@ -46,13 +45,6 @@ function useIsWideScreen() {
   return wide;
 }
 
-const AVATAR_GRADIENTS = ['from-rust to-rustLight', 'from-teal to-rust', 'from-amber to-rust', 'from-blue to-rustLight'];
-function avatarGradient(id?: string) {
-  let hash = 0;
-  for (const ch of id || '') hash = (hash * 31 + ch.charCodeAt(0)) % AVATAR_GRADIENTS.length;
-  return AVATAR_GRADIENTS[hash];
-}
-
 export function useIsWideScreenExport() {
   return useIsWideScreen();
 }
@@ -60,10 +52,9 @@ export function useIsWideScreenExport() {
 export default function SidePane({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const isWideScreen = useIsWideScreen();
-  const { currentUser, getUserById } = useApp();
+  const { currentUser } = useApp();
   const isManager = currentUser?.role === 'manager';
   const navItems = isManager ? MANAGER_NAV : EMPLOYEE_NAV;
-  const manager = currentUser?.managerId ? getUserById(currentUser.managerId) : null;
 
   const paneClasses = isWideScreen
     ? 'relative w-64 shrink-0'
@@ -116,26 +107,6 @@ export default function SidePane({ isOpen, onClose }: { isOpen: boolean; onClose
             );
           })}
         </nav>
-
-        <div className="space-y-3 border-t border-glassBorder p-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br ${avatarGradient(
-                currentUser?.id
-              )} text-sm font-semibold text-white shadow-xs`}
-            >
-              {currentUser?.name?.[0]}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-ink">{currentUser?.name}</p>
-              {manager && <p className="truncate text-xs text-inkSoft">Reports to {manager.name}</p>}
-            </div>
-          </div>
-          <a href="/" className="btn-ghost w-full">
-            <ArrowLeft size={14} />
-            Back to Emami Apps
-          </a>
-        </div>
       </aside>
     </>
   );
