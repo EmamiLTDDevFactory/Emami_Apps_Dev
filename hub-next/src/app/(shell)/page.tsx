@@ -40,7 +40,7 @@ export default function HomePage() {
     }
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.location.href = app.url;
+      window.open(app.url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${app.id}`);
@@ -72,7 +72,7 @@ export default function HomePage() {
         <p style={{ fontSize: 14, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>My Applications</p>
       </div>
 
-      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} />
+      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} unlockedAppIds={unlockedAppIds} />
       <AppGrid
         apps={apps}
         favorites={favorites}

@@ -1,49 +1,96 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SlidersHorizontal, Check } from 'lucide-react';
-import { colors, fonts, fontWeights, radii, shadows } from '../theme/tokens';
-import { CATEGORIES } from '../data/mockData';
+import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Cog, Wallet, Grid3x3 } from 'lucide-react';
+import { colors, fonts, fontWeights, radii, shadows, catColor } from '../theme/tokens';
+import { CATEGORIES, APPS } from '../data/mockData';
 import type { CategoryFilter, SortOption } from '../types';
 
 const SORT_OPTIONS: SortOption[] = ['Alphabetical', 'Most Used', 'Recently Used'];
+
+/** One icon per category tile — 'All' isn't a real category (see catColor's fallback-to-rust for
+ * it too), so it gets a neutral catalog glyph rather than something that'd imply it's just another
+ * segment. */
+const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
+  All: LayoutGrid,
+  Finance: Landmark,
+  Operations: Cog,
+  IBD: Wallet,
+  General: Grid3x3,
+};
 
 interface FilterBarProps {
   category: CategoryFilter;
   onCategoryChange: (c: CategoryFilter) => void;
   sort: SortOption;
   onSortChange: (s: SortOption) => void;
+  /** The signed-in user's granted app ids (see useUnlockedAppIds) — a category tile whose apps are
+   * ALL locked renders locked itself (dimmed, "Locked" badge) and isn't clickable, so someone
+   * can't select a segregation that would only ever show them tiles they can't open anyway. 'All'
+   * is exempt — it's the reset/overview state, not a real segregation, so it stays usable even if
+   * every single app happens to be locked (that's exactly when someone most needs to see the full
+   * catalog to know what to request access to). */
+  unlockedAppIds: Set<string>;
 }
 
-export default function FilterBar({ category, onCategoryChange, sort, onSortChange }: FilterBarProps) {
+export default function FilterBar({ category, onCategoryChange, sort, onSortChange, unlockedAppIds }: FilterBarProps) {
   const [sortOpen, setSortOpen] = useState(false);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingRight: 8, flex: 1 }}>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingRight: 8, flex: 1 }}>
         {CATEGORIES.map((c) => {
           const active = category === c;
+          const Icon = CATEGORY_ICONS[c] || Grid3x3;
+          const accent = catColor(c);
+          const categoryApps = c === 'All' ? [] : APPS.filter((a) => a.cat === c);
+          const locked = c !== 'All' && categoryApps.length > 0 && categoryApps.every((a) => !unlockedAppIds.has(a.id));
           return (
             <button
               key={c}
               type="button"
-              onClick={() => onCategoryChange(c)}
+              onClick={() => !locked && onCategoryChange(c)}
+              disabled={locked}
               style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 5,
                 flexShrink: 0,
-                padding: '6px 12px',
-                borderRadius: radii.pill,
-                fontSize: 12.5,
-                fontFamily: fonts.sansSemiBold,
-                fontWeight: fontWeights.sansSemiBold,
-                cursor: 'pointer',
-                border: active ? 'none' : `1px solid ${colors.border}`,
-                backgroundColor: active ? colors.rust : colors.white,
-                color: active ? colors.white : colors.inkSoft,
-                boxShadow: active ? shadows.sm : 'none',
+                minWidth: 100,
+                padding: '9px 14px',
+                borderRadius: radii.lg,
+                cursor: locked ? 'not-allowed' : 'pointer',
+                border: locked ? `1px solid ${colors.border}` : active ? `1px solid ${accent}` : `1px solid ${colors.border}`,
+                backgroundColor: locked ? colors.appBg : active ? `${accent}14` : colors.white,
+                opacity: locked ? 0.6 : 1,
+                boxShadow: active && !locked ? shadows.sm : 'none',
               }}
               aria-pressed={active}
+              aria-disabled={locked}
+              aria-label={locked ? `${c}, locked — no apps in this category yet` : c}
             >
-              {c}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon size={14} color={locked ? colors.inkSoft : active ? accent : colors.inkSoft} />
+                <span
+                  style={{
+                    fontSize: 12.5,
+                    fontFamily: active ? fonts.sansBold : fonts.sansSemiBold,
+                    fontWeight: active ? fontWeights.sansBold : fontWeights.sansSemiBold,
+                    color: locked ? colors.inkSoft : active ? accent : colors.ink,
+                  }}
+                >
+                  {c}
+                </span>
+              </span>
+              {locked && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Lock size={8} color={colors.inkSoft} strokeWidth={2.4} />
+                  <span style={{ fontSize: 9, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
+                    Locked
+                  </span>
+                </span>
+              )}
             </button>
           );
         })}

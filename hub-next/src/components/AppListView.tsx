@@ -39,7 +39,7 @@ export default function AppListView({ title, onlyFavorites }: AppListViewProps) 
     }
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.location.href = app.url;
+      window.open(app.url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${app.id}`);
@@ -53,7 +53,7 @@ export default function AppListView({ title, onlyFavorites }: AppListViewProps) 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '16px 16px 40px' }}>
       <p style={{ fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, fontSize: 22, color: colors.ink, marginTop: 0, marginBottom: 16 }}>{title}</p>
-      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} />
+      <FilterBar category={category} onCategoryChange={setCategory} sort={sort} onSortChange={setSort} unlockedAppIds={unlockedAppIds} />
       <AppGrid
         apps={apps}
         favorites={favorites}
