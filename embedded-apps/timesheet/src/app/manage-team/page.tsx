@@ -474,12 +474,12 @@ export default function ManageTeamPage() {
         <div className="space-y-5">
           {directReports.map((user: any) => (
             <div key={user.id} className="card p-4">
-              <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-ink">{user.name}</p>
                   <p className="text-xs text-inkSoft">{user.email}</p>
                 </div>
-                <span className="flex shrink-0 items-center gap-3">
+                <span className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleDownloadExcel(user)}
