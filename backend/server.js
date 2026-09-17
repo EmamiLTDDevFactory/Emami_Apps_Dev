@@ -3,8 +3,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = require('./db');
-const { formatTimeSpent } = require('./userProfile');
+const { formatTimeSpent, normalizeIndianMobile } = require('./userProfile');
 const { syncAuditCapaAccess, revokeAuditCapaAccess } = require('./auditCapaSync');
+const { recordAccessChange, listAccessChanges } = require('./accessHistory');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -65,6 +66,12 @@ const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;
 }
+/** Every brand-new authorized user gets the base 'User' role on these apps immediately, with no
+ * Super Admin having to grant them one by one — see POST /access/users below. Both are
+ * employee-facing forms (Mediclaim/Term Policy) everyone in the company is expected to be able to
+ * use the moment they're added to the hub; Admin access on top of this default still has to be
+ * granted explicitly through Manage Access, same as any other app. */
+const DEFAULT_GRANTED_APPS = ['mediclaim', 'term-policy'];
 /** Hub-wide role (emami_apps.authorized_users.access_level) — distinct from the per-app roles
  * above. Order matters for the permission checks in the access-level route below. */
 const ACCESS_LEVELS = ['Super Admin', 'Admin', 'Viewer'];
@@ -99,18 +106,30 @@ apiRouter.get('/access/users', async (req, res) => {
             SELECT au.email,
                    au.is_active,
                    au.access_level,
+                   au.pre_registered_mobile,
+                   u.mobile AS profile_mobile,
                    COALESCE(
                        json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps
             FROM emami_apps.authorized_users au
             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
-            GROUP BY au.email, au.is_active, au.access_level, au.created_at
+            LEFT JOIN emami_apps.users u ON u.email = au.email
+            GROUP BY au.email, au.is_active, au.access_level, au.pre_registered_mobile, u.mobile, au.created_at
             ORDER BY au.created_at ASC
         `);
         res.json({
             success: true,
-            users: rows.map((r) => ({ email: r.email, isActive: r.is_active, accessLevel: r.access_level, apps: r.apps })),
+            // `mobile` prefers the person's own profile value (set via Settings, once they've
+            // logged in at least once) over the admin's pre-registration guess — see
+            // userProfile.js's upsertLoginProfile for how the latter seeds the former.
+            users: rows.map((r) => ({
+                email: r.email,
+                isActive: r.is_active,
+                accessLevel: r.access_level,
+                mobile: r.profile_mobile || r.pre_registered_mobile || null,
+                apps: r.apps,
+            })),
         });
     } catch (err) {
         console.error('[access] Failed to list authorized users:', err.message);
@@ -265,6 +284,85 @@ apiRouter.get('/admin/user/:email/apps', async (req, res) => {
     }
 });
 
+/** Administration tab — app-wise usage aggregated across every user, not scoped to one (that's
+ * the per-user drill-down above). Backs the "App-wise Usage" sheet in the Excel export button.
+ * Scoped through the same `scope` (active authorized users) as /admin/overview's own app_opens
+ * CTE, so an app's total doesn't get inflated by opens from someone who's since been deactivated
+ * or removed. */
+apiRouter.get('/admin/apps', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            WITH scope AS (
+                SELECT u.user_id
+                FROM emami_apps.authorized_users au
+                JOIN emami_apps.users u ON u.email = au.email
+                WHERE au.is_active = true
+            )
+            SELECT e.app_id,
+                   COUNT(*) AS opens,
+                   COUNT(DISTINCT e.user_id) AS unique_users,
+                   MIN(e.occurred_at) AS first_opened,
+                   MAX(e.occurred_at) AS last_opened
+            FROM emami_apps.events e
+            JOIN scope s ON s.user_id = e.user_id
+            WHERE e.event_type = 'APP_OPEN' AND e.app_id IS NOT NULL
+            GROUP BY e.app_id
+            ORDER BY opens DESC
+        `);
+        res.json({
+            success: true,
+            apps: rows.map((r) => ({
+                appId: r.app_id,
+                opens: Number(r.opens || 0),
+                uniqueUsers: Number(r.unique_users || 0),
+                firstOpened: r.first_opened,
+                lastOpened: r.last_opened,
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load app-wise usage:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load app-wise usage.' });
+    }
+});
+
+/** Administration tab — per-user breakdown for ONE specific app (the App-wise Usage section's
+ * own drill-down, and its standalone Excel export) — the inverse of GET /admin/user/:email/apps
+ * above (that one's "every app one user opened"; this is "every user who opened one app"). Not
+ * scoped to currently-granted users, same reasoning as that endpoint: someone whose grant has
+ * since been revoked still shows here if they used it while they had access. */
+apiRouter.get('/admin/app/:appId/users', async (req, res) => {
+    const appId = String(req.params.appId || '').trim();
+    if (!appId) {
+        return res.status(400).json({ success: false, error: 'appId is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT u.email,
+                    COUNT(*) AS opens,
+                    MIN(e.occurred_at) AS first_opened,
+                    MAX(e.occurred_at) AS last_opened
+             FROM emami_apps.events e
+             JOIN emami_apps.users u ON u.user_id = e.user_id
+             WHERE e.app_id = $1 AND e.event_type = 'APP_OPEN'
+             GROUP BY u.email
+             ORDER BY opens DESC`,
+            [appId]
+        );
+        res.json({
+            success: true,
+            users: rows.map((r) => ({
+                email: r.email,
+                opens: Number(r.opens || 0),
+                firstOpened: r.first_opened,
+                lastOpened: r.last_opened,
+            })),
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load per-user stats for app', appId, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load per-user stats for this app.' });
+    }
+});
+
 /**
  * What the CURRENTLY LOGGED IN user themselves is allowed to see/do — their own hub-wide access
  * level (gates whether the frontend even shows the Manage Access nav item/screen — see
@@ -299,21 +397,51 @@ apiRouter.get('/access/me', async (req, res) => {
     }
 });
 
-/** Grant a brand-new email access to the hub (active by default, Viewer access level, no apps granted yet). */
+/** Grant a brand-new email access to the hub (active by default, Viewer access level) — and, per
+ * DEFAULT_GRANTED_APPS above, the base User role on Mediclaim/Term Policy right away, so those two
+ * apps work the instant someone's added instead of needing a separate Manage Access grant. Every
+ * other app still starts ungranted, same as before.
+ *
+ * `mobile`, if given, is stored as a pre-registration value (authorized_users.pre_registered_mobile)
+ * and only actually lands on emami_apps.users.mobile — where the Profile page reads it from — once
+ * this person logs in for the first time (see userProfile.js's upsertLoginProfile). There's no
+ * users row to update yet at Add-User time. `actingEmail` (the admin doing the adding) is optional
+ * but expected from the frontend — recorded on the USER_ADDED history row either way. */
 apiRouter.post('/access/users', async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
+    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
     if (!EMAIL_RE.test(email)) {
         return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
     }
+    let mobile = null;
+    if (req.body?.mobile) {
+        mobile = normalizeIndianMobile(req.body.mobile);
+        if (!mobile) {
+            return res.status(400).json({ success: false, error: 'Enter a valid 10-digit Indian mobile number, or leave it blank.' });
+        }
+    }
     try {
         const { rows } = await pool.query(
-            'INSERT INTO emami_apps.authorized_users (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING email, access_level',
-            [email]
+            `INSERT INTO emami_apps.authorized_users (email, pre_registered_mobile)
+             VALUES ($1, $2)
+             ON CONFLICT (email) DO NOTHING
+             RETURNING email, access_level`,
+            [email, mobile]
         );
         if (rows.length === 0) {
             return res.status(409).json({ success: false, error: 'This email already has access.' });
         }
-        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps: [] });
+        if (DEFAULT_GRANTED_APPS.length > 0) {
+            await pool.query(
+                `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role)
+                 SELECT $1, app_id, 'User' FROM UNNEST($2::text[]) AS app_id
+                 ON CONFLICT (email, app_id) DO NOTHING`,
+                [email, DEFAULT_GRANTED_APPS]
+            );
+        }
+        recordAccessChange({ targetEmail: email, changedBy: actingEmail, changeType: 'USER_ADDED', newValue: mobile ? `mobile: ${mobile}` : null });
+        const apps = DEFAULT_GRANTED_APPS.map((appId) => ({ appId, role: 'User' }));
+        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps });
     } catch (err) {
         console.error('[access] Failed to add authorized user:', err.message);
         res.status(500).json({ success: false, error: 'Could not add this user.' });
@@ -321,14 +449,18 @@ apiRouter.post('/access/users', async (req, res) => {
 });
 
 /** Revoke a user entirely — cascades to remove all of their app grants too. The permanent Super
- * Admin can't be removed this way either, same reasoning as the active-toggle guard below. */
+ * Admin can't be removed this way either, same reasoning as the active-toggle guard below.
+ * `actingEmail` comes as a query param (not a body) since this is a DELETE — matches how every
+ * other DELETE route in this file already takes its target purely from the URL. */
 apiRouter.delete('/access/users/:email', async (req, res) => {
     const email = req.params.email.toLowerCase();
+    const actingEmail = String(req.query?.actingEmail || '').trim().toLowerCase() || null;
     if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email)) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be removed.' });
     }
     try {
         await pool.query('DELETE FROM emami_apps.authorized_users WHERE email = $1', [email]);
+        recordAccessChange({ targetEmail: email, changedBy: actingEmail, changeType: 'USER_REMOVED' });
         res.json({ success: true });
     } catch (err) {
         console.error('[access] Failed to remove authorized user:', err.message);
@@ -343,16 +475,30 @@ apiRouter.delete('/access/users/:email', async (req, res) => {
 apiRouter.patch('/access/users/:email/active', async (req, res) => {
     const email = req.params.email.toLowerCase();
     const isActive = !!req.body?.isActive;
+    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
     if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email) && !isActive) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be deactivated.' });
     }
     try {
+        const { rows: [before] } = await pool.query(
+            'SELECT is_active FROM emami_apps.authorized_users WHERE email = $1',
+            [email]
+        );
         const { rowCount } = await pool.query(
             'UPDATE emami_apps.authorized_users SET is_active = $1 WHERE email = $2',
             [isActive, email]
         );
         if (rowCount === 0) {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
+        }
+        if (before && before.is_active !== isActive) {
+            recordAccessChange({
+                targetEmail: email,
+                changedBy: actingEmail,
+                changeType: 'ACTIVE_STATUS',
+                oldValue: String(before.is_active),
+                newValue: String(isActive),
+            });
         }
         res.json({ success: true, isActive });
     } catch (err) {
@@ -405,12 +551,25 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
             });
         }
 
+        const { rows: [before] } = await pool.query(
+            'SELECT access_level FROM emami_apps.authorized_users WHERE email = $1',
+            [targetEmail]
+        );
         const { rowCount } = await pool.query(
             'UPDATE emami_apps.authorized_users SET access_level = $1 WHERE email = $2',
             [accessLevel, targetEmail]
         );
         if (rowCount === 0) {
             return res.status(404).json({ success: false, error: 'That user is not authorized.' });
+        }
+        if (before && before.access_level !== accessLevel) {
+            recordAccessChange({
+                targetEmail,
+                changedBy: actingEmail,
+                changeType: 'ACCESS_LEVEL',
+                oldValue: before.access_level,
+                newValue: accessLevel,
+            });
         }
         res.json({ success: true, accessLevel });
     } catch (err) {
@@ -423,6 +582,7 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
 apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
     const role = req.body?.role;
     const depot = req.body?.depot || null;
+    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
     const appId = req.params.appId;
     const validRoles = validRolesForApp(appId);
     if (!validRoles.includes(role)) {
@@ -430,6 +590,10 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
     }
     const email = req.params.email.toLowerCase();
     try {
+        const { rows: [before] } = await pool.query(
+            'SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
+            [email, appId]
+        );
         await pool.query(
             `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role, depot)
              VALUES ($1, $2, $3, $4)
@@ -442,6 +606,16 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
         if (appId === 'audit-capa') {
             syncAuditCapaAccess(pool, email, role, depot).catch((err) => {
                 console.error('[access] Could not sync Audit & CAPA role for', email, ':', err.message);
+            });
+        }
+        if (before?.role !== role) {
+            recordAccessChange({
+                targetEmail: email,
+                changedBy: actingEmail,
+                changeType: 'APP_ROLE',
+                appId,
+                oldValue: before?.role || null,
+                newValue: role,
             });
         }
         res.json({ success: true, role, depot });
@@ -458,7 +632,12 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
 apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
     const email = req.params.email.toLowerCase();
     const appId = req.params.appId;
+    const actingEmail = String(req.query?.actingEmail || '').trim().toLowerCase() || null;
     try {
+        const { rows: [before] } = await pool.query(
+            'SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
+            [email, appId]
+        );
         await pool.query(
             'DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
             [email, appId]
@@ -468,10 +647,34 @@ apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
                 console.error('[access] Could not revoke Audit & CAPA access for', email, ':', err.message);
             });
         }
+        if (before?.role) {
+            recordAccessChange({
+                targetEmail: email,
+                changedBy: actingEmail,
+                changeType: 'APP_ROLE',
+                appId,
+                oldValue: before.role,
+                newValue: null,
+            });
+        }
         res.json({ success: true });
     } catch (err) {
         console.error('[access] Failed to revoke app access:', err.message);
         res.status(500).json({ success: false, error: 'Could not revoke access.' });
+    }
+});
+
+/** Change-history audit feed for the Administration tab — pass ?email= for one user's own history
+ * (the roster's user-detail dialog), omit it for the org-wide feed (the tab's own Change History
+ * section). See accessHistory.js for what's recorded and by which routes above. */
+apiRouter.get('/access/history', async (req, res) => {
+    const email = req.query?.email ? String(req.query.email).trim().toLowerCase() : undefined;
+    try {
+        const changes = await listAccessChanges({ targetEmail: email });
+        res.json({ success: true, changes });
+    } catch (err) {
+        console.error('[access] Failed to load change history:', err.message);
+        res.status(500).json({ success: false, error: 'Could not load change history.' });
     }
 });
 

@@ -8,7 +8,7 @@ import {
 import ScreenScaffold from '../components/ScreenScaffold';
 import { APPS } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
-import type { AccessLevel, AppRole, UserAccessEntry } from '../types';
+import type { AccessLevel, AppRole, UserAccessEntry, UserAppGrant } from '../types';
 import { colors, fonts, radii, appColor } from '../theme/tokens';
 import { exportUsersToExcel } from '../lib/exportUsersExcel';
 import {
@@ -16,6 +16,15 @@ import {
 } from '../lib/accessApi';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Folds the backend's auto-granted defaults (e.g. Mediclaim/Term Policy — see server.js's
+ * DEFAULT_GRANTED_APPS) together with whatever the admin explicitly picked in the Add User
+ * dialog, so a just-added row shows its true granted apps right away instead of only after a
+ * refresh. An explicit pick always wins over a default for the same app — e.g. if the admin
+ * picked 'Admin' on Mediclaim in the dialog, that's what shows, not the default 'User'. */
+function mergeAppGrants(defaults: UserAppGrant[] | undefined, explicit: UserAppGrant[]): UserAppGrant[] {
+  const explicitAppIds = new Set(explicit.map((g) => g.appId));
+  return [...(defaults || []).filter((g) => !explicitAppIds.has(g.appId)), ...explicit];
+}
 /** Audit & CAPA is the one app with its own role vocabulary (CQA/Depot) instead of the generic
  * User/Admin pair every other app uses — see roleOptionsFor/isElevatedRole below. */
 const AUDIT_CAPA_APP_ID = 'audit-capa';
@@ -198,9 +207,10 @@ export default function UserAccessScreen() {
       const roleResults = await Promise.all(
         grantedRoles.map(([appId, role]) => setAppAccess(value, appId, role, newUserDepots[appId] ?? null))
       );
-      const apps = grantedRoles
+      const explicitApps = grantedRoles
         .filter((_, i) => roleResults[i].ok)
         .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
+      const apps = mergeAppGrants(result.apps, explicitApps);
       setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', apps }]);
       const failedRole = roleResults.find((r) => !r.ok);
       setShowAddModal(false);
@@ -237,10 +247,10 @@ export default function UserAccessScreen() {
             const roleResults = await Promise.all(
               grantedRoles.map(([appId, role]) => setAppAccess(email, appId, role, newUserDepots[appId] ?? null))
             );
-            const apps = grantedRoles
+            const explicitApps = grantedRoles
               .filter((_, i) => roleResults[i].ok)
               .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
-            return { email, ok: true as const, apps };
+            return { email, ok: true as const, apps: mergeAppGrants(res.apps, explicitApps) };
           })
         );
         for (const r of results) {

@@ -1,12 +1,12 @@
 import { Platform } from 'react-native';
 import {
-  Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star, Clock,
+  Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2,
+  CalendarClock, FileCheck2, HeartPulse,
 } from 'lucide-react-native';
 import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD'];
+export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD', 'General'];
 
 /**
  * Live app URLs. Every real app renders inside a WebView on the launch screen
@@ -69,6 +69,15 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // web or Vite) calling SAP (ZFMPODEVIATION_SRV) directly from the client, no backend of its own —
   // converted from the source Fiori app at github.com/EmamiOrg/fm_po_deviation.
   'fm-po-deviation': '/apps/fm-po-deviation', // PO Deviation Approval
+  // Mediclaim Policy and Term Policy are two separate apps (see embedded-apps/mediclaim and
+  // embedded-apps/term-policy) — originally one combined app, split apart per instruction so each
+  // has its own independent User + Admin functionality and its own Manage Access role grant.
+  // Neither has a separate native deployment, same relative-path reasoning as every other
+  // same-origin embedded app above. Next.js static exports with no SAP service live yet — mock
+  // data only (see each app's own src/lib/orgService.ts and src/lib/policyService.ts), structured
+  // so a real SAP OData service can be swapped in later with no caller-side changes.
+  mediclaim: '/apps/mediclaim', // Mediclaim Policy
+  'term-policy': '/apps/term-policy', // Term Policy
 };
 
 const RAW_APPS: AppItem[] = [
@@ -83,6 +92,8 @@ const RAW_APPS: AppItem[] = [
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
   { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Finance', icon: FileCheck2, uses: 0 },
+  { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'General', icon: HeartPulse, uses: 0 },
+  { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'General', icon: ShieldCheck, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
@@ -101,7 +112,6 @@ export const NAV: NavItem[] = [
   { id: 'Home', label: 'Home', icon: Home },
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
-  { id: 'Recent', label: 'Recently Used', icon: Clock },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'My Profile', icon: Settings },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },

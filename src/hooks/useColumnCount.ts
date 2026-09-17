@@ -12,3 +12,12 @@ export function useColumnCount() {
   if (width >= MEDIUM_BREAKPOINT) return 3;
   return 2;
 }
+
+/** Below the same phone/tablet boundary useColumnCount already treats as "narrowest" (2-column)
+ * — used where a component needs a tighter, mobile-only layout (smaller padding, no text
+ * truncation) rather than just fewer columns. Kept as its own hook (not folded into
+ * useColumnCount's return) since not every caller needs the column count too. */
+export function useIsMobile() {
+  const { width } = useWindowDimensions();
+  return width < MEDIUM_BREAKPOINT;
+}

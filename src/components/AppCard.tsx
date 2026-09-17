@@ -1,22 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated, AccessibilityInfo, Platform } from 'react-native';
-import { Star } from 'lucide-react-native';
+import { Star, Lock } from 'lucide-react-native';
 import type { AppItem } from '../types';
 import { colors, fonts, radii, appColor, motion, focusRingWeb } from '../theme/tokens';
+import { useIsMobile } from '../hooks/useColumnCount';
 
 interface AppCardProps {
   app: AppItem;
   isFavorite: boolean;
   isTopUsed: boolean;
+  /** True when the signed-in user has no grant for this app (see useUnlockedAppIds) — the tile
+   * still renders (every app is now always visible), just dimmed with a "Locked" badge instead of
+   * the accent color/most-used badge. Still tappable: the caller's onPress is expected to route to
+   * a "you don't have access" message (see AppDetailScreen's own locked state) rather than opening
+   * the real app. */
+  locked?: boolean;
   onPress: (app: AppItem) => void;
   onToggleFavorite: (id: string) => void;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleFavorite }: AppCardProps) {
+export default function AppCard({ app, isFavorite, isTopUsed, locked = false, onPress, onToggleFavorite }: AppCardProps) {
   const Icon = app.icon;
-  const accent = appColor(app.id);
+  const accent = locked ? colors.inkSoft : appColor(app.id);
+  const isMobile = useIsMobile();
 
   const [reduceMotion, setReduceMotion] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -71,6 +79,8 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
       {...webHoverProps}
       style={[
         styles.card,
+        isMobile && styles.cardMobile,
+        locked && styles.cardLocked,
         { shadowColor: accent, shadowOpacity, transform: [{ scale }] },
         focused && focusRingWeb,
       ]}
@@ -80,11 +90,11 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
       // favorite-star toggle below); nesting <button> inside <button> is invalid
       // HTML and was throwing a hydration/nesting error on every app card.
       accessibilityRole="link"
-      accessibilityLabel={`Open ${app.name}`}
+      accessibilityLabel={locked ? `${app.name}, locked — you don't have access` : `Open ${app.name}`}
     >
       <View style={styles.headerRow}>
-        <View style={[styles.iconBox, { backgroundColor: `${accent}1f` }]}>
-          <Icon size={19} color={accent} strokeWidth={2.1} />
+        <View style={[styles.iconBox, isMobile && styles.iconBoxMobile, { backgroundColor: `${accent}1f` }]}>
+          {locked ? <Lock size={isMobile ? 14 : 17} color={accent} strokeWidth={2.1} /> : <Icon size={isMobile ? 16 : 19} color={accent} strokeWidth={2.1} />}
         </View>
         <Pressable
           hitSlop={10}
@@ -97,15 +107,27 @@ export default function AppCard({ app, isFavorite, isTopUsed, onPress, onToggleF
         </Pressable>
       </View>
 
-      <Text style={styles.title} numberOfLines={1}>{app.name}</Text>
+      {/* Mobile shows the full app name (no truncation) per instruction — desktop/tablet keeps
+          the single-line-with-ellipsis it already had, since card width there is generous enough
+          that a long name truncating was never actually a problem there. */}
+      <Text style={[styles.title, locked && styles.titleLocked, isMobile && styles.titleMobile]} numberOfLines={isMobile ? undefined : 1}>
+        {app.name}
+      </Text>
 
-      {isTopUsed && (
-        <View style={[styles.miniBadge, { backgroundColor: `${accent}14` }]}>
-          <Text style={[styles.miniBadgeText, { color: accent }]}>Most used</Text>
+      {locked ? (
+        <View style={[styles.miniBadge, styles.lockedBadge]}>
+          <Lock size={8} color={colors.inkSoft} strokeWidth={2.4} />
+          <Text style={[styles.miniBadgeText, { color: colors.inkSoft }]}>Locked</Text>
         </View>
+      ) : (
+        isTopUsed && (
+          <View style={[styles.miniBadge, { backgroundColor: `${accent}14` }]}>
+            <Text style={[styles.miniBadgeText, { color: accent }]}>Most used</Text>
+          </View>
+        )
       )}
 
-      <Text style={styles.desc} numberOfLines={2}>{app.desc}</Text>
+      {!isMobile && <Text style={styles.desc} numberOfLines={2}>{app.desc}</Text>}
     </AnimatedPressable>
   );
 }
@@ -123,6 +145,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
+  // Compact mobile-only variant: smaller padding/min-height (the description is hidden on mobile
+  // instead, see the render above) so a card holds a full, unclipped app name without growing
+  // tall — a phone-width grid has less room per tile than desktop/tablet, so this trims the
+  // chrome around the name rather than shrinking the name itself.
+  cardMobile: {
+    padding: 10,
+    minHeight: 92,
+    borderRadius: radii.lg,
+  },
+  // Dims the whole tile (icon/badge already turn gray via the `accent` swap above) so a locked
+  // app reads as unavailable at a glance, without hiding it from the grid entirely.
+  cardLocked: {
+    opacity: 0.6,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -135,6 +171,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBoxMobile: {
+    width: 30,
+    height: 30,
+  },
   favBtn: {
     padding: 4,
   },
@@ -144,12 +184,26 @@ const styles = StyleSheet.create({
     color: colors.ink,
     marginTop: 14,
   },
+  titleMobile: {
+    fontSize: 12.5,
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  titleLocked: {
+    color: colors.inkSoft,
+  },
   miniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     alignSelf: 'flex-start',
     borderRadius: radii.pill,
     paddingHorizontal: 8,
     paddingVertical: 2,
     marginTop: 6,
+  },
+  lockedBadge: {
+    backgroundColor: colors.appBg,
   },
   miniBadgeText: {
     fontSize: 9,

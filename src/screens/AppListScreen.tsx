@@ -35,7 +35,12 @@ export default function AppListScreen({ title, onlyFavorites }: AppListScreenPro
   // — so Settings' Apps Opened count and per-app bars, and Favorites Added, undercounted whatever
   // usage came through here instead of the Home grid.
   const openApp = (app: AppItem) => {
-    if (!unlockedAppIds.has(app.id)) return;
+    // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
+    // a locked one routes to AppDetail's own "you don't have access" message instead of opening it.
+    if (!unlockedAppIds.has(app.id)) {
+      navigation.navigate('AppDetail', { appId: app.id });
+      return;
+    }
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     // Web: open the app in its own tab instead of navigating this one away. Native has no tab
     // concept, so it keeps going through AppDetail's in-app WebView.
