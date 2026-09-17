@@ -36,14 +36,14 @@ export default function TeamApprovalsPage() {
 
 function ApprovalList() {
   const router = useRouter();
-  const { directReports, getTimesheet, teamSettings, bulkApprove } = useApp();
+  const { directReports, getTimesheet, teamSettings, bulkApprove, workingDayOverridesSet } = useApp();
   const thisMonth = currentMonthStartIso();
   const lastCompletedMonth = toISODate(addMonths(parseISODate(thisMonth), -1));
   const [month, setMonth] = useState(lastCompletedMonth);
   const { showToast } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
 
-  const expected = expectedMonthlyHours(month);
+  const expected = expectedMonthlyHours(month, workingDayOverridesSet);
 
   const rows = directReports.map((user: any) => {
     const timesheet = getTimesheet(user.id, month);
@@ -103,7 +103,7 @@ function ApprovalList() {
 
 function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
   const router = useRouter();
-  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet } = useApp();
+  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet, workingDayOverridesSet } = useApp();
   const { showToast } = useToast();
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
@@ -141,7 +141,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
 
   async function handleDownloadExcel() {
     try {
-      await exportTimesheetToExcel({ entries: timesheet.entries, tasks, monthStartDate: month, userName: user.name });
+      await exportTimesheetToExcel({ entries: timesheet.entries, tasks, monthStartDate: month, userName: user.name, workingDayOverrides: workingDayOverridesSet });
       showToast('Timesheet downloaded.', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to download timesheet.', 'error');
@@ -181,7 +181,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
 
       {timesheet && (
         <>
-          <TimesheetGrid userId={userId} tasks={tasks} monthStartDate={month} initialEntries={timesheet.entries} readOnly />
+          <TimesheetGrid userId={userId} tasks={tasks} monthStartDate={month} initialEntries={timesheet.entries} readOnly workingDayOverrides={workingDayOverridesSet} />
 
           {actionable && (
             <div className="glass-card space-y-3 p-5">

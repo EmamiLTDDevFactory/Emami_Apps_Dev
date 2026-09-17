@@ -57,36 +57,41 @@ export function nthWeekdayOfMonth(date) {
 }
 
 // Company policy: the 1st, 3rd and 5th Saturday of the month are working
-// Saturdays; the 2nd and 4th are off.
-export function isWorkingSaturday(date) {
-  return date.getDay() === 6 && [1, 3, 5].includes(nthWeekdayOfMonth(date))
+// Saturdays; the 2nd and 4th are off - unless a manager has individually
+// flipped that specific date to working for their team (see
+// server/src/routes/workingDayOverrides.js and AppContext's
+// `workingDayOverrides`). `overrides` is a Set of "YYYY-MM-DD" strings.
+export function isWorkingSaturday(date, overrides) {
+  if (date.getDay() !== 6) return false
+  if (overrides?.has(toISODate(date))) return true
+  return [1, 3, 5].includes(nthWeekdayOfMonth(date))
 }
 
 export function isSunday(date) {
   return date.getDay() === 0
 }
 
-export function isOffDay(date) {
+export function isOffDay(date, overrides) {
   if (isSunday(date)) return true
-  if (date.getDay() === 6) return !isWorkingSaturday(date)
+  if (date.getDay() === 6) return !isWorkingSaturday(date, overrides)
   return false
 }
 
-export function isWorkingDay(date) {
-  return !isOffDay(date)
+export function isWorkingDay(date, overrides) {
+  return !isOffDay(date, overrides)
 }
 
-export function countWorkingDays(monthStartIso) {
-  return monthDays(monthStartIso).filter((d) => isWorkingDay(d)).length
+export function countWorkingDays(monthStartIso, overrides) {
+  return monthDays(monthStartIso).filter((d) => isWorkingDay(d, overrides)).length
 }
 
 // Working days in the month up to and including `referenceDate` (capped to
 // the month's own range) - used to size "hours expected so far" for an
 // in-progress month, rather than requiring the whole month up front.
-export function countWorkingDaysUpTo(monthStartIso, referenceDate) {
+export function countWorkingDaysUpTo(monthStartIso, referenceDate, overrides) {
   const start = parseISODate(monthStartIso)
   if (referenceDate < start) return 0
-  return monthDays(monthStartIso).filter((d) => isWorkingDay(d) && d <= referenceDate).length
+  return monthDays(monthStartIso).filter((d) => isWorkingDay(d, overrides) && d <= referenceDate).length
 }
 
 // Parses "HH:MM" 24h strings and returns decimal hours between them (0 if

@@ -52,6 +52,17 @@ INSERT INTO timesheet.team_settings (id, deadline_days_after_month_end)
 VALUES (TRUE, 2)
 ON CONFLICT (id) DO NOTHING;
 
+-- Saturdays a manager has individually flipped from the default off-day rule (2nd/4th Saturday
+-- of the month are off, 1st/3rd/5th are working) to a working day, for their own team - see
+-- server/src/routes/workingDayOverrides.js. Only stores dates flipped ON; the default
+-- 1st/3rd/5th-working rule needs no row here and can't be reverted through this table.
+CREATE TABLE IF NOT EXISTS timesheet.working_day_overrides (
+  manager_id     TEXT NOT NULL REFERENCES timesheet.users(id) ON DELETE CASCADE,
+  override_date  DATE NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (manager_id, override_date)
+);
+
 CREATE TABLE IF NOT EXISTS timesheet.timesheets (
   id                TEXT PRIMARY KEY,
   user_id           TEXT NOT NULL REFERENCES timesheet.users(id) ON DELETE CASCADE,

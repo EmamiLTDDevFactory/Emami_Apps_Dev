@@ -16,7 +16,7 @@ export default function MyTimesheetPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const monthParam = searchParams.get('month');
-  const { currentUser, getTimesheet, getAssignedTasks, projects, saveDraftEntries, submitForApproval } = useApp();
+  const { currentUser, getTimesheet, getAssignedTasks, projects, saveDraftEntries, submitForApproval, workingDayOverridesSet } = useApp();
   const { showToast } = useToast();
   const thisMonth = currentMonthStartIso();
   const [viewedMonth, setViewedMonth] = useState(monthParam || thisMonth);
@@ -71,7 +71,7 @@ export default function MyTimesheetPage() {
         shiftedDate.setDate(Math.min(day, new Date(shiftedDate.getFullYear(), shiftedDate.getMonth() + 1, 0).getDate()));
         return { ...e, date: toISODate(shiftedDate), shiftedDate };
       })
-      .filter((e: any) => !isOffDay(e.shiftedDate))
+      .filter((e: any) => !isOffDay(e.shiftedDate, workingDayOverridesSet))
       .map(({ shiftedDate, ...e }: any) => e);
     if (shifted.length === 0) {
       showToast('Last month’s entries all fall on non-working days this month.', 'info');
@@ -89,7 +89,7 @@ export default function MyTimesheetPage() {
   async function handleDownloadExcel() {
     const entries = readOnly ? timesheet?.entries || [] : liveEntries;
     try {
-      await exportTimesheetToExcel({ entries, tasks, monthStartDate: viewedMonth, userName: currentUser.name });
+      await exportTimesheetToExcel({ entries, tasks, monthStartDate: viewedMonth, userName: currentUser.name, workingDayOverrides: workingDayOverridesSet });
       showToast('Timesheet downloaded.', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to download timesheet.', 'error');
@@ -97,7 +97,7 @@ export default function MyTimesheetPage() {
   }
 
   const leaveDaysToDate = liveEntries.filter((e) => e.leaveType && parseISODate(e.date) <= new Date()).length;
-  const expected = expectedHoursToDate(viewedMonth, new Date(), leaveDaysToDate);
+  const expected = expectedHoursToDate(viewedMonth, new Date(), leaveDaysToDate, workingDayOverridesSet);
   const incomplete = liveTotal < expected;
   const showSubmit = !readOnly;
   const rejected = timesheet?.status === 'Rejected';
@@ -150,6 +150,7 @@ export default function MyTimesheetPage() {
         monthStartDate={viewedMonth}
         initialEntries={timesheet?.entries || []}
         readOnly={readOnly}
+        workingDayOverrides={workingDayOverridesSet}
         onEntriesChange={(entries, totals) => {
           setLiveEntries(entries);
           setLiveTotal(totals.month);
