@@ -5,6 +5,7 @@ import { Search, Menu, ChevronDown, User, Settings, LogOut, Download } from 'luc
 import { colors, fonts, fontWeights, radii, shadows } from '../theme/tokens';
 import { useAuth } from '../context/AuthContext';
 import { useIsWideScreen } from '../hooks/useIsWideScreen';
+import { useIsMobile } from '../hooks/useColumnCount';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useTypewriterPlaceholder } from '../hooks/useTypewriterPlaceholder';
 import { useIsScrolling } from '../hooks/useScrollActivity';
@@ -27,6 +28,7 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
   const [searchFocused, setSearchFocused] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const isWideScreen = useIsWideScreen();
+  const isMobile = useIsMobile();
   const pwaInstall = usePwaInstall();
 
   const onPressInstall = async () => {
@@ -61,7 +63,7 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
             on wide screens where the sidebar itself carries it. */}
         {!isWideScreen && (
           <div style={{ flexShrink: 0, display: 'flex' }}>
-            <EmpAppMark size={92} />
+            <EmpAppMark size={isMobile ? 68 : 92} />
           </div>
         )}
 
@@ -138,15 +140,21 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
               }}
             />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentUser.name}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 1 }}>
-              <span style={{ fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>Account</span>
-              <ChevronDown size={12} color={colors.inkSoft} />
-            </span>
-          </div>
+          {/* Dropped on real phone widths — between the menu button, brand mark, install button
+              and this button, a phone-width row has no room left for a name column too (it was
+              overflowing the viewport on narrow phones once the brand mark was added above). The
+              avatar alone still opens the same account menu. */}
+          {!isMobile && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser.name}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 1 }}>
+                <span style={{ fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>Account</span>
+                <ChevronDown size={12} color={colors.inkSoft} />
+              </span>
+            </div>
+          )}
         </button>
       </div>
 
