@@ -4,8 +4,18 @@ const { URL } = require("url");
 // SAP OData Gateway (via the NGD proxy) for CAPA & Audit notification flags.
 // See: OData Integration Guide for CAPA & Audit Notifications
 // Service: ZQM_CAPA_AUDIT_SRV, Protocol: OData v2 (JSON), Method: POST
+//
+// Host matches RC Portal's SAP_BASE_URL (embedded-apps/rc-portal/backend/server.js) —
+// the entry point to this proxy whose POSTs are known to work today. Overridable via
+// SAP_NGD_BASE_URL so infra can move it without a code change.
 const NGD_BASE =
-  "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZQM_CAPA_AUDIT_SRV";
+  process.env.SAP_NGD_BASE_URL ||
+  "https://emamiapi.emamigroup.com/api/NGD/ZQM_CAPA_AUDIT_SRV";
+
+// A hung proxy must never hold a request open indefinitely — Dispatch Tracker's /LoginSet
+// call taught us that, where the same middleware hung until Azure returned a 504 minutes
+// later. Fail fast and say so instead.
+const REQUEST_TIMEOUT_MS = Number(process.env.SAP_NGD_TIMEOUT_MS || 30000);
 
 const request = (method, url, { headers = {}, body } = {}) =>
   new Promise((resolve, reject) => {
@@ -43,10 +53,15 @@ const request = (method, url, { headers = {}, body } = {}) =>
             statusCode: res.statusCode,
             headers: res.headers,
             data,
+            raw,
           });
         });
       }
     );
+
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms`));
+    });
 
     req.on("error", reject);
 
@@ -57,45 +72,84 @@ const request = (method, url, { headers = {}, body } = {}) =>
     req.end();
   });
 
-// SAP OData requires a CSRF handshake: fetch a token (+ session cookie) with
-// a GET first, then replay both on the actual POST.
+// Pulls SAP's own complaint out of an OData v2 error body, so the log records what SAP
+// actually objected to rather than just a status code.
+const sapErrorMessage = (data) => {
+  if (!data) return "";
+  if (typeof data === "string") return data.slice(0, 500);
+
+  return (
+    (data.error && data.error.message && data.error.message.value) ||
+    (data.error && typeof data.error.message === "string" && data.error.message) ||
+    ""
+  );
+};
+
+/**
+ * Posts one notification flag to SAP. SAP owns the actual email; this only delivers the
+ * trigger (entitySet + Flag), per the integration guide.
+ *
+ * NO CSRF HANDSHAKE — deliberately. The Azure proxy performs that exchange with SAP on our
+ * behalf. RC Portal, which POSTs through this same proxy successfully, makes its own
+ * getCsrfToken() an explicit no-op for exactly this reason (see
+ * embedded-apps/rc-portal/backend/server.js, "no-op for Azure AD OAuth proxy").
+ *
+ * The handshake this service previously performed fetched its token with a GET against the
+ * entity set itself — and SAP answers those 501 Not Implemented, because CapaSet and
+ * AuditTypesSet are create-only (verified against both proxy hostnames). So no token was
+ * ever returned, the `|| ""` fallback left it empty, and every POST that followed was
+ * rejected by SAP as a CSRF failure. That is what surfaced in the Azure logs as a token
+ * problem; no credential had expired.
+ *
+ * Still non-fatal: a SAP or proxy outage must never break the user action that triggered the
+ * notification. But the outcome is now returned and logged in full instead of being
+ * swallowed into a null, so a failure is visible rather than silent.
+ */
 const sendSapFlag = async (entitySet, payload) => {
   const entityUrl = `${NGD_BASE}/${entitySet}`;
+  const flag = payload && payload.Flag;
 
   try {
-    const tokenResponse = await request("GET", entityUrl, {
+    const response = await request("POST", entityUrl, {
       headers: {
-        "X-CSRF-Token": "Fetch",
-        Accept: "application/json",
-      },
-    });
-
-    const csrfToken = tokenResponse.headers["x-csrf-token"] || "";
-    const cookies = tokenResponse.headers["set-cookie"];
-
-    const postResponse = await request("POST", entityUrl, {
-      headers: {
-        "X-CSRF-Token": csrfToken,
-        Cookie: Array.isArray(cookies) ? cookies.join("; ") : cookies || "",
         "Content-Type": "application/json; charset=utf-8",
         Accept: "application/json",
       },
       body: payload,
     });
 
-    console.log(
-      `SAP NGD ${entitySet} (Flag ${payload.Flag}) -> HTTP ${postResponse.statusCode}`
-    );
+    const ok = response.statusCode >= 200 && response.statusCode < 300;
 
-    return postResponse.data;
+    if (ok) {
+      console.log(
+        `SAP NGD ${entitySet} (Flag ${flag}) -> HTTP ${response.statusCode} OK`
+      );
+    } else {
+      console.error(
+        `SAP NGD ${entitySet} (Flag ${flag}) -> HTTP ${response.statusCode}` +
+          `\n  url:      ${entityUrl}` +
+          `\n  sent:     ${JSON.stringify(payload)}` +
+          `\n  sap said: ${sapErrorMessage(response.data) || "(no message)"}` +
+          `\n  body:     ${String(response.raw || "").slice(0, 1000)}`
+      );
+    }
+
+    return {
+      ok,
+      statusCode: response.statusCode,
+      data: response.data,
+      error: ok
+        ? null
+        : sapErrorMessage(response.data) || `HTTP ${response.statusCode}`,
+    };
   } catch (error) {
-    // Never let a SAP/NGD outage break the action that triggered it.
     console.error(
-      `SAP NGD ${entitySet} (Flag ${payload && payload.Flag}) failed:`,
-      error.message
+      `SAP NGD ${entitySet} (Flag ${flag}) could not reach SAP: ${error.message}` +
+        `\n  url:  ${entityUrl}` +
+        `\n  sent: ${JSON.stringify(payload)}`
     );
 
-    return null;
+    return { ok: false, statusCode: 0, data: null, error: error.message };
   }
 };
 
