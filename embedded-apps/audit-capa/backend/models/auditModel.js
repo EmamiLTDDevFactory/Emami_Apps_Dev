@@ -1565,15 +1565,11 @@ const createAudit = async (audit) => {
         audit.dueDate
       ),
 
-      // convertToPostgresTimestamp(
-      //   audit.createdDate
-      // ) || new Date(),
-
-      audit.createdDate
-        ? convertToPostgresTimestamp(
-          audit.createdDate
-        )
-        : new Date(),
+      // created_date is a server-side audit trail timestamp, not user input - the frontend's
+      // new Date().toLocaleDateString() is locale-dependent (e.g. renders as day-first in some
+      // locales) and convertToPostgresTimestamp can misparse or reject it, so always stamp with
+      // the server's own clock instead of trusting the client-supplied value.
+      new Date(),
 
       audit.status || "Open",
 
