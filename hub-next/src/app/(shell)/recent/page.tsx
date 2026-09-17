@@ -3,8 +3,9 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
-import { RECENT, appById } from '../../../data/mockData';
+import { appById } from '../../../data/mockData';
 import { useUnlockedAppIds } from '../../../hooks/useAppAccess';
+import { useRecentApps } from '../../../hooks/useRecentApps';
 import { useAuth } from '../../../context/AuthContext';
 import { logEvent } from '../../../lib/authApi';
 import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/tokens';
@@ -12,6 +13,7 @@ import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/toke
 export default function RecentPage() {
   const router = useRouter();
   const unlockedAppIds = useUnlockedAppIds();
+  const recent = useRecentApps();
   const { userEmail } = useAuth();
 
   const openApp = (appId: string) => {
@@ -19,13 +21,13 @@ export default function RecentPage() {
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
     const url = appById(appId)?.url;
     if (url) {
-      window.location.href = url;
+      window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     router.push(`/apps/${appId}`);
   };
 
-  const visible = RECENT.filter((r) => unlockedAppIds.has(r.id));
+  const visible = recent.filter((r) => unlockedAppIds.has(r.id));
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '16px 16px 40px' }}>

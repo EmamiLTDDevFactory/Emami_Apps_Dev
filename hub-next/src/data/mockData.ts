@@ -3,7 +3,7 @@ import {
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
   CalendarClock, FileCheck2, HeartPulse,
 } from 'lucide-react';
-import type { AppItem, RecentEntry, NavItem, CategoryFilter } from '../types';
+import type { AppItem, NavItem, CategoryFilter } from '../types';
 
 export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD', 'General'];
 
@@ -54,13 +54,6 @@ export const APPS: AppItem[] = RAW_APPS.map((app) => ({
   ...app,
   url: EMBEDDED_APP_URLS[app.id],
 }));
-
-export const RECENT: RecentEntry[] = [
-  { id: 'expense', when: 'Today, 9:42 AM' },
-  { id: 'hr', when: 'Today, 8:15 AM' },
-  { id: 'finance', when: 'Yesterday, 5:03 PM' },
-  { id: 'inventory', when: 'Yesterday, 11:20 AM' },
-];
 
 export const NAV: NavItem[] = [
   { id: 'Home', label: 'Home', icon: Home },

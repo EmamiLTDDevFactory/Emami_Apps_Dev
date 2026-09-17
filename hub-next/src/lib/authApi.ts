@@ -161,6 +161,20 @@ export async function getMyProfile(email: string): Promise<UserProfile | null> {
   }
 }
 
+/** The signed-in user's own most recently opened apps, newest first, one entry per app — backs
+ * Home's "Recently Used" tiles and the standalone Recent screen. Real activity from
+ * emami_apps.events (via GET /me/recent-apps), not a hardcoded list. */
+export async function getRecentApps(email: string): Promise<{ appId: string; lastOpenedAt: string }[]> {
+  try {
+    const res = await fetch(`${ACCESS_API_URL}/me/recent-apps?email=${encodeURIComponent(email)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return [];
+    return data.apps as { appId: string; lastOpenedAt: string }[];
+  } catch {
+    return [];
+  }
+}
+
 /** Records a login against the Postgres-reachable backend (NEXT_PUBLIC_ACCESS_API_URL), since the
  * hub-auth Lambda already tries to do this server-side (upsertLoginProfile, in both hub-auth.js's
  * direct email login and saml-sso.js's SAML callback) but can't reach 10.17.12.4 to persist it.
