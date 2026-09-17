@@ -84,7 +84,12 @@ export function DispatchModal({
   async function handleSubmit() {
     const errs: string[] = [];
     if (!dispatchDate) errs.push('Dispatch Date required.');
-    else if (invDate && dispatchDate < invDate) errs.push(`Date before Invoice Date (${fd(row.invoice_date)}).`);
+    // Compare calendar dates (via isoDate's local-timezone Y-M-D), not raw Date timestamps —
+    // toDate(row.invoice_date) parses a date-only string as UTC midnight, while dispatchDate is
+    // always local midnight, so on the invoice date itself `dispatchDate < invDate` was true in
+    // any timezone ahead of UTC (e.g. IST), wrongly rejecting the invoice date itself.
+    else if (invDate && isoDate(dispatchDate) < isoDate(invDate))
+      errs.push(`Date before Invoice Date (${fd(row.invoice_date)}).`);
     if (!lrNo.trim()) errs.push('LR Number required.');
     if (vehicleType === VEHICLE_TYPE_PLACEHOLDER) errs.push('Vehicle Type required.');
     if (isFtlOrTrip && !vehicleNo.trim())
