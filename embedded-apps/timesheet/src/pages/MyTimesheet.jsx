@@ -152,7 +152,43 @@ export default function MyTimesheet({ monthParam, navigate }) {
             )}
           </div>
         </div>
-        <MonthSelector monthStartDate={viewedMonth} onChange={setViewedMonth} maxMonthStartDate={thisMonth} />
+        <div className="flex flex-wrap items-center gap-3">
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handleCopyLastMonth}
+              className={`inline-flex h-11 w-56 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-white shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                isMinimal ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-violet-600 hover:bg-violet-500'
+              } ${copyFocusRing}`}
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="12" height="12" rx="2" />
+                <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+              </svg>
+              Copy from last month
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            className="group relative inline-flex h-11 w-56 items-center justify-center gap-2.5 overflow-hidden rounded-full border border-green-800/50 bg-gradient-to-b from-green-400 via-green-500 to-green-700 pl-2 pr-5 shadow-lg shadow-green-900/40 transition-transform hover:scale-[1.03] hover:from-green-300 hover:via-green-500 hover:to-green-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2"
+          >
+            {/* Glossy top-half highlight, like a glass pill button. */}
+            <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/50 to-transparent" />
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white/70 bg-green-600/40 shadow-inner">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-white drop-shadow" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 4v10" />
+                <path d="M7 10l5 5 5-5" />
+                <path d="M5 19h14" />
+              </svg>
+            </span>
+            <span className="relative flex flex-col leading-tight text-left">
+              <span className="text-[13px] font-extrabold uppercase tracking-wide text-white drop-shadow-sm">Excel</span>
+              <span className="-mt-0.5 text-[10px] font-bold uppercase tracking-widest text-white/90 drop-shadow-sm">Download</span>
+            </span>
+          </button>
+          <MonthSelector monthStartDate={viewedMonth} onChange={setViewedMonth} maxMonthStartDate={thisMonth} />
+        </div>
       </div>
 
       {showTodayCard && <TodayStatusCard entry={todayEntry} />}
@@ -170,43 +206,6 @@ export default function MyTimesheet({ monthParam, navigate }) {
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{timesheet.managerComment}</p>
         </div>
       )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={handleCopyLastMonth}
-            className={`inline-flex h-11 w-56 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-white shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-              isMinimal ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-violet-600 hover:bg-violet-500'
-            } ${copyFocusRing}`}
-          >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="12" height="12" rx="2" />
-              <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
-            </svg>
-            Copy from last month
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={handleDownloadExcel}
-          className="group relative ml-auto inline-flex h-11 w-56 items-center justify-center gap-2.5 overflow-hidden rounded-full border border-green-800/50 bg-gradient-to-b from-green-400 via-green-500 to-green-700 pl-2 pr-5 shadow-lg shadow-green-900/40 transition-transform hover:scale-[1.03] hover:from-green-300 hover:via-green-500 hover:to-green-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2"
-        >
-          {/* Glossy top-half highlight, like a glass pill button. */}
-          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/50 to-transparent" />
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white/70 bg-green-600/40 shadow-inner">
-            <svg viewBox="0 0 24 24" className="h-5 w-5 text-white drop-shadow" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 4v10" />
-              <path d="M7 10l5 5 5-5" />
-              <path d="M5 19h14" />
-            </svg>
-          </span>
-          <span className="relative flex flex-col leading-tight text-left">
-            <span className="text-[13px] font-extrabold uppercase tracking-wide text-white drop-shadow-sm">Excel</span>
-            <span className="-mt-0.5 text-[10px] font-bold uppercase tracking-widest text-white/90 drop-shadow-sm">Download</span>
-          </span>
-        </button>
-      </div>
 
       <TimesheetGrid
         ref={gridRef}
