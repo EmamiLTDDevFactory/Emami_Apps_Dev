@@ -1,19 +1,24 @@
 /* Shared design tokens for Dev Tracker — reused across Home, Dashboard, Master Data
    and Resource Utilization. Colors use OKLCH for perceptually-consistent hue/lightness
-   control. IBM Plex Sans/Mono match the font pairing already used by the hub shell. */
+   control. IBM Plex Sans/Mono match the font pairing already used by the hub shell.
+   The surface/text/accent tokens below are the hub's own palette (src/theme/tokens.ts
+   colors.appBg/border/ink/inkSoft/rust/rustDeep — the same values rc-portal's
+   tailwind.config.js uses) converted to OKLCH, so Dev Tracker reads as part of the
+   same app rather than a differently-branded tool. Status/risk colors further down
+   (--st-*, --mod-*, --band-*) are semantic, not brand, and are left alone. */
 :root {
-  --bg: oklch(98% 0.004 260);
-  --bg-alt: oklch(96% 0.006 260);
+  --bg: oklch(95.5% 0.006 264.5); /* #EEF0F4 — hub appBg */
+  --bg-alt: oklch(96.3% 0.013 295.3); /* #F3F1FB — hub cream2 */
   --surface: oklch(100% 0 0);
-  --border: oklch(0% 0 0 / 0.08);
-  --border-strong: oklch(0% 0 0 / 0.13);
-  --text: oklch(22% 0.012 260);
-  --text-2: oklch(42% 0.015 260);
-  --muted: oklch(48% 0.012 260);
+  --border: oklch(92.3% 0.024 293.6); /* #E6E3F5 — hub border/sidebarBorder */
+  --border-strong: oklch(84% 0.03 293);
+  --text: oklch(23.9% 0.045 290.2); /* #1F1B33 — hub ink */
+  --text-2: oklch(38% 0.03 288);
+  --muted: oklch(55.1% 0.023 264.4); /* #6B7280 — hub inkSoft */
 
-  --accent: oklch(52% 0.18 264);
-  --accent-soft: oklch(94% 0.03 264);
-  --accent-2: oklch(58% 0.16 300);
+  --accent: oklch(48.7% 0.219 279.2); /* #4F3FD6 — hub rust (primary accent) */
+  --accent-soft: oklch(94% 0.035 279);
+  --accent-2: oklch(41.3% 0.194 277.8); /* #3B2FB0 — hub rustDeep (pressed/hover) */
 
   /* Area colors fall back to these when master-data doesn't supply one (e.g. a
      newly-added area with no color chosen yet, or an area beyond the six defaults) */

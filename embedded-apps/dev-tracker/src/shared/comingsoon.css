@@ -1,0 +1,28 @@
+.coming-soon {
+  max-width: 480px;
+  margin: 6vh auto 0;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 40px 36px 34px;
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 20px 44px -24px oklch(0% 0 0 / 0.12);
+}
+.coming-soon-icon {
+  width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 18px;
+  display: flex; align-items: center; justify-content: center;
+}
+.coming-soon-icon.tone-accent { background: var(--accent-soft); color: var(--accent); }
+.coming-soon-icon.tone-amber { background: var(--st-amber-soft); color: var(--st-amber); }
+.coming-soon-icon.tone-teal { background: var(--st-teal-soft); color: var(--st-teal); }
+.coming-soon-desc { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin-top: 10px; }
+.coming-soon-list {
+  text-align: left; margin: 20px 0 0; padding: 16px 18px; border-radius: 12px;
+  background: var(--bg-alt); font-size: 12.5px; color: var(--text-2); line-height: 1.9;
+}
+.coming-soon-list li::marker { color: var(--accent); }
+.coming-soon-badge {
+  display: inline-block; margin-top: 22px; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
+  background: var(--accent-soft); padding: 5px 12px; border-radius: 999px;
+}

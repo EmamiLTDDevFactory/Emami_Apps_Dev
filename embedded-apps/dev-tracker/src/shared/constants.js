@@ -111,12 +111,17 @@ export const RISK_META = {
   done: { label: 'Done', shortLabel: '', color: 'var(--st-green)', soft: 'var(--st-green-soft)' },
 };
 
-export const PULSE_WINDOWS = [
+// Time-window options for Home's "Module-wise distribution" chart. `days` is a rolling
+// window; `special` is a calendar-relative one resolved in Home.jsx (distWindowCutoff()).
+export const DIST_WINDOWS = [
   { label: 'Since start', days: null },
+  { label: 'Last 1 year', days: 365 },
   { label: 'Last 6 months', days: 182 },
-  { label: 'Last 30 days', days: 30 },
+  { label: 'Last 3 months', days: 90 },
+  { label: 'This month', special: 'month' },
   { label: 'Last 15 days', days: 15 },
   { label: 'Last 7 days', days: 7 },
+  { label: 'Today', special: 'today' },
 ];
 
 export const MAX_CONCURRENT = 5;
