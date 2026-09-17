@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, Menu } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Menu } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { avatarGradient } from '../utils/avatar';
 import SidePane from './SidePane';
@@ -70,18 +70,23 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-white px-4 sm:px-6 lg:px-8">
           {!isWideScreen && (
-            <>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(true)}
-                aria-label="Open navigation"
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-inkSoft focus:outline-none focus-visible:ring-2 focus-visible:ring-rust"
-              >
-                <Menu size={18} />
-              </button>
-              <span className="font-semibold text-ink">TimeSheet</span>
-            </>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Open navigation"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-inkSoft focus:outline-none focus-visible:ring-2 focus-visible:ring-rust"
+            >
+              <Menu size={18} />
+            </button>
           )}
+
+          <a
+            href="/"
+            className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-sm font-semibold text-inkSoft transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-rust"
+          >
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">Back to Emami Apps</span>
+          </a>
 
           <div ref={profileRef} className="relative ml-auto">
             <button
