@@ -10,7 +10,14 @@ import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
 import EmpAppMark from './EmpAppMark';
 
-export default function Sidebar() {
+interface SidebarProps {
+  /** True only for the permanent desktop/laptop sidebar (see the shell layout) — shrinks the
+   * brand mark a bit further than the mobile drawer's copy of this same component, to match the
+   * narrower desktop sidebar width. */
+  compact?: boolean;
+}
+
+export default function Sidebar({ compact = false }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { favorites } = useFavorites();
@@ -42,7 +49,7 @@ export default function Sidebar() {
         {/* The one Emami Apps logo used across the whole hub (same asset as the Login page's hero
             logo — see EmpAppMark.tsx) — sized to fill the sidebar width so the "APPS" wordmark
             stays legible. */}
-        <EmpAppMark size={172} />
+        <EmpAppMark size={compact ? 132 : 172} />
       </button>
 
       {favoriteApps.length > 0 && (

@@ -114,7 +114,19 @@ export default function MyTimesheetPage() {
             )}
           </div>
         </div>
-        <MonthSelector monthStartDate={viewedMonth} onChange={changeMonth} maxMonthStartDate={thisMonth} />
+        <div className="flex flex-wrap items-center gap-3">
+          {!readOnly && (
+            <button type="button" onClick={handleCopyLastMonth} className="btn-ghost">
+              <Copy size={16} />
+              Copy from last month
+            </button>
+          )}
+          <button type="button" onClick={handleDownloadExcel} className="btn-primary">
+            <ArrowDown size={16} />
+            Download Excel
+          </button>
+          <MonthSelector monthStartDate={viewedMonth} onChange={changeMonth} maxMonthStartDate={thisMonth} />
+        </div>
       </div>
 
       {rejected && timesheet?.managerComment && (
@@ -130,19 +142,6 @@ export default function MyTimesheetPage() {
           <p className="mt-1 text-sm text-inkSoft">{timesheet.managerComment}</p>
         </div>
       )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        {!readOnly && (
-          <button type="button" onClick={handleCopyLastMonth} className="btn-ghost">
-            <Copy size={16} />
-            Copy from last month
-          </button>
-        )}
-        <button type="button" onClick={handleDownloadExcel} className="btn-primary ml-auto">
-          <ArrowDown size={16} />
-          Download Excel
-        </button>
-      </div>
 
       <TimesheetGrid
         ref={gridRef}

@@ -1,58 +1,15 @@
 {
-  "name": "emami-hub",
-  "description": "The Blank project template includes the minimum dependencies to run and an empty root component.",
+  "name": "emami-apps-dev",
+  "description": "Build orchestration for the Emami Apps monorepo — the hub itself lives in hub-next/ (Next.js); this root just merges the embedded apps into the hub's static export and (manually) deploys the hub-auth Lambda.",
   "license": "0BSD",
-  "version": "57.0.15",
-  "main": "index.ts",
-  "dependencies": {
-    "@expo-google-fonts/ibm-plex-sans": "^0.4.1",
-    "@expo-google-fonts/ibm-plex-serif": "^0.4.1",
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-native-masked-view/masked-view": "0.3.2",
-    "@react-navigation/drawer": "^7.13.8",
-    "@react-navigation/native": "^7.3.16",
-    "@react-navigation/native-stack": "^7.18.8",
-    "expo": "~57.0.13",
-    "expo-document-picker": "~57.0.1",
-    "expo-file-system": "~57.0.2",
-    "expo-font": "~57.0.1",
-    "expo-image-manipulator": "~57.0.14",
-    "expo-image-picker": "~57.0.14",
-    "expo-linear-gradient": "~57.0.1",
-    "expo-location": "~57.0.14",
-    "expo-sharing": "~57.0.11",
-    "expo-splash-screen": "~57.0.6",
-    "expo-status-bar": "~57.0.1",
-    "express": "^5.2.1",
-    "lucide-react-native": "^1.31.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.86.2",
-    "react-native-gesture-handler": "~2.32.0",
-    "react-native-reanimated": "4.5.1",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0",
-    "react-native-svg": "15.15.4",
-    "react-native-web": "^0.21.2",
-    "react-native-webview": "13.16.1",
-    "xlsx": "^0.18.5"
-  },
+  "private": true,
   "devDependencies": {
     "@aws-sdk/client-lambda": "^3.700.0",
-    "@types/react": "~19.2.2",
     "archiver": "^7.0.1",
-    "babel-preset-expo": "^57.0.7",
-    "dotenv": "^17.4.2",
-    "typescript": "~6.0.3"
+    "dotenv": "^17.4.2"
   },
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
     "deploy:lambdas": "node scripts/deploy-lambdas.js",
-    "build:web": "expo export --platform web --clear && node scripts/inject-seo-tags.js",
-    "build:embedded": "node scripts/build-embedded-apps.js",
-    "serve": "node server/index.js"
+    "build:embedded": "node scripts/build-embedded-apps.js"
   }
 }

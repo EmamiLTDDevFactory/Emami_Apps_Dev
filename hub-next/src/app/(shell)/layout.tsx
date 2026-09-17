@@ -28,8 +28,8 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {isWideScreen ? (
-        <div style={{ width: 218, flexShrink: 0, borderRight: `1px solid ${colors.sidebarBorder}` }}>
-          <Sidebar />
+        <div style={{ width: 184, flexShrink: 0, borderRight: `1px solid ${colors.sidebarBorder}` }}>
+          <Sidebar compact />
         </div>
       ) : (
         drawerOpen && (
