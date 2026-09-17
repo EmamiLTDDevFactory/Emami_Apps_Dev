@@ -24,7 +24,7 @@ function useIsWideScreen() {
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, currentUser, directReports, getUserById, resetDemoData } = useApp();
+  const { isLoggedIn, currentUser, directReports, getUserById } = useApp();
   const isWideScreen = useIsWideScreen();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -128,15 +128,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
-        <footer className="px-4 pb-8 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={resetDemoData}
-            className="text-xs text-inkSoft hover:text-ink focus:outline-none focus-visible:underline"
-          >
-            Reset demo data
-          </button>
-        </footer>
       </div>
     </div>
   );
