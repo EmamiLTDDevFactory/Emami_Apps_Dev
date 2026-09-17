@@ -63,11 +63,11 @@ function emptyRow(): DayRow {
 // fresh month starts at the standard 10-18 shift instead of a blank grid. Today is left blank
 // instead - it's clocked in/out live (see `punch` below), so it should start showing the "Clock
 // In" button, not a pre-filled shift nobody actually walked in for.
-function withDefaultTimes(map: DayMap, days: string[], todayIso: string): DayMap {
+function withDefaultTimes(map: DayMap, days: string[], todayIso: string, workingDayOverrides?: Set<string>): DayMap {
   const next = { ...map };
   days.forEach((dateIso) => {
     if (next[dateIso]) return;
-    if (isOffDay(parseISODate(dateIso))) return;
+    if (isOffDay(parseISODate(dateIso), workingDayOverrides)) return;
     next[dateIso] = dateIso === todayIso ? { ...emptyRow(), inTime: '', outTime: '' } : emptyRow();
   });
   return next;
@@ -110,11 +110,11 @@ function isLineEmpty(line: Line) {
 }
 
 // Row background + accent styling for the day-type of a given date.
-function dayRowTone(date: Date) {
-  if (isWorkingSaturday(date)) {
+function dayRowTone(date: Date, workingDayOverrides?: Set<string>) {
+  if (isWorkingSaturday(date, workingDayOverrides)) {
     return { row: 'bg-blueBg/60', dayText: 'text-blue', badge: { label: 'Working Sat', cls: 'bg-blueBg text-blue' } };
   }
-  if (isOffDay(date)) {
+  if (isOffDay(date, workingDayOverrides)) {
     return { row: 'bg-appBg', dayText: 'text-inkSoft font-semibold', badge: { label: 'Off', cls: 'bg-border text-inkSoft' } };
   }
   return { row: '', dayText: 'text-inkSoft', badge: null as { label: string; cls: string } | null };
@@ -222,20 +222,21 @@ interface TimesheetGridProps {
   monthStartDate: string;
   initialEntries: AnyRecord[];
   readOnly?: boolean;
+  workingDayOverrides?: Set<string>;
   onEntriesChange?: (entries: AnyRecord[], totals: AnyRecord) => void;
   onAutosave?: (entries: AnyRecord[]) => void;
   autosaveDelay?: number;
 }
 
 const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }, TimesheetGridProps>(function TimesheetGrid(
-  { userId, tasks, monthStartDate, initialEntries, readOnly, onEntriesChange, onAutosave, autosaveDelay = 700 },
+  { userId, tasks, monthStartDate, initialEntries, readOnly, workingDayOverrides, onEntriesChange, onAutosave, autosaveDelay = 700 },
   ref
 ) {
   const days = useMemo(() => monthDays(monthStartDate).map((d) => toISODate(d)), [monthStartDate]);
   const todayIso = toISODate(new Date());
   const initDayMap = (entries: AnyRecord[]) => {
     const map = entriesToDayMap(entries);
-    return readOnly ? map : withDefaultTimes(map, days, todayIso);
+    return readOnly ? map : withDefaultTimes(map, days, todayIso, workingDayOverrides);
   };
   const [dayMap, setDayMap] = useState<DayMap>(() => initDayMap(initialEntries));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -600,11 +601,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           <tbody>
             {days.map((dateIso) => {
               const date = parseISODate(dateIso);
-              const tone = dayRowTone(date);
+              const tone = dayRowTone(date, workingDayOverrides);
               const row = dayMap[dateIso] || emptyRow();
               const onLeave = !!row.leaveType;
               const hours = totals.perDay[dateIso];
-              const working = !isOffDay(date);
+              const working = !isOffDay(date, workingDayOverrides);
               const zero = !onLeave && working && hours === 0;
               const over = hours > MAX_HOURS_PER_DAY;
               const rowTint = onLeave ? 'bg-tealBg/60' : tone.row;
@@ -630,7 +631,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                         <span className="inline-block rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
                       </div>
-                      {!readOnly && !isOffDay(date) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                      {!readOnly && !isOffDay(date, workingDayOverrides) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
                     </td>
                     <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
                     <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
@@ -877,12 +878,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
       <div className="space-y-4 md:hidden">
         {days.map((dateIso) => {
           const date = parseISODate(dateIso);
-          const tone = dayRowTone(date);
+          const tone = dayRowTone(date, workingDayOverrides);
           const row = dayMap[dateIso] || emptyRow();
           const onLeave = !!row.leaveType;
           const lines = row.lines.length ? row.lines : [emptyLine()];
           const hours = totals.perDay[dateIso];
-          const working = !isOffDay(date);
+          const working = !isOffDay(date, workingDayOverrides);
           const zero = !onLeave && working && hours === 0;
           const over = hours > MAX_HOURS_PER_DAY;
           const cardTint = onLeave ? 'bg-tealBg' : tone.row || 'bg-white';

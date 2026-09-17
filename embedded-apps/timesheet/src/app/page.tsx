@@ -41,7 +41,7 @@ const MANAGER_CARDS = [
 ];
 
 export default function DashboardPage() {
-  const { currentUser, getTimesheet, teamSettings, directReports, getLeaveBalance, timesheets, unassignedEmployees } = useApp();
+  const { currentUser, getTimesheet, teamSettings, directReports, getLeaveBalance, timesheets, unassignedEmployees, workingDayOverridesSet } = useApp();
   const [showLeaveDetails, setShowLeaveDetails] = useState(false);
   const router = useRouter();
 
@@ -83,7 +83,7 @@ export default function DashboardPage() {
   const totals = useMemo(() => computeTotals(currentTimesheet?.entries || [], thisMonth), [currentTimesheet, thisMonth]);
   const overdue = isOverdue(currentTimesheet || { status: 'Draft', monthStartDate: thisMonth }, teamSettings);
   const displayStatus = overdue ? 'Overdue' : getDisplayStatus(currentTimesheet || { status: 'Draft' });
-  const expected = expectedMonthlyHours(thisMonth);
+  const expected = expectedMonthlyHours(thisMonth, workingDayOverridesSet);
 
   const pastMonths = recentMonthStarts(thisMonth, 5)
     .slice(1)

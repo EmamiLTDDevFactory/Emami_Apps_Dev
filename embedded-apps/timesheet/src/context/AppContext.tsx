@@ -17,6 +17,7 @@ interface AppData {
   leaveBalances: AnyRecord[];
   unassignedEmployees: AnyRecord[];
   timesheets: AnyRecord[];
+  workingDayOverrides: string[];
 }
 
 interface Session {
@@ -85,7 +86,7 @@ async function api(path: string, options?: RequestInit): Promise<any> {
 }
 
 async function loadAllData(): Promise<AppData> {
-  const [users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees] = await Promise.all([
+  const [users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, workingDayOverrides] = await Promise.all([
     api('/users'),
     api('/projects'),
     api('/tasks'),
@@ -93,9 +94,10 @@ async function loadAllData(): Promise<AppData> {
     api('/team-settings'),
     api('/leave-balances'),
     api('/users/unassigned'),
+    api('/working-day-overrides'),
   ]);
   const timesheetsByUser = await Promise.all(users.map((u: AnyRecord) => api(`/timesheets?userId=${u.id}`)));
-  return { users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, timesheets: timesheetsByUser.flat() };
+  return { users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, timesheets: timesheetsByUser.flat(), workingDayOverrides };
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -241,6 +243,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const directReports = useMemo(() => data?.users.filter((u) => u.managerId === currentUser?.id) || [], [data, currentUser]);
+
+  // Set form of workingDayOverrides for date.js's isOffDay/isWorkingDay/etc, which check
+  // membership by ISO date string - a Set beats re-scanning the array on every day cell render.
+  const workingDayOverridesSet = useMemo(() => new Set(data?.workingDayOverrides || []), [data?.workingDayOverrides]);
 
   function setCurrentUserId(userId: string) {
     setSession((s) => ({ ...s, currentUserId: userId }));
@@ -539,6 +545,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  // Flips a specific Saturday (identified by its "YYYY-MM-DD" date) to a working day for the
+  // current manager's own team - see server/src/routes/workingDayOverrides.js. Manager-only
+  // server-side; scoped to the manager's own team automatically via their session, not a
+  // client-supplied manager id.
+  async function addWorkingDayOverride(date: string) {
+    await api('/working-day-overrides', { method: 'POST', body: JSON.stringify({ date }) });
+    setData((d) => (d!.workingDayOverrides.includes(date) ? d! : { ...d!, workingDayOverrides: [...d!.workingDayOverrides, date].sort() }));
+  }
+
+  // Reverts a Saturday back to the default 2nd/4th-off rule.
+  async function removeWorkingDayOverride(date: string) {
+    await api(`/working-day-overrides/${date}`, { method: 'DELETE' });
+    setData((d) => ({ ...d!, workingDayOverrides: d!.workingDayOverrides.filter((x) => x !== date) }));
+  }
+
   function resetDemoData() {
     refresh();
   }
@@ -645,6 +666,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rejectEmployee,
     removeDirectReport,
     deleteEmployee,
+    workingDayOverridesSet,
+    addWorkingDayOverride,
+    removeWorkingDayOverride,
     resetDemoData,
   };
 

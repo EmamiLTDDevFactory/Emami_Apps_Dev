@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Users, FolderKanban, ListTodo, Download, Trash2, Pencil, Check, X, Eye, Plus } from 'lucide-react';
+import { Users, FolderKanban, ListTodo, Download, Trash2, Pencil, Check, X, Eye, Plus, CalendarCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
 import BackButton from '../../components/BackButton';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import LeaveDetailsModal from '../../components/LeaveDetailsModal';
-import { currentMonthStartIso } from '../../utils/date';
+import MonthSelector from '../../components/MonthSelector';
+import { currentMonthStartIso, formatDayOrdinal, monthDays, nthWeekdayOfMonth, toISODate } from '../../utils/date';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
+
+const SATURDAY_ORDINALS = ['1st', '2nd', '3rd', '4th', '5th'];
 
 export default function ManageTeamPage() {
   const {
@@ -38,6 +41,10 @@ export default function ManageTeamPage() {
     getTimesheet,
     getAssignedTasks,
     timesheets,
+    workingDayOverrides,
+    workingDayOverridesSet,
+    addWorkingDayOverride,
+    removeWorkingDayOverride,
   } = useApp();
   const { showToast } = useToast();
   const router = useRouter();
@@ -75,6 +82,8 @@ export default function ManageTeamPage() {
   const [leaveDrafts, setLeaveDrafts] = useState<Record<string, string>>({}); // userId -> in-progress "allocated" input value
   const [savingLeaveUserId, setSavingLeaveUserId] = useState<string | null>(null);
   const [viewingLeaveUserId, setViewingLeaveUserId] = useState<string | null>(null);
+  const [satMonth, setSatMonth] = useState(thisMonth);
+  const [togglingDate, setTogglingDate] = useState<string | null>(null);
 
   // Every leave-tagged entry per direct report, newest first - mirrors Dashboard's
   // myLeaveEntries but keyed by userId since a manager can open this for any of their reports.
@@ -91,6 +100,20 @@ export default function ManageTeamPage() {
   }, [timesheets, directReports]);
 
   const viewingLeaveUser = directReports.find((u: any) => u.id === viewingLeaveUserId) || null;
+
+  // Every Saturday in the browsed month, classified against the default 2nd/4th-off rule plus
+  // whatever this manager has already flipped via workingDayOverrides.
+  const satMonthSaturdays = useMemo(() => {
+    return monthDays(satMonth)
+      .filter((d: Date) => d.getDay() === 6)
+      .map((d: Date) => {
+        const iso = toISODate(d);
+        const nth = nthWeekdayOfMonth(d);
+        const defaultWorking = [1, 3, 5].includes(nth);
+        const overridden = workingDayOverrides.includes(iso);
+        return { iso, date: d, nth, defaultWorking, overridden, working: defaultWorking || overridden };
+      });
+  }, [satMonth, workingDayOverrides]);
 
   useEffect(() => {
     if (!projects.some((p: any) => p.id === newTaskProject)) {
@@ -286,12 +309,29 @@ export default function ManageTeamPage() {
         ...t,
         projectName: projects.find((p: any) => p.id === t.projectId)?.name || 'Unknown project',
       }));
-      await exportTimesheetToExcel({ entries: timesheet?.entries || [], tasks: userTasks, monthStartDate: thisMonth, userName: user.name });
+      await exportTimesheetToExcel({ entries: timesheet?.entries || [], tasks: userTasks, monthStartDate: thisMonth, userName: user.name, workingDayOverrides: workingDayOverridesSet });
       showToast('Timesheet downloaded.', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to download timesheet.', 'error');
     } finally {
       setDownloadingUserId(null);
+    }
+  }
+
+  async function handleToggleSaturday(iso: string, makeWorking: boolean) {
+    setTogglingDate(iso);
+    try {
+      if (makeWorking) {
+        await addWorkingDayOverride(iso);
+        showToast('Marked as a working day for your team.', 'success');
+      } else {
+        await removeWorkingDayOverride(iso);
+        showToast('Reverted to a non-working day.', 'success');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update that Saturday.', 'error');
+    } finally {
+      setTogglingDate(null);
     }
   }
 
@@ -529,6 +569,45 @@ export default function ManageTeamPage() {
           ))}
           {directReports.length === 0 && <p className="text-sm text-inkSoft">No direct reports.</p>}
         </div>
+      </section>
+
+      {/* 11. Working Saturdays - override the default 2nd/4th-off rule for this manager's team */}
+      <section className="glass-card p-6">
+        <h2 className="mb-1 flex items-center gap-2 font-semibold text-ink">
+          <CalendarCheck size={18} className="text-rust" />
+          Working Saturdays
+        </h2>
+        <p className="mb-4 text-xs text-inkSoft">
+          By default the 2nd and 4th Saturday of each month are non-working days. Flip a specific Saturday to working here when your team
+          needs it - employees will see it as a normal working day, and it applies to you and every direct report.
+        </p>
+        <div className="mb-3">
+          <MonthSelector monthStartDate={satMonth} onChange={setSatMonth} />
+        </div>
+        <ul className="space-y-2">
+          {satMonthSaturdays.map(({ iso, date, nth, defaultWorking, overridden, working }: any) => (
+            <li key={iso} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+              <p className="text-sm font-medium text-ink">
+                {formatDayOrdinal(date)} <span className="font-normal text-inkSoft">({SATURDAY_ORDINALS[nth - 1]} Saturday)</span>
+              </p>
+              <span className="flex items-center gap-2">
+                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${working ? 'bg-blueBg text-blue' : 'bg-border text-inkSoft'}`}>
+                  {working ? (overridden ? 'Working (override)' : 'Working') : 'Off'}
+                </span>
+                {!defaultWorking && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSaturday(iso, !overridden)}
+                    disabled={togglingDate === iso}
+                    className={`px-3 py-1.5 text-xs ${overridden ? 'btn-ghost' : 'btn-primary'}`}
+                  >
+                    {togglingDate === iso ? 'Saving…' : overridden ? 'Revert to Off' : 'Make working day'}
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {/* 9. Projects CRUD, 10. Tasks CRUD (team-wide, not per-manager) */}
