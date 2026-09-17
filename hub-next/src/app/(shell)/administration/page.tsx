@@ -9,22 +9,14 @@ import {
 import Dialog from '../../../components/Dialog';
 import { appById } from '../../../data/mockData';
 import { useAuth } from '../../../context/AuthContext';
-import { getMyProfile, type UserProfile } from '../../../lib/authApi';
 import {
-  getAdminOverview, getAdminRoster, getAdminUserAppStats, getAdminAppStats, getAdminAppUserStats,
-  type AdminOverview, type AdminRosterEntry, type AdminUserAppStat, type AdminAppStat, type AdminAppUserStat,
+  getAdminOverview, getAdminRoster, getAdminAppStats, getAdminAppUserStats,
+  type AdminOverview, type AdminRosterEntry, type AdminAppStat, type AdminAppUserStat,
 } from '../../../lib/adminApi';
 import { getAccessHistory } from '../../../lib/accessApi';
 import type { AccessChangeEntry } from '../../../types';
-import {
-  exportAdministrationReportToExcel, exportAppStatsToExcel, exportAppUserStatsToExcel, exportUserReportToExcel,
-} from '../../../lib/exportAdminExcel';
+import { exportAdministrationReportToExcel, exportAppStatsToExcel, exportAppUserStatsToExcel } from '../../../lib/exportAdminExcel';
 import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/tokens';
-
-/** App ids that manage their own role internally (own DB or SAP OData), rather than being
- * authorized through this hub's Manage Access. The chip shown for these in the roster/drill-down
- * below is only ever the generic hub-level grant, never the app's real internal role. */
-const ROLE_MANAGED_INTERNALLY = new Set(['audit-capa', 'finance', 'market-rate', 'inventory', 'expense', 'hr']);
 
 function formatDateShort(iso: string | null): string {
   if (!iso) return 'Never';
@@ -110,19 +102,6 @@ export default function AdministrationPage() {
   const [orgHistoryLoading, setOrgHistoryLoading] = useState(true);
   const [orgHistoryError, setOrgHistoryError] = useState('');
 
-  const [selected, setSelected] = useState<AdminRosterEntry | null>(null);
-  const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
-  const [selectedLoading, setSelectedLoading] = useState(false);
-  const [selectedError, setSelectedError] = useState('');
-  const [userReportDownloading, setUserReportDownloading] = useState(false);
-  const [userReportError, setUserReportError] = useState('');
-  const [selectedHistory, setSelectedHistory] = useState<AccessChangeEntry[]>([]);
-  const [selectedHistoryLoading, setSelectedHistoryLoading] = useState(false);
-
-  const [appStats, setAppStats] = useState<Record<string, AdminUserAppStat>>({});
-  const [appStatsLoading, setAppStatsLoading] = useState(false);
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
-
   const [appUsersFor, setAppUsersFor] = useState<string | null>(null);
   const [appUsers, setAppUsers] = useState<AdminAppUserStat[]>([]);
   const [appUsersLoading, setAppUsersLoading] = useState(false);
@@ -180,48 +159,7 @@ export default function AdministrationPage() {
   };
 
   const openUser = (user: AdminRosterEntry) => {
-    setSelected(user);
-    setSelectedProfile(null);
-    setSelectedError('');
-    setAppStats({});
-    setSelectedAppId(null);
-    setSelectedHistory([]);
-    setSelectedHistoryLoading(true);
-    getAccessHistory(user.email).then((result) => {
-      setSelectedHistoryLoading(false);
-      if (result.ok && result.changes) setSelectedHistory(result.changes);
-    });
-    if (!user.usage.hasLoggedIn) return; // nothing to fetch — getMyProfile would 404
-    setSelectedLoading(true);
-    getMyProfile(user.email).then((profile) => {
-      setSelectedLoading(false);
-      if (profile) setSelectedProfile(profile);
-      else setSelectedError("Could not load this user's activity.");
-    });
-    setAppStatsLoading(true);
-    getAdminUserAppStats(user.email).then((result) => {
-      setAppStatsLoading(false);
-      if (result.ok && result.apps) setAppStats(Object.fromEntries(result.apps.map((s) => [s.appId, s])));
-    });
-  };
-
-  const closeUser = () => {
-    setSelected(null);
-    setSelectedAppId(null);
-  };
-  const closeAppDetail = () => setSelectedAppId(null);
-
-  const handleUserReportDownload = async () => {
-    if (!selected) return;
-    setUserReportDownloading(true);
-    setUserReportError('');
-    try {
-      await exportUserReportToExcel(selected, selectedProfile, Object.values(appStats), selectedHistory);
-    } catch {
-      setUserReportError('Could not generate the report. Please try again.');
-    } finally {
-      setUserReportDownloading(false);
-    }
+    router.push(`/administration/user?email=${encodeURIComponent(user.email)}`);
   };
 
   const openAppUsers = (appId: string) => {
@@ -471,130 +409,6 @@ export default function AdministrationPage() {
         )}
       </div>
 
-      {selected && (
-        <Dialog onClose={closeUser}>
-          <div style={dialogHeaderRowStyle}>
-            <p style={dialogTitleStyle}>{selected.email}</p>
-            <button type="button" onClick={handleUserReportDownload} disabled={userReportDownloading} style={{ ...downloadBtnStyle, padding: '6px 10px' }}>
-              <Download size={12} color={colors.white} />
-              <span style={downloadBtnTextStyle}>{userReportDownloading ? 'Preparing…' : 'Download'}</span>
-            </button>
-            <button type="button" onClick={closeUser} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Close"><X size={18} color={colors.inkSoft} /></button>
-          </div>
-          {!!userReportError && <p style={errorTextStyle}>{userReportError}</p>}
-
-          {!selected.usage.hasLoggedIn ? (
-            <p style={emptyTextStyle}>This user hasn&apos;t signed in to EmamiApps yet.</p>
-          ) : selectedLoading ? (
-            <Spinner />
-          ) : selectedError ? (
-            <p style={errorTextStyle}>{selectedError}</p>
-          ) : selectedProfile ? (
-            <>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                <DetailField label="Last Login" value={formatDateTime(selectedProfile.lastLogin)} />
-                <DetailField label="Total Logins" value={String(selectedProfile.logins)} />
-                <DetailField label="Sessions" value={String(selectedProfile.sessionsTotal)} />
-                <DetailField label="Time Spent" value={selectedProfile.timeSpent} />
-                <DetailField label="Last Session" value={selectedProfile.lastSessionDuration || '—'} />
-                <DetailField label="Apps Opened" value={String(selectedProfile.appsOpened)} />
-                <DetailField label="Downloads" value={String(selectedProfile.downloads)} />
-                <DetailField label="Favorites Added" value={String(selectedProfile.favoritesAdded)} />
-                <DetailField label="Notifications Read" value={String(selectedProfile.notificationsRead)} />
-                <DetailField label="Most Used App" value={selectedProfile.mostUsedApp !== '—' ? appLabel(selectedProfile.mostUsedApp) : '—'} />
-              </div>
-
-              {selectedProfile.topApps.length > 0 && (
-                <>
-                  <p style={dialogSectionLabelStyle}>Top Apps</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {selectedProfile.topApps.map((t) => {
-                      const accent = appColor(t.appId);
-                      const app = appById(t.appId);
-                      const Icon = app?.icon;
-                      return (
-                        <span key={t.appId} style={{ ...appChipStyle, borderColor: accent, backgroundColor: `${accent}14` }}>
-                          {Icon && <Icon size={12} color={accent} />}
-                          <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: accent }}>{appLabel(t.appId)} · {t.opens} opens</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-
-              <p style={dialogSectionLabelStyle}>App Access · tap an app for its usage stats</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {selected.apps.length === 0 ? (
-                  <span style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>No app grants</span>
-                ) : (
-                  selected.apps.map((grant) => {
-                    const accent = appColor(grant.appId);
-                    const app = appById(grant.appId);
-                    const Icon = app?.icon;
-                    const internal = ROLE_MANAGED_INTERNALLY.has(grant.appId);
-                    return (
-                      <button key={grant.appId} type="button" onClick={() => setSelectedAppId(grant.appId)} style={{ ...appChipStyle, borderColor: accent, backgroundColor: `${accent}14`, cursor: 'pointer', border: `1px solid ${accent}` }}>
-                        {Icon && <Icon size={12} color={accent} />}
-                        <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: accent }}>{appLabel(grant.appId)} · {grant.role}{internal ? ' (hub grant only)' : ''}</span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </>
-          ) : null}
-
-          <p style={dialogSectionLabelStyle}>Recent Changes</p>
-          {selectedHistoryLoading ? <Spinner /> : <ChangeHistoryList changes={selectedHistory} />}
-        </Dialog>
-      )}
-
-      {selectedAppId && selected && (() => {
-        const app = appById(selectedAppId);
-        const Icon = app?.icon;
-        const accent = appColor(selectedAppId);
-        const grant = selected.apps.find((a) => a.appId === selectedAppId);
-        const stat = appStats[selectedAppId];
-        const internal = ROLE_MANAGED_INTERNALLY.has(selectedAppId);
-        return (
-          <Dialog onClose={closeAppDetail}>
-            <div style={dialogHeaderRowStyle}>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {Icon && <Icon size={17} color={accent} />}
-                <p style={{ ...dialogTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appLabel(selectedAppId)}</p>
-              </div>
-              <button type="button" onClick={closeAppDetail} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Close"><X size={18} color={colors.inkSoft} /></button>
-            </div>
-            <p style={cardSubtitleStyle}>{selected.email}</p>
-
-            {grant && (
-              <span style={{ ...appChipStyle, borderColor: accent, backgroundColor: `${accent}14`, alignSelf: 'flex-start', marginTop: 12, marginBottom: 16, display: 'inline-flex' }}>
-                <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: accent }}>Role: {grant.role}{internal ? ' (hub grant only)' : ''}</span>
-              </span>
-            )}
-
-            {appStatsLoading ? (
-              <Spinner />
-            ) : stat ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                <DetailField label="Total Opens" value={String(stat.opens)} />
-                <DetailField label="First Opened" value={formatDateTime(stat.firstOpened)} />
-                <DetailField label="Last Opened" value={formatDateTime(stat.lastOpened)} />
-              </div>
-            ) : (
-              <p style={emptyTextStyle}>{selected.email} hasn&apos;t opened {appLabel(selectedAppId)} yet.</p>
-            )}
-
-            {internal && (
-              <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, lineHeight: '16px', marginTop: 16 }}>
-                This app manages its own role internally — the grant above is only the generic hub-level access, not necessarily the user&apos;s real role inside the app.
-              </p>
-            )}
-          </Dialog>
-        );
-      })()}
-
       {appUsersFor && (
         <Dialog onClose={closeAppUsers}>
           <div style={dialogHeaderRowStyle}>
@@ -633,15 +447,6 @@ export default function AdministrationPage() {
           )}
         </Dialog>
       )}
-    </div>
-  );
-}
-
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ minWidth: 130, flexGrow: 1, flexBasis: '30%' }}>
-      <p style={{ fontSize: 10, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.3, margin: 0 }}>{label}</p>
-      <p style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, marginTop: 2, marginBottom: 0 }}>{value}</p>
     </div>
   );
 }
@@ -685,4 +490,3 @@ const usageStatStyle: React.CSSProperties = { fontSize: 11, fontFamily: fonts.sa
 const appChipStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid', borderRadius: radii.pill, padding: '6px 10px', backgroundColor: colors.appBg };
 const dialogHeaderRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 10 };
 const dialogTitleStyle: React.CSSProperties = { fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, flex: 1, margin: 0 };
-const dialogSectionLabelStyle: React.CSSProperties = { fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 16, marginBottom: 10 };
