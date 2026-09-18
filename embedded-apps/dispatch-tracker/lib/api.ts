@@ -198,11 +198,15 @@ async function postSapAction(entitySet: string, payload: any): Promise<{ ok: tru
   return { ok: true };
 }
 
-export interface DispatchPayload { invoice_no: string; werks: string; row_data: object; dispatch_date: string; lr_no: string; vehicle_no: string; vehicle_type: string; transporter: string; cases: number; }
+export interface DispatchPayload { invoice_no: string; werks: string; row_data: object; dispatch_date: string; edd: string | null; lr_no: string; vehicle_no: string; vehicle_type: string; transporter: string; cases: number; }
 export const postDispatch = (body: DispatchPayload) => postSapAction('InvoiceDispSet', {
   Vbeln: body.invoice_no,
   Werks: body.werks,
   DispatchDate: formatSAPDate(body.dispatch_date),
+  // Carries the invoice's original EDD through to InvoiceDispSet's CREATE_ENTITY — without
+  // it, SAP's backend was recalculating EDD off the dispatch date instead of keeping the one
+  // set at invoice creation.
+  Edd: formatSAPDate(body.edd),
   LrNo: body.lr_no,
   VehicleNo: body.vehicle_no,
   VehicleType: body.vehicle_type,
