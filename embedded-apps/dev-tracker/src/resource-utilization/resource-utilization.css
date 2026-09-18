@@ -1,7 +1,4 @@
-.ru-stage { padding: 36px 52px 48px; }
-
 @media (max-width: 768px) {
-  .ru-stage { padding: 20px 18px 32px; }
   /* The timeline is date-positioned by percentage across a fixed-width side column + flexible
      track — squeezing that below its legible width would overlap the bars, so let it scroll
      horizontally instead, same pattern as the Kanban board's .board { overflow-x: auto }. */

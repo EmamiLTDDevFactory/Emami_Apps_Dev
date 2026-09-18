@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import AccountBar from '../shared/AccountBar.jsx';
+import Sidebar from '../shared/Sidebar.jsx';
+import Topbar from '../shared/Topbar.jsx';
+import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
+import { useNotifications } from '../shared/useNotifications.js';
 import { apiList, apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { areaColorMap } from '../shared/masterData.js';
 import { buildRoster, computeConcurrency, remainingDays } from '../shared/roster.js';
 import { fmtDate, initialsRoster } from '../shared/utils.js';
-import { ROUTES } from '../shared/routes.js';
 
 const AREA_FALLBACK = { color: 'var(--mod-fallback)', softColor: 'var(--mod-fallback-soft)' };
 const ROLE_ORDER = ['Developer', 'Functional SPOC'];
@@ -56,6 +58,10 @@ export default function ResourceUtilization() {
   const [flipped, setFlipped] = useState({});
   const [generatedAt] = useState(new Date());
   const email = getCurrentUserEmail();
+  const { isAdmin, roleLabel, profileName } = useDevTrackerSession(email);
+  // No activity feed loaded here, so this only ever surfaces real due-date reminders,
+  // not the "someone else changed X" kind (see useNotifications.js).
+  const { visibleNotifications, markAllRead, clear } = useNotifications(email, items, [], profileName);
 
   useEffect(() => {
     if (!email) {
@@ -87,18 +93,29 @@ export default function ResourceUtilization() {
   }
 
   if (!email) return null;
-  if (loading) return <div className="empty-state">Loading resource data…</div>;
-  if (failed) return <div className="empty-state">Couldn't load live data — try refreshing the page.</div>;
+
+  // Loading/error states render inside the shell, not instead of it — losing the
+  // Sidebar/Topbar on a failed fetch would strand someone with no way to navigate away.
+  if (loading || failed) {
+    return (
+      <div className="app-shell">
+        <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+        <main className="shell-main">
+          <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
+          <div className="empty-state">{loading ? 'Loading resource data…' : "Couldn't load live data — try refreshing the page."}</div>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div className="ru-stage">
-      <AccountBar showSignOut />
+    <div className="app-shell">
+      <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+      <main className="shell-main">
+        <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
+
       <div className="ru-header">
         <div>
-          <a className="back-link" href={ROUTES.home}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-            Home
-          </a>
           <div className="eyebrow">SAP Change &amp; Development Log</div>
           <h1 className="h1">Resource Timeline</h1>
         </div>
@@ -187,6 +204,7 @@ export default function ResourceUtilization() {
           Bars span each item's start date through its revised target date; a red bottom edge marks a bar that ended before today without being closed. Faded bars are completed.
         </p>
       </div>
+      </main>
     </div>
   );
 }

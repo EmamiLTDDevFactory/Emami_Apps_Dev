@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import AccountBar from '../shared/AccountBar.jsx';
+import Sidebar from '../shared/Sidebar.jsx';
+import Topbar from '../shared/Topbar.jsx';
+import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
+import { useNotifications } from '../shared/useNotifications.js';
 import ItemPanel from './ItemPanel.jsx';
 import { apiList, apiMasterData, apiAiCommand, apiUpdate, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
@@ -37,6 +40,10 @@ export default function Dashboard() {
   const flipTimersRef = useRef({});
   const [flipped, setFlipped] = useState({});
   const email = getCurrentUserEmail();
+  const { isAdmin, roleLabel, profileName } = useDevTrackerSession(email);
+  // No activity feed loaded here, so this only ever surfaces real due-date reminders,
+  // not the "someone else changed X" kind (see useNotifications.js).
+  const { visibleNotifications, markAllRead, clear } = useNotifications(email, items, [], profileName);
   const loadedRef = useRef(false);
 
   async function reload() {
@@ -273,14 +280,13 @@ export default function Dashboard() {
   if (!email) return null;
 
   return (
-    <div className="dash-stage">
-      <AccountBar />
+    <div className="app-shell">
+      <Sidebar active="dashboard" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+      <main className="shell-main">
+        <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
+
       <div className="dash-header">
         <div>
-          <a className="back-link" href={ROUTES.home}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-            Home
-          </a>
           <div className="eyebrow">SAP Change &amp; Development Log</div>
           <h1 className="h1">Delivery Command Centre</h1>
         </div>
@@ -522,6 +528,7 @@ export default function Dashboard() {
           onSaved={onSaved}
         />
       )}
+      </main>
     </div>
   );
 }

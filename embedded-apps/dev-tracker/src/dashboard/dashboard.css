@@ -1,4 +1,3 @@
-.dash-stage { padding: 36px 52px 48px; }
 .dash-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
 .dash-toolbar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .stat-pill { display: inline-flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--text-2); padding: 8px 4px; }
@@ -86,7 +85,6 @@
   .chart-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
-  .dash-stage { padding: 20px 18px 32px; }
   .field-row { grid-template-columns: 1fr; }
   .panel { padding: 22px 18px 48px; }
 }

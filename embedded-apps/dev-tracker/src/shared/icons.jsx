@@ -25,6 +25,7 @@ export const LayersIcon = (p) => <Icon {...p}><path d="M12 3 3 8l9 5 9-5-9-5Z" /
 export const AlertIcon = (p) => <Icon {...p}><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4" /><circle cx="12" cy="17.2" r=".3" fill="currentColor" stroke="none" /></Icon>;
 export const CheckCircleIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.6 2.6L16.5 9" /></Icon>;
 export const ClockIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 2" /></Icon>;
+export const PlayIcon = (p) => <Icon {...p}><path d="M7 4.5v15l13-7.5-13-7.5Z" fill="currentColor" stroke="none" /></Icon>;
 export const SparkIcon = (p) => <Icon {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.8 5.8l2.1 2.1M16.1 16.1l2.1 2.1M18.2 5.8l-2.1 2.1M7.9 16.1l-2.1 2.1" /><circle cx="12" cy="12" r="2.6" /></Icon>;
 export const BarChartIcon = (p) => <Icon {...p}><path d="M4 20V10M12 20V4M20 20v-7" /></Icon>;
 export const PieChartIcon = (p) => <Icon {...p}><path d="M12 3v9l7.8 4.5" /><path d="M20.8 13.5A9 9 0 1 1 12 3" /></Icon>;
