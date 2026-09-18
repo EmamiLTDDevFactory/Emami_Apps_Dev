@@ -4,11 +4,8 @@
 // Tracking) — /api/NGD/<ServiceName>/<EntitySet> on the shared Azure gateway. Confirmed live
 // 2026-09-12: PoSet and UserSet respond correctly. Email is now confirmed live on PoSet (per
 // instruction, 2026-09-14) — mock mode has been removed entirely; every call below hits SAP
-// directly, same as every other screen in this app. PrintformSet is a media-resource entity
-// server-side (confirmed 2026-09-15 via the source Fiori app's own network capture), but its
-// $value stream 404s at this app's own Azure proxy and its keyed GetEntity 500s server-side —
-// see fetchPrintformPdf's own comment for why it reads a filtered GetEntitySet instead, matching
-// the source Fiori app's own fallback for this exact entity.
+// directly, same as every other screen in this app. The printform PDF is read from POPrintFormSet
+// via a keyed GetEntity (Ebeln) per instruction — see fetchPrintformPdf's own comment.
 import axios from 'axios';
 import type { PoAction, PoRow, PoUser } from '../types/po';
 
@@ -157,37 +154,25 @@ export async function fetchUsers(): Promise<PoUser[]> {
   }
 }
 
-/** PDF printform for a PO — reads PrintformSet as a filtered EntitySet (GetEntitySet), not a
- * keyed single-entity read (GetEntity) and not the $value media stream. Two things ruled the
- * other two out, both confirmed live on 2026-09-15:
- *  - $value: PrintformSet is wired server-side as an OData v2 media-resource entity (confirmed
- *    from the source Fiori app's own network capture — bare-key `PrintformSet('...')/$value`,
- *    Accept: application/pdf, raw bytes back), which is the "correct" SAP-side pattern. But this
- *    app's Azure proxy (emdcindpwebapp1-...azurewebsites.net/api/NGD/...) 404s at its own Express
- *    router on any `/$value` path before it ever reaches SAP — no encoding variant gets past it.
- *    Not usable through this app's proxy today, independent of the SAP side.
- *  - Keyed GetEntity (`PrintformSet(Ebeln='...')?$format=json`): 500s server-side with "Invalid
- *    or no mapping to system data types found", identically regardless of JSON/XML — a genuine
- *    gap in this entity's own GetEntity implementation.
- * The filtered GetEntitySet read below (`PrintformSet?$filter=Ebeln eq '...'`) sidesteps both:
- * it's plain JSON that routes cleanly through the same proxy every other binary field in this
- * repo already uses successfully (payment-tracking's ZProvisionLogSet, non-ctc-expense,
- * rc-portal), and it hits GetEntitySet rather than the broken GetEntity handler. It's also
- * exactly what the source Fiori app itself falls back to when it can't use $value (see its
- * Details.controller.js). Returns a Blob ready for URL.createObjectURL, or null when SAP
- * genuinely has no printform for this PO; any other failure re-throws so the caller can tell
- * "nothing to show" apart from a real error and word its message accordingly. */
+/** PDF printform for a PO — per instruction, a keyed GetEntity read against POPrintFormSet
+ * (`POPrintFormSet(Ebeln='...')`), returning the document inline as base64 (`Value`) plus its
+ * actual `Mimetype`, rather than the value being assumed. Same "email, no bearer token" auth
+ * posture as every other read in this file. Returns a Blob ready for URL.createObjectURL, or null
+ * when SAP genuinely has no printform for this PO (404 on the keyed read); any other failure
+ * re-throws so the caller can tell "nothing to show" apart from a real error and word its message
+ * accordingly. */
 export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> {
   try {
-    const { data } = await sapClient.get('/PrintformSet', {
-      params: { '$format': 'json', '$filter': `Ebeln eq '${escapeODataString(poNumber)}'` },
+    const { data } = await sapClient.get(`/POPrintFormSet(Ebeln='${escapeODataString(poNumber)}')`, {
+      params: { '$format': 'json' },
     });
-    const base64 = data?.d?.results?.[0]?.Value;
+    const entity = data?.d;
+    const base64 = entity?.Value;
     if (!base64) return null;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: 'application/pdf' });
+    return new Blob([bytes], { type: entity?.Mimetype || 'application/pdf' });
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;
