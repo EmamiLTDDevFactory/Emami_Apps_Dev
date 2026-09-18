@@ -1077,3 +1077,42 @@ export async function uploadServicePoFile(
     rows: Array.isArray(results) ? results.map(toPoUploadRow) : [],
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// PO Header Quotation Attachment — a single flat POST to ZPOAttachment once a Service PO already
+// exists (see the Service PO Bulk Upload result view in po-creation.tsx), attaching a quotation
+// document at the PO header level. Per instruction: Ebeln, QuotFilename, QuotMimetype, QuotValue,
+// Description — no deep/nested items, unlike ZSrvPOUploadSet above.
+// ---------------------------------------------------------------------------------------------
+
+const PO_ATTACHMENT_ENTITY_SET = 'ZPOAttachment';
+
+/** Posts a quotation attachment against an already-created PO's header. `base64Value` should
+ * already be under the same body-size ceiling every other attachment on this SAP service is held
+ * to (see pdfAttachment.ts's MAX_ATTACHMENT_BYTES/ensureAttachmentUnderLimit) — this call doesn't
+ * re-check it, the caller is expected to have compressed/validated first. */
+export async function submitPoAttachment(
+  ebeln: string,
+  quotFilename: string,
+  quotMimetype: string,
+  quotValue: string,
+  description: string
+): Promise<void> {
+  const payload = {
+    Ebeln: ebeln,
+    QuotFilename: quotFilename,
+    QuotMimetype: quotMimetype,
+    QuotValue: quotValue,
+    Description: description,
+  };
+  try {
+    const res = await sapClient.post(`/${PO_ATTACHMENT_ENTITY_SET}`, payload);
+    const body = res.data?.d || res.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this attachment.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not save this attachment.'));
+  }
+}

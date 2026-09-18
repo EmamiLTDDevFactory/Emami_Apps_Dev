@@ -1,16 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
   uploadServicePoFile,
+  submitPoAttachment,
   PoUploadError,
   type PoUploadResult,
   type PoUploadResultRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { exportFailedRowsToCsv } from '../../../src/lib/exportCsv';
+import { ensureAttachmentUnderLimit, readAttachmentAsBase64, MAX_ATTACHMENT_BYTES } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
@@ -159,6 +161,25 @@ function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][
   return Array.from(map.entries()).sort((a, b) => (a[0] === '—' ? 1 : b[0] === '—' ? -1 : 0));
 }
 
+/** One PO header's Quotation Attachment state — keyed by Ebeln (see the `attachments` map in
+ * ServicePoUploadSection), since a single upload can create several POs at once and each gets its
+ * own independent pick/save flow. */
+interface AttachmentState {
+  fileName: string;
+  base64: string;
+  mimeType: string;
+  description: string;
+  attaching: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: string | null;
+}
+
+const EMPTY_ATTACHMENT_STATE: AttachmentState = {
+  fileName: '', base64: '', mimeType: '', description: '',
+  attaching: false, saving: false, saved: false, error: null,
+};
+
 /** GrPrice arrives as a STRING — parseFloat before formatting, never used directly. Amount is
  * GrPrice itself, shown as-is (not multiplied by Menge — GrPrice is the only price/amount field
  * the backend sends, and Menge/Qty is its own separate column). */
@@ -274,6 +295,55 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
     const remaining = previewHeaders.filter((h) => !shown.has(h));
     return { lifnrH, ekorgH, ekgrpH, eindtH, txz01H, remaining };
   }, [previewHeaders]);
+
+  // Quotation Attachment (PO header level) — only meaningful once a real PO exists, i.e. after a
+  // successful upload (see `result` below), keyed by Ebeln so several POs created in one upload
+  // each get their own independent pick/save state.
+  const [attachments, setAttachments] = useState<Record<string, AttachmentState>>({});
+  const getAttachment = (ebeln: string) => attachments[ebeln] || EMPTY_ATTACHMENT_STATE;
+  const patchAttachment = (ebeln: string, patch: Partial<AttachmentState>) => {
+    setAttachments((prev) => ({ ...prev, [ebeln]: { ...(prev[ebeln] || EMPTY_ATTACHMENT_STATE), ...patch } }));
+  };
+
+  const pickQuotation = async (ebeln: string) => {
+    patchAttachment(ebeln, { error: null });
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (res.canceled) return;
+      const asset = (res as any).assets?.[0] ?? res;
+      if (!asset?.uri) return;
+      patchAttachment(ebeln, { attaching: true });
+      const picked = await readAttachmentAsBase64(asset.uri);
+      // Same body-size ceiling as every other attachment on this SAP service (see
+      // pdfAttachment.ts) — compressed on web if it doesn't already fit, rejected on native.
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchAttachment(ebeln, { attaching: false, error: `File is too large — the limit is ${Math.round(MAX_ATTACHMENT_BYTES / 1024)}KB.` });
+        return;
+      }
+      patchAttachment(ebeln, {
+        attaching: false,
+        fileName: asset.name || 'quotation.pdf',
+        base64,
+        mimeType: 'application/pdf',
+        saved: false,
+      });
+    } catch {
+      patchAttachment(ebeln, { attaching: false, error: 'Could not attach this file. Please try again.' });
+    }
+  };
+
+  const saveQuotation = async (ebeln: string) => {
+    const state = getAttachment(ebeln);
+    if (!state.base64) return;
+    patchAttachment(ebeln, { saving: true, error: null });
+    try {
+      await submitPoAttachment(ebeln, state.fileName, state.mimeType, state.base64, state.description);
+      patchAttachment(ebeln, { saving: false, saved: true });
+    } catch (err) {
+      patchAttachment(ebeln, { saving: false, error: err instanceof Error ? err.message : 'Could not save this attachment.' });
+    }
+  };
 
   const resetPicked = () => {
     setPickedFileName('');
@@ -675,6 +745,61 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                         </Text>
                       </View>
                     </View>
+
+                    {(() => {
+                      const att = getAttachment(ebeln);
+                      return (
+                        <View style={styles.quotAttachBlock}>
+                          <Text style={styles.infoLabel}>Quotation Attachment</Text>
+                          {att.saved ? (
+                            <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: `${colors.green}14` }]}>
+                              <Ionicons name="checkmark-circle" size={11} color={colors.green} />
+                              <Text style={[styles.statusBadgeText, { color: colors.green }]}>{att.fileName} attached</Text>
+                            </View>
+                          ) : (
+                            <>
+                              <View style={styles.uploadRow}>
+                                <Pressable
+                                  style={[styles.attachBtn, att.attaching && styles.btnDisabled]}
+                                  onPress={() => pickQuotation(ebeln)}
+                                  disabled={att.attaching}
+                                  accessibilityRole="button"
+                                >
+                                  <Ionicons name={att.fileName ? 'document-attach-outline' : 'attach-outline'} size={14} color={colors.rust} />
+                                  <Text style={styles.attachBtnText} numberOfLines={1}>
+                                    {att.attaching ? 'Attaching…' : (att.fileName || 'Choose PDF quotation')}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                              {!!att.fileName && (
+                                <>
+                                  <TextInput
+                                    value={att.description}
+                                    onChangeText={(v) => patchAttachment(ebeln, { description: v })}
+                                    placeholder="Description (optional)"
+                                    placeholderTextColor={colors.inkSoft}
+                                    style={styles.descInput}
+                                  />
+                                  <Pressable
+                                    style={[styles.saveAttachBtn, att.saving && styles.btnDisabled]}
+                                    onPress={() => saveQuotation(ebeln)}
+                                    disabled={att.saving}
+                                    accessibilityRole="button"
+                                  >
+                                    {att.saving ? (
+                                      <ActivityIndicator size="small" color={colors.white} />
+                                    ) : (
+                                      <Text style={styles.saveAttachBtnText}>Save Attachment</Text>
+                                    )}
+                                  </Pressable>
+                                </>
+                              )}
+                              {att.error && <Text style={styles.rowErrorText}>{att.error}</Text>}
+                            </>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </View>
                 )}
 
@@ -925,6 +1050,54 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontWeight: '600',
     flexShrink: 1,
+  },
+  quotAttachBlock: {
+    gap: 6,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.appBg,
+  },
+  attachBtnText: {
+    fontSize: 12,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  descInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    fontSize: 12.5,
+    color: colors.ink,
+    backgroundColor: colors.white,
+  },
+  saveAttachBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.teal,
+    borderRadius: radii.md,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  saveAttachBtnText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
   },
   fetchBtn: {
     backgroundColor: colors.rust,
