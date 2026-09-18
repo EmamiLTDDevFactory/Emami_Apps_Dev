@@ -82,6 +82,72 @@ function formatUploadNumber(value: string): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+/** The Service PO Bulk Upload template's own columns, in the exact order the shipped
+ * ZMM_SRV_PO_Upload_Template.xlsx carries them (confirmed by reading that asset's own "Field
+ * help" sheet directly, including its column-position and grouping rules) — this screen reads
+ * them by header name, case-insensitively, purely to build the preview below; the real upload
+ * still reads the file by column position, unchanged. */
+const TEMPLATE_FIELD_LABELS: Record<string, string> = {
+  LIFNR: 'Vendor', BUKRS: 'Company Code', TXZ01: 'Service Text', SALES: 'Sale Value',
+  MENGE: 'Quantity', GR_PRICE: 'Gross Price', MEINS: 'Unit', WERKS: 'Plant', STEUC: 'Control Code',
+  SAKTO: 'GL Account', KOSTL: 'Cost Center', MWSKZ: 'Tax Code', WAERS: 'Currency',
+  VPER_START: 'Validity Start', VPER_END: 'Validity End', BSART: 'Doc Type', EKORG: 'Purch. Org',
+  EKGRP: 'Purch. Group', ZTERM: 'Payment Terms', INCO1: 'Incoterms 1', INCO2: 'Incoterms 2',
+  ORDERID: 'Internal Order', EINDT: 'Delivery Date',
+};
+
+function findTemplateHeader(headers: string[], field: string): string | undefined {
+  return headers.find((h) => String(h).trim().toUpperCase() === field);
+}
+
+/** DD.MM.YYYY, matching the template's own date convention — only reformats a real Excel date
+ * serial (a cell actually formatted as a date); a plain text cell that's already "DD.MM.YYYY", or
+ * anything else, is shown exactly as typed rather than reparsed and risking a wrong read. */
+function formatTemplateDate(value: any): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF?.parse_date_code ? XLSX.SSF.parse_date_code(value) : null;
+    if (parsed) return `${String(parsed.d).padStart(2, '0')}.${String(parsed.m).padStart(2, '0')}.${parsed.y}`;
+  }
+  return String(value);
+}
+
+interface PreviewGroup {
+  key: string;
+  poId: string;
+  lifnr: string;
+  bukrs: string;
+  rows: { itemNo: string; row: Record<string, any> }[];
+}
+
+/** Groups the freshly-parsed sheet rows the same way the upload itself will — per the template's
+ * own "Field help" sheet: "Rows sharing LIFNR + BUKRS + PO_ID become ONE purchase order, one item
+ * per row" — purely so Finance can see, before confirming, exactly how many POs this file will
+ * create and what's in each one. Returns null when the file is missing any of the three grouping
+ * columns (e.g. a differently-shaped file was picked by mistake), so the caller can fall back to
+ * a flat table instead of guessing at a grouping that isn't really there. */
+function groupPreviewRows(headers: string[], rows: Record<string, any>[]): PreviewGroup[] | null {
+  const lifnrH = findTemplateHeader(headers, 'LIFNR');
+  const bukrsH = findTemplateHeader(headers, 'BUKRS');
+  const poIdH = findTemplateHeader(headers, 'PO_ID');
+  if (!lifnrH || !bukrsH || !poIdH) return null;
+
+  const groups = new Map<string, PreviewGroup>();
+  rows.forEach((row) => {
+    const lifnr = String(row[lifnrH] ?? '').trim();
+    const bukrs = String(row[bukrsH] ?? '').trim();
+    const poId = String(row[poIdH] ?? '').trim();
+    const key = `${lifnr}|${bukrs}|${poId}`;
+    if (!groups.has(key)) groups.set(key, { key, poId, lifnr, bukrs, rows: [] });
+    const group = groups.get(key)!;
+    // SAP assigns real PO items 10, 20, 30... in upload order within a group (see the template's
+    // own worked example) — this mirrors that numbering for the preview, though it's not a real
+    // Ebelp until the PO actually exists.
+    group.rows.push({ itemNo: String((group.rows.length + 1) * 10), row });
+  });
+  return Array.from(groups.values());
+}
+
 function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][] {
   const map = new Map<string, PoUploadResultRow[]>();
   for (const row of rows) {
@@ -188,6 +254,26 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   const groups = useMemo(() => (result ? groupByEbeln(result.rows) : []), [result]);
+  const previewGroups = useMemo(
+    () => (previewHeaders && previewRows ? groupPreviewRows(previewHeaders, previewRows) : null),
+    [previewHeaders, previewRows]
+  );
+  // Which raw sheet header covers each of the priority fields (Vendor, Purch. Org, Purch. Group,
+  // Delivery Date, Service Text) so they can render as their own leading columns, per instruction
+  // — everything else the file carries (bar PO_ID, which becomes the group's own header) follows
+  // after, in the order the file itself has them.
+  const previewColumnPlan = useMemo(() => {
+    if (!previewHeaders) return null;
+    const lifnrH = findTemplateHeader(previewHeaders, 'LIFNR');
+    const ekorgH = findTemplateHeader(previewHeaders, 'EKORG');
+    const ekgrpH = findTemplateHeader(previewHeaders, 'EKGRP');
+    const eindtH = findTemplateHeader(previewHeaders, 'EINDT');
+    const txz01H = findTemplateHeader(previewHeaders, 'TXZ01');
+    const poIdH = findTemplateHeader(previewHeaders, 'PO_ID');
+    const shown = new Set([lifnrH, ekorgH, ekgrpH, eindtH, txz01H, poIdH].filter(Boolean) as string[]);
+    const remaining = previewHeaders.filter((h) => !shown.has(h));
+    return { lifnrH, ekorgH, ekgrpH, eindtH, txz01H, remaining };
+  }, [previewHeaders]);
 
   const resetPicked = () => {
     setPickedFileName('');
@@ -387,31 +473,119 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
         <View style={styles.reviewSection}>
           <View style={styles.reviewHeader}>
             <Text style={styles.sectionTitle}>2. Confirm file details</Text>
-            <Text style={styles.helperText}>{previewRows.length} row{previewRows.length === 1 ? '' : 's'} found in {pickedFileName}</Text>
+            <Text style={styles.helperText}>
+              {previewGroups
+                ? `${previewGroups.length} purchase order${previewGroups.length === 1 ? '' : 's'} · ${previewRows.length} line item${previewRows.length === 1 ? '' : 's'} in ${pickedFileName}`
+                : `${previewRows.length} row${previewRows.length === 1 ? '' : 's'} found in ${pickedFileName}`}
+            </Text>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
-            <View>
-              <View style={styles.tableHeaderRow}>
-                {previewHeaders.map((h) => (
-                  <View key={h} style={[styles.tableHeaderCell, { width: 140 }]}>
-                    <Text style={styles.tableHeaderText} numberOfLines={2}>{h}</Text>
+          {previewGroups && previewColumnPlan ? (
+            (() => {
+              let rendered = 0;
+              const visibleGroups = previewGroups.filter((g) => {
+                if (rendered >= MAX_PREVIEW_ROWS_RENDERED) return false;
+                rendered += g.rows.length;
+                return true;
+              });
+              const hiddenGroupCount = previewGroups.length - visibleGroups.length;
+              return (
+                <>
+                  {visibleGroups.map((group) => (
+                    <View key={group.key} style={{ gap: 6 }}>
+                      <View style={styles.poHeaderCard}>
+                        <View style={styles.poHeaderTopRow}>
+                          <Text style={styles.poHeaderTitle}>PO Group {group.poId || '—'}</Text>
+                          <View style={[styles.statusBadge, { backgroundColor: `${colors.rust}14` }]}>
+                            <Ionicons name="time-outline" size={11} color={colors.rust} />
+                            <Text style={[styles.statusBadgeText, { color: colors.rust }]}>Not yet created</Text>
+                          </View>
+                        </View>
+                        <View style={styles.fieldGrid}>
+                          <InfoField label="Vendor" value={group.lifnr || '—'} />
+                          <InfoField label="Company Code" value={group.bukrs || '—'} />
+                          <InfoField label="Items" value={String(group.rows.length)} />
+                        </View>
+                      </View>
+
+                      <Text style={styles.itemDetailsLabel}>Item Details</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+                        <View>
+                          <View style={styles.tableHeaderRow}>
+                            <View style={[styles.tableHeaderCell, { width: 60 }]}><Text style={styles.tableHeaderText}>Item</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Vendor</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Purch. Org</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Purch. Group</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 100 }]}><Text style={styles.tableHeaderText}>Delivery Date</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 180 }]}><Text style={styles.tableHeaderText}>Service Text</Text></View>
+                            {previewColumnPlan.remaining.map((h) => (
+                              <View key={h} style={[styles.tableHeaderCell, { width: 120 }]}>
+                                <Text style={styles.tableHeaderText} numberOfLines={2}>{TEMPLATE_FIELD_LABELS[h.trim().toUpperCase()] || h}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          {group.rows.map(({ itemNo, row }) => (
+                            <View key={itemNo} style={styles.tableRow}>
+                              <View style={[styles.tableCell, { width: 60 }]}><Text style={styles.resultCellText}>{itemNo}</Text></View>
+                              <View style={[styles.tableCell, { width: 90 }]}><Text style={styles.resultCellText}>{group.lifnr || '—'}</Text></View>
+                              <View style={[styles.tableCell, { width: 90 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.ekorgH ? String(row[previewColumnPlan.ekorgH] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 90 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.ekgrpH ? String(row[previewColumnPlan.ekgrpH] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 100 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.eindtH ? formatTemplateDate(row[previewColumnPlan.eindtH]) || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 180 }]}>
+                                <Text style={styles.resultCellText} numberOfLines={2}>{previewColumnPlan.txz01H ? String(row[previewColumnPlan.txz01H] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              {previewColumnPlan.remaining.map((h) => (
+                                <View key={h} style={[styles.tableCell, { width: 120 }]}>
+                                  <Text style={styles.resultCellText} numberOfLines={2}>{row[h] === '' || row[h] == null ? '—' : String(row[h])}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  ))}
+                  {hiddenGroupCount > 0 && (
+                    <Text style={styles.helperText}>Showing {visibleGroups.length} of {previewGroups.length} purchase orders — every one will still be sent.</Text>
+                  )}
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+                <View>
+                  <View style={styles.tableHeaderRow}>
+                    {previewHeaders.map((h) => (
+                      <View key={h} style={[styles.tableHeaderCell, { width: 140 }]}>
+                        <Text style={styles.tableHeaderText} numberOfLines={2}>{h}</Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
-              </View>
-              {previewRows.slice(0, MAX_PREVIEW_ROWS_RENDERED).map((row, i) => (
-                <View key={i} style={styles.tableRow}>
-                  {previewHeaders.map((h) => (
-                    <View key={h} style={[styles.tableCell, { width: 140 }]}>
-                      <Text style={styles.resultCellText} numberOfLines={2}>{row[h] === '' || row[h] == null ? '—' : String(row[h])}</Text>
+                  {previewRows.slice(0, MAX_PREVIEW_ROWS_RENDERED).map((row, i) => (
+                    <View key={i} style={styles.tableRow}>
+                      {previewHeaders.map((h) => (
+                        <View key={h} style={[styles.tableCell, { width: 140 }]}>
+                          <Text style={styles.resultCellText} numberOfLines={2}>{row[h] === '' || row[h] == null ? '—' : String(row[h])}</Text>
+                        </View>
+                      ))}
                     </View>
                   ))}
                 </View>
-              ))}
-            </View>
-          </ScrollView>
-          {previewRows.length > MAX_PREVIEW_ROWS_RENDERED && (
-            <Text style={styles.helperText}>Showing the first {MAX_PREVIEW_ROWS_RENDERED} of {previewRows.length} rows — every row will still be sent.</Text>
+              </ScrollView>
+              {previewRows.length > MAX_PREVIEW_ROWS_RENDERED && (
+                <Text style={styles.helperText}>Showing the first {MAX_PREVIEW_ROWS_RENDERED} of {previewRows.length} rows — every row will still be sent.</Text>
+              )}
+              <Text style={styles.helperText}>
+                This file doesn't look like the Service PO template (missing LIFNR/BUKRS/PO_ID columns), so rows can't be grouped into purchase orders for preview — showing every column as-is instead.
+              </Text>
+            </>
           )}
 
           <Text style={styles.helperText}>
@@ -691,9 +865,11 @@ const styles = StyleSheet.create({
   },
   poHeaderTopRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    rowGap: 6,
+    columnGap: 8,
   },
   poHeaderTitle: {
     fontSize: 14,
