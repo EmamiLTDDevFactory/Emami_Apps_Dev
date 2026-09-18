@@ -24,10 +24,18 @@ export function canonicalDelayLabel(delay: number): string {
   return delay === 0 ? 'On-time' : `${Math.trunc(delay)}d`;
 }
 
-/** Reports "Delay vs EDD" _delay label variant used alongside canonicalDelayColor. */
+/** Reports table "Delay" column — binary status (not a day count): On time (<=0) vs Delayed (>0). */
+export function delayStatusLabel(delay: number): string {
+  return isOnTimeOrEarly(delay) ? 'On time' : 'Delayed';
+}
+export function delayStatusColor(delay: number): string {
+  return isOnTimeOrEarly(delay) ? colors.green : colors.red;
+}
+
+/** Reports table "Delay vs EDD (Days)" column — 0D when on-time/early, else the day count. */
 export function delayVsEddLabel(delay: number | null): string {
   if (delay === null) return '—';
-  return canonicalDelayLabel(delay);
+  return isOnTimeOrEarly(delay) ? '0D' : `${Math.trunc(delay)}D`;
 }
 
 /** Completed-tab "Delivered / On-time" KPI: exact-zero on-time test (stricter than <=0). */
