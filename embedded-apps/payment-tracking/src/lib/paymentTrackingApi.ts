@@ -1079,13 +1079,13 @@ export async function uploadServicePoFile(
 }
 
 // ---------------------------------------------------------------------------------------------
-// PO Header Quotation Attachment — a single flat POST to ZPOAttchmentSet once a Service PO already
+// PO Header Quotation Attachment — a single flat POST to ZPOAttachmentSet once a Service PO already
 // exists (see the Service PO Bulk Upload result view in po-creation.tsx), attaching a quotation
 // document at the PO header level. Per instruction: Ebeln, QuotFilename, QuotMimetype, QuotValue,
 // Description — no deep/nested items, unlike ZSrvPOUploadSet above.
 // ---------------------------------------------------------------------------------------------
 
-const PO_ATTACHMENT_ENTITY_SET = 'ZPOAttchmentSet';
+const PO_ATTACHMENT_ENTITY_SET = 'ZPOAttachmentSet';
 
 /** Posts a quotation attachment against an already-created PO's header. `base64Value` should
  * already be under the same body-size ceiling every other attachment on this SAP service is held
