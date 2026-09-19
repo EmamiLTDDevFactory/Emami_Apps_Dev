@@ -182,10 +182,10 @@ export default function ImportCenter() {
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
-        <div className="import-header-row">
+        <div className="page-header-row">
           <div>
-            <h1 className="import-title">Import Center</h1>
-            <p className="import-header-sub">Import existing assignments into Dev Tracker.</p>
+            <h1 className="page-title">Import Center</h1>
+            <p className="page-header-sub">Import existing assignments into Dev Tracker.</p>
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => window.open('https://support.microsoft.com/office/xlsx-file-format', '_blank', 'noopener')}>
             <InfoIcon size={14} /> Import Guide

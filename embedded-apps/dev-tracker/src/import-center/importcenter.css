@@ -3,12 +3,6 @@
    every page here only pulls in the CSS it actually uses (see main.jsx), so pages stay
    independent instead of accreting cross-page stylesheet dependencies. */
 
-/* Header — same hierarchy as Home's .home-title/.home-header-sub (home.css), just a touch
-   smaller since this page's own content (cards, table) runs denser than Home's KPI/hero rows. */
-.import-header-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 18px; }
-.import-title { font-size: 20px; font-weight: 700; line-height: 1.15; margin: 0; color: var(--text); }
-.import-header-sub { font-size: 11.5px; color: var(--text-2); margin-top: 3px; }
-
 /* Toolbar buttons (Import Guide / Choose File / View All) sized down from base.css's default
    .btn — duplicated from dashboard.css's own .btn-sm since this page doesn't import that file. */
 .btn-sm { padding: 6px 12px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 6px !important; }

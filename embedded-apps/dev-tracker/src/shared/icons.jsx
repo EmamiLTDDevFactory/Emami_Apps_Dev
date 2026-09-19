@@ -52,3 +52,7 @@ export const RefreshIcon = (p) => <Icon {...p}><path d="M20 11a8 8 0 0 0-14.9-3.
 export const CheckIcon = (p) => <Icon {...p} strokeWidth="2.6"><polyline points="5 12.5 9.5 17 19 6.5" /></Icon>;
 export const TrashIcon = (p) => <Icon {...p}><path d="M4 7h16" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" /></Icon>;
 export const FileExcelIcon = (p) => <Icon {...p} strokeWidth="1.6"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M15 3v5h5" /><path d="M9 13l5 6M14 13l-5 6" strokeWidth="2" /></Icon>;
+export const SendIcon = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L14 21l7-18Z" /><path d="M10.5 13.5 21 3" /></Icon>;
+export const LightbulbIcon = (p) => <Icon {...p}><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 3a6.5 6.5 0 0 0-3.6 11.9c.6.4 1 1.1 1 1.9v.2h5.2v-.2c0-.8.4-1.5 1-1.9A6.5 6.5 0 0 0 12 3Z" /></Icon>;
+export const HeadsetIcon = (p) => <Icon {...p}><path d="M4 13v-1a8 8 0 0 1 16 0v1" /><rect x="3" y="13" width="4.5" height="6" rx="1.5" /><rect x="16.5" y="13" width="4.5" height="6" rx="1.5" /><path d="M18.5 19v.5A2.5 2.5 0 0 1 16 22h-2.5" /></Icon>;
+export const StarIcon = (p) => <Icon {...p} fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6 6.6.8-4.8 4.6 1.2 6.6L12 17.4 6.1 20.5l1.2-6.6-4.8-4.6 6.6-.8L12 2.5Z" /></Icon>;

@@ -109,6 +109,21 @@
 .sidebar-mountain .sidebar-footer { background: oklch(16% 0.05 252); border-top: none; }
 .sidebar-mountain .sidebar-version { color: oklch(64% 0.03 252); padding: 10px 20px 16px; opacity: 1; }
 
+/* QA Support's dark "forest" visual variant — see Sidebar's `visual` prop. Same structure
+   as skyline/mountain, its own art + tagline. */
+.sidebar-visual-forest {
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, oklch(26% 0.045 230) 0%, oklch(14% 0.04 232) 100%);
+}
+.sidebar-forest-art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 64%; }
+.sidebar-forest-tagline {
+  position: absolute; left: 22px; bottom: 26px; display: flex; flex-direction: column;
+  font-size: 16px; font-weight: 700; line-height: 1.3; color: oklch(98% 0 0);
+}
+.sidebar-forest-rule { width: 34px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 8px; }
+.sidebar-forest .sidebar-footer { background: oklch(14% 0.04 232); border-top: none; }
+.sidebar-forest .sidebar-version { color: oklch(62% 0.025 232); padding: 10px 20px 16px; opacity: 1; }
+
 .sidebar-footer { border-top: 1px solid var(--sb-border); padding: 11px 10px; flex-shrink: 0; }
 .sidebar-hub-link {
   display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: none;
