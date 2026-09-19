@@ -151,9 +151,28 @@ async function initSchema() {
         console.error('[dev-tracker] Migration of legacy public.items failed:', err.message);
     }
 
+    // One row per Import Center run (see POST /import-center/imports) — a summary of the
+    // upload, not the imported data itself (that lands in dev_tracker.items like any other
+    // create). `errors` holds a per-row reason for every row that wasn't imported, so the
+    // page's "view" action can show why without re-parsing the original file.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.import_logs (
+            id text PRIMARY KEY,
+            "fileName" text NOT NULL,
+            "uploadedByEmail" text,
+            "uploadedByName" text,
+            "totalRows" integer NOT NULL DEFAULT 0,
+            successful integer NOT NULL DEFAULT 0,
+            failed integer NOT NULL DEFAULT 0,
+            status text NOT NULL DEFAULT 'Completed',
+            errors jsonb NOT NULL DEFAULT '[]',
+            "createdAt" timestamptz DEFAULT now()
+        )
+    `);
+
     await seedMasterDataIfEmpty();
 
-    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data).');
+    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data, dev_tracker.import_logs).');
 }
 
 // Seeded once, only if the table is empty — these match exactly what used to be hardcoded in
@@ -421,6 +440,116 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
         }
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to update master data entry' });
+    }
+});
+
+// ============================================================
+// Import Center — bulk-load items from a spreadsheet. The browser parses the .xlsx itself
+// (SheetJS, client-side) and posts plain row objects keyed by the same FIELDS the New Item
+// form uses; this endpoint validates and inserts each one exactly like POST /items would,
+// then writes one summary row to import_logs so the page can show its own run history.
+// ============================================================
+const IMPORT_CHECKED_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+const IMPORT_CATEGORY_LABELS = {
+    status: 'Status', area: 'Module', priority: 'Priority', impact: 'Business Impact',
+    complexity: 'Technical Complexity', devFactory: 'Dev Factory', reasonCategory: 'Reason for Delay',
+};
+
+router.get('/import-center/imports', requireDevTrackerAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM dev_tracker.import_logs ORDER BY "createdAt" DESC LIMIT 100');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load import history' });
+    }
+});
+
+router.post('/import-center/imports', requireDevTrackerAdmin, async (req, res) => {
+    const { fileName, rows } = req.body || {};
+    if (!fileName || !String(fileName).trim()) {
+        return res.status(400).json({ error: 'fileName is required' });
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ error: 'No rows to import' });
+    }
+
+    try {
+        const changedBy = await resolveDisplayName(req);
+        const mdResult = await pool.query('SELECT category, value FROM dev_tracker.master_data WHERE active = true');
+        const validValues = {};
+        for (const r of mdResult.rows) {
+            if (!validValues[r.category]) validValues[r.category] = new Set();
+            validValues[r.category].add(r.value);
+        }
+
+        let successful = 0;
+        const errors = [];
+        for (let i = 0; i < rows.length; i++) {
+            const rawRow = rows[i] || {};
+            const rowNum = i + 2; // account for the spreadsheet's header row
+            const title = String(rawRow.devList || '').trim();
+            if (!title) {
+                errors.push({ row: rowNum, reason: 'Development / Item Title is required' });
+                continue;
+            }
+            const badField = IMPORT_CHECKED_CATEGORIES.find((cat) => {
+                const v = rawRow[cat];
+                return v && validValues[cat] && !validValues[cat].has(String(v).trim());
+            });
+            if (badField) {
+                errors.push({ row: rowNum, reason: `Unknown ${IMPORT_CATEGORY_LABELS[badField]}: "${rawRow[badField]}"` });
+                continue;
+            }
+            try {
+                const row = normalize(rawRow);
+                const id = crypto.randomUUID();
+                const cols = FIELDS.map(q).join(', ');
+                const placeholders = FIELDS.map((_, idx) => `$${idx + 2}`).join(', ');
+                const values = FIELDS.map((f) => row[f]);
+                await pool.query(`INSERT INTO dev_tracker.items (id, ${cols}) VALUES ($1, ${placeholders})`, [id, ...values]);
+                await pool.query(
+                    `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, $2, $3, $4, $5)`,
+                    [id, '__created__', null, row.devList, changedBy]
+                );
+                successful++;
+            } catch (err) {
+                console.error('[dev-tracker] import row failed:', err.message);
+                errors.push({ row: rowNum, reason: 'Could not save row (server error)' });
+            }
+        }
+
+        const logResult = await pool.query(
+            `INSERT INTO dev_tracker.import_logs
+                (id, "fileName", "uploadedByEmail", "uploadedByName", "totalRows", successful, failed, status, errors)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [
+                crypto.randomUUID(),
+                String(fileName).trim(),
+                String(req.get('x-user-email') || '').trim().toLowerCase(),
+                changedBy,
+                rows.length,
+                successful,
+                rows.length - successful,
+                'Completed',
+                JSON.stringify(errors),
+            ]
+        );
+        res.status(201).json(logResult.rows[0]);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Import failed' });
+    }
+});
+
+router.delete('/import-center/imports/:id', requireDevTrackerAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM dev_tracker.import_logs WHERE id = $1 RETURNING id', [req.params.id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Import not found' });
+        res.status(204).end();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete import log' });
     }
 });
 

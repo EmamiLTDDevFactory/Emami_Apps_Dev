@@ -98,6 +98,23 @@ export async function apiMasterDataUpdate(id, payload, email) {
   );
 }
 
+// --- Import Center -------------------------------------------------------
+export async function apiImportList(email) {
+  return json(await fetch(`${API_BASE}/import-center/imports`, { headers: { 'X-User-Email': email || '' } }));
+}
+export async function apiImportRun(fileName, rows, email) {
+  return json(
+    await fetch(`${API_BASE}/import-center/imports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      body: JSON.stringify({ fileName, rows }),
+    })
+  );
+}
+export async function apiImportDelete(id, email) {
+  return json(await fetch(`${API_BASE}/import-center/imports/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+}
+
 // --- Activity / AI -----------------------------------------------------
 export async function apiActivity(email) {
   return json(await fetch(`${API_BASE}/activity`, { headers: { 'X-User-Email': email || '' } }));

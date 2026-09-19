@@ -47,3 +47,8 @@ export const CaretUpDownIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline p
 export const ChevronLeftIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="15 5 8 12 15 19" /></Icon>;
 export const ChevronRightIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="9 5 16 12 9 19" /></Icon>;
 export const ChevronDownIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="5 9 12 16 19 9" /></Icon>;
+export const InfoIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5.3" /><circle cx="12" cy="7.7" r=".35" fill="currentColor" stroke="none" /></Icon>;
+export const RefreshIcon = (p) => <Icon {...p}><path d="M20 11a8 8 0 0 0-14.9-3.5" /><path d="M4 13a8 8 0 0 0 14.9 3.5" /><polyline points="20 4 20 11 13 11" /><polyline points="4 20 4 13 11 13" /></Icon>;
+export const CheckIcon = (p) => <Icon {...p} strokeWidth="2.6"><polyline points="5 12.5 9.5 17 19 6.5" /></Icon>;
+export const TrashIcon = (p) => <Icon {...p}><path d="M4 7h16" /><path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" /><path d="M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13" /></Icon>;
+export const FileExcelIcon = (p) => <Icon {...p} strokeWidth="1.6"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M15 3v5h5" /><path d="M9 13l5 6M14 13l-5 6" strokeWidth="2" /></Icon>;

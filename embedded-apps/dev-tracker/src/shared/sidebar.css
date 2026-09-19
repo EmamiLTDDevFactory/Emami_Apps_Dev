@@ -94,6 +94,21 @@
 .sidebar-skyline .sidebar-footer { background: oklch(14% 0.045 258); border-top: none; }
 .sidebar-skyline .sidebar-version { color: oklch(60% 0.02 258); padding: 10px 20px 16px; opacity: 1; }
 
+/* Import Center's dark "mountain" visual variant — see Sidebar's `visual` prop. Same
+   structure as the skyline variant above, just its own art + tagline. */
+.sidebar-visual-mountain {
+  position: relative; overflow: hidden;
+  background: linear-gradient(180deg, oklch(30% 0.055 250) 0%, oklch(16% 0.05 252) 100%);
+}
+.sidebar-mountain-art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 62%; }
+.sidebar-mountain-tagline {
+  position: absolute; left: 22px; bottom: 26px; display: flex; flex-direction: column;
+  font-size: 17px; font-weight: 700; line-height: 1.28; color: oklch(98% 0 0);
+}
+.sidebar-mountain-rule { width: 34px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 8px; }
+.sidebar-mountain .sidebar-footer { background: oklch(16% 0.05 252); border-top: none; }
+.sidebar-mountain .sidebar-version { color: oklch(64% 0.03 252); padding: 10px 20px 16px; opacity: 1; }
+
 .sidebar-footer { border-top: 1px solid var(--sb-border); padding: 11px 10px; flex-shrink: 0; }
 .sidebar-hub-link {
   display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: none;

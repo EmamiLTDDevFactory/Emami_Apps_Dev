@@ -37,7 +37,7 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
   const displayName = name || email || '';
 
   return (
-    <aside className={`sidebar${visual === 'skyline' ? ' sidebar-skyline' : ''}`}>
+    <aside className={`sidebar${visual === 'skyline' ? ' sidebar-skyline' : ''}${visual === 'mountain' ? ' sidebar-mountain' : ''}`}>
       <a className="sidebar-brand" href={ROUTES.home} title="Emami Apps — Dev Tracker">
         <img src={emamiLogo} alt="Emami Apps" className="sidebar-logo" />
       </a>
@@ -79,6 +79,26 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
             <span>Deliver Today</span>
             <span>A Brighter Tomorrow</span>
             <span className="sidebar-skyline-rule" />
+          </div>
+        </div>
+      ) : visual === 'mountain' ? (
+        <div className="sidebar-visual sidebar-visual-mountain" aria-hidden="true">
+          <svg className="sidebar-mountain-art" viewBox="0 0 200 130" preserveAspectRatio="xMidYMax slice" fill="none">
+            <circle cx="156" cy="22" r="9" fill="oklch(90% 0.03 90)" opacity="0.85" />
+            {[[18,20],[42,13],[104,9],[172,15],[188,38],[70,18]].map(([x,y],i) => (
+              <circle key={i} cx={x} cy={y} r="1.3" fill="oklch(92% 0.02 90)" opacity={0.4 + (i % 3) * 0.18} />
+            ))}
+            <path d="M0 122 L32 68 L52 94 L80 42 L110 98 L138 60 L166 100 L200 80 L200 130 L0 130 Z" fill="oklch(38% 0.06 245)" />
+            <path d="M16 80 L32 68 L44 84 Z" fill="oklch(94% 0.01 245)" opacity="0.92" />
+            <path d="M68 60 L80 42 L90 62 Z" fill="oklch(94% 0.01 245)" opacity="0.92" />
+            <path d="M126 76 L138 60 L148 78 Z" fill="oklch(94% 0.01 245)" opacity="0.92" />
+            <path d="M0 130 L38 102 L74 124 L116 94 L158 118 L200 102 L200 130 Z" fill="oklch(26% 0.05 248)" />
+          </svg>
+          <div className="sidebar-mountain-tagline">
+            <span>People</span>
+            <span>Process</span>
+            <span>Progress</span>
+            <span className="sidebar-mountain-rule" />
           </div>
         </div>
       ) : visual === 'roster' ? (
@@ -142,13 +162,13 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
       )}
 
       <div className="sidebar-footer">
-        {visual !== 'skyline' && (
+        {visual !== 'skyline' && visual !== 'mountain' && (
           <button type="button" className="sidebar-hub-link" onClick={backToEmamiApps}>
             <span aria-hidden="true">🏠</span><span>Back to Emami Apps</span>
           </button>
         )}
         {identityInTopbar ? (
-          <div className="sidebar-version">{visual === 'skyline' ? 'v1.0.0' : 'Emami Apps · Dev Tracker'}</div>
+          <div className="sidebar-version">{visual === 'skyline' || visual === 'mountain' ? 'v1.0.0' : 'Emami Apps · Dev Tracker'}</div>
         ) : (
           <div className="sidebar-user" onMouseLeave={() => setOpen(false)}>
             <div className="avatar mono sidebar-avatar">{initialsHome(displayName)}</div>
