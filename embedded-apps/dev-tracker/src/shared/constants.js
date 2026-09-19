@@ -3,35 +3,41 @@
 // without checking every call site; several intentional quirks from the original are
 // preserved on purpose (see comments) because the task was to keep existing logic intact.
 
-export const API_BASE = 'https://audit-capa-api.emamiapps.in/api/dev-tracker';
-export const ACCESS_API_BASE = 'https://audit-capa-api.emamiapps.in/api';
+// In `npm run dev`, these two go through the same-origin `/api` proxy configured in
+// vite.config.js instead of hitting the real host directly — the API's CORS allowlist
+// doesn't cover a local dev origin, so a direct cross-origin fetch here would just fail.
+// Dead code (and stripped) in the real production build, same as the devEmail override below.
+export const API_BASE = import.meta.env.DEV ? '/api/dev-tracker' : 'https://audit-capa-api.emamiapps.in/api/dev-tracker';
+export const ACCESS_API_BASE = import.meta.env.DEV ? '/api' : 'https://audit-capa-api.emamiapps.in/api';
 export const HUB_AUTH_API_BASE = 'https://in65bjvxjd.execute-api.ap-south-1.amazonaws.com/api';
 export const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
 
-// The 24 item fields, in the exact order the backend's FIELDS array uses.
+// The 28 item fields, in the exact order the backend's FIELDS array uses.
 export const FIELDS = [
   'devList', 'status', 'area', 'func', 'impact', 'complexity', 'priority',
   'spocFunction', 'spocIT', 'devFactory', 'startDate', 'reqDiscussion', 'fsPrep',
-  'development', 'itTesting', 'userTesting', 'hypercare', 'targetDate', 'devTime',
-  'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer',
+  'development', 'itTesting', 'userTesting', 'hypercare',
+  'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
+  'targetDate', 'devTime', 'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer',
 ];
 
-// Human-readable labels for the 24 item fields — used for the New/Edit panel and, to
+// Human-readable labels for the item fields — used for the New/Edit panel and, to
 // match the original's CSV export, as the exported header row (not the raw camelCase keys).
 export const FIELD_LABELS = {
-  devList: 'Development / item title', status: 'Status', func: 'Functional area / process',
-  area: 'Area', priority: 'Priority', impact: 'Business impact', complexity: 'Technical complexity',
-  spocFunction: 'SPOC (Functional)', spocIT: 'SPOC (IT)', devFactory: 'Dev factory', developer: 'Developer',
-  startDate: 'Start date', reqDiscussion: 'Requirement discussion', fsPrep: 'FS preparation',
-  development: 'Development', itTesting: 'IT testing', userTesting: 'User testing', hypercare: 'Hypercare (days)',
-  targetDate: 'Target date', devTime: 'Man-days', rework: 'Rework (days)', reasonCategory: 'Reason category',
-  reasonDelay: 'Reason for delay (detail)', remarks: 'Remarks',
+  devList: 'Development / Item Title', status: 'Status', func: 'Functional Area / Process',
+  area: 'Module', priority: 'Priority', impact: 'Business Impact', complexity: 'Technical Complexity',
+  spocFunction: 'SPOC (Functional)', spocIT: 'SPOC (IT)', devFactory: 'Dev Factory', developer: 'Developer',
+  startDate: 'Start Date', reqDiscussion: 'Requirement Discussion', fsPrep: 'FS Preparation',
+  development: 'Development', itTesting: 'IT Testing', userTesting: 'User Testing', hypercare: 'Hypercare (Days)',
+  hypercareDate: 'Hypercare Date', onHoldDate: 'On Hold Date', completedDate: 'Completed Date', cancelledDate: 'Cancelled Date',
+  targetDate: 'Target Date', devTime: 'Man-days', rework: 'Rework (Days)', reasonCategory: 'Reason Category',
+  reasonDelay: 'Reason for Delay (Detail)', remarks: 'Remarks',
 };
 
 export const CATEGORIES = [
   { key: 'area', label: 'Area', hasColor: true },
-  { key: 'status', label: 'Status', hasColor: false },
-  { key: 'priority', label: 'Priority', hasColor: false },
+  { key: 'status', label: 'Status', hasColor: true },
+  { key: 'priority', label: 'Priority', hasColor: true },
   { key: 'impact', label: 'Business Impact', hasColor: false },
   { key: 'complexity', label: 'Technical Complexity', hasColor: false },
   { key: 'devFactory', label: 'Dev Factory', hasColor: false },
@@ -47,6 +53,18 @@ export const STAGE_PIPELINE = [
 ];
 
 export const MANUAL_ONLY_STATUSES = ['Hypercare', 'Completed', 'On Hold', 'Cancelled'];
+
+// These four statuses are excluded from STAGE_PIPELINE's forward auto-suggestion (see
+// suggestedStatus() in utils.js) since they don't follow the same one-way sequence — Cancelled
+// or On Hold can happen from any stage, and Hypercare can follow Completed. They still each get
+// their own required date field, just validated separately (see stageDateKeyFor() below)
+// instead of feeding the auto-suggestion pipeline.
+export const MANUAL_STATUS_DATES = {
+  Hypercare: 'hypercareDate',
+  'On Hold': 'onHoldDate',
+  Completed: 'completedDate',
+  Cancelled: 'cancelledDate',
+};
 
 export const STATUS_PROGRESS_ORDER = [
   'Not Started', 'Requirement Discussion', 'FS Preparation', 'In Progress',

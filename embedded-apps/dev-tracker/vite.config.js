@@ -41,5 +41,15 @@ export default defineConfig({
   },
   server: {
     port: 8081,
+    // The API's CORS allowlist only covers the real hub origin, not a local `npm run dev`
+    // origin — every fetch would otherwise fail with a CORS error and pages would render
+    // their "couldn't load data" empty state. Proxying same-origin here sidesteps that: the
+    // browser sees a same-origin request, and this Node-side proxy hop isn't subject to CORS.
+    proxy: {
+      '/api': {
+        target: 'https://audit-capa-api.emamiapps.in',
+        changeOrigin: true,
+      },
+    },
   },
 });
