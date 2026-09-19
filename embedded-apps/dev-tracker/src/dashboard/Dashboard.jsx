@@ -1,24 +1,113 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import ItemPanel from './ItemPanel.jsx';
-import { apiList, apiMasterData, apiAiCommand, apiUpdate, getCurrentUserEmail } from '../shared/api.js';
-import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
-import { statusProgress, revisedTarget, isOverdue, fmtDate, riskLevel, daysSinceUpdate, daysBetween, todayStr } from '../shared/utils.js';
-import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, STAGE_PIPELINE, RISK_META } from '../shared/constants.js';
+import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail } from '../shared/api.js';
+import { groupMasterData, activeValues, categoryColorMap } from '../shared/masterData.js';
+import { revisedTarget, isOverdue, fmtDate, daysBetween, todayStr, stageDateKeyFor } from '../shared/utils.js';
+import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
+import {
+  CalendarIcon, FilterIcon, DownloadIcon, PlusIcon, GridIcon, TableIcon, MoreIcon,
+  EyeIcon, PencilIcon, CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon,
+} from '../shared/icons.jsx';
 
-const AREA_FALLBACK = { color: 'var(--mod-fallback)', softColor: 'var(--mod-fallback-soft)' };
-const PRIORITY_STYLE = {
-  P1: { bg: 'var(--st-red-soft)', fg: 'var(--st-red)' },
-  P2: { bg: 'var(--st-amber-soft)', fg: 'var(--st-amber)' },
-  P3: { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
+const SORT_OPTIONS = [
+  { key: 'priority', label: 'Priority' },
+  { key: 'targetDate', label: 'Target Date' },
+  { key: 'status', label: 'Status' },
+  { key: 'title', label: 'Title' },
+];
+const PAGE_SIZES = [10, 15, 25, 50];
+
+// Fallbacks used until someone picks a custom color for that value on the Master Data page
+// (Status/Priority now carry hasColor: true there, same as Area) — priorityStyle/statusStyle
+// below prefer a master-data color/softColor over these the moment one is set.
+const PRIORITY_FALLBACK = {
+  P1: { label: 'High', bg: 'var(--st-red-soft)', fg: 'var(--st-red)' },
+  P2: { label: 'Medium', bg: 'var(--st-blue-soft)', fg: 'var(--st-blue)' },
+  P3: { label: 'Low', bg: 'var(--st-green-soft)', fg: 'var(--st-green)' },
 };
+function priorityStyle(p, colorMap) {
+  const fallback = PRIORITY_FALLBACK[p] || { label: p || '—', bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' };
+  const custom = colorMap[p];
+  return custom ? { label: fallback.label, bg: custom.softColor || fallback.bg, fg: custom.color || fallback.fg } : fallback;
+}
 
+const STATUS_FALLBACK = {
+  'Not Started': { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
+  'Requirement Discussion': { bg: 'var(--st-indigo-soft)', fg: 'var(--st-indigo)' },
+  'FS Preparation': { bg: 'var(--st-indigo-soft)', fg: 'var(--st-indigo)' },
+  'In Progress': { bg: 'var(--st-blue-soft)', fg: 'var(--st-blue)' },
+  'IT Testing': { bg: 'var(--st-teal-soft)', fg: 'var(--st-teal)' },
+  'User Testing': { bg: 'var(--st-teal-soft)', fg: 'var(--st-teal)' },
+  Hypercare: { bg: 'var(--st-amber-soft)', fg: 'var(--st-amber)' },
+  'On Hold': { bg: 'var(--st-amber-soft)', fg: 'var(--st-amber)' },
+  Completed: { bg: 'var(--st-green-soft)', fg: 'var(--st-green)' },
+  Cancelled: { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
+};
+function statusStyle(it, colorMap) {
+  // Overdue always wins visually, regardless of the status's own color.
+  if (isOverdue(it)) return { bg: 'var(--st-red-soft)', fg: 'var(--st-red)' };
+  const fallback = STATUS_FALLBACK[it.status] || { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' };
+  const custom = colorMap[it.status];
+  return custom ? { bg: custom.softColor || fallback.bg, fg: custom.color || fallback.fg } : fallback;
+}
+
+const AVATAR_PALETTE = ['var(--st-purple)', 'var(--st-blue)', 'var(--st-teal)', 'var(--st-green)', 'var(--st-indigo)', 'var(--st-amber)', 'var(--accent)'];
+function avatarColor(name) {
+  if (!name) return 'var(--st-gray)';
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
 function initialsOf(name) {
   return (name || '').slice(0, 2).toUpperCase() || null;
+}
+
+function useClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function compareItems(a, b, key) {
+  switch (key) {
+    case 'id': return a.id - b.id;
+    case 'title': return (a.devList || '').localeCompare(b.devList || '');
+    case 'module': return (a.area || '').localeCompare(b.area || '');
+    case 'status': return (a.status || '').localeCompare(b.status || '');
+    case 'priority': return (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);
+    case 'owner': return (a.developer || '').localeCompare(b.developer || '');
+    case 'startDate': return (a.startDate || '').localeCompare(b.startDate || '');
+    case 'targetDate': {
+      const ra = revisedTarget(a) || ''; const rb = revisedTarget(b) || '';
+      if (!ra && !rb) return 0;
+      if (!ra) return 1;
+      if (!rb) return -1;
+      return ra < rb ? -1 : ra > rb ? 1 : 0;
+    }
+    default: return 0;
+  }
+}
+function sortItems(rows, key, dir) {
+  const arr = [...rows];
+  arr.sort((a, b) => compareItems(a, b, key) * (dir === 'desc' ? -1 : 1));
+  return arr;
+}
+function pageList(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = [1];
+  if (current > 3) pages.push('…');
+  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) pages.push(i);
+  if (current < total - 2) pages.push('…');
+  pages.push(total);
+  return pages;
 }
 
 export default function Dashboard() {
@@ -26,25 +115,34 @@ export default function Dashboard() {
   const [masterData, setMasterData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [moduleArea, setModuleArea] = useState('');
-  const [moduleMenuOpen, setModuleMenuOpen] = useState(false);
+  const [ownerFilter, setOwnerFilter] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
   const [search, setSearch] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [filterImpact, setFilterImpact] = useState('');
+  const [filterComplexity, setFilterComplexity] = useState('');
+  const [filterDevFactory, setFilterDevFactory] = useState('');
+  const [filterReasonCategory, setFilterReasonCategory] = useState('');
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [viewMode, setViewMode] = useState('board');
+  const [sortBy, setSortBy] = useState('priority');
+  const [sortDir, setSortDir] = useState('asc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [rowMenuId, setRowMenuId] = useState(null);
   const [panel, setPanel] = useState(null); // { mode, item }
-  const [command, setCommand] = useState('');
   const [commandResponse, setCommandResponse] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dragError, setDragError] = useState(null);
-  const flipTimersRef = useRef({});
-  const [flipped, setFlipped] = useState({});
+  const now = useClock();
   const email = getCurrentUserEmail();
   const { isAdmin, roleLabel, profileName } = useDevTrackerSession(email);
-  // No activity feed loaded here, so this only ever surfaces real due-date reminders,
-  // not the "someone else changed X" kind (see useNotifications.js).
   const { visibleNotifications, markAllRead, clear } = useNotifications(email, items, [], profileName);
-  const loadedRef = useRef(false);
 
   async function reload() {
     const [itemRows, mdRows] = await Promise.all([apiList(email), apiMasterData(email)]);
@@ -60,25 +158,20 @@ export default function Dashboard() {
     reload().finally(() => setLoading(false));
   }, []);
 
-  // Handle the Home page's AI handoff (?aiArea/aiStatus/aiPriority/aiOverdue/aiSearch)
-  // and the ?action=new draft handoff, exactly like the original app.js init().
+  // Handle the Home page's search handoff (?aiSearch=…) and the ?action=new draft handoff.
   useEffect(() => {
-    if (loadedRef.current || loading) return;
-    loadedRef.current = true;
+    if (loading) return;
     const params = new URLSearchParams(window.location.search);
+    if (!params.has('aiArea') && !params.has('aiStatus') && !params.has('aiPriority') && !params.has('aiOverdue') && !params.has('aiSearch') && !params.has('action')) return;
     let touched = false;
     if (params.get('aiArea')) { setModuleArea(params.get('aiArea')); touched = true; }
     if (params.get('aiStatus')) { setFilterStatus(params.get('aiStatus')); touched = true; }
     if (params.get('aiPriority')) { setFilterPriority(params.get('aiPriority')); touched = true; }
     if (params.get('aiOverdue') === '1') { setOverdueOnly(true); touched = true; }
     if (params.get('aiSearch')) { setSearch(params.get('aiSearch')); touched = true; }
-    if (touched) setCommandResponse({ text: 'Filters applied from your last question.', clearable: true });
-    if (params.get('action') === 'new') {
-      setPanel({ mode: 'new', item: null });
-    }
-    if (touched || params.has('action')) {
-      window.history.replaceState({}, '', ROUTES.dashboard);
-    }
+    if (touched) setCommandResponse({ text: 'Filters applied from your last search.', clearable: true });
+    if (params.get('action') === 'new') setPanel({ mode: 'new', item: null });
+    window.history.replaceState({}, '', ROUTES.dashboard);
   }, [loading]);
 
   const options = useMemo(() => {
@@ -87,99 +180,55 @@ export default function Dashboard() {
     for (const key of Object.keys(grouped)) out[key] = activeValues(masterData, key);
     return out;
   }, [masterData]);
-  const areaColors = useMemo(() => areaColorMap(masterData), [masterData]);
+  const owners = useMemo(() => Array.from(new Set(items.map((it) => it.developer).filter(Boolean))).sort(), [items]);
+  const priorityColors = useMemo(() => categoryColorMap(masterData, 'priority'), [masterData]);
+  const statusColors = useMemo(() => categoryColorMap(masterData, 'status'), [masterData]);
 
-  const scopedRows = useMemo(() => (moduleArea ? items.filter((it) => it.area === moduleArea) : items), [items, moduleArea]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return items.filter((it) => {
+    const rows = items.filter((it) => {
       if (moduleArea && it.area !== moduleArea) return false;
+      if (ownerFilter && it.developer !== ownerFilter) return false;
       if (filterStatus && it.status !== filterStatus) return false;
       if (filterPriority && it.priority !== filterPriority) return false;
       if (overdueOnly && !isOverdue(it)) return false;
+      if (dateStart && (!it.targetDate || it.targetDate < dateStart)) return false;
+      if (dateEnd && (!it.targetDate || it.targetDate > dateEnd)) return false;
+      if (filterImpact && it.impact !== filterImpact) return false;
+      if (filterComplexity && it.complexity !== filterComplexity) return false;
+      if (filterDevFactory && it.devFactory !== filterDevFactory) return false;
+      if (filterReasonCategory && it.reasonCategory !== filterReasonCategory) return false;
       if (q) {
         const hay = [it.devList, it.func, it.developer, it.remarks, it.spocFunction, it.spocIT].map((v) => (v || '').toLowerCase()).join(' ');
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [items, moduleArea, filterStatus, filterPriority, overdueOnly, search]);
+    return sortItems(rows, sortBy, sortDir);
+  }, [items, moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, sortBy, sortDir]);
 
-  const stats = useMemo(() => {
-    const total = scopedRows.length;
-    const done = scopedRows.filter((i) => i.status === 'Completed').length;
-    const active = scopedRows.filter((i) => !['Completed', 'Cancelled'].includes(i.status)).length;
-    const overdue = scopedRows.filter(isOverdue).length;
-    const critical = scopedRows.filter((i) => riskLevel(i) === 'critical').length;
-    const stalled = scopedRows.filter((i) => riskLevel(i) === 'stalled').length;
-    const atRisk = scopedRows.filter((i) => riskLevel(i) === 'atRisk').length;
-    return { total, done, active, overdue, critical, stalled, atRisk };
-  }, [scopedRows]);
+  const moreFiltersCount = [filterImpact, filterComplexity, filterDevFactory, filterReasonCategory].filter(Boolean).length;
 
-  const areaCounts = useMemo(() => {
-    const counts = {};
-    for (const it of items) counts[it.area] = (counts[it.area] || 0) + 1;
-    return counts;
-  }, [items]);
+  useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
 
-  // Escalation strip — the riskiest items across the current module scope, worst first
-  // (critical > stalled > atRisk), independent of the board's own status/priority/search
-  // filters below so a narrowed board view never hides something that needs attention.
-  const SEVERITY_RANK = { critical: 0, stalled: 1, atRisk: 2 };
-  const escalations = useMemo(() => {
-    return scopedRows
-      .map((it) => ({ item: it, level: riskLevel(it) }))
-      .filter((e) => e.level in SEVERITY_RANK)
-      .sort((a, b) => {
-        if (SEVERITY_RANK[a.level] !== SEVERITY_RANK[b.level]) return SEVERITY_RANK[a.level] - SEVERITY_RANK[b.level];
-        // Within a severity, worst-first: most days overdue, most days stalled, or fewest days left for atRisk.
-        const severityDays = (e) => {
-          const rt = revisedTarget(e.item);
-          if (e.level === 'critical') return rt ? daysBetween(rt, todayStr()) : 0;
-          if (e.level === 'atRisk') return rt ? -daysBetween(todayStr(), rt) : 0;
-          return daysSinceUpdate(e.item) ?? 0;
-        };
-        return severityDays(b) - severityDays(a);
-      })
-      .slice(0, 8);
-  }, [scopedRows]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageSafe = Math.min(page, totalPages);
+  const pageRows = useMemo(() => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize), [filtered, pageSafe, pageSize]);
 
   const columns = useMemo(() => KANBAN_COLUMNS.map((col) => ({
     ...col,
     cards: filtered.filter((it) => col.statuses.includes(it.status)),
   })), [filtered]);
 
-  async function handleCommand() {
-    const message = command.trim();
-    if (!message) return;
-    setCommandResponse({ text: 'Thinking…' });
-    try {
-      const data = await apiAiCommand(message, email);
-      if (data.intent === 'filter') {
-        // Matches the original: every filter field is overwritten (not merged) on each
-        // response, so an earlier AI-set filter doesn't silently linger into the next one.
-        const f = data.filters || {};
-        setModuleArea(f.area || '');
-        setFilterStatus(f.status || '');
-        setFilterPriority(f.priority || '');
-        setOverdueOnly(!!f.overdueOnly);
-        setSearch(f.search || '');
-        setCommandResponse({ text: 'Filters applied.', clearable: true });
-      } else if (data.intent === 'create_draft') {
-        sessionStorage.setItem('aiPendingDraft', JSON.stringify(data.draft || {}));
-        setPanel({ mode: 'new', item: null });
-        setCommandResponse(null);
-      } else {
-        setCommandResponse({ text: data.text || "I didn't quite catch that." });
-      }
-    } catch (e) {
-      setCommandResponse({ text: e.message || 'Something went wrong.' });
-    }
-    setCommand('');
+  function handleSortClick(key) {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
   }
 
-  function clearAiFilters() {
-    setModuleArea(''); setFilterStatus(''); setFilterPriority(''); setOverdueOnly(false); setSearch('');
+  function clearFilters() {
+    setModuleArea(''); setOwnerFilter(''); setFilterStatus(''); setFilterPriority('');
+    setDateStart(''); setDateEnd(''); setOverdueOnly(false); setSearch('');
+    setFilterImpact(''); setFilterComplexity(''); setFilterDevFactory(''); setFilterReasonCategory('');
     setCommandResponse(null);
   }
 
@@ -199,17 +248,37 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   }
 
-  function onSaved(row, opts) {
+  function onSaved() {
     setPanel(null);
     reload();
   }
 
-  // Drag-and-drop between Kanban columns — new feature, no original vanilla-JS
-  // equivalent to match. A column can span several underlying statuses (e.g. "In
-  // Discussion" covers both Requirement Discussion and FS Preparation), so a drop
-  // only changes status when the card isn't already in one of the target column's
-  // statuses; otherwise it resolves to that column's first/primary status. Updates
-  // optimistically (instant reorder) and rolls back if the save fails.
+  async function handleRowDelete(it) {
+    if (!window.confirm(`Delete "${it.devList}"? This can't be undone.`)) return;
+    setRowMenuId(null);
+    try {
+      await apiDelete(it.id, email);
+      reload();
+    } catch (e) {
+      setDragError(e.message || 'Failed to delete item');
+    }
+  }
+
+  function toggleRowSelected(id) {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleAllSelected() {
+    setSelectedIds((cur) => (cur.size === pageRows.length ? new Set() : new Set(pageRows.map((r) => r.id))));
+  }
+
+  // Drag-and-drop between Kanban columns. A column can span several underlying statuses
+  // (e.g. "In Discussion" covers both Requirement Discussion and FS Preparation), so a drop
+  // only changes status when the card isn't already in one of the target column's statuses.
+  // Updates optimistically and rolls back if the save fails.
   function handleCardDragStart(e, it) {
     setDraggedId(it.id);
     e.dataTransfer.effectAllowed = 'move';
@@ -227,30 +296,6 @@ export default function Dashboard() {
   function handleColDragLeave(col) {
     setDragOverCol((cur) => (cur === col.key ? null : cur));
   }
-  function toggleFlip(id) {
-    clearTimeout(flipTimersRef.current[id]);
-    delete flipTimersRef.current[id];
-    setFlipped((f) => ({ ...f, [id]: !f[id] }));
-  }
-  // Auto-revert to the front face 3.5s after the pointer leaves a flipped card (cancelled if
-  // it comes back in time) — matches the flip-card pattern already established for Resource
-  // Utilization's resource cards, just with a 3.5s delay here instead of that one's 3s.
-  function scheduleAutoFlipBack(id) {
-    clearTimeout(flipTimersRef.current[id]);
-    flipTimersRef.current[id] = setTimeout(() => {
-      setFlipped((f) => (f[id] ? { ...f, [id]: false } : f));
-      delete flipTimersRef.current[id];
-    }, 3500);
-  }
-  function cancelAutoFlipBack(id) {
-    clearTimeout(flipTimersRef.current[id]);
-    delete flipTimersRef.current[id];
-  }
-
-  useEffect(() => () => {
-    Object.values(flipTimersRef.current).forEach(clearTimeout);
-  }, []);
-
   async function handleColDrop(e, col) {
     e.preventDefault();
     setDragOverCol(null);
@@ -259,17 +304,22 @@ export default function Dashboard() {
     const it = items.find((row) => String(row.id) === String(id));
     if (!it || col.statuses.includes(it.status)) return;
     const targetStatus = col.statuses[0];
+    // Every status but Not Started has a corresponding date field (see stageDateKeyFor) — a
+    // drag-drop bypasses the New/Edit form's own validation for that, so auto-fill it with
+    // today's date if it isn't set yet, rather than silently leaving the status/date pair
+    // inconsistent.
+    const dateKey = stageDateKeyFor(targetStatus);
+    const stageDateKey = dateKey && !it[dateKey] ? dateKey : null;
     const prevItems = items;
-    setItems((cur) => cur.map((row) => (String(row.id) === String(id) ? { ...row, status: targetStatus } : row)));
+    setItems((cur) => cur.map((row) => (String(row.id) === String(id) ? { ...row, status: targetStatus, ...(stageDateKey ? { [stageDateKey]: todayStr() } : {}) } : row)));
     try {
-      // PUT /items/:id is a full-row replace (see backend/devTracker.js's normalize(), which
-      // nulls out any field missing from the body) — sending only { status } would null every
-      // other field, including NOT NULL ones, and the write would be rejected outright. Send
-      // the item's existing values for every field, same as ItemPanel's handleSave, with just
-      // status overridden.
+      // PUT /items/:id is a full-row replace (see backend/devTracker.js's normalize()), so
+      // send the item's existing values for every field, with just status (and, if needed,
+      // the stage date) overridden.
       const payload = {};
       for (const key of FIELDS) payload[key] = it[key] ?? '';
       payload.status = targetStatus;
+      if (stageDateKey) payload[stageDateKey] = todayStr();
       await apiUpdate(it.id, payload, email);
     } catch (e2) {
       setItems(prevItems);
@@ -281,253 +331,304 @@ export default function Dashboard() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="dashboard" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+      <Sidebar active="dashboard" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="skyline" />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
-      <div className="dash-header">
-        <div>
-          <div className="eyebrow">SAP Change &amp; Development Log</div>
-          <h1 className="h1">Delivery Command Centre</h1>
+        <div className="dash-header-row">
+          <div>
+            <h1 className="dash-title">Dashboard</h1>
+            <p className="dash-header-sub">Manage assignments across all stages</p>
+          </div>
+          <div className="dash-clock">
+            <span>{now.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</span>
+            <span className="dash-clock-sep">|</span>
+            <span>{now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn btn-ghost" onClick={exportCsv}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 21h16" /></svg>
-            Export CSV
-          </button>
-          <button className="btn btn-primary" onClick={() => setPanel({ mode: 'new', item: null })}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            New Item
-          </button>
-        </div>
-      </div>
 
-      <div className="dash-toolbar-row">
-        <div className="command-bar" style={{ flex: 1 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /><circle cx="12" cy="12" r="3" />
-          </svg>
-          <input value={command} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCommand()}
-            placeholder='Ask anything — "show overdue FI-AR items", "create an SD item for vendor sync"' />
-        </div>
-        <div className="stats-card">
-          <span className="stat-pill"><b>{stats.total}</b>&nbsp;total</span>
-          <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-blue)' }}>{stats.active}</b>&nbsp;active</span>
-          <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-green)' }}>{stats.done}</b>&nbsp;done</span>
-          <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-red)' }}>{stats.critical}</b>&nbsp;critical</span>
-          <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-amber)' }}>{stats.stalled}</b>&nbsp;stalled</span>
-          <span className="stat-sep" />
-          <span className="stat-pill"><b style={{ color: 'var(--st-indigo)' }}>{stats.atRisk}</b>&nbsp;due soon</span>
-        </div>
-      </div>
-      {commandResponse && (
-        <div className="command-response" style={{ marginTop: -6, marginBottom: 16 }}>
-          <span>{commandResponse.text}</span>
-          {commandResponse.clearable && <button onClick={clearAiFilters}>Clear filter</button>}
-        </div>
-      )}
-
-      {moduleArea && (
-        <div className="scope-banner">
-          <span>Viewing <b>{moduleArea}</b> — {scopedRows.length} items, {stats.overdue} overdue</span>
-          <button onClick={() => setModuleArea('')}>Clear view</button>
-        </div>
-      )}
-
-      <div className="escalation-panel">
-        <div className="escalation-head">
-          <span className="escalation-title">Escalations</span>
-          <span className="escalation-sub">
-            {escalations.length
-              ? `${stats.critical} critical · ${stats.stalled} stalled · ${stats.atRisk} due soon`
-              : 'Nothing needs attention right now'}
-          </span>
-        </div>
-        {escalations.length > 0 && (
-          <div className="escalation-strip">
-            {escalations.map(({ item: it, level }) => {
-              const meta = RISK_META[level];
-              const area = areaColors[it.area] || AREA_FALLBACK;
-              const rt = revisedTarget(it);
-              const detail = level === 'critical'
-                ? `${daysBetween(rt, todayStr())}d overdue`
-                : level === 'stalled'
-                  ? `${daysSinceUpdate(it)}d no update`
-                  : rt ? `due ${fmtDate(rt, { withYear: false })}` : 'due soon';
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  className="esc-card"
-                  style={{ borderLeftColor: meta.color }}
-                  onClick={() => setPanel({ mode: 'edit', item: it })}
-                >
-                  <div className="esc-card-top">
-                    <span className="esc-badge" style={{ background: meta.soft, color: meta.color }}>{meta.label}</span>
-                    <span className="badge" style={{ background: area.softColor, color: area.color }}>{it.area || '—'}</span>
+        <div className="filters-row">
+          <select value={moduleArea} onChange={(e) => setModuleArea(e.target.value)}>
+            <option value="">All Modules</option>
+            {(options.area || []).map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}>
+            <option value="">All Owners</option>
+            {owners.map((o) => <option key={o} value={o}>{o}</option>)}
+          </select>
+          <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)}>
+            <option value="">All Priorities</option>
+            {(options.priority || []).map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="">All Statuses</option>
+            {(options.status || []).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="date-range">
+            <CalendarIcon size={14} />
+            <input type="date" value={dateStart} onChange={(e) => setDateStart(e.target.value)} aria-label="Start date" />
+            <span className="date-range-arrow">&rarr;</span>
+            <input type="date" value={dateEnd} onChange={(e) => setDateEnd(e.target.value)} aria-label="End date" />
+          </div>
+          <div className="more-filters-wrap" onMouseLeave={() => setMoreFiltersOpen(false)}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMoreFiltersOpen((o) => !o)}>
+              <FilterIcon size={14} /> More Filters {moreFiltersCount > 0 && <span className="more-filters-count">{moreFiltersCount}</span>}
+            </button>
+            {moreFiltersOpen && (
+              <div className="more-filters-panel">
+                <div className="more-filters-panel-title">Additional filters</div>
+                <div className="more-filters-grid">
+                  <div>
+                    <label>Business Impact</label>
+                    <select value={filterImpact} onChange={(e) => setFilterImpact(e.target.value)}>
+                      <option value="">Any</option>
+                      {(options.impact || []).map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </div>
-                  <div className="esc-card-title">{it.devList}</div>
-                  <div className="esc-card-bottom">
-                    <span>{it.status}</span>
-                    <span className="mono" style={{ color: meta.color, fontWeight: 600 }}>{detail}</span>
+                  <div>
+                    <label>Technical Complexity</label>
+                    <select value={filterComplexity} onChange={(e) => setFilterComplexity(e.target.value)}>
+                      <option value="">Any</option>
+                      {(options.complexity || []).map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
                   </div>
-                </button>
-              );
-            })}
+                  <div>
+                    <label>Dev Factory</label>
+                    <select value={filterDevFactory} onChange={(e) => setFilterDevFactory(e.target.value)}>
+                      <option value="">Any</option>
+                      {(options.devFactory || []).map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Reason for Delay</label>
+                    <select value={filterReasonCategory} onChange={(e) => setFilterReasonCategory(e.target.value)}>
+                      <option value="">Any</option>
+                      {(options.reasonCategory || []).map((v) => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="more-filters-foot">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setFilterImpact(''); setFilterComplexity(''); setFilterDevFactory(''); setFilterReasonCategory(''); }}>Reset these</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="filters-row2">
+          <div className="search-by-id">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.2" y2="16.2" /></svg>
+            <input type="text" placeholder="Search by ID, title, developer, remarks…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <label className="toggle-switch">
+            <input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} />
+            <span className="toggle-track"><span className="toggle-thumb" /></span>
+            Overdue only
+          </label>
+          <div className="filters-row2-actions">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setMoreFiltersOpen(false)}>Apply</button>
+          </div>
+        </div>
+
+        {commandResponse && (
+          <div className="command-response" style={{ marginBottom: 16 }}>
+            <span>{commandResponse.text}</span>
+            {commandResponse.clearable && <button onClick={clearFilters}>Clear filter</button>}
           </div>
         )}
-      </div>
 
-      <div className="toolbar">
-        <div className="module-dropdown">
-          <button className="btn btn-ghost" onClick={() => setModuleMenuOpen((o) => !o)}>
-            {moduleArea || 'All modules'} ({moduleArea ? areaCounts[moduleArea] || 0 : items.length})
-          </button>
-          {moduleMenuOpen && (
-            <div className="module-menu" onMouseLeave={() => setModuleMenuOpen(false)}>
-              <button onClick={() => { setModuleArea(''); setModuleMenuOpen(false); }}>All modules <span>{items.length}</span></button>
-              {(options.area || []).filter((a) => areaCounts[a] > 0).map((a) => (
-                <button key={a} onClick={() => { setModuleArea(a); setModuleMenuOpen(false); }}>{a} <span>{areaCounts[a]}</span></button>
-              ))}
-            </div>
-          )}
+        <div className="view-toolbar">
+          <div className="seg-toggle">
+            <button type="button" className={viewMode === 'board' ? 'active' : ''} onClick={() => setViewMode('board')}>
+              <GridIcon size={14} /> Board View
+            </button>
+            <button type="button" className={viewMode === 'table' ? 'active' : ''} onClick={() => setViewMode('table')}>
+              <TableIcon size={14} /> Table View
+            </button>
+          </div>
+          <div className="view-toolbar-right">
+            <span className="sort-label">Sort by</span>
+            <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setSortDir('asc'); }}>
+              {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+            </select>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={exportCsv}>
+              <DownloadIcon size={14} /> Export CSV
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setPanel({ mode: 'new', item: null })}>
+              <PlusIcon size={14} /> New Item
+            </button>
+          </div>
         </div>
-        <input type="text" placeholder="Search title, developer, remarks…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 220 }} />
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          {(options.status || []).map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)}>
-          <option value="">All priorities</option>
-          {(options.priority || []).map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <label><input type="checkbox" checked={overdueOnly} onChange={(e) => setOverdueOnly(e.target.checked)} /> Overdue only</label>
-      </div>
 
-      {dragError && (
-        <div className="command-response" style={{ marginTop: -6, marginBottom: 16 }}>
-          <span>{dragError}</span>
-          <button onClick={() => setDragError(null)}>Dismiss</button>
-        </div>
-      )}
+        {dragError && (
+          <div className="command-response" style={{ marginBottom: 16 }}>
+            <span>{dragError}</span>
+            <button onClick={() => setDragError(null)}>Dismiss</button>
+          </div>
+        )}
 
-      {loading ? (
-        <div className="empty-state">Loading items…</div>
-      ) : (
-        <div className="board">
-          {columns.map((col) => (
-            <div
-              className={`col${dragOverCol === col.key ? ' col-drag-over' : ''}`}
-              key={col.key}
-              onDragOver={(e) => handleColDragOver(e, col)}
-              onDragLeave={() => handleColDragLeave(col)}
-              onDrop={(e) => handleColDrop(e, col)}
-            >
-              <div className="col-head"><span className="dot" style={{ background: col.dot }} /><span className="name">{col.name}</span><span className="count">{col.cards.length}</span></div>
-              {col.cards.map((it) => {
-                const progress = statusProgress(it.status);
-                const overdue = isOverdue(it);
-                const lvl = riskLevel(it);
-                const lvlMeta = RISK_META[lvl];
-                const rt = revisedTarget(it);
-                const pri = PRIORITY_STYLE[it.priority] || PRIORITY_STYLE.P3;
-                const area = areaColors[it.area] || AREA_FALLBACK;
-                const isFlipped = !!flipped[it.id];
-                const timelineRows = STAGE_PIPELINE.filter((s) => it[s.key]).map((s) => ({ label: FIELD_LABELS[s.key], date: it[s.key] }));
-                if (it.targetDate) timelineRows.push({ label: FIELD_LABELS.targetDate, date: it.targetDate });
-                return (
-                  <div
-                    className={`kcard-flip${isFlipped ? ' flipped' : ''}${draggedId === it.id ? ' kcard-dragging' : ''}`}
-                    key={it.id}
-                    draggable
-                    onDragStart={(e) => handleCardDragStart(e, it)}
-                    onDragEnd={handleCardDragEnd}
-                    onMouseEnter={() => cancelAutoFlipBack(it.id)}
-                    onMouseLeave={() => isFlipped && scheduleAutoFlipBack(it.id)}
-                  >
-                    <div className="kcard-inner">
-                      <div className="kcard-face kcard-front" onClick={() => setPanel({ mode: 'edit', item: it })}>
-                        <button
-                          type="button"
-                          className="flip-hint"
-                          title="Show timeline &amp; notes"
-                          onClick={(e) => { e.stopPropagation(); toggleFlip(it.id); }}
-                        >&#8635;</button>
+        {loading ? (
+          <div className="empty-state">Loading items…</div>
+        ) : viewMode === 'board' ? (
+          <div className="board">
+            {columns.map((col) => (
+              <div
+                className={`col${dragOverCol === col.key ? ' col-drag-over' : ''}`}
+                key={col.key}
+                onDragOver={(e) => handleColDragOver(e, col)}
+                onDragLeave={() => handleColDragLeave(col)}
+                onDrop={(e) => handleColDrop(e, col)}
+              >
+                <div className="col-head"><span className="dot" style={{ background: col.dot }} /><span className="name">{col.name}</span><span className="count">{col.cards.length}</span></div>
+                {col.cards.length === 0 ? (
+                  <div className="col-empty">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z" /></svg>
+                    <div className="col-empty-title">No assignments yet</div>
+                    <div className="col-empty-sub">Drag &amp; drop items here to add one.</div>
+                  </div>
+                ) : (
+                  col.cards.map((it) => {
+                    const rt = revisedTarget(it);
+                    const pri = priorityStyle(it.priority, priorityColors);
+                    const overdue = isOverdue(it);
+                    return (
+                      <div
+                        className={`kcard${draggedId === it.id ? ' kcard-dragging' : ''}`}
+                        key={it.id}
+                        draggable
+                        onDragStart={(e) => handleCardDragStart(e, it)}
+                        onDragEnd={handleCardDragEnd}
+                        onClick={() => setPanel({ mode: 'edit', item: it })}
+                      >
                         <div className="kcard-top">
-                          <span className="badge" style={{ background: area.softColor, color: area.color }}>{it.area || '—'}</span>
-                          <span className="priority-pill" style={{ background: pri.bg, color: pri.fg }}>{it.priority || '—'}</span>
+                          <span className="kcard-idlabel mono">{it.area || 'GEN'}-{it.id}</span>
+                          <span className="kcard-modtag">{it.area || '—'}</span>
                         </div>
-                        <div className="kcard-title">
-                          {it.devList}
-                          {lvl !== 'onTrack' && lvl !== 'done' && <span className="risk-dot" style={{ background: lvlMeta.color }} title={lvlMeta.label} />}
+                        <div className="kcard-title">{it.devList}</div>
+                        <div className="kcard-meta-row">
+                          <span className="priority-pill" style={{ background: pri.bg, color: pri.fg }}>{pri.label}</span>
+                          <span className={`kcard-date mono${overdue ? ' kcard-date-overdue' : ''}`}><CalendarIcon size={12} />{rt ? fmtDate(rt) : '—'}</span>
                         </div>
-                        <div className="kcard-status">{it.status}</div>
-                        <div className="kcard-track"><div className="kcard-fill" style={{ width: `${progress}%`, background: overdue ? 'var(--st-red)' : 'var(--st-blue)' }} /></div>
                         <div className="kcard-bottom">
                           {initialsOf(it.developer) ? (
-                            <div className="avatar-sm mono" style={{ background: area.color }}>{initialsOf(it.developer)}</div>
+                            <div className="avatar-sm mono" style={{ background: avatarColor(it.developer) }}>{initialsOf(it.developer)}</div>
                           ) : (
                             <div className="avatar-empty">—</div>
                           )}
-                          <span className="mono" style={{ fontSize: 11, color: lvl === 'onTrack' || lvl === 'done' ? 'var(--muted)' : lvlMeta.color, fontWeight: lvl === 'onTrack' || lvl === 'done' ? 400 : 700 }}>
-                            {rt ? fmtDate(rt, { withYear: false }) : '—'}{lvlMeta.shortLabel ? ` · ${lvlMeta.shortLabel}` : ''}
-                          </span>
+                          <button type="button" className="kcard-more" onClick={(e) => { e.stopPropagation(); setPanel({ mode: 'edit', item: it }); }}>
+                            <MoreIcon size={14} />
+                          </button>
                         </div>
                       </div>
-                      <div className="kcard-face kcard-back" onClick={() => setPanel({ mode: 'edit', item: it })}>
-                        <div className="back-head">
-                          <span className="kcard-title" style={{ WebkitLineClamp: 1 }}>{it.devList}</span>
-                          <button
-                            type="button"
-                            className="back-close"
-                            title="Back to card"
-                            onClick={(e) => { e.stopPropagation(); toggleFlip(it.id); }}
-                          >&#10005;</button>
-                        </div>
-                        <div className="back-row">
-                          <span className="back-label">Functional SPOC</span>
-                          <span className="back-value">{it.spocFunction || '—'}</span>
-                        </div>
-                        <div className="back-timeline">
-                          {timelineRows.length ? timelineRows.map((row) => (
-                            <div className="back-timeline-row" key={row.label}>
-                              <span>{row.label}</span>
-                              <span className="mono">{fmtDate(row.date, { withYear: false })}</span>
+                    );
+                  })
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="table-view-wrap">
+            <table className="table-view">
+              <thead>
+                <tr>
+                  <th className="table-check-col"><input type="checkbox" checked={pageRows.length > 0 && selectedIds.size === pageRows.length} onChange={toggleAllSelected} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('id')}>ID <CaretUpDownIcon size={11} className={sortBy === 'id' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('title')}>Title <CaretUpDownIcon size={11} className={sortBy === 'title' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('module')}>Module <CaretUpDownIcon size={11} className={sortBy === 'module' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('status')}>Status <CaretUpDownIcon size={11} className={sortBy === 'status' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('priority')}>Priority <CaretUpDownIcon size={11} className={sortBy === 'priority' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('owner')}>Owner <CaretUpDownIcon size={11} className={sortBy === 'owner' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('startDate')}>Start Date <CaretUpDownIcon size={11} className={sortBy === 'startDate' ? 'caret-active' : ''} /></th>
+                  <th className="sortable" onClick={() => handleSortClick('targetDate')}>Target Date <CaretUpDownIcon size={11} className={sortBy === 'targetDate' ? 'caret-active' : ''} /></th>
+                  <th>Days Left</th>
+                  <th>Remarks</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((it) => {
+                  const rt = revisedTarget(it);
+                  const pri = priorityStyle(it.priority, priorityColors);
+                  const st = statusStyle(it, statusColors);
+                  const daysLeft = rt ? daysBetween(todayStr(), rt) : null;
+                  const overdue = isOverdue(it);
+                  return (
+                    <tr key={it.id}>
+                      <td className="table-check-col" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selectedIds.has(it.id)} onChange={() => toggleRowSelected(it.id)} />
+                      </td>
+                      <td className="mono" onClick={() => setPanel({ mode: 'edit', item: it })}>{it.area || 'GEN'}-{it.id}</td>
+                      <td onClick={() => setPanel({ mode: 'edit', item: it })}>{it.devList}</td>
+                      <td onClick={() => setPanel({ mode: 'edit', item: it })}>{it.area || '—'}</td>
+                      <td onClick={() => setPanel({ mode: 'edit', item: it })}><span className="priority-pill" style={{ background: st.bg, color: st.fg }}>{overdue ? 'Overdue' : it.status}</span></td>
+                      <td onClick={() => setPanel({ mode: 'edit', item: it })}><span className="priority-pill" style={{ background: pri.bg, color: pri.fg }}>{pri.label}</span></td>
+                      <td onClick={() => setPanel({ mode: 'edit', item: it })}>{it.developer || '—'}</td>
+                      <td className="mono" onClick={() => setPanel({ mode: 'edit', item: it })}>{it.startDate ? fmtDate(it.startDate) : '—'}</td>
+                      <td className="mono" onClick={() => setPanel({ mode: 'edit', item: it })}>{rt ? fmtDate(rt) : '—'}</td>
+                      <td className={`mono${daysLeft != null && daysLeft < 0 ? ' days-left-neg' : ''}`} onClick={() => setPanel({ mode: 'edit', item: it })}>{daysLeft == null ? '—' : daysLeft}</td>
+                      <td className="table-remarks" onClick={() => setPanel({ mode: 'edit', item: it })}>{it.remarks || '—'}</td>
+                      <td className="table-actions">
+                        <button type="button" className="row-action" title="View" onClick={() => setPanel({ mode: 'edit', item: it })}><EyeIcon size={14} /></button>
+                        <button type="button" className="row-action" title="Edit" onClick={() => setPanel({ mode: 'edit', item: it })}><PencilIcon size={14} /></button>
+                        <div className="row-menu-wrap" onMouseLeave={() => setRowMenuId(null)}>
+                          <button type="button" className="row-action" title="More" onClick={() => setRowMenuId((cur) => (cur === it.id ? null : it.id))}><MoreIcon size={14} /></button>
+                          {rowMenuId === it.id && (
+                            <div className="row-menu">
+                              <button onClick={() => handleRowDelete(it)}>Delete</button>
                             </div>
-                          )) : <div className="back-timeline-row"><span>No dates recorded yet</span></div>}
+                          )}
                         </div>
-                        <div className="back-remarks">
-                          <div className="back-label">Remarks</div>
-                          <div className="back-remarks-text">{it.remarks || 'No remarks.'}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {!col.cards.length && <div style={{ fontSize: 11.5, color: 'var(--muted)', padding: '6px 4px' }}>No items</div>}
-            </div>
-          ))}
-        </div>
-      )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!pageRows.length && (
+                  <tr><td colSpan={12} className="table-empty">No items match the current filters.</td></tr>
+                )}
+              </tbody>
+            </table>
+            {filtered.length > 0 && (
+              <div className="table-pagination">
+                <span className="table-pagination-summary">
+                  Showing {(pageSafe - 1) * pageSize + 1} - {Math.min(pageSafe * pageSize, filtered.length)} of {filtered.length} items
+                </span>
+                <div className="pager-controls">
+                  <button type="button" disabled={pageSafe === 1} onClick={() => setPage(pageSafe - 1)}><ChevronLeftIcon size={14} /></button>
+                  {pageList(pageSafe, totalPages).map((p, i) => p === '…' ? (
+                    <span key={`e${i}`} className="pager-ellipsis">…</span>
+                  ) : (
+                    <button type="button" key={p} className={p === pageSafe ? 'active' : ''} onClick={() => setPage(p)}>{p}</button>
+                  ))}
+                  <button type="button" disabled={pageSafe === totalPages} onClick={() => setPage(pageSafe + 1)}><ChevronRightIcon size={14} /></button>
+                </div>
+                <div className="page-size">
+                  Show
+                  <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                    {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  per page
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-      <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--muted)' }}>
-        Showing {filtered.length} of {items.length} items · board columns group the 10 underlying pipeline statuses (each card names its exact stage)
-      </div>
+        {viewMode === 'board' && (
+          <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--muted)' }}>
+            Showing {filtered.length} of {items.length} items
+          </div>
+        )}
 
-      {panel && (
-        <ItemPanel
-          mode={panel.mode}
-          item={panel.item}
-          options={options}
-          onClose={() => setPanel(null)}
-          onSaved={onSaved}
-        />
-      )}
+        {panel && (
+          <ItemPanel
+            mode={panel.mode}
+            item={panel.item}
+            options={options}
+            onClose={() => setPanel(null)}
+            onSaved={onSaved}
+          />
+        )}
       </main>
     </div>
   );

@@ -1,4 +1,12 @@
-import { STATUS_PROGRESS_ORDER, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, PRIORITY_RANK, AT_RISK_WINDOW_DAYS, STALLED_DAYS } from './constants.js';
+import { STATUS_PROGRESS_ORDER, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, MANUAL_STATUS_DATES, PRIORITY_RANK, AT_RISK_WINDOW_DAYS, STALLED_DAYS } from './constants.js';
+
+// The one field key that must be filled in for a given status — either its STAGE_PIPELINE
+// stage date, or (for Hypercare/On Hold/Completed/Cancelled) its MANUAL_STATUS_DATES entry.
+// Not Started has neither, so this returns null for it. Shared by ItemPanel's save validation
+// and Dashboard's drag-and-drop auto-fill so both stay in sync with the same rule.
+export function stageDateKeyFor(status) {
+  return STAGE_PIPELINE.find((s) => s.status === status)?.key || MANUAL_STATUS_DATES[status] || null;
+}
 
 // --- Dates -------------------------------------------------------------
 // todayStr() intentionally mirrors the original app.js/home.js behavior: it reads the

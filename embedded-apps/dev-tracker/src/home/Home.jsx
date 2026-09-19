@@ -199,19 +199,19 @@ export default function Home() {
 
         <div className="major-grid">
           <a className="hero-tile tone-blue" href={ROUTES.dashboard}>
-            <BoardIcon size={116} className="hero-watermark" />
-            <div className="hero-icon"><BoardIcon size={20} /></div>
+            <BoardIcon size={88} className="hero-watermark" />
+            <div className="hero-icon"><BoardIcon size={16} /></div>
             <h2 className="hero-title">Dashboard</h2>
             <p className="hero-desc">View and manage your assignments in detail</p>
-            <span className="hero-cta"><span className="hero-cta-arrow"><ArrowRightIcon size={13} /></span>Go to Dashboard</span>
+            <span className="hero-cta"><span className="hero-cta-arrow"><ArrowRightIcon size={11} /></span>Go to Dashboard</span>
           </a>
 
           <a className="hero-tile tone-teal" href={ROUTES.resourceUtilization}>
-            <UsersIcon size={116} className="hero-watermark" />
-            <div className="hero-icon"><UsersIcon size={20} /></div>
+            <UsersIcon size={88} className="hero-watermark" />
+            <div className="hero-icon"><UsersIcon size={16} /></div>
             <h2 className="hero-title">Resource Utilization</h2>
             <p className="hero-desc">Track team workload and availability</p>
-            <span className="hero-cta"><span className="hero-cta-arrow"><ArrowRightIcon size={13} /></span>View Resource Utilization</span>
+            <span className="hero-cta"><span className="hero-cta-arrow"><ArrowRightIcon size={11} /></span>View Resource Utilization</span>
           </a>
 
           <div className="status-tile">

@@ -138,7 +138,7 @@ export default function Admin() {
             <div className="shelf" key={cat.key}>
               <div className="shelf-head">
                 <span className="shelf-name">{cat.label}</span>
-                <span className="shelf-count">{values.length} values{cat.key === 'area' ? ' · drives color coding everywhere' : ''}</span>
+                <span className="shelf-count">{values.length} values{cat.hasColor ? ' · drives color coding everywhere' : ''}</span>
               </div>
               <div className="chips">
                 {values.map((row) => (

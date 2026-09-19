@@ -34,3 +34,16 @@ export const BellIcon = (p) => <Icon {...p}><path d="M6 10a6 6 0 1 1 12 0c0 3.2 
 export const SettingsIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M4.6 5.6l2.1 2.1M17.3 16.3l2.1 2.1M2.5 12h3M18.5 12h3M4.6 18.4l2.1-2.1M17.3 7.7l2.1-2.1" /></Icon>;
 export const TrendUpIcon = (p) => <Icon {...p}><polyline points="4 15 10 9 14 13 20 6" /><polyline points="14 6 20 6 20 12" /></Icon>;
 export const TrendDownIcon = (p) => <Icon {...p}><polyline points="4 9 10 15 14 11 20 18" /><polyline points="14 18 20 18 20 12" /></Icon>;
+export const CalendarIcon = (p) => <Icon {...p}><rect x="3" y="5" width="18" height="16" rx="2.5" /><path d="M3 10h18M8 3v4M16 3v4" /></Icon>;
+export const FilterIcon = (p) => <Icon {...p}><path d="M4 5h16l-6.5 7.5V19l-3 2v-8.5L4 5Z" /></Icon>;
+export const DownloadIcon = (p) => <Icon {...p}><path d="M12 3v12" /><path d="M7 11l5 5 5-5" /><path d="M4 21h16" /></Icon>;
+export const PlusIcon = (p) => <Icon {...p} strokeWidth={p.strokeWidth || '2.4'}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Icon>;
+export const GridIcon = (p) => <Icon {...p}><rect x="3" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="3" width="8" height="8" rx="1.5" /><rect x="3" y="13" width="8" height="8" rx="1.5" /><rect x="13" y="13" width="8" height="8" rx="1.5" /></Icon>;
+export const TableIcon = (p) => <Icon {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 4v16" /></Icon>;
+export const MoreIcon = (p) => <Icon {...p} fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" /></Icon>;
+export const EyeIcon = (p) => <Icon {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></Icon>;
+export const PencilIcon = (p) => <Icon {...p}><path d="M4 20l1-4.6L15.6 5 19 8.4 8.4 19 4 20Z" /><path d="M13 7l4 4" /></Icon>;
+export const CaretUpDownIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="7 9 12 4.5 17 9" /><polyline points="7 15 12 19.5 17 15" /></Icon>;
+export const ChevronLeftIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="15 5 8 12 15 19" /></Icon>;
+export const ChevronRightIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="9 5 16 12 9 19" /></Icon>;
+export const ChevronDownIcon = (p) => <Icon {...p} strokeWidth="2.4"><polyline points="5 9 12 16 19 9" /></Icon>;

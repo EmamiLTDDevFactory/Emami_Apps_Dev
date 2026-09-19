@@ -1,28 +1,109 @@
-@media (max-width: 768px) {
-  /* The timeline is date-positioned by percentage across a fixed-width side column + flexible
-     track — squeezing that below its legible width would overlap the bars, so let it scroll
-     horizontally instead, same pattern as the Kanban board's .board { overflow-x: auto }. */
-  .card { overflow-x: auto; }
-  .axis-header, .row { min-width: 640px; }
-}
-.ru-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
-.ru-asof { display: flex; align-items: center; gap: 8px; }
-.ru-asof input[type="date"] { border: 1px solid var(--border-strong); border-radius: 9px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; }
-.ru-asof button { border: 1px solid var(--border-strong); background: var(--surface); border-radius: 9px; padding: 7px 12px; font-size: 12px; cursor: pointer; color: var(--text-2); }
+/* Resource Utilization — Timeline / Allocation Table / Resource Summary. Reuses Dashboard's
+   filters-row / seg-toggle / btn-sm / table-view / pager / status-donut primitives (loaded via
+   dashboard.css in main.jsx) so this page reads as part of the same system; everything below is
+   specific to this page's own layout (timeline gantt, stat tiles, workload bars, status bars). */
 
-.row { display: flex; border-bottom: 1px solid var(--border); }
-.row:last-child { border-bottom: none; }
-.row-side { width: 216px; flex-shrink: 0; padding: 14px 18px; display: flex; align-items: center; gap: 11px; border-right: 1px solid var(--border); }
-.row-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
-.row-role { font-size: 10.5px; color: var(--muted); margin-top: 1px; }
-.band-pill { display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-top: 5px; }
-.row-track { flex: 1; position: relative; padding: 8px 0; }
-.bar { position: absolute; height: 20px; border-radius: 6px; display: flex; align-items: center; padding: 0 9px; overflow: hidden; cursor: default; }
-.bar-label { font-size: 10px; font-weight: 600; color: oklch(99% 0 0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--st-red); }
-.today-tag { position: absolute; top: -22px; font-size: 10px; font-weight: 700; color: var(--st-red); transform: translateX(-50%); white-space: nowrap; }
+/* Page title borrows Dashboard's .dash-title/.dash-header-sub classes, but this page's header
+   should read at Home's (slightly larger) scale, not Dashboard's — override just here so
+   Dashboard itself is untouched. */
+.dash-title { font-size: 22px; line-height: 1.15; }
+.dash-header-sub { font-size: 12.5px; margin-top: 4px; }
+
+@media (max-width: 900px) {
+  .ru-timeline-card { overflow-x: auto; }
+  .ru-axis-header, .ru-row { min-width: 760px; }
+}
+
+/* --- Timeline gantt ------------------------------------------------------------------- */
+.ru-timeline-card { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; overflow: hidden; margin-bottom: 14px; }
+.ru-axis-header { display: flex; border-bottom: 1px solid var(--border-strong); }
+.ru-axis-side { width: 152px; flex-shrink: 0; padding: 9px 12px; border-right: 1px solid var(--border); font-size: 10px; font-weight: 700; color: var(--muted); display: flex; align-items: center; }
+.ru-axis-role-col { width: 104px; flex-shrink: 0; padding: 9px 9px; border-right: 1px solid var(--border); font-size: 10px; font-weight: 700; color: var(--muted); display: flex; align-items: center; }
+.ru-axis-workload-col { width: 88px; flex-shrink: 0; padding: 9px 9px; border-right: 1px solid var(--border); font-size: 10px; font-weight: 700; color: var(--muted); display: flex; align-items: center; }
+.ru-axis-track { flex: 1; position: relative; min-height: 34px; }
+.ru-axis-tick { position: absolute; top: 11px; font-size: 10px; font-weight: 600; color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+
+.ru-row { display: flex; border-bottom: 1px solid var(--border); }
+.ru-row:last-child { border-bottom: none; }
+.ru-row-side { width: 152px; flex-shrink: 0; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border); }
+.ru-row-name { font-size: 11px; font-weight: 600; color: var(--text); }
+.ru-row-role { font-size: 9px; color: var(--muted); margin-top: 1px; }
+.ru-row-role-col { width: 104px; flex-shrink: 0; padding: 8px; display: flex; align-items: center; font-size: 10.5px; color: var(--text-2); border-right: 1px solid var(--border); }
+.ru-row-workload-col { width: 88px; flex-shrink: 0; padding: 8px; display: flex; flex-direction: column; justify-content: center; gap: 4px; border-right: 1px solid var(--border); }
+.ru-workload-pct { font-size: 11px; font-weight: 700; color: var(--text); }
+.ru-row-track { flex: 1; position: relative; padding: 5px 0; }
+.ru-row-empty { position: absolute; left: 12px; top: 11px; font-size: 10px; color: var(--muted); }
+
+.ru-workload-track { display: block; width: 100%; height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.ru-workload-track.sm { height: 5px; width: 64px; }
+.ru-workload-fill { display: block; height: 100%; border-radius: 999px; }
+
+.bar { position: absolute; height: 44px; border-radius: 10px; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 6px 11px; overflow: hidden; cursor: default; }
+.bar-title { font-size: 11.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-dates { font-size: 9.5px; font-weight: 500; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--st-red); z-index: 1; }
+.today-pill {
+  position: absolute; top: 2px; transform: translateX(-50%); z-index: 2;
+  background: var(--st-red); color: white; font-size: 8.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+  box-shadow: 0 3px 8px -3px oklch(0% 0 0 / 0.35);
+}
 .month-div { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
-.axis-header { display: flex; }
-.axis-side { width: 216px; flex-shrink: 0; padding: 14px 18px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border-strong); font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--muted); display: flex; align-items: center; line-height: 1.4; }
-.axis-track { flex: 1; position: relative; height: 44px; border-bottom: 1px solid var(--border-strong); }
-.axis-month-label { position: absolute; top: 14px; font-size: 11px; font-weight: 600; color: var(--muted); transform: translateX(-50%); white-space: nowrap; }
+
+/* --- Bottom panel grid (stat tiles / donut / list), shared by Timeline + Allocation Table --- */
+.ru-bottom-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 12px; align-items: stretch; }
+@media (max-width: 1100px) { .ru-bottom-grid { grid-template-columns: 1fr; } }
+.ru-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px; }
+.ru-panel-title { font-size: 11.5px; font-weight: 600; color: var(--text-2); letter-spacing: .01em; margin-bottom: 9px; }
+
+.ru-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ru-stat-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.ru-tile { display: flex; align-items: center; gap: 8px; background: var(--bg-alt); border-radius: 8px; padding: 7px 9px; }
+.ru-tile-icon { width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white; }
+.ru-tile.tone-blue .ru-tile-icon { background: var(--st-blue); }
+.ru-tile.tone-green .ru-tile-icon { background: var(--st-green); }
+.ru-tile.tone-amber .ru-tile-icon { background: var(--st-amber); }
+.ru-tile.tone-red .ru-tile-icon { background: var(--st-red); }
+.ru-tile.tone-purple .ru-tile-icon { background: var(--st-purple); }
+.ru-tile-text { min-width: 0; }
+.ru-tile-value { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.ru-tile-label { font-size: 9px; font-weight: 500; color: var(--text-2); margin-top: 1px; }
+.ru-tile-sub { font-size: 8px; color: var(--muted); opacity: .8; }
+
+.ru-donut-wrap { display: flex; align-items: center; gap: 14px; }
+.ru-donut-legend { flex: 1; min-width: 0; }
+
+.ru-upcoming-list { display: flex; flex-direction: column; gap: 2px; }
+.ru-upcoming-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.ru-upcoming-row:last-child { border-bottom: none; padding-bottom: 0; }
+.ru-upcoming-main { flex: 1; min-width: 0; }
+.ru-upcoming-title { font-size: 10.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ru-upcoming-sub { font-size: 9px; color: var(--muted); margin-top: 1px; }
+.ru-upcoming-date { font-size: 9.5px; color: var(--muted); flex-shrink: 0; }
+
+.ru-workload-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; }
+.ru-workload-row-name { font-size: 10.5px; color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ru-workload-row-pct { font-size: 10px; color: var(--text); font-weight: 600; width: 32px; text-align: right; flex-shrink: 0; }
+
+/* --- Resource Summary specific --------------------------------------------------------- */
+.ru-summary-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; margin-bottom: 12px; }
+@media (max-width: 1100px) { .ru-summary-stats { grid-template-columns: repeat(2, 1fr); } }
+.ru-status-bars { display: flex; flex-direction: column; gap: 9px; padding-top: 3px; }
+.ru-status-bar-row { display: flex; align-items: center; gap: 8px; }
+.ru-status-bar-label { width: 88px; flex-shrink: 0; font-size: 10px; color: var(--text-2); }
+.ru-status-bar-track { flex: 1; height: 7px; border-radius: 999px; background: var(--bg-alt); overflow: hidden; }
+.ru-status-bar-fill { display: block; height: 100%; border-radius: 999px; }
+.ru-status-bar-count { width: 22px; text-align: right; font-size: 10px; color: var(--text); font-weight: 700; flex-shrink: 0; }
+
+.ru-util-cell { display: flex; align-items: center; gap: 8px; }
+.ru-table-sub { font-size: 9px; color: var(--muted); margin-top: 1px; }
+
+/* --- Resource Summary group headers (Group by: Role / Module) ------------------------- */
+.ru-group-row { cursor: pointer; }
+.ru-group-row:hover td { background: var(--border) !important; }
+.ru-group-row td { background: var(--bg-alt) !important; cursor: pointer; }
+.ru-group-head { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.ru-group-caret { color: var(--muted); transition: transform .15s ease; flex-shrink: 0; }
+.ru-group-caret.collapsed { transform: rotate(-90deg); }
+.ru-group-title { font-size: 11px; font-weight: 700; color: var(--text); }
+.ru-group-meta { font-size: 10px; color: var(--muted); margin-left: auto; }

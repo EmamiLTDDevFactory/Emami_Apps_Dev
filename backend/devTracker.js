@@ -7,8 +7,9 @@ const router = express.Router();
 const FIELDS = [
     'devList', 'status', 'area', 'func', 'impact', 'complexity', 'priority',
     'spocFunction', 'spocIT', 'devFactory', 'startDate', 'reqDiscussion', 'fsPrep',
-    'development', 'itTesting', 'userTesting', 'hypercare', 'targetDate', 'devTime',
-    'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer'
+    'development', 'itTesting', 'userTesting', 'hypercare',
+    'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
+    'targetDate', 'devTime', 'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer'
 ];
 
 // Column names are camelCase to match the JSON the frontend already sends —
@@ -71,6 +72,10 @@ async function initSchema() {
             "itTesting" text,
             "userTesting" text,
             hypercare integer,
+            "hypercareDate" text,
+            "onHoldDate" text,
+            "completedDate" text,
+            "cancelledDate" text,
             "targetDate" text,
             "devTime" integer,
             rework integer,
@@ -82,6 +87,15 @@ async function initSchema() {
             "updatedAt" timestamptz DEFAULT now()
         )
     `);
+    // Added after dev_tracker.items already existed in some deployments — ADD COLUMN IF NOT
+    // EXISTS makes this idempotent instead of failing on a table that predates these columns.
+    // Each backs a status's own "reached this stage on" date (Hypercare/On Hold/Completed/
+    // Cancelled), same idea as the pre-existing reqDiscussion/fsPrep/itTesting/userTesting
+    // columns but for the four statuses STAGE_PIPELINE doesn't cover — see MANUAL_STATUS_DATES.
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "hypercareDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "onHoldDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "completedDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "cancelledDate" text`);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS dev_tracker.item_history (
             id serial PRIMARY KEY,
