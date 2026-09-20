@@ -1,7 +1,7 @@
 import React from 'react';
 
 /** Polished placeholder for a nav destination whose backend/data model isn't built yet
- * (QA Support, Evaluation, Import Center). Renders inside a page's .shell-main, next to
+ * (currently just Settings). Renders inside a page's .shell-main, next to
  * <Sidebar/>, so the destination looks and feels finished even before it does anything. */
 export default function ComingSoon({ icon: IconComp, eyebrow, title, description, bullets, tone = 'accent' }) {
   return (

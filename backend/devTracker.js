@@ -575,6 +575,30 @@ router.get('/activity', requireDevTrackerAccess, async (req, res) => {
 });
 
 // ============================================================
+// Change Log — every item_history row across every item (not just the
+// last 5 the Home widget above shows), with the item's own area/status
+// along for the ride so the Change Log page can filter by them without
+// a second round trip. Every field-level change and every "__created__"
+// row is included; the page itself applies user/field/area/status/date
+// filters client-side, same as Dashboard already does with items.
+// ============================================================
+router.get('/activity/log', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT h.id, h."itemId", h.field, h."oldValue", h."newValue", h."changedAt", h."changedByUsername",
+                   i."devList", i.area, i.status
+            FROM dev_tracker.item_history h
+            JOIN dev_tracker.items i ON i.id = h."itemId"
+            ORDER BY h."changedAt" DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load change log' });
+    }
+});
+
+// ============================================================
 // AI command bar — natural language in, either a filter, a pre-filled
 // draft item, or a data-grounded answer, out.
 // ============================================================

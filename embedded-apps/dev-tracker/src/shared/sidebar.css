@@ -1,5 +1,5 @@
 /* App shell: fixed-width left sidebar + flexible main content. Pages that adopt this
-   (Home, QA Support, Evaluation, Import Center) wrap their content in .shell-main
+   (Home, QA Support, Change Log, Import Center) wrap their content in .shell-main
    alongside <Sidebar/>; pages that still use the older AccountBar strip are unaffected.
 
    The sidebar is a light blue tint of the page's own background — distinct enough to

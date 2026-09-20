@@ -15,7 +15,7 @@ export const ROUTES = {
   admin: `${BASE_PATH}/admin/`,
   resourceUtilization: `${BASE_PATH}/resource-utilization/`,
   qaSupport: `${BASE_PATH}/qa-support/`,
-  evaluation: `${BASE_PATH}/evaluation/`,
+  changeLog: `${BASE_PATH}/change-log/`,
   importCenter: `${BASE_PATH}/import-center/`,
   settings: `${BASE_PATH}/settings/`,
 };

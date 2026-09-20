@@ -23,12 +23,12 @@ export const FAQS = [
   {
     id: 'gs-2', category: 'gettingStarted',
     q: "Who can use Delivery Command Center, and what's the difference between a User and an Admin?",
-    a: "Access is granted per person from the hub's Manage Access screen. A User can view and manage assignments on the Dashboard, and use QA Support, Evaluation and Settings. An Admin additionally gets Master Data (managing dropdown values) and Import Center (bulk-loading assignments from Excel). If a page you expect is missing from the sidebar, ask an admin to check your role.",
+    a: "Access is granted per person from the hub's Manage Access screen. A User can view and manage assignments on the Dashboard, and use QA Support, Change Log and Settings. An Admin additionally gets Master Data (managing dropdown values) and Import Center (bulk-loading assignments from Excel). If a page you expect is missing from the sidebar, ask an admin to check your role.",
   },
   {
     id: 'gs-3', category: 'gettingStarted',
     q: 'What are the main sections in Delivery Command Center?',
-    a: 'Home (overview), Dashboard (create/manage assignments in Board or Table view), Master Data (admin: dropdown values), QA Support (this page), Import Center (admin: bulk import), Evaluation and Settings — all reachable from the same left sidebar on every page.',
+    a: 'Home (overview), Dashboard (create/manage assignments in Board or Table view), Master Data (admin: dropdown values), QA Support (this page), Import Center (admin: bulk import), Change Log and Settings — all reachable from the same left sidebar on every page.',
   },
   {
     id: 'gs-4', category: 'gettingStarted',

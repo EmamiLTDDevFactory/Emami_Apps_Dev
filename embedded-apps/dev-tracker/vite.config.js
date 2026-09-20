@@ -33,7 +33,7 @@ export default defineConfig({
         admin: resolve(__dirname, 'admin/index.html'),
         resourceUtilization: resolve(__dirname, 'resource-utilization/index.html'),
         qaSupport: resolve(__dirname, 'qa-support/index.html'),
-        evaluation: resolve(__dirname, 'evaluation/index.html'),
+        changeLog: resolve(__dirname, 'change-log/index.html'),
         importCenter: resolve(__dirname, 'import-center/index.html'),
         settings: resolve(__dirname, 'settings/index.html'),
       },

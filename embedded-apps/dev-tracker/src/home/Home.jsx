@@ -290,7 +290,7 @@ export default function Home() {
             <div className="widget-col-head">
               <div className="widget-icon tone-teal"><ClockIcon size={14} /></div>
               <span className="widget-title">Recent activity</span>
-              <a className="widget-viewall" href={ROUTES.dashboard}>View All</a>
+              <a className="widget-viewall" href={ROUTES.changeLog}>View All</a>
             </div>
             <div className="widget-body-fill activity-scroll">
               {activity.slice(0, 10).map((a, i) => (
