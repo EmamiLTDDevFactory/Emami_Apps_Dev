@@ -1,7 +1,7 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2, HeartPulse,
+  CalendarClock, FileCheck2, HeartPulse, LineChart,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -32,6 +32,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'fm-po-deviation': '/apps/fm-po-deviation', // PO Deviation Approval
   mediclaim: '/apps/mediclaim', // Mediclaim Policy
   'term-policy': '/apps/term-policy', // Term Policy
+  'cashflow-forecast': '/apps/cashflow-forecast', // CashFlow Intelligence
 };
 
 const RAW_APPS: AppItem[] = [
@@ -48,6 +49,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0 },
   { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0 },
   { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'Cross-Function', icon: ShieldCheck, uses: 0 },
+  { id: 'cashflow-forecast', name: 'CashFlow Intelligence', desc: 'AI-driven 13-week cash flow forecast, risk dashboard and explainability with SAP OData integration.', cat: 'Finance', icon: LineChart, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
