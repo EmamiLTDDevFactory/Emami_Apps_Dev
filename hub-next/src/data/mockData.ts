@@ -1,7 +1,7 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2, HeartPulse, LineChart,
+  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -33,6 +33,8 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   mediclaim: '/apps/mediclaim', // Mediclaim Policy
   'term-policy': '/apps/term-policy', // Term Policy
   'cashflow-forecast': '/apps/cashflow-forecast', // CashFlow Intelligence
+  'journal-anomaly-agent': '/apps/journal-anomaly-agent', // Journal Entry & GL Anomaly Agent
+  'credit-risk-advisory': '/apps/credit-risk-advisory', // Credit Risk Advisory
 };
 
 const RAW_APPS: AppItem[] = [
@@ -50,6 +52,8 @@ const RAW_APPS: AppItem[] = [
   { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0 },
   { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'Cross-Function', icon: ShieldCheck, uses: 0 },
   { id: 'cashflow-forecast', name: 'CashFlow Intelligence', desc: 'AI-driven 13-week cash flow forecast, risk dashboard and explainability with SAP OData integration.', cat: 'Finance', icon: LineChart, uses: 0 },
+  { id: 'journal-anomaly-agent', name: 'Journal Entry & GL Anomaly Agent', desc: 'AI-driven journal entry and GL anomaly monitoring, case management and audit evidence with SAP OData integration.', cat: 'Finance', icon: ScanSearch, uses: 0 },
+  { id: 'credit-risk-advisory', name: 'Credit Risk Advisory', desc: 'Credit risk advisory command center — executive KPIs, worklist, Customer 360, portfolio analytics and governed approval workflow with SAP OData integration.', cat: 'Finance', icon: ShieldAlert, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
