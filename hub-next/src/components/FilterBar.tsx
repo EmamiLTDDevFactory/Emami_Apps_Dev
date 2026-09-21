@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Cog, Wallet, Grid3x3 } from 'lucide-react';
+import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Wallet, Grid3x3, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows, catColor } from '../theme/tokens';
 import { CATEGORIES, APPS } from '../data/mockData';
 import type { CategoryFilter, SortOption } from '../types';
@@ -13,10 +13,15 @@ const SORT_OPTIONS: SortOption[] = ['Alphabetical', 'Most Used', 'Recently Used'
  * segment. */
 const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   All: LayoutGrid,
-  Finance: Landmark,
-  Operations: Cog,
+  CQA: ClipboardCheck,
+  CPD: TrendingUp,
+  IT: Code2,
+  'Supply Chain': Truck,
   IBD: Wallet,
-  General: Grid3x3,
+  HR: Users,
+  'Cross-Function': Shuffle,
+  Packaging: Package,
+  Finance: Landmark,
 };
 
 interface FilterBarProps {

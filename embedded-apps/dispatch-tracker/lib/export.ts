@@ -13,32 +13,36 @@ import { fd, toDate } from '@/lib/format';
 
 export type ReportType = 'all' | 'pending' | 'dispatched' | 'completed' | 'returned' | 'cancelled';
 
+/**
+ * Mirrors exactly what each report type's on-screen table shows (BASE_COLUMNS +
+ * TYPE_EXTRA_COLUMNS in reports.tsx's columnsFor()), plus 'depot' (always included in
+ * the export, even for depot users who don't see it on screen), 'channel' and
+ * 'distance_km' appended — the extra fields the export always includes on top of
+ * the screen.
+ */
 const COLUMN_SETS: Record<ReportType, string[]> = {
+  all: ['invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status', 'no_of_cases', 'channel', 'distance_km'],
   pending: [
-    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'order_receiving_date',
-    'payment_receiving_date', '_edd', 'invoice_value', 'no_of_cases', 'gross_weight_kg',
-    'division', 'distance_km', 'status',
+    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
+    '_edd', 'no_of_cases', 'channel', 'distance_km',
   ],
   dispatched: [
-    'invoice_no', 'depot', 'customer_name', 'town', 'division', 'distance_km', 'invoice_date',
-    'dispatch_date', '_edd', 'invoice_value', 'no_of_cases', 'gross_weight_kg', 'lr_no',
-    'transporter', 'vehicle_no', 'vehicle_type', 'status',
+    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
+    'dispatch_date', '_edd', 'transporter', 'lr_no', 'channel', 'distance_km',
   ],
   completed: [
-    'invoice_no', 'depot', 'customer_name', 'town', 'division', 'distance_km', 'invoice_date',
-    'dispatch_date', 'actual_delivery_date', '_edd', 'invoice_value', 'no_of_cases',
-    'transporter', 'total_delay', '_delay', 'status',
+    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
+    'dispatch_date', 'actual_delivery_date', '_edd', 'total_delay', '_delay', 'transporter',
+    'channel', 'distance_km',
   ],
   returned: [
-    'invoice_no', 'depot', 'customer_name', 'town', 'division', 'distance_km', 'invoice_date',
-    'actual_delivery_date', 'receiving_date', 'invoice_value', 'no_of_cases', 'gross_weight_kg',
-    'cancel_reason', 'status',
+    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
+    'actual_delivery_date', 'receiving_date', 'cancel_reason', 'channel', 'distance_km',
   ],
   cancelled: [
-    'invoice_no', 'depot', 'customer_name', 'town', 'division', 'distance_km', 'invoice_date',
-    'invoice_value', 'no_of_cases', 'gross_weight_kg', 'cancel_date', 'cancel_reason', 'status',
+    'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
+    'cancel_date', 'cancel_reason', 'channel', 'distance_km',
   ],
-  all: ['invoice_no', 'depot', 'customer_name', 'town', 'division', 'distance_km', 'invoice_date', 'invoice_value', 'no_of_cases', 'status'],
 };
 
 const RENAME_MAP: Record<string, string> = {
@@ -54,6 +58,7 @@ const RENAME_MAP: Record<string, string> = {
   no_of_cases: 'No. of Cases',
   gross_weight_kg: 'Gross Weight (KG)',
   distance_km: 'Distance',
+  channel: 'Channel',
   division: 'Division',
   invoice_value: 'Invoice Value (₹)',
   transporter: 'Transporter',

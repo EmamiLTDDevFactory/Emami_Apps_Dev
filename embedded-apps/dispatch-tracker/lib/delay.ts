@@ -24,10 +24,18 @@ export function canonicalDelayLabel(delay: number): string {
   return delay === 0 ? 'On-time' : `${Math.trunc(delay)}d`;
 }
 
-/** Reports "Delay vs EDD" _delay label variant used alongside canonicalDelayColor. */
+/** Reports table "Delay" column — binary status (not a day count): On time (<=0) vs Delayed (>0). */
+export function delayStatusLabel(delay: number): string {
+  return isOnTimeOrEarly(delay) ? 'On time' : 'Delayed';
+}
+export function delayStatusColor(delay: number): string {
+  return isOnTimeOrEarly(delay) ? colors.green : colors.red;
+}
+
+/** Reports table "Delay vs EDD (Days)" column — 0D when on-time/early, else the day count. */
 export function delayVsEddLabel(delay: number | null): string {
   if (delay === null) return '—';
-  return canonicalDelayLabel(delay);
+  return isOnTimeOrEarly(delay) ? '0D' : `${Math.trunc(delay)}D`;
 }
 
 /** Completed-tab "Delivered / On-time" KPI: exact-zero on-time test (stricter than <=0). */
@@ -62,4 +70,21 @@ export function eddVsActualColor(edd: unknown, actualDeliveryDate: unknown): str
   if (!e) return colors.g400;
   if (!a) return colors.g400;
   return a.getTime() <= e.getTime() ? colors.green : colors.red;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Days between EDD and actual delivery (positive = late, negative = early).
+ * SAP's own TotalDelay field has been observed returning 0/wrong values for
+ * invoices that are clearly late by EDD vs ActDelDate, so completed rows
+ * recompute it here instead of trusting SAP — see normalizeInvoice in
+ * sapMapping.ts, which falls back to SAP's value only when either date is
+ * missing (e.g. non-completed rows without an actual delivery date yet).
+ */
+export function edDeliveryDelay(edd: unknown, actualDeliveryDate: unknown): number | null {
+  const e = toDate(edd);
+  const a = toDate(actualDeliveryDate);
+  if (!e || !a) return null;
+  return Math.round((a.getTime() - e.getTime()) / MS_PER_DAY);
 }

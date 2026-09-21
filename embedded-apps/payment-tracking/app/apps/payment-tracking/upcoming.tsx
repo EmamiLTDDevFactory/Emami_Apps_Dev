@@ -474,6 +474,7 @@ export default function UpcomingProvision() {
                       <Pressable
                         onPress={() => toggleSelected(row.key)}
                         style={styles.checkbox}
+                        hitSlop={8}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: selected.has(row.key) }}
                         accessibilityLabel={`Select PO ${row.poNumber} item ${row.poItemNo}`}
@@ -754,8 +755,11 @@ const styles = StyleSheet.create({
   },
   massBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 8,
+    columnGap: 8,
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -799,8 +803,10 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    rowGap: 6,
+    columnGap: 6,
   },
   checkbox: {
     padding: 2,
@@ -897,8 +903,11 @@ const styles = StyleSheet.create({
   },
   delvConfRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 6,
+    columnGap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 6,

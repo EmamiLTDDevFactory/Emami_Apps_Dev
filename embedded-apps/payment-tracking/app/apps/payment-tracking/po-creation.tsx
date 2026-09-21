@@ -1,29 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as XLSX from 'xlsx';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
-  createPurchaseOrders,
-  exportCreatedPosToExcel,
-  parseExcelFile,
-  revalidateRow,
-  type CreatedPo,
-  type UploadedPoRow,
-} from '../../../src/lib/poCreationSimulator';
-import {
   uploadServicePoFile,
+  submitPoAttachment,
   PoUploadError,
   type PoUploadResult,
   type PoUploadResultRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { exportFailedRowsToCsv } from '../../../src/lib/exportCsv';
+import { ensureAttachmentUnderLimit, readAttachmentAsBase64, MAX_ATTACHMENT_BYTES } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 
-const STORAGE_KEY = 'payment-tracking-created-pos';
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+/** Preview table (see PreviewTable) renders at most this many of the parsed rows — a bulk upload
+ * file is capped at 5MB already so this is a render-cost guard, not a real-world limit; the row
+ * count shown/used on the Confirm button and sent to SAP always reflects every row, not just the
+ * ones rendered. */
+const MAX_PREVIEW_ROWS_RENDERED = 100;
 
 // Bundled via Metro (see metro.config.js's assetExts) from assets/files/ — same mechanism the
 // sidebar logo already uses (see _layout.tsx's require of emami-apps-logo.png), so it merges into
@@ -34,94 +32,6 @@ const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const SERVICE_PO_TEMPLATE_ASSET = require('../../../assets/files/ZMM_SRV_PO_Upload_Template.xlsx');
 const SERVICE_PO_TEMPLATE_URL: string =
   typeof SERVICE_PO_TEMPLATE_ASSET === 'string' ? SERVICE_PO_TEMPLATE_ASSET : (SERVICE_PO_TEMPLATE_ASSET?.uri ?? '');
-
-function loadStoredPos(): CreatedPo[] {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredPos(pos: CreatedPo[]): void {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-  } catch {
-    // Storage full/unavailable — the created POs still live in this session's own state, just
-    // won't survive a refresh. Nothing actionable for the user here.
-  }
-}
-
-/** Same date-input pattern as every other screen in this app (raw HTML date input on web, native
- * community picker everywhere else) — duplicated per this app's own convention. */
-function DateField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
-  const [showPicker, setShowPicker] = useState(false);
-
-  if (Platform.OS === 'web') {
-    return (
-      <input
-        type="date"
-        value={value}
-        onChange={(e: any) => onChange(e.target.value)}
-        aria-label={label}
-        style={{
-          width: '100%',
-          height: 32,
-          padding: '4px 6px',
-          borderRadius: 8,
-          border: `1px solid ${colors.border}`,
-          backgroundColor: colors.white,
-          color: colors.ink,
-          fontSize: 12,
-          boxSizing: 'border-box',
-        }}
-      />
-    );
-  }
-
-  const dateObj = value ? new Date(`${value}T00:00:00`) : new Date();
-  return (
-    <View>
-      <Pressable style={styles.dateBtn} onPress={() => setShowPicker(true)} accessibilityRole="button" accessibilityLabel={label}>
-        <Ionicons name="calendar-outline" size={13} color={colors.rust} />
-        <Text style={styles.dateBtnText}>{value || 'Select date'}</Text>
-      </Pressable>
-      {showPicker && (
-        <DateTimePicker
-          value={dateObj}
-          mode="date"
-          display={Platform.OS === 'android' ? 'spinner' : 'default'}
-          onChange={(_event: any, selected?: Date) => {
-            setShowPicker(Platform.OS === 'ios');
-            if (selected) onChange(selected.toISOString().split('T')[0]);
-          }}
-        />
-      )}
-    </View>
-  );
-}
-
-/** Column widths for the "2. Review line items" report table — only the template's own columns
- * (required ones marked with a trailing * in the header); no Material Code/Description, since a
- * Service PO has no material master line and the template doesn't carry those fields. */
-const TABLE_COLUMNS = {
-  row: 30,
-  status: 80,
-  vendorCode: 104,
-  vendorName: 120,
-  quantity: 68,
-  unitPrice: 84,
-  currency: 64,
-  plant: 64,
-  purchaseOrg: 88,
-  deliveryDate: 118,
-  costCenter: 96,
-  glAccount: 96,
-  remove: 36,
-} as const;
 
 /** `sticky` (a left offset in px) freezes this header cell while its table scrolls horizontally —
  * web-only (react-native-web passes 'sticky' straight through to CSS; RN's own ViewStyle type
@@ -144,16 +54,6 @@ function TableHeaderCell({ width, sticky, align, children }: {
   );
 }
 
-function TableCellInput({ width, value, onChange, keyboardType }: {
-  width: number; value: string; onChange: (v: string) => void; keyboardType?: 'decimal-pad';
-}) {
-  return (
-    <View style={[styles.tableCell, { width }]}>
-      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.tableCellInput} />
-    </View>
-  );
-}
-
 function InfoField({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoField}>
@@ -161,11 +61,6 @@ function InfoField({ label, value }: { label: string; value: string }) {
       <Text style={styles.infoValue} numberOfLines={2}>{value || '—'}</Text>
     </View>
   );
-}
-
-function formatMoney(value: string | number, currency: string): string {
-  const n = Number(value);
-  return `${Number.isNaN(n) ? value : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`.trim();
 }
 
 /** Lifnr/Sakto/Kostl arrive ALPHA-padded with leading zeros ("0000220856") — strip for display
@@ -189,6 +84,72 @@ function formatUploadNumber(value: string): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+/** The Service PO Bulk Upload template's own columns, in the exact order the shipped
+ * ZMM_SRV_PO_Upload_Template.xlsx carries them (confirmed by reading that asset's own "Field
+ * help" sheet directly, including its column-position and grouping rules) — this screen reads
+ * them by header name, case-insensitively, purely to build the preview below; the real upload
+ * still reads the file by column position, unchanged. */
+const TEMPLATE_FIELD_LABELS: Record<string, string> = {
+  LIFNR: 'Vendor', BUKRS: 'Company Code', TXZ01: 'Service Text', SALES: 'Sale Value',
+  MENGE: 'Quantity', GR_PRICE: 'Gross Price', MEINS: 'Unit', WERKS: 'Plant', STEUC: 'Control Code',
+  SAKTO: 'GL Account', KOSTL: 'Cost Center', MWSKZ: 'Tax Code', WAERS: 'Currency',
+  VPER_START: 'Validity Start', VPER_END: 'Validity End', BSART: 'Doc Type', EKORG: 'Purch. Org',
+  EKGRP: 'Purch. Group', ZTERM: 'Payment Terms', INCO1: 'Incoterms 1', INCO2: 'Incoterms 2',
+  ORDERID: 'Internal Order', EINDT: 'Delivery Date',
+};
+
+function findTemplateHeader(headers: string[], field: string): string | undefined {
+  return headers.find((h) => String(h).trim().toUpperCase() === field);
+}
+
+/** DD.MM.YYYY, matching the template's own date convention — only reformats a real Excel date
+ * serial (a cell actually formatted as a date); a plain text cell that's already "DD.MM.YYYY", or
+ * anything else, is shown exactly as typed rather than reparsed and risking a wrong read. */
+function formatTemplateDate(value: any): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'number') {
+    const parsed = XLSX.SSF?.parse_date_code ? XLSX.SSF.parse_date_code(value) : null;
+    if (parsed) return `${String(parsed.d).padStart(2, '0')}.${String(parsed.m).padStart(2, '0')}.${parsed.y}`;
+  }
+  return String(value);
+}
+
+interface PreviewGroup {
+  key: string;
+  poId: string;
+  lifnr: string;
+  bukrs: string;
+  rows: { itemNo: string; row: Record<string, any> }[];
+}
+
+/** Groups the freshly-parsed sheet rows the same way the upload itself will — per the template's
+ * own "Field help" sheet: "Rows sharing LIFNR + BUKRS + PO_ID become ONE purchase order, one item
+ * per row" — purely so Finance can see, before confirming, exactly how many POs this file will
+ * create and what's in each one. Returns null when the file is missing any of the three grouping
+ * columns (e.g. a differently-shaped file was picked by mistake), so the caller can fall back to
+ * a flat table instead of guessing at a grouping that isn't really there. */
+function groupPreviewRows(headers: string[], rows: Record<string, any>[]): PreviewGroup[] | null {
+  const lifnrH = findTemplateHeader(headers, 'LIFNR');
+  const bukrsH = findTemplateHeader(headers, 'BUKRS');
+  const poIdH = findTemplateHeader(headers, 'PO_ID');
+  if (!lifnrH || !bukrsH || !poIdH) return null;
+
+  const groups = new Map<string, PreviewGroup>();
+  rows.forEach((row) => {
+    const lifnr = String(row[lifnrH] ?? '').trim();
+    const bukrs = String(row[bukrsH] ?? '').trim();
+    const poId = String(row[poIdH] ?? '').trim();
+    const key = `${lifnr}|${bukrs}|${poId}`;
+    if (!groups.has(key)) groups.set(key, { key, poId, lifnr, bukrs, rows: [] });
+    const group = groups.get(key)!;
+    // SAP assigns real PO items 10, 20, 30... in upload order within a group (see the template's
+    // own worked example) — this mirrors that numbering for the preview, though it's not a real
+    // Ebelp until the PO actually exists.
+    group.rows.push({ itemNo: String((group.rows.length + 1) * 10), row });
+  });
+  return Array.from(groups.values());
+}
+
 function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][] {
   const map = new Map<string, PoUploadResultRow[]>();
   for (const row of rows) {
@@ -199,6 +160,25 @@ function groupByEbeln(rows: PoUploadResultRow[]): [string, PoUploadResultRow[]][
   // Real PO groups first (in first-seen order), rows that never became a PO last.
   return Array.from(map.entries()).sort((a, b) => (a[0] === '—' ? 1 : b[0] === '—' ? -1 : 0));
 }
+
+/** One PO header's Quotation Attachment state — keyed by Ebeln (see the `attachments` map in
+ * ServicePoUploadSection), since a single upload can create several POs at once and each gets its
+ * own independent pick/save flow. */
+interface AttachmentState {
+  fileName: string;
+  base64: string;
+  mimeType: string;
+  description: string;
+  attaching: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: string | null;
+}
+
+const EMPTY_ATTACHMENT_STATE: AttachmentState = {
+  fileName: '', base64: '', mimeType: '', description: '',
+  attaching: false, saving: false, saved: false, error: null,
+};
 
 /** GrPrice arrives as a STRING — parseFloat before formatting, never used directly. Amount is
  * GrPrice itself, shown as-is (not multiplied by Menge — GrPrice is the only price/amount field
@@ -268,15 +248,26 @@ const STATUS_BANNER_STYLE: Record<PoUploadResult['status'], { bg: string; border
   E: { bg: `${colors.red}12`, border: `${colors.red}40`, color: colors.red, icon: 'close-circle' },
 };
 
-/** Service PO Bulk Upload — sub-tab inside the Admin PO Creation screen. Unlike the sibling
- * "Purchase Orders" tab (an explicit client-side simulation, see poCreationSimulator.ts), this
- * posts for real to SAP's ZSrvPOUploadSet deep entity (see uploadServicePoFile in
- * paymentTrackingApi.ts) — a single POST whose response carries the full per-row S/P/E result.
- * The backend owns all .xlsx parsing/validation; this screen never opens the workbook itself. */
+/** Service PO Bulk Upload — the only way to create a Purchase Order in this screen (per
+ * instruction, the old client-side "Purchase Orders" simulation tab was removed). Posts for real
+ * to SAP's ZSrvPOUploadSet deep entity (see uploadServicePoFile in paymentTrackingApi.ts) — a
+ * single POST whose response carries the full per-row S/P/E result; the backend owns all .xlsx
+ * parsing/validation for that call, it never happens twice.
+ *
+ * Per instruction, picking a file no longer uploads it straight to SAP: it's first read
+ * client-side (see previewFile, using the same `xlsx` library already installed for the
+ * now-removed simulator) purely to show the sheet's own rows/columns back to the Finance user for
+ * review — a generic preview of whatever the file actually contains, not a guess at SAP's exact
+ * field names. Only once they explicitly press "Confirm & Create Service POs" does handleUpload
+ * fire the real, unchanged SAP call. */
 function ServicePoUploadSection({ email }: { email: string | null }) {
   const [pickedFileName, setPickedFileName] = useState('');
   const [pickedUri, setPickedUri] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewHeaders, setPreviewHeaders] = useState<string[] | null>(null);
+  const [previewRows, setPreviewRows] = useState<Record<string, any>[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<PoUploadResult | null>(null);
@@ -284,11 +275,123 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   const groups = useMemo(() => (result ? groupByEbeln(result.rows) : []), [result]);
+  const previewGroups = useMemo(
+    () => (previewHeaders && previewRows ? groupPreviewRows(previewHeaders, previewRows) : null),
+    [previewHeaders, previewRows]
+  );
+  // Which raw sheet header covers each of the priority fields (Vendor, Purch. Org, Purch. Group,
+  // Delivery Date, Service Text) so they can render as their own leading columns, per instruction
+  // — everything else the file carries (bar PO_ID, which becomes the group's own header) follows
+  // after, in the order the file itself has them.
+  const previewColumnPlan = useMemo(() => {
+    if (!previewHeaders) return null;
+    const lifnrH = findTemplateHeader(previewHeaders, 'LIFNR');
+    const ekorgH = findTemplateHeader(previewHeaders, 'EKORG');
+    const ekgrpH = findTemplateHeader(previewHeaders, 'EKGRP');
+    const eindtH = findTemplateHeader(previewHeaders, 'EINDT');
+    const txz01H = findTemplateHeader(previewHeaders, 'TXZ01');
+    const poIdH = findTemplateHeader(previewHeaders, 'PO_ID');
+    const shown = new Set([lifnrH, ekorgH, ekgrpH, eindtH, txz01H, poIdH].filter(Boolean) as string[]);
+    const remaining = previewHeaders.filter((h) => !shown.has(h));
+    return { lifnrH, ekorgH, ekgrpH, eindtH, txz01H, remaining };
+  }, [previewHeaders]);
+
+  // Quotation Attachment (PO header level) — only meaningful once a real PO exists, i.e. after a
+  // successful upload (see `result` below), keyed by Ebeln so several POs created in one upload
+  // each get their own independent pick/save state.
+  const [attachments, setAttachments] = useState<Record<string, AttachmentState>>({});
+  const getAttachment = (ebeln: string) => attachments[ebeln] || EMPTY_ATTACHMENT_STATE;
+  const patchAttachment = (ebeln: string, patch: Partial<AttachmentState>) => {
+    setAttachments((prev) => ({ ...prev, [ebeln]: { ...(prev[ebeln] || EMPTY_ATTACHMENT_STATE), ...patch } }));
+  };
+
+  const pickQuotation = async (ebeln: string) => {
+    patchAttachment(ebeln, { error: null });
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (res.canceled) return;
+      const asset = (res as any).assets?.[0] ?? res;
+      if (!asset?.uri) return;
+      patchAttachment(ebeln, { attaching: true });
+      const picked = await readAttachmentAsBase64(asset.uri);
+      // Same body-size ceiling as every other attachment on this SAP service (see
+      // pdfAttachment.ts) — compressed on web if it doesn't already fit, rejected on native.
+      const base64 = await ensureAttachmentUnderLimit(picked, Platform.OS === 'web');
+      if (!base64) {
+        patchAttachment(ebeln, { attaching: false, error: `File is too large — the limit is ${Math.round(MAX_ATTACHMENT_BYTES / 1024)}KB.` });
+        return;
+      }
+      patchAttachment(ebeln, {
+        attaching: false,
+        fileName: asset.name || 'quotation.pdf',
+        base64,
+        mimeType: 'application/pdf',
+        saved: false,
+      });
+    } catch {
+      patchAttachment(ebeln, { attaching: false, error: 'Could not attach this file. Please try again.' });
+    }
+  };
+
+  const saveQuotation = async (ebeln: string) => {
+    const state = getAttachment(ebeln);
+    if (!state.base64) return;
+    patchAttachment(ebeln, { saving: true, error: null });
+    try {
+      await submitPoAttachment(ebeln, state.fileName, state.mimeType, state.base64, state.description);
+      patchAttachment(ebeln, { saving: false, saved: true });
+    } catch (err) {
+      patchAttachment(ebeln, { saving: false, error: err instanceof Error ? err.message : 'Could not save this attachment.' });
+    }
+  };
+
+  const resetPicked = () => {
+    setPickedFileName('');
+    setPickedUri('');
+    setPreviewHeaders(null);
+    setPreviewRows(null);
+    setPreviewError(null);
+  };
+
+  /** Client-side-only read of the picked workbook so the Finance user can see exactly what's in
+   * it before anything is sent anywhere — first sheet, headers taken verbatim from row 1 (no
+   * relabeling/mapping to SAP field names, since the upload template's own column headers aren't
+   * a confirmed contract this screen should be guessing at; the backend still does the real,
+   * authoritative parse on Confirm). */
+  const previewFile = async (uri: string) => {
+    setPreviewing(true);
+    setPreviewError(null);
+    setPreviewHeaders(null);
+    setPreviewRows(null);
+    try {
+      const res = await fetch(uri);
+      const buffer = await res.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        setPreviewError('This file has no sheets.');
+        return;
+      }
+      const sheet = workbook.Sheets[sheetName];
+      const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (rows.length === 0) {
+        setPreviewError('No data rows found — check the file has a header row and at least one data row.');
+        return;
+      }
+      setPreviewHeaders(Object.keys(rows[0]));
+      setPreviewRows(rows);
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : 'Could not read this Excel file.');
+    } finally {
+      setPreviewing(false);
+    }
+  };
 
   const pickFile = async () => {
     setFileError(null);
     setErrorBanner(null);
     setResult(null);
+    resetPicked();
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: [
@@ -311,6 +414,7 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
       }
       setPickedFileName(name);
       setPickedUri(asset.uri);
+      await previewFile(asset.uri);
     } catch {
       setFileError('Could not open the file picker. Please try again.');
     }
@@ -325,8 +429,7 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
     try {
       const res = await uploadServicePoFile(email, pickedFileName || 'upload.xlsx', pickedUri, setProgress);
       setResult(res);
-      setPickedFileName('');
-      setPickedUri('');
+      resetPicked();
     } catch (err) {
       if (err instanceof PoUploadError) {
         setErrorBanner({ kind: err.kind, message: err.message });
@@ -379,60 +482,205 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
       </View>
       {templateNotice && <Text style={styles.helperText}>{templateNotice}</Text>}
 
-      <View style={styles.uploadCard}>
-        <Text style={styles.sectionTitle}>Upload Excel file</Text>
-        <View style={styles.uploadRow}>
-          <Pressable style={styles.uploadBtn} onPress={pickFile} accessibilityRole="button">
-            <Ionicons name="cloud-upload-outline" size={15} color={colors.rust} />
-            <Text style={styles.uploadBtnText} numberOfLines={1}>{pickedFileName || 'Choose Excel file (.xlsx)'}</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.fetchBtn, (!pickedUri || uploading || !email) && styles.btnDisabled]}
-            onPress={handleUpload}
-            disabled={!pickedUri || uploading || !email}
-            accessibilityRole="button"
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color={colors.white} />
-            ) : (
-              <Text style={styles.fetchBtnText}>Upload{progress > 0 ? ` ${progress}%` : ''}</Text>
-            )}
-          </Pressable>
-        </View>
-        {fileError && <Text style={styles.rowErrorText}>{fileError}</Text>}
-
-        {uploading && (
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progress}%` }]} />
-          </View>
-        )}
-
-        {errorBanner && (
-          <View style={[
-            styles.banner,
-            errorBanner.kind === 'timeout'
-              ? { backgroundColor: '#FFFBEB', borderColor: `${colors.amber}40` }
-              : styles.bannerError,
-          ]}>
-            <Ionicons
-              name={errorBanner.kind === 'timeout' ? 'alert-circle' : 'close-circle'}
-              size={16}
-              color={errorBanner.kind === 'timeout' ? colors.amber : colors.red}
-            />
-            <Text style={[styles.bannerText, { color: errorBanner.kind === 'timeout' ? colors.amber : colors.red }]}>
-              {errorBanner.message}
-            </Text>
-            {errorBanner.kind !== 'timeout' && (
-              <Pressable onPress={handleUpload} hitSlop={8} accessibilityRole="button" accessibilityLabel="Retry">
-                <Ionicons name="refresh-outline" size={16} color={colors.inkSoft} />
-              </Pressable>
-            )}
-            <Pressable onPress={() => setErrorBanner(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
-              <Ionicons name="close" size={16} color={colors.inkSoft} />
+      {!result && (
+        <View style={styles.uploadCard}>
+          <Text style={styles.sectionTitle}>1. Upload Excel file</Text>
+          <View style={styles.uploadRow}>
+            <Pressable
+              style={[styles.uploadBtn, (previewing || uploading) && styles.btnDisabled]}
+              onPress={pickFile}
+              disabled={previewing || uploading}
+              accessibilityRole="button"
+            >
+              <Ionicons name="cloud-upload-outline" size={15} color={colors.rust} />
+              <Text style={styles.uploadBtnText} numberOfLines={1}>{pickedFileName || 'Choose Excel file (.xlsx)'}</Text>
             </Pressable>
           </View>
-        )}
-      </View>
+          {fileError && <Text style={styles.rowErrorText}>{fileError}</Text>}
+          {previewing && (
+            <View style={styles.uploadRow}>
+              <ActivityIndicator size="small" color={colors.rust} />
+              <Text style={styles.helperText}>Reading file…</Text>
+            </View>
+          )}
+          {previewError && <Text style={styles.rowErrorText}>{previewError}</Text>}
+
+          {uploading && (
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progress}%` }]} />
+            </View>
+          )}
+
+          {errorBanner && (
+            <View style={[
+              styles.banner,
+              errorBanner.kind === 'timeout'
+                ? { backgroundColor: '#FFFBEB', borderColor: `${colors.amber}40` }
+                : styles.bannerError,
+            ]}>
+              <Ionicons
+                name={errorBanner.kind === 'timeout' ? 'alert-circle' : 'close-circle'}
+                size={16}
+                color={errorBanner.kind === 'timeout' ? colors.amber : colors.red}
+              />
+              <Text style={[styles.bannerText, { color: errorBanner.kind === 'timeout' ? colors.amber : colors.red }]}>
+                {errorBanner.message}
+              </Text>
+              {errorBanner.kind !== 'timeout' && (
+                <Pressable onPress={handleUpload} hitSlop={8} accessibilityRole="button" accessibilityLabel="Retry">
+                  <Ionicons name="refresh-outline" size={16} color={colors.inkSoft} />
+                </Pressable>
+              )}
+              <Pressable onPress={() => setErrorBanner(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
+                <Ionicons name="close" size={16} color={colors.inkSoft} />
+              </Pressable>
+            </View>
+          )}
+        </View>
+      )}
+
+      {previewHeaders && previewRows && !uploading && !errorBanner && !result && (
+        <View style={styles.reviewSection}>
+          <View style={styles.reviewHeader}>
+            <Text style={styles.sectionTitle}>2. Confirm file details</Text>
+            <Text style={styles.helperText}>
+              {previewGroups
+                ? `${previewGroups.length} purchase order${previewGroups.length === 1 ? '' : 's'} · ${previewRows.length} line item${previewRows.length === 1 ? '' : 's'} in ${pickedFileName}`
+                : `${previewRows.length} row${previewRows.length === 1 ? '' : 's'} found in ${pickedFileName}`}
+            </Text>
+          </View>
+
+          {previewGroups && previewColumnPlan ? (
+            (() => {
+              let rendered = 0;
+              const visibleGroups = previewGroups.filter((g) => {
+                if (rendered >= MAX_PREVIEW_ROWS_RENDERED) return false;
+                rendered += g.rows.length;
+                return true;
+              });
+              const hiddenGroupCount = previewGroups.length - visibleGroups.length;
+              return (
+                <>
+                  {visibleGroups.map((group) => (
+                    <View key={group.key} style={{ gap: 6 }}>
+                      <View style={styles.poHeaderCard}>
+                        <View style={styles.poHeaderTopRow}>
+                          <Text style={styles.poHeaderTitle}>PO Group {group.poId || '—'}</Text>
+                          <View style={[styles.statusBadge, { backgroundColor: `${colors.rust}14` }]}>
+                            <Ionicons name="time-outline" size={11} color={colors.rust} />
+                            <Text style={[styles.statusBadgeText, { color: colors.rust }]}>Not yet created</Text>
+                          </View>
+                        </View>
+                        <View style={styles.fieldGrid}>
+                          <InfoField label="Vendor" value={group.lifnr || '—'} />
+                          <InfoField label="Company Code" value={group.bukrs || '—'} />
+                          <InfoField label="Items" value={String(group.rows.length)} />
+                        </View>
+                      </View>
+
+                      <Text style={styles.itemDetailsLabel}>Item Details</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+                        <View>
+                          <View style={styles.tableHeaderRow}>
+                            <View style={[styles.tableHeaderCell, { width: 60 }]}><Text style={styles.tableHeaderText}>Item</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Vendor</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Purch. Org</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 90 }]}><Text style={styles.tableHeaderText}>Purch. Group</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 100 }]}><Text style={styles.tableHeaderText}>Delivery Date</Text></View>
+                            <View style={[styles.tableHeaderCell, { width: 180 }]}><Text style={styles.tableHeaderText}>Service Text</Text></View>
+                            {previewColumnPlan.remaining.map((h) => (
+                              <View key={h} style={[styles.tableHeaderCell, { width: 120 }]}>
+                                <Text style={styles.tableHeaderText} numberOfLines={2}>{TEMPLATE_FIELD_LABELS[h.trim().toUpperCase()] || h}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          {group.rows.map(({ itemNo, row }) => (
+                            <View key={itemNo} style={styles.tableRow}>
+                              <View style={[styles.tableCell, { width: 60 }]}><Text style={styles.resultCellText}>{itemNo}</Text></View>
+                              <View style={[styles.tableCell, { width: 90 }]}><Text style={styles.resultCellText}>{group.lifnr || '—'}</Text></View>
+                              <View style={[styles.tableCell, { width: 90 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.ekorgH ? String(row[previewColumnPlan.ekorgH] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 90 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.ekgrpH ? String(row[previewColumnPlan.ekgrpH] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 100 }]}>
+                                <Text style={styles.resultCellText}>{previewColumnPlan.eindtH ? formatTemplateDate(row[previewColumnPlan.eindtH]) || '—' : '—'}</Text>
+                              </View>
+                              <View style={[styles.tableCell, { width: 180 }]}>
+                                <Text style={styles.resultCellText} numberOfLines={2}>{previewColumnPlan.txz01H ? String(row[previewColumnPlan.txz01H] ?? '') || '—' : '—'}</Text>
+                              </View>
+                              {previewColumnPlan.remaining.map((h) => (
+                                <View key={h} style={[styles.tableCell, { width: 120 }]}>
+                                  <Text style={styles.resultCellText} numberOfLines={2}>{row[h] === '' || row[h] == null ? '—' : String(row[h])}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  ))}
+                  {hiddenGroupCount > 0 && (
+                    <Text style={styles.helperText}>Showing {visibleGroups.length} of {previewGroups.length} purchase orders — every one will still be sent.</Text>
+                  )}
+                </>
+              );
+            })()
+          ) : (
+            <>
+              <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
+                <View>
+                  <View style={styles.tableHeaderRow}>
+                    {previewHeaders.map((h) => (
+                      <View key={h} style={[styles.tableHeaderCell, { width: 140 }]}>
+                        <Text style={styles.tableHeaderText} numberOfLines={2}>{h}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  {previewRows.slice(0, MAX_PREVIEW_ROWS_RENDERED).map((row, i) => (
+                    <View key={i} style={styles.tableRow}>
+                      {previewHeaders.map((h) => (
+                        <View key={h} style={[styles.tableCell, { width: 140 }]}>
+                          <Text style={styles.resultCellText} numberOfLines={2}>{row[h] === '' || row[h] == null ? '—' : String(row[h])}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+              {previewRows.length > MAX_PREVIEW_ROWS_RENDERED && (
+                <Text style={styles.helperText}>Showing the first {MAX_PREVIEW_ROWS_RENDERED} of {previewRows.length} rows — every row will still be sent.</Text>
+              )}
+              <Text style={styles.helperText}>
+                This file doesn't look like the Service PO template (missing LIFNR/BUKRS/PO_ID columns), so rows can't be grouped into purchase orders for preview — showing every column as-is instead.
+              </Text>
+            </>
+          )}
+
+          <Text style={styles.helperText}>
+            This is exactly what's in the file — nothing has been sent to SAP yet. Confirm to create these Service POs, or cancel to pick a different file.
+          </Text>
+
+          <View style={styles.uploadRow}>
+            <Pressable
+              style={[styles.fetchBtn, (uploading || !email) && styles.btnDisabled]}
+              onPress={handleUpload}
+              disabled={uploading || !email}
+              accessibilityRole="button"
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Text style={styles.fetchBtnText}>Confirm & Create Service POs{progress > 0 ? ` ${progress}%` : ''}</Text>
+              )}
+            </Pressable>
+            <Pressable style={styles.cancelBtn} onPress={resetPicked} disabled={uploading} accessibilityRole="button">
+              <Text style={styles.cancelBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {result && (
         <View style={styles.reviewSection}>
@@ -497,6 +745,61 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
                         </Text>
                       </View>
                     </View>
+
+                    {(() => {
+                      const att = getAttachment(ebeln);
+                      return (
+                        <View style={styles.quotAttachBlock}>
+                          <Text style={styles.infoLabel}>Quotation Attachment</Text>
+                          {att.saved ? (
+                            <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: `${colors.green}14` }]}>
+                              <Ionicons name="checkmark-circle" size={11} color={colors.green} />
+                              <Text style={[styles.statusBadgeText, { color: colors.green }]}>{att.fileName} attached</Text>
+                            </View>
+                          ) : (
+                            <>
+                              <View style={styles.uploadRow}>
+                                <Pressable
+                                  style={[styles.attachBtn, att.attaching && styles.btnDisabled]}
+                                  onPress={() => pickQuotation(ebeln)}
+                                  disabled={att.attaching}
+                                  accessibilityRole="button"
+                                >
+                                  <Ionicons name={att.fileName ? 'document-attach-outline' : 'attach-outline'} size={14} color={colors.rust} />
+                                  <Text style={styles.attachBtnText} numberOfLines={1}>
+                                    {att.attaching ? 'Attaching…' : (att.fileName || 'Choose PDF quotation')}
+                                  </Text>
+                                </Pressable>
+                              </View>
+                              {!!att.fileName && (
+                                <>
+                                  <TextInput
+                                    value={att.description}
+                                    onChangeText={(v) => patchAttachment(ebeln, { description: v })}
+                                    placeholder="Description (optional)"
+                                    placeholderTextColor={colors.inkSoft}
+                                    style={styles.descInput}
+                                  />
+                                  <Pressable
+                                    style={[styles.saveAttachBtn, att.saving && styles.btnDisabled]}
+                                    onPress={() => saveQuotation(ebeln)}
+                                    disabled={att.saving}
+                                    accessibilityRole="button"
+                                  >
+                                    {att.saving ? (
+                                      <ActivityIndicator size="small" color={colors.white} />
+                                    ) : (
+                                      <Text style={styles.saveAttachBtnText}>Save Attachment</Text>
+                                    )}
+                                  </Pressable>
+                                </>
+                              )}
+                              {att.error && <Text style={styles.rowErrorText}>{att.error}</Text>}
+                            </>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </View>
                 )}
 
@@ -575,122 +878,11 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
   );
 }
 
-/** Purchase Order Creation and Details — Admin-only tab. Explicitly a SIMULATION (per instruction):
- * Admin uploads an Excel file of line items, "Fetch" runs a client-side validation pass sorting
- * rows into success/error (see poCreationSimulator.ts), Admin edits rows inline until every one is
- * clean, then "Save" turns the success rows into simulated Purchase Orders (grouped one PO per
- * vendor+purchase org+plant+currency) — kept in this browser's localStorage, never sent to SAP,
- * since there's no confirmed real entity for this. Admin can then review each created PO's header
- * + item detail and download everything created so far as an Excel workbook. */
+/** Purchase Order Creation and Details — Finance-only tab. Per instruction, the only way to create
+ * a Purchase Order here is the Service PO Bulk Upload flow (see ServicePoUploadSection above); the
+ * earlier client-side "Purchase Orders" simulation tab (never a real SAP call) has been removed. */
 export default function PurchaseOrderCreation() {
   const { email, role, roleLoading } = usePaymentTrackingAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'bulk'>('create');
-  const [pickedFileName, setPickedFileName] = useState('');
-  const [pickedUri, setPickedUri] = useState('');
-  const [fetching, setFetching] = useState(false);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [uploadedRows, setUploadedRows] = useState<UploadedPoRow[]>([]);
-  const [createdPos, setCreatedPos] = useState<CreatedPo[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  useEffect(() => {
-    setCreatedPos(loadStoredPos());
-  }, []);
-
-  const pickFile = async () => {
-    setFetchError(null);
-    setBanner(null);
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'application/vnd.ms-excel',
-        ],
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const asset = (result as any).assets?.[0] ?? result;
-      if (!asset?.uri) return;
-      setPickedFileName(asset.name || 'workbook.xlsx');
-      setPickedUri(asset.uri);
-      setUploadedRows([]);
-    } catch {
-      setFetchError('Could not open the file picker. Please try again.');
-    }
-  };
-
-  const handleFetch = async () => {
-    if (!pickedUri) return;
-    setFetching(true);
-    setFetchError(null);
-    try {
-      const rows = await parseExcelFile(pickedUri);
-      if (rows.length === 0) {
-        setFetchError('No line items found in this file — check it has a header row and at least one data row.');
-      }
-      setUploadedRows(rows);
-    } catch (e) {
-      setFetchError(e instanceof Error ? e.message : 'Could not read this Excel file.');
-    } finally {
-      setFetching(false);
-    }
-  };
-
-  const patchUploadedRow = useCallback((key: string, patch: Partial<UploadedPoRow>) => {
-    setUploadedRows((prev) => prev.map((r) => (r.key === key ? revalidateRow({ ...r, ...patch }) : r)));
-  }, []);
-
-  const removeUploadedRow = (key: string) => {
-    setUploadedRows((prev) => prev.filter((r) => r.key !== key));
-  };
-
-  const successCount = uploadedRows.filter((r) => r.status === 'success').length;
-  const errorCount = uploadedRows.length - successCount;
-
-  const handleSave = () => {
-    if (uploadedRows.length === 0) return;
-    setSaving(true);
-    // If any line item in a PO group has an error, that whole PO is skipped (not just the bad
-    // row) — remainingRows hands back every row from a skipped group so it stays in the review
-    // table for the Admin to fix or remove and save again; other, error-free groups are created.
-    const { created: newPos, remainingRows, skippedGroupCount } = createPurchaseOrders(uploadedRows, createdPos);
-    const merged = [...newPos, ...createdPos];
-    setCreatedPos(merged);
-    saveStoredPos(merged);
-    setUploadedRows(remainingRows);
-    if (remainingRows.length === 0) {
-      setPickedFileName('');
-      setPickedUri('');
-    }
-    setSaving(false);
-
-    if (newPos.length > 0 && skippedGroupCount === 0) {
-      setBanner({
-        type: 'success',
-        message: `${newPos.length} purchase order${newPos.length === 1 ? '' : 's'} created: ${newPos.map((p) => p.poNumber).join(', ')}.`,
-      });
-    } else if (newPos.length > 0) {
-      setBanner({
-        type: 'error',
-        message: `${newPos.length} purchase order${newPos.length === 1 ? '' : 's'} created: ${newPos.map((p) => p.poNumber).join(', ')}. ${skippedGroupCount} PO${skippedGroupCount === 1 ? '' : 's'} skipped — every line item in a PO must be error-free. Fix or remove the error rows below and save again.`,
-      });
-    } else {
-      setBanner({
-        type: 'error',
-        message: 'No purchase orders created — every group has at least one error row. Fix or remove the error rows below and save again.',
-      });
-    }
-  };
-
-  const toggleExpand = (poNumber: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(poNumber)) next.delete(poNumber); else next.add(poNumber);
-      return next;
-    });
-  };
 
   if (roleLoading) {
     return (
@@ -715,234 +907,12 @@ export default function PurchaseOrderCreation() {
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <View style={styles.panel}>
         <ProvisionHero
-          eyebrow="Admin · Simulation"
+          eyebrow="Finance · Service PO Bulk Upload"
           title="Purchase Order Creation and Details"
-          subtitle="Upload an Excel file of line items, review the fetched rows, then confirm to create simulated Purchase Orders."
+          subtitle="Upload an Excel file of Service PO line items, review exactly what's in it, then confirm to create them in SAP."
         />
 
-        <View style={styles.tabRow}>
-          {([
-            { key: 'create', label: 'Purchase Orders' },
-            { key: 'bulk', label: 'Service PO Bulk Upload' },
-          ] as const).map((tab) => (
-            <Pressable
-              key={tab.key}
-              style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive]}
-              onPress={() => setActiveTab(tab.key)}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.tabBtnText, activeTab === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {activeTab === 'bulk' && <ServicePoUploadSection email={email} />}
-
-        {activeTab === 'create' && banner && (
-          <View style={[styles.banner, banner.type === 'error' ? styles.bannerError : styles.bannerSuccess]}>
-            <Ionicons name={banner.type === 'error' ? 'alert-circle' : 'checkmark-circle'} size={16} color={banner.type === 'error' ? colors.red : colors.green} />
-            <Text style={[styles.bannerText, { color: banner.type === 'error' ? colors.red : colors.green }]}>{banner.message}</Text>
-            <Pressable onPress={() => setBanner(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Dismiss">
-              <Ionicons name="close" size={16} color={colors.inkSoft} />
-            </Pressable>
-          </View>
-        )}
-
-        {activeTab === 'create' && (
-        <View style={styles.uploadCard}>
-          <Text style={styles.sectionTitle}>1. Upload Excel file</Text>
-          <View style={styles.uploadRow}>
-            <Pressable style={styles.uploadBtn} onPress={pickFile} accessibilityRole="button">
-              <Ionicons name="cloud-upload-outline" size={15} color={colors.rust} />
-              <Text style={styles.uploadBtnText} numberOfLines={1}>{pickedFileName || 'Choose Excel file (.xlsx)'}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.fetchBtn, (!pickedUri || fetching) && styles.btnDisabled]}
-              onPress={handleFetch}
-              disabled={!pickedUri || fetching}
-              accessibilityRole="button"
-            >
-              {fetching ? <ActivityIndicator size="small" color={colors.white} /> : <Text style={styles.fetchBtnText}>Fetch</Text>}
-            </Pressable>
-          </View>
-          {fetchError && <Text style={styles.rowErrorText}>{fetchError}</Text>}
-          <Text style={styles.helperText}>
-            Expected columns: Vendor Code, Vendor Name, Quantity, Unit Price, Currency, Plant, Purchase Org, Delivery Date, Cost Center, GL Account.
-          </Text>
-        </View>
-        )}
-
-        {activeTab === 'create' && uploadedRows.length > 0 && (
-          <View style={styles.reviewSection}>
-            <View style={styles.reviewHeader}>
-              <Text style={styles.sectionTitle}>2. Review line items</Text>
-              <View style={styles.countBadges}>
-                <View style={[styles.countBadge, { backgroundColor: `${colors.green}14` }]}>
-                  <Ionicons name="checkmark-circle" size={12} color={colors.green} />
-                  <Text style={[styles.countBadgeText, { color: colors.green }]}>{successCount} success</Text>
-                </View>
-                <View style={[styles.countBadge, { backgroundColor: `${colors.red}14` }]}>
-                  <Ionicons name="alert-circle" size={12} color={colors.red} />
-                  <Text style={[styles.countBadgeText, { color: colors.red }]}>{errorCount} error</Text>
-                </View>
-              </View>
-            </View>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
-              <View>
-                <View style={styles.tableHeaderRow}>
-                  <TableHeaderCell width={TABLE_COLUMNS.row}>#</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.status}>Status</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.vendorCode}>Vendor Code *</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.vendorName}>Vendor Name</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.quantity}>Qty *</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.unitPrice}>Unit Price *</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.currency}>Currency</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.plant}>Plant</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.purchaseOrg}>Purch. Org</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.deliveryDate}>Delivery Date *</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.costCenter}>Cost Center</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.glAccount}>GL Account</TableHeaderCell>
-                  <TableHeaderCell width={TABLE_COLUMNS.remove}> </TableHeaderCell>
-                </View>
-
-                {uploadedRows.map((row, index) => (
-                  <View
-                    key={row.key}
-                    style={[
-                      styles.tableRow,
-                      { backgroundColor: row.status === 'success' ? `${colors.green}0A` : `${colors.red}0A` },
-                    ]}
-                  >
-                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.row }]}>
-                      <Text style={styles.rowNumberText}>{index + 1}</Text>
-                    </View>
-                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.status }]}>
-                      <View style={[styles.statusBadge, { backgroundColor: row.status === 'success' ? `${colors.green}14` : `${colors.red}14` }]}>
-                        <Ionicons
-                          name={row.status === 'success' ? 'checkmark-circle' : 'alert-circle'}
-                          size={11}
-                          color={row.status === 'success' ? colors.green : colors.red}
-                        />
-                        <Text style={[styles.statusBadgeText, { color: row.status === 'success' ? colors.green : colors.red }]}>
-                          {row.status === 'success' ? 'OK' : 'Error'}
-                        </Text>
-                      </View>
-                    </View>
-                    <TableCellInput width={TABLE_COLUMNS.vendorCode} value={row.vendorCode} onChange={(v) => patchUploadedRow(row.key, { vendorCode: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.vendorName} value={row.vendorName} onChange={(v) => patchUploadedRow(row.key, { vendorName: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.quantity} value={row.quantity} onChange={(v) => patchUploadedRow(row.key, { quantity: v })} keyboardType="decimal-pad" />
-                    <TableCellInput width={TABLE_COLUMNS.unitPrice} value={row.unitPrice} onChange={(v) => patchUploadedRow(row.key, { unitPrice: v })} keyboardType="decimal-pad" />
-                    <TableCellInput width={TABLE_COLUMNS.currency} value={row.currency} onChange={(v) => patchUploadedRow(row.key, { currency: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.plant} value={row.plant} onChange={(v) => patchUploadedRow(row.key, { plant: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.purchaseOrg} value={row.purchaseOrg} onChange={(v) => patchUploadedRow(row.key, { purchaseOrg: v })} />
-                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.deliveryDate }]}>
-                      <DateField value={row.deliveryDate} onChange={(v) => patchUploadedRow(row.key, { deliveryDate: v })} label="Delivery Date" />
-                    </View>
-                    <TableCellInput width={TABLE_COLUMNS.costCenter} value={row.costCenter} onChange={(v) => patchUploadedRow(row.key, { costCenter: v })} />
-                    <TableCellInput width={TABLE_COLUMNS.glAccount} value={row.glAccount} onChange={(v) => patchUploadedRow(row.key, { glAccount: v })} />
-                    <View style={[styles.tableCell, { width: TABLE_COLUMNS.remove }]}>
-                      <Pressable onPress={() => removeUploadedRow(row.key)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove this row">
-                        <Ionicons name="trash-outline" size={15} color={colors.inkSoft} />
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-
-            {errorCount > 0 && (
-              <View style={styles.tableErrorsList}>
-                {uploadedRows.map((row, index) => (
-                  row.status === 'error'
-                    ? <Text key={row.key} style={styles.rowErrorText}>Row {index + 1}: {row.errorMessage}</Text>
-                    : null
-                ))}
-              </View>
-            )}
-
-            <Pressable
-              style={[styles.saveBtn, saving && styles.btnDisabled]}
-              onPress={handleSave}
-              disabled={saving}
-              accessibilityRole="button"
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.saveBtnText}>Confirm & Create Purchase Order{successCount === 1 ? '' : 's'}</Text>
-              )}
-            </Pressable>
-            {errorCount > 0 && (
-              <Text style={styles.helperText}>
-                Rows still in error will not be turned into a PO — any PO group containing one of them is skipped entirely.
-              </Text>
-            )}
-          </View>
-        )}
-
-        {activeTab === 'create' && (
-        <View style={styles.createdSection}>
-          <View style={styles.reviewHeader}>
-            <Text style={styles.sectionTitle}>Created Purchase Orders</Text>
-            <Pressable
-              style={[styles.downloadBtn, createdPos.length === 0 && styles.btnDisabled]}
-              onPress={() => exportCreatedPosToExcel(createdPos)}
-              disabled={createdPos.length === 0}
-              accessibilityRole="button"
-            >
-              <Ionicons name="download-outline" size={14} color={colors.white} />
-              <Text style={styles.downloadBtnText}>Download Excel</Text>
-            </Pressable>
-          </View>
-
-          {createdPos.length === 0 ? (
-            <Text style={styles.emptyText}>No purchase orders created yet.</Text>
-          ) : (
-            createdPos.map((po) => {
-              const isExpanded = expanded.has(po.poNumber);
-              return (
-                <View key={po.poNumber} style={styles.poCard}>
-                  <Pressable style={styles.poCardHeader} onPress={() => toggleExpand(po.poNumber)} accessibilityRole="button">
-                    <View style={styles.flex1}>
-                      <Text style={styles.poTitle}>PO {po.poNumber}</Text>
-                      <Text style={styles.poSubtitle} numberOfLines={1}>{po.vendorName || po.vendorCode} · {po.items.length} item{po.items.length === 1 ? '' : 's'}</Text>
-                    </View>
-                    <Text style={styles.poTotal}>{formatMoney(po.totalValue, po.currency)}</Text>
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.inkSoft} />
-                  </Pressable>
-
-                  <View style={styles.fieldGrid}>
-                    <InfoField label="Vendor Code" value={po.vendorCode} />
-                    <InfoField label="Purchase Org" value={po.purchaseOrg} />
-                    <InfoField label="Plant" value={po.plant} />
-                    <InfoField label="Currency" value={po.currency} />
-                    <InfoField label="Created Date" value={po.createdDate} />
-                  </View>
-
-                  {isExpanded && (
-                    <View style={styles.itemsWrap}>
-                      {po.items.map((item) => (
-                        <View key={item.itemNo} style={styles.itemRow}>
-                          <View style={styles.fieldGrid}>
-                            <InfoField label="Item No" value={item.itemNo} />
-                            <InfoField label="Quantity" value={item.quantity} />
-                            <InfoField label="Unit Price" value={item.unitPrice} />
-                            <InfoField label="Net Value" value={item.netValue} />
-                            <InfoField label="Delivery Date" value={item.deliveryDate} />
-                            {item.costCenter ? <InfoField label="Cost Center" value={item.costCenter} /> : null}
-                            {item.glAccount ? <InfoField label="GL Account" value={item.glAccount} /> : null}
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </View>
-        )}
+        <ServicePoUploadSection email={email} />
       </View>
     </ScrollView>
   );
@@ -977,10 +947,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
   },
-  bannerSuccess: {
-    backgroundColor: `${colors.green}12`,
-    borderColor: `${colors.green}40`,
-  },
   bannerError: {
     backgroundColor: `${colors.red}12`,
     borderColor: `${colors.red}40`,
@@ -994,32 +960,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: colors.ink,
-  },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 4,
-    backgroundColor: colors.white,
-    borderRadius: radii.pill,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignSelf: 'flex-start',
-  },
-  tabBtn: {
-    borderRadius: radii.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-  },
-  tabBtnActive: {
-    backgroundColor: colors.rust,
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.inkSoft,
-  },
-  tabBtnTextActive: {
-    color: colors.white,
   },
   progressTrack: {
     height: 5,
@@ -1050,9 +990,11 @@ const styles = StyleSheet.create({
   },
   poHeaderTopRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    rowGap: 6,
+    columnGap: 8,
   },
   poHeaderTitle: {
     fontSize: 14,
@@ -1109,6 +1051,54 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flexShrink: 1,
   },
+  quotAttachBlock: {
+    gap: 6,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 8,
+  },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 180,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.appBg,
+  },
+  attachBtnText: {
+    fontSize: 12,
+    color: colors.ink,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  descInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    fontSize: 12.5,
+    color: colors.ink,
+    backgroundColor: colors.white,
+  },
+  saveAttachBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.teal,
+    borderRadius: radii.md,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  saveAttachBtnText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   fetchBtn: {
     backgroundColor: colors.rust,
     borderRadius: 8,
@@ -1119,6 +1109,20 @@ const styles = StyleSheet.create({
   },
   fetchBtnText: {
     color: colors.white,
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  cancelBtn: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelBtnText: {
+    color: colors.inkSoft,
     fontSize: 12.5,
     fontWeight: '700',
   },
@@ -1136,22 +1140,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  countBadges: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  countBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: radii.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-  },
-  countBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '700',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -1234,68 +1222,17 @@ const styles = StyleSheet.create({
   resultCellTextCenter: {
     textAlign: 'center',
   },
-  tableCellInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    fontSize: 11.5,
-    color: colors.ink,
-    backgroundColor: colors.white,
-  },
-  rowNumberText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.inkSoft,
-    textAlign: 'center',
-  },
   tableErrorsList: {
     gap: 3,
     paddingTop: 2,
-  },
-  dateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 5,
-    paddingHorizontal: 7,
-    backgroundColor: colors.white,
-  },
-  dateBtnText: {
-    fontSize: 11.5,
-    color: colors.ink,
-    fontWeight: '600',
   },
   rowErrorText: {
     fontSize: 11,
     fontWeight: '600',
     color: colors.red,
   },
-  saveBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.rust,
-    borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-  },
-  saveBtnText: {
-    color: colors.white,
-    fontSize: 12.5,
-    fontWeight: '700',
-  },
   btnDisabled: {
     opacity: 0.6,
-  },
-  createdSection: {
-    gap: 8,
-    marginTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 12,
   },
   downloadBtn: {
     flexDirection: 'row',
@@ -1311,53 +1248,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
   },
-  emptyText: {
-    fontSize: 13,
-    color: colors.inkSoft,
-    textAlign: 'center',
-    paddingVertical: 24,
-  },
-  poCard: {
-    backgroundColor: colors.white,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 10,
-    gap: 6,
-    ...Platform.select({
-      web: { boxShadow: '0 1px 4px rgba(31,27,51,0.05)' },
-      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
-    }),
-  },
-  poCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  poTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  poSubtitle: {
-    fontSize: 11,
-    color: colors.inkSoft,
-    marginTop: 1,
-  },
   poTotal: {
     fontSize: 12.5,
     fontWeight: '800',
     color: colors.rust,
-  },
-  itemsWrap: {
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 6,
-  },
-  itemRow: {
-    backgroundColor: colors.appBg,
-    borderRadius: radii.md,
-    padding: 7,
   },
 });

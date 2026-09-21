@@ -9,7 +9,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { uploadProfilePhoto, updateMobile } from '../../../lib/authApi';
 import { cropAndResizeImageToDataUri } from '../../../lib/imageUtils';
 import { appById } from '../../../data/mockData';
-import { colors, fonts, fontWeights, radii, categoryColors, appColor } from '../../../theme/tokens';
+import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/tokens';
 
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 const PHOTO_SIZE = 512;
@@ -236,9 +236,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div style={{ ...baseCardStyle, borderLeft: `3px solid ${categoryColors.Operations}`, padding: 16, marginBottom: 16 }}>
+      <div style={{ ...baseCardStyle, borderLeft: `3px solid ${'#0D9488'}`, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 32, height: 32, borderRadius: radii.md, backgroundColor: categoryColors.Operations, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: radii.md, backgroundColor: '#0D9488', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Clock3 size={15} color={colors.white} />
           </div>
           <div style={{ flex: 1 }}>
