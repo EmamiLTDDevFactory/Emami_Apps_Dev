@@ -80,10 +80,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             </button>
           )}
 
-          <a
-            href="/"
-            className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-sm font-semibold text-inkSoft transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-rust"
-          >
+          <a href="/" className="btn-ghost">
             <ArrowLeft size={16} />
             <span className="hidden sm:inline">Back to Emami Apps</span>
           </a>

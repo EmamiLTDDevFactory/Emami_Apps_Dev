@@ -82,6 +82,10 @@ export default function MyTimesheetPage() {
   }
 
   function handleSubmit() {
+    if (tasks.length === 0) {
+      showToast('You have no tasks assigned. Ask your manager to assign tasks before submitting.', 'error');
+      return;
+    }
     submitForApproval(currentUser.id, viewedMonth, liveEntries);
     showToast('Timesheet submitted for approval.', 'success');
   }
@@ -99,6 +103,7 @@ export default function MyTimesheetPage() {
   const leaveDaysToDate = liveEntries.filter((e) => e.leaveType && parseISODate(e.date) <= new Date()).length;
   const expected = expectedHoursToDate(viewedMonth, new Date(), leaveDaysToDate, workingDayOverridesSet);
   const incomplete = liveTotal < expected;
+  const noTasks = tasks.length === 0;
   const showSubmit = !readOnly;
   const rejected = timesheet?.status === 'Rejected';
 
@@ -160,14 +165,18 @@ export default function MyTimesheetPage() {
 
       {showSubmit && (
         <div className="flex flex-col items-start gap-2">
-          <button type="button" onClick={handleSubmit} disabled={incomplete} className="btn-primary">
+          <button type="button" onClick={handleSubmit} disabled={incomplete || noTasks} className="btn-primary">
             {rejected ? 'Resubmit for Approval' : 'Submit for Approval'}
           </button>
-          {incomplete && (
-            <p className="text-xs text-amber">
-              You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
-              submitting.
-            </p>
+          {noTasks ? (
+            <p className="text-xs text-red">No tasks are assigned to you yet, so there&apos;s nothing to submit. Ask your manager to assign some in Manage Team.</p>
+          ) : (
+            incomplete && (
+              <p className="text-xs text-amber">
+                You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
+                submitting.
+              </p>
+            )
           )}
         </div>
       )}
