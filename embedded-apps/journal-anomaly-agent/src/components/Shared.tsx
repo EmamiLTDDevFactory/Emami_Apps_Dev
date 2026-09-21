@@ -75,12 +75,23 @@ export function KV({ rows }: { rows: [string, string][] }) {
   );
 }
 
-export function Tabs({ labels }: { labels: string[] }) {
+/** `onSelect` is optional so a purely-illustrative tab strip still highlights on click even with
+ * nothing wired up, but every caller in this app DOES pass one — a tab that only changed its own
+ * highlight with no visible effect on the page below it is exactly the "looks clickable, does
+ * nothing" bug this app had elsewhere (see Pages.tsx/Pages3.tsx's callers). */
+export function Tabs({ labels, onSelect }: { labels: string[]; onSelect?: (index: number, label: string) => void }) {
   const [active, setActive] = useState(0);
   return (
     <div className="tabs">
       {labels.map((l, i) => (
-        <button key={l} className={i === active ? 'active' : ''} onClick={() => setActive(i)}>
+        <button
+          key={l}
+          className={i === active ? 'active' : ''}
+          onClick={() => {
+            setActive(i);
+            onSelect?.(i, l);
+          }}
+        >
           {l}
         </button>
       ))}

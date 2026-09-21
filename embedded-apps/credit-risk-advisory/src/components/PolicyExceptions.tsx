@@ -101,7 +101,7 @@ export function PolicyExceptions(): JSX.Element {
             </thead>
             <tbody>
               {exceptions.map((r) => (
-                <tr key={r[0]} className="clickable">
+                <tr key={r[0]}>
                   <td>{r[0]}</td>
                   <td>{r[1]}</td>
                   <td>{r[2]}</td>

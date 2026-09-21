@@ -37,6 +37,14 @@ function computeCaseKpis(items: CaseRecord[]) {
   };
 }
 
+type KpiFilter = 'all' | 'openCritical' | 'overdue' | 'closed';
+const KPI_FILTER_LABEL: Record<KpiFilter, string> = {
+  all: 'All cases',
+  openCritical: 'Open Critical',
+  overdue: 'Overdue (Past Due)',
+  closed: 'Closed This Period',
+};
+
 export function CaseList({ toast }: { toast: (m: string) => void }) {
   const [status, setStatus] = useState('');
   const [items, setItems] = useState<CaseRecord[]>([]);
@@ -44,6 +52,10 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
   const [banner, setBanner] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, CaseStatus>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  // Every Kpi tile shares the `.kpi` CSS class, which always shows a "Drill down ›" affordance and
+  // pointer cursor (see globals.css) whether or not it has a click handler — these four had none,
+  // so they looked clickable and did nothing. Wired to a real filter on the Case Queue below.
+  const [kpiFilter, setKpiFilter] = useState<KpiFilter>('all');
 
   const load = () => {
     setLoading(true);
@@ -59,6 +71,20 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
     () => STATUS_OPTIONS.map((s) => [STATUS_LABELS[s], items.filter((c) => c.status === s).length] as const),
     [items]
   );
+
+  const visibleItems = useMemo(() => {
+    const now = Date.now();
+    switch (kpiFilter) {
+      case 'openCritical':
+        return items.filter((c) => c.status !== 'CLOSED' && c.severity === 'Critical');
+      case 'overdue':
+        return items.filter((c) => c.status !== 'CLOSED' && c.dueAt && new Date(c.dueAt).getTime() < now);
+      case 'closed':
+        return items.filter((c) => c.status === 'CLOSED');
+      default:
+        return items;
+    }
+  }, [items, kpiFilter]);
 
   const save = async (c: CaseRecord) => {
     const nextStatus = edits[c.id];
@@ -88,10 +114,10 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
         sub="Maker-checker workflow, ownership, evidence requests, comments, escalation and final disposition"
       />
       <Kpis>
-        <Kpi label="Open Critical" value={String(k.openCriticalCount)} sub={`${k.overdueCriticalCount} SLA breach${k.overdueCriticalCount === 1 ? '' : 'es'}`} tone="red" />
-        <Kpi label="Overdue (Past Due)" value={String(k.overdueCount)} sub="Open cases beyond due date" tone="amber" />
-        <Kpi label="Avg Case Age" value={`${k.avgAgeDays.toFixed(1)} days`} sub="Across open cases in this scope" tone="violet" />
-        <Kpi label="Closed This Period" value={String(k.closedCount)} sub={`${k.closedRatio.toFixed(0)}% of queue`} tone="green" />
+        <Kpi label="Open Critical" value={String(k.openCriticalCount)} sub={`${k.overdueCriticalCount} SLA breach${k.overdueCriticalCount === 1 ? '' : 'es'}`} tone="red" onClick={() => setKpiFilter('openCritical')} />
+        <Kpi label="Overdue (Past Due)" value={String(k.overdueCount)} sub="Open cases beyond due date" tone="amber" onClick={() => setKpiFilter('overdue')} />
+        <Kpi label="Avg Case Age" value={`${k.avgAgeDays.toFixed(1)} days`} sub="Across open cases in this scope" tone="violet" onClick={() => toast(`Average age across ${items.filter((c) => c.status !== 'CLOSED').length} open cases in this scope — not a single filterable subset.`)} />
+        <Kpi label="Closed This Period" value={String(k.closedCount)} sub={`${k.closedRatio.toFixed(0)}% of queue`} tone="green" onClick={() => setKpiFilter('closed')} />
       </Kpis>
       <div className="card" style={{ marginTop: 13 }}>
         <h3 style={{ marginTop: 0 }}>Case Status Funnel</h3>
@@ -108,6 +134,11 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <h3 style={{ margin: 0 }}>Case Queue</h3>
           <div className="rowactions">
+            {kpiFilter !== 'all' && (
+              <button className="btn" onClick={() => setKpiFilter('all')}>
+                × Filtered: {KPI_FILTER_LABEL[kpiFilter]}
+              </button>
+            )}
             <select className="sel" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">All statuses</option>
               {STATUS_OPTIONS.map((s) => (
@@ -133,7 +164,7 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((c) => {
+                {visibleItems.map((c) => {
                   const edited = edits[c.id];
                   return (
                     <tr key={c.id}>
@@ -167,7 +198,7 @@ export function CaseList({ toast }: { toast: (m: string) => void }) {
                     </tr>
                   );
                 })}
-                {items.length === 0 && (
+                {visibleItems.length === 0 && (
                   <tr>
                     <td colSpan={9} className="muted">No cases match the current filters.</td>
                   </tr>

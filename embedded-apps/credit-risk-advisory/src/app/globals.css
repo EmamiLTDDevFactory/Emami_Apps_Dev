@@ -377,16 +377,23 @@ header p {
   box-shadow: var(--shadow);
   border-radius: 12px;
   padding: 14px;
-  cursor: pointer;
   position: relative;
   overflow: hidden;
   min-height: 112px;
 }
-.kpi:hover {
+/* Only a tile with a real onClick handler gets the pointer cursor / hover lift / "View details"
+   hint — plain .kpi used to apply all three unconditionally, so every purely informational stat
+   tile (Agent Monitoring, Approval Workflow, Policy & Exceptions, Portfolio Analytics' Top-3
+   Concentration card, the Operations Worklist header stats) looked clickable and did nothing.
+   Only src/components/KpiGrid.tsx's real drill-down cards should add this modifier class. */
+.kpi.kpi-clickable {
+  cursor: pointer;
+}
+.kpi.kpi-clickable:hover {
   transform: translateY(-1px);
   border-color: #9fc3f4;
 }
-.kpi:after {
+.kpi.kpi-clickable:after {
   content: 'View details ›';
   position: absolute;
   bottom: 10px;
@@ -397,6 +404,8 @@ header p {
 .kpi .label {
   color: var(--muted);
   font-size: 12px;
+}
+.kpi.kpi-clickable .label {
   padding-right: 70px;
 }
 .kpi .value {

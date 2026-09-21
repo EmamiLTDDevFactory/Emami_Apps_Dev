@@ -25,7 +25,10 @@ export function CloseGuardPage({ state }: { state: PageState }) {
   return (
     <>
       <Head title="Period-End Close Guard" sub="Pre-close readiness, top-side adjustments, late postings, accruals, reversals and approval SLA">
-        <Tabs labels={['Pre-Close', 'Close Day', 'Post-Close']} />
+        <Tabs
+          labels={['Pre-Close', 'Close Day', 'Post-Close']}
+          onSelect={(_, label) => state.toast(`${label} window selected — readiness controls and close-risk heatmap below reflect this scope.`)}
+        />
       </Head>
       <div className="funnel">
         <div className="step">Population<b>18,426</b></div>
@@ -84,15 +87,15 @@ export function CloseGuardPage({ state }: { state: PageState }) {
   );
 }
 
-export function IntegrationsPage() {
+export function IntegrationsPage({ toast }: { toast: (m: string) => void }) {
   return (
     <>
       <Head title="Integrated Process Risk" sub="Trace journal anomalies back to MM, SD, AA, CO and product/channel profitability in FMCG operations" />
       <Kpis>
-        <Kpi label="Trade Scheme Accrual" value="₹3.1 Cr" sub="11 unusual adjustments" tone="amber" />
-        <Kpi label="Inventory Revaluation" value="₹2.4 Cr" sub="6 entries near close" tone="red" />
-        <Kpi label="Freight / C&F Provision" value="₹1.2 Cr" sub="Rare cost-center mix" tone="violet" />
-        <Kpi label="Intercompany" value="₹4.7 Cr" sub="3 unmatched counterparts" tone="cyan" />
+        <Kpi label="Trade Scheme Accrual" value="₹3.1 Cr" sub="11 unusual adjustments" tone="amber" onClick={() => toast('Trade scheme accruals traced via SD rebate settlement (COOI/VBRK) — 11 adjustments outside the learned norm.')} />
+        <Kpi label="Inventory Revaluation" value="₹2.4 Cr" sub="6 entries near close" tone="red" onClick={() => toast('Inventory revaluation entries traced via MM price-difference postings — 6 land near period close.')} />
+        <Kpi label="Freight / C&F Provision" value="₹1.2 Cr" sub="Rare cost-center mix" tone="violet" onClick={() => toast('Freight/C&F provisions flagged for an uncommon cost-center combination versus this vendor\'s history.')} />
+        <Kpi label="Intercompany" value="₹4.7 Cr" sub="3 unmatched counterparts" tone="cyan" onClick={() => toast('3 intercompany postings have no matching counterpart document in the paired company code.')} />
       </Kpis>
       <div className="card" style={{ marginTop: 13 }}>
         <h3>Cross-Module Traceability</h3>

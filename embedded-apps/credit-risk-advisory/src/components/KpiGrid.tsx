@@ -18,7 +18,7 @@ export function KpiGrid({ kpis, onSelect }: Props): JSX.Element {
   return (
     <div className="kpis">
       {kpis.map((k, i) => (
-        <div key={k.label} className={`kpi ${k.accent ? `accent-${k.accent}` : FALLBACK_ACCENTS[i % FALLBACK_ACCENTS.length]}`} onClick={() => onSelect?.(k)}>
+        <div key={k.label} className={`kpi kpi-clickable ${k.accent ? `accent-${k.accent}` : FALLBACK_ACCENTS[i % FALLBACK_ACCENTS.length]}`} onClick={() => onSelect?.(k)}>
           {k.badge && <span className="kpi-badge">{k.badge}</span>}
           <div className="label">{k.label}</div>
           <div className="value">{k.value}</div>

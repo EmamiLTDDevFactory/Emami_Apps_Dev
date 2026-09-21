@@ -132,10 +132,10 @@ function DashboardContent() {
           {page === 'explorer' && <EntryExplorerPage state={state} entry={explorerEntry ?? items[0] ?? null} explanation={explanation} />}
           {page === 'patterns' && <PatternsPage state={state} />}
           {page === 'close' && <CloseGuardPage state={state} />}
-          {page === 'integrations' && <IntegrationsPage />}
+          {page === 'integrations' && <IntegrationsPage toast={toast} />}
           {page === 'cases' && <CaseList toast={toast} />}
           {page === 'evidence' && <EvidencePage toast={toast} />}
-          {page === 'model' && <ModelPage />}
+          {page === 'model' && <ModelPage toast={toast} />}
           {page === 'security' && <SecurityPage />}
         </div>
       </div>

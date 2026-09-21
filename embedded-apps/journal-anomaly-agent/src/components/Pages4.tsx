@@ -29,27 +29,30 @@ export function EvidencePage({ toast }: { toast: (m: string) => void }) {
   );
 }
 
-export function ModelPage() {
+export function ModelPage({ toast }: { toast: (m: string) => void }) {
+  // Built as raw `.kpi` divs (not the shared <Kpi> component) but the CSS class is the same one
+  // that unconditionally shows a "Drill down ›" affordance and pointer cursor — so these looked
+  // clickable and did nothing. Wired to a real explanation of each metric instead.
   return (
     <>
       <Head title="AI Explainability & Governance" sub="Model performance, drift, fairness, thresholds, human overrides and champion/challenger monitoring" />
       <div className="kpis">
-        <div className="kpi green">
+        <div className="kpi green" onClick={() => toast('Precision @ Review Capacity: of everything the model flags within reviewer bandwidth, 88.6% are true findings.')}>
           <div className="lab">Precision @ Review Capacity</div>
           <div className="val">88.6%</div>
           <div className="sub">Stable vs prior period</div>
         </div>
-        <div className="kpi cyan">
+        <div className="kpi cyan" onClick={() => toast('Recall on Known Findings: of past confirmed findings, 92.4% would have been flagged by the current model on back-test.')}>
           <div className="lab">Recall on Known Findings</div>
           <div className="val">92.4%</div>
           <div className="sub">Back-tested</div>
         </div>
-        <div className="kpi amber">
+        <div className="kpi amber" onClick={() => toast('False Positive Rate: 5.8% of flagged entries clear as no-issue on review, against a 7% governance target.')}>
           <div className="lab">False Positive Rate</div>
           <div className="val">5.8%</div>
           <div className="sub">Target below 7%</div>
         </div>
-        <div className="kpi violet">
+        <div className="kpi violet" onClick={() => toast('Feature Drift PSI: 0.08 population-stability index on scoring features — below the 0.1 review threshold, no retraining trigger.')}>
           <div className="lab">Feature Drift PSI</div>
           <div className="val">0.08</div>
           <div className="sub">Stable</div>

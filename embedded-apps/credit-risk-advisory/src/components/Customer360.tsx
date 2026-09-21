@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { fetchCustomerDetail } from '../lib/sapClient';
-import type { Customer, CustomerDetail } from '../types';
+import { fetchCustomerDetail, submitDecision } from '../lib/sapClient';
+import type { Customer, CustomerDetail, DecisionOutcome } from '../types';
 
 interface Props {
   customers: Customer[];
@@ -18,10 +18,15 @@ interface Props {
 export function Customer360({ customers }: Props): React.ReactElement {
   const [selected, setSelected] = useState<CustomerDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [approveResult, setApproveResult] = useState<DecisionOutcome | null>(null);
+  const [approveError, setApproveError] = useState('');
 
   async function load(id: string) {
     if (!id) return;
     setBusy(true);
+    setApproveResult(null);
+    setApproveError('');
     try {
       setSelected(await fetchCustomerDetail(id));
     } catch (e) {
@@ -32,6 +37,31 @@ export function Customer360({ customers }: Props): React.ReactElement {
   }
 
   const c = selected;
+
+  // "Approve within authority" — previously this button had no onClick at all and did nothing.
+  // Wired to the same governed submitDecision() the Approval Workflow queue uses, with a fixed
+  // reason describing exactly what this button means (a reviewer approving within their own
+  // authority from the advisory panel, not via the queue) since there's no free-text reason field
+  // on this screen to capture one from the user.
+  async function approveWithinAuthority() {
+    if (!c) return;
+    setApproving(true);
+    setApproveError('');
+    setApproveResult(null);
+    try {
+      const outcome = await submitDecision(
+        c.customer.id,
+        'APPROVE',
+        'Approved within reviewer authority via Customer 360 advisory panel.',
+        c.customer.outstanding + c.customer.openOrder
+      );
+      setApproveResult(outcome);
+    } catch (e) {
+      setApproveError(e instanceof Error ? e.message : 'Submission failed');
+    } finally {
+      setApproving(false);
+    }
+  }
 
   return (
     <>
@@ -139,9 +169,23 @@ export function Customer360({ customers }: Props): React.ReactElement {
             <div className="driver neg">
               ! Average payment delay {c.customer.avgDelay} days; returns {c.customer.returns}%
             </div>
-            <button className="btn primary" style={{ width: '100%', marginTop: 12 }}>
-              Approve within authority
-            </button>
+            {approveResult ? (
+              <div className="success-box" style={{ marginTop: 12 }}>
+                <h3 style={{ margin: '0 0 8px', color: '#0c704b' }}>✓ {approveResult.status}</h3>
+                <p>{approveResult.execution}</p>
+                <div className="panel-row">
+                  <span>Correlation ID</span>
+                  <b>{approveResult.correlationId}</b>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button className="btn primary" style={{ width: '100%', marginTop: 12 }} disabled={approving} onClick={() => void approveWithinAuthority()}>
+                  {approving ? 'Submitting…' : 'Approve within authority'}
+                </button>
+                {approveError && <div className="error" style={{ marginTop: 8 }}>{approveError}</div>}
+              </>
+            )}
           </div>
         </div>
       )}
