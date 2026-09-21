@@ -1,6 +1,12 @@
 'use client';
 
-import { ArrowLeft, Activity, BrainCircuit, Crosshair, Database, LayoutDashboard, Radar, Sparkles, Table, WalletCards, X, Zap, type LucideIcon } from 'lucide-react';
+import { Activity, BrainCircuit, Crosshair, Database, LayoutDashboard, Radar, Sparkles, Table, X, Zap, type LucideIcon } from 'lucide-react';
+
+// next/link's `href` and next/navigation's router both auto-prepend next.config.js's basePath —
+// so nav hrefs throughout this app are written WITHOUT it. Plain <img> tags get no such help, so
+// this is the one place that constant is spelled out, matching every sibling embedded app's own
+// Sidebar/Shell (e.g. fm-po-deviation/src/components/Shell.tsx).
+const BASE_PATH = '/apps/cashflow-forecast';
 
 export interface NavItem {
   id: string;
@@ -20,23 +26,31 @@ export const NAV: NavItem[] = [
 ];
 
 interface Props {
-  open: boolean;
+  isOpen: boolean;
   onClose: () => void;
+  isWideScreen: boolean;
   live: boolean;
 }
 
-export default function Sidebar({ open, onClose, live }: Props) {
+/** Same white-sidebar-with-the-Emami-Apps-logo look every sibling embedded app uses (see
+ * fm-po-deviation/src/components/Shell.tsx's NavPane) — permanent/docked on a wide viewport,
+ * an overlay drawer with a backdrop and close button below the hub's own mobile breakpoint.
+ * Nav items are same-page anchor links (this is a single-page dashboard, not a multi-route app),
+ * so there's no "active route" to highlight — clicking one just scrolls to that section and, on
+ * the overlay variant, closes the drawer. */
+export default function Sidebar({ isOpen, onClose, isWideScreen, live }: Props) {
+  const paneClassName = isWideScreen ? 'sidebar' : `sidebar overlay${isOpen ? ' open' : ''}`;
+
   return (
-    <aside className={open ? 'open' : ''} aria-label="Primary navigation">
-      <button className="nav-close" onClick={onClose} aria-label="Close navigation">
-        <X size={18} />
-      </button>
-      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-      <a href="/" className="back-to-hub">
-        <ArrowLeft size={13} /> Back to Emami Apps
-      </a>
-      <div className="brand">
-        <WalletCards /> <span>CashFlow Intelligence</span>
+    <aside className={paneClassName} aria-label="Primary navigation">
+      <div className="sidebar-head">
+        {!isWideScreen && (
+          <button className="nav-close" onClick={onClose} aria-label="Close navigation">
+            <X size={18} />
+          </button>
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" className="sidebar-logo" />
       </div>
       <nav>
         {NAV.map((n) => (

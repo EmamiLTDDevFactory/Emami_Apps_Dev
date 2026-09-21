@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, OctagonAlert } from 'lucide-react';
+import { Activity, ArrowLeft, OctagonAlert } from 'lucide-react';
 import HubGate from '../components/HubGate';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
+import { useIsWideScreen } from '../lib/useIsWideScreen';
 import FiltersBar from '../components/FiltersBar';
 import KpiCard from '../components/KpiCard';
 import SecondaryKpi from '../components/SecondaryKpi';
@@ -113,6 +114,7 @@ function DashboardContent() {
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string>();
   const [navOpen, setNavOpen] = useState(false);
+  const isWideScreen = useIsWideScreen();
   const [actionBusy, setActionBusy] = useState(false);
   const [insightBusy, setInsightBusy] = useState<string>();
   const [createdActions, setCreatedActions] = useState<Record<string, string>>({});
@@ -211,10 +213,20 @@ function DashboardContent() {
 
   return (
     <div className="layout">
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} live={data.live} />
-      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
-      <main>
-        <Topbar onRefresh={() => load(filters)} onExport={() => exportCsv(points, filters.currency)} onMenu={() => setNavOpen(true)} busy={busy} />
+      <Sidebar isOpen={navOpen} onClose={() => setNavOpen(false)} isWideScreen={isWideScreen} live={data.live} />
+      {!isWideScreen && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+      <div className="main-column">
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a href="/" className="back-to-hub">
+          <ArrowLeft size={14} /> Back to Emami Apps
+        </a>
+        <Topbar
+          onRefresh={() => load(filters)}
+          onExport={() => exportCsv(points, filters.currency)}
+          onMenu={() => setNavOpen(true)}
+          busy={busy}
+          isWideScreen={isWideScreen}
+        />
         <div className="content">
           <section className="attention" role="status">
             <OctagonAlert size={19} />
@@ -270,7 +282,7 @@ function DashboardContent() {
             Governed by approval workflow · Read-only recommendation model
           </footer>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

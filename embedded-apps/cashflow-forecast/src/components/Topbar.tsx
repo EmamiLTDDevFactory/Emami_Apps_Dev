@@ -7,15 +7,18 @@ interface Props {
   onExport: () => void;
   onMenu: () => void;
   busy: boolean;
+  isWideScreen: boolean;
 }
 
-export default function Topbar({ onRefresh, onExport, onMenu, busy }: Props) {
+export default function Topbar({ onRefresh, onExport, onMenu, busy, isWideScreen }: Props) {
   return (
     <header>
       <div className="topbar-left">
-        <button className="nav-burger" onClick={onMenu} aria-label="Open navigation">
-          <Menu size={20} />
-        </button>
+        {!isWideScreen && (
+          <button className="nav-burger" onClick={onMenu} aria-label="Open navigation">
+            <Menu size={20} />
+          </button>
+        )}
         <div>
           <h1>Cash Flow Forecast AI Agent</h1>
           <p>Responsive Next.js application with SAP Gateway OData V2 integration</p>
