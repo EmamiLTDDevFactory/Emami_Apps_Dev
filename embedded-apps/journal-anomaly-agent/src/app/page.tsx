@@ -86,7 +86,7 @@ function DashboardContent() {
     if (id === 'explorer') setExplorerEntry(items[0] ?? null);
   };
 
-  const state: PageState = { loading, error, items, open: openDrawer, toast };
+  const state: PageState = { loading, error, items, open: openDrawer, toast, navigate };
   const freshMinutes = updatedAt ? Math.max(0, Math.round((Date.now() - updatedAt) / 60000)) : null;
 
   return (

@@ -1,6 +1,11 @@
 'use client';
 
-import { Download, Menu, RefreshCw } from 'lucide-react';
+import { CircleAlert, Download, Menu, RefreshCw } from 'lucide-react';
+
+interface DataQuality {
+  label: string;
+  tone: 'green' | 'amber' | 'red';
+}
 
 interface Props {
   onRefresh: () => void;
@@ -8,9 +13,15 @@ interface Props {
   onMenu: () => void;
   busy: boolean;
   isWideScreen: boolean;
+  lastLoadedAt?: Date;
+  dataQuality?: DataQuality;
 }
 
-export default function Topbar({ onRefresh, onExport, onMenu, busy, isWideScreen }: Props) {
+function formatClock(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+export default function Topbar({ onRefresh, onExport, onMenu, busy, isWideScreen, lastLoadedAt, dataQuality }: Props) {
   return (
     <header>
       <div className="topbar-left">
@@ -21,10 +32,18 @@ export default function Topbar({ onRefresh, onExport, onMenu, busy, isWideScreen
         )}
         <div>
           <h1>Cash Flow Forecast AI Agent</h1>
-          <p>Responsive Next.js application with SAP Gateway OData V2 integration</p>
+          <p>
+            Responsive Next.js application with SAP Gateway OData V2 integration
+            {lastLoadedAt && ` · Updated ${formatClock(lastLoadedAt)}`}
+          </p>
         </div>
       </div>
       <div className="topbar-actions">
+        {dataQuality && (
+          <span className={`dq-badge dq-${dataQuality.tone}`} title={dataQuality.label}>
+            <CircleAlert size={13} /> {dataQuality.label}
+          </span>
+        )}
         <button className="btn ghost" onClick={onExport}>
           <Download size={15} /> Export CSV
         </button>

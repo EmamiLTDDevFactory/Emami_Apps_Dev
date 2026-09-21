@@ -16,16 +16,25 @@ export function PolicyExceptions(): JSX.Element {
     ['Return rate > 8% triggers routing to manual review', 'Draft', 'high'],
   ];
 
-  const exceptions = [
-    ['D000126 · Metro Retail Partners', 'Exposure 124%', 'CFO approval', 'Breached SLA 3h', 'high'],
-    ['D000245 · Eastern Trade Distributors', 'Delay 18 days', 'Commercial head', 'Within SLA', 'medium'],
-  ];
+  // Occurrences (last 90 days) makes the "Repeated Overrides" KPI below traceable to real
+  // accounts instead of being an unexplained total — sorted so the most recurrent exception
+  // surfaces first, since that's the one most likely to need a policy fix rather than another
+  // one-off override.
+  type ExceptionRow = [string, string, string, string, string, number];
+  const exceptions: ExceptionRow[] = (
+    [
+      ['D000126 · Metro Retail Partners', 'Exposure 124%', 'CFO approval', 'Breached SLA 3h', 'high', 5],
+      ['D000245 · Eastern Trade Distributors', 'Delay 18 days', 'Commercial head', 'Within SLA', 'medium', 2],
+      ['D000443 · Rural Reach Enterprise', 'Return rate 3.8%', 'Commercial head', 'Within SLA', 'medium', 1],
+    ] as ExceptionRow[]
+  ).sort((a, b) => b[5] - a[5]);
+  const repeatOffenders = exceptions.filter((r) => r[5] > 1).length;
 
   const kpis: Array<{ label: string; value: string; detail: string; accent: string }> = [
     { label: 'Expired Active Rules', value: '12', detail: 'May affect 44 customers', accent: 'red' },
     { label: 'Overlapping Rules', value: '7', detail: '3 high-severity conflicts', accent: 'amber' },
     { label: 'Payment-Term Mismatch', value: '18', detail: '₹1.24 Cr documents', accent: 'purple' },
-    { label: 'Repeated Overrides', value: '8', detail: 'Last 30 days', accent: 'blue' },
+    { label: 'Repeat Offender Accounts', value: String(repeatOffenders), detail: `Of ${exceptions.length} open exceptions, tripped more than once`, accent: 'blue' },
   ];
 
   const precedence = [
@@ -87,6 +96,7 @@ export function PolicyExceptions(): JSX.Element {
                 <th>Authority</th>
                 <th>SLA</th>
                 <th>Risk</th>
+                <th>Occurrences (90d)</th>
               </tr>
             </thead>
             <tbody>
@@ -98,6 +108,10 @@ export function PolicyExceptions(): JSX.Element {
                   <td>{r[3]}</td>
                   <td>
                     <span className={`badge ${r[4]}`}>{r[4]}</span>
+                  </td>
+                  <td>
+                    {r[5]}
+                    {r[5] > 1 && <span className="badge medium" style={{ marginLeft: 6 }}>Repeat</span>}
                   </td>
                 </tr>
               ))}

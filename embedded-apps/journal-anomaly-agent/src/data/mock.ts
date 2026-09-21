@@ -37,11 +37,26 @@ export const summary: Summary = {
   cases: { openCases: 12, overdueCases: 2, closedCases: 38 },
 };
 
+// Dates below are deliberately relative to "now" (not fixed 2026-09 literals like the rest of this
+// file) so the case-aging/SLA-breach KPIs in CaseList.tsx — computed as `now - createdAt`/`dueAt`
+// vs `now` — stay meaningful whenever this demo is actually opened, not just on one fixed date.
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString();
+}
+
 export const cases: CaseRecord[] = [
-  { id: 'a1b2c3d4e5f60001', document: '1900008472', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'Critical', status: 'OPEN', disposition: null, assignedTo: 'M. Iyer', dueAt: '2026-09-09T00:00:00Z', rowVersion: 1, createdAt: '2026-09-07T03:10:00Z', updatedAt: '2026-09-07T03:10:00Z' },
-  { id: 'a1b2c3d4e5f60002', document: '1900008521', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'Critical', status: 'IN_REVIEW', disposition: null, assignedTo: 'R. Sen', dueAt: '2026-09-08T00:00:00Z', rowVersion: 2, createdAt: '2026-09-07T02:05:00Z', updatedAt: '2026-09-07T09:40:00Z' },
-  { id: 'a1b2c3d4e5f60003', document: '2100003318', companyCode: '1010', fiscalYear: '2026', period: 9, severity: 'High', status: 'PENDING_APPROVAL', disposition: null, assignedTo: 'F. Haddad', dueAt: '2026-09-10T00:00:00Z', rowVersion: 3, createdAt: '2026-09-06T01:30:00Z', updatedAt: '2026-09-07T07:15:00Z' },
-  { id: 'a1b2c3d4e5f60004', document: '1900008499', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'High', status: 'CLOSED', disposition: 'Valid business reason', assignedTo: 'M. Iyer', dueAt: null, rowVersion: 4, createdAt: '2026-09-05T10:00:00Z', updatedAt: '2026-09-06T15:00:00Z' },
+  { id: 'a1b2c3d4e5f60001', document: '1900008472', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'Critical', status: 'OPEN', disposition: null, assignedTo: 'M. Iyer', dueAt: daysAgo(-2), rowVersion: 1, createdAt: daysAgo(6), updatedAt: daysAgo(6) },
+  { id: 'a1b2c3d4e5f60002', document: '1900008521', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'Critical', status: 'IN_REVIEW', disposition: null, assignedTo: 'R. Sen', dueAt: daysAgo(1), rowVersion: 2, createdAt: daysAgo(5), updatedAt: daysAgo(1) },
+  { id: 'a1b2c3d4e5f60003', document: '2100003318', companyCode: '1010', fiscalYear: '2026', period: 9, severity: 'High', status: 'PENDING_APPROVAL', disposition: null, assignedTo: 'F. Haddad', dueAt: daysAgo(-3), rowVersion: 3, createdAt: daysAgo(4), updatedAt: daysAgo(1) },
+  { id: 'a1b2c3d4e5f60004', document: '1900008499', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'High', status: 'CLOSED', disposition: 'Valid business reason', assignedTo: 'M. Iyer', dueAt: null, rowVersion: 4, createdAt: daysAgo(9), updatedAt: daysAgo(7) },
+  { id: 'a1b2c3d4e5f60005', document: '1900008556', companyCode: '1000', fiscalYear: '2026', period: 9, severity: 'High', status: 'OPEN', disposition: null, assignedTo: 'M. Iyer', dueAt: daysAgo(0), rowVersion: 1, createdAt: daysAgo(3), updatedAt: daysAgo(3) },
+  { id: 'a1b2c3d4e5f60006', document: '2100003342', companyCode: '1010', fiscalYear: '2026', period: 9, severity: 'Medium', status: 'OPEN', disposition: null, assignedTo: null, dueAt: daysAgo(-5), rowVersion: 1, createdAt: daysAgo(1), updatedAt: daysAgo(1) },
+  { id: 'a1b2c3d4e5f60007', document: '1900008601', companyCode: '1020', fiscalYear: '2026', period: 8, severity: 'Medium', status: 'IN_REVIEW', disposition: null, assignedTo: 'S. Bose', dueAt: daysAgo(2), rowVersion: 2, createdAt: daysAgo(8), updatedAt: daysAgo(2) },
+  { id: 'a1b2c3d4e5f60008', document: '1900008610', companyCode: '1000', fiscalYear: '2026', period: 8, severity: 'Medium', status: 'CLOSED', disposition: 'Reclassification approved', assignedTo: 'R. Sen', dueAt: null, rowVersion: 3, createdAt: daysAgo(14), updatedAt: daysAgo(11) },
+  { id: 'a1b2c3d4e5f60009', document: '1900008632', companyCode: '1020', fiscalYear: '2026', period: 8, severity: 'Medium', status: 'CLOSED', disposition: 'Valid business reason', assignedTo: 'F. Haddad', dueAt: null, rowVersion: 2, createdAt: daysAgo(16), updatedAt: daysAgo(13) },
+  { id: 'a1b2c3d4e5f60010', document: '1900008701', companyCode: '1000', fiscalYear: '2026', period: 8, severity: 'Low', status: 'CLOSED', disposition: 'Auto-cleared, no exception', assignedTo: 'M. Iyer', dueAt: null, rowVersion: 1, createdAt: daysAgo(20), updatedAt: daysAgo(18) },
+  { id: 'a1b2c3d4e5f60011', document: '2100003401', companyCode: '1010', fiscalYear: '2026', period: 8, severity: 'Low', status: 'PENDING_APPROVAL', disposition: null, assignedTo: 'S. Bose', dueAt: daysAgo(-1), rowVersion: 2, createdAt: daysAgo(2), updatedAt: daysAgo(1) },
+  { id: 'a1b2c3d4e5f60012', document: '1900008755', companyCode: '1000', fiscalYear: '2026', period: 8, severity: 'Low', status: 'OPEN', disposition: null, assignedTo: null, dueAt: daysAgo(-4), rowVersion: 1, createdAt: daysAgo(0), updatedAt: daysAgo(0) },
 ];
 
 export function buildExplanation(entry: Pick<WorklistEntry, 'score' | 'risk'>): Explanation {

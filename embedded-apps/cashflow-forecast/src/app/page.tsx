@@ -14,7 +14,7 @@ import ExplainPanel from '../components/ExplainPanel';
 import InsightsPanel from '../components/InsightsPanel';
 import RiskPanel from '../components/RiskPanel';
 import ActionCenter from '../components/ActionCenter';
-import CashLineTable from '../components/CashLineTable';
+import CashLineTable, { type LineFocus } from '../components/CashLineTable';
 import { EmptyState, ErrorState, LoadingSkeleton } from '../components/States';
 import { createAction, fetchCompanyCodeOptions, loadDashboard } from '../lib/sapClient';
 import { companyCodes as MOCK_COMPANY_CODES } from '../data/mock';
@@ -27,6 +27,7 @@ import type {
   ForecastPoint,
   Insight,
   Kpi,
+  Tone,
 } from '../types';
 
 const DEFAULT_FILTERS: DashboardFilters = {
@@ -94,6 +95,32 @@ function aggregateMonthly(rows: ForecastPoint[]): ForecastPoint[] {
   });
 }
 
+/** KPI cards that drill into Cash Flow Line Items when clicked — see the `lineFocus` state and
+ * CashLineTable's own `focus` prop below. Every other KPI card stays a plain, non-interactive
+ * tile. */
+const DRILLABLE_KPI_KEYS = new Set(['atRiskAr', 'concentration']);
+
+/** Largest single counterparty's share of expected receipts (positive-amount lines), scoped to
+ * whatever company code is currently selected — not a KPISet field (see sapClient.ts's
+ * PRIMARY_KPI_ICONS comment), computed here from CashFlowLineSet's own partner/amount fields for
+ * both mock and live data. */
+function computeConcentration(lines: { partner: string; amount: number }[]): { pct: number; topPartner: string } {
+  const receipts = lines.filter((l) => l.amount > 0);
+  const total = receipts.reduce((s, l) => s + l.amount, 0);
+  if (total <= 0) return { pct: 0, topPartner: '—' };
+  const byPartner = new Map<string, number>();
+  receipts.forEach((l) => byPartner.set(l.partner, (byPartner.get(l.partner) ?? 0) + l.amount));
+  let topPartner = '—';
+  let topAmount = 0;
+  byPartner.forEach((amount, partner) => {
+    if (amount > topAmount) {
+      topAmount = amount;
+      topPartner = partner;
+    }
+  });
+  return { pct: (topAmount / total) * 100, topPartner };
+}
+
 function exportCsv(rows: ForecastPoint[], currency: DashboardFilters['currency']): void {
   const header = `Period,Closing Cash (${currency} Cr),Inflows,Outflows,P10,P90,Confidence`;
   const body = rows.map((r) => [r.label ?? r.week, r.closingCash, r.inflows, r.outflows, r.lowerBound, r.upperBound, r.confidence].join(',')).join('\n');
@@ -118,12 +145,17 @@ function DashboardContent() {
   const [actionBusy, setActionBusy] = useState(false);
   const [insightBusy, setInsightBusy] = useState<string>();
   const [createdActions, setCreatedActions] = useState<Record<string, string>>({});
+  const [lineFocus, setLineFocus] = useState<LineFocus>({ mode: 'all' });
+  const [lastLoadedAt, setLastLoadedAt] = useState<Date>();
 
   const load = useCallback((f: DashboardFilters) => {
     setBusy(true);
     setError(undefined);
     loadDashboard(f)
-      .then(setData)
+      .then((payload) => {
+        setData(payload);
+        setLastLoadedAt(new Date());
+      })
       .catch((e: Error) => setError(e.message || 'Unexpected error'))
       .finally(() => setBusy(false));
   }, []);
@@ -133,6 +165,12 @@ function DashboardContent() {
     fetchCompanyCodeOptions().then(setCompanyCodeOptions);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.scenario, filters.companyCode, filters.horizon]);
+
+  // A partner/at-risk drill-down from one company-code scope stops making sense once the scope
+  // itself changes (e.g. the flagged partner may not appear in the new scope at all).
+  useEffect(() => {
+    setLineFocus({ mode: 'all' });
+  }, [filters.companyCode]);
 
   // Scenario- and horizon-adjusted weekly series (base unit: INR Crore).
   const weekly = useMemo(
@@ -146,6 +184,15 @@ function DashboardContent() {
     return filters.granularity === 'MONTHLY' ? aggregateMonthly(dated) : dated;
   }, [weekly, filters.fromDate, filters.granularity]);
 
+  // Company-code-scoped line items — feeds both the concentration KPI and Cash Flow Line Items,
+  // so the two always agree on what "the current scope" means.
+  const scopedLines = useMemo(
+    () => (data ? (filters.companyCode === 'ALL' ? data.lines : data.lines.filter((l) => l.companyCode === filters.companyCode)) : []),
+    [data, filters.companyCode]
+  );
+
+  const concentrationInfo = useMemo(() => computeConcentration(scopedLines), [scopedLines]);
+
   // ---- Dynamic KPI engine: KPI cards react to horizon, scenario, optional
   // ---- series (PO commitments / sales pipeline) and display currency.
   const kpis = useMemo<Kpi[]>(() => {
@@ -157,7 +204,9 @@ function DashboardContent() {
     const net = sum('inflows') + pipeline - sum('outflows') - po;
     const lowest = weekly.length ? Math.min(...weekly.map((p) => p.closingCash)) : 0;
 
-    return data.kpis.map((k) => {
+    const concentrationTone: Tone = concentrationInfo.pct >= 30 ? 'amber' : 'blue';
+
+    const mapped = data.kpis.map((k) => {
       switch (k.key) {
         case 'net13w':
           return { ...k, label: `${filters.horizon}-Week Net Cash Flow`, value: fmt(net, filters.currency), note: `Scenario ${filters.scenario} · confidence 87%` };
@@ -167,18 +216,49 @@ function DashboardContent() {
           return { ...k, value: fmt(sum('outflows') + po, filters.currency), note: 'AP + payroll + statutory dues' };
         case 'lowest': {
           const below = lowest < data.policyBuffer;
+          const tone: Tone = below ? 'amber' : 'green';
           return {
             ...k,
             value: fmt(lowest, filters.currency),
             note: below ? `Below ${fmt(data.policyBuffer, filters.currency)} policy buffer` : 'Within policy buffer',
-            tone: below ? 'amber' : 'green',
+            tone,
           };
         }
+        case 'concentration':
+          return {
+            ...k,
+            value: `${concentrationInfo.pct.toFixed(0)}%`,
+            note: `${concentrationInfo.topPartner} · largest counterparty`,
+            tone: concentrationTone,
+          };
         default:
           return k;
       }
     });
-  }, [data, weekly, filters.horizon, filters.scenario, filters.currency, chartOptions.showPipeline, chartOptions.showPo]);
+    // Live SAP KPISet rows won't include a 'concentration' key (it isn't on that entity, see
+    // sapClient.ts) — append it so the drill-down KPI is always present, not only in demo mode.
+    if (!mapped.some((k) => k.key === 'concentration')) {
+      mapped.push({
+        key: 'concentration',
+        icon: 'target',
+        label: 'Top Receivable Concentration',
+        value: `${concentrationInfo.pct.toFixed(0)}%`,
+        note: `${concentrationInfo.topPartner} · largest counterparty`,
+        tone: concentrationTone,
+      });
+    }
+    return mapped;
+  }, [data, weekly, filters.horizon, filters.scenario, filters.currency, chartOptions.showPipeline, chartOptions.showPo, concentrationInfo]);
+
+  const scrollToLines = () => {
+    document.getElementById('lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleKpiSelect = (key: string) => {
+    if (key === 'atRiskAr') setLineFocus({ mode: 'atRisk' });
+    else if (key === 'concentration') setLineFocus({ mode: 'partner', partner: concentrationInfo.topPartner });
+    scrollToLines();
+  };
 
   const handleAction = async () => {
     setActionBusy(true);
@@ -211,6 +291,13 @@ function DashboardContent() {
   if (error && !data) return <ErrorState message={error} onRetry={() => load(filters)} />;
   if (!data) return <EmptyState title="No dashboard data available." />;
 
+  // Surfaces the existing "Data Quality" risk (RSK-005 in the demo dataset) as a small Topbar
+  // badge rather than leaving it buried in the Risk Dashboard list further down the page.
+  const dataQualityRisk = data.risks.find((r) => r.category === 'Data Quality');
+  const dataQuality = dataQualityRisk
+    ? { label: dataQualityRisk.alert, tone: dataQualityRisk.score >= 60 ? ('red' as const) : dataQualityRisk.score >= 30 ? ('amber' as const) : ('green' as const) }
+    : undefined;
+
   return (
     <div className="layout">
       <Sidebar isOpen={navOpen} onClose={() => setNavOpen(false)} isWideScreen={isWideScreen} live={data.live} />
@@ -226,6 +313,8 @@ function DashboardContent() {
           onMenu={() => setNavOpen(true)}
           busy={busy}
           isWideScreen={isWideScreen}
+          lastLoadedAt={lastLoadedAt}
+          dataQuality={dataQuality}
         />
         <div className="content">
           <section className="attention" role="status">
@@ -246,7 +335,7 @@ function DashboardContent() {
 
           <section className="metrics" id="overview" aria-label="Key performance indicators">
             {kpis.map((k) => (
-              <KpiCard key={k.key} kpi={k} />
+              <KpiCard key={k.key} kpi={k} onSelect={DRILLABLE_KPI_KEYS.has(k.key) ? () => handleKpiSelect(k.key) : undefined} />
             ))}
           </section>
 
@@ -273,9 +362,7 @@ function DashboardContent() {
           <RiskPanel risks={data.risks} />
           <ExplainPanel factors={data.factors} opening={data.forecast[0]?.closingCash ?? 0} />
           <ActionCenter actions={data.actions} onCreate={handleAction} busy={actionBusy} />
-          <CashLineTable
-            lines={filters.companyCode === 'ALL' ? data.lines : data.lines.filter((l) => l.companyCode === filters.companyCode)}
-          />
+          <CashLineTable lines={scopedLines} focus={lineFocus} onClearFocus={() => setLineFocus({ mode: 'all' })} />
 
           <footer className="foot">
             CashFlow Intelligence · {data.live ? 'SAP OData V2' : 'Demo data'} · ECC 6.0 EHP8 / SoH 2.0 · Display currency: {filters.currency} ·

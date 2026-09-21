@@ -6,8 +6,15 @@ import { Bars, Head, Kpi, Kpis, TableCard, Tabs, fmt, type PageState } from './S
 export function ExecPage({ state, summary }: { state: PageState; summary?: Summary }) {
   const drill = () => {
     const first = state.items[0];
-    if (first) state.open(first);
-    else state.toast('No entries in the current scope');
+    if (first) {
+      // Route to the Anomaly Workbench (where this entry actually lives in a real list/table)
+      // in addition to opening its drawer — previously this only opened the drawer, which read as
+      // "clicking the KPI card does nothing" if the visible section never changed.
+      state.navigate('workbench');
+      state.open(first);
+    } else {
+      state.toast('No entries in the current scope');
+    }
   };
   return (
     <>
@@ -46,6 +53,20 @@ export function ExecPage({ state, summary }: { state: PageState; summary?: Summa
 }
 
 export function WorkbenchPage({ state, summary }: { state: PageState; summary?: Summary }) {
+  // Flagged-population severity split — critical+high+medium sums to `flagged` exactly in both
+  // the mock dataset and DashboardSet's own aggregation, so this is a real distribution of the
+  // reviewable queue, not an invented metric. Bars scaled against `flagged` (the denominator that
+  // actually matters for review capacity), not the full 18k-entry scored population.
+  const j = summary?.journals;
+  const flagged = j?.flagged || 1;
+  const severityBars: [string, number, string][] = j
+    ? [
+        [`Critical · ${j.critical}`, Math.round((j.critical / flagged) * 100), '#dc2626'],
+        [`High · ${j.high}`, Math.round((j.high / flagged) * 100), '#d97706'],
+        [`Medium · ${j.medium}`, Math.round((j.medium / flagged) * 100), '#2563eb'],
+      ]
+    : [['Critical · 9', 2, '#dc2626'], ['High · 38', 8, '#d97706'], ['Medium · 448', 90, '#2563eb']];
+
   return (
     <>
       <Head title="AI Anomaly Workbench" sub="Hybrid score combining rules, peer behavior, sequence patterns, value exposure and historical findings">
@@ -57,6 +78,10 @@ export function WorkbenchPage({ state, summary }: { state: PageState; summary?: 
         <Kpi label="Low AI Confidence" value="7" sub="Mandatory manual review" tone="violet" />
         <Kpi label="Review Capacity Fit" value="86%" sub="Within close-window SLA" tone="green" />
       </Kpis>
+      <div className="card" style={{ marginTop: 13 }}>
+        <h3>Flagged Population by Severity</h3>
+        <Bars items={severityBars} />
+      </div>
       <TableCard title="Risk-Ranked Journal Population" items={state.items} open={state.open} loading={state.loading} />
     </>
   );

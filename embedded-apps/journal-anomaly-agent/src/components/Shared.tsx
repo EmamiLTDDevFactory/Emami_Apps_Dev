@@ -9,6 +9,9 @@ export interface PageState {
   items: WorklistEntry[];
   open: (e: WorklistEntry) => void;
   toast: (m: string) => void;
+  /** Switches the visible section (Sidebar's nav ids) — lets a page's own KPI cards/links route
+   * to a more relevant section, not just open the drawer in place. */
+  navigate: (id: string) => void;
 }
 
 export function fmt(n: number): string {

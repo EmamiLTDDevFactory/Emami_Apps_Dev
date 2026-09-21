@@ -23,7 +23,8 @@ export type IconKey =
   | 'scale'
   | 'landmark'
   | 'shieldCheck'
-  | 'percent';
+  | 'percent'
+  | 'target';
 
 export interface Kpi {
   key: string;

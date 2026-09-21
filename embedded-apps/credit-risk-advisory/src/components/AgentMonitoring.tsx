@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Donut } from './charts';
+import { AreaChart, Donut } from './charts';
 
 /** Agent Monitoring — recommendation mix, governance signals and safety telemetry from the
  * reference prototype. */
@@ -20,6 +20,10 @@ export function AgentMonitoring(): JSX.Element {
     ['Grounding coverage', '94.8%', 'low'],
     ['Prompt-injection blocks', '11', ''],
   ] as const;
+
+  // The "False-positive review" governance signal above is a single point-in-time number with no
+  // sense of direction — a trend line is what actually tells a model owner whether it's drifting.
+  const falsePositiveTrend = { labels: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'], actual: [8.9, 8.1, 7.6, 7.0, 6.8, 6.2], target: [7, 7, 7, 7, 7, 7] };
 
   return (
     <>
@@ -67,6 +71,13 @@ export function AgentMonitoring(): JSX.Element {
             </div>
           ))}
         </div>
+      </div>
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-head">
+          <h3>False-Positive Rate Trend</h3>
+          <span className="card-sub">Green: actual rate · blue dashed: 7% governance target</span>
+        </div>
+        <AreaChart labels={falsePositiveTrend.labels} actual={falsePositiveTrend.actual} target={falsePositiveTrend.target} />
       </div>
     </>
   );

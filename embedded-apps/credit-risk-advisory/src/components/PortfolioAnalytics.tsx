@@ -15,6 +15,14 @@ import type { Customer } from '../types';
 export function PortfolioAnalytics({ customers }: { customers: Customer[] }): JSX.Element {
   const total = customers.reduce((a, c) => a + c.outstanding, 0) || 1;
 
+  // Concentration risk — same "share of total exposure" figure Top Concentrations already shows
+  // per customer, just sorted and summed for the top 3, since an unordered list doesn't actually
+  // tell you how concentrated the book is at a glance.
+  const shareOf = (c: Customer) => (c.outstanding + c.openOrder) / total;
+  const byShareDesc = [...customers].sort((a, b) => shareOf(b) - shareOf(a));
+  const top3Share = byShareDesc.slice(0, 3).reduce((a, c) => a + shareOf(c), 0) * 100;
+  const concentrationTone = top3Share >= 60 ? 'red' : top3Share >= 40 ? 'amber' : 'green';
+
   const riskSlices = [
     { label: 'Low', value: customers.filter((c) => riskBand(c) === 'Low').reduce((a, c) => a + c.outstanding, 0), color: '#16875d' },
     { label: 'Medium', value: customers.filter((c) => riskBand(c) === 'Medium').reduce((a, c) => a + c.outstanding, 0), color: '#d97706' },
@@ -37,6 +45,13 @@ export function PortfolioAnalytics({ customers }: { customers: Customer[] }): JS
 
   return (
     <div className="grid3">
+      <div className={`kpi accent-${concentrationTone}`} style={{ gridColumn: '1 / -1' }}>
+        <div className="label">Top-3 Customer Concentration</div>
+        <div className="value">{top3Share.toFixed(1)}%</div>
+        <div className="sub">
+          Share of total outstanding + open orders held by {byShareDesc.slice(0, 3).map((c) => c.name).join(', ') || 'no customers in scope'}
+        </div>
+      </div>
       <div className="card">
         <h3>Risk Band Distribution</h3>
         <Donut slices={riskSlices} />
@@ -55,10 +70,10 @@ export function PortfolioAnalytics({ customers }: { customers: Customer[] }): JS
       </div>
       <div className="card">
         <h3>Top Concentrations</h3>
-        {customers.map((c) => (
+        {byShareDesc.map((c) => (
           <div key={c.id} className="panel-row" style={{ gridTemplateColumns: '140px 1fr' }}>
             <span>{c.name}</span>
-            <b>{(((c.outstanding + c.openOrder) / total) * 100).toFixed(1)}%</b>
+            <b>{(shareOf(c) * 100).toFixed(1)}%</b>
           </div>
         ))}
       </div>
