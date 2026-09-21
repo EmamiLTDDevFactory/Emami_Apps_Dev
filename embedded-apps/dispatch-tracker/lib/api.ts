@@ -15,13 +15,13 @@ import { normalizeInvoice } from './sapMapping';
 
 const TOKEN_KEY = 'dis_session_token';
 
-// SAP system base URLs — NGD is the active one. NGQ/NWP are kept here, commented
+// SAP system base URLs — NWP is the active one. NGD/NGQ are kept here, commented
 // out, for quick switching if needed.
-// const API_BASE_NWP = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_DISP_INTL_ANALYTICS_SRV';
+const API_BASE_NWP = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_DISP_INTL_ANALYTICS_SRV';
 // const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
-const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
+// const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
 
-export const API_BASE_URL = API_BASE_NGD;
+export const API_BASE_URL = API_BASE_NWP;
 
 export class ApiError extends Error {
   status: number;
@@ -198,11 +198,15 @@ async function postSapAction(entitySet: string, payload: any): Promise<{ ok: tru
   return { ok: true };
 }
 
-export interface DispatchPayload { invoice_no: string; werks: string; row_data: object; dispatch_date: string; lr_no: string; vehicle_no: string; vehicle_type: string; transporter: string; cases: number; }
+export interface DispatchPayload { invoice_no: string; werks: string; row_data: object; dispatch_date: string; edd: string | null; lr_no: string; vehicle_no: string; vehicle_type: string; transporter: string; cases: number; }
 export const postDispatch = (body: DispatchPayload) => postSapAction('InvoiceDispSet', {
   Vbeln: body.invoice_no,
   Werks: body.werks,
   DispatchDate: formatSAPDate(body.dispatch_date),
+  // Carries the invoice's original EDD through to InvoiceDispSet's CREATE_ENTITY — without
+  // it, SAP's backend was recalculating EDD off the dispatch date instead of keeping the one
+  // set at invoice creation.
+  Edd: formatSAPDate(body.edd),
   LrNo: body.lr_no,
   VehicleNo: body.vehicle_no,
   VehicleType: body.vehicle_type,

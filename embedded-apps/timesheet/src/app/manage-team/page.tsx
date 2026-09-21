@@ -474,12 +474,12 @@ export default function ManageTeamPage() {
         <div className="space-y-5">
           {directReports.map((user: any) => (
             <div key={user.id} className="card p-4">
-              <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-ink">{user.name}</p>
                   <p className="text-xs text-inkSoft">{user.email}</p>
                 </div>
-                <span className="flex shrink-0 items-center gap-3">
+                <span className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleDownloadExcel(user)}
@@ -577,11 +577,7 @@ export default function ManageTeamPage() {
           <CalendarCheck size={18} className="text-rust" />
           Working Saturdays
         </h2>
-        <p className="mb-4 text-xs text-inkSoft">
-          By default the 2nd and 4th Saturday of each month are non-working days. Flip a specific Saturday to working here when your team
-          needs it - employees will see it as a normal working day, and it applies to you and every direct report.
-        </p>
-        <div className="mb-3">
+        <div className="mb-3 mt-3">
           <MonthSelector monthStartDate={satMonth} onChange={setSatMonth} />
         </div>
         <ul className="space-y-2">

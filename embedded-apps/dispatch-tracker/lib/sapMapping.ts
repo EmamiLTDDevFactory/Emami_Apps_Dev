@@ -1,4 +1,5 @@
 ﻿import { Invoice } from '@/types/models';
+import { edDeliveryDelay } from './delay';
 
 export const parseFloatSafe = (val: any): number => {
     if (!val) return 0;
@@ -20,6 +21,13 @@ export const parseDate = (val: any): string | null => {
 };
 
 export function normalizeInvoice(raw: any): Invoice {
+    const edd = parseDate(raw.Edd) || '';
+    const actualDeliveryDate = parseDate(raw.ActDelDate || raw.DelDate);
+    // SAP's TotalDelay has been observed as 0 for invoices that are clearly
+    // late by EDD vs ActDelDate — recompute from the dates whenever both are
+    // known, and only fall back to SAP's own value for rows without an
+    // actual delivery date yet (e.g. pending/dispatched).
+    const computedDelay = edDeliveryDelay(edd, actualDeliveryDate);
     return {
         invoice_no: raw.Vbeln || '',
         invoice_date: parseDate(raw.Fkdat) || '',
@@ -38,7 +46,7 @@ export function normalizeInvoice(raw: any): Invoice {
         invoice_value: parseFloatSafe(raw.Netwr),
         gross_weight_kg: parseFloatSafe(raw.GrossWt),
         distance_km: parseFloatSafe(raw.Distz),
-        edd: parseDate(raw.Edd) || '',
+        edd,
         transporter: (raw.Transporter || raw.Tdname || raw.CarrName || raw.Lifex || raw.ForwardAgent || '').trim(),
         lr_no: raw.LrNo || '',
         vehicle_type: raw.VehicleType || '',
@@ -48,7 +56,7 @@ export function normalizeInvoice(raw: any): Invoice {
         // It was missing here, so the Completed card's "Delivered" field, the delivery-date sort,
         // the EDD colour comparison and the "Actual Delivery Date" export column were all reading
         // an undefined property. DelDate is kept as a fallback for any row that uses it instead.
-        actual_delivery_date: parseDate(raw.ActDelDate || raw.DelDate),
+        actual_delivery_date: actualDeliveryDate,
         // RecDate is written by postReturn and returned by InvoiceRetSet — the Returned card's
         // "Receiving Date" was reading an undefined property.
         receiving_date: parseDate(raw.RecDate),
@@ -59,7 +67,7 @@ export function normalizeInvoice(raw: any): Invoice {
         agreed_tat: parseIntSafe(raw.Tat || raw.AgreedTat),
         delay_dispatch: parseIntSafe(raw.DelayDispatch),
         delay_delivery: parseIntSafe(raw.DelayDelivery),
-        total_delay: parseIntSafe(raw.TotalDelay),
+        total_delay: computedDelay ?? parseIntSafe(raw.TotalDelay),
         status: raw.Status || 'Pending',
         source: raw.Source || 'sap_live'
     } as any;

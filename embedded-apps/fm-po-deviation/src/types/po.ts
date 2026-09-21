@@ -3,8 +3,8 @@
 // real schema (the live SAP service's own $metadata endpoint refuses system query options as of
 // 2026-09-12), so there is no ground-truth EDMX to check these against. Confirmed a subset live
 // against the real gateway (https://emdcindpwebapp1-.../api/NGD/ZFMPODEVIATION_SRV): PoSet and
-// UserSet respond correctly, PrintformSet's GET_ENTITYSET is not implemented (501) — matching the
-// original app's own fallback-to-filtered-GET logic for it. `Email` on Po is now confirmed live
+// UserSet respond correctly. The printform PDF is read from POPrintFormSet's keyed GetEntity (see
+// src/lib/sapClient.ts's fetchPrintformPdf), per instruction. `Email` on Po is now confirmed live
 // (per instruction, 2026-09-14), so this app scopes "my approvals" the same way every other
 // SAP-integrated app in this repo does (see src/lib/sapClient.ts) — every Po row read here sends
 // that filter for real, mock mode has been removed entirely.
