@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'Finance', 'Operations', 'IBD', 'General'];
+export const CATEGORIES: CategoryFilter[] = ['All', 'CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
 
 /**
  * Live app URLs. Every real app renders inline on the launch screen — same-origin apps
@@ -36,18 +36,18 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
 
 const RAW_APPS: AppItem[] = [
   { id: 'expense', name: 'Non CTC Expense', desc: 'Submit and track non-CTC (non-salary) expense claims and reimbursements.', cat: 'Finance', icon: Receipt, uses: 128 },
-  { id: 'finance', name: 'Recruitment Consultant Management Portal', desc: 'Onboarding of an External Recruitment Consultant( Agency or Individual )', cat: 'Finance', icon: Landmark, uses: 96 },
-  { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Operations', icon: Truck, uses: 210 },
-  { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Operations', icon: Activity, uses: 29 },
-  { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'Operations', icon: ClipboardCheck, uses: 0 },
-  { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'Finance', icon: TrendingUp, uses: 0 },
-  { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'Operations', icon: Code2, uses: 0 },
-  { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'Operations', icon: PackageSearch, uses: 0 },
+  { id: 'finance', name: 'Recruitment Consultant Management Portal', desc: 'Onboarding of an External Recruitment Consultant( Agency or Individual )', cat: 'HR', icon: Landmark, uses: 96 },
+  { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Supply Chain', icon: Truck, uses: 210 },
+  { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Packaging', icon: Activity, uses: 29 },
+  { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'CQA', icon: ClipboardCheck, uses: 0 },
+  { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0 },
+  { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'IT', icon: Code2, uses: 0 },
+  { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
-  { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'Operations', icon: CalendarClock, uses: 0 },
-  { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Finance', icon: FileCheck2, uses: 0 },
-  { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'General', icon: HeartPulse, uses: 0 },
-  { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'General', icon: ShieldCheck, uses: 0 },
+  { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0 },
+  { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0 },
+  { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0 },
+  { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'Cross-Function', icon: ShieldCheck, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

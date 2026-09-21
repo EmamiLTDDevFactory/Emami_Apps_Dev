@@ -34,12 +34,15 @@ export const gradients = {
 };
 
 export const categoryColors: Record<string, string> = {
-  Finance: '#5B4FE0',
-  People: '#DB2777',
-  Operations: '#0D9488',
-  Sales: '#EA580C',
-  Insights: '#7C3AED',
+  CQA: '#0D9488',
+  CPD: '#EA580C',
+  IT: '#5B4FE0',
+  'Supply Chain': '#DB2777',
   IBD: '#B45309',
+  HR: '#7C3AED',
+  'Cross-Function': '#0891B2',
+  Packaging: '#65A30D',
+  Finance: '#4F3FD6',
 } as const;
 
 // Distinct pastel accent per real app, so the 4 cards read like the

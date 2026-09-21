@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Landmark, Cog, Wallet, Grid3x3, Lock } from 'lucide-react';
+import { LayoutGrid, Landmark, Wallet, Grid3x3, Lock, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
@@ -20,18 +20,28 @@ import type { AppItem, CategoryFilter } from '../../types';
  * segment. */
 const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   All: LayoutGrid,
-  Finance: Landmark,
-  Operations: Cog,
+  CQA: ClipboardCheck,
+  CPD: TrendingUp,
+  IT: Code2,
+  'Supply Chain': Truck,
   IBD: Wallet,
-  General: Grid3x3,
+  HR: Users,
+  'Cross-Function': Shuffle,
+  Packaging: Package,
+  Finance: Landmark,
 };
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   All: 'Every application in one place',
-  Finance: 'Expenses, market rates & PO deviations',
-  Operations: 'Dispatch, audits, timesheets & tracking',
+  CQA: 'Audits & CAPA tracking',
+  CPD: 'Market rates & delivery confirmation',
+  IT: 'Development tracker & timesheets',
+  'Supply Chain': 'Dispatch tracking',
   IBD: 'IBD provision & payment tracking',
-  General: 'Mediclaim & term policy submissions',
+  HR: 'Recruitment consultant management',
+  'Cross-Function': 'Mediclaim, term policy & PO approval',
+  Packaging: 'Mould health inspection',
+  Finance: 'Non-CTC expense claims',
 };
 
 export default function HomePage() {
