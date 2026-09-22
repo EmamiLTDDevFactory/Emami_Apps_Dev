@@ -13,6 +13,7 @@ import {
   ReceiptText,
   Scale,
   ShieldCheck,
+  Target,
   Timer,
   TrendingUp,
   UserX,
@@ -39,4 +40,5 @@ export const ICONS: Record<IconKey, LucideIcon> = {
   landmark: Landmark,
   shieldCheck: ShieldCheck,
   percent: Percent,
+  target: Target,
 };

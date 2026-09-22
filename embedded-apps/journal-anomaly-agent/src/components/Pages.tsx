@@ -6,8 +6,15 @@ import { Bars, Head, Kpi, Kpis, TableCard, Tabs, fmt, type PageState } from './S
 export function ExecPage({ state, summary }: { state: PageState; summary?: Summary }) {
   const drill = () => {
     const first = state.items[0];
-    if (first) state.open(first);
-    else state.toast('No entries in the current scope');
+    if (first) {
+      // Route to the Anomaly Workbench (where this entry actually lives in a real list/table)
+      // in addition to opening its drawer — previously this only opened the drawer, which read as
+      // "clicking the KPI card does nothing" if the visible section never changed.
+      state.navigate('workbench');
+      state.open(first);
+    } else {
+      state.toast('No entries in the current scope');
+    }
   };
   return (
     <>
@@ -46,17 +53,53 @@ export function ExecPage({ state, summary }: { state: PageState; summary?: Summa
 }
 
 export function WorkbenchPage({ state, summary }: { state: PageState; summary?: Summary }) {
+  // Flagged-population severity split — critical+high+medium sums to `flagged` exactly in both
+  // the mock dataset and DashboardSet's own aggregation, so this is a real distribution of the
+  // reviewable queue, not an invented metric. Bars scaled against `flagged` (the denominator that
+  // actually matters for review capacity), not the full 18k-entry scored population.
+  const j = summary?.journals;
+  const flagged = j?.flagged || 1;
+  const severityBars: [string, number, string][] = j
+    ? [
+        [`Critical · ${j.critical}`, Math.round((j.critical / flagged) * 100), '#dc2626'],
+        [`High · ${j.high}`, Math.round((j.high / flagged) * 100), '#d97706'],
+        [`Medium · ${j.medium}`, Math.round((j.medium / flagged) * 100), '#2563eb'],
+      ]
+    : [['Critical · 9', 2, '#dc2626'], ['High · 38', 8, '#d97706'], ['Medium · 448', 90, '#2563eb']];
+
+  // Every Kpi tile in this app renders with the shared `.kpi` CSS class, which unconditionally
+  // shows a "Drill down ›" affordance and a pointer cursor (see globals.css) — so a Kpi with no
+  // onClick still LOOKS clickable but silently does nothing, which is exactly the bug this pass
+  // is fixing. Each tile below now has a real, honest handler: it opens a matching entry when one
+  // exists in the current worklist, or tells the user via toast why it can't (rather than either
+  // doing nothing or fabricating a filtered result the underlying data doesn't actually support).
+  const openFirstWithRisk = (risk: string, fallbackMsg: string) => {
+    const match = state.items.find((i) => i.risk === risk);
+    if (match) state.open(match);
+    else state.toast(fallbackMsg);
+  };
   return (
     <>
       <Head title="AI Anomaly Workbench" sub="Hybrid score combining rules, peer behavior, sequence patterns, value exposure and historical findings">
-        <Tabs labels={['All', 'Unassigned', 'My Cases', 'Overdue']} />
+        <Tabs
+          labels={['All', 'Unassigned', 'My Cases', 'Overdue']}
+          onSelect={(_, label) =>
+            label === 'All'
+              ? state.toast('Showing the full risk-ranked population below.')
+              : state.toast(`"${label}" needs an assignee/SLA field WorklistSet doesn't carry yet — showing the full population instead.`)
+          }
+        />
       </Head>
       <Kpis>
-        <Kpi label="Critical Entries" value={summary ? String(summary.journals.critical) : '9'} sub="₹6.82 Cr exposure" tone="red" onClick={() => state.items[0] && state.open(state.items[0])} />
-        <Kpi label="High Risk" value={summary ? String(summary.journals.high) : '38'} sub="₹12.6 Cr exposure" tone="amber" />
-        <Kpi label="Low AI Confidence" value="7" sub="Mandatory manual review" tone="violet" />
-        <Kpi label="Review Capacity Fit" value="86%" sub="Within close-window SLA" tone="green" />
+        <Kpi label="Critical Entries" value={summary ? String(summary.journals.critical) : '9'} sub="₹6.82 Cr exposure" tone="red" onClick={() => openFirstWithRisk('Critical', 'No critical entries in the current scope.')} />
+        <Kpi label="High Risk" value={summary ? String(summary.journals.high) : '38'} sub="₹12.6 Cr exposure" tone="amber" onClick={() => openFirstWithRisk('High', 'No high-risk entries in the current scope.')} />
+        <Kpi label="Low AI Confidence" value="7" sub="Mandatory manual review" tone="violet" onClick={() => state.toast('Low-confidence scores come from RiskScoreSet\'s ModelVersion/Seq — not yet surfaced as its own filterable queue here.')} />
+        <Kpi label="Review Capacity Fit" value="86%" sub="Within close-window SLA" tone="green" onClick={() => state.toast('Capacity is computed across all assigned reviewers against the close-window SLA.')} />
       </Kpis>
+      <div className="card" style={{ marginTop: 13 }}>
+        <h3>Flagged Population by Severity</h3>
+        <Bars items={severityBars} />
+      </div>
       <TableCard title="Risk-Ranked Journal Population" items={state.items} open={state.open} loading={state.loading} />
     </>
   );

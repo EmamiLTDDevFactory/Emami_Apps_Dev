@@ -33,6 +33,11 @@ export const kpis: Kpi[] = [
   { key: 'bank', icon: 'landmark', label: 'Bank Balances', value: '₹142.6 Cr', note: '9 accounts · 2 currencies', tone: 'blue' },
   { key: 'hedge', icon: 'shieldCheck', label: 'Hedge Coverage', value: '64%', note: 'Target ≥ 80% of EUR exposure', tone: 'amber' },
   { key: 'discount', icon: 'percent', label: 'Discount-Loss Risk', value: '₹0.8 Cr', note: 'If deferrals run past terms', tone: 'amber' },
+  // Placeholder values only — this KPI isn't a KPISet row (no counterparty-concentration field
+  // exists in docs/API_CONTRACT.md), it's recomputed client-side from CashFlowLineSet's own
+  // partner/amount fields (see src/app/page.tsx's concentrationInfo) for both mock and live data,
+  // same posture as policyBuffer/alert in sapClient.ts's fetchDashboard.
+  { key: 'concentration', icon: 'target', label: 'Top Receivable Concentration', value: '—', note: 'Largest single counterparty share of receipts', tone: 'blue' },
 ];
 
 export const secondary: SecondaryKpi[] = [

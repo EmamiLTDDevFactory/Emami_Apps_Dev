@@ -123,6 +123,15 @@ function DashboardContent() {
 
   const highRiskCount = filteredWork.filter(isHighRisk).length;
 
+  /** Selecting a KPI card both opens its drill-down drawer AND routes to the Operations Worklist
+   * — the section that actually holds the underlying documents the drawer's table is drawn from.
+   * Previously this only opened the drawer with the page left on whichever section was already
+   * showing, which read as "clicking the card does nothing" when that section wasn't Worklist. */
+  const handleKpiSelect = (k: Kpi) => {
+    setActiveKpi(k);
+    setPage('worklist');
+  };
+
   if (!data && busy) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)' }}>Loading Credit Risk Advisory…</div>
@@ -227,7 +236,7 @@ function DashboardContent() {
                 </div>
                 <span className="fresh stamp">{stamp}</span>
               </div>
-              <KpiGrid kpis={data.kpis} onSelect={setActiveKpi} />
+              <KpiGrid kpis={data.kpis} onSelect={handleKpiSelect} />
               <div className="section-head">
                 <div>
                   <h2>Priority Decision Queue</h2>

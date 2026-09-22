@@ -125,6 +125,10 @@ const PRIMARY_KPI_ICONS: Record<string, IconKey> = {
   bank: 'landmark',
   hedge: 'shieldCheck',
   discount: 'percent',
+  // Not a real KPISet row — recomputed client-side from CashFlowLineSet (see page.tsx's
+  // concentrationInfo). Listed here only so a value/tone override from an actual future KPISet
+  // row with this Key would still render sensibly rather than falling back to the generic icon.
+  concentration: 'target',
 };
 
 const SECONDARY_KPI_ICONS: Record<string, IconKey> = {

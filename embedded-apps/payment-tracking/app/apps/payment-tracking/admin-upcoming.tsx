@@ -5,14 +5,17 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
+  fetchPoAttachment,
   fetchVendorPOFollowups,
   submitProvisionApproval,
   submitProvisionApprovalBatch,
+  type PoAttachment,
   type ProvisionConfirmation,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
+import { QuotationPreviewModal } from '../../../src/components/QuotationPreviewModal';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../../src/context/MonthYearContext';
 import { filterByMonth, filterByFiscalYear } from '../../../src/lib/provisionMetrics';
@@ -212,10 +215,31 @@ export default function AdminUpcomingProvision() {
   const [modalTouched, setModalTouched] = useState(false);
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [quotationLoadingKey, setQuotationLoadingKey] = useState<string | null>(null);
+  const [quotation, setQuotation] = useState<PoAttachment | null>(null);
   // Compact layout only for a wide web viewport (desktop) — native/mobile keeps the roomier
   // spacing this screen already had.
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
+
+  /** "View Quotation" on a PO tile — a keyed GetEntity read against ZPOAttachmentSet by Ebeln, per
+   * instruction (see fetchPoAttachment). A PO with nothing on file yet surfaces as a banner, not
+   * an error state, since that's an expected, common case, not a failure. */
+  const handleViewQuotation = async (row: VendorPOFollowupRow) => {
+    setQuotationLoadingKey(row.key);
+    try {
+      const att = await fetchPoAttachment(row.poNumber);
+      if (!att) {
+        setBanner({ type: 'error', message: `No quotation is on file for PO ${row.poNumber} yet.` });
+      } else {
+        setQuotation(att);
+      }
+    } catch (err) {
+      setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Could not load this quotation.' });
+    } finally {
+      setQuotationLoadingKey(null);
+    }
+  };
 
   // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
   // delivery date client-side, same as Pending Approval's own monthYearRows; ZVendorPOFollowupSet
@@ -517,6 +541,22 @@ export default function AdminUpcomingProvision() {
                       <Text style={[styles.cardTitle, isDesktopWeb && styles.cardTitleCompact]}>PO {row.poNumber} · Item {row.poItemNo}</Text>
                       {row.materialDesc ? <Text style={[styles.cardSubtitle, isDesktopWeb && styles.cardSubtitleCompact]} numberOfLines={1}>{row.materialDesc}</Text> : null}
                     </View>
+                    <Pressable
+                      style={styles.quotationBtn}
+                      onPress={() => handleViewQuotation(row)}
+                      disabled={quotationLoadingKey === row.key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View quotation for PO ${row.poNumber}`}
+                    >
+                      {quotationLoadingKey === row.key ? (
+                        <ActivityIndicator size="small" color={colors.rust} />
+                      ) : (
+                        <>
+                          <Ionicons name="document-attach-outline" size={13} color={colors.rust} />
+                          <Text style={styles.quotationBtnText}>Quotation</Text>
+                        </>
+                      )}
+                    </Pressable>
                     {state.submitted && (
                       <View style={styles.submittedBadge}>
                         <Ionicons name="checkmark-circle" size={13} color={colors.green} />
@@ -664,6 +704,8 @@ export default function AdminUpcomingProvision() {
           </View>
         </View>
       </Modal>
+
+      {quotation && <QuotationPreviewModal attachment={quotation} onClose={() => setQuotation(null)} />}
     </ScrollView>
   );
 }
@@ -867,6 +909,22 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingVertical: 3,
     paddingHorizontal: 8,
+  },
+  quotationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: colors.appBg,
+  },
+  quotationBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.rust,
   },
   submittedBadgeText: {
     fontSize: 10,

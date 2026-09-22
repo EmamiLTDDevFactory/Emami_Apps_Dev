@@ -64,7 +64,7 @@ export function Bars({
     const y = 205 - h;
     const fill = it.color ?? color ?? '#1769e0';
     return (
-      <g key={it.label} style={{ cursor: 'pointer' }}>
+      <g key={it.label}>
         <rect x={x} y={y} width={barWidth} height={h} rx={5} fill={fill}>
           <title>{`${it.label}: ${it.value}`}</title>
         </rect>

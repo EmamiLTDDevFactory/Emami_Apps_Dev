@@ -64,7 +64,7 @@ export default function Sidebar({ isOpen, onClose, isWideScreen, activePage, onN
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" className="sidebar-logo" />
       </div>
-      <nav>
+      <nav className="nav">
         {NAV.map((g) => (
           <div key={g.title}>
             <div className="n-title">{g.title}</div>

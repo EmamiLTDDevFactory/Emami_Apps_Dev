@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { submitDecision } from '../lib/sapClient';
+import { formatSlaMinutes, oldestSla, slaAgingBuckets } from '../lib/sla';
+import { Bars } from './charts';
 import { WorkTable, formatINR } from './WorkTable';
 import type { Decision, DecisionOutcome, WorklistRow } from '../types';
 
@@ -17,9 +19,16 @@ export function ApprovalWorkflow({ worklist, onChanged }: { worklist: WorklistRo
   const [result, setResult] = useState<DecisionOutcome | null>(null);
   const [error, setError] = useState('');
   const [evidenceFile, setEvidenceFile] = useState<string | null>(null);
+  // Executed releases this session — real, growing count of decisions actually submitted through
+  // this screen, not a static placeholder. Starts at 0 (nothing has been decided yet in a fresh
+  // session) rather than an unexplained fixed number.
+  const [executed, setExecuted] = useState<DecisionOutcome[]>([]);
 
   const slaBreaches = worklist.filter((w) => w.sla.toLowerCase().includes('breach')).length;
   const highRisk = worklist.filter((w) => w.risk === 'High' || w.risk === 'Critical').length;
+  const oldest = oldestSla(worklist);
+  const agingBuckets = slaAgingBuckets(worklist);
+  const retryCount = executed.filter((r) => /retry/i.test(r.status) || /retry/i.test(r.execution)).length;
 
   function closeDrawer() {
     setActive(null);
@@ -33,7 +42,9 @@ export function ApprovalWorkflow({ worklist, onChanged }: { worklist: WorklistRo
     setBusy(true);
     setError('');
     try {
-      setResult(await submitDecision(active.customerId, decision, reason.trim(), active.amount));
+      const outcome = await submitDecision(active.customerId, decision, reason.trim(), active.amount);
+      setResult(outcome);
+      setExecuted((prev) => [...prev, outcome]);
       onChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Submission failed');
@@ -53,7 +64,7 @@ export function ApprovalWorkflow({ worklist, onChanged }: { worklist: WorklistRo
         <div className="kpi accent-red">
           <div className="label">SLA Breaches</div>
           <div className="value">{slaBreaches}</div>
-          <div className="sub">Oldest: 3h 12m</div>
+          <div className="sub">{oldest ? `Oldest: ${formatSlaMinutes(oldest.minutes)}${oldest.minutes >= 0 ? ' to breach' : ''}` : 'No documents queued'}</div>
         </div>
         <div className="kpi accent-amber">
           <div className="label">High / Critical</div>
@@ -61,10 +72,18 @@ export function ApprovalWorkflow({ worklist, onChanged }: { worklist: WorklistRo
           <div className="sub">Required authority routing</div>
         </div>
         <div className="kpi accent-green">
-          <div className="label">Executed Releases</div>
-          <div className="value">43</div>
-          <div className="sub">Reconciled: 42 | Retry: 1</div>
+          <div className="label">Executed This Session</div>
+          <div className="value">{executed.length}</div>
+          <div className="sub">{executed.length === 0 ? 'No decisions submitted yet' : `Reconciled: ${executed.length - retryCount} | Retry: ${retryCount}`}</div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card-head">
+          <h3>SLA Aging</h3>
+          <span className="card-sub">Where every queued document stands against its decision SLA</span>
+        </div>
+        <Bars items={agingBuckets} />
       </div>
 
       <div className="card" style={{ marginTop: 14 }}>
