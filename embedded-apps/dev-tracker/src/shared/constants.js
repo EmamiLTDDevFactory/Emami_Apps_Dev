@@ -7,8 +7,20 @@
 // vite.config.js instead of hitting the real host directly — the API's CORS allowlist
 // doesn't cover a local dev origin, so a direct cross-origin fetch here would just fail.
 // Dead code (and stripped) in the real production build, same as the devEmail override below.
-export const API_BASE = import.meta.env.DEV ? '/api/dev-tracker' : 'https://audit-capa-api.emamiapps.in/api/dev-tracker';
-export const ACCESS_API_BASE = import.meta.env.DEV ? '/api' : 'https://audit-capa-api.emamiapps.in/api';
+//
+// Same dev/prod split every other embedded app in this monorepo makes off the browser's own
+// hostname (see embedded-apps/payment-tracking/src/lib/hubAccessApi.ts's accessApiBase(),
+// embedded-apps/audit-capa/src/components/layout/emamiAppsUrl.js's `HOSTNAME.includes('dev')`) —
+// this app has no build-time env injection of its own, so without this every deployed build
+// (dev.emamiapps.in included) always hit prod's backend/DB, regardless of which environment it
+// was actually built and running on.
+const HUB_HOSTNAME_IS_DEV = typeof window !== 'undefined' && window.location.hostname.includes('dev');
+export const API_BASE = import.meta.env.DEV
+  ? '/api/dev-tracker'
+  : `https://audit-capa-api.emamiapps.in${HUB_HOSTNAME_IS_DEV ? '/dev-api' : ''}/api/dev-tracker`;
+export const ACCESS_API_BASE = import.meta.env.DEV
+  ? '/api'
+  : `https://audit-capa-api.emamiapps.in${HUB_HOSTNAME_IS_DEV ? '/dev-api' : ''}/api`;
 export const HUB_AUTH_API_BASE = 'https://in65bjvxjd.execute-api.ap-south-1.amazonaws.com/api';
 export const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
 
