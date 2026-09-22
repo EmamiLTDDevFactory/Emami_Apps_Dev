@@ -3,7 +3,7 @@
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Landmark, Wallet, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package, Grid3x3 } from 'lucide-react';
-import { colors, fonts, fontWeights, radii, appColor, shadows } from '../theme/tokens';
+import { colors, fonts, fontWeights, radii, appColor, catColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
@@ -39,7 +39,22 @@ function normalizePath(path: string): string {
 /** One nav-row look, shared by the top-level items, the category section, and the bottom-level
  * items below — pulled out so those three groups (previously one flat NAV.map) render identically
  * without repeating this markup three times. */
-function NavButton({ icon: Icon, label, active, onClick }: { icon: React.ElementType; label: string; active: boolean; onClick: () => void }) {
+function NavButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  accentColor,
+}: {
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  /** Per-category color from the Home page's own tile palette (see catColor) — left unset for the
+   * plain nav items above/below the Categories section, which keep the original rust accent. */
+  accentColor?: string;
+}) {
+  const activeColor = accentColor || colors.rust;
   return (
     <button
       type="button"
@@ -56,7 +71,7 @@ function NavButton({ icon: Icon, label, active, onClick }: { icon: React.Element
         border: 'none',
         borderLeftWidth: 3,
         borderLeftStyle: 'solid',
-        borderLeftColor: active ? colors.rust : 'transparent',
+        borderLeftColor: active ? activeColor : 'transparent',
         cursor: 'pointer',
         textAlign: 'left',
       }}
@@ -70,13 +85,13 @@ function NavButton({ icon: Icon, label, active, onClick }: { icon: React.Element
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: active ? colors.rust : 'transparent',
+          backgroundColor: active ? activeColor : accentColor ? `${accentColor}1f` : 'transparent',
           flexShrink: 0,
         }}
       >
-        <Icon size={15} color={active ? colors.white : colors.sidebarTextSoft} strokeWidth={2.2} />
+        <Icon size={15} color={active ? colors.white : accentColor || colors.sidebarTextSoft} strokeWidth={2.2} />
       </span>
-      <span style={{ fontSize: 13, flex: 1, color: active ? colors.rust : colors.sidebarTextSoft, fontFamily: active ? fonts.sansBold : fonts.sansMedium, fontWeight: active ? fontWeights.sansBold : fontWeights.sansMedium }}>
+      <span style={{ fontSize: 13, flex: 1, color: active ? activeColor : colors.sidebarTextSoft, fontFamily: active ? fonts.sansBold : fonts.sansMedium, fontWeight: active ? fontWeights.sansBold : fontWeights.sansMedium }}>
         {label}
       </span>
     </button>
@@ -186,7 +201,14 @@ export default function Sidebar({ compact = false }: SidebarProps) {
           Categories
         </p>
         {CATEGORIES.filter((c) => c !== 'All').map((c) => (
-          <NavButton key={c} icon={CATEGORY_ICONS[c] || Grid3x3} label={c} active={activeCategory === c} onClick={() => openCategory(c)} />
+          <NavButton
+            key={c}
+            icon={CATEGORY_ICONS[c] || Grid3x3}
+            label={c}
+            active={activeCategory === c}
+            onClick={() => openCategory(c)}
+            accentColor={catColor(c)}
+          />
         ))}
 
         {bottomNavItems.map((item) => (
