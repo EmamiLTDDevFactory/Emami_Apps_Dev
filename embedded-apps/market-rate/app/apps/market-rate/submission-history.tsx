@@ -111,6 +111,89 @@ function matchesQuery(row: MatrixRow, query: string): boolean {
   );
 }
 
+interface VendorMaterialRate {
+  vendorCode: string;
+  vendorName: string;
+  materialCode: string;
+  materialDesc: string;
+  rate: number;
+  ratePer: string;
+  zmonth: string;
+  submittedOn: string;
+}
+
+/** One quote per vendor+material — the LATEST submitted month within the loaded year, since a
+ * vendor can resubmit a fresh rate every month and comparing "current" pricing means each pair's
+ * most recent quote, not its whole history. Rows with no submission, or a rate that doesn't
+ * parse, are skipped — there's nothing to compare for those. */
+function buildLatestVendorMaterialRates(submissions: SubmissionRecord[]): VendorMaterialRate[] {
+  const byKey = new Map<string, VendorMaterialRate>();
+  for (const s of submissions) {
+    if (!s.submitted) continue;
+    const rate = parseFloat(s.rate);
+    if (Number.isNaN(rate)) continue;
+    const key = `${s.vendorCode}|${s.materialCode}`;
+    const existing = byKey.get(key);
+    if (!existing || s.zmonth > existing.zmonth) {
+      byKey.set(key, {
+        vendorCode: s.vendorCode,
+        vendorName: s.vendorName,
+        materialCode: s.materialCode,
+        materialDesc: s.materialDesc,
+        rate,
+        ratePer: s.ratePer,
+        zmonth: s.zmonth,
+        submittedOn: s.submittedOn,
+      });
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+interface VendorRateGroup {
+  vendorCode: string;
+  vendorName: string;
+  /** Every material this vendor has a latest quote for, ascending by material code — e.g. a
+   * vendor quoting four materials shows all four nested here, each with its own rate and date. */
+  materials: VendorMaterialRate[];
+}
+
+/** Groups the latest quotes by vendor — one entry per vendor, every material they quoted nested
+ * underneath — ordered by materials-quoted count (vendors with the most materials first, since
+ * those are the ones with the most to review) then vendor code. */
+function groupRatesByVendor(rates: VendorMaterialRate[]): VendorRateGroup[] {
+  const byVendor = new Map<string, VendorMaterialRate[]>();
+  for (const r of rates) {
+    const list = byVendor.get(r.vendorCode) ?? [];
+    list.push(r);
+    byVendor.set(r.vendorCode, list);
+  }
+  return Array.from(byVendor.entries())
+    .map(([vendorCode, materials]) => ({
+      vendorCode,
+      vendorName: materials[0].vendorName,
+      materials: [...materials].sort((a, b) => a.materialCode.localeCompare(b.materialCode)),
+    }))
+    .sort((a, b) => b.materials.length - a.materials.length || a.vendorCode.localeCompare(b.vendorCode));
+}
+
+function matchesVendorQuery(group: VendorRateGroup, query: string): boolean {
+  if (!query.trim()) return true;
+  const q = query.trim().toLowerCase();
+  if (group.vendorCode.toLowerCase().includes(q) || group.vendorName.toLowerCase().includes(q)) return true;
+  return group.materials.some((m) => m.materialCode.toLowerCase().includes(q) || m.materialDesc.toLowerCase().includes(q));
+}
+
+/** 'YYYY-MM-DD' submittedOn when present, else falls back to the MONTHS label for zmonth — every
+ * quote has at least one of the two, so this never returns an empty string for a real quote. */
+function formatQuoteDate(rate: VendorMaterialRate): string {
+  if (rate.submittedOn) {
+    const d = new Date(`${rate.submittedOn}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  return MONTHS.find((m) => m.value === rate.zmonth)?.label ?? '—';
+}
+
 /** The matrix only keeps a submitted/not boolean per month (see buildMatrixRows) — this looks the
  * original SubmissionRecord back up from the full year's records already sitting in state, so
  * tapping a green tick can show the Rate without a second API call. */
@@ -345,8 +428,126 @@ function RateDetailModal({
   );
 }
 
+/** Admin-only summary + detail dashboard, inside the Submission History screen's "Vendor Rate
+ * Comparison" tab — for each material, ranks every vendor's latest quote cheapest-first so an
+ * Admin can see at a glance who to buy from. Built entirely off the SubmissionRecord[] the screen
+ * already loaded (see buildLatestVendorMaterialRates/groupRatesByMaterial above), no extra call. */
+function VendorRateComparisonSection({
+  groups,
+  totalVendors,
+  materialsQuoted,
+  avgMaterialsPerVendor,
+  topVendor,
+  query,
+  setQuery,
+  year,
+}: {
+  groups: VendorRateGroup[];
+  totalVendors: number;
+  materialsQuoted: number;
+  avgMaterialsPerVendor: number;
+  topVendor: { vendorCode: string; vendorName: string; count: number } | null;
+  query: string;
+  setQuery: (v: string) => void;
+  year: string;
+}) {
+  if (totalVendors === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Ionicons name="pricetags-outline" size={22} color={colors.inkSoft} />
+        <Text style={styles.emptyText}>No submitted rates found for {year} to compare.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.kpiGrid}>
+        <KpiCard icon="people-outline" label="Vendors quoting" value={String(totalVendors)} />
+        <KpiCard icon="cube-outline" label="Materials quoted" value={String(materialsQuoted)} accent={colors.rust} />
+        <KpiCard icon="stats-chart-outline" label="Avg materials / vendor" value={avgMaterialsPerVendor.toFixed(1)} />
+        {topVendor && (
+          <KpiCard
+            icon="trophy-outline"
+            label="Most materials quoted"
+            value={`${topVendor.vendorName || topVendor.vendorCode} (${topVendor.count})`}
+            accent={colors.green}
+          />
+        )}
+      </View>
+
+      <View style={styles.matrixHeaderRow}>
+        <View style={styles.flex1}>
+          <Text style={styles.cardTitle}>Rate comparison by vendor — {year}</Text>
+          <Text style={styles.cardSubtitle}>
+            {groups.length} vendor{groups.length === 1 ? '' : 's'}. Every material each vendor last quoted this year, with rate and date.
+          </Text>
+        </View>
+        <View style={styles.matrixSearchWrap}>
+          <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search vendor or material"
+            placeholderTextColor={colors.inkSoft}
+            style={styles.matrixSearchInput}
+            accessibilityLabel="Search vendor or material"
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      {groups.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Ionicons name="search-outline" size={22} color={colors.inkSoft} />
+          <Text style={styles.emptyText}>No vendors match this search.</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {groups.map((group) => (
+            <View key={group.vendorCode} style={styles.card}>
+              <View style={styles.matrixHeaderRow}>
+                <View style={styles.flex1}>
+                  <Text style={styles.cardTitle}>{group.vendorName || group.vendorCode}</Text>
+                  <Text style={styles.cardSubtitle}>
+                    {group.vendorCode} · {group.materials.length} material{group.materials.length === 1 ? '' : 's'} quoted
+                  </Text>
+                </View>
+                <View style={styles.spreadBadge}>
+                  <Ionicons name="cube-outline" size={12} color={colors.rust} />
+                  <Text style={styles.spreadBadgeText}>{group.materials.length}</Text>
+                </View>
+              </View>
+
+              <View style={{ gap: 4 }}>
+                {group.materials.map((m) => (
+                  <View key={`${group.vendorCode}-${m.materialCode}`} style={styles.quoteRow}>
+                    <View style={styles.flex1}>
+                      <Text style={styles.quoteVendorText} numberOfLines={1}>{m.materialDesc || m.materialCode}</Text>
+                      <Text style={styles.quoteVendorCodeText}>{m.materialCode} · {formatQuoteDate(m)}</Text>
+                    </View>
+                    <Text style={styles.quoteRateText}>
+                      {m.rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {m.ratePer ? ` / ${m.ratePer}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+}
+
 export default function SubmissionHistoryScreen() {
   const { email, role, roleLoading } = useMarketRateAuth();
+  const [activeView, setActiveView] = useState<'compliance' | 'rates'>('compliance');
   const [year, setYear] = useState(String(CURRENT_YEAR));
   const [month, setMonth] = useState(CURRENT_MONTH_VALUE);
   const [status, setStatus] = useState<'all' | 'submitted' | 'pending'>('all');
@@ -417,6 +618,19 @@ export default function SubmissionHistoryScreen() {
   const ytdAvgCompliancePct =
     trendData.slice(0, monthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / Math.max(1, monthIdx + 1);
 
+  // Vendor Rate Comparison — independent of the Month/Status filters above (those are compliance-
+  // specific); only Year and the shared search box apply. Built straight off the same `submissions`
+  // already in state, no second API call.
+  const latestRates = useMemo(() => buildLatestVendorMaterialRates(submissions), [submissions]);
+  const rateGroups = useMemo(() => groupRatesByVendor(latestRates), [latestRates]);
+  const filteredRateGroups = useMemo(() => rateGroups.filter((g) => matchesVendorQuery(g, query)), [rateGroups, query]);
+  const materialsQuoted = latestRates.length;
+  const avgMaterialsPerVendor = rateGroups.length ? materialsQuoted / rateGroups.length : 0;
+  const topVendor = useMemo(() => {
+    const sorted = [...rateGroups].sort((a, b) => b.materials.length - a.materials.length);
+    return sorted[0] ? { vendorCode: sorted[0].vendorCode, vendorName: sorted[0].vendorName, count: sorted[0].materials.length } : null;
+  }, [rateGroups]);
+
   if (roleLoading) {
     return (
       <View style={styles.centerWrap}>
@@ -448,10 +662,30 @@ export default function SubmissionHistoryScreen() {
         </View>
       </View>
 
+      <View style={styles.tabRow}>
+        {([
+          { key: 'compliance', label: 'Compliance' },
+          { key: 'rates', label: 'Vendor Rate Comparison' },
+        ] as const).map((tab) => (
+          <Pressable
+            key={tab.key}
+            style={[styles.tabBtn, activeView === tab.key && styles.tabBtnActive]}
+            onPress={() => { setActiveView(tab.key); setQuery(''); }}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.tabBtnText, activeView === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
       <View style={styles.filterBar}>
         <FilterSelect label="Year" value={year} onChange={setYear} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} />
-        <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
-        <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
+        {activeView === 'compliance' && (
+          <>
+            <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
+            <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
+          </>
+        )}
       </View>
 
       {loading ? (
@@ -464,6 +698,17 @@ export default function SubmissionHistoryScreen() {
           <Ionicons name="alert-circle" size={16} color={colors.red} />
           <Text style={[styles.statusText, { color: colors.red }]}>{error}</Text>
         </View>
+      ) : activeView === 'rates' ? (
+        <VendorRateComparisonSection
+          groups={filteredRateGroups}
+          totalVendors={rateGroups.length}
+          materialsQuoted={materialsQuoted}
+          avgMaterialsPerVendor={avgMaterialsPerVendor}
+          topVendor={topVendor}
+          query={query}
+          setQuery={setQuery}
+          year={year}
+        />
       ) : totalExpected === 0 ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="file-tray-outline" size={22} color={colors.inkSoft} />
@@ -655,6 +900,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft,
     marginTop: 1,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: colors.white,
+    borderRadius: radii.pill,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
+  tabBtn: {
+    borderRadius: radii.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  tabBtnActive: {
+    backgroundColor: colors.rust,
+  },
+  tabBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.inkSoft,
+  },
+  tabBtnTextActive: {
+    color: colors.white,
+  },
+  spreadBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: `${colors.rust}14`,
+  },
+  spreadBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.rust,
+  },
+  quoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: radii.md,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: colors.appBg,
+  },
+  quoteVendorText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  quoteVendorCodeText: {
+    fontSize: 10.5,
+    color: colors.inkSoft,
+    marginTop: 1,
+  },
+  quoteRateText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
   },
   filterBar: {
     flexDirection: 'row',

@@ -1,0 +1,54 @@
+/* Change Log — every change made by every user and admin, filterable. Layout mirrors
+   Dashboard's Header -> filter row -> table (duplicated subset of dashboard.css /
+   importcenter.css, same convention those two already use). */
+
+.cl-filters-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.cl-filters-row select {
+  border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 9px; font-size: 11px;
+  background: var(--surface); color: var(--text); font-family: inherit; min-width: 122px;
+}
+.cl-search {
+  flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px; padding: 7px 11px;
+}
+.cl-search input { flex: 1; border: none; outline: none; background: none; font-size: 11.5px; color: var(--text); font-family: inherit; }
+.date-range {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 5px 9px; background: var(--surface); color: var(--muted);
+}
+.date-range input[type="date"] { border: none; outline: none; background: none; font-size: 10.5px; color: var(--text); font-family: inherit; }
+.date-range-arrow { color: var(--muted); font-size: 11px; }
+.btn-sm { padding: 6px 12px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 6px !important; }
+
+.cl-field-pill { display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+
+/* --- Table (duplicated subset of dashboard.css's table-view) ------------ */
+.table-view-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: auto; margin-bottom: 20px; }
+.table-view { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.table-view th { text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.table-view td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.table-view tbody tr:hover { background: var(--bg-alt); }
+.table-view tbody tr:last-child td { border-bottom: none; }
+.table-empty { text-align: center; color: var(--muted); padding: 24px 14px !important; }
+
+.cl-who { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.cl-item { font-weight: 600; color: var(--text); white-space: normal; }
+.cl-change { white-space: normal; }
+.cl-change-old { color: var(--muted); text-decoration: line-through; }
+.cl-change-arrow { color: var(--muted); margin: 0 4px; }
+.cl-change-new { color: var(--text); font-weight: 500; }
+.cl-time { white-space: nowrap; }
+
+/* --- Pagination (duplicated subset of dashboard.css) --------------------- */
+.table-pagination { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; flex-wrap: wrap; }
+.table-pagination-summary { font-size: 10.5px; color: var(--muted); }
+.pager-controls { display: flex; align-items: center; gap: 3px; }
+.pager-controls button {
+  min-width: 25px; height: 25px; padding: 0 5px; border-radius: 6px; border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit;
+}
+.pager-controls button.active { background: var(--accent); border-color: var(--accent); color: white; }
+.pager-controls button:disabled { opacity: .4; cursor: default; }
+.pager-ellipsis { color: var(--muted); font-size: 11px; padding: 0 2px; }
+.page-size { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--muted); flex-shrink: 0; }
+.page-size select { border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 7px; font-size: 10.5px; color: var(--text); background: var(--surface); font-family: inherit; }

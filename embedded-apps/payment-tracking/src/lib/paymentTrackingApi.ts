@@ -271,10 +271,12 @@ export interface VendorPOFollowupRow {
   status: string;
   /** Attachment, if any — returned inline on the same GET as every other field (confirmed live
    * 2026-09-10, per the backend's GET_ENTITYSET), not via a separate media/$value call. `filename`
-   * is set whenever a file exists on the server side even if `attachmentBase64` isn't (the backend
-   * skips sending content over 2MB to keep the response small — filename-only in that case, so the
-   * UI can at least say an attachment exists without being able to open it). Empty filename means
-   * no attachment for this PO item. */
+   * is set whenever a file exists on the server side even if `attachmentBase64` isn't. This used to
+   * be assumed to mean "the backend skips sending content over 2MB" (filename-only past that size),
+   * but that's now confirmed WRONG for at least one case — a file well under 2MB still came back
+   * with an empty Value. So filename-without-content doesn't reliably mean "too large"; it just
+   * means SAP didn't return the bytes, for a reason GET_ENTITYSET itself needs to be checked for.
+   * Empty filename means no attachment for this PO item. */
   filename: string; // Filename
   mimetype: string; // Mimetype
   attachmentBase64: string; // Value
@@ -390,7 +392,14 @@ function toProvItem(c: ProvisionConfirmation, email: string) {
     Maktx: row.materialDesc,
     Txz01: row.serviceText,
     Name1: row.vendorName,
-    Zaction: row.zaction,
+    // Per instruction: "Send for Invoice Approval" (DelvConf Yes) requests SES approval, so it's
+    // sent as Zaction 'SA' ("Approval for SES" per the ZROLE_ACTION domain — see
+    // PENDING_APPROVAL_ACTION_LABELS below) rather than echoing the row's original Zaction ('U').
+    // "Send for Revised Date Approval" (DelvConf No) is the matching 'RD' bucket ("Approval for
+    // Revised Delivery Date") — not separately called out in this round of instructions, but the
+    // same domain code Pending Approval's own RD tiles already expect, so both branches now write
+    // a real ZROLE_ACTION code instead of the stale 'U'.
+    Zaction: c.delvConf ? 'SA' : 'RD',
     RevisedDelDate: c.delvConf ? null : toODataDate(c.revisedDelDate),
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
@@ -483,15 +492,43 @@ export async function submitProvisionApprovalBatch(
 // ---------------------------------------------------------------------------------------------
 // Admin's Pending Approval decision — same ZProvHeader POST endpoint and same header/deep-insert
 // shape as submitProvisionApproval above ("the same POST method, same way", per instruction), just
-// with Zaction overridden to 'A' (Approve) or 'R' (Reject) instead of echoing the row's original
-// Zaction — that field is already how this entity carries a row's state, so an Admin decision is
-// just a different Zaction value on the same write. Every other field is echoed back from what the
-// GET already returned for that row, same posture as toProvItem above — nothing invented. Null
-// fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at the POST call site,
-// same as toProvItem.
-export type ApprovalDecision = 'A' | 'R';
+// with Zaction overridden instead of echoing the row's original Zaction — that field is already how
+// this entity carries a row's state, so an Admin decision is just a different Zaction value on the
+// same write. Approving a row already in the 'SA' (Approval for SES) bucket writes Zaction 'AS'
+// (SES Created) — the domain's own next-state code — rather than a bare 'A'; every other approval
+// (e.g. an 'RD' Revised Delivery Date row) still writes 'A'/'R' as before, since only the SES case
+// was called out. 'S' is a third decision value — Save, used when Admin just wants the edited
+// invoice fields/attachment persisted without deciding the row at all (see submitApprovalDecision's
+// callers in pending-approval.tsx, which never set `decided` for an 'S' call). Every other field is
+// echoed back from what the GET already returned for that row, same posture as toProvItem above —
+// nothing invented. Null fields here (RevisedDelDate/Eindt/ZinvDate) are stripped by omitNulls() at
+// the POST call site, same as toProvItem.
+export type ApprovalDecision = 'A' | 'R' | 'S';
 
-function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
+/** Admin-entered overrides for a row's four invoice fields — per instruction, Admin can fill these
+ * in on Pending Approval (and on Submission History's Mail for P2P, see InvoiceEditOverrides'
+ * sibling use in submitLogAction below) before the row goes out, same fields as Upcoming
+ * Provision's own editable trio + attachment. Undefined/blank means "leave whatever the row
+ * already had" — these are optional overlays on top of the row's own GET data, not a replacement
+ * for it. */
+export interface InvoiceEditOverrides {
+  invoiceNo?: string;
+  invoiceDate?: string;
+  invoiceAmount?: string;
+  attachmentBase64?: string;
+  attachmentMimeType?: string;
+  attachmentName?: string;
+}
+
+function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision, overrides?: InvoiceEditOverrides) {
+  const invoiceNo = overrides?.invoiceNo ?? row.invoiceNo;
+  const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
+  const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
+  const hasAttachment = !!overrides?.attachmentBase64;
+  // Approving (decision 'A') a row already in the 'SA' bucket (Approval for SES) is the point the
+  // SES actually gets created, so it writes 'AS' — every other decision (approving an 'RD' row,
+  // rejecting, or a plain 'S' save) writes the decision value itself unchanged.
+  const zaction = decision === 'A' && row.zaction === 'SA' ? 'AS' : decision;
   return {
     Lifnr: row.lifnr,
     Ebeln: row.poNumber,
@@ -500,26 +537,32 @@ function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision) {
     Maktx: row.materialDesc,
     Txz01: row.serviceText,
     Name1: row.vendorName,
-    Zaction: decision,
+    Zaction: zaction,
     RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
     Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
     Waers: row.currency,
     Brtwr: row.provisionValue,
-    ZzinvNo: row.invoiceNo,
-    ZinvDate: row.invoiceDate ? toODataDate(row.invoiceDate) : null,
-    ZzinvAmt: row.invoiceAmount,
+    ZzinvNo: invoiceNo,
+    ZinvDate: invoiceDate ? toODataDate(invoiceDate) : null,
+    ZzinvAmt: invoiceAmount,
     Comments: row.comments,
     DelvConf: 'Y',
+    Value: hasAttachment ? overrides!.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && overrides?.attachmentName ? overrides.attachmentName.slice(0, 90) : null,
   };
 }
 
 /** One or more Pending Approval rows, approved or rejected by the signed-in Admin — same
  * ZProvHeaderSet POST as submitProvisionApproval (header's Lifnr/Ebeln/Ebelp/Lblni taken from the
- * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email. */
+ * FIRST row, same SEGW key-trio requirement), Email always the signed-in Admin's own login email.
+ * `overridesByKey` (row.key -> InvoiceEditOverrides) lets Admin's own edited invoice fields/
+ * attachment ride along on the same POST, per row. */
 export async function submitApprovalDecision(
   rows: VendorPOFollowupRow[],
   email: string,
-  decision: ApprovalDecision
+  decision: ApprovalDecision,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
 ): Promise<void> {
   if (rows.length === 0) return;
   const first = rows[0];
@@ -529,7 +572,7 @@ export async function submitApprovalDecision(
     Ebeln: first.poNumber,
     Ebelp: first.poItemNo,
     Lblni: first.entrySheetNo,
-    ToProvItems: rows.map((r) => toApprovalItem(r, decision)),
+    ToProvItems: rows.map((r) => toApprovalItem(r, decision, overridesByKey?.[r.key])),
   };
   try {
     const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
@@ -539,9 +582,14 @@ export async function submitApprovalDecision(
     }
   } catch (err: any) {
     const sapMessage = err?.response?.data?.error?.message?.value;
-    const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
-    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+    throw new Error(sapMessage || (err instanceof Error ? err.message : approvalFallbackMessage(decision)));
   }
+}
+
+function approvalFallbackMessage(decision: ApprovalDecision): string {
+  if (decision === 'A') return 'Could not approve this item.';
+  if (decision === 'R') return 'Could not reject this item.';
+  return 'Could not save the invoice details.';
 }
 
 /** Mass approve/reject — groups the selected rows by vendor (Lifnr), one ZProvHeader POST per
@@ -551,7 +599,8 @@ export async function submitApprovalDecision(
 export async function submitApprovalDecisionBatch(
   rows: VendorPOFollowupRow[],
   email: string,
-  decision: ApprovalDecision
+  decision: ApprovalDecision,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
 ): Promise<{ lifnr: string; error: string }[]> {
   const groups = new Map<string, VendorPOFollowupRow[]>();
   rows.forEach((r) => {
@@ -563,10 +612,9 @@ export async function submitApprovalDecisionBatch(
   const failures: { lifnr: string; error: string }[] = [];
   for (const [lifnr, group] of groups) {
     try {
-      await submitApprovalDecision(group, email, decision);
+      await submitApprovalDecision(group, email, decision, overridesByKey);
     } catch (err) {
-      const fallback = decision === 'A' ? 'Could not approve this item.' : 'Could not reject this item.';
-      failures.push({ lifnr, error: err instanceof Error ? err.message : fallback });
+      failures.push({ lifnr, error: err instanceof Error ? err.message : approvalFallbackMessage(decision) });
     }
   }
   return failures;
@@ -577,20 +625,19 @@ export async function submitApprovalDecisionBatch(
 // same ZMM_PO_FOLLOWUP_SRV service. Per the ZROLE_ACTION domain (SE11), Zstatus is one of:
 //   RD = Revised Delivery Date, SA = Approval for SES, AS = SES Created,
 //   RS = SES Reversed, MS = Mail Sent to P2P
-// UNLIKE every other entity in this file, the field names below (Ebeln/Ebelp/Lifnr/Name1/Ktext1/
-// Zstatus/Zdate/Comments/Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt) are NOT confirmed
-// against the live SEGW entity — 'ZProvisionLogSet' has never been queried before now, and (per
-// this file's header comment) this service's own $metadata endpoint doesn't serve metadata at all,
-// so there's no schema to check them against offline either. They're a best-effort guess, following
-// the exact naming convention every other entity on this service already uses (Ebeln/Ebelp/Lifnr/
-// Name1/Email are identical field names on ZProvisionTrackSet and ZVendorPOFollowupSet above; the
-// delivery/provision/invoice fields below reuse the exact casing already confirmed live on
-// ZVendorPOFollowupSet's read side — Eindt/RevisedDeldate/Netwr/ZzinvNo/ZinvDate/ZzinvAmt, see
-// toVendorPOFollowupRow above — rather than the differently-cased RevisedDelDate/ZzinvDate one
-// might otherwise guess). toProvisionLogRow() below reads every field defensively (str()/
-// parseODataDate() already no-op to '' on anything missing/unparseable), so a wrong guess here
-// degrades to blank columns rather than a thrown error — ship this and correct field names once
-// SAP Basis confirms them or a live response shows the real ones.
+// Confirmed live 2026-09-16 (a real $filter'd GetEntitySet response): Filename/Comments/Email/
+// Mimetype/Lifnr/Ebeln/Ebelp/Lblni/Eindt/Waers/Netwr/ZzinvNo/ZinvDate/ZzinvAmt/RevisedDelDate/
+// Zstatus all come back exactly as mapped below. Matnr/Maktx/Zstatustxt are confirmed NOT present
+// on this entity at all (materialCode/materialDesc/the zstatusText fallback stay blank/derived,
+// that's expected). Two things changed between an earlier capture that same day and this one —
+// the entity itself now also returns `Value` (the attachment's base64 content, previously absent
+// even on rows with a populated Filename/Mimetype) and `LogDate`/`LogTime` (new fields, not
+// present before) — so this entity's own definition was extended server-side mid-day, not a
+// client request-format issue. `LogDate` is mapped to actionDate below (replacing the earlier
+// guess of a nonexistent `Zdate`); `LogTime` isn't currently surfaced anywhere in this row shape.
+// toProvisionLogRow() below still reads every field defensively (str()/parseODataDate() already
+// no-op to '' on anything missing/unparseable), so if this entity changes shape again it degrades
+// to blank columns rather than throwing.
 const LOG_ENTITY_SET = 'ZProvisionLogSet';
 
 /** Zstatus values per the ZROLE_ACTION domain (SE11) — see this section's header comment. */
@@ -608,8 +655,10 @@ export const PROVISION_LOG_STATUS_LABELS: Record<ProvisionLogStatus, string> = {
   MS: 'Mail Sent to P2P',
 };
 
-/** One submission-history entry from ZProvisionLogSet — see this section's header comment on why
- * these field names are a best-effort guess, not a confirmed mapping. */
+/** One submission-history entry from ZProvisionLogSet — see this section's header comment for what
+ * a live 2026-09-16 capture confirmed. entrySheetNo/currency/filename/mimetype/attachmentBase64
+ * all read correctly now; materialCode/materialDesc are confirmed always blank (the source fields
+ * don't exist on this entity). */
 export interface ProvisionLogRow {
   key: string;
   email: string; // Email
@@ -622,14 +671,27 @@ export interface ProvisionLogRow {
   /** Display label for zstatus — the entity's own text field if it returns one (guessed as
    * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
   zstatusText: string;
-  actionDate: string; // Zdate (guessed) — 'YYYY-MM-DD', when this log entry was recorded
+  actionDate: string; // LogDate — confirmed live 2026-09-16 (previously guessed as nonexistent Zdate)
   deliveryDate: string; // Eindt, 'YYYY-MM-DD'
-  revisedDeliveryDate: string; // RevisedDeldate, 'YYYY-MM-DD' or ''
+  revisedDeliveryDate: string; // RevisedDelDate, 'YYYY-MM-DD' or ''
   provisionValue: string; // Netwr
   invoiceNo: string; // ZzinvNo
   invoiceDate: string; // ZinvDate, 'YYYY-MM-DD'
   invoiceAmount: string; // ZzinvAmt
   remarks: string; // Comments
+  /** Lblni — confirmed live 2026-09-16. Needed as the ZProvHeader POST's header key trio
+   * (Lifnr/Ebeln/Ebelp/Lblni) for submitLogAction below, same as VendorPOFollowupRow.entrySheetNo. */
+  entrySheetNo: string; // Lblni
+  materialCode: string; // Matnr — confirmed 2026-09-16: not returned by this entity, always ''
+  materialDesc: string; // Maktx — confirmed 2026-09-16: not returned by this entity, always ''
+  currency: string; // Waers — confirmed live 2026-09-16
+  /** Attachment — filename/mimetype/attachmentBase64 (Value) all confirmed live 2026-09-16. Same
+   * "empty Value doesn't reliably mean anything specific" caveat as Pending Approval's
+   * VendorPOFollowupSet applies here too — an empty attachmentBase64 with a populated filename
+   * still gets the "Attachment unavailable" treatment rather than being treated as an error. */
+  filename: string; // Filename
+  mimetype: string; // Mimetype
+  attachmentBase64: string; // Value — see comment above, confirmed never populated by this read
 }
 
 function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLogRow {
@@ -645,14 +707,21 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
     serviceText: str(raw.Ktext1),
     zstatus,
     zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
-    actionDate: parseODataDate(raw.Zdate),
+    actionDate: parseODataDate(raw.LogDate),
     deliveryDate: parseODataDate(raw.Eindt),
-    revisedDeliveryDate: parseODataDate(raw.RevisedDeldate),
+    revisedDeliveryDate: parseODataDate(raw.RevisedDelDate),
     provisionValue: str(raw.Netwr),
     invoiceNo: str(raw.ZzinvNo),
     invoiceDate: parseODataDate(raw.ZinvDate),
     invoiceAmount: str(raw.ZzinvAmt),
     remarks: str(raw.Comments),
+    entrySheetNo: str(raw.Lblni),
+    materialCode: str(raw.Matnr),
+    materialDesc: str(raw.Maktx),
+    currency: str(raw.Waers),
+    filename: str(raw.Filename),
+    mimetype: str(raw.Mimetype),
+    attachmentBase64: str(raw.Value),
   };
 }
 
@@ -665,4 +734,420 @@ export async function fetchProvisionLog(email: string): Promise<ProvisionLogRow[
   const { data } = await sapClient.get(`/${LOG_ENTITY_SET}`, { params });
   const results = data?.d?.results;
   return Array.isArray(results) ? results.map(toProvisionLogRow) : [];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Submission History row actions — for a row already in the 'AS' (SES Created) state, the next
+// step is either reversing that SES or notifying P2P, not an approve/reject decision (that already
+// happened earlier, which is how the row got to 'AS' in the first place). Same ZProvHeaderSet POST
+// as every other write in this app ("call create entityset with different actions", per
+// instruction), just with Zaction set to 'RS' or 'MS'. 'S' is a third action — Save — used when
+// Admin just wants the edited invoice fields/attachment persisted without reversing the SES or
+// mailing P2P (see history.tsx's own Save button, which calls this without ever touching
+// doneActions the way RS/MS do, since a save doesn't complete/hide the row).
+export type LogAction = 'RS' | 'MS' | 'S';
+
+export const LOG_ACTION_LABELS: Record<LogAction, string> = {
+  RS: 'Reverse SES',
+  MS: 'Mail for P2P',
+  S: 'Save Invoice Details',
+};
+
+function toLogActionItem(row: ProvisionLogRow, action: LogAction, overrides?: InvoiceEditOverrides) {
+  const invoiceNo = overrides?.invoiceNo ?? row.invoiceNo;
+  const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
+  const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
+  const hasAttachment = !!overrides?.attachmentBase64;
+  return {
+    Lifnr: row.vendor,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Matnr: row.materialCode,
+    Maktx: row.materialDesc,
+    Txz01: row.serviceText,
+    Name1: row.vendorName,
+    Zaction: action,
+    RevisedDelDate: row.revisedDeliveryDate ? toODataDate(row.revisedDeliveryDate) : null,
+    Eindt: row.deliveryDate ? toODataDate(row.deliveryDate) : null,
+    Waers: row.currency,
+    Brtwr: row.provisionValue,
+    ZzinvNo: invoiceNo,
+    ZinvDate: invoiceDate ? toODataDate(invoiceDate) : null,
+    ZzinvAmt: invoiceAmount,
+    Comments: row.remarks,
+    // Delivery was already confirmed well before this row ever reached 'AS' (SES Created) — same
+    // posture as toApprovalItem's own hardcoded 'Y' for Pending Approval decisions.
+    DelvConf: 'Y',
+    Value: hasAttachment ? overrides!.attachmentBase64 : null,
+    Mimetype: hasAttachment ? 'PDF' : null,
+    Filename: hasAttachment && overrides?.attachmentName ? overrides.attachmentName.slice(0, 90) : null,
+  };
+}
+
+/** One Submission History row (already 'AS'/SES Created), reversed or mailed to P2P by the
+ * signed-in user — same ZProvHeaderSet POST/header-key-trio shape as submitApprovalDecision.
+ * `row.entrySheetNo` (Lblni) is NOT yet confirmed live on ZProvisionLogSet — see ProvisionLogRow's
+ * header comment; if this 404s/silently no-ops, that's the first thing to check. `overrides` lets
+ * Admin's own edited Invoice Number/Date/Amount + attachment (filled in before Mail for P2P, see
+ * history.tsx) ride along on this same POST. */
+export async function submitLogAction(
+  row: ProvisionLogRow,
+  email: string,
+  action: LogAction,
+  overrides?: InvoiceEditOverrides
+): Promise<void> {
+  const payload = {
+    Lifnr: row.vendor,
+    Email: email,
+    Ebeln: row.poNumber,
+    Ebelp: row.poItemNo,
+    Lblni: row.entrySheetNo,
+    ToProvItems: [toLogActionItem(row, action, overrides)],
+  };
+  try {
+    const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
+    const body = result.data?.d || result.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this submission.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    const fallback = action === 'RS'
+      ? 'Could not reverse this SES.'
+      : action === 'MS'
+        ? 'Could not send mail to P2P.'
+        : 'Could not save the invoice details.';
+    throw new Error(sapMessage || (err instanceof Error ? err.message : fallback));
+  }
+}
+
+/** Mass "Mail for P2P" (or Reverse SES/Save) — same vendor-grouped batching convention as
+ * submitProvisionApprovalBatch/submitApprovalDecisionBatch: one ZProvHeader POST per vendor
+ * (Lifnr), since the header requires one representative Ebeln/Ebelp/Lblni trio, with every
+ * selected row for that vendor riding along as its own ToProvItems entry. Runs sequentially (not
+ * Promise.all) so one vendor's failure can't leave a partial, hard-to-diagnose mix of concurrent
+ * SAP writes; returns which vendor groups failed instead of throwing on the first one, same
+ * per-vendor result shape as those siblings. */
+export async function submitLogActionBatch(
+  rows: ProvisionLogRow[],
+  email: string,
+  action: LogAction,
+  overridesByKey?: Record<string, InvoiceEditOverrides>
+): Promise<{ lifnr: string; error: string }[]> {
+  const groups = new Map<string, ProvisionLogRow[]>();
+  rows.forEach((r) => {
+    const key = r.vendor || '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  });
+
+  const failures: { lifnr: string; error: string }[] = [];
+  for (const [lifnr, group] of groups) {
+    const first = group[0];
+    const payload = {
+      Lifnr: first.vendor,
+      Email: email,
+      Ebeln: first.poNumber,
+      Ebelp: first.poItemNo,
+      Lblni: first.entrySheetNo,
+      ToProvItems: group.map((r) => toLogActionItem(r, action, overridesByKey?.[r.key])),
+    };
+    try {
+      const result = await sapClient.post(`/${PROV_HEADER_ENTITY_SET}`, omitNulls(payload));
+      const body = result.data?.d || result.data;
+      if (body?.Type === 'E') {
+        throw new Error(body.Message || 'SAP rejected this submission.');
+      }
+    } catch (err: any) {
+      const sapMessage = err?.response?.data?.error?.message?.value;
+      failures.push({
+        lifnr,
+        error: sapMessage || (err instanceof Error ? err.message : 'Could not send mail to P2P.'),
+      });
+    }
+  }
+  return failures;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Service PO bulk upload — Admin PO Creation tab's "Service PO Bulk Upload" section. Unlike the
+// rest of this file (and unlike the sibling client-side PO-creation simulator in
+// poCreationSimulator.ts), this is a REAL SAP call: a single POST to the deep entity
+// ZSrvPOUploadSet, whose response carries the full per-row result — there is no separate GET.
+// ---------------------------------------------------------------------------------------------
+
+/** d.Status — 'S' every row posted, 'P' partial (some posted, some failed), 'E' nothing posted
+ * (parse failure, or every row rejected — ToUploadItems.results is empty in that case). */
+export type PoUploadStatus = 'S' | 'P' | 'E';
+
+/** Per-row Type — 'S' posted, 'E' failed. */
+export type PoUploadRowType = 'S' | 'E';
+
+/** One row of ToUploadItems.results. Menge/GrPrice arrive as STRINGS (parseFloat before any
+ * arithmetic or formatting); Ebeln/Ebelp are empty strings on a failed row.
+ *
+ * name1/ekgrp/ekorg/waers/orderid were added for the ALV-style report (per instruction,
+ * 2026-09-15) — none of these were part of the originally-specified ToUploadItems.results shape,
+ * so they're an assumption the backend now also returns them. Every field name here follows the
+ * same "first letter capitalized, rest lowercase" wire casing already confirmed for every other
+ * field (Grprice, Sakto, Kostl, Ebeln, Ebelp, Txz01, Menge, Lifnr — see grPrice's own note above)
+ * and independently cross-checked against the real upload template's own column headers
+ * (EKGRP/EKORG/WAERS/ORDERID all present there) — high confidence, but unverified against a live
+ * response; if any of these render blank, that's the tell the real field name differs. */
+export interface PoUploadResultRow {
+  rowno: number; // Rowno — Excel row number, header counted as row 1, so the first data row is 2
+  lifnr: string; // Lifnr — vendor code, zero-padded
+  name1: string; // Name1 — vendor name
+  bukrs: string; // Bukrs — company code
+  poId: number; // PoId — this row's group id within the upload, not a PO number
+  txz01: string; // Txz01 — line text
+  ekgrp: string; // Ekgrp — purchase group
+  ekorg: string; // Ekorg — purchase organization
+  menge: string; // Menge — quantity, STRING
+  grPrice: string; // wire field is "Grprice" (not "GrPrice" as originally specified) — price, STRING
+  waers: string; // Waers — currency
+  werks: string; // Werks — plant
+  sakto: string; // Sakto — GL account, zero-padded
+  kostl: string; // Kostl — cost center, zero-padded
+  orderid: string; // Orderid — internal order
+  ebeln: string; // Ebeln — PO number, empty when the row failed
+  ebelp: string; // Ebelp — PO item, e.g. "00010", empty when the row failed
+  type: PoUploadRowType;
+  message: string; // SAP message, verbatim — show unmodified, do not truncate
+}
+
+export interface PoUploadResult {
+  guid: string;
+  status: PoUploadStatus;
+  message: string;
+  totalRows: number;
+  successCnt: number;
+  errorCnt: number;
+  rows: PoUploadResultRow[]; // empty when Status === 'E' from a parse failure
+}
+
+/** Distinguishes the three upload failure modes the Service PO Bulk Upload section must show
+ * differently: a timed-out request (never retry automatically — the backend may have already
+ * created POs), a network failure (safe to retry), and a real SAP/Gateway error body (safe to
+ * retry). */
+export class PoUploadError extends Error {
+  kind: 'timeout' | 'network' | 'sap';
+  constructor(kind: PoUploadError['kind'], message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+const SERVICE_PO_UPLOAD_ENTITY_SET = 'ZSrvPOUploadSet';
+const SERVICE_PO_UPLOAD_MIMETYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** SAP RAW16/CHAR32 wants 32 uppercase hex characters, no dashes. `crypto.randomUUID()` isn't
+ * reliably available on native RN/Hermes (no Web Crypto global without an extra polyfill package,
+ * which isn't installed here), so this builds the same shape from Math.random — fine for a
+ * client-generated dedup key with no cryptographic requirement. Called fresh inside
+ * uploadServicePoFile for every attempt, including a manual retry, since Guid is the backend's
+ * dedup key for one upload. */
+function generatePoUploadGuid(): string {
+  let hex = '';
+  for (let i = 0; i < 32; i += 1) {
+    hex += Math.floor(Math.random() * 16).toString(16);
+  }
+  return hex.toUpperCase();
+}
+
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Manual byte-array -> base64 encoder. expo-file-system isn't installed in this app (so there's
+ * no readAsStringAsync helper) and RN doesn't reliably expose a global btoa, so this works
+ * directly off the ArrayBuffer already returned by fetch(uri).arrayBuffer() — the same read
+ * parseExcelFile uses in poCreationSimulator.ts. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i];
+    const b2 = bytes[i + 1];
+    const b3 = bytes[i + 2];
+    const hasB2 = i + 1 < bytes.length;
+    const hasB3 = i + 2 < bytes.length;
+    chunks.push(BASE64_CHARS[b1 >> 2]);
+    chunks.push(BASE64_CHARS[((b1 & 0x03) << 4) | (hasB2 ? b2 >> 4 : 0)]);
+    chunks.push(hasB2 ? BASE64_CHARS[((b2 & 0x0f) << 2) | (hasB3 ? b3 >> 6 : 0)] : '=');
+    chunks.push(hasB3 ? BASE64_CHARS[b3 & 0x3f] : '=');
+  }
+  return chunks.join('');
+}
+
+function toPoUploadRow(raw: Record<string, any>): PoUploadResultRow {
+  const str = (v: unknown) => (v != null ? String(v) : '');
+  return {
+    rowno: Number(raw.Rowno ?? 0),
+    lifnr: str(raw.Lifnr),
+    name1: str(raw.Name1),
+    bukrs: str(raw.Bukrs),
+    poId: Number(raw.PoId ?? 0),
+    txz01: str(raw.Txz01),
+    ekgrp: str(raw.Ekgrp),
+    ekorg: str(raw.Ekorg),
+    menge: str(raw.Menge),
+    // The backend contract as originally specified calls this field "GrPrice", but the live SAP
+    // response actually sends "Grprice" (only the leading G capitalized) — confirmed 2026-09-15
+    // after Amount showed blank while Qty (Menge, which does match) worked fine. JS property
+    // access is case-sensitive, so this must match the real wire field, not the written spec.
+    grPrice: str(raw.Grprice),
+    waers: str(raw.Waers),
+    werks: str(raw.Werks),
+    sakto: str(raw.Sakto),
+    kostl: str(raw.Kostl),
+    orderid: str(raw.Orderid),
+    ebeln: str(raw.Ebeln),
+    ebelp: str(raw.Ebelp),
+    type: raw.Type === 'S' ? 'S' : 'E',
+    message: str(raw.Message),
+  };
+}
+
+/** Bulk Service-PO upload — a single POST to the deep entity ZSrvPOUploadSet; there is no
+ * separate GET, the POST response itself carries the full per-row result (see PoUploadResult).
+ *
+ * Assumes ZSrvPOUploadSet lives on this same ZMM_PO_FOLLOWUP_SRV service — the backend contract
+ * for this feature only names the entity set, not a service host, and this is the only SAP
+ * service this app talks to. Confirm with SAP Basis; if it's actually a different service, only
+ * SAP_BASE_URL above needs to change for this call.
+ *
+ * `uri` is the file picked via expo-document-picker (see po-creation.tsx) — read with
+ * fetch(uri).arrayBuffer(), same as parseExcelFile in poCreationSimulator.ts, then base64 encoded
+ * here since the backend wants plain base64, no data-URI prefix, no wrapping.
+ *
+ * Timeout is 120s: the backend calls BAPI_PO_CREATE1 once per PO group and can legitimately take
+ * a minute on a large file. Never retry automatically on a timeout — the backend may have already
+ * created POs, and a second attempt would create duplicates (see PoUploadError). */
+export async function uploadServicePoFile(
+  email: string,
+  filename: string,
+  uri: string,
+  onProgress?: (pct: number) => void
+): Promise<PoUploadResult> {
+  const fileRes = await fetch(uri);
+  const buffer = await fileRes.arrayBuffer();
+  const base64 = arrayBufferToBase64(buffer);
+
+  const payload = {
+    Guid: generatePoUploadGuid(),
+    Email: email,
+    Filename: filename,
+    Mimetype: SERVICE_PO_UPLOAD_MIMETYPE,
+    Value: base64,
+    ToUploadItems: [],
+  };
+
+  let data: any;
+  try {
+    const res = await sapClient.post(`/${SERVICE_PO_UPLOAD_ENTITY_SET}`, payload, {
+      params: { '$format': 'json' },
+      timeout: 120000,
+      onUploadProgress: (evt: any) => {
+        if (onProgress && evt.total) onProgress(Math.round((evt.loaded / evt.total) * 100));
+      },
+    });
+    data = res.data;
+  } catch (err: any) {
+    if (err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message ?? '')) {
+      throw new PoUploadError(
+        'timeout',
+        'The upload is taking longer than expected. Check whether the POs were created before retrying.'
+      );
+    }
+    if (!err?.response) {
+      throw new PoUploadError('network', 'Network error — could not reach the server. Check your connection and try again.');
+    }
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new PoUploadError('sap', sapMessage || (err instanceof Error ? err.message : 'Upload failed.'));
+  }
+
+  const body = data?.d;
+  const results = body?.ToUploadItems?.results;
+  return {
+    guid: body?.Guid != null ? String(body.Guid) : '',
+    status: body?.Status === 'S' || body?.Status === 'P' ? body.Status : 'E',
+    message: body?.Message != null ? String(body.Message) : '',
+    totalRows: Number(body?.TotalRows ?? 0),
+    successCnt: Number(body?.SuccessCnt ?? 0),
+    errorCnt: Number(body?.ErrorCnt ?? 0),
+    rows: Array.isArray(results) ? results.map(toPoUploadRow) : [],
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// PO Header Quotation Attachment — a single flat POST to ZPOAttachmentSet once a Service PO already
+// exists (see the Service PO Bulk Upload result view in po-creation.tsx), attaching a quotation
+// document at the PO header level. Per instruction: Ebeln, QuotFilename, QuotMimetype, QuotValue,
+// Description — no deep/nested items, unlike ZSrvPOUploadSet above.
+// ---------------------------------------------------------------------------------------------
+
+const PO_ATTACHMENT_ENTITY_SET = 'ZPOAttachmentSet';
+
+/** Posts a quotation attachment against an already-created PO's header. `base64Value` should
+ * already be under the same body-size ceiling every other attachment on this SAP service is held
+ * to (see pdfAttachment.ts's MAX_ATTACHMENT_BYTES/ensureAttachmentUnderLimit) — this call doesn't
+ * re-check it, the caller is expected to have compressed/validated first. */
+export async function submitPoAttachment(
+  ebeln: string,
+  quotFilename: string,
+  quotMimetype: string,
+  quotValue: string,
+  description: string
+): Promise<void> {
+  const payload = {
+    Ebeln: ebeln,
+    QuotFilename: quotFilename,
+    QuotMimetype: quotMimetype,
+    QuotValue: quotValue,
+    Description: description,
+  };
+  try {
+    const res = await sapClient.post(`/${PO_ATTACHMENT_ENTITY_SET}`, payload);
+    const body = res.data?.d || res.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this attachment.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not save this attachment.'));
+  }
+}
+
+/** One PO header's quotation, as SAP actually returns it — filename, mimetype and the raw base64
+ * document content (`Value`), same field names ZPOAttachmentSet was posted with. */
+export interface PoAttachment {
+  filename: string;
+  mimetype: string;
+  value: string;
+}
+
+/** Reads back the quotation attached to a PO's header — a keyed GetEntity read
+ * (`ZPOAttachmentSet(Ebeln='...')`), per instruction, mirroring the same keyed-GetEntity pattern
+ * PO Deviation Approval's own printform fetch already uses successfully against this SAP
+ * landscape (see embedded-apps/fm-po-deviation/src/lib/sapClient.ts's fetchPrintformPdf). Returns
+ * null when the PO genuinely has no quotation on file yet (404 on the keyed read) — every apps
+ * "View Quotation" button is expected to treat that as "nothing to show" rather than an error. */
+export async function fetchPoAttachment(ebeln: string): Promise<PoAttachment | null> {
+  const key = ebeln.replace(/'/g, "''"); // OData string literals escape a single quote by doubling it
+  try {
+    const res = await sapClient.get(`/${PO_ATTACHMENT_ENTITY_SET}(Ebeln='${key}')`, {
+      params: { '$format': 'json' },
+    });
+    const entity = res.data?.d;
+    const value = entity?.QuotValue;
+    if (!value) return null;
+    return {
+      filename: entity?.QuotFilename ? String(entity.QuotFilename) : `Quotation_${ebeln}`,
+      mimetype: entity?.QuotMimetype ? String(entity.QuotMimetype) : 'application/pdf',
+      value: String(value),
+    };
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not load this quotation.'));
+  }
 }

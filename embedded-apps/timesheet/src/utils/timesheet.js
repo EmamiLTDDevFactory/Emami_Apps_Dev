@@ -18,20 +18,23 @@ export const PAYROLL_CUTOFF_DAYS = 10 // days after month end an Approved timesh
 // Leave and Public Holiday are excluded on purpose - neither is capped.
 export const ACCRUAL_LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave']
 
+// Hub-palette status colors (no dark: variants — this app ships one consistent hub-matched
+// look, see the removed ThemeContext/midnight-minimal picker).
 export const STATUS_STYLES = {
-  [STATUS.DRAFT]: { badge: 'bg-gray-100 text-gray-700 ring-gray-400/30 dark:bg-slate-700/60 dark:text-slate-300 dark:ring-slate-500/30', dot: 'bg-gray-400' },
-  [STATUS.SUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/30', dot: 'bg-amber-500' },
-  [STATUS.RESUBMITTED]: { badge: 'bg-amber-100 text-amber-800 ring-amber-400/30 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-400/30', dot: 'bg-amber-500' },
-  [STATUS.APPROVED]: { badge: 'bg-green-100 text-green-800 ring-green-400/30 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-400/30', dot: 'bg-green-500' },
-  [STATUS.REJECTED]: { badge: 'bg-red-100 text-red-800 ring-red-400/30 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30', dot: 'bg-red-500' },
-  [STATUS.LOCKED]: { badge: 'bg-slate-200 text-slate-700 ring-slate-400/30 dark:bg-slate-700 dark:text-slate-300 dark:ring-slate-500/30', dot: 'bg-slate-500' },
-  Overdue: { badge: 'bg-orange-100 text-orange-800 ring-orange-400/30 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-400/30', dot: 'bg-orange-500' },
+  [STATUS.DRAFT]: { badge: 'bg-white text-inkSoft ring-border', dot: 'bg-inkSoft' },
+  [STATUS.SUBMITTED]: { badge: 'bg-amberBg text-amber ring-amber/30', dot: 'bg-amber' },
+  [STATUS.RESUBMITTED]: { badge: 'bg-amberBg text-amber ring-amber/30', dot: 'bg-amber' },
+  [STATUS.APPROVED]: { badge: 'bg-greenBg text-green ring-green/30', dot: 'bg-green' },
+  [STATUS.REJECTED]: { badge: 'bg-redBg text-red ring-red/30', dot: 'bg-red' },
+  [STATUS.LOCKED]: { badge: 'bg-glassRust text-inkSoft ring-border', dot: 'bg-inkSoft' },
+  Overdue: { badge: 'bg-redBg text-red ring-red/30', dot: 'bg-red' },
 }
 
 // Expected hours for a month = 8h for every working day in it (Mon-Fri, plus
-// working Saturdays - the 1st/3rd/5th of the month).
-export function expectedMonthlyHours(monthStartIso) {
-  return countWorkingDays(monthStartIso) * HOURS_PER_WEEKDAY
+// working Saturdays - the 1st/3rd/5th of the month, plus any the manager has
+// individually flipped to working - see date.js's `overrides` param).
+export function expectedMonthlyHours(monthStartIso, overrides) {
+  return countWorkingDays(monthStartIso, overrides) * HOURS_PER_WEEKDAY
 }
 
 // Whether an Approved timesheet is past the mock payroll cutoff and should be
@@ -83,8 +86,8 @@ export function computeRowTotal(entries, taskId) {
 // contribute 0h to worked-hours totals, each leave day taken on or before
 // `referenceDate` also lowers what's expected, so taking leave doesn't
 // create an artificial shortfall.
-export function expectedHoursToDate(monthStartIso, referenceDate = new Date(), leaveDaysToDate = 0) {
-  const base = countWorkingDaysUpTo(monthStartIso, referenceDate) * HOURS_PER_WEEKDAY
+export function expectedHoursToDate(monthStartIso, referenceDate = new Date(), leaveDaysToDate = 0, overrides) {
+  const base = countWorkingDaysUpTo(monthStartIso, referenceDate, overrides) * HOURS_PER_WEEKDAY
   return Math.max(0, base - leaveDaysToDate * HOURS_PER_WEEKDAY)
 }
 

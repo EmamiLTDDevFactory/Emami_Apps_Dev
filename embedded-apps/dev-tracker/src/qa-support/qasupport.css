@@ -1,0 +1,89 @@
+/* QA Support — categories rail, FAQ accordion, search/popular/contact rail. Table/card
+   primitives come from base.css; this file is layout + this page's own components only. */
+
+/* Duplicated from dashboard.css (this page doesn't import that file — see the note on this
+   pattern in importcenter.css): the search-box chrome and small-button sizing. */
+.search-by-id {
+  flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px; padding: 7px 11px;
+}
+.search-by-id input { flex: 1; border: none; outline: none; background: none; font-size: 11.5px; color: var(--text); font-family: inherit; }
+.btn-sm { padding: 6px 12px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 6px !important; }
+
+.qa-header-note { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.qa-header-badge {
+  width: 40px; height: 40px; border-radius: 11px; background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.qa-header-tagline { font-size: 11px; font-style: italic; color: var(--text-2); line-height: 1.45; text-align: right; }
+
+.qa-layout { display: grid; grid-template-columns: 190px 1fr 280px; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .qa-layout { grid-template-columns: 1fr; } }
+
+/* --- Categories rail ----------------------------------------------------- */
+.qa-categories-card { padding: 12px; position: sticky; top: 16px; }
+.qa-categories-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 4px 8px 9px; }
+.qa-category-btn {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none;
+  background: none; border-radius: 8px; padding: 7px 8px; font-size: 11px; font-weight: 500;
+  color: var(--text-2); cursor: pointer; font-family: inherit; margin-bottom: 2px;
+}
+.qa-category-btn svg { flex-shrink: 0; color: var(--muted); }
+.qa-category-btn:hover { background: var(--bg-alt); color: var(--text); }
+.qa-category-btn.active { background: var(--accent); color: white; font-weight: 600; }
+.qa-category-btn.active svg { color: white; }
+
+/* --- Main FAQ column ------------------------------------------------------ */
+.qa-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.qa-section-card { padding: 16px 18px; }
+.qa-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+.qa-section-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.qa-section-sub { font-size: 10px; color: var(--text-2); margin-top: 2px; }
+.qa-section-count { font-size: 9.5px; font-weight: 600; color: var(--muted); background: var(--bg-alt); border-radius: 999px; padding: 3px 9px; flex-shrink: 0; white-space: nowrap; }
+
+.qa-faq-item { border: 1px solid var(--border); border-radius: 9px; margin-bottom: 7px; overflow: hidden; }
+.qa-faq-item:last-child { margin-bottom: 0; }
+.qa-faq-item.open { border-color: var(--accent); }
+.qa-faq-question {
+  width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; border: none;
+  background: var(--surface); padding: 9px 11px; cursor: pointer; font-family: inherit;
+}
+.qa-faq-item.open .qa-faq-question { background: var(--accent-soft); }
+.qa-faq-number {
+  width: 17px; height: 17px; border-radius: 50%; background: var(--bg-alt); color: var(--text-2);
+  font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.qa-faq-item.open .qa-faq-number { background: var(--accent); color: white; }
+.qa-faq-question-text { flex: 1; font-size: 11px; font-weight: 600; color: var(--text); }
+.qa-faq-caret { color: var(--muted); flex-shrink: 0; transition: transform .15s ease; }
+.qa-faq-item.open .qa-faq-caret { transform: rotate(180deg); color: var(--accent); }
+.qa-faq-answer { padding: 11px 13px 13px 37px; font-size: 10.5px; color: var(--text-2); line-height: 1.6; background: var(--surface); }
+
+/* --- Right rail ------------------------------------------------------------ */
+.qa-rail { display: flex; flex-direction: column; gap: 12px; }
+.qa-rail-card { padding: 13px 15px; }
+.qa-rail-title { font-size: 11.5px; font-weight: 700; color: var(--text); margin-bottom: 9px; display: flex; align-items: center; gap: 6px; }
+.qa-rail-title-icon { color: var(--st-amber); }
+.qa-search-box { width: 100%; }
+
+.qa-popular-list { display: flex; flex-direction: column; }
+.qa-popular-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left;
+  border: none; background: none; border-radius: 7px; padding: 7px 7px; font-size: 10.5px; font-weight: 500;
+  color: var(--accent); cursor: pointer; font-family: inherit; border-bottom: 1px solid var(--border);
+}
+.qa-popular-row:last-child { border-bottom: none; }
+.qa-popular-row:hover { background: var(--bg-alt); }
+.qa-popular-row svg { flex-shrink: 0; color: var(--muted); }
+.qa-popular-row span:first-child { flex: 1; min-width: 0; }
+
+.qa-tone-green { background: linear-gradient(165deg, var(--st-green-soft) 0%, var(--surface) 70%); }
+.qa-tone-purple { background: linear-gradient(165deg, var(--st-purple-soft) 0%, var(--surface) 70%); }
+.qa-rail-icon-circle {
+  width: 29px; height: 29px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;
+}
+.qa-rail-icon-circle.tone-green { background: var(--st-green); color: white; }
+.qa-rail-icon-circle.tone-purple { background: var(--st-purple); color: white; }
+.qa-rail-card-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.qa-rail-card-text { font-size: 10px; color: var(--text-2); line-height: 1.5; margin-bottom: 11px; }
+.qa-rail-btn { width: 100%; justify-content: center; background: var(--surface); }

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Navbar from "./Navbar";
 import { apiPost } from "../../api/client";
-import { EMAMI_APPS_URL, IS_LOCAL_HOST } from "./emamiAppsUrl";
+import { EMAMI_APPS_URL } from "./emamiAppsUrl";
 
 // AsyncStorage's web backend writes straight to localStorage under this exact key, unprefixed —
 // see the hub's src/context/AuthContext.tsx. Audit & CAPA runs same-origin under /apps/audit-capa
@@ -37,15 +37,10 @@ export default function Layout() {
       const hubToken = localStorage.getItem(HUB_SESSION_TOKEN_KEY);
 
       if (!hubToken) {
-        if (IS_LOCAL_HOST) {
-          setErrorMessage(
-            "No Emami Apps session found. Sign in to Emami Apps in another tab, then reload this page."
-          );
-          setStatus("error");
-          return;
-        }
-
-        window.location.replace(EMAMI_APPS_URL);
+        setErrorMessage(
+          "No Emami Apps session found. Sign in to Emami Apps in another tab, then reload this page."
+        );
+        setStatus("error");
         return;
       }
 
@@ -76,15 +71,10 @@ export default function Layout() {
           return;
         }
 
-        if (IS_LOCAL_HOST) {
-          setErrorMessage(
-            error?.message || "Could not sign you in. Please try again from Emami Apps."
-          );
-          setStatus("error");
-          return;
-        }
-
-        window.location.replace(EMAMI_APPS_URL);
+        setErrorMessage(
+          error?.message || "Could not sign you in. Please try again from Emami Apps."
+        );
+        setStatus("error");
       }
     };
 

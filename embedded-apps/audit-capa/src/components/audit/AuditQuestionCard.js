@@ -646,22 +646,23 @@ export default function AuditQuestionCard({
                                 }
                             />
                         </Grid>
+                    </>
+                )}
 
-                        {/* <Grid item xs={12}> */}
-                        {/* <Grid item xs={12} sm={6} md={2}> */}
-                        {/* <Grid
-                            item
-                            xs={12}
-                            md={isAuditorTablet ? 3 : 12}
-                        > */}
-                        <Grid
-                            item
-                            xs={12}
-                            sm={6}
-                            md={3}
-                            lg={2}
-                        >
-                            {/* <TextField
+                {/* Target Date is normally CQA's field (like Action Plan/Responsibility
+                    above), but a Depot user self-assessing a Desktop audit needs to be able
+                    to set it themselves for Non-Compliance items — otherwise the CAPA that
+                    gets auto-generated from their submission has no target date at all, and
+                    Depot can't set one afterward either (CAPAManagement disables it for them). */}
+                {(!isDepotSelfAssessment || isNonCompliance) && (
+                    <Grid
+                        item
+                        xs={12}
+                        sm={6}
+                        md={3}
+                        lg={2}
+                    >
+                        {/* <TextField
                                 fullWidth
                                 type="date"
                                 label="Target Date"
@@ -750,8 +751,7 @@ export default function AuditQuestionCard({
                                     },
                                 }}
                             />
-                        </Grid>
-                    </>
+                    </Grid>
                 )}
 
                 {/* <Grid item xs={12}>
