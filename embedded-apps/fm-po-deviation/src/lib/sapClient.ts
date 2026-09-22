@@ -9,7 +9,7 @@
 import axios from 'axios';
 import type { PoAction, PoRow, PoUser } from '../types/po';
 
-const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZFMPODEVIATION_SRV';
+const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZFMPODEVIATION_SRV';
 
 const sapClient = axios.create({
   baseURL: SAP_BASE_URL,
