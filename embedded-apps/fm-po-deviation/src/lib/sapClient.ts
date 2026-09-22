@@ -187,7 +187,7 @@ export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> 
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new Blob([bytes], { type: 'application/pdf' });
+    return new Blob([bytes], { type: entity?.Mimetype || 'application/pdf' });
   } catch (err: any) {
     if (err?.response?.status === 404) return null;
     throw err;

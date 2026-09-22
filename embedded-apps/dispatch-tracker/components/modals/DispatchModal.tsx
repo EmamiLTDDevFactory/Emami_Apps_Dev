@@ -110,6 +110,7 @@ export function DispatchModal({
         werks: row.depot,
         row_data: row,
         dispatch_date: isoDate(dispatchDate),
+        edd: row.edd,
         lr_no: lrNo.trim(),
         vehicle_no: vehicleNo.trim(),
         vehicle_type: vehicleType,

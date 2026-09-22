@@ -1077,3 +1077,77 @@ export async function uploadServicePoFile(
     rows: Array.isArray(results) ? results.map(toPoUploadRow) : [],
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// PO Header Quotation Attachment — a single flat POST to ZPOAttachmentSet once a Service PO already
+// exists (see the Service PO Bulk Upload result view in po-creation.tsx), attaching a quotation
+// document at the PO header level. Per instruction: Ebeln, QuotFilename, QuotMimetype, QuotValue,
+// Description — no deep/nested items, unlike ZSrvPOUploadSet above.
+// ---------------------------------------------------------------------------------------------
+
+const PO_ATTACHMENT_ENTITY_SET = 'ZPOAttachmentSet';
+
+/** Posts a quotation attachment against an already-created PO's header. `base64Value` should
+ * already be under the same body-size ceiling every other attachment on this SAP service is held
+ * to (see pdfAttachment.ts's MAX_ATTACHMENT_BYTES/ensureAttachmentUnderLimit) — this call doesn't
+ * re-check it, the caller is expected to have compressed/validated first. */
+export async function submitPoAttachment(
+  ebeln: string,
+  quotFilename: string,
+  quotMimetype: string,
+  quotValue: string,
+  description: string
+): Promise<void> {
+  const payload = {
+    Ebeln: ebeln,
+    QuotFilename: quotFilename,
+    QuotMimetype: quotMimetype,
+    QuotValue: quotValue,
+    Description: description,
+  };
+  try {
+    const res = await sapClient.post(`/${PO_ATTACHMENT_ENTITY_SET}`, payload);
+    const body = res.data?.d || res.data;
+    if (body?.Type === 'E') {
+      throw new Error(body.Message || 'SAP rejected this attachment.');
+    }
+  } catch (err: any) {
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not save this attachment.'));
+  }
+}
+
+/** One PO header's quotation, as SAP actually returns it — filename, mimetype and the raw base64
+ * document content (`Value`), same field names ZPOAttachmentSet was posted with. */
+export interface PoAttachment {
+  filename: string;
+  mimetype: string;
+  value: string;
+}
+
+/** Reads back the quotation attached to a PO's header — a keyed GetEntity read
+ * (`ZPOAttachmentSet(Ebeln='...')`), per instruction, mirroring the same keyed-GetEntity pattern
+ * PO Deviation Approval's own printform fetch already uses successfully against this SAP
+ * landscape (see embedded-apps/fm-po-deviation/src/lib/sapClient.ts's fetchPrintformPdf). Returns
+ * null when the PO genuinely has no quotation on file yet (404 on the keyed read) — every apps
+ * "View Quotation" button is expected to treat that as "nothing to show" rather than an error. */
+export async function fetchPoAttachment(ebeln: string): Promise<PoAttachment | null> {
+  const key = ebeln.replace(/'/g, "''"); // OData string literals escape a single quote by doubling it
+  try {
+    const res = await sapClient.get(`/${PO_ATTACHMENT_ENTITY_SET}(Ebeln='${key}')`, {
+      params: { '$format': 'json' },
+    });
+    const entity = res.data?.d;
+    const value = entity?.QuotValue;
+    if (!value) return null;
+    return {
+      filename: entity?.QuotFilename ? String(entity.QuotFilename) : `Quotation_${ebeln}`,
+      mimetype: entity?.QuotMimetype ? String(entity.QuotMimetype) : 'application/pdf',
+      value: String(value),
+    };
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    const sapMessage = err?.response?.data?.error?.message?.value;
+    throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not load this quotation.'));
+  }
+}

@@ -30,7 +30,7 @@ function formatDDMMYYYY(date) {
 // entries (multiple tasks) into single Task/Description columns so the
 // exported sheet mirrors what the grid shows, rather than the flat
 // multi-line entry list used for storage.
-export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, userName }) {
+export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, userName, workingDayOverrides }) {
   const byDate = {}
   entries.forEach((e) => {
     if (!byDate[e.date]) byDate[e.date] = []
@@ -58,7 +58,7 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
       }
     }
 
-    if (isOffDay(date) || dayEntries.length === 0) {
+    if (isOffDay(date, workingDayOverrides) || dayEntries.length === 0) {
       return {
         Date: formatDDMMYYYY(date),
         Day: formatWeekday(date),
@@ -69,8 +69,8 @@ export async function exportTimesheetToExcel({ entries, tasks, monthStartDate, u
         'Hours of Work': 0,
         Task: '',
         'Task Description': '',
-        Status: isOffDay(date) ? 'Off' : '',
-        _bold: isOffDay(date),
+        Status: isOffDay(date, workingDayOverrides) ? 'Off' : '',
+        _bold: isOffDay(date, workingDayOverrides),
       }
     }
 

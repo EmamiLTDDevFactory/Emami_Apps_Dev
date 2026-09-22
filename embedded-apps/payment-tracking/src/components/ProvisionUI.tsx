@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
 import { formatValue, type Breakdown } from '../lib/provisionMetrics';
@@ -232,6 +232,11 @@ export function HorizontalBarBreakdown({
   emptyMessage: string;
   onSelect?: (item: Breakdown) => void;
 }) {
+  // Below ~480px, a fixed 170px label column leaves almost nothing for the bar itself (see
+  // labelCol) — stack the label above the bar+value instead of squashing them into one row.
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 480;
+
   if (data.length === 0) {
     return <Text style={barStyles.emptyText}>{emptyMessage}</Text>;
   }
@@ -243,23 +248,25 @@ export function HorizontalBarBreakdown({
         return (
           <RowWrapper
             key={d.key}
-            style={barStyles.row}
+            style={[barStyles.row, isNarrow && barStyles.rowNarrow]}
             {...(onSelect
               ? { onPress: () => onSelect(d), accessibilityRole: 'button' as const, accessibilityLabel: `${d.label}: ${formatValue(d.value)}` }
               : null)}
           >
-            <View style={barStyles.labelCol}>
+            <View style={[barStyles.labelCol, isNarrow && barStyles.labelColNarrow]}>
               <Text style={barStyles.label}>
                 {d.label}{d.sublabel ? ` · ${d.sublabel}` : ''}
               </Text>
             </View>
-            <View style={barStyles.trackCol}>
-              <View style={barStyles.track}>
-                <View style={[barStyles.fill, { width: `${(d.value / max) * 100}%` }]} />
+            <View style={[barStyles.trackRow, !isNarrow && barStyles.trackRowInline]}>
+              <View style={barStyles.trackCol}>
+                <View style={barStyles.track}>
+                  <View style={[barStyles.fill, { width: `${(d.value / max) * 100}%` }]} />
+                </View>
               </View>
+              <Text style={barStyles.value} numberOfLines={1}>{formatValue(d.value)}</Text>
+              {onSelect ? <Ionicons name="chevron-forward" size={14} color={colors.inkSoft} /> : null}
             </View>
-            <Text style={barStyles.value} numberOfLines={1}>{formatValue(d.value)}</Text>
-            {onSelect ? <Ionicons name="chevron-forward" size={14} color={colors.inkSoft} /> : null}
           </RowWrapper>
         );
       })}
@@ -274,8 +281,24 @@ const barStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  rowNarrow: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 6,
+  },
   labelCol: {
     width: 170,
+  },
+  labelColNarrow: {
+    width: '100%',
+  },
+  trackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  trackRowInline: {
+    flex: 1,
   },
   label: {
     fontSize: 12,

@@ -170,10 +170,40 @@ if (!fs.existsSync(EMBEDDED_APPS_DIR)) {
   process.exit(0);
 }
 
-const apps = fs
+// A directory here isn't necessarily a real, current embedded app: Amplify's own build cache
+// (amplify.yml's `cache: paths:` includes `embedded-apps/*/dist/**/*`) restores cached paths onto
+// the fresh git checkout BEFORE this script ever runs, regardless of whether that app still
+// exists in the commit being built. Deleting an app from the repo (e.g. splitting/renaming one)
+// does NOT delete its old cache entry, so its directory reappears on disk holding nothing but a
+// stale `dist/` — no package.json, no source — and crashed the entire deploy here once already
+// (`npm run build` -> "Missing script: build") when embedded-apps/insurance-policy was replaced
+// by embedded-apps/mediclaim + embedded-apps/term-policy but its cached dist/ came back anyway.
+// `git ls-files` is the ground truth for "is this actually part of the commit being built" — a
+// leftover cache directory has zero tracked files and gets skipped with a warning instead of
+// taking down every other embedded app's build with it.
+function isTrackedByGit(relativeDir) {
+  try {
+    return execSync(`git ls-files -- ${JSON.stringify(relativeDir)}`, { cwd: REPO_ROOT }).toString().trim().length > 0;
+  } catch {
+    // git itself unavailable — fail toward "trust the directory", same posture as
+    // lastCommitTouching above, rather than skipping every app.
+    return true;
+  }
+}
+
+const allDirs = fs
   .readdirSync(EMBEDDED_APPS_DIR, { withFileTypes: true })
   .filter((e) => e.isDirectory())
   .map((e) => e.name);
+
+const apps = allDirs.filter((app) => {
+  const tracked = isTrackedByGit(path.relative(REPO_ROOT, path.join(EMBEDDED_APPS_DIR, app)));
+  if (!tracked) {
+    console.log(`\n⚠ Skipping "${app}" — not tracked in this commit (stale cache leftover from a deleted/renamed app). Removing it.`);
+    fs.rmSync(path.join(EMBEDDED_APPS_DIR, app), { recursive: true, force: true });
+  }
+  return tracked;
+});
 
 if (apps.length === 0) {
   console.log('No embedded apps to build.');

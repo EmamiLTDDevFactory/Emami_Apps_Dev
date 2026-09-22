@@ -1,19 +1,24 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
+  fetchPoAttachment,
   fetchVendorPOFollowups,
   submitProvisionApproval,
   submitProvisionApprovalBatch,
+  type PoAttachment,
   type ProvisionConfirmation,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
+import { QuotationPreviewModal } from '../../../src/components/QuotationPreviewModal';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth, filterByFiscalYear } from '../../../src/lib/provisionMetrics';
 
 // Matches the hub's own useIsWideScreen breakpoint and this app's _layout.tsx copy of this
 // constant — a compact desktop layout kicks in at the same viewport width the side pane docks
@@ -96,13 +101,13 @@ function DateField({
         aria-label={label}
         style={{
           width: '100%',
-          height: compact ? 32 : 42,
-          padding: compact ? '4px 8px' : '8px 10px',
+          height: compact ? 34 : 42,
+          padding: compact ? '6px 8px' : '8px 10px',
           borderRadius: 8,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.white,
           color: colors.ink,
-          fontSize: compact ? 12 : 13.5,
+          fontSize: compact ? 12.5 : 13.5,
           boxSizing: 'border-box',
         }}
       />
@@ -199,6 +204,7 @@ function AttachField({
  * ZProvHeader (see paymentTrackingApi.ts's submitProvisionApproval/submitProvisionApprovalBatch). */
 export default function AdminUpcomingProvision() {
   const { email, role, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -209,10 +215,39 @@ export default function AdminUpcomingProvision() {
   const [modalTouched, setModalTouched] = useState(false);
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [quotationLoadingKey, setQuotationLoadingKey] = useState<string | null>(null);
+  const [quotation, setQuotation] = useState<PoAttachment | null>(null);
   // Compact layout only for a wide web viewport (desktop) — native/mobile keeps the roomier
   // spacing this screen already had.
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
+
+  /** "View Quotation" on a PO tile — a keyed GetEntity read against ZPOAttachmentSet by Ebeln, per
+   * instruction (see fetchPoAttachment). A PO with nothing on file yet surfaces as a banner, not
+   * an error state, since that's an expected, common case, not a failure. */
+  const handleViewQuotation = async (row: VendorPOFollowupRow) => {
+    setQuotationLoadingKey(row.key);
+    try {
+      const att = await fetchPoAttachment(row.poNumber);
+      if (!att) {
+        setBanner({ type: 'error', message: `No quotation is on file for PO ${row.poNumber} yet.` });
+      } else {
+        setQuotation(att);
+      }
+    } catch (err) {
+      setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Could not load this quotation.' });
+    } finally {
+      setQuotationLoadingKey(null);
+    }
+  };
+
+  // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
+  // delivery date client-side, same as Pending Approval's own monthYearRows; ZVendorPOFollowupSet
+  // has no Gjahr server filter to send the year to, so both dimensions apply here.
+  const monthYearRows = useMemo(
+    () => filterByFiscalYear(filterByMonth(rows, month), year),
+    [rows, month, year]
+  );
 
   useEffect(() => {
     if (roleLoading) return;
@@ -458,6 +493,8 @@ export default function AdminUpcomingProvision() {
           <Text style={styles.errorText}>{loadError}</Text>
         ) : rows.length === 0 ? (
           <Text style={styles.emptyText}>No upcoming provision items.</Text>
+        ) : monthYearRows.length === 0 ? (
+          <Text style={styles.emptyText}>No upcoming provision items for the selected month/year.</Text>
         ) : (
           <>
             {selected.size > 0 && (
@@ -478,7 +515,7 @@ export default function AdminUpcomingProvision() {
               </View>
             )}
 
-            {rows.map((row) => {
+            {monthYearRows.map((row) => {
               const state = rowState[row.key];
               if (!state) return null;
               return (
@@ -488,6 +525,7 @@ export default function AdminUpcomingProvision() {
                       <Pressable
                         onPress={() => toggleSelected(row.key)}
                         style={styles.checkbox}
+                        hitSlop={8}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: selected.has(row.key) }}
                         accessibilityLabel={`Select PO ${row.poNumber} item ${row.poItemNo}`}
@@ -503,6 +541,22 @@ export default function AdminUpcomingProvision() {
                       <Text style={[styles.cardTitle, isDesktopWeb && styles.cardTitleCompact]}>PO {row.poNumber} · Item {row.poItemNo}</Text>
                       {row.materialDesc ? <Text style={[styles.cardSubtitle, isDesktopWeb && styles.cardSubtitleCompact]} numberOfLines={1}>{row.materialDesc}</Text> : null}
                     </View>
+                    <Pressable
+                      style={styles.quotationBtn}
+                      onPress={() => handleViewQuotation(row)}
+                      disabled={quotationLoadingKey === row.key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View quotation for PO ${row.poNumber}`}
+                    >
+                      {quotationLoadingKey === row.key ? (
+                        <ActivityIndicator size="small" color={colors.rust} />
+                      ) : (
+                        <>
+                          <Ionicons name="document-attach-outline" size={13} color={colors.rust} />
+                          <Text style={styles.quotationBtnText}>Quotation</Text>
+                        </>
+                      )}
+                    </Pressable>
                     {state.submitted && (
                       <View style={styles.submittedBadge}>
                         <Ionicons name="checkmark-circle" size={13} color={colors.green} />
@@ -650,6 +704,8 @@ export default function AdminUpcomingProvision() {
           </View>
         </View>
       </Modal>
+
+      {quotation && <QuotationPreviewModal attachment={quotation} onClose={() => setQuotation(null)} />}
     </ScrollView>
   );
 }
@@ -674,55 +730,64 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   scrollCompact: {
-    padding: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
   },
   panelCompact: {
-    gap: 5,
+    gap: 10,
   },
   massBarCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   cardCompact: {
-    padding: 6,
-    gap: 4,
+    padding: 12,
+    gap: 8,
   },
   cardTitleCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   cardSubtitleCompact: {
-    fontSize: 10,
+    fontSize: 10.5,
   },
+  // Fixed-width columns instead of the base infoField's flexGrow: a field like Invoice Amount
+  // has no business stretching to match Service Text's width just because there's room left in
+  // the row — that's what was producing the oversized fields and uneven-looking gaps on a wide
+  // desktop viewport. Every field gets the same stable width here; the row simply wraps to as
+  // many columns as fit, with normal (not distracting) leftover space only at a row's own end.
   fieldGridCompact: {
-    gap: 4,
+    gap: 12,
   },
   infoFieldCompact: {
-    minWidth: 88,
-    flexBasis: '18%',
-    gap: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    width: 152,
+    gap: 3,
   },
   infoLabelCompact: {
-    fontSize: 8.5,
+    fontSize: 9.5,
   },
   infoValueCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   editInputCompact: {
-    paddingVertical: 4,
-    fontSize: 11.5,
+    paddingVertical: 6,
+    fontSize: 12.5,
   },
   attachBtnCompact: {
-    paddingVertical: 4,
+    paddingVertical: 6,
   },
   attachBtnTextCompact: {
-    fontSize: 11.5,
+    fontSize: 12.5,
   },
   delvConfRowCompact: {
-    paddingTop: 4,
+    paddingTop: 8,
   },
   sendBtnCompact: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   flex1: { flex: 1 },
   loadingWrap: {
@@ -770,8 +835,11 @@ const styles = StyleSheet.create({
   },
   massBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 8,
+    columnGap: 8,
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -815,8 +883,10 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    rowGap: 6,
+    columnGap: 6,
   },
   checkbox: {
     padding: 2,
@@ -839,6 +909,22 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingVertical: 3,
     paddingHorizontal: 8,
+  },
+  quotationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: colors.appBg,
+  },
+  quotationBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.rust,
   },
   submittedBadgeText: {
     fontSize: 10,
@@ -913,8 +999,11 @@ const styles = StyleSheet.create({
   },
   delvConfRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 6,
+    columnGap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: 6,

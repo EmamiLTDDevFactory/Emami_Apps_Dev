@@ -19,7 +19,8 @@ import {
 import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
-import { formatDeliveryDate } from '../../../src/lib/provisionMetrics';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { formatDeliveryDate, filterByMonth, filterByFiscalYear } from '../../../src/lib/provisionMetrics';
 
 /** Per-row action state for the 'AS' (SES Created) rows' Reverse SES / Mail for P2P buttons —
  * mirrors Pending Approval's RowState, plus the four invoice fields Admin can edit before Mail for
@@ -320,6 +321,7 @@ type StatusFilter = 'all' | ProvisionLogStatus;
  * colored indicator per status (see STATUS_STYLE above and this screen's status chip row). */
 export default function PaymentTrackingHistory() {
   const { email, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<ProvisionLogRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [loading, setLoading] = useState(true);
@@ -350,15 +352,24 @@ export default function PaymentTrackingHistory() {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   }, []);
 
+  // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
+  // delivery date client-side, same as Pending Approval's own monthYearRows; ZProvisionLogSet has
+  // no Gjahr server filter to send the year to, so both dimensions apply here, ahead of the
+  // existing status/search filter below.
+  const monthYearRows = useMemo(
+    () => filterByFiscalYear(filterByMonth(rows, month), year),
+    [rows, month, year]
+  );
+
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
+    return monthYearRows.filter((row) => {
       if (statusFilter !== 'all' && row.zstatus !== statusFilter) return false;
       if (!q) return true;
       const haystack = [row.poNumber, row.poItemNo, row.vendorName, row.serviceText, row.remarks].join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, search, statusFilter]);
+  }, [monthYearRows, search, statusFilter]);
 
   // Reverse SES / Mail for P2P — only offered on a row already in the 'AS' (SES Created) state.
   // Marks the row done locally on success (removeAction) rather than refetching the whole log,
@@ -688,6 +699,7 @@ export default function PaymentTrackingHistory() {
                   <Pressable
                     onPress={() => toggleSelected(row.key)}
                     style={styles.checkbox}
+                    hitSlop={8}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: selected.has(row.key) }}
                     accessibilityLabel={`Select PO ${row.poNumber} item ${row.poItemNo} for Mass Mail for P2P`}
@@ -708,6 +720,7 @@ export default function PaymentTrackingHistory() {
                     <Pressable
                       onPress={() => viewAttachment(row)}
                       style={styles.attachmentBtn}
+                      hitSlop={6}
                       accessibilityRole="button"
                       accessibilityLabel={`View or download attachment for PO ${row.poNumber} item ${row.poItemNo}`}
                     >
@@ -896,8 +909,11 @@ const styles = StyleSheet.create({
   },
   massBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 8,
+    columnGap: 8,
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     borderWidth: 1,
@@ -991,8 +1007,13 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 6,
+    rowGap: 6,
+    columnGap: 6,
+  },
+  checkbox: {
+    padding: 2,
   },
   checkbox: {
     padding: 2,
