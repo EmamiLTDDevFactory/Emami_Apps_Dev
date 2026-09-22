@@ -1,0 +1,89 @@
+/* Import Center — download/upload cards + recent imports history table. Table/overlay/panel
+   rules are intentionally duplicated from dashboard.css rather than importing that file:
+   every page here only pulls in the CSS it actually uses (see main.jsx), so pages stay
+   independent instead of accreting cross-page stylesheet dependencies. */
+
+/* Toolbar buttons (Import Guide / Choose File / View All) sized down from base.css's default
+   .btn — duplicated from dashboard.css's own .btn-sm since this page doesn't import that file. */
+.btn-sm { padding: 6px 12px !important; font-size: 11.5px !important; border-radius: 7px !important; gap: 6px !important; }
+
+.import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 900px) { .import-grid { grid-template-columns: 1fr; } }
+
+.import-card { padding: 18px 20px 20px; display: flex; flex-direction: column; }
+.import-card-head { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 14px; }
+.import-step-badge {
+  width: 21px; height: 21px; border-radius: 50%; background: var(--accent); color: white;
+  font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.import-card-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.import-card-sub { font-size: 10.5px; color: var(--text-2); margin-top: 2px; }
+
+.import-download-body { display: flex; align-items: center; gap: 18px; flex: 1; padding: 6px 4px 18px; }
+.import-excel-icon { color: var(--st-green); flex-shrink: 0; }
+.import-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.import-checklist li { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: var(--text-2); }
+.import-checklist li svg { color: var(--st-green); flex-shrink: 0; }
+.import-muted { color: var(--muted); }
+.import-download-btn { justify-content: center; width: 100%; }
+
+.import-dropzone {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: 14px;
+  background: var(--bg-alt); padding: 26px 18px; cursor: pointer; transition: border-color .12s ease, background .12s ease;
+  color: var(--muted); min-height: 152px;
+}
+.import-dropzone:hover, .import-dropzone.drag-over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.import-dropzone.uploading { cursor: default; }
+.import-dropzone-title { font-size: 11.5px; font-weight: 600; color: var(--text); }
+.import-dropzone-or { font-size: 10px; color: var(--muted); }
+.import-dropzone-note { font-size: 10px; color: var(--muted); text-align: center; margin-top: 9px; }
+.import-error { margin-top: 9px; font-size: 10.5px; color: var(--st-red); text-align: center; }
+
+.import-history-card { padding: 18px 20px 8px; }
+.import-history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.import-history-icon { margin-right: 4px; }
+.import-history-actions { display: flex; align-items: center; gap: 8px; }
+
+.import-success-count { color: var(--st-green); font-weight: 700; }
+.import-fail-count { color: var(--st-red); font-weight: 700; }
+.import-status-pill { background: var(--st-green-soft); color: var(--st-green); }
+
+/* --- Table (duplicated subset of dashboard.css's table-view) ------------ */
+.table-view-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: auto; margin-bottom: 20px; }
+.table-view { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.table-view th { text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.table-view td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.table-view tbody tr:hover { background: var(--bg-alt); }
+.table-view tbody tr:last-child td { border-bottom: none; }
+.table-empty { text-align: center; color: var(--muted); padding: 24px 14px !important; }
+.table-actions { display: flex; align-items: center; gap: 3px; }
+.row-action { border: none; background: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 5px; display: flex; }
+.row-action:hover { background: var(--bg-alt); color: var(--text-2); }
+.row-action:disabled { opacity: .35; cursor: default; }
+.row-action:disabled:hover { background: none; }
+.row-menu-wrap { position: relative; }
+.row-menu {
+  position: absolute; top: 30px; right: 0; z-index: 20; min-width: 120px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px;
+  box-shadow: 0 16px 36px -16px oklch(0% 0 0 / 0.28); padding: 5px;
+}
+.row-menu button { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left; background: none; border: none; padding: 6px 8px; border-radius: 5px; font-size: 11px; color: var(--st-red); cursor: pointer; font-family: inherit; }
+.row-menu button:hover { background: var(--st-red-soft); }
+
+/* --- Detail panel (duplicated subset of dashboard.css's overlay/panel) -- */
+.overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.4); display: flex; justify-content: flex-end; z-index: 100; }
+.panel { width: min(420px, 100%); background: var(--surface); height: 100%; overflow-y: auto; padding: 18px 20px 44px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; }
+.panel-head h2 { font-size: 13.5px; margin: 0; word-break: break-word; }
+.panel-close { background: none; border: none; cursor: pointer; color: var(--muted); flex-shrink: 0; }
+
+.import-detail-summary { display: flex; gap: 10px; margin-bottom: 18px; }
+.import-detail-summary > div { flex: 1; background: var(--bg-alt); border-radius: 10px; padding: 10px 12px; text-align: center; font-size: 9.5px; color: var(--muted); }
+.import-detail-summary > div > span { display: block; font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.import-detail-errors { display: flex; flex-direction: column; gap: 6px; }
+.import-detail-error-row {
+  display: flex; align-items: baseline; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  background: var(--st-red-soft); font-size: 10.5px; color: var(--text-2);
+}
+.import-detail-error-row .mono { color: var(--st-red); font-weight: 700; flex-shrink: 0; }

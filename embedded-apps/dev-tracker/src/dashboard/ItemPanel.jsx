@@ -1,18 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FIELDS, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, FIELD_LABELS as LABELS } from '../shared/constants.js';
-import { suggestedStatus, revisedTarget, fmtDate } from '../shared/utils.js';
+import { FIELDS, MANUAL_ONLY_STATUSES, FIELD_LABELS as LABELS } from '../shared/constants.js';
+import { suggestedStatus, revisedTarget, fmtDate, stageDateKeyFor, datesToAutoFillForStatus, todayStr } from '../shared/utils.js';
 import { apiCreate, apiUpdate, apiDelete, apiHistory, getCurrentUserEmail } from '../shared/api.js';
 
 const FIELD_GROUPS = [
   { title: 'Overview', fields: ['devList', 'status', 'func'] },
   { title: 'Classification', fields: ['area', 'priority', 'impact', 'complexity'] },
   { title: 'Ownership', fields: ['spocFunction', 'spocIT', 'devFactory', 'developer'] },
-  { title: 'Timeline', fields: ['startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'hypercare', 'targetDate'] },
+  { title: 'Timeline', fields: ['startDate', 'targetDate', 'fsPrep', 'development', 'itTesting', 'userTesting', 'hypercare', 'reqDiscussion'] },
+  { title: 'Closure', fields: ['hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate'] },
   { title: 'Effort', fields: ['devTime', 'rework'] },
   { title: 'Notes', fields: ['reasonCategory', 'reasonDelay', 'remarks'] },
 ];
+const REQUIRED_FIELDS = new Set(['devList', 'status', 'func', 'area', 'priority']);
+const FULL_WIDTH_FIELDS = new Set(['func', 'remarks', 'reasonDelay']);
 
-const DATE_FIELDS = new Set(['startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'targetDate']);
+const DATE_FIELDS = new Set([
+  'startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'targetDate',
+  'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
+]);
 const NUMBER_FIELDS = new Set(['hypercare', 'devTime', 'rework']);
 const SELECT_FIELDS = {
   status: 'status', area: 'area', priority: 'priority', impact: 'impact',
@@ -31,6 +37,7 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     return f;
   });
   const [invalidDevList, setInvalidDevList] = useState(false);
+  const [invalidDateKey, setInvalidDateKey] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState({ loading: mode === 'edit', rows: [] });
@@ -73,10 +80,28 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
 
   const revised = useMemo(() => revisedTarget(form), [form.targetDate, form.rework]);
   const showReworkWarning = Number(form.rework) > 0 && ['Hypercare', 'Completed'].includes(form.status);
+  // Every status but Not Started has exactly one corresponding date field — see
+  // stageDateKeyFor() (STAGE_PIPELINE for the 5 forward stages, MANUAL_STATUS_DATES for
+  // Hypercare/On Hold/Completed/Cancelled).
+  const requiredDateKey = useMemo(() => stageDateKeyFor(form.status), [form.status]);
 
   function setField(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // Picking a status directly (new item, edit, or the "Apply" suggestion above) shouldn't
+      // require going back to manually date every stage it implies was already passed through —
+      // default today's date into whichever of those are still blank; anything already filled
+      // (by hand or by an earlier auto-fill) is left alone and stays editable either way.
+      if (key === 'status') {
+        const today = todayStr();
+        for (const dateKey of datesToAutoFillForStatus(value)) {
+          if (!next[dateKey]) next[dateKey] = today;
+        }
+      }
+      return next;
+    });
     if (key === 'devList' && value.trim()) setInvalidDevList(false);
+    if (invalidDateKey && key === invalidDateKey && value) setInvalidDateKey(null);
   }
 
   async function handleSave() {
@@ -84,11 +109,16 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
       setInvalidDevList(true);
       return;
     }
+    if (requiredDateKey && !form[requiredDateKey]) {
+      setInvalidDateKey(requiredDateKey);
+      setError(`"${LABELS[requiredDateKey]}" is required for status "${form.status}".`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const payload = {};
-      for (const key of FIELDS) payload[key] = form[key] === '' ? '' : form[key];
+      for (const key of FIELDS) payload[key] = form[key];
       const saved = mode === 'edit' ? await apiUpdate(item.id, payload, email) : await apiCreate(payload, email);
       onSaved(saved);
     } catch (e) {
@@ -113,15 +143,20 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     }
   }
 
+  function renderLabel(key) {
+    const required = REQUIRED_FIELDS.has(key) || key === requiredDateKey;
+    return <label>{LABELS[key]}{required && <span className="field-required">*</span>}</label>;
+  }
+
   function renderField(key) {
-    const label = LABELS[key];
+    const wide = FULL_WIDTH_FIELDS.has(key) ? { gridColumn: '1/-1' } : undefined;
     if (SELECT_FIELDS[key]) {
       const opts = options[SELECT_FIELDS[key]] || [];
       return (
-        <div className="field" key={key}>
-          <label>{label}</label>
+        <div className="field" key={key} style={wide}>
+          {renderLabel(key)}
           <select value={form[key] || ''} onChange={(e) => setField(key, e.target.value)}>
-            <option value="">—</option>
+            <option value="">Select</option>
             {opts.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
@@ -129,33 +164,39 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     }
     if (DATE_FIELDS.has(key)) {
       return (
-        <div className="field" key={key}>
-          <label>{label}</label>
-          <input type="date" value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} />
+        <div className="field" key={key} style={wide}>
+          {renderLabel(key)}
+          <input
+            type="date"
+            className={key === invalidDateKey ? 'invalid' : ''}
+            value={form[key] || ''}
+            onChange={(e) => setField(key, e.target.value)}
+          />
         </div>
       );
     }
     if (NUMBER_FIELDS.has(key)) {
       return (
-        <div className="field" key={key}>
-          <label>{label}</label>
-          <input type="number" min="0" value={form[key] ?? ''} onChange={(e) => setField(key, e.target.value)} />
+        <div className="field" key={key} style={wide}>
+          {renderLabel(key)}
+          <input type="number" min="0" placeholder="Enter days" value={form[key] ?? ''} onChange={(e) => setField(key, e.target.value)} />
         </div>
       );
     }
     if (key === 'remarks' || key === 'reasonDelay') {
       return (
         <div className="field" key={key} style={{ gridColumn: '1/-1' }}>
-          <label>{label}</label>
-          <textarea value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} />
+          {renderLabel(key)}
+          <textarea placeholder={key === 'remarks' ? 'Enter remarks' : 'Enter details (if any)'} value={form[key] || ''} onChange={(e) => setField(key, e.target.value)} />
         </div>
       );
     }
     return (
-      <div className="field" key={key}>
-        <label>{label}</label>
+      <div className="field" key={key} style={wide}>
+        {renderLabel(key)}
         <input
           type="text"
+          placeholder={key === 'devList' ? 'Enter title' : key === 'developer' || key === 'spocFunction' || key === 'spocIT' ? 'Enter name' : ''}
           value={form[key] || ''}
           className={key === 'devList' && invalidDevList ? 'invalid' : ''}
           onChange={(e) => setField(key, e.target.value)}
@@ -168,7 +209,7 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
     <div className="overlay" id="overlay" onMouseDown={(e) => e.target.id === 'overlay' && onClose()}>
       <div className="panel">
         <div className="panel-head">
-          <h2>{mode === 'edit' ? 'Edit item' : 'New item'}</h2>
+          <h2>{mode === 'edit' ? 'Edit Item' : 'New Item'}</h2>
           <button className="panel-close" onClick={onClose} aria-label="Close">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
