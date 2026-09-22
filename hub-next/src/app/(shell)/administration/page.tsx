@@ -121,8 +121,10 @@ export default function AdministrationPage() {
     });
     getAdminAppStats().then((result) => {
       setOrgAppStatsLoading(false);
-      if (result.ok && result.apps) setOrgAppStats(result.apps);
-      else setOrgAppStatsError(result.error || 'Could not load app-wise usage.');
+      if (result.ok && result.apps) {
+        const sorted = [...result.apps].sort((a, b) => appLabel(a.appId).localeCompare(appLabel(b.appId)));
+        setOrgAppStats(sorted);
+      } else setOrgAppStatsError(result.error || 'Could not load app-wise usage.');
     });
     getAccessHistory().then((result) => {
       setOrgHistoryLoading(false);

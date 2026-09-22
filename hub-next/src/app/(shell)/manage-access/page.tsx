@@ -28,10 +28,16 @@ function mergeAppGrants(defaults: UserAppGrant[] | undefined, explicit: UserAppG
 const AUDIT_CAPA_APP_ID = 'audit-capa';
 const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
 const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
+const FM_PO_DEVIATION_APP_ID = 'fm-po-deviation';
+/** Apps shown here alphabetically by name — insertion order in mockData.ts reflects when each
+ * app was added to the hub, not a meaningful display order. */
+const SORTED_APPS = [...APPS].sort((a, b) => a.name.localeCompare(b.name));
 
 function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
   if (appId === AUDIT_CAPA_APP_ID) return [null, 'Depot', 'CQA'];
   if (appId === PAYMENT_TRACKING_APP_ID) return [null, 'User', 'Admin', 'Finance'];
+  // PO Deviation Approval has no Admin/User bifurcation — access is a single granted role.
+  if (appId === FM_PO_DEVIATION_APP_ID) return [null, 'User'];
   return [null, 'User', 'Admin'];
 }
 
@@ -458,7 +464,7 @@ export default function ManageAccessPage() {
     setExporting(true);
     setError('');
     try {
-      await exportUsersToExcel(visibleUsers, APPS);
+      await exportUsersToExcel(visibleUsers, SORTED_APPS);
     } catch {
       setError('Could not export the roster. Please try again.');
     } finally {
@@ -567,7 +573,7 @@ export default function ManageAccessPage() {
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                 <span style={bulkLabelStyle}>App role</span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {APPS.map((app) => {
+                  {SORTED_APPS.map((app) => {
                     const accent = appColor(app.id);
                     const targeted = bulkTargetApp === app.id;
                     const Icon = app.icon;
@@ -725,7 +731,7 @@ export default function ManageAccessPage() {
 
           <p style={dialogSectionLabelStyle}>Assign app roles{addMode === 'bulk' ? ' (applied to every user added)' : ''}</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {APPS.map((app) => {
+            {SORTED_APPS.map((app) => {
               const role = newUserRoles[app.id] ?? null;
               const accent = appColor(app.id);
               const Icon = app.icon;
@@ -803,7 +809,7 @@ export default function ManageAccessPage() {
 
           <p style={dialogSectionLabelStyle}>App roles</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {APPS.map((app) => {
+            {SORTED_APPS.map((app) => {
               const role = effectiveRole(editTarget, app.id);
               const accent = appColor(app.id);
               const Icon = app.icon;
