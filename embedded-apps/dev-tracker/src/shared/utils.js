@@ -8,6 +8,41 @@ export function stageDateKeyFor(status) {
   return STAGE_PIPELINE.find((s) => s.status === status)?.key || MANUAL_STATUS_DATES[status] || null;
 }
 
+// Every date field that should default to today when a status is set directly (New Item form,
+// an edit, or a Kanban drag) — not just that status's own date, but every earlier pipeline
+// stage skipped to get there, so a task created (or dragged) straight into e.g. "In Progress"
+// doesn't end up with blank Requirement Discussion / FS Preparation dates. Only ever used to
+// fill fields that are still empty — an already-set date (from data entry or a previous auto-
+// fill) is never overwritten, and every filled date stays freely editable afterward.
+// On Hold / Cancelled are deliberately excluded from backfilling the forward pipeline (same
+// reasoning as the MANUAL_ONLY_STATUSES comment above stageDateKeyFor's use: either can happen
+// from any stage, so completion of earlier stages can't be assumed) — only their own date is
+// filled. Completed and Hypercare, by contrast, only ever follow the full dev pipeline, so both
+// backfill every STAGE_PIPELINE date too.
+// startDate isn't itself a STAGE_PIPELINE entry, but reaching ANY status past "Not Started"
+// (pipeline or manual) still means the task started — so it's backfilled whenever anything
+// else here would be, on every status except Not Started.
+export function datesToAutoFillForStatus(status) {
+  if (!status || status === 'Not Started') return [];
+  const stageIdx = STAGE_PIPELINE.findIndex((s) => s.status === status);
+  const keys = ['startDate'];
+  if (stageIdx !== -1) {
+    keys.push(...STAGE_PIPELINE.slice(0, stageIdx + 1).map((s) => s.key));
+    return keys;
+  }
+  if (['Completed', 'Hypercare'].includes(status)) keys.push(...STAGE_PIPELINE.map((s) => s.key));
+  const manualKey = MANUAL_STATUS_DATES[status];
+  if (manualKey) keys.push(manualKey);
+  return keys;
+}
+
+// The backend assigns each item a full crypto.randomUUID() as its id — fine as a database
+// key, unreadable as the "MODULE-xxxx" code shown next to an item in the Dashboard. Trims
+// it to the UUID's first segment (8 hex chars, still effectively unique for display purposes).
+export function shortId(id) {
+  return (id || '').split('-')[0].toUpperCase();
+}
+
 // --- Dates -------------------------------------------------------------
 // todayStr() intentionally mirrors the original app.js/home.js behavior: it reads the
 // UTC calendar date (via toISOString), not the local one. This means for IST users any

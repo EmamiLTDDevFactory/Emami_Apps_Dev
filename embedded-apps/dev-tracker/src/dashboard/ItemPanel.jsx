@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FIELDS, MANUAL_ONLY_STATUSES, FIELD_LABELS as LABELS } from '../shared/constants.js';
-import { suggestedStatus, revisedTarget, fmtDate, stageDateKeyFor } from '../shared/utils.js';
+import { suggestedStatus, revisedTarget, fmtDate, stageDateKeyFor, datesToAutoFillForStatus, todayStr } from '../shared/utils.js';
 import { apiCreate, apiUpdate, apiDelete, apiHistory, getCurrentUserEmail } from '../shared/api.js';
 
 const FIELD_GROUPS = [
@@ -86,7 +86,20 @@ export default function ItemPanel({ mode, item, options, onClose, onSaved }) {
   const requiredDateKey = useMemo(() => stageDateKeyFor(form.status), [form.status]);
 
   function setField(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      // Picking a status directly (new item, edit, or the "Apply" suggestion above) shouldn't
+      // require going back to manually date every stage it implies was already passed through —
+      // default today's date into whichever of those are still blank; anything already filled
+      // (by hand or by an earlier auto-fill) is left alone and stays editable either way.
+      if (key === 'status') {
+        const today = todayStr();
+        for (const dateKey of datesToAutoFillForStatus(value)) {
+          if (!next[dateKey]) next[dateKey] = today;
+        }
+      }
+      return next;
+    });
     if (key === 'devList' && value.trim()) setInvalidDevList(false);
     if (invalidDateKey && key === invalidDateKey && value) setInvalidDateKey(null);
   }

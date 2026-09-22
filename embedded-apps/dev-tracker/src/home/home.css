@@ -116,8 +116,9 @@
 /* Five rows visible (~38px each), the rest of the up-to-10 loaded rows reachable by scroll. */
 .activity-scroll { justify-content: flex-start; max-height: 170px; overflow-y: auto; }
 
-/* Needs attention — real risk rows (overdue / stalled / due soon), worst first. */
-.attention-list { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+/* Needs attention — real risk rows (overdue / stalled / due soon), worst first. All matching
+   rows are rendered; only ~4-5 are visible at once, the rest reachable by scroll. */
+.attention-list { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; max-height: 170px; overflow-y: auto; }
 .attention-row { display: flex; align-items: center; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--border); }
 .attention-row:last-child { border-bottom: none; padding-bottom: 0; }
 .attention-row:first-child { padding-top: 0; }

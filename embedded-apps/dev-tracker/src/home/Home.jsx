@@ -160,7 +160,7 @@ export default function Home() {
       }
       rows.push({ id: it.id, title: it.devList, area: it.area, meta, daysLabel, sortKey });
     }
-    return rows.sort((a, b) => b.sortKey - a.sortKey).slice(0, 4);
+    return rows.sort((a, b) => b.sortKey - a.sortKey);
   }, [activeItems]);
 
   if (!email) return null;
@@ -266,7 +266,6 @@ export default function Home() {
             <div className="widget-col-head">
               <div className="widget-icon tone-red"><AlertIcon size={14} /></div>
               <span className="widget-title">Needs attention</span>
-              <a className="widget-viewall" href={ROUTES.dashboard}>View All</a>
             </div>
             <div className="attention-list">
               {attentionItems.map((row) => (
@@ -290,7 +289,6 @@ export default function Home() {
             <div className="widget-col-head">
               <div className="widget-icon tone-teal"><ClockIcon size={14} /></div>
               <span className="widget-title">Recent activity</span>
-              <a className="widget-viewall" href={ROUTES.changeLog}>View All</a>
             </div>
             <div className="widget-body-fill activity-scroll">
               {activity.slice(0, 10).map((a, i) => (

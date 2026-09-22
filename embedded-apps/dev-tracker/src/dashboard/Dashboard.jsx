@@ -6,7 +6,7 @@ import { useNotifications } from '../shared/useNotifications.js';
 import ItemPanel from './ItemPanel.jsx';
 import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData, activeValues, categoryColorMap } from '../shared/masterData.js';
-import { revisedTarget, isOverdue, fmtDate, daysBetween, todayStr, stageDateKeyFor } from '../shared/utils.js';
+import { revisedTarget, isOverdue, fmtDate, daysBetween, todayStr, datesToAutoFillForStatus, shortId } from '../shared/utils.js';
 import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 import {
@@ -304,22 +304,26 @@ export default function Dashboard() {
     const it = items.find((row) => String(row.id) === String(id));
     if (!it || col.statuses.includes(it.status)) return;
     const targetStatus = col.statuses[0];
-    // Every status but Not Started has a corresponding date field (see stageDateKeyFor) — a
-    // drag-drop bypasses the New/Edit form's own validation for that, so auto-fill it with
-    // today's date if it isn't set yet, rather than silently leaving the status/date pair
-    // inconsistent.
-    const dateKey = stageDateKeyFor(targetStatus);
-    const stageDateKey = dateKey && !it[dateKey] ? dateKey : null;
+    // Every status but Not Started has one or more corresponding date fields (see
+    // datesToAutoFillForStatus) — a drag-drop bypasses the New/Edit form's own status-change
+    // auto-fill, so replicate it here: default today's date into the target stage's own date
+    // plus any earlier pipeline stage skipped over to get there, for whichever of those aren't
+    // already set, rather than silently leaving the status/date pair inconsistent.
+    const today = todayStr();
+    const dateUpdates = {};
+    for (const dateKey of datesToAutoFillForStatus(targetStatus)) {
+      if (!it[dateKey]) dateUpdates[dateKey] = today;
+    }
     const prevItems = items;
-    setItems((cur) => cur.map((row) => (String(row.id) === String(id) ? { ...row, status: targetStatus, ...(stageDateKey ? { [stageDateKey]: todayStr() } : {}) } : row)));
+    setItems((cur) => cur.map((row) => (String(row.id) === String(id) ? { ...row, status: targetStatus, ...dateUpdates } : row)));
     try {
       // PUT /items/:id is a full-row replace (see backend/devTracker.js's normalize()), so
       // send the item's existing values for every field, with just status (and, if needed,
-      // the stage date) overridden.
+      // the stage dates) overridden.
       const payload = {};
       for (const key of FIELDS) payload[key] = it[key] ?? '';
       payload.status = targetStatus;
-      if (stageDateKey) payload[stageDateKey] = todayStr();
+      Object.assign(payload, dateUpdates);
       await apiUpdate(it.id, payload, email);
     } catch (e2) {
       setItems(prevItems);
@@ -502,7 +506,7 @@ export default function Dashboard() {
                         onClick={() => setPanel({ mode: 'edit', item: it })}
                       >
                         <div className="kcard-top">
-                          <span className="kcard-idlabel mono">{it.area || 'GEN'}-{it.id}</span>
+                          <span className="kcard-idlabel mono">{it.area || 'GEN'}-{shortId(it.id)}</span>
                           <span className="kcard-modtag">{it.area || '—'}</span>
                         </div>
                         <div className="kcard-title">{it.devList}</div>
@@ -558,7 +562,7 @@ export default function Dashboard() {
                       <td className="table-check-col" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={selectedIds.has(it.id)} onChange={() => toggleRowSelected(it.id)} />
                       </td>
-                      <td className="mono" onClick={() => setPanel({ mode: 'edit', item: it })}>{it.area || 'GEN'}-{it.id}</td>
+                      <td className="mono" onClick={() => setPanel({ mode: 'edit', item: it })}>{it.area || 'GEN'}-{shortId(it.id)}</td>
                       <td onClick={() => setPanel({ mode: 'edit', item: it })}>{it.devList}</td>
                       <td onClick={() => setPanel({ mode: 'edit', item: it })}>{it.area || '—'}</td>
                       <td onClick={() => setPanel({ mode: 'edit', item: it })}><span className="priority-pill" style={{ background: st.bg, color: st.fg }}>{overdue ? 'Overdue' : it.status}</span></td>

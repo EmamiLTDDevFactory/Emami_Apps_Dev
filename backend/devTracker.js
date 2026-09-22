@@ -565,7 +565,7 @@ router.get('/activity', requireDevTrackerAccess, async (req, res) => {
             FROM dev_tracker.item_history h
             JOIN dev_tracker.items i ON i.id = h."itemId"
             ORDER BY h."changedAt" DESC
-            LIMIT 5
+            LIMIT 10
         `);
         res.json(result.rows);
     } catch (err) {
