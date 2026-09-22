@@ -33,13 +33,16 @@ export const gradients = {
   primary: ['#6D5BF5', colors.rust, colors.rustDeep] as const,
 };
 
+// IBD/Supply Chain/CPD/HR/IT are matched to the reference Emami Apps sidebar's own icon
+// accents (sampled from its screenshot) rather than picked independently — CQA, Cross-Function,
+// Packaging and Finance aren't in that reference, so those keep their original hues.
 export const categoryColors: Record<string, string> = {
   CQA: '#0D9488',
-  CPD: '#EA580C',
-  IT: '#5B4FE0',
-  'Supply Chain': '#DB2777',
-  IBD: '#B45309',
-  HR: '#7C3AED',
+  CPD: '#CC5A70',
+  IT: '#4A5FE0',
+  'Supply Chain': '#4A5FE0',
+  IBD: '#C23A72',
+  HR: '#4A5FE0',
   'Cross-Function': '#0891B2',
   Packaging: '#65A30D',
   Finance: '#4F3FD6',

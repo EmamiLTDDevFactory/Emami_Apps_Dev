@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Landmark, Wallet, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package, Grid3x3 } from 'lucide-react';
+import { Landmark, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Grid3x3 } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, appColor, catColor, navColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
@@ -15,12 +15,13 @@ import type { CategoryFilter } from '../types';
 // Same per-category glyphs as the Home page's own tiles (see (shell)/page.tsx's CATEGORY_ICONS) —
 // duplicated locally rather than shared, matching how FilterBar.tsx already keeps its own copy
 // too. 'All' is deliberately left out: "My Applications" above already covers it.
+// IBD/Supply Chain/CPD/HR/IT match the reference Emami Apps sidebar's own icon glyphs.
 const CATEGORY_ICONS: Record<string, typeof Grid3x3> = {
   CQA: ClipboardCheck,
-  CPD: TrendingUp,
-  IT: Code2,
-  'Supply Chain': Truck,
-  IBD: Wallet,
+  CPD: ShieldCheck,
+  IT: Monitor,
+  'Supply Chain': Box,
+  IBD: Globe,
   HR: Users,
   'Cross-Function': Shuffle,
   Packaging: Package,
