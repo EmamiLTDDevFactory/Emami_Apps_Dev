@@ -1,49 +1,86 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { MonitorDown, CheckCircle2, X } from 'lucide-react';
+import { MonitorDown, Smartphone, CheckCircle2, X } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows } from '../theme/tokens';
 import { usePwaInstall, installOfferedThisLogin, markInstallOfferedThisLogin } from '../hooks/usePwaInstall';
 
 /**
- * The "Install Emami Apps on this computer" pop-up — same pattern as emamianalytics.in. Opens
- * automatically once per login (desktop/laptop only), and from the header's install button on
- * any device.
+ * The "Install Emami Apps" pop-up — same pattern as emamianalytics.in. Opens automatically once
+ * per login, and from the header's install button.
  *
- * A web page can't itself create a desktop shortcut, pin to the taskbar or add a bookmark; the
- * browser's native PWA install does the first two (Chrome/Edge on Windows create the desktop +
- * Start-menu shortcut, and Edge/Chrome offer "Pin to taskbar" in their post-install dialog). So
- * this pop-up's job is to surface that native install, then tell people how to pin/bookmark once
- * it's done. Where the browser hasn't offered a native install (already installed, Firefox/Safari,
- * iOS, non-HTTPS), the header button's pop-up shows manual instructions instead.
+ * A web page can't itself create a desktop/home-screen shortcut, pin to the taskbar or add a
+ * bookmark. What it can do per platform:
+ *  - Desktop Chrome/Edge and Android Chrome/Edge/Samsung Internet: trigger the browser's native
+ *    PWA install, which creates the shortcut (desktop + Start menu on Windows, home screen + app
+ *    drawer on Android; Edge/Chrome also offer "Pin to taskbar"). Then we explain pin/bookmark.
+ *  - iOS/iPadOS (Safari, and Chrome/Edge on iOS 16.4+): Apple exposes no install API at all, so
+ *    the pop-up walks through the Share -> "Add to Home Screen" taps for that browser instead.
+ *  - Anywhere else the browser hasn't offered a native install (already installed, Firefox,
+ *    non-HTTPS): manual instructions, from the header button only.
  */
 
 const SHOW_DELAY_MS = 1500;
 
-function isDesktop() {
+type Platform = 'desktop' | 'android' | 'ios';
+
+function detectPlatform(): Platform {
   const ua = window.navigator.userAgent;
-  if (/android|iphone|ipad|ipod|mobi/i.test(ua)) return false;
+  if (/iphone|ipad|ipod/i.test(ua)) return 'ios';
   // iPadOS 13+ reports a desktop-Mac UA — same trick as usePwaInstall's isIos.
-  if (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1) return false;
-  return true;
+  if (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1) return 'ios';
+  if (/android/i.test(ua)) return 'android';
+  return 'desktop';
 }
 
 function isMac() {
   return /mac/i.test(window.navigator.platform || window.navigator.userAgent);
 }
 
+/** The iOS browser's own steps to "Add to Home Screen" — every iOS browser is WebKit, but each
+ * puts the Share button somewhere different. */
+function iosSteps(): string[] {
+  const ua = window.navigator.userAgent;
+  const isIpad = !/iphone|ipod/i.test(ua);
+  if (/CriOS|EdgiOS/i.test(ua)) {
+    return [
+      'Tap the Share icon (square with an arrow) at the right of the address bar.',
+      'Scroll down and tap "Add to Home Screen" (under "More" if you don\'t see it).',
+      'Tap "Add" — the Emami Apps icon appears on your home screen.',
+    ];
+  }
+  if (/FxiOS/i.test(ua)) {
+    return [
+      'Tap the ☰ menu, then "Share".',
+      'Tap "Add to Home Screen".',
+      'Tap "Add" — the Emami Apps icon appears on your home screen.',
+    ];
+  }
+  return [
+    `Tap the Share icon (square with an arrow) ${isIpad ? 'at the top of the screen' : 'in the bar at the bottom of the screen'}.`,
+    'Scroll down and tap "Add to Home Screen".',
+    'Tap "Add" — the Emami Apps icon appears on your home screen.',
+  ];
+}
+
 export default function InstallPrompt() {
   const pwa = usePwaInstall();
+  const [platform, setPlatform] = useState<Platform>('desktop');
   const [autoEligible, setAutoEligible] = useState(false);
 
   useEffect(() => {
-    setAutoEligible(isDesktop() && !installOfferedThisLogin());
+    setPlatform(detectPlatform());
+    setAutoEligible(!installOfferedThisLogin());
   }, []);
 
-  // `beforeinstallprompt` can arrive before or after this mounts — wait until it has (no point
-  // auto-offering an install the browser can't perform, e.g. when it's already installed), plus a
-  // short beat so the pop-up doesn't land on top of the dashboard's first paint.
-  const canAutoOffer = autoEligible && pwa.canPromptInstall && !pwa.isStandalone;
+  const isPhone = platform !== 'desktop';
+
+  // Only auto-offer something actionable: a native install the browser has queued (desktop and
+  // Android — it's never queued once already installed), or the iOS Add-to-Home-Screen steps when
+  // not already running from the home screen. `beforeinstallprompt` can arrive before or after
+  // this mounts; the short delay keeps the pop-up off the dashboard's first paint.
+  const canAutoOffer =
+    autoEligible && !pwa.isStandalone && (pwa.canPromptInstall || (platform === 'ios' && pwa.isSecureContext));
   useEffect(() => {
     if (!canAutoOffer) return;
     const t = window.setTimeout(() => {
@@ -69,13 +106,17 @@ export default function InstallPrompt() {
           <div>
             <Title>Emami Apps is installed</Title>
             <Body>
-              {mac
-                ? 'It now opens in its own window and is in your Applications (Launchpad). To keep it in the Dock: right-click its Dock icon → Options → Keep in Dock.'
-                : 'A shortcut has been added to your desktop and Start menu. To pin it: right-click the Emami Apps icon on the taskbar → Pin to taskbar.'}
+              {isPhone
+                ? 'The Emami Apps icon has been added to your home screen and app drawer. Open it from there — it runs full-screen, like any other app.'
+                : mac
+                  ? 'It now opens in its own window and is in your Applications (Launchpad). To keep it in the Dock: right-click its Dock icon → Options → Keep in Dock.'
+                  : 'A shortcut has been added to your desktop and Start menu. To pin it: right-click the Emami Apps icon on the taskbar → Pin to taskbar.'}
             </Body>
-            <Body style={{ marginTop: 8 }}>
-              Want a browser bookmark too? Press <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> + <Kbd>D</Kbd>.
-            </Body>
+            {!isPhone && (
+              <Body style={{ marginTop: 8 }}>
+                Want a browser bookmark too? Press <Kbd>{mac ? '⌘' : 'Ctrl'}</Kbd> + <Kbd>D</Kbd>.
+              </Body>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
@@ -87,14 +128,21 @@ export default function InstallPrompt() {
 
   if (!pwa.installCardOpen) return null;
 
-  const fallback = pwa.canPromptInstall
+  const title = isPhone ? 'Add Emami Apps to your home screen' : 'Install Emami Apps on this computer';
+  const offer = isPhone
+    ? 'Get an Emami Apps icon on your home screen that opens it full-screen, like any other app — no need to find the website each time.'
+    : 'Get a desktop shortcut and open Emami Apps in its own window, one click from your taskbar, without searching for the site.';
+
+  const steps = !pwa.isStandalone && pwa.isSecureContext && platform === 'ios' ? iosSteps() : null;
+
+  const fallback = pwa.canPromptInstall || steps
     ? null
     : pwa.isStandalone
       ? 'Emami Apps is already installed on this device.'
       : !pwa.isSecureContext
         ? "This page was opened over an insecure connection (not HTTPS), so browsers block app installs here. Open the app's regular https:// address (or http://localhost during development) and try again."
-        : pwa.isIos
-          ? 'Tap the Share icon in Safari (the square with an arrow), then choose "Add to Home Screen".'
+        : platform === 'android'
+          ? 'If Emami Apps is already on your home screen, open it from there. Otherwise open the browser\'s ⋮ menu (top right) and tap "Add to Home screen" or "Install app". (Chrome recommended.)'
           : 'If Emami Apps is already installed, open it from your desktop shortcut or Start menu. Otherwise look for the install icon (⊕ or a monitor with an arrow) at the right of your browser\'s address bar — or open the browser\'s ⋮ menu and choose "Install Emami Apps". (Chrome or Edge recommended.)';
 
   return (
@@ -102,23 +150,30 @@ export default function InstallPrompt() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <img src="/icons/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: radii.md, flexShrink: 0, border: `1px solid ${colors.border}` }} />
         <div>
-          <Title>Install Emami Apps on this computer</Title>
-          <Body>
-            {fallback ??
-              'Get a desktop shortcut and open Emami Apps in its own window, one click from your taskbar, without searching for the site.'}
-          </Body>
+          <Title>{title}</Title>
+          {steps ? (
+            <ol style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+              {steps.map((step) => (
+                <li key={step} style={{ fontSize: 12.5, lineHeight: '18px', fontFamily: fonts.sansRegular, color: colors.inkSoft, marginBottom: 4 }}>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <Body>{fallback ?? offer}</Body>
+          )}
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-        {fallback ? (
-          <PrimaryButton onClick={pwa.closeInstallCard}>OK</PrimaryButton>
+        {steps || fallback ? (
+          <PrimaryButton onClick={pwa.closeInstallCard}>{steps ? 'Got it' : 'OK'}</PrimaryButton>
         ) : (
           <>
             <button type="button" onClick={pwa.closeInstallCard} style={secondaryButton}>
               Not now
             </button>
             <PrimaryButton onClick={install}>
-              <MonitorDown size={16} /> Install
+              {isPhone ? <Smartphone size={16} /> : <MonitorDown size={16} />} {isPhone ? 'Add to home screen' : 'Install'}
             </PrimaryButton>
           </>
         )}
