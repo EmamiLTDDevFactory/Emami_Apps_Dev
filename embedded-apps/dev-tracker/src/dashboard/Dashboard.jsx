@@ -127,6 +127,12 @@ function pageList(current, total) {
 }
 
 export default function Dashboard() {
+  // "My Work" is this same component loaded with ?preset=mine — captured once at mount,
+  // before the handoff effect below strips that query param off the URL, so the sidebar
+  // still knows which link was actually clicked.
+  const [activeNav] = useState(() => (
+    new URLSearchParams(window.location.search).get('preset') === 'mine' ? 'myWork' : 'dashboard'
+  ));
   const [items, setItems] = useState([]);
   const [masterData, setMasterData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -509,7 +515,7 @@ export default function Dashboard() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="dashboard" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="skyline" />
+      <Sidebar active={activeNav} isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="skyline" />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
