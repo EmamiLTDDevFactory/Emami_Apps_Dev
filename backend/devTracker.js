@@ -119,7 +119,7 @@ async function initSchema() {
         CREATE TABLE IF NOT EXISTS dev_tracker.master_data (
             id text PRIMARY KEY,
             category text NOT NULL CHECK (category IN
-                ('status','area','priority','impact','complexity','devFactory','reasonCategory')),
+                ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday')),
             value text NOT NULL,
             color text,
             "softColor" text,
@@ -129,6 +129,14 @@ async function initSchema() {
             "updatedAt" timestamptz DEFAULT now(),
             UNIQUE(category, value)
         )
+    `);
+    // 'holiday' (Resource Utilization's working-day calendar) added after this table already
+    // existed in some deployments — widen the CHECK constraint the same idempotent way
+    // "changedByUsername" was added to item_history above, instead of a one-off migration script.
+    await pool.query(`ALTER TABLE dev_tracker.master_data DROP CONSTRAINT IF EXISTS master_data_category_check`);
+    await pool.query(`
+        ALTER TABLE dev_tracker.master_data ADD CONSTRAINT master_data_category_check CHECK (category IN
+            ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday'))
     `);
 
     try {
@@ -342,7 +350,7 @@ router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
-const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory', 'holiday'];
 
 // Gates the master-data WRITE routes to users granted the "Admin" role for the 'dev-tracker' app
 // in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact
