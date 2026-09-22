@@ -22,6 +22,20 @@ const SORT_OPTIONS = [
   { key: 'title', label: 'Title' },
 ];
 const PAGE_SIZES = [10, 15, 25, 50];
+// Swimlanes, not alternative columns: the board's columns stay bound to status so dragging a
+// card between them still means "move this to that status". Grouping adds a second axis on top
+// of that rather than replacing it, which is the only arrangement where both gestures keep a
+// single obvious meaning.
+const GROUP_OPTIONS = [
+  { key: '', label: 'No grouping' },
+  { key: 'area', label: 'Module' },
+  { key: 'developer', label: 'Developer' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'impact', label: 'Business Impact' },
+  { key: 'devFactory', label: 'Dev Factory' },
+];
+const GROUP_BLANK = '—';
+const LANE_AUTO_COLLAPSE_OVER = 6;
 // Sentinel for the owner filter meaning "whoever is signed in" — resolved against the session
 // email at filter time, so a saved/shared link stays personal to whoever opens it.
 const PRESET_MINE = '__me__';
@@ -137,6 +151,8 @@ export default function Dashboard() {
   const [filterReasonCategory, setFilterReasonCategory] = useState('');
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState('board');
+  const [groupBy, setGroupBy] = useState('');
+  const [collapsedLanes, setCollapsedLanes] = useState(() => new Set());
   const [sortBy, setSortBy] = useState('priority');
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(1);
@@ -255,10 +271,44 @@ export default function Dashboard() {
   const pageSafe = Math.min(page, totalPages);
   const pageRows = useMemo(() => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize), [filtered, pageSafe, pageSize]);
 
-  const columns = useMemo(() => KANBAN_COLUMNS.map((col) => ({
-    ...col,
-    cards: filtered.filter((it) => col.statuses.includes(it.status)),
-  })), [filtered]);
+  // One lane when ungrouped, so the board renders through the same path either way.
+  const swimlanes = useMemo(() => {
+    const toColumns = (rows) => KANBAN_COLUMNS.map((col) => ({
+      ...col,
+      cards: rows.filter((it) => col.statuses.includes(it.status)),
+    }));
+    if (!groupBy) return [{ key: '__all__', label: null, count: filtered.length, columns: toColumns(filtered) }];
+    const byValue = new Map();
+    for (const it of filtered) {
+      const v = String(it[groupBy] ?? '').trim() || GROUP_BLANK;
+      if (!byValue.has(v)) byValue.set(v, []);
+      byValue.get(v).push(it);
+    }
+    return Array.from(byValue.entries())
+      // Unset values last: a lane of items missing the field being grouped on is the least
+      // interesting one, and putting it first pushes the real groups below the fold.
+      .sort(([a], [b]) => (a === GROUP_BLANK ? 1 : b === GROUP_BLANK ? -1 : a.localeCompare(b)))
+      .map(([label, rows]) => ({ key: label, label, count: rows.length, columns: toColumns(rows) }));
+  }, [filtered, groupBy]);
+
+  // Grouping by Developer on the current data produces 47 lanes, 312 of the items sitting in
+  // the unassigned one — expanded by default that is a page nobody can scan. Past a handful of
+  // lanes, start them collapsed so the grouping reads as a summary that opens on demand.
+  useEffect(() => {
+    if (!groupBy) { setCollapsedLanes(new Set()); return; }
+    const keys = swimlanes.map((l) => l.key);
+    setCollapsedLanes(keys.length > LANE_AUTO_COLLAPSE_OVER ? new Set(keys) : new Set());
+    // Deliberately keyed on the grouping field alone: recomputing this whenever `swimlanes`
+    // changes would slam every lane shut again on each keystroke in the search box.
+  }, [groupBy]);
+
+  function toggleLane(key) {
+    setCollapsedLanes((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   function handleSortClick(key) {
     if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -497,6 +547,18 @@ export default function Dashboard() {
             <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setSortDir('asc'); }}>
               {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
+            {viewMode === 'board' && (
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+                aria-label="Group board into swimlanes"
+                title="Group the board into swimlanes"
+              >
+                {GROUP_OPTIONS.map((o) => (
+                  <option key={o.key} value={o.key}>{o.key ? `Group: ${o.label}` : o.label}</option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -521,8 +583,19 @@ export default function Dashboard() {
         {loading ? (
           <div className="empty-state">Loading items…</div>
         ) : viewMode === 'board' ? (
-          <div className="board">
-            {columns.map((col) => (
+          <div className="board-lanes">
+            {swimlanes.map((lane) => (
+            <section className={`lane${lane.label === null ? ' lane-plain' : ''}`} key={lane.key}>
+              {lane.label !== null && (
+                <button type="button" className="lane-head" onClick={() => toggleLane(lane.key)} aria-expanded={!collapsedLanes.has(lane.key)}>
+                  <span className={`lane-caret${collapsedLanes.has(lane.key) ? '' : ' is-open'}`}><ChevronRightIcon size={12} /></span>
+                  <span className="lane-name">{lane.label}</span>
+                  <span className="lane-count">{lane.count}</span>
+                </button>
+              )}
+              {!collapsedLanes.has(lane.key) && (
+              <div className="board">
+            {lane.columns.map((col) => (
               <div
                 className={`col${dragOverCol === col.key ? ' col-drag-over' : ''}`}
                 key={col.key}
@@ -575,6 +648,10 @@ export default function Dashboard() {
                   })
                 )}
               </div>
+            ))}
+              </div>
+              )}
+            </section>
             ))}
           </div>
         ) : (
