@@ -182,7 +182,8 @@ export async function fetchPrintformPdf(poNumber: string): Promise<Blob | null> 
     const { data } = await sapClient.get('/PrintformSet', {
       params: { '$format': 'json', '$filter': `Ebeln eq '${escapeODataString(poNumber)}'` },
     });
-    const base64 = data?.d?.results?.[0]?.Value;
+    const entity = data?.d?.results?.[0];
+    const base64 = entity?.Value;
     if (!base64) return null;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
