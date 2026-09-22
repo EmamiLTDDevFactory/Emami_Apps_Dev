@@ -21,12 +21,20 @@ export function activeValues(rows, category) {
   return (rows || []).filter((r) => r.category === category && r.active).map((r) => r.value);
 }
 
-export function areaColorMap(rows) {
+// Generic version of areaColorMap below — any master-data category can carry a per-value
+// color/softColor once its CATEGORIES entry has hasColor: true (admin's color picker writes
+// them via apiMasterDataUpdate). A row with no color set yet (color: null) is simply absent
+// from the map, so callers fall back to their own default for that value.
+export function categoryColorMap(rows, category) {
   const map = {};
   for (const r of rows || []) {
-    if (r.category === 'area' && r.active) {
+    if (r.category === category && r.active && r.color) {
       map[r.value] = { color: r.color, softColor: r.softColor };
     }
   }
   return map;
+}
+
+export function areaColorMap(rows) {
+  return categoryColorMap(rows, 'area');
 }
