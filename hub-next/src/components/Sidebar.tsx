@@ -3,7 +3,7 @@
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Landmark, Wallet, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package, Grid3x3 } from 'lucide-react';
-import { colors, fonts, fontWeights, radii, appColor, catColor, shadows } from '../theme/tokens';
+import { colors, fonts, fontWeights, radii, appColor, catColor, navColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
@@ -50,8 +50,8 @@ function NavButton({
   label: string;
   active: boolean;
   onClick: () => void;
-  /** Per-category color from the Home page's own tile palette (see catColor) — left unset for the
-   * plain nav items above/below the Categories section, which keep the original rust accent. */
+  /** Per-item accent — category rows use catColor, every other row uses navColor (see
+   * theme/tokens.ts) — so every icon in the sidebar is color-coded, not just Categories. */
   accentColor?: string;
 }) {
   const activeColor = accentColor || colors.rust;
@@ -194,7 +194,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
           // category's selected below, that category owns the highlight instead so only one
           // item in this whole nav is ever lit up at a time.
           const active = normalizePath(pathname) === normalizePath(NAV_ROUTES[item.id]) && (item.id !== 'MyApplications' || !activeCategory);
-          return <NavButton key={item.id} icon={item.icon} label={item.label} active={active} onClick={() => router.push(NAV_ROUTES[item.id])} />;
+          return <NavButton key={item.id} icon={item.icon} label={item.label} active={active} onClick={() => router.push(NAV_ROUTES[item.id])} accentColor={navColor(item.id)} />;
         })}
 
         <p style={{ color: colors.sidebarTextSoft, fontSize: 10.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.8, textTransform: 'uppercase', margin: '10px 7px 6px' }}>
@@ -212,7 +212,14 @@ export default function Sidebar({ compact = false }: SidebarProps) {
         ))}
 
         {bottomNavItems.map((item) => (
-          <NavButton key={item.id} icon={item.icon} label={item.label} active={normalizePath(pathname) === normalizePath(NAV_ROUTES[item.id])} onClick={() => router.push(NAV_ROUTES[item.id])} />
+          <NavButton
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            active={normalizePath(pathname) === normalizePath(NAV_ROUTES[item.id])}
+            onClick={() => router.push(NAV_ROUTES[item.id])}
+            accentColor={navColor(item.id)}
+          />
         ))}
       </nav>
 

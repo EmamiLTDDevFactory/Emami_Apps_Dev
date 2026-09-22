@@ -3,7 +3,7 @@ import './globals.css';
 import Shell from '../components/Shell';
 
 export const metadata: Metadata = {
-  title: 'PO Deviation Approval — Emami Apps',
+  title: 'PO Approval — Emami Apps',
   description: 'Review, approve, or reject purchase order deviations.',
   icons: { icon: '/apps/fm-po-deviation/emami-apps-logo.png' },
 };

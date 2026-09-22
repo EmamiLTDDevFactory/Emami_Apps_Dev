@@ -36,7 +36,7 @@ const SORTED_APPS = [...APPS].sort((a, b) => a.name.localeCompare(b.name));
 function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
   if (appId === AUDIT_CAPA_APP_ID) return [null, 'Depot', 'CQA'];
   if (appId === PAYMENT_TRACKING_APP_ID) return [null, 'User', 'Admin', 'Finance'];
-  // PO Deviation Approval has no Admin/User bifurcation — access is a single granted role.
+  // PO Approval has no Admin/User bifurcation — access is a single granted role.
   if (appId === FM_PO_DEVIATION_APP_ID) return [null, 'User'];
   return [null, 'User', 'Admin'];
 }

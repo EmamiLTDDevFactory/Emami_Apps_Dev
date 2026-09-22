@@ -5,6 +5,7 @@ import { Star, Lock } from 'lucide-react';
 import type { AppItem, AppRole } from '../types';
 import { colors, fonts, fontWeights, radii, appColor, motion, focusRing } from '../theme/tokens';
 import { useIsMobile } from '../hooks/useColumnCount';
+import { useTiltHover } from '../hooks/useTiltHover';
 
 interface AppCardProps {
   app: AppItem;
@@ -29,30 +30,27 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
   const accent = locked ? colors.inkSoft : appColor(app.id);
   const isMobile = useIsMobile();
 
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
   const [focused, setFocused] = useState(false);
+  const { ref, hovered, pressed, tiltTransform, handlers } = useTiltHover<HTMLAnchorElement>();
 
   const scale = pressed ? motion.pressScale : hovered ? motion.hoverScale : 1;
   const translateY = hovered && !pressed ? motion.hoverLift : 0;
-  const shadowOpacity = pressed ? 0.18 : hovered ? 0.14 : 0.1;
+  const shadowOpacity = pressed ? 0.18 : hovered ? 0.16 : 0.1;
 
   return (
     <a
+      ref={ref}
       href="#"
       onClick={(e) => {
         e.preventDefault();
         onPress(app);
       }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false);
-        setPressed(false);
-      }}
-      onMouseDown={() => setPressed(true)}
-      onMouseUp={() => setPressed(false)}
+      {...handlers}
       onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
+      onBlur={() => {
+        setFocused(false);
+        handlers.onBlur();
+      }}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -64,9 +62,13 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         padding: isMobile ? 10 : 16,
         minHeight: isMobile ? 92 : 150,
         opacity: locked ? 0.6 : 1,
-        boxShadow: `0 4px 10px 0 ${accent}${Math.round(shadowOpacity * 255).toString(16).padStart(2, '0')}`,
-        transform: `translateY(${translateY}px) scale(${scale})`,
-        transition: `transform ${motion.duration.fast}ms ease-out, box-shadow ${motion.duration.fast}ms ease-out`,
+        boxShadow: hovered
+          ? `0 ${pressed ? 10 : 16}px ${pressed ? 18 : 26}px 0 ${accent}${Math.round(shadowOpacity * 255).toString(16).padStart(2, '0')}`
+          : `0 4px 10px 0 ${accent}${Math.round(shadowOpacity * 255).toString(16).padStart(2, '0')}`,
+        transform: `${tiltTransform} translateY(${translateY}px) scale(${scale})`,
+        transformStyle: 'preserve-3d',
+        transition: `transform ${motion.duration.base}ms ${motion.easeSmooth}, box-shadow ${motion.duration.base}ms ${motion.easeSmooth}`,
+        willChange: 'transform',
         cursor: 'pointer',
         ...(focused ? focusRing : null),
       }}

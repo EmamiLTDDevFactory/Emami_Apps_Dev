@@ -64,7 +64,7 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
             href="/"
             onClick={() => { if (!isWideScreen) onClose(); }}
             className={`flex items-center justify-center px-4 ${isWideScreen ? 'pt-5' : 'pt-1'} pb-5`}
-            aria-label="Go to PO Deviation Approval home"
+            aria-label="Go to PO Approval home"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
@@ -144,7 +144,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
                 <Menu size={22} />
               </button>
             )}
-            <h1 className="truncate text-[15px] font-extrabold text-ink">PO Deviation Approval</h1>
+            <h1 className="truncate text-[15px] font-extrabold text-ink">PO Approval</h1>
             <span className="hidden sm:inline-flex rounded-full bg-rust/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-rust">
               Command Center
             </span>

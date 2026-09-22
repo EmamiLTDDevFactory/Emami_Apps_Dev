@@ -60,7 +60,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * (elevated, equivalent to Admin) and Depot (base, equivalent to User) — see auditCapaSync.js,
  * which is what actually makes this role take effect inside that app. Provision Tracking
  * (payment-tracking) adds a third role, Finance, on top of the generic pair — see that app's own
- * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Deviation Approval
+ * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Approval
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. */
 const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'] };

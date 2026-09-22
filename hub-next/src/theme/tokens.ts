@@ -62,6 +62,23 @@ export function appColor(id: string) {
   return appAccents[id] ?? colors.rust;
 }
 
+// Per-nav-item accent, one hue per row in the sidebar (see Sidebar.tsx) — every icon there is
+// color-coded now, the same treatment the Categories section already had, rather than only
+// Categories being in color and everything else a flat gray.
+export const navColors: Record<string, string> = {
+  Home: colors.rust,
+  MyApplications: '#0EA5E9',
+  Favorites: colors.amber,
+  Help: '#16A34A',
+  Settings: '#F59E0B',
+  UserAccess: '#E11D48',
+  Administration: '#9333EA',
+};
+
+export function navColor(id: string) {
+  return navColors[id] ?? colors.rust;
+}
+
 export const fonts = {
   sansRegular: 'var(--font-ibm-plex-sans)',
   sansMedium: 'var(--font-ibm-plex-sans)',
@@ -110,9 +127,17 @@ export const shadows = {
 // Keep durations short — this is feedback, not decoration.
 export const motion = {
   duration: { fast: 120, base: 180, slow: 240 },
+  // A gentle deceleration curve (ease-out-quart-ish) — used in place of plain
+  // "ease-out" wherever a hover/press transition should feel like it settles
+  // rather than stops abruptly.
+  easeSmooth: 'cubic-bezier(0.22, 1, 0.36, 1)',
   pressScale: 0.97,
   hoverScale: 1.02,
   hoverLift: -2, // translateY on hover, subtle lift
+  // Perspective tilt (see useTiltHover) — a tile rotates toward the cursor on
+  // hover for a subtle 3D feel, then eases flat again on mouse-leave.
+  tiltPerspective: 700,
+  tiltMaxDeg: 8,
 } as const;
 
 // Named type scale — collapses the many near-duplicate inline font sizes
