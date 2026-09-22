@@ -1,19 +1,16 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import ItemPanel from './ItemPanel.jsx';
-import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail } from '../shared/api.js';
+import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail, apiSavedViews, apiSavedViewCreate, apiSavedViewDelete } from '../shared/api.js';
 import { groupMasterData, activeValues, categoryColorMap } from '../shared/masterData.js';
 import { revisedTarget, isOverdue, fmtDate, daysBetween, todayStr, datesToAutoFillForStatus, shortId } from '../shared/utils.js';
 import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
-import {
-  CalendarIcon, FilterIcon, DownloadIcon, PlusIcon, GridIcon, TableIcon, MoreIcon,
-  EyeIcon, PencilIcon, CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon,
-} from '../shared/icons.jsx';
+import { CalendarIcon, FilterIcon, DownloadIcon, PlusIcon, GridIcon, TableIcon, MoreIcon, EyeIcon, PencilIcon, CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon, StarIcon, TrashIcon } from '../shared/icons.jsx';
 
 const SORT_OPTIONS = [
   { key: 'priority', label: 'Priority' },
@@ -153,6 +150,9 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('board');
   const [groupBy, setGroupBy] = useState('');
   const [collapsedLanes, setCollapsedLanes] = useState(() => new Set());
+  const [savedViews, setSavedViews] = useState([]);
+  const [activeViewId, setActiveViewId] = useState('');
+  const viewApplyRef = useRef(false);
   const [sortBy, setSortBy] = useState('priority');
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(1);
@@ -181,6 +181,7 @@ export default function Dashboard() {
       return;
     }
     reload().finally(() => setLoading(false));
+    reloadViews();
   }, []);
 
   // Handle the Home page's search handoff (?aiSearch=…) and the ?action=new draft handoff.
@@ -265,6 +266,15 @@ export default function Dashboard() {
 
   const moreFiltersCount = [filterImpact, filterComplexity, filterDevFactory, filterReasonCategory].filter(Boolean).length;
 
+  // Editing any filter by hand drops the saved-view selection: the dropdown would otherwise
+  // keep naming a view whose filters are no longer what is on screen. Applying a view is itself
+  // a filter change, so it arms this ref first to spend the resulting pass — without that, a
+  // view would clear its own selection the instant it was chosen.
+  useEffect(() => {
+    if (viewApplyRef.current) { viewApplyRef.current = false; return; }
+    setActiveViewId('');
+  }, [currentConfig]);
+
   useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -308,6 +318,79 @@ export default function Dashboard() {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  }
+
+  // The filter set has grown twice already, so capture and restore are driven off one table
+  // rather than two hand-written object literals that would silently stop matching.
+  const VIEW_FILTERS = useMemo(() => ([
+    ['moduleArea', moduleArea, setModuleArea], ['ownerFilter', ownerFilter, setOwnerFilter],
+    ['filterStatus', filterStatus, setFilterStatus], ['filterPriority', filterPriority, setFilterPriority],
+    ['filterImpact', filterImpact, setFilterImpact], ['filterComplexity', filterComplexity, setFilterComplexity],
+    ['filterDevFactory', filterDevFactory, setFilterDevFactory], ['filterReasonCategory', filterReasonCategory, setFilterReasonCategory],
+    ['dateStart', dateStart, setDateStart], ['dateEnd', dateEnd, setDateEnd],
+    ['search', search, setSearch], ['lifecycle', lifecycle, setLifecycle],
+    ['overdueOnly', overdueOnly, setOverdueOnly], ['sortBy', sortBy, setSortBy],
+    ['sortDir', sortDir, setSortDir], ['groupBy', groupBy, setGroupBy], ['viewMode', viewMode, setViewMode],
+  ]), [moduleArea, ownerFilter, filterStatus, filterPriority, filterImpact, filterComplexity,
+       filterDevFactory, filterReasonCategory, dateStart, dateEnd, search, lifecycle, overdueOnly,
+       sortBy, sortDir, groupBy, viewMode]);
+
+  const currentConfig = useMemo(
+    () => Object.fromEntries(VIEW_FILTERS.map(([k, v]) => [k, v])),
+    [VIEW_FILTERS]
+  );
+
+  function applyConfig(config) {
+    viewApplyRef.current = true;
+    // Only keys the saved view actually carried are applied, and anything it omits is reset to
+    // its default — otherwise a view saved before a filter existed would inherit whatever that
+    // filter happened to be set to when it was opened.
+    for (const [key, , setter] of VIEW_FILTERS) {
+      const saved = config?.[key];
+      if (key === 'overdueOnly') setter(saved === true);
+      else if (key === 'sortBy') setter(saved || 'priority');
+      else if (key === 'sortDir') setter(saved || 'asc');
+      else if (key === 'viewMode') setter(saved === 'table' ? 'table' : 'board');
+      else setter(typeof saved === 'string' ? saved : '');
+    }
+  }
+
+  async function reloadViews() {
+    try { setSavedViews(await apiSavedViews(email) || []); } catch { setSavedViews([]); }
+  }
+
+  async function handleSaveView() {
+    const name = window.prompt('Name this view (e.g. "My overdue SAP items")');
+    if (!name || !name.trim()) return;
+    const shared = window.confirm('Share this view with the whole team?\n\nOK = shared, Cancel = keep it private to you.');
+    try {
+      const created = await apiSavedViewCreate(name.trim(), currentConfig, shared, email);
+      await reloadViews();
+      // Saving does not change any filter, so no pass is pending to suppress here.
+      setActiveViewId(created?.id || '');
+    } catch (e) {
+      setDragError(e.message || 'Failed to save view');
+    }
+  }
+
+  async function handleDeleteView() {
+    const view = savedViews.find((v) => v.id === activeViewId);
+    if (!view) return;
+    if (!window.confirm(`Delete the saved view "${view.name}"?`)) return;
+    try {
+      await apiSavedViewDelete(view.id, email);
+      setActiveViewId('');
+      await reloadViews();
+    } catch (e) {
+      setDragError(e.message || 'Failed to delete view');
+    }
+  }
+
+  function handleSelectView(id) {
+    if (!id) { setActiveViewId(''); clearFilters(); return; }
+    setActiveViewId(id);
+    const view = savedViews.find((v) => v.id === id);
+    if (view) applyConfig(view.config);
   }
 
   function handleSortClick(key) {
@@ -543,6 +626,35 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="view-toolbar-right">
+            <select
+              className="saved-view-select"
+              value={activeViewId}
+              onChange={(e) => handleSelectView(e.target.value)}
+              aria-label="Saved views"
+              title="Apply a saved view"
+            >
+              <option value="">All items</option>
+              {savedViews.filter((v) => v.mine).length > 0 && (
+                <optgroup label="My views">
+                  {savedViews.filter((v) => v.mine).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </optgroup>
+              )}
+              {savedViews.filter((v) => !v.mine).length > 0 && (
+                <optgroup label="Shared with the team">
+                  {savedViews.filter((v) => !v.mine).map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}{v.ownerName ? ` — ${v.ownerName}` : ''}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={handleSaveView} title="Save the current filters as a named view">
+              <StarIcon size={14} /> Save view
+            </button>
+            {activeViewId && savedViews.find((v) => v.id === activeViewId)?.mine && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleDeleteView} title="Delete this saved view">
+                <TrashIcon size={14} />
+              </button>
+            )}
             <span className="sort-label">Sort by</span>
             <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setSortDir('asc'); }}>
               {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}

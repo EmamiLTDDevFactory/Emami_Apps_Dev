@@ -73,6 +73,7 @@
 }
 
 /* --- Board ------------------------------------------------------------- */
+.saved-view-select { max-width: 190px; }
 .board-lanes { display: flex; flex-direction: column; gap: 14px; }
 /* A lane is the same status board scoped to one group value. The plain (ungrouped) lane gets
    no header or framing so the board looks exactly as it did before grouping existed. */
