@@ -46,6 +46,14 @@ export const FIELD_LABELS = {
   reasonDelay: 'Reason for Delay (Detail)', remarks: 'Remarks',
 };
 
+// Column headers from templates downloaded before 5830f2e that no longer match any current
+// label, mapped to the field they used to mean. Import Center accepts these so an old saved
+// template keeps importing. Only genuine renames belong here — everything else that commit
+// changed was capitalisation, which the importer's case-insensitive header match absorbs.
+export const LEGACY_FIELD_LABELS = {
+  area: 'Area', // now labelled 'Module'
+};
+
 // The item fields holding a calendar date, all stored as plain 'YYYY-MM-DD' strings (what
 // ItemPanel's <input type="date"> produces). Shared with Import Center, which has to coerce
 // Excel's own date representation back into exactly this shape.

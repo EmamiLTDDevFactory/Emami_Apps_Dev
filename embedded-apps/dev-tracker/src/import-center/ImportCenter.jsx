@@ -6,7 +6,7 @@ import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
-import { FIELDS, FIELD_LABELS, DATE_FIELDS } from '../shared/constants.js';
+import { FIELDS, FIELD_LABELS, DATE_FIELDS, LEGACY_FIELD_LABELS } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 import {
   InfoIcon, FileExcelIcon, DownloadIcon, UploadCloudIcon, RefreshIcon,
@@ -88,7 +88,29 @@ function toDateString(val) {
 
 // Reverse of FIELD_LABELS, so an uploaded sheet's human-readable header row ("Module",
 // "Business Impact", …) maps back to the FIELDS keys the API expects.
-const LABEL_TO_FIELD = Object.fromEntries(FIELDS.map((f) => [(FIELD_LABELS[f] || f).trim(), f]));
+//
+// Matched case- and whitespace-insensitively, which is load-bearing rather than cosmetic:
+// 5830f2e re-capitalised every label ('Development / item title' -> 'Development / Item Title'),
+// and the old exact match meant a template downloaded before that lost its title column. Headers
+// like "Status" and "Remarks" still matched, so rows weren't empty — they just arrived with no
+// devList, and the server rejected every single one with "Development / Item Title is required".
+// Real Excel files also carry stray double spaces and non-breaking spaces from manual editing.
+const normalizeHeader = (s) => String(s).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Built lowest-precedence first, so a current label always wins over a legacy one or a raw key.
+const LABEL_TO_FIELD = (() => {
+  const map = {};
+  FIELDS.forEach((f) => { map[normalizeHeader(f)] = f; });
+  Object.entries(LEGACY_FIELD_LABELS).forEach(([f, label]) => { map[normalizeHeader(label)] = f; });
+  FIELDS.forEach((f) => { map[normalizeHeader(FIELD_LABELS[f] || f)] = f; });
+  return map;
+})();
+
+// The sheet's first row as written, used only to name the offending columns in an error.
+function headerLabels(worksheet) {
+  const [header = []] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
+  return header.map((h) => String(h).trim()).filter(Boolean);
+}
 
 function rowsFromSheet(worksheet) {
   const raw = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
@@ -96,7 +118,7 @@ function rowsFromSheet(worksheet) {
     .map((r) => {
       const out = {};
       for (const [label, val] of Object.entries(r)) {
-        const key = LABEL_TO_FIELD[String(label).trim()];
+        const key = LABEL_TO_FIELD[normalizeHeader(label)];
         if (!key) continue;
         out[key] = DATE_FIELDS.has(key)
           ? toDateString(val)
@@ -202,6 +224,17 @@ export default function ImportCenter() {
       const rows = rowsFromSheet(sheet);
       if (!rows.length) {
         setUploadError('No data rows found in that file.');
+        return;
+      }
+      // Caught here rather than left to the server, which can only reject the rows one at a time
+      // and reports it as "Development / Item Title is required" on every single line — which
+      // reads like the data is wrong when the real problem is the header row.
+      if (!rows.some((r) => String(r.devList ?? '').trim())) {
+        const unknown = headerLabels(sheet).filter((h) => !LABEL_TO_FIELD[normalizeHeader(h)]);
+        setUploadError(
+          `No "${FIELD_LABELS.devList}" column found, so there is nothing to import. Download the Excel format above and copy your data into it.`
+          + (unknown.length ? ` Unrecognised columns: ${unknown.slice(0, 6).join(', ')}${unknown.length > 6 ? '…' : ''}.` : '')
+        );
         return;
       }
       await apiImportRun(file.name, rows, email);
