@@ -25,6 +25,11 @@ export interface PwaInstallState {
    */
   justInstalled: boolean;
   clearJustInstalled: () => void;
+  /** The shared install pop-up card (components/InstallPrompt.tsx) — opened by the header's
+   * install button and automatically once per login. */
+  installCardOpen: boolean;
+  openInstallCard: () => void;
+  closeInstallCard: () => void;
   /** Triggers the browser's native install prompt. No-op (returns 'unavailable') if none is queued. */
   promptInstall: () => Promise<PwaInstallOutcome>;
 }
@@ -41,6 +46,7 @@ export interface PwaInstallState {
 let deferredEvent: any = null;
 let isStandalone = false;
 let justInstalled = false;
+let installCardOpen = false;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -98,6 +104,14 @@ export function usePwaInstall(): PwaInstallState {
     justInstalled = false;
     notify();
   };
+  const openInstallCard = () => {
+    installCardOpen = true;
+    notify();
+  };
+  const closeInstallCard = () => {
+    installCardOpen = false;
+    notify();
+  };
 
   return {
     isSupported,
@@ -107,6 +121,40 @@ export function usePwaInstall(): PwaInstallState {
     canPromptInstall: !!deferredEvent,
     justInstalled,
     clearJustInstalled,
+    installCardOpen,
+    openInstallCard,
+    closeInstallCard,
     promptInstall,
   };
+}
+
+/**
+ * The install pop-up opens automatically once per login (not once per page load — the hub fully
+ * reloads every time someone comes back from an embedded app, and it shouldn't re-nag each time).
+ * This flag records that it's been offered for the current login; AuthContext's login() clears it.
+ */
+const OFFERED_THIS_LOGIN_KEY = 'emami.installPrompt.offeredThisLogin';
+
+export function installOfferedThisLogin(): boolean {
+  try {
+    return window.localStorage.getItem(OFFERED_THIS_LOGIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markInstallOfferedThisLogin() {
+  try {
+    window.localStorage.setItem(OFFERED_THIS_LOGIN_KEY, '1');
+  } catch {
+    // Storage blocked (private window etc.) — it just offers again on the next page load.
+  }
+}
+
+export function resetInstallOfferForNewLogin() {
+  try {
+    window.localStorage.removeItem(OFFERED_THIS_LOGIN_KEY);
+  } catch {
+    // See markInstallOfferedThisLogin.
+  }
 }

@@ -3,22 +3,21 @@
 import React, { useEffect, useState } from 'react';
 import { MonitorDown, CheckCircle2, X } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows } from '../theme/tokens';
-import { usePwaInstall } from '../hooks/usePwaInstall';
+import { usePwaInstall, installOfferedThisLogin, markInstallOfferedThisLogin } from '../hooks/usePwaInstall';
 
 /**
- * Post-login "Install Emami Apps on this computer" pop-up — same pattern as emamianalytics.in.
+ * The "Install Emami Apps on this computer" pop-up — same pattern as emamianalytics.in. Opens
+ * automatically once per login (desktop/laptop only), and from the header's install button on
+ * any device.
  *
  * A web page can't itself create a desktop shortcut, pin to the taskbar or add a bookmark; the
  * browser's native PWA install does the first two (Chrome/Edge on Windows create the desktop +
  * Start-menu shortcut, and Edge/Chrome offer "Pin to taskbar" in their post-install dialog). So
- * this pop-up's job is to surface that native install at the right moment instead of relying on
- * people finding the small header icon, then tell them how to pin/bookmark once it's done.
- *
- * Desktop/laptop only — on phones the header button's own flow is enough.
+ * this pop-up's job is to surface that native install, then tell people how to pin/bookmark once
+ * it's done. Where the browser hasn't offered a native install (already installed, Firefox/Safari,
+ * iOS, non-HTTPS), the header button's pop-up shows manual instructions instead.
  */
 
-const DISMISS_KEY = 'emami.installPrompt.dismissedAt';
-const DISMISS_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 const SHOW_DELAY_MS = 1500;
 
 function isDesktop() {
@@ -33,50 +32,32 @@ function isMac() {
   return /mac/i.test(window.navigator.platform || window.navigator.userAgent);
 }
 
-function recentlyDismissed() {
-  try {
-    const at = Number(window.localStorage.getItem(DISMISS_KEY));
-    return !!at && Date.now() - at < DISMISS_FOR_MS;
-  } catch {
-    return false;
-  }
-}
-
-function rememberDismissed() {
-  try {
-    window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
-  } catch {
-    // Storage blocked (private window etc.) — the pop-up just comes back next visit.
-  }
-}
-
 export default function InstallPrompt() {
   const pwa = usePwaInstall();
-  const [offerOpen, setOfferOpen] = useState(false);
-  const [eligible, setEligible] = useState(false);
+  const [autoEligible, setAutoEligible] = useState(false);
 
   useEffect(() => {
-    setEligible(isDesktop() && !recentlyDismissed());
+    setAutoEligible(isDesktop() && !installOfferedThisLogin());
   }, []);
 
-  // `beforeinstallprompt` can arrive before or after this mounts — wait until it has, plus a short
-  // beat so the pop-up doesn't land on top of the dashboard's first paint.
-  const canOffer = eligible && pwa.canPromptInstall && !pwa.isStandalone;
+  // `beforeinstallprompt` can arrive before or after this mounts — wait until it has (no point
+  // auto-offering an install the browser can't perform, e.g. when it's already installed), plus a
+  // short beat so the pop-up doesn't land on top of the dashboard's first paint.
+  const canAutoOffer = autoEligible && pwa.canPromptInstall && !pwa.isStandalone;
   useEffect(() => {
-    if (!canOffer) return;
-    const t = window.setTimeout(() => setOfferOpen(true), SHOW_DELAY_MS);
+    if (!canAutoOffer) return;
+    const t = window.setTimeout(() => {
+      markInstallOfferedThisLogin();
+      setAutoEligible(false);
+      pwa.openInstallCard();
+    }, SHOW_DELAY_MS);
     return () => window.clearTimeout(t);
-  }, [canOffer]);
-
-  const dismiss = () => {
-    rememberDismissed();
-    setOfferOpen(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAutoOffer]);
 
   const install = async () => {
-    setOfferOpen(false);
-    const outcome = await pwa.promptInstall();
-    if (outcome === 'dismissed') rememberDismissed();
+    pwa.closeInstallCard();
+    await pwa.promptInstall();
   };
 
   if (pwa.justInstalled) {
@@ -104,26 +85,43 @@ export default function InstallPrompt() {
     );
   }
 
-  if (!offerOpen || !pwa.canPromptInstall) return null;
+  if (!pwa.installCardOpen) return null;
+
+  const fallback = pwa.canPromptInstall
+    ? null
+    : pwa.isStandalone
+      ? 'Emami Apps is already installed on this device.'
+      : !pwa.isSecureContext
+        ? "This page was opened over an insecure connection (not HTTPS), so browsers block app installs here. Open the app's regular https:// address (or http://localhost during development) and try again."
+        : pwa.isIos
+          ? 'Tap the Share icon in Safari (the square with an arrow), then choose "Add to Home Screen".'
+          : 'If Emami Apps is already installed, open it from your desktop shortcut or Start menu. Otherwise look for the install icon (⊕ or a monitor with an arrow) at the right of your browser\'s address bar — or open the browser\'s ⋮ menu and choose "Install Emami Apps". (Chrome or Edge recommended.)';
 
   return (
-    <Card onClose={dismiss}>
+    <Card onClose={pwa.closeInstallCard}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <img src="/icons/icon-192.png" alt="" width={44} height={44} style={{ borderRadius: radii.md, flexShrink: 0, border: `1px solid ${colors.border}` }} />
         <div>
           <Title>Install Emami Apps on this computer</Title>
           <Body>
-            Get a desktop shortcut and open Emami Apps in its own window, one click from your taskbar, without searching for the site.
+            {fallback ??
+              'Get a desktop shortcut and open Emami Apps in its own window, one click from your taskbar, without searching for the site.'}
           </Body>
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
-        <button type="button" onClick={dismiss} style={secondaryButton}>
-          Not now
-        </button>
-        <PrimaryButton onClick={install}>
-          <MonitorDown size={16} /> Install
-        </PrimaryButton>
+        {fallback ? (
+          <PrimaryButton onClick={pwa.closeInstallCard}>OK</PrimaryButton>
+        ) : (
+          <>
+            <button type="button" onClick={pwa.closeInstallCard} style={secondaryButton}>
+              Not now
+            </button>
+            <PrimaryButton onClick={install}>
+              <MonitorDown size={16} /> Install
+            </PrimaryButton>
+          </>
+        )}
       </div>
     </Card>
   );

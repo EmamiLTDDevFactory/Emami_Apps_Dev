@@ -26,18 +26,9 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
   const currentUser = { name: profile?.name || userEmail || '', email: profile?.email || userEmail || '' };
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [installOpen, setInstallOpen] = useState(false);
   const isWideScreen = useIsWideScreen();
   const isMobile = useIsMobile();
   const pwaInstall = usePwaInstall();
-
-  const onPressInstall = async () => {
-    if (pwaInstall.canPromptInstall) {
-      await pwaInstall.promptInstall();
-      return;
-    }
-    setInstallOpen(true);
-  };
 
   const isScrolling = useIsScrolling();
   const showAnimatedPlaceholder = !searchValue && !searchFocused && !isScrolling;
@@ -111,7 +102,7 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
         {pwaInstall.isSupported && (
           <button
             type="button"
-            onClick={onPressInstall}
+            onClick={pwaInstall.openInstallCard}
             style={{ padding: 6, background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}
             aria-label="Install Emami Apps to this device"
           >
@@ -182,41 +173,6 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
             <MenuRow icon={<User size={15} color={colors.inkSoft} />} label="Profile" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
             <MenuRow icon={<Settings size={15} color={colors.inkSoft} />} label="Settings" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
             <MenuRow icon={<LogOut size={15} color={colors.inkSoft} />} label="Sign out" onClick={() => { setProfileOpen(false); logout(); }} />
-          </div>
-        </>
-      )}
-
-      {installOpen && (
-        <>
-          <div onClick={() => setInstallOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div
-            style={{
-              position: 'absolute',
-              top: 56,
-              right: 16,
-              width: 260,
-              backgroundColor: colors.white,
-              borderRadius: radii.lg,
-              border: `1px solid ${colors.border}`,
-              overflow: 'hidden',
-              boxShadow: shadows.xl,
-              zIndex: 50,
-            }}
-          >
-            <p style={{ fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, padding: 14, margin: 0, borderBottom: `1px solid ${colors.border}` }}>
-              Install Emami Apps
-            </p>
-            <div style={{ padding: 14 }}>
-              <p style={{ fontSize: 12.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, lineHeight: '18px', margin: 0 }}>
-                {pwaInstall.isStandalone
-                  ? 'Emami Apps is already installed on this device.'
-                  : !pwaInstall.isSecureContext
-                    ? "This page was opened over an insecure connection (not HTTPS), so browsers block app installs here. Open the app's regular https:// address (or http://localhost during development) and try again."
-                    : pwaInstall.isIos
-                      ? 'Tap the Share icon in Safari (the square with an arrow), then choose "Add to Home Screen".'
-                      : "Look for the install icon (⊕ or a monitor with an arrow) at the right of your browser's address bar — or open the browser's ⋮ menu and choose \"Install Emami Apps\" / \"Add to Home screen\"."}
-              </p>
-            </div>
           </div>
         </>
       )}
