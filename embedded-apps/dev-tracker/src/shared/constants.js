@@ -46,6 +46,14 @@ export const FIELD_LABELS = {
   reasonDelay: 'Reason for Delay (Detail)', remarks: 'Remarks',
 };
 
+// The item fields holding a calendar date, all stored as plain 'YYYY-MM-DD' strings (what
+// ItemPanel's <input type="date"> produces). Shared with Import Center, which has to coerce
+// Excel's own date representation back into exactly this shape.
+export const DATE_FIELDS = new Set([
+  'startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'targetDate',
+  'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
+]);
+
 export const CATEGORIES = [
   { key: 'area', label: 'Area', hasColor: true },
   { key: 'status', label: 'Status', hasColor: true },

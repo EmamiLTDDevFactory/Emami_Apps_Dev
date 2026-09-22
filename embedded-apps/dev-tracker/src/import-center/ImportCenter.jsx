@@ -6,7 +6,7 @@ import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
-import { FIELDS, FIELD_LABELS } from '../shared/constants.js';
+import { FIELDS, FIELD_LABELS, DATE_FIELDS } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 import {
   InfoIcon, FileExcelIcon, DownloadIcon, UploadCloudIcon, RefreshIcon,
@@ -41,6 +41,51 @@ function downloadTemplate(masterData) {
   XLSX.writeFile(buildTemplateWorkbook(masterData), 'DevTracker_Import_Template.xlsx');
 }
 
+// Excel keeps a date cell as a serial number (days since 1899-12-30), and sheet_to_json hands
+// that straight through — so a filled-in "Start Date" used to arrive as 46037.0001 and land
+// verbatim in the item's date column, which is `text` server-side and therefore accepted without
+// a single error. Every date in this app is a plain 'YYYY-MM-DD' string (what ItemPanel's
+// <input type="date"> writes), so coerce to exactly that.
+//
+// SSF.parse_date_code reads the serial's own calendar parts. Going via `new Date()` +
+// toISOString() instead would shift the day back by one for any timezone east of UTC (IST
+// included) — local midnight on the 15th is 18:30Z on the 14th.
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function toDateString(val) {
+  if (val === null || val === undefined) return '';
+
+  // Defensive: nothing in this file asks for Date objects (see the XLSX.read call), but a cell
+  // can still surface as one. Round to the nearest whole day before reading the parts — SheetJS's
+  // serial->Date conversion drifts a few ms either side of midnight, which naive part-reading
+  // turns into an off-by-one-day.
+  if (val instanceof Date) {
+    if (Number.isNaN(val.getTime())) return '';
+    const local = val.getTime() - val.getTimezoneOffset() * 60000;
+    const d = new Date(Math.round(local / 86400000) * 86400000);
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+  }
+
+  // The normal path: an Excel date cell is a serial number (days since 1899-12-30), and
+  // parse_date_code reads its calendar parts directly, with no timezone in the loop at all.
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    const d = XLSX.SSF.parse_date_code(val);
+    return d ? `${d.y}-${pad2(d.m)}-${pad2(d.d)}` : '';
+  }
+
+  const str = String(val).trim();
+  if (!str) return '';
+  // Already the shape we want (someone typed it, or formatted the column as text).
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // dd/mm/yyyy or dd-mm-yyyy — the order Indian Excel locales produce, and the only ambiguous
+  // form worth guessing here; anything else is handed back untouched so the server can reject
+  // it loudly rather than this silently inventing a date.
+  const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${pad2(dmy[2])}-${pad2(dmy[1])}`;
+  return str;
+}
+
 // Reverse of FIELD_LABELS, so an uploaded sheet's human-readable header row ("Module",
 // "Business Impact", …) maps back to the FIELDS keys the API expects.
 const LABEL_TO_FIELD = Object.fromEntries(FIELDS.map((f) => [(FIELD_LABELS[f] || f).trim(), f]));
@@ -52,7 +97,10 @@ function rowsFromSheet(worksheet) {
       const out = {};
       for (const [label, val] of Object.entries(r)) {
         const key = LABEL_TO_FIELD[String(label).trim()];
-        if (key) out[key] = typeof val === 'string' ? val.trim() : val;
+        if (!key) continue;
+        out[key] = DATE_FIELDS.has(key)
+          ? toDateString(val)
+          : (typeof val === 'string' ? val.trim() : val);
       }
       return out;
     })
@@ -145,6 +193,10 @@ export default function ImportCenter() {
     setUploading(true);
     try {
       const buffer = await file.arrayBuffer();
+      // Deliberately NOT cellDates:true — that converts a date cell into a JS Date via UTC
+      // arithmetic that lands ~10ms short of midnight (serial 46037, a clean 15 Jan, comes back
+      // as 2026-01-14T18:29:59.999Z), so both its local and UTC parts read as the 14th. Left
+      // numeric, the serial decodes exactly via SSF.parse_date_code in toDateString above.
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = rowsFromSheet(sheet);
