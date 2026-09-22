@@ -168,15 +168,11 @@ export default function MyTimesheetPage() {
           <button type="button" onClick={handleSubmit} disabled={incomplete || noTasks} className="btn-primary">
             {rejected ? 'Resubmit for Approval' : 'Submit for Approval'}
           </button>
-          {noTasks ? (
-            <p className="text-xs text-red">No tasks are assigned to you yet, so there&apos;s nothing to submit. Ask your manager to assign some in Manage Team.</p>
-          ) : (
-            incomplete && (
-              <p className="text-xs text-amber">
-                You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
-                submitting.
-              </p>
-            )
+          {!noTasks && incomplete && (
+            <p className="text-xs text-amber">
+              You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
+              submitting.
+            </p>
           )}
         </div>
       )}
