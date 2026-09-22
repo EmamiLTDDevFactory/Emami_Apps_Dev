@@ -266,15 +266,6 @@ export default function Dashboard() {
 
   const moreFiltersCount = [filterImpact, filterComplexity, filterDevFactory, filterReasonCategory].filter(Boolean).length;
 
-  // Editing any filter by hand drops the saved-view selection: the dropdown would otherwise
-  // keep naming a view whose filters are no longer what is on screen. Applying a view is itself
-  // a filter change, so it arms this ref first to spend the resulting pass — without that, a
-  // view would clear its own selection the instant it was chosen.
-  useEffect(() => {
-    if (viewApplyRef.current) { viewApplyRef.current = false; return; }
-    setActiveViewId('');
-  }, [currentConfig]);
-
   useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -339,6 +330,15 @@ export default function Dashboard() {
     () => Object.fromEntries(VIEW_FILTERS.map(([k, v]) => [k, v])),
     [VIEW_FILTERS]
   );
+
+  // Editing any filter by hand drops the saved-view selection: the dropdown would otherwise
+  // keep naming a view whose filters are no longer what is on screen. Applying a view is itself
+  // a filter change, so it arms this ref first to spend the resulting pass — without that, a
+  // view would clear its own selection the instant it was chosen.
+  useEffect(() => {
+    if (viewApplyRef.current) { viewApplyRef.current = false; return; }
+    setActiveViewId('');
+  }, [currentConfig]);
 
   function applyConfig(config) {
     viewApplyRef.current = true;
