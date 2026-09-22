@@ -37,9 +37,10 @@ const TOKEN_KEY = 'timesheet-api-token';
 // Hardcoded (not a NEXT_PUBLIC_* env var) on purpose, same reasoning as the original Vite app's
 // own comment here: an env var of this shape can collide with another embedded app's own
 // Amplify-console-level global var of the same name. This app's own backend (server/) is deployed
-// on 172.17.2.21, reachable via the existing nginx /dev-api/timesheet/ route in production; in
-// local dev it's reached directly (no Vite-proxy equivalent under `next dev`).
-const API_BASE = process.env.NODE_ENV !== 'production' ? 'http://localhost:4000/api' : 'https://audit-capa-api.emamiapps.in/dev-api/timesheet/api';
+// on 172.17.2.21 as its own prod PM2 process (timesheet-api, port 4101, Prdhubfactory's
+// "timesheet" schema), reachable via the nginx /api/timesheet/ route; in local dev it's reached
+// directly (no Vite-proxy equivalent under `next dev`).
+const API_BASE = process.env.NODE_ENV !== 'production' ? 'http://localhost:4000/api' : 'https://audit-capa-api.emamiapps.in/api/timesheet/api';
 
 function loadSession(): Session {
   try {
