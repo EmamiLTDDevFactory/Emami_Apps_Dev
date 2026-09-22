@@ -78,11 +78,24 @@ function toDateString(val) {
   // Already the shape we want (someone typed it, or formatted the column as text).
   const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  // dd/mm/yyyy or dd-mm-yyyy — the order Indian Excel locales produce, and the only ambiguous
-  // form worth guessing here; anything else is handed back untouched so the server can reject
-  // it loudly rather than this silently inventing a date.
-  const dmy = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (dmy) return `${dmy[3]}-${pad2(dmy[2])}-${pad2(dmy[1])}`;
+
+  // A typed-in date with / - or . separators. Real sheets mix conventions in one column — the
+  // IT automation list this was built against carries US "6/30/2025" alongside "10.10.2025" —
+  // so the order is decided per value by whichever component cannot be a month, NOT assumed.
+  //
+  // When both components are <= 12 the value is genuinely ambiguous (01/02/2026 is two different
+  // days depending on who typed it) and there is nothing in the cell to settle it. Those are
+  // returned untouched rather than guessed: the column is text, so the original survives and
+  // stays visibly unconverted, which is recoverable. A silently wrong date is not.
+  const parts = str.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (parts) {
+    const a = Number(parts[1]);
+    const b = Number(parts[2]);
+    const year = parts[3];
+    if (a > 12 && b >= 1 && b <= 12) return `${year}-${pad2(b)}-${pad2(a)}`; // dd/mm/yyyy
+    if (b > 12 && a >= 1 && a <= 12) return `${year}-${pad2(a)}-${pad2(b)}`; // mm/dd/yyyy
+    return str; // ambiguous, or nonsense like 30/30/2025 — leave it alone
+  }
   return str;
 }
 
