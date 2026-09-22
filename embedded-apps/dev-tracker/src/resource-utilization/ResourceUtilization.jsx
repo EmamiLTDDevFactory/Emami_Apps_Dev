@@ -206,7 +206,15 @@ export default function ResourceUtilization() {
 
   const totalResources = resourceRows.length;
   const activeResourcesCount = resourceRows.filter((r) => r.stats.hasActiveOverlap).length;
-  const avgUtilization = totalResources ? resourceRows.reduce((s, r) => s + r.stats.utilizationPct, 0) / totalResources : 0;
+  // Capacity-weighted, not a plain average of each resource's own % — sum(allocated) /
+  // sum(available) across the whole scoped team. A plain average of percentages would let one
+  // wildly over/under-allocated resource skew the figure as much as anyone else, independent of
+  // team size or how much real work is behind that percentage; this instead answers "how much of
+  // the team's total capacity is actually spoken for."
+  const totalAvailableManDays = resourceRows.reduce((s, r) => s + r.stats.availableManDays, 0);
+  const avgUtilization = totalAvailableManDays > 0
+    ? (resourceRows.reduce((s, r) => s + r.stats.allocatedManDays, 0) / totalAvailableManDays) * 100
+    : 0;
   const overlappingAllocations = useMemo(() => filteredAllocations.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd)), [filteredAllocations, periodStart, periodEnd]);
   const totalAllocationsCount = overlappingAllocations.length;
 
@@ -288,9 +296,13 @@ export default function ResourceUtilization() {
   // option is just the flat list. Role/Module group resources by their own attribute, each
   // group sorted by utilization (worst-first) with a real per-group summary, not just a count.
   const summaryGroups = useMemo(() => {
+    // Capacity-weighted per group, same reasoning as the page-level avgUtilization above.
     const withAvg = (key, rows) => {
       const sorted = [...rows].sort((a, b) => b.stats.utilizationPct - a.stats.utilizationPct);
-      const avg = sorted.length ? sorted.reduce((s, r) => s + r.stats.utilizationPct, 0) / sorted.length : 0;
+      const totalAvailable = sorted.reduce((s, r) => s + r.stats.availableManDays, 0);
+      const avg = totalAvailable > 0
+        ? (sorted.reduce((s, r) => s + r.stats.allocatedManDays, 0) / totalAvailable) * 100
+        : 0;
       return { key, rows: sorted, avgUtilization: avg };
     };
     if (summaryGroupBy === 'resource') return [withAvg(null, summaryFiltered)];
