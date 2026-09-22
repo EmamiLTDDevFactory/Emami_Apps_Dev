@@ -15,13 +15,19 @@ const DAY_MS = 86400000;
 
 // Status buckets for the "Assignment Status" donut — an item lands in Overdue first
 // (regardless of its raw status) since that's the thing worth calling out, then falls
-// through to whichever stage bucket its actual status belongs to.
+// through to whichever stage bucket its actual status belongs to. Hypercare/On Hold/
+// Cancelled get their own buckets (same amber/gray convention as STATUS_COLOR_HOME and
+// KANBAN_COLUMNS) instead of collapsing into one opaque "Other" — the trailing catch-all
+// stays only as a safety net for a future custom status value added via master data.
 const STATUS_BUCKETS = [
   { key: 'overdue', label: 'Overdue', color: 'var(--st-red)', test: (it) => isOverdue(it) },
   { key: 'discussion', label: 'Discussion', color: 'var(--st-indigo)', test: (it) => ['Not Started', 'Requirement Discussion', 'FS Preparation'].includes(it.status) },
   { key: 'development', label: 'In Development', color: 'var(--st-blue)', test: (it) => it.status === 'In Progress' },
   { key: 'testing', label: 'QA / Testing', color: 'var(--st-teal)', test: (it) => ['IT Testing', 'User Testing'].includes(it.status) },
   { key: 'completed', label: 'Completed', color: 'var(--st-green)', test: (it) => it.status === 'Completed' },
+  { key: 'hypercare', label: 'Hypercare', color: 'var(--st-amber)', test: (it) => it.status === 'Hypercare' },
+  { key: 'onHold', label: 'On Hold', color: 'var(--st-amber)', test: (it) => it.status === 'On Hold' },
+  { key: 'cancelled', label: 'Cancelled', color: 'var(--st-gray)', test: (it) => it.status === 'Cancelled' },
   { key: 'other', label: 'Other', color: 'var(--st-gray)', test: () => true },
 ];
 
