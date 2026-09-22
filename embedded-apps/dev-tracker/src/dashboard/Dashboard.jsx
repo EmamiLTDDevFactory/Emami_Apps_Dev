@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
@@ -21,6 +22,10 @@ const SORT_OPTIONS = [
   { key: 'title', label: 'Title' },
 ];
 const PAGE_SIZES = [10, 15, 25, 50];
+// Sentinel for the owner filter meaning "whoever is signed in" — resolved against the session
+// email at filter time, so a saved/shared link stays personal to whoever opens it.
+const PRESET_MINE = '__me__';
+const PRESET_LABELS = { active: 'active', completed: 'completed', overdue: 'overdue', mine: 'your' };
 
 // Fallbacks used until someone picks a custom color for that value on the Master Data page
 // (Status/Priority now carry hasColor: true there, same as Area) — priorityStyle/statusStyle
@@ -122,6 +127,10 @@ export default function Dashboard() {
   const [dateEnd, setDateEnd] = useState('');
   const [search, setSearch] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  // '' | 'active' | 'completed' — the lifecycle buckets Home's KPI cards count, so clicking a
+  // card can land here showing exactly the rows behind that number. Kept separate from
+  // filterStatus because "Active" spans several statuses rather than being one of them.
+  const [lifecycle, setLifecycle] = useState('');
   const [filterImpact, setFilterImpact] = useState('');
   const [filterComplexity, setFilterComplexity] = useState('');
   const [filterDevFactory, setFilterDevFactory] = useState('');
@@ -162,14 +171,25 @@ export default function Dashboard() {
   useEffect(() => {
     if (loading) return;
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('aiArea') && !params.has('aiStatus') && !params.has('aiPriority') && !params.has('aiOverdue') && !params.has('aiSearch') && !params.has('action')) return;
+    if (!params.has('aiArea') && !params.has('aiStatus') && !params.has('aiPriority') && !params.has('aiOverdue') && !params.has('aiSearch') && !params.has('preset') && !params.has('action')) return;
     let touched = false;
+    // Home's KPI cards and hero tiles hand off which bucket was clicked, so the number on the
+    // card and the rows listed here are always the same set.
+    const preset = params.get('preset');
+    if (preset === 'active' || preset === 'completed') { setLifecycle(preset); touched = true; }
+    if (preset === 'overdue') { setOverdueOnly(true); touched = true; }
+    if (preset === 'mine') { setOwnerFilter(PRESET_MINE); touched = true; }
     if (params.get('aiArea')) { setModuleArea(params.get('aiArea')); touched = true; }
     if (params.get('aiStatus')) { setFilterStatus(params.get('aiStatus')); touched = true; }
     if (params.get('aiPriority')) { setFilterPriority(params.get('aiPriority')); touched = true; }
     if (params.get('aiOverdue') === '1') { setOverdueOnly(true); touched = true; }
     if (params.get('aiSearch')) { setSearch(params.get('aiSearch')); touched = true; }
-    if (touched) setCommandResponse({ text: 'Filters applied from your last search.', clearable: true });
+    if (touched) {
+      setCommandResponse({
+        text: preset ? `Showing ${PRESET_LABELS[preset] || 'the selected'} items.` : 'Filters applied from your last search.',
+        clearable: true,
+      });
+    }
     if (params.get('action') === 'new') setPanel({ mode: 'new', item: null });
     window.history.replaceState({}, '', ROUTES.dashboard);
   }, [loading]);
@@ -184,14 +204,34 @@ export default function Dashboard() {
   const priorityColors = useMemo(() => categoryColorMap(masterData, 'priority'), [masterData]);
   const statusColors = useMemo(() => categoryColorMap(masterData, 'status'), [masterData]);
 
+  // "My Work": items where the signed-in person is the developer or either SPOC. The item
+  // columns hold display names ("Indranil", "Anjani K"), not emails, so this matches on the
+  // profile name and falls back to the local part of the address when no name is resolved.
+  const myNames = useMemo(() => {
+    const out = [];
+    if (profileName) out.push(profileName.trim().toLowerCase());
+    if (email) out.push(String(email).split('@')[0].replace(/[._]/g, ' ').trim().toLowerCase());
+    return out.filter(Boolean);
+  }, [profileName, email]);
+
+  const isMine = useCallback((it) => {
+    if (!myNames.length) return false;
+    const fields = [it.developer, it.spocIT, it.spocFunction].map((v) => (v || '').trim().toLowerCase());
+    return fields.some((f) => f && myNames.some((n) => f === n || f.startsWith(n) || n.startsWith(f)));
+  }, [myNames]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = items.filter((it) => {
       if (moduleArea && it.area !== moduleArea) return false;
-      if (ownerFilter && it.developer !== ownerFilter) return false;
+      if (ownerFilter === PRESET_MINE) {
+        if (!isMine(it)) return false;
+      } else if (ownerFilter && it.developer !== ownerFilter) return false;
       if (filterStatus && it.status !== filterStatus) return false;
       if (filterPriority && it.priority !== filterPriority) return false;
       if (overdueOnly && !isOverdue(it)) return false;
+      if (lifecycle === 'active' && ['Completed', 'Cancelled'].includes(it.status)) return false;
+      if (lifecycle === 'completed' && it.status !== 'Completed') return false;
       if (dateStart && (!it.targetDate || it.targetDate < dateStart)) return false;
       if (dateEnd && (!it.targetDate || it.targetDate > dateEnd)) return false;
       if (filterImpact && it.impact !== filterImpact) return false;
@@ -205,11 +245,11 @@ export default function Dashboard() {
       return true;
     });
     return sortItems(rows, sortBy, sortDir);
-  }, [items, moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, sortBy, sortDir]);
+  }, [items, isMine, moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, sortBy, sortDir]);
 
   const moreFiltersCount = [filterImpact, filterComplexity, filterDevFactory, filterReasonCategory].filter(Boolean).length;
 
-  useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
+  useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageSafe = Math.min(page, totalPages);
@@ -227,25 +267,26 @@ export default function Dashboard() {
 
   function clearFilters() {
     setModuleArea(''); setOwnerFilter(''); setFilterStatus(''); setFilterPriority('');
-    setDateStart(''); setDateEnd(''); setOverdueOnly(false); setSearch('');
+    setDateStart(''); setDateEnd(''); setOverdueOnly(false); setSearch(''); setLifecycle('');
     setFilterImpact(''); setFilterComplexity(''); setFilterDevFactory(''); setFilterReasonCategory('');
     setCommandResponse(null);
   }
 
-  function exportCsv() {
+  // Exports what is on screen — the filtered, sorted rows — not the whole table. Exporting
+  // everything regardless of the filters made the button useless for the "send me just the
+  // overdue MM items" case it exists for. Written as .xlsx with the same column order and
+  // headers as the import template, so an export can be edited and fed straight back through
+  // Import Center.
+  function exportRows() {
     const header = FIELDS.map((f) => FIELD_LABELS[f] || f);
-    const rows = items.map((it) => FIELDS.map((f) => {
-      const v = it[f] == null ? '' : String(it[f]);
-      return `"${v.replace(/"/g, '""')}"`;
-    }));
-    const csv = [header.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dev-tracker-items.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const body = filtered.map((it) => FIELDS.map((f) => (it[f] == null ? '' : it[f])));
+    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+    ws['!cols'] = header.map(() => ({ wch: 22 }));
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: header.length - 1 } }) };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Items');
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `dev-tracker-${filtered.length === items.length ? 'all' : 'filtered'}-${stamp}.xlsx`);
   }
 
   function onSaved() {
@@ -456,8 +497,13 @@ export default function Dashboard() {
             <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setSortDir('asc'); }}>
               {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={exportCsv}>
-              <DownloadIcon size={14} /> Export CSV
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={exportRows}
+              title={filtered.length === items.length ? 'Export all items to Excel' : `Export the ${filtered.length} filtered items to Excel`}
+            >
+              <DownloadIcon size={14} /> Export{filtered.length !== items.length ? ` (${filtered.length})` : ''}
             </button>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setPanel({ mode: 'new', item: null })}>
               <PlusIcon size={14} /> New Item

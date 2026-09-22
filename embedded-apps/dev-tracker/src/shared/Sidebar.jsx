@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon } from './icons.jsx';
+import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
 function backToEmamiApps() {
@@ -15,6 +15,7 @@ function backToEmamiApps() {
 const NAV = [
   { key: 'home', label: 'Home', href: () => ROUTES.home, icon: HomeIcon },
   { key: 'dashboard', label: 'Dashboard', href: () => ROUTES.dashboard, icon: BoardIcon },
+  { key: 'myWork', label: 'My Work', href: () => ROUTES.myWork, icon: StarIcon },
   { key: 'masterData', label: 'Master Data', href: () => ROUTES.admin, icon: DatabaseIcon, adminOnly: true },
   { key: 'qaSupport', label: 'QA Support', href: () => ROUTES.qaSupport, icon: ShieldIcon },
   { key: 'importCenter', label: 'Import Center', href: () => ROUTES.importCenter, icon: UploadCloudIcon, adminOnly: true },

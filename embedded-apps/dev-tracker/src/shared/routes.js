@@ -15,6 +15,10 @@ export const ROUTES = {
   admin: `${BASE_PATH}/admin/`,
   resourceUtilization: `${BASE_PATH}/resource-utilization/`,
   qaSupport: `${BASE_PATH}/qa-support/`,
+  // Not its own page — the Dashboard filtered to the signed-in person's items (see the
+  // ?preset= handoff it reads). Kept here so the sidebar links to one place rather than
+  // hard-coding the query string.
+  myWork: `${BASE_PATH}/dashboard/?preset=mine`,
   changeLog: `${BASE_PATH}/change-log/`,
   importCenter: `${BASE_PATH}/import-center/`,
   settings: `${BASE_PATH}/settings/`,
