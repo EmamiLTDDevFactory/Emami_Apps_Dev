@@ -10,6 +10,14 @@ import { buildPayload, isEpic } from '../../shared/pm.js';
 // `pmReady` is false while the deployed API predates the project-management columns (items come
 // back without issueNo) or the /sprints route: the UI then hides sprint/epic/comment controls
 // instead of letting someone type into fields the server would silently drop.
+// Items created before new ones defaulted to 'Not Started' server-side can have a blank status.
+// Every view keys off status (the board only places a card in the column whose status it matches),
+// so a blank one made those items vanish from the board entirely. Treat blank as 'Not Started'
+// everywhere — and since updateItem builds its payload from the current item, the next edit to
+// one of them also saves the status for real.
+const DEFAULT_STATUS = 'Not Started';
+const withDefaultStatus = (it) => (it && !(it.status && String(it.status).trim()) ? { ...it, status: DEFAULT_STATUS } : it);
+
 export function useWorkspace(email) {
   const [items, setItems] = useState([]);
   const [masterData, setMasterData] = useState([]);
@@ -33,7 +41,7 @@ export function useWorkspace(email) {
   const reload = useCallback(async () => {
     try {
       const [itemRows, mdRows] = await Promise.all([apiList(email), apiMasterData(email), reloadSprints()]);
-      setItems(itemRows || []);
+      setItems((itemRows || []).map(withDefaultStatus));
       setMasterData(mdRows || []);
       setError(null);
     } catch (e) {
@@ -84,7 +92,7 @@ export function useWorkspace(email) {
     setItems((cur) => cur.map((it) => (String(it.id) === String(id) ? optimistic : it)));
     try {
       const saved = await apiUpdate(id, payload, email);
-      if (saved) setItems((cur) => cur.map((it) => (String(it.id) === String(id) ? { ...optimistic, ...saved } : it)));
+      if (saved) setItems((cur) => cur.map((it) => (String(it.id) === String(id) ? withDefaultStatus({ ...optimistic, ...saved }) : it)));
       return saved;
     } catch (e) {
       setItems((cur) => cur.map((it) => (String(it.id) === String(id) ? current : it)));
@@ -94,7 +102,7 @@ export function useWorkspace(email) {
 
   const createItem = useCallback(async (fields) => {
     const saved = await apiCreate(buildPayload({}, fields), email);
-    if (saved) setItems((cur) => [...cur, saved]);
+    if (saved) setItems((cur) => [...cur, withDefaultStatus(saved)]);
     return saved;
   }, [email]);
 
