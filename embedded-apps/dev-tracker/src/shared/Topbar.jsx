@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
@@ -14,8 +14,20 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
   const [query, setQuery] = useState('');
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
+  const userRef = useRef(null);
   const displayName = name || email || '';
   const unreadCount = notifications.filter((n) => n.unread).length;
+
+  useEffect(() => {
+    if (!notifOpen && !userOpen) return undefined;
+    function onDocMouseDown(e) {
+      if (notifOpen && notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
+      if (userOpen && userRef.current && !userRef.current.contains(e.target)) setUserOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [notifOpen, userOpen]);
 
   function submitSearch() {
     const q = query.trim();
@@ -37,7 +49,7 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
       </div>
 
       <div className="topbar-side">
-        <div className="topbar-notif" onMouseLeave={() => setNotifOpen(false)}>
+        <div className="topbar-notif" ref={notifRef}>
           <button type="button" className="topbar-bell" title="Notifications" onClick={() => setNotifOpen((o) => !o)}>
             <BellIcon size={18} />
             {unreadCount > 0 && <span className="topbar-bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
@@ -67,7 +79,7 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
           )}
         </div>
 
-        <div className="topbar-user" onMouseLeave={() => setUserOpen(false)}>
+        <div className="topbar-user" ref={userRef}>
           <button type="button" className="topbar-user-btn" onClick={() => setUserOpen((o) => !o)}>
             <div className="avatar mono topbar-avatar">{initialsHome(displayName)}</div>
             <div className="topbar-user-text">

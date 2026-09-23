@@ -181,6 +181,15 @@ export default function ImportCenter() {
   const fileInputRef = useRef(null);
 
   useEffect(() => {
+    if (rowMenuId == null) return undefined;
+    function onDocMouseDown(e) {
+      if (!e.target.closest('.row-menu-wrap')) setRowMenuId(null);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [rowMenuId]);
+
+  useEffect(() => {
     if (!email) {
       window.location.href = '/';
       return;
@@ -397,7 +406,7 @@ export default function ImportCenter() {
                     <td className="table-actions">
                       <button type="button" className="row-action" title="View details" onClick={() => setViewLog(log)}><EyeIcon size={14} /></button>
                       <button type="button" className="row-action" title="Download error report" disabled={!log.failed} onClick={() => downloadErrorReport(log)}><DownloadIcon size={14} /></button>
-                      <div className="row-menu-wrap" onMouseLeave={() => setRowMenuId(null)}>
+                      <div className="row-menu-wrap">
                         <button type="button" className="row-action" title="More" onClick={() => setRowMenuId((cur) => (cur === log.id ? null : log.id))}><MoreIcon size={14} /></button>
                         {rowMenuId === log.id && (
                           <div className="row-menu">

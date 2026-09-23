@@ -166,6 +166,15 @@ export default function Dashboard() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [rowMenuId, setRowMenuId] = useState(null);
   const [panel, setPanel] = useState(null); // { mode, item }
+
+  useEffect(() => {
+    if (rowMenuId == null) return undefined;
+    function onDocMouseDown(e) {
+      if (!e.target.closest('.row-menu-wrap')) setRowMenuId(null);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [rowMenuId]);
   const [commandResponse, setCommandResponse] = useState(null);
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -816,7 +825,7 @@ export default function Dashboard() {
                       <td className="table-actions">
                         <button type="button" className="row-action" title="View" onClick={() => setPanel({ mode: 'edit', item: it })}><EyeIcon size={14} /></button>
                         <button type="button" className="row-action" title="Edit" onClick={() => setPanel({ mode: 'edit', item: it })}><PencilIcon size={14} /></button>
-                        <div className="row-menu-wrap" onMouseLeave={() => setRowMenuId(null)}>
+                        <div className="row-menu-wrap">
                           <button type="button" className="row-action" title="More" onClick={() => setRowMenuId((cur) => (cur === it.id ? null : it.id))}><MoreIcon size={14} /></button>
                           {rowMenuId === it.id && (
                             <div className="row-menu">

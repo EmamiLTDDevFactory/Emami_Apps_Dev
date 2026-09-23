@@ -70,6 +70,9 @@ export const CATEGORIES = [
   { key: 'complexity', label: 'Technical Complexity', hasColor: false },
   { key: 'devFactory', label: 'Dev Factory', hasColor: false },
   { key: 'reasonCategory', label: 'Reason for Delay', hasColor: false },
+  // Values are "YYYY-MM-DD Holiday name" (e.g. "2026-10-20 Diwali") — Resource Utilization's
+  // working-day calendar reads the leading date; the name is for whoever's editing this list.
+  { key: 'holiday', label: 'Holidays', hasColor: false },
 ];
 
 export const STAGE_PIPELINE = [

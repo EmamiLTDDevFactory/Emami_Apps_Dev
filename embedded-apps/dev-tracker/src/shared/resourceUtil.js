@@ -10,8 +10,9 @@
 // leave/unavailability concept at all — deliberately: no leave data source exists anywhere in
 // this app, so rather than show a permanently-zero "On Leave" figure, that concept is left out
 // of this page entirely. Available capacity is simply "working days in the period".)
-//   1. No holiday calendar exists. "Working day" means Mon–Fri only; public holidays inside a
-//      period are not excluded.
+//   1. "Working day" = Mon–Fri, plus odd Saturdays (1st/3rd/5th of the month — the org works
+//      those), minus Sunday and every 2nd/4th Saturday, minus any date in the "Holidays" master
+//      data category (see buildHolidaySet below — admin-managed, not hardcoded).
 //   2. There is no standalone resource/roster table — a "resource" is inferred from the distinct
 //      `developer` / `spocFunction` names that appear on assignments (same approach the previous
 //      concurrency-based version of this page used). This means someone with literally zero
@@ -37,20 +38,41 @@ export function toISODate(d) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
-function isWeekday(d) {
+// Sunday's always off. Saturday depends on which occurrence in the month it is — 1st/3rd/5th
+// ("odd") Saturdays are worked, 2nd/4th are off. holidaySet (see buildHolidaySet below) then
+// knocks out any remaining admin-listed holiday regardless of what weekday it falls on.
+function isWorkingDay(d, holidaySet) {
   const day = d.getDay();
-  return day !== 0 && day !== 6;
+  if (day === 0) return false;
+  if (day === 6 && Math.ceil(d.getDate() / 7) % 2 === 0) return false;
+  if (holidaySet && holidaySet.has(toISODate(d))) return false;
+  return true;
 }
-// Inclusive Mon–Fri count between two Dates (a <= b), no holiday calendar (see gap #2 above).
-export function countWorkingDays(a, b) {
+// Inclusive working-day count between two Dates (a <= b) — see gap #1 above for exactly what
+// counts as a working day.
+export function countWorkingDays(a, b, holidaySet) {
   if (!a || !b || b < a) return 0;
   let count = 0;
   const cur = new Date(a);
   while (cur <= b) {
-    if (isWeekday(cur)) count++;
+    if (isWorkingDay(cur, holidaySet)) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count;
+}
+
+// Holiday master-data values are "YYYY-MM-DD Label" (admin's "Holidays" category) — only the
+// leading date matters here; the label is for whoever's reading the list in Manage Master Data.
+// A malformed entry (no leading date) is simply skipped rather than breaking the calendar.
+const HOLIDAY_DATE_RE = /^(\d{4}-\d{2}-\d{2})/;
+export function buildHolidaySet(masterData) {
+  const set = new Set();
+  for (const row of masterData || []) {
+    if (row.category !== 'holiday' || !row.active) continue;
+    const m = HOLIDAY_DATE_RE.exec(String(row.value || '').trim());
+    if (m) set.add(m[1]);
+  }
+  return set;
 }
 function calendarDays(a, b) {
   return Math.round((b - a) / 86400000) + 1;
@@ -72,12 +94,12 @@ export function assignmentWindow(item, revisedTargetFn) {
 }
 
 // An assignment's man-days contribution to [periodStart, periodEnd], proportional to how much
-// of the assignment's own working-day span falls inside the period (gap #4 above).
-export function allocatedManDaysInPeriod(win, manDays, periodStart, periodEnd) {
+// of the assignment's own working-day span falls inside the period (gap #3 above).
+export function allocatedManDaysInPeriod(win, manDays, periodStart, periodEnd, holidaySet) {
   const overlap = clampRange(win.start, win.end, periodStart, periodEnd);
   if (!overlap) return 0;
-  const totalSpanWorkingDays = countWorkingDays(win.start, win.end);
-  const overlapWorkingDays = countWorkingDays(overlap.start, overlap.end);
+  const totalSpanWorkingDays = countWorkingDays(win.start, win.end, holidaySet);
+  const overlapWorkingDays = countWorkingDays(overlap.start, overlap.end, holidaySet);
   if (totalSpanWorkingDays > 0) return (manDays || 0) * (overlapWorkingDays / totalSpanWorkingDays);
   // Degenerate case (assignment window is entirely weekend/zero working days) — fall back to a
   // calendar-day fraction so a same-day or weekend-only assignment doesn't just silently vanish.
@@ -86,8 +108,8 @@ export function allocatedManDaysInPeriod(win, manDays, periodStart, periodEnd) {
   return totalSpanDays > 0 ? (manDays || 0) * (overlapDays / totalSpanDays) : 0;
 }
 
-export function availableManDays(periodStart, periodEnd) {
-  return countWorkingDays(periodStart, periodEnd);
+export function availableManDays(periodStart, periodEnd, holidaySet) {
+  return countWorkingDays(periodStart, periodEnd, holidaySet);
 }
 
 // --- Resource universe + allocations --------------------------------------------------
@@ -186,10 +208,10 @@ export function resourceStatus({ utilizationPct, hasActiveOverlap }) {
 
 // --- Per-resource stats for a period --------------------------------------------------
 // allocs: this resource's allocations that already passed the non-date filters.
-export function computeResourceStats(allocs, periodStart, periodEnd) {
+export function computeResourceStats(allocs, periodStart, periodEnd, holidaySet) {
   const overlapping = allocs.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd));
-  const allocatedManDays = overlapping.reduce((sum, a) => sum + allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd), 0);
-  const available = availableManDays(periodStart, periodEnd);
+  const allocatedManDays = overlapping.reduce((sum, a) => sum + allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet), 0);
+  const available = availableManDays(periodStart, periodEnd, holidaySet);
   const utilizationPct = available > 0 ? (allocatedManDays / available) * 100 : 0;
   const activeOverlapping = overlapping.filter((a) => isActiveAssignment(a.item));
   return {
@@ -206,10 +228,10 @@ export function computeResourceStats(allocs, periodStart, periodEnd) {
 // Per the brief: this is NOT the resource's overall utilization. It's this one assignment's
 // man-days (scoped to the period) against the resource's available capacity during that same
 // period — i.e. how much of the person's capacity this one assignment alone is eating.
-export function allocationPct(alloc, periodStart, periodEnd) {
+export function allocationPct(alloc, periodStart, periodEnd, holidaySet) {
   if (!alloc.window) return 0;
-  const manDays = allocatedManDaysInPeriod(alloc.window, Number(alloc.item.devTime) || 0, periodStart, periodEnd);
-  const available = availableManDays(periodStart, periodEnd);
+  const manDays = allocatedManDaysInPeriod(alloc.window, Number(alloc.item.devTime) || 0, periodStart, periodEnd, holidaySet);
+  const available = availableManDays(periodStart, periodEnd, holidaySet);
   return available > 0 ? (manDays / available) * 100 : 0;
 }
 
@@ -217,14 +239,14 @@ export function allocationPct(alloc, periodStart, periodEnd) {
 // Man-days based where devTime is usable; falls back to a plain allocation count (and callers
 // should relabel the chart "Allocations by Module" in that case) per the brief's explicit
 // fallback instruction.
-export function allocationByModule(allocs, periodStart, periodEnd) {
+export function allocationByModule(allocs, periodStart, periodEnd, holidaySet) {
   const overlapping = allocs.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd));
   const manDaysByModule = {};
   const countByModule = {};
   let totalManDays = 0;
   for (const a of overlapping) {
     const mod = a.module || 'Unassigned';
-    const md = allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd);
+    const md = allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet);
     manDaysByModule[mod] = (manDaysByModule[mod] || 0) + md;
     countByModule[mod] = (countByModule[mod] || 0) + 1;
     totalManDays += md;
