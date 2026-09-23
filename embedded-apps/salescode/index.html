@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Salescode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Placeholder for the Salescode app while its data views and SAP connection are built.
+     Tokens are dev-tracker's src/shared/tokens.css (the hub's own palette from
+     hub-next/src/theme/tokens.ts, in OKLCH) and the card is its shared/comingsoon.css, so this
+     reads as part of Emami Apps. --tile is the hub's Sales category colour (theme/tokens.ts), the
+     category (the SAP SD module) the Salescode tile sits under. */
+  :root {
+    --bg: oklch(95.5% 0.006 264.5);
+    --bg-alt: oklch(96.3% 0.013 295.3);
+    --surface: oklch(100% 0 0);
+    --border: oklch(92.3% 0.024 293.6);
+    --border-strong: oklch(84% 0.03 293);
+    --text: oklch(23.9% 0.045 290.2);
+    --text-2: oklch(38% 0.03 288);
+    --muted: oklch(55.1% 0.023 264.4);
+    --accent: oklch(48.7% 0.219 279.2);
+    --accent-soft: oklch(94% 0.035 279);
+    --accent-2: oklch(41.3% 0.194 277.8);
+    --st-green: oklch(48% 0.13 150);
+    --st-green-soft: oklch(94% 0.028 150);
+    --tile: #EA580C;
+    --tile-soft: color-mix(in srgb, #EA580C 12%, transparent);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+  .page { max-width: 1080px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  /* Top strip — same bordered-surface treatment as dev-tracker's .topbar. */
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 8px 14px; box-shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 8px 18px -18px oklch(0% 0 0 / 0.10);
+  }
+  .hub-link {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px;
+    border: none; border-radius: 8px; background: none; cursor: pointer;
+    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2); white-space: nowrap;
+    transition: background .12s ease, color .12s ease;
+  }
+  .hub-link:hover { background: var(--bg-alt); color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 10px; padding-left: 14px; border-left: 1px solid var(--border); min-width: 0; }
+  .brand-chip {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--tile); color: #fff;
+  }
+  .brand-name { font-size: 14px; font-weight: 700; }
+  .brand-sub { font-size: 11px; color: var(--muted); }
+  .user { display: flex; align-items: center; gap: 9px; margin-left: auto; padding-left: 14px; border-left: 1px solid var(--border); min-width: 0; }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600;
+  }
+  .user-email { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+
+  /* Coming-soon card — dev-tracker's shared/comingsoon.css, widened for the roadmap. */
+  .coming-soon {
+    max-width: 560px; margin: 7vh auto 0; text-align: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 40px 36px 34px;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 20px 44px -24px oklch(0% 0 0 / 0.12);
+  }
+  .coming-soon-icon {
+    width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 18px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--tile-soft); color: var(--tile);
+  }
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .h1 { font-size: 27px; font-weight: 600; letter-spacing: -0.01em; margin: 6px 0 0; }
+  .coming-soon-desc { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 10px 0 0; }
+
+  .section-label { margin: 26px 0 10px; text-align: left; }
+  .coming-soon-list {
+    text-align: left; margin: 0; padding: 16px 18px 16px 34px; border-radius: 12px;
+    background: var(--bg-alt); font-size: 12.5px; color: var(--text-2); line-height: 1.9;
+  }
+  .coming-soon-list li::marker { color: var(--accent); }
+
+  /* Rollout steps — where the app is today, so users know what to expect next. */
+  .steps { list-style: none; margin: 0; padding: 0; text-align: left; display: grid; gap: 8px; }
+  .step {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    border: 1px solid var(--border); border-radius: 12px; font-size: 12.5px; color: var(--text-2);
+  }
+  .step-dot {
+    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 600; background: var(--bg-alt); color: var(--muted);
+  }
+  .step-title { font-weight: 600; color: var(--text); }
+  .step-state { margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .step.is-done .step-dot { background: var(--st-green); color: #fff; }
+  .step.is-done .step-state { color: var(--st-green); }
+  .step.is-current { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); }
+  .step.is-current .step-dot { background: var(--accent); color: #fff; }
+  .step.is-current .step-state { color: var(--accent); }
+
+  .coming-soon-badge {
+    display: inline-block; margin-top: 24px; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
+    background: var(--accent-soft); padding: 5px 12px; border-radius: 999px;
+  }
+  .foot { margin-top: 18px; text-align: center; font-size: 11.5px; color: var(--muted); }
+
+  @media (max-width: 640px) {
+    .brand-sub, .user-email, .hub-link-lead { display: none; }
+    .coming-soon { margin-top: 24px; padding: 32px 20px 28px; }
+    .h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="topbar">
+    <button type="button" class="hub-link" id="backToHub">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span><span class="hub-link-lead">Back to </span>Emami Apps</span>
+    </button>
+    <div class="brand">
+      <span class="brand-chip" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
+      </span>
+      <div>
+        <div class="brand-name">Salescode</div>
+        <div class="brand-sub">SAP SD · Master &amp; transactional data</div>
+      </div>
+    </div>
+    <div class="user" id="user" hidden>
+      <span class="avatar mono" id="userInitials"></span>
+      <span class="user-email" id="userEmail"></span>
+    </div>
+  </header>
+
+  <main class="coming-soon">
+    <div class="coming-soon-icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
+    </div>
+    <div class="eyebrow">Sales (SAP SD) · Salescode</div>
+    <h1 class="h1">Salescode</h1>
+    <p class="coming-soon-desc">
+      View SAP SD master and transactional data for Emami products sold through SalesCode.ai, the sales platform used by our field teams, distributors and retailers. Everything you need, in one place.
+    </p>
+
+    <div class="eyebrow section-label">What you'll be able to do</div>
+    <ul class="coming-soon-list">
+      <li>Master data SAP shares with SalesCode: products, distributors and prices</li>
+      <li>Transactional data: the invoice, order and billing lines for products sold through SalesCode</li>
+      <li>MRP, base rate, margins, discounts and GST for each material</li>
+      <li>Search by distributor code and export results for further analysis</li>
+    </ul>
+
+    <div class="eyebrow section-label">Rollout</div>
+    <ol class="steps">
+      <li class="step is-done">
+        <span class="step-dot">✓</span>
+        <span class="step-title">App available in Emami Apps</span>
+        <span class="step-state">Done</span>
+      </li>
+      <li class="step is-current">
+        <span class="step-dot">2</span>
+        <span class="step-title">Master &amp; transactional data views</span>
+        <span class="step-state">In progress</span>
+      </li>
+      <li class="step">
+        <span class="step-dot">3</span>
+        <span class="step-title">Live data from SAP</span>
+        <span class="step-state">Up next</span>
+      </li>
+    </ol>
+
+    <span class="coming-soon-badge">In development</span>
+  </main>
+
+  <p class="foot">Access is managed by your Emami Apps administrator.</p>
+</div>
+
+<script>
+  // Same hub conventions as dev-tracker (src/shared/api.js, Sidebar.jsx): served same-origin under
+  // /apps/salescode/, so the hub's login is read straight from localStorage, and with no login the
+  // page sends you back to the hub rather than rendering for an anonymous visitor.
+  const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
+
+  function getCurrentUserEmail() {
+    try {
+      return localStorage.getItem(HUB_EMAIL_STORAGE_KEY) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function initials(email) {
+    const parts = email.split('@')[0].split(/[._-]+/).filter(Boolean);
+    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
+  }
+
+  document.getElementById('backToHub').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  const email = getCurrentUserEmail();
+  if (!email) {
+    window.location.href = '/';
+  } else {
+    document.getElementById('userInitials').textContent = initials(email);
+    document.getElementById('userEmail').textContent = email;
+    document.getElementById('user').hidden = false;
+  }
+</script>
+
+</body>
+</html>

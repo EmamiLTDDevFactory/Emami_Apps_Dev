@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
@@ -30,6 +30,7 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
+  Sales: Handshake,
 };
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -43,6 +44,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Cross-Function': 'Mediclaim, term policy & PO approval',
   Packaging: 'Mould health inspection',
   Finance: 'Non-CTC expense claims',
+  Sales: 'SAP SD · Salescode',
 };
 
 /** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow

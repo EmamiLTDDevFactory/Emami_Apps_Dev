@@ -1,0 +1,9 @@
+{
+  "name": "salescode-embedded",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Salescode (Sales / SAP SD) — master and transactional data for Emami products sold through Salescode, from SAP (in development; currently a placeholder page). A single static page, no framework or dependencies; build.js just places it where the hub's scripts/build-embedded-apps.js expects it.",
+  "scripts": {
+    "build": "node build.js"
+  }
+}

@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 
-export type Category = 'CQA' | 'CPD' | 'IT' | 'Supply Chain' | 'IBD' | 'HR' | 'Cross-Function' | 'Packaging' | 'Finance';
+export type Category = 'CQA' | 'CPD' | 'IT' | 'Supply Chain' | 'IBD' | 'HR' | 'Cross-Function' | 'Packaging' | 'Finance' | 'Sales';
 
 export interface AppItem {
   id: string;

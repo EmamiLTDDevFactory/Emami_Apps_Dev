@@ -54,6 +54,9 @@ apiRouter.use(require('./stockQuote'));
 // Development Tracker (SAP ABAP dev item tracking) — own dev_tracker schema, own routes under
 // /dev-tracker, self-contained in devTracker.js. Purely additive: doesn't touch any route above.
 apiRouter.use('/dev-tracker', require('./devTracker'));
+// Salescode (SAP SD master/transactional data for products sold through Salescode, via OData) — own routes under /salescode,
+// self-contained in salescode.js. Purely additive, same as Dev Tracker above.
+apiRouter.use('/salescode', require('./salescode'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Most apps use the generic User/Admin pair. Audit & CAPA has its own role vocabulary — CQA

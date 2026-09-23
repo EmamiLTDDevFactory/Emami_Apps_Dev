@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Landmark, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Grid3x3 } from 'lucide-react';
+import { Landmark, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, Grid3x3 } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, appColor, catColor, navColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
 import { useFavorites } from '../context/FavoritesContext';
@@ -26,6 +26,7 @@ const CATEGORY_ICONS: Record<string, typeof Grid3x3> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
+  Sales: Handshake,
 };
 
 /** Strips a trailing slash (except on root `/`) so the active-route check below can't be fooled

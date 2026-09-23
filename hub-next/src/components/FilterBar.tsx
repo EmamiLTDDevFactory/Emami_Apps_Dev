@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Grid3x3, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package } from 'lucide-react';
+import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Grid3x3, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows, catColor } from '../theme/tokens';
 import { CATEGORIES, APPS } from '../data/mockData';
 import type { CategoryFilter, SortOption } from '../types';
@@ -22,6 +22,7 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
+  Sales: Handshake,
 };
 
 interface FilterBarProps {
