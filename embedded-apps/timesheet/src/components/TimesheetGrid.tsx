@@ -191,10 +191,9 @@ function PunchButton({
 
 // Displays a captured punch (time + geotagged place). `onReset` (today only, still editable)
 // clears it so a mis-tap can be redone; without it (read-only, or a past day) it's plain display.
-// The desktop table shows it as a single line the same height as the time inputs on other rows -
-// just the time, a location pin (green if captured, grey if not, place name on hover) and a small
-// reset icon - so today's row doesn't grow taller than the rest. Mobile cards have the room, so
-// they keep the place name as text.
+// The desktop table shows a box the same height as the time inputs on other rows - the time, a
+// location pin (green if captured, grey if not) and a small reset icon - with the place name as
+// small text underneath (truncated, full name on hover). Mobile cards use the compact layout.
 function PunchResult({
   time,
   location,
@@ -238,12 +237,21 @@ function PunchResult({
   }
 
   return (
-    <div className="flex h-[30px] w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-1.5 text-xs">
-      <span className="font-semibold text-ink">{time}</span>
-      <span title={location || 'No location captured'} aria-label={location || 'No location captured'} className={`shrink-0 ${location ? 'text-green' : 'text-inkSoft/50'}`}>
-        <MapPin size={13} />
-      </span>
-      {resetButton}
+    <div className="flex w-full flex-col items-stretch gap-0.5">
+      <div className="flex h-[30px] w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-1.5 text-xs">
+        <span className="font-semibold text-ink">{time}</span>
+        <span title={location || 'No location captured'} aria-label={location || 'No location captured'} className={`shrink-0 ${location ? 'text-green' : 'text-inkSoft/50'}`}>
+          <MapPin size={13} />
+        </span>
+        {resetButton}
+      </div>
+      {location ? (
+        <span title={location} className="truncate text-[10px] leading-tight text-green">
+          {location}
+        </span>
+      ) : (
+        <span className="text-[10px] italic leading-tight text-inkSoft">No location captured</span>
+      )}
     </div>
   );
 }
