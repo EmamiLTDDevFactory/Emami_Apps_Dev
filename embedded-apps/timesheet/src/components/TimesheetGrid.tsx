@@ -5,7 +5,6 @@ import { LogIn, LogOut, MapPin, X, Check, Plus } from 'lucide-react';
 import {
   formatDayNum,
   formatDayOrdinal,
-  formatTime,
   formatWeekday,
   isOffDay,
   isWorkingSaturday,
@@ -192,36 +191,59 @@ function PunchButton({
 
 // Displays a captured punch (time + geotagged place). `onReset` (today only, still editable)
 // clears it so a mis-tap can be redone; without it (read-only, or a past day) it's plain display.
+// The desktop table shows it as a single line the same height as the time inputs on other rows -
+// just the time, a location pin (green if captured, grey if not, place name on hover) and a small
+// reset icon - so today's row doesn't grow taller than the rest. Mobile cards have the room, so
+// they keep the place name as text.
 function PunchResult({
   time,
   location,
-  capturedAt,
   onReset,
   compact,
 }: {
   time: string;
   location?: string;
-  capturedAt?: string;
   onReset?: () => void;
   compact?: boolean;
 }) {
-  return (
-    <div className={`flex flex-col gap-0.5 ${compact ? 'items-start' : 'items-center'}`}>
-      <span className={`font-semibold text-ink ${compact ? 'text-sm' : ''}`}>{time}</span>
-      {location ? (
-        <span className="flex items-center gap-0.5 break-words text-[10px] text-green">
-          <MapPin size={9} className="shrink-0" />
-          {location}
+  const resetButton = onReset && (
+    <button
+      type="button"
+      onClick={onReset}
+      title="Reset"
+      aria-label={`Reset ${time}`}
+      className="shrink-0 text-inkSoft hover:text-red focus:outline-none focus-visible:text-red"
+    >
+      <X size={13} />
+    </button>
+  );
+
+  if (compact) {
+    return (
+      <div className="flex flex-col items-start gap-0.5">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          {time}
+          {resetButton}
         </span>
-      ) : (
-        <span className="text-[10px] italic text-inkSoft">No location captured</span>
-      )}
-      {capturedAt && <span className="text-[9px] text-inkSoft">at {formatTime(capturedAt)}</span>}
-      {onReset && (
-        <button type="button" onClick={onReset} className="text-[10px] text-inkSoft hover:text-red focus:outline-none focus-visible:underline">
-          Reset
-        </button>
-      )}
+        {location ? (
+          <span className="flex max-w-full items-center gap-0.5 truncate text-[10px] text-green">
+            <MapPin size={9} className="shrink-0" />
+            <span className="truncate">{location}</span>
+          </span>
+        ) : (
+          <span className="text-[10px] italic text-inkSoft">No location captured</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-[30px] w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-1.5 text-xs">
+      <span className="font-semibold text-ink">{time}</span>
+      <span title={location || 'No location captured'} aria-label={location || 'No location captured'} className={`shrink-0 ${location ? 'text-green' : 'text-inkSoft/50'}`}>
+        <MapPin size={13} />
+      </span>
+      {resetButton}
     </div>
   );
 }
@@ -465,12 +487,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   }
 
   // Clears a mis-tapped punch (time + its location) so it can be redone - today only, before the
-  // day is locked in by submission.
+  // day is locked in by submission. Resetting the clock-in also clears the clock-out: otherwise
+  // re-clocking in after already clocking out leaves an out time earlier than the new in time
+  // (0h for the day).
   function resetPunch(date: string, which: 'in' | 'out') {
-    const timeField = which === 'in' ? 'inTime' : 'outTime';
-    const locationField = which === 'in' ? 'inLocation' : 'outLocation';
-    const locationAtField = which === 'in' ? 'inLocationAt' : 'outLocationAt';
-    updateDayField(date, { [timeField]: '', [locationField]: '', [locationAtField]: '' } as Partial<DayRow>);
+    const clearOut = { outTime: '', outLocation: '', outLocationAt: '' };
+    updateDayField(date, (which === 'in' ? { inTime: '', inLocation: '', inLocationAt: '', ...clearOut } : clearOut) as Partial<DayRow>);
   }
 
   // Setting a leave type clears any time/task entries for that day (leave and working hours are
@@ -730,13 +752,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
                         {readOnly ? (
                           row.inTime ? (
-                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} />
+                            <PunchResult time={row.inTime} location={row.inLocation} />
                           ) : (
                             <span className="text-ink">-</span>
                           )
                         ) : dateIso === todayIso ? (
                           row.inTime ? (
-                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} />
+                            <PunchResult time={row.inTime} location={row.inLocation} onReset={() => resetPunch(dateIso, 'in')} />
                           ) : (
                             <PunchButton label="Clock In" tone="in" locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                           )
@@ -753,13 +775,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
                         {readOnly ? (
                           row.outTime ? (
-                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} />
+                            <PunchResult time={row.outTime} location={row.outLocation} />
                           ) : (
                             <span className="text-ink">-</span>
                           )
                         ) : dateIso === todayIso ? (
                           row.outTime ? (
-                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} />
+                            <PunchResult time={row.outTime} location={row.outLocation} onReset={() => resetPunch(dateIso, 'out')} />
                           ) : (
                             <PunchButton
                               label="Clock Out"
@@ -972,13 +994,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">In Time</span>
                       {readOnly ? (
                         row.inTime ? (
-                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} compact />
+                          <PunchResult time={row.inTime} location={row.inLocation} compact />
                         ) : (
                           <span className="block text-sm text-ink">-</span>
                         )
                       ) : dateIso === todayIso ? (
                         row.inTime ? (
-                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} compact />
+                          <PunchResult time={row.inTime} location={row.inLocation} onReset={() => resetPunch(dateIso, 'in')} compact />
                         ) : (
                           <PunchButton label="Clock In" tone="in" compact locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                         )
@@ -995,13 +1017,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">Out Time</span>
                       {readOnly ? (
                         row.outTime ? (
-                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} compact />
+                          <PunchResult time={row.outTime} location={row.outLocation} compact />
                         ) : (
                           <span className="block text-sm text-ink">-</span>
                         )
                       ) : dateIso === todayIso ? (
                         row.outTime ? (
-                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} compact />
+                          <PunchResult time={row.outTime} location={row.outLocation} onReset={() => resetPunch(dateIso, 'out')} compact />
                         ) : (
                           <PunchButton
                             label="Clock Out"
