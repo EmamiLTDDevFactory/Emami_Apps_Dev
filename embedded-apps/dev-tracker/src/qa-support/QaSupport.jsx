@@ -74,7 +74,7 @@ export default function QaSupport() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="qaSupport" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="forest" />
+      <Sidebar active="qaSupport" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 

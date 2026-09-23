@@ -179,7 +179,7 @@ export default function Admin() {
                     <input
                       type="text"
                       autoFocus
-                      placeholder="New value"
+                      placeholder={cat.key === 'holiday' ? 'YYYY-MM-DD Holiday name' : 'New value'}
                       value={addValue}
                       onChange={(e) => setAddValue(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && submitAdd(cat)}
@@ -189,7 +189,7 @@ export default function Admin() {
                 ) : (
                   <button className="chip-add" onClick={() => { setAddingCategory(cat.key); setAddValue(''); setError(null); }}>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Add {cat.key === 'area' ? 'area' : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : ''}
+                    Add {cat.key === 'area' ? 'area' : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : cat.key === 'holiday' ? 'holiday' : ''}
                   </button>
                 )}
               </div>

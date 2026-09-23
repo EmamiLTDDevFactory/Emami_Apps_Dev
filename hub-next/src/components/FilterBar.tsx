@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Wallet, Grid3x3, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package } from 'lucide-react';
+import { SlidersHorizontal, Check, Lock, LayoutGrid, Landmark, Grid3x3, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows, catColor } from '../theme/tokens';
 import { CATEGORIES, APPS } from '../data/mockData';
 import type { CategoryFilter, SortOption } from '../types';
@@ -10,14 +10,14 @@ const SORT_OPTIONS: SortOption[] = ['Alphabetical', 'Most Used', 'Recently Used'
 
 /** One icon per category tile — 'All' isn't a real category (see catColor's fallback-to-rust for
  * it too), so it gets a neutral catalog glyph rather than something that'd imply it's just another
- * segment. */
+ * segment. IBD/Supply Chain/CPD/HR/IT match the reference Emami Apps sidebar's own icon glyphs. */
 const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   All: LayoutGrid,
   CQA: ClipboardCheck,
-  CPD: TrendingUp,
-  IT: Code2,
-  'Supply Chain': Truck,
-  IBD: Wallet,
+  CPD: ShieldCheck,
+  IT: Monitor,
+  'Supply Chain': Box,
+  IBD: Globe,
   HR: Users,
   'Cross-Function': Shuffle,
   Packaging: Package,

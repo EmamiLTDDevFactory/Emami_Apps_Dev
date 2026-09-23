@@ -10,6 +10,7 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
 import { MonthYearProvider } from '../../../src/context/MonthYearContext';
+import Head from 'expo-router/head';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -205,13 +206,20 @@ function LayoutContent() {
   );
 }
 
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
 export default function PaymentTrackingLayout() {
   return (
+    <>
+      <Head>
+        <title>IBD Provision Tracking</title>
+      </Head>
     <PaymentTrackingAuthProvider>
       <MonthYearProvider>
         <LayoutContent />
       </MonthYearProvider>
     </PaymentTrackingAuthProvider>
+    </>
   );
 }
 

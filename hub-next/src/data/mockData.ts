@@ -1,11 +1,15 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+// 'All' first, then every category A-Z (case-insensitive) — sorted here rather than hand-ordered
+// so a newly added category lands in the right place. Every category list in the hub (Home tiles,
+// side pane, filter bar, My Applications) renders from this one array.
+const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+export const CATEGORIES: CategoryFilter[] = ['All', ...[...CATEGORY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))];
 
 /**
  * Live app URLs. Every real app renders inline on the launch screen — same-origin apps
@@ -66,7 +70,7 @@ export const NAV: NavItem[] = [
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'My Profile', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: CircleUserRound },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
   { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];

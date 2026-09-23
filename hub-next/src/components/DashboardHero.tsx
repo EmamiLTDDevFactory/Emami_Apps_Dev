@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { colors, fonts, fontWeights } from '../theme/tokens';
 import WeatherWidget from './WeatherWidget';
 
@@ -11,9 +11,26 @@ interface DashboardHeroProps {
 // greeting, tight padding) — the app grid below is the actual point of the page, and this
 // shouldn't push it below the fold. Last-login used to show here too; dropped per instruction
 // (it's still on the Profile page) so this takes even less vertical space.
+// Uses the viewer's own device clock. Midnight-5am needs its own bucket — a plain `hour < 12`
+// check greeted anyone online past midnight with "Good Morning".
+function greetingFor(hour: number) {
+  if (hour >= 5 && hour < 12) return 'Good Morning';
+  if (hour >= 12 && hour < 17) return 'Good Afternoon';
+  if (hour >= 17 && hour < 21) return 'Good Evening';
+  return 'Good Night';
+}
+
 export default function DashboardHero({ name }: DashboardHeroProps) {
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const [hour, setHour] = useState(() => new Date().getHours());
+
+  // Home stays mounted for hours in a pinned/installed window — re-check each minute so the
+  // greeting rolls over (e.g. Afternoon -> Evening) without a reload.
+  useEffect(() => {
+    const id = window.setInterval(() => setHour(new Date().getHours()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const greeting = greetingFor(hour);
 
   return (
     <div

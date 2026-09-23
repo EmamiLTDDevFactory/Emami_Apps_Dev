@@ -73,6 +73,18 @@
 }
 
 /* --- Board ------------------------------------------------------------- */
+.saved-view-select { max-width: 190px; }
+.board-lanes { display: flex; flex-direction: column; gap: 14px; }
+/* A lane is the same status board scoped to one group value. The plain (ungrouped) lane gets
+   no header or framing so the board looks exactly as it did before grouping existed. */
+.lane { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--surface); }
+.lane-plain { border: none; padding: 0; background: none; }
+.lane-head { display: flex; align-items: center; gap: 8px; padding: 4px 4px 9px; width: 100%; background: none; border: none; cursor: pointer; font-family: inherit; text-align: left; border-radius: 8px; }
+.lane-head:hover { background: var(--bg-alt); }
+.lane-caret { display: inline-flex; color: var(--muted); transition: transform .12s ease; }
+.lane-caret.is-open { transform: rotate(90deg); }
+.lane-name { font-size: 11.5px; font-weight: 600; color: var(--text); }
+.lane-count { font-size: 9.5px; font-family: 'IBM Plex Mono', monospace; color: var(--muted); background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
 .board { display: flex; align-items: flex-start; gap: 8px; overflow-x: auto; }
 .col { flex: 1 1 0; min-width: 165px; background: var(--bg-alt); border-radius: 12px; padding: 9px; outline: 2px dashed transparent; outline-offset: -2px; transition: outline-color .12s ease; }
 .col-drag-over { outline-color: var(--accent); background: var(--accent-soft); }

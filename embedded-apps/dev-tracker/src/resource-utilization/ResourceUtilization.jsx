@@ -9,7 +9,7 @@ import { fmtDate, revisedTarget } from '../shared/utils.js';
 import {
   toISODate, allocatedManDaysInPeriod, buildAllocations, buildResourceUniverse, matchesFilters,
   overlapsPeriod, bucketFor, UTIL_BUCKETS, resourceStatus, RESOURCE_STATUS_META,
-  computeResourceStats, allocationPct, allocationByModule,
+  computeResourceStats, allocationPct, allocationByModule, buildHolidaySet,
 } from '../shared/resourceUtil.js';
 import {
   CalendarIcon, FilterIcon, DownloadIcon, GridIcon, MoreIcon, SearchIcon,
@@ -171,6 +171,7 @@ export default function ResourceUtilization() {
     return out;
   }, [masterData]);
   const areaColors = useMemo(() => areaColorMap(masterData), [masterData]);
+  const holidaySet = useMemo(() => buildHolidaySet(masterData), [masterData]);
 
   const universe = useMemo(() => buildResourceUniverse(items), [items]);
   const allAllocations = useMemo(() => buildAllocations(items, revisedTarget), [items]);
@@ -194,23 +195,31 @@ export default function ResourceUtilization() {
   // three never disagree — same filtered population, same period, same utilization math.
   const resourceRows = useMemo(() => resourcesInScope.map((r) => {
     const allocs = filteredAllocations.filter((a) => a.resourceName === r.name);
-    const stats = computeResourceStats(allocs, periodStart, periodEnd);
+    const stats = computeResourceStats(allocs, periodStart, periodEnd, holidaySet);
     const bucket = bucketFor(stats.utilizationPct);
     const status = resourceStatus({ utilizationPct: stats.utilizationPct, hasActiveOverlap: stats.hasActiveOverlap });
     const modules = Array.from(new Set(stats.overlapping.map((a) => a.module).filter(Boolean)));
     const currentTaskAllocs = todayInRange ? allocs.filter((a) => overlapsPeriod(a.window, today, today)) : stats.overlapping;
     const role = allocs[0]?.role || r.primaryRole;
     return { resource: r, role, allocs, stats, bucket, status, modules, currentTaskAllocs };
-  }), [resourcesInScope, filteredAllocations, periodStart, periodEnd, today, todayInRange]);
+  }), [resourcesInScope, filteredAllocations, periodStart, periodEnd, today, todayInRange, holidaySet]);
 
   const totalResources = resourceRows.length;
   const activeResourcesCount = resourceRows.filter((r) => r.stats.hasActiveOverlap).length;
-  const avgUtilization = totalResources ? resourceRows.reduce((s, r) => s + r.stats.utilizationPct, 0) / totalResources : 0;
+  // Capacity-weighted, not a plain average of each resource's own % — sum(allocated) /
+  // sum(available) across the whole scoped team. A plain average of percentages would let one
+  // wildly over/under-allocated resource skew the figure as much as anyone else, independent of
+  // team size or how much real work is behind that percentage; this instead answers "how much of
+  // the team's total capacity is actually spoken for."
+  const totalAvailableManDays = resourceRows.reduce((s, r) => s + r.stats.availableManDays, 0);
+  const avgUtilization = totalAvailableManDays > 0
+    ? (resourceRows.reduce((s, r) => s + r.stats.allocatedManDays, 0) / totalAvailableManDays) * 100
+    : 0;
   const overlappingAllocations = useMemo(() => filteredAllocations.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd)), [filteredAllocations, periodStart, periodEnd]);
   const totalAllocationsCount = overlappingAllocations.length;
 
   const utilDistribution = UTIL_BUCKETS.map((b) => ({ key: b.key, label: b.label, color: b.color, value: resourceRows.filter((r) => r.bucket.key === b.key).length }));
-  const moduleAlloc = useMemo(() => allocationByModule(filteredAllocations, periodStart, periodEnd), [filteredAllocations, periodStart, periodEnd]);
+  const moduleAlloc = useMemo(() => allocationByModule(filteredAllocations, periodStart, periodEnd, holidaySet), [filteredAllocations, periodStart, periodEnd, holidaySet]);
   const moduleAllocSegments = moduleAlloc.rows.map((m, i) => ({ key: m.module, label: m.module, value: Math.round(m.value * 10) / 10, color: (areaColors[m.module] && areaColors[m.module].color) || MODULE_PALETTE[i % MODULE_PALETTE.length] }));
 
   const statusCounts = { 'Over Allocated': 0, Active: 0, Bench: 0 };
@@ -241,15 +250,15 @@ export default function ResourceUtilization() {
 
   // --- Allocation Table rows: one row per resource<->assignment allocation overlapping period --
   const allocationRows = useMemo(() => overlappingAllocations.map((a) => {
-    const manDays = a.window ? allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd) : 0;
-    const pct = allocationPct(a, periodStart, periodEnd);
+    const manDays = a.window ? allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet) : 0;
+    const pct = allocationPct(a, periodStart, periodEnd, holidaySet);
     return {
       key: `${a.resourceName}::${a.role}::${a.item.id}`,
       resourceName: a.resourceName, role: a.role, title: a.item.devList, module: a.module,
       startDate: a.item.startDate, endDate: a.window ? toISODate(a.window.end) : (revisedTarget(a.item) || a.item.targetDate || ''),
       manDays, pct, status: a.item.status, remarks: a.item.remarks, item: a.item,
     };
-  }), [overlappingAllocations, periodStart, periodEnd]);
+  }), [overlappingAllocations, periodStart, periodEnd, holidaySet]);
 
   const tableFiltered = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
@@ -287,9 +296,13 @@ export default function ResourceUtilization() {
   // option is just the flat list. Role/Module group resources by their own attribute, each
   // group sorted by utilization (worst-first) with a real per-group summary, not just a count.
   const summaryGroups = useMemo(() => {
+    // Capacity-weighted per group, same reasoning as the page-level avgUtilization above.
     const withAvg = (key, rows) => {
       const sorted = [...rows].sort((a, b) => b.stats.utilizationPct - a.stats.utilizationPct);
-      const avg = sorted.length ? sorted.reduce((s, r) => s + r.stats.utilizationPct, 0) / sorted.length : 0;
+      const totalAvailable = sorted.reduce((s, r) => s + r.stats.availableManDays, 0);
+      const avg = totalAvailable > 0
+        ? (sorted.reduce((s, r) => s + r.stats.allocatedManDays, 0) / totalAvailable) * 100
+        : 0;
       return { key, rows: sorted, avgUtilization: avg };
     };
     if (summaryGroupBy === 'resource') return [withAvg(null, summaryFiltered)];
@@ -329,7 +342,7 @@ export default function ResourceUtilization() {
   if (loading || failed) {
     return (
       <div className="app-shell">
-        <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="roster" />
+        <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
         <main className="shell-main">
           <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
           <div className="empty-state">{loading ? 'Loading resource data…' : "Couldn't load live data — try refreshing the page."}</div>
@@ -342,7 +355,7 @@ export default function ResourceUtilization() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="roster" />
+      <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
@@ -744,7 +757,7 @@ export default function ResourceUtilization() {
         )}
 
         <div style={{ marginTop: 16, fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
-          Every number on this page is calculated live from real assignment data for the selected range. Available capacity assumes Mon–Fri working days (no company holiday calendar exists to exclude further).
+          Every number on this page is calculated live from real assignment data for the selected range. Available capacity counts Mon–Fri plus odd (1st/3rd/5th) Saturdays, minus any date listed under Manage Master Data → Holidays.
         </div>
       </main>
     </div>

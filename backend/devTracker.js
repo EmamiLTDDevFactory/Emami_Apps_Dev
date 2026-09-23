@@ -111,6 +111,27 @@ async function initSchema() {
     // makes this idempotent instead of failing on a table that predates this column.
     await pool.query(`ALTER TABLE dev_tracker.item_history ADD COLUMN IF NOT EXISTS "changedByUsername" text`);
 
+    // A named, reusable Dashboard filter/sort/grouping combination. The config is stored as
+    // jsonb rather than a column per filter because the Dashboard's filter set has grown twice
+    // already (impact/complexity/devFactory/reasonCategory, then lifecycle) and each addition
+    // would otherwise be a migration. Nothing server-side reads inside it — it is handed back
+    // to the page exactly as it was saved — so an older client simply ignores keys it predates.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.saved_views (
+            id text PRIMARY KEY,
+            name text NOT NULL,
+            "ownerEmail" text NOT NULL,
+            "ownerName" text,
+            shared boolean NOT NULL DEFAULT false,
+            config jsonb NOT NULL,
+            "createdAt" timestamptz DEFAULT now(),
+            "updatedAt" timestamptz DEFAULT now()
+        )
+    `);
+    // Every read filters on one of these two, and the list is re-fetched on each Dashboard load.
+    await pool.query(`CREATE INDEX IF NOT EXISTS saved_views_owner_idx ON dev_tracker.saved_views ("ownerEmail")`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS saved_views_shared_idx ON dev_tracker.saved_views (shared) WHERE shared`);
+
     // Dropdown option values (Status, Area, Priority, Impact, Complexity, Dev Factory, Reason
     // category), editable from the "Manage master data" tile instead of being hardcoded in
     // app.js. "active" is a soft-delete flag — a retired option must keep rendering correctly on
@@ -119,7 +140,7 @@ async function initSchema() {
         CREATE TABLE IF NOT EXISTS dev_tracker.master_data (
             id text PRIMARY KEY,
             category text NOT NULL CHECK (category IN
-                ('status','area','priority','impact','complexity','devFactory','reasonCategory')),
+                ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday')),
             value text NOT NULL,
             color text,
             "softColor" text,
@@ -129,6 +150,14 @@ async function initSchema() {
             "updatedAt" timestamptz DEFAULT now(),
             UNIQUE(category, value)
         )
+    `);
+    // 'holiday' (Resource Utilization's working-day calendar) added after this table already
+    // existed in some deployments — widen the CHECK constraint the same idempotent way
+    // "changedByUsername" was added to item_history above, instead of a one-off migration script.
+    await pool.query(`ALTER TABLE dev_tracker.master_data DROP CONSTRAINT IF EXISTS master_data_category_check`);
+    await pool.query(`
+        ALTER TABLE dev_tracker.master_data ADD CONSTRAINT master_data_category_check CHECK (category IN
+            ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday'))
     `);
 
     try {
@@ -342,7 +371,7 @@ router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
-const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory', 'holiday'];
 
 // Gates the master-data WRITE routes to users granted the "Admin" role for the 'dev-tracker' app
 // in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact
@@ -440,6 +469,98 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
         }
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to update master data entry' });
+    }
+});
+
+// ============================================================
+// Saved views — a named Dashboard filter/sort/grouping combination. Available to every user
+// with app access (not admin-gated): the whole point is that someone who looks at "my overdue
+// MM items" daily stops rebuilding it by hand. A view is private to its owner unless they mark
+// it shared, and only the owner can rename or delete one, so a shared view can't be edited out
+// from under the people using it.
+// ============================================================
+const MAX_SAVED_VIEWS_PER_USER = 50;
+
+router.get('/saved-views', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const result = await pool.query(
+            `SELECT * FROM dev_tracker.saved_views
+             WHERE "ownerEmail" = $1 OR shared = true
+             ORDER BY shared ASC, name ASC`,
+            [email]
+        );
+        // `mine` saves the client re-deriving ownership to decide whether to show delete/rename.
+        res.json(result.rows.map((r) => ({ ...r, mine: r.ownerEmail === email })));
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load saved views' });
+    }
+});
+
+router.post('/saved-views', requireDevTrackerAccess, async (req, res) => {
+    const { name, config, shared } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        return res.status(400).json({ error: 'config must be an object' });
+    }
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rows: [{ count }] } = await pool.query(
+            'SELECT COUNT(*)::int AS count FROM dev_tracker.saved_views WHERE "ownerEmail" = $1', [email]
+        );
+        if (count >= MAX_SAVED_VIEWS_PER_USER) {
+            return res.status(400).json({ error: `You already have ${MAX_SAVED_VIEWS_PER_USER} saved views — delete one first.` });
+        }
+        const ownerName = await resolveDisplayName(req);
+        const result = await pool.query(
+            `INSERT INTO dev_tracker.saved_views (id, name, "ownerEmail", "ownerName", shared, config)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [crypto.randomUUID(), String(name).trim().slice(0, 80), email, ownerName, shared === true, JSON.stringify(config)]
+        );
+        res.status(201).json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to save view' });
+    }
+});
+
+router.put('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
+    const { name, config, shared } = req.body || {};
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rows: [existing] } = await pool.query('SELECT * FROM dev_tracker.saved_views WHERE id = $1', [req.params.id]);
+        if (!existing) return res.status(404).json({ error: 'View not found' });
+        if (existing.ownerEmail !== email) return res.status(403).json({ error: 'Only the owner can change this view' });
+        const result = await pool.query(
+            `UPDATE dev_tracker.saved_views
+                SET name = $2, shared = $3, config = $4, "updatedAt" = now()
+              WHERE id = $1 RETURNING *`,
+            [
+                req.params.id,
+                name != null ? String(name).trim().slice(0, 80) : existing.name,
+                shared != null ? shared === true : existing.shared,
+                JSON.stringify(config && typeof config === 'object' && !Array.isArray(config) ? config : existing.config),
+            ]
+        );
+        res.json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to update view' });
+    }
+});
+
+router.delete('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rowCount } = await pool.query(
+            'DELETE FROM dev_tracker.saved_views WHERE id = $1 AND "ownerEmail" = $2', [req.params.id, email]
+        );
+        if (!rowCount) return res.status(403).json({ error: 'Only the owner can delete this view' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete view' });
     }
 });
 

@@ -236,6 +236,8 @@ function CancelledCard({ row, bg }: { row: CancelledInvoice; bg: string }) {
         <Field label="Value" value={finr(row.invoice_value)} color="#d29922" bold />
         <Field label="Cancel Date" value={canDt ? canDt.slice(0, 10) : '—'} color={colors.red} />
         <Field label="Dispatch" value={dispatched ? fd(row.dispatch_date) : 'Not dispatched'} />
+        <Field label="Channel" value={row.channel || '—'} />
+        <Field label="Distance" value={row.distance_km ? `${Math.round(row.distance_km)} km` : '—'} />
       </View>
 
       <View style={styles.footer}>

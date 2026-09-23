@@ -19,6 +19,17 @@ export interface PwaInstallState {
   isIos: boolean;
   /** True once the browser has offered a native install prompt we can trigger. */
   canPromptInstall: boolean;
+  /**
+   * Set by the browser's `appinstalled` event during this page's lifetime — however the install
+   * was started (our pop-up, the header button, or the browser's own address-bar icon).
+   */
+  justInstalled: boolean;
+  clearJustInstalled: () => void;
+  /** The shared install pop-up card (components/InstallPrompt.tsx) — opened by the header's
+   * install button and automatically once per login. */
+  installCardOpen: boolean;
+  openInstallCard: () => void;
+  closeInstallCard: () => void;
   /** Triggers the browser's native install prompt. No-op (returns 'unavailable') if none is queued. */
   promptInstall: () => Promise<PwaInstallOutcome>;
 }
@@ -34,6 +45,8 @@ export interface PwaInstallState {
  */
 let deferredEvent: any = null;
 let isStandalone = false;
+let justInstalled = false;
+let installCardOpen = false;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
@@ -49,7 +62,9 @@ if (typeof window !== 'undefined') {
   });
   window.addEventListener('appinstalled', () => {
     deferredEvent = null;
-    isStandalone = true;
+    // Not `isStandalone = true`: this tab is still a browser tab — the installed app opens in its
+    // own separate window.
+    justInstalled = true;
     notify();
   });
 }
@@ -85,5 +100,61 @@ export function usePwaInstall(): PwaInstallState {
 
   const isSecureContext = !isSupported || window.isSecureContext;
 
-  return { isSupported, isStandalone, isSecureContext, isIos, canPromptInstall: !!deferredEvent, promptInstall };
+  const clearJustInstalled = () => {
+    justInstalled = false;
+    notify();
+  };
+  const openInstallCard = () => {
+    installCardOpen = true;
+    notify();
+  };
+  const closeInstallCard = () => {
+    installCardOpen = false;
+    notify();
+  };
+
+  return {
+    isSupported,
+    isStandalone,
+    isSecureContext,
+    isIos,
+    canPromptInstall: !!deferredEvent,
+    justInstalled,
+    clearJustInstalled,
+    installCardOpen,
+    openInstallCard,
+    closeInstallCard,
+    promptInstall,
+  };
+}
+
+/**
+ * The install pop-up opens automatically once per login (not once per page load — the hub fully
+ * reloads every time someone comes back from an embedded app, and it shouldn't re-nag each time).
+ * This flag records that it's been offered for the current login; AuthContext's login() clears it.
+ */
+const OFFERED_THIS_LOGIN_KEY = 'emami.installPrompt.offeredThisLogin';
+
+export function installOfferedThisLogin(): boolean {
+  try {
+    return window.localStorage.getItem(OFFERED_THIS_LOGIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markInstallOfferedThisLogin() {
+  try {
+    window.localStorage.setItem(OFFERED_THIS_LOGIN_KEY, '1');
+  } catch {
+    // Storage blocked (private window etc.) — it just offers again on the next page load.
+  }
+}
+
+export function resetInstallOfferForNewLogin() {
+  try {
+    window.localStorage.removeItem(OFFERED_THIS_LOGIN_KEY);
+  } catch {
+    // See markInstallOfferedThisLogin.
+  }
 }

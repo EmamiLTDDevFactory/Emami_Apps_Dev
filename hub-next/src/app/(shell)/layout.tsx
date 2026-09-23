@@ -8,6 +8,7 @@ import { useIsWideScreen } from '../../hooks/useIsWideScreen';
 import { SearchProvider, useSearch } from '../../context/SearchContext';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
+import InstallPrompt from '../../components/InstallPrompt';
 
 function ShellChrome({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -50,6 +51,7 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
         />
         <div style={{ flex: 1, overflowY: 'auto' }}>{children}</div>
       </div>
+      <InstallPrompt />
     </div>
   );
 }
