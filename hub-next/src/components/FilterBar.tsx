@@ -22,7 +22,7 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
-  Sales: Handshake,
+  SD: Handshake,
 };
 
 interface FilterBarProps {

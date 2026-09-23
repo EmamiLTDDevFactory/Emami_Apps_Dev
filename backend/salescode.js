@@ -1,5 +1,5 @@
 /**
- * Salescode (Sales category = SAP SD module) — master and transactional data for Emami products
+ * Salescode (SD category = the SAP SD module) — master and transactional data for Emami products
  * sold through Salescode, from SAP ECC. This route serves the invoice/pricing rows, via the
  * ZSALESCODE_ODATA_SRV_SRV OData service (entity set Pricing_dataSet, backed by Z table
  * ZSD_SC_PRIC_API). Backs the
@@ -33,7 +33,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.SAP_GATEWAY_TIMEOUT_MS || 30000);
 // quote or space can't get through, so it can't break out of the filter expression.
 const DISTRIBUTOR_RE = /^[A-Za-z0-9]{1,10}$/;
 
-// Only the selected Sales/IT users granted the Salescode tile in Manage Access (the same
+// Only the selected SD/IT users granted the Salescode tile in Manage Access (the same
 // emami_apps.authorized_user_apps row that decides whether the tile shows for them). A granted
 // user can look up any distributor — there's no per-distributor restriction. The account also has
 // to still be active, so deactivating someone in Manage Access cuts this off too. Same "email as

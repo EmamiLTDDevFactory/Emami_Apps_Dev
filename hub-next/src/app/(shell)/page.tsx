@@ -30,7 +30,7 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
-  Sales: Handshake,
+  SD: Handshake,
 };
 
 const CATEGORY_DESCRIPTIONS: Record<string, string> = {
@@ -44,7 +44,7 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   'Cross-Function': 'Mediclaim, term policy & PO approval',
   Packaging: 'Mould health inspection',
   Finance: 'Non-CTC expense claims',
-  Sales: 'SAP SD · Salescode',
+  SD: 'Salescode',
 };
 
 /** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow

@@ -8,7 +8,7 @@ import type { AppItem, NavItem, CategoryFilter } from '../types';
 // 'All' first, then every category A-Z (case-insensitive) — sorted here rather than hand-ordered
 // so a newly added category lands in the right place. Every category list in the hub (Home tiles,
 // side pane, filter bar, My Applications) renders from this one array.
-const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance', 'Sales'];
+const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance', 'SD'];
 export const CATEGORIES: CategoryFilter[] = ['All', ...[...CATEGORY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))];
 
 /**
@@ -59,7 +59,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'cashflow-forecast', name: 'CashFlow Intelligence', desc: 'AI-driven 13-week cash flow forecast, risk dashboard and explainability with SAP OData integration.', cat: 'Finance', icon: LineChart, uses: 0 },
   { id: 'journal-anomaly-agent', name: 'Journal Entry & GL Anomaly Agent', desc: 'AI-driven journal entry and GL anomaly monitoring, case management and audit evidence with SAP OData integration.', cat: 'Finance', icon: ScanSearch, uses: 0 },
   { id: 'credit-risk-advisory', name: 'Credit Risk Advisory', desc: 'Credit risk advisory command center — executive KPIs, worklist, Customer 360, portfolio analytics and governed approval workflow with SAP OData integration.', cat: 'Finance', icon: ShieldAlert, uses: 0 },
-  { id: 'salescode', name: 'Salescode', desc: 'SAP SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'Sales', icon: FileSpreadsheet, uses: 0 },
+  { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

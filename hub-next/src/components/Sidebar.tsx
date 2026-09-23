@@ -26,7 +26,7 @@ const CATEGORY_ICONS: Record<string, typeof Grid3x3> = {
   'Cross-Function': Shuffle,
   Packaging: Package,
   Finance: Landmark,
-  Sales: Handshake,
+  SD: Handshake,
 };
 
 /** Strips a trailing slash (except on root `/`) so the active-route check below can't be fooled
