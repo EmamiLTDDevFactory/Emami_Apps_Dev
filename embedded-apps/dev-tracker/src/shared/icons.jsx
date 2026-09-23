@@ -56,3 +56,5 @@ export const SendIcon = (p) => <Icon {...p}><path d="M21 3 3 10.5l7.5 3L14 21l7-
 export const LightbulbIcon = (p) => <Icon {...p}><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 3a6.5 6.5 0 0 0-3.6 11.9c.6.4 1 1.1 1 1.9v.2h5.2v-.2c0-.8.4-1.5 1-1.9A6.5 6.5 0 0 0 12 3Z" /></Icon>;
 export const HeadsetIcon = (p) => <Icon {...p}><path d="M4 13v-1a8 8 0 0 1 16 0v1" /><rect x="3" y="13" width="4.5" height="6" rx="1.5" /><rect x="16.5" y="13" width="4.5" height="6" rx="1.5" /><path d="M18.5 19v.5A2.5 2.5 0 0 1 16 22h-2.5" /></Icon>;
 export const StarIcon = (p) => <Icon {...p} fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6 6.6.8-4.8 4.6 1.2 6.6L12 17.4 6.1 20.5l1.2-6.6-4.8-4.6 6.6-.8L12 2.5Z" /></Icon>;
+export const ListIcon = (p) => <Icon {...p}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></Icon>;
+export const TimelineIcon = (p) => <Icon {...p}><path d="M3 5h9M7 12h11M5 19h8" strokeWidth="3" /></Icon>;

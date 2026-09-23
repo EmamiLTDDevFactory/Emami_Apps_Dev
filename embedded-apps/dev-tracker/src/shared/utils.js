@@ -2,7 +2,7 @@ import { STATUS_PROGRESS_ORDER, STAGE_PIPELINE, MANUAL_ONLY_STATUSES, MANUAL_STA
 
 // The one field key that must be filled in for a given status — either its STAGE_PIPELINE
 // stage date, or (for Hypercare/On Hold/Completed/Cancelled) its MANUAL_STATUS_DATES entry.
-// Not Started has neither, so this returns null for it. Shared by ItemPanel's save validation
+// Not Started has neither, so this returns null for it. Shared by the issue view's status changes
 // and Dashboard's drag-and-drop auto-fill so both stay in sync with the same rule.
 export function stageDateKeyFor(status) {
   return STAGE_PIPELINE.find((s) => s.status === status)?.key || MANUAL_STATUS_DATES[status] || null;

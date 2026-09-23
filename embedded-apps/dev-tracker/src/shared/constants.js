@@ -55,7 +55,7 @@ export const LEGACY_FIELD_LABELS = {
 };
 
 // The item fields holding a calendar date, all stored as plain 'YYYY-MM-DD' strings (what
-// ItemPanel's <input type="date"> produces). Shared with Import Center, which has to coerce
+// the issue view's <input type="date"> produces). Shared with Import Center, which has to coerce
 // Excel's own date representation back into exactly this shape.
 export const DATE_FIELDS = new Set([
   'startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'targetDate',

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { SearchIcon, BellIcon } from './icons.jsx';
+import { SearchIcon, BellIcon, PlusIcon } from './icons.jsx';
 
 /** Slim header for pages that put identity/search up top instead of in the sidebar
  * (currently just Home — see Sidebar's `identityInTopbar`). Search is real: Enter hands
@@ -10,7 +10,9 @@ import { SearchIcon, BellIcon } from './icons.jsx';
  * for the AI handoff, rather than searching anything itself. `notifications` is the
  * caller's real, already-filtered list (see Home.jsx) — each entry already carries its
  * own display `meta` string, so this component only renders and reports back actions. */
-export default function Topbar({ email, name, roleLabel, notifications = [], onMarkAllRead, onClear }) {
+// `onSearch` / `onCreate` let the project workspace handle both in place; every other page falls
+// back to handing off to the workspace by URL (?aiSearch= / ?action=new).
+export default function Topbar({ email, name, roleLabel, notifications = [], onMarkAllRead, onClear, onSearch, onCreate }) {
   const [query, setQuery] = useState('');
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -32,7 +34,13 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
   function submitSearch() {
     const q = query.trim();
     if (!q) return;
-    window.location.href = `${ROUTES.dashboard}?aiSearch=${encodeURIComponent(q)}`;
+    if (onSearch) { onSearch(q); return; }
+    window.location.href = `${ROUTES.dashboard}?aiSearch=${encodeURIComponent(q)}#list`;
+  }
+
+  function create() {
+    if (onCreate) onCreate();
+    else window.location.href = `${ROUTES.dashboard}?action=new`;
   }
 
   return (
@@ -43,12 +51,15 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submitSearch()}
-          placeholder="Search assignments, modules, owners, keywords…"
+          placeholder="Search issues by key, title, owner, keyword…"
         />
         <span className="topbar-kbd">Ctrl K</span>
       </div>
 
       <div className="topbar-side">
+        <button type="button" className="topbar-create" onClick={create} title="Create issue">
+          <PlusIcon size={14} /> Create
+        </button>
         <div className="topbar-notif" ref={notifRef}>
           <button type="button" className="topbar-bell" title="Notifications" onClick={() => setNotifOpen((o) => !o)}>
             <BellIcon size={18} />
