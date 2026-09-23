@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { FIELDS, MANUAL_ONLY_STATUSES, FIELD_LABELS as LABELS } from '../shared/constants.js';
+import { FIELDS, MANUAL_ONLY_STATUSES, FIELD_LABELS as LABELS, DATE_FIELDS } from '../shared/constants.js';
 import { suggestedStatus, revisedTarget, fmtDate, stageDateKeyFor, datesToAutoFillForStatus, todayStr } from '../shared/utils.js';
 import { apiCreate, apiUpdate, apiDelete, apiHistory, getCurrentUserEmail } from '../shared/api.js';
 
@@ -15,10 +15,6 @@ const FIELD_GROUPS = [
 const REQUIRED_FIELDS = new Set(['devList', 'status', 'func', 'area', 'priority']);
 const FULL_WIDTH_FIELDS = new Set(['func', 'remarks', 'reasonDelay']);
 
-const DATE_FIELDS = new Set([
-  'startDate', 'reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'targetDate',
-  'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
-]);
 const NUMBER_FIELDS = new Set(['hypercare', 'devTime', 'rework']);
 const SELECT_FIELDS = {
   status: 'status', area: 'area', priority: 'priority', impact: 'impact',

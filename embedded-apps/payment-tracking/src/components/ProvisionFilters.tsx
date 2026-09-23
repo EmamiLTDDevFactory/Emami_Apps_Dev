@@ -298,6 +298,7 @@ const styles = StyleSheet.create({
   },
   searchRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   searchBox: {
@@ -305,7 +306,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    minWidth: 200,
+    minWidth: 160,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.pill,

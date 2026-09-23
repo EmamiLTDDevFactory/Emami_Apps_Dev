@@ -60,6 +60,11 @@ function useClock() {
   return now;
 }
 
+// Every KPI card is a link into the Dashboard filtered to the same rows it counted. Without
+// this the cards all landed on an unfiltered board, so clicking "Overdue: 37" showed all 414
+// items and the number had to be taken on trust.
+const drillTo = (preset) => `${ROUTES.dashboard}?preset=${preset}`;
+
 export default function Home() {
   const [items, setItems] = useState([]);
   const [masterData, setMasterData] = useState([]);
@@ -198,9 +203,9 @@ export default function Home() {
 
         <div className="kpi-row">
           <KpiCard icon={LayersIcon} tone="blue" label="Total Assignments" value={loading ? '—' : items.length} trend={totalTrend} href={ROUTES.dashboard} />
-          <KpiCard icon={PlayIcon} tone="green" label="Active" value={loading ? '—' : activeItems.length} trend={activeTrend} href={ROUTES.dashboard} />
-          <KpiCard icon={CheckCircleIcon} tone="purple" label="Completed" value={loading ? '—' : completedItems.length} trend={completedTrend} href={ROUTES.dashboard} />
-          <KpiCard icon={AlertIcon} tone="red" label="Overdue" value={loading ? '—' : overdueItems.length} trend={overdueTrend} invertTrend href={ROUTES.dashboard} />
+          <KpiCard icon={PlayIcon} tone="green" label="Active" value={loading ? '—' : activeItems.length} trend={activeTrend} href={drillTo('active')} />
+          <KpiCard icon={CheckCircleIcon} tone="purple" label="Completed" value={loading ? '—' : completedItems.length} trend={completedTrend} href={drillTo('completed')} />
+          <KpiCard icon={AlertIcon} tone="red" label="Overdue" value={loading ? '—' : overdueItems.length} trend={overdueTrend} invertTrend href={drillTo('overdue')} />
         </div>
 
         <div className="major-grid">

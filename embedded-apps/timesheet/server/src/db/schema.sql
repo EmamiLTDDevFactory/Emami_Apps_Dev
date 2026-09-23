@@ -13,8 +13,17 @@ CREATE TABLE IF NOT EXISTS timesheet.users (
   email        TEXT NOT NULL UNIQUE,
   role         TEXT NOT NULL CHECK (role IN ('employee', 'manager')),
   manager_id   TEXT REFERENCES timesheet.users(id) ON DELETE SET NULL,
+  -- 'pending' = a brand-new employee who either hasn't picked a reporting manager yet, or has
+  -- picked one but that manager hasn't approved them yet - blocked from everything except the
+  -- picker/waiting screens (see server/src/routes/users.js) until 'active'. Defaults to 'active'
+  -- so every user that existed before this column was added (already using the app) is
+  -- unaffected - only brand-new sign-ins go through the new pick-a-manager gate.
+  status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- IF NOT EXISTS makes this a no-op (CHECK included) once the column already exists, so re-running
+-- this file against an already-migrated DB stays safe, same as every CREATE TABLE IF NOT EXISTS above.
+ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active'));
 
 CREATE TABLE IF NOT EXISTS timesheet.projects (
   id    TEXT PRIMARY KEY,
@@ -42,6 +51,17 @@ CREATE TABLE IF NOT EXISTS timesheet.team_settings (
 INSERT INTO timesheet.team_settings (id, deadline_days_after_month_end)
 VALUES (TRUE, 2)
 ON CONFLICT (id) DO NOTHING;
+
+-- Saturdays a manager has individually flipped from the default off-day rule (2nd/4th Saturday
+-- of the month are off, 1st/3rd/5th are working) to a working day, for their own team - see
+-- server/src/routes/workingDayOverrides.js. Only stores dates flipped ON; the default
+-- 1st/3rd/5th-working rule needs no row here and can't be reverted through this table.
+CREATE TABLE IF NOT EXISTS timesheet.working_day_overrides (
+  manager_id     TEXT NOT NULL REFERENCES timesheet.users(id) ON DELETE CASCADE,
+  override_date  DATE NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (manager_id, override_date)
+);
 
 CREATE TABLE IF NOT EXISTS timesheet.timesheets (
   id                TEXT PRIMARY KEY,
@@ -86,6 +106,14 @@ CREATE TABLE IF NOT EXISTS timesheet.timesheet_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_entries_timesheet ON timesheet.timesheet_entries(timesheet_id);
 CREATE INDEX IF NOT EXISTS idx_entries_user_date ON timesheet.timesheet_entries(user_id, entry_date);
+
+-- Punch-clock geotagging: location is now captured separately at clock-in and clock-out
+-- (rather than once per day via the old location/location_at pair above, kept in place
+-- so existing rows don't lose data on this upgrade).
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS in_location TEXT;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS in_location_at TIMESTAMPTZ;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS out_location TEXT;
+ALTER TABLE timesheet.timesheet_entries ADD COLUMN IF NOT EXISTS out_location_at TIMESTAMPTZ;
 
 -- One yearly leave pool per employee, set by their manager (defaults to 24 days, same as any
 -- new hire gets before a manager adjusts it). Remaining balance is always allocated minus

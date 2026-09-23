@@ -342,7 +342,7 @@ export default function ResourceUtilization() {
   if (loading || failed) {
     return (
       <div className="app-shell">
-        <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="roster" />
+        <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
         <main className="shell-main">
           <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
           <div className="empty-state">{loading ? 'Loading resource data…' : "Couldn't load live data — try refreshing the page."}</div>
@@ -355,7 +355,7 @@ export default function ResourceUtilization() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="roster" />
+      <Sidebar active="resourceUtilization" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 

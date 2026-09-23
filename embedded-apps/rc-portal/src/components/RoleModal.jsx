@@ -136,11 +136,11 @@ export default function RoleModal({ open, onClose, onSave }) {
         <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-xs" onClick={onClose} />
 
         {/* Modal Container */}
-        <div className="relative z-10 w-full max-w-5xl overflow-visible rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 animate-fadeIn">
+        <div className="relative z-10 w-full max-w-5xl overflow-visible rounded-xl bg-white p-6 shadow-2xl border border-slate-100 animate-fadeIn">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200 pb-4">
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">Add Role Assignment</h2>
+              <h2 className="text-xl font-bold text-slate-900 tracking-tight">Add Role Assignment</h2>
               <p className="text-xs text-slate-500 mt-0.5">Define employee module permissions and status in the tabular layout below.</p>
             </div>
             <button onClick={onClose} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 transition">
@@ -148,11 +148,13 @@ export default function RoleModal({ open, onClose, onSave }) {
             </button>
           </div>
 
-          {/* Table Container */}
-          <div className="mt-6 overflow-visible border border-slate-200 rounded-2xl shadow-2xs">
+          {/* Table Container — overflow-x-auto so the min-w-[950px] table scrolls horizontally
+              on phones instead of blowing out the modal; overflow-y-visible kept explicitly so
+              the employee-search suggestion dropdown below (absolute, top-full) isn't clipped. */}
+          <div className="mt-6 overflow-x-auto overflow-y-visible border border-slate-200 rounded-xl shadow-sm">
             <table className="w-full text-left border-collapse table-fixed min-w-[950px]">
               <thead>
-                <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-black uppercase tracking-wider text-slate-700">
+                <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-bold uppercase tracking-wider text-slate-700">
                   <th className="py-4 px-5 w-[22%]">Search Employee Name</th>
                   <th className="py-4 px-5 w-[14%]">EMP ID</th>
                   <th className="py-4 px-5 w-[14%]">ROLE</th>
@@ -227,7 +229,7 @@ export default function RoleModal({ open, onClose, onSave }) {
                     <select
                       value={role}
                       onChange={(e) => handleRoleChange(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-extrabold text-slate-800 focus:border-rc-teal focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition cursor-pointer bg-white"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-800 focus:border-rc-teal focus:outline-none focus:ring-2 focus:ring-rc-teal/20 transition cursor-pointer bg-white"
                     >
                       <option value="Superadmin">Superadmin</option>
                       <option value="Admin">Admin</option>
@@ -304,7 +306,7 @@ export default function RoleModal({ open, onClose, onSave }) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-2xl border border-slate-300 px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              className="rounded-xl border border-slate-300 px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
             >
               Cancel
             </button>
@@ -312,7 +314,7 @@ export default function RoleModal({ open, onClose, onSave }) {
               type="button"
               onClick={handleSave}
               disabled={!name.trim() && !employeeId.trim()}
-              className="rc-btn-primary flex items-center gap-2 rounded-2xl px-6 py-2.5 text-xs font-bold text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition hover:scale-[1.01]"
+              className="rc-btn-primary flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-bold text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               <Check className="h-4 w-4" /> Save Role Assignment
             </button>

@@ -14,6 +14,16 @@ const client = new Client({
     connectionString: process.env.DATABASE_URL,
 });
 
+// Without this, a dropped connection (network blip, DB restart) emits an
+// unhandled 'error' on the client, which Node treats as an uncaught
+// exception and crashes the whole backend process, not just this listener.
+client.on("error", (error) => {
+    console.error(
+        "Notification listener connection error:",
+        error
+    );
+});
+
 // client.connect();
 
 // client.query("LISTEN notification_channel");

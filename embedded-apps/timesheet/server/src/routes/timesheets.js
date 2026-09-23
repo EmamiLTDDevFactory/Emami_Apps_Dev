@@ -16,13 +16,25 @@ function mapEntry(row) {
     hours: Number(row.hours),
     note: row.note || '',
     leaveType: row.leave_type || '',
-    location: row.location || '',
-    locationAt: row.location_at ? row.location_at.toISOString() : '',
+    inLocation: row.in_location || '',
+    inLocationAt: row.in_location_at ? row.in_location_at.toISOString() : '',
+    outLocation: row.out_location || '',
+    outLocationAt: row.out_location_at ? row.out_location_at.toISOString() : '',
   }
 }
 
 function mapHistory(row) {
   return { status: row.status, date: row.occurred_at.toISOString(), comment: row.comment, action: row.action || undefined }
+}
+
+// A pending employee (picked a manager but not yet approved, or hasn't picked one at all - see
+// server/src/routes/users.js) shouldn't be able to log any hours yet, even by calling this route
+// directly instead of through the UI's own gate. Checked against the DB rather than the request's
+// JWT payload since approval doesn't require a fresh sign-in - status can flip while an already-
+// issued session token is still being used.
+async function isPendingUser(userId) {
+  const { rows } = await pool.query('SELECT status FROM users WHERE id = $1', [userId])
+  return rows[0]?.status === 'pending'
 }
 
 async function loadTimesheet(client, id) {
@@ -46,7 +58,8 @@ async function loadTimesheet(client, id) {
 
 const ENTRY_COLUMNS = [
   'id', 'timesheet_id', 'user_id', 'project_id', 'task_id', 'entry_date',
-  'in_time', 'out_time', 'hours', 'note', 'leave_type', 'location', 'location_at',
+  'in_time', 'out_time', 'hours', 'note', 'leave_type',
+  'in_location', 'in_location_at', 'out_location', 'out_location_at',
 ]
 
 // One INSERT for every row instead of one round-trip per entry - a full month can be 25-60+
@@ -69,8 +82,10 @@ async function replaceEntries(client, timesheetId, userId, entries) {
       e.hours || 0,
       e.note || null,
       e.leaveType || null,
-      e.location || null,
-      e.locationAt || null,
+      e.inLocation || null,
+      e.inLocationAt || null,
+      e.outLocation || null,
+      e.outLocationAt || null,
     ]
     values.push(...row)
     const base = i * ENTRY_COLUMNS.length
@@ -124,6 +139,9 @@ router.post('/draft', async (req, res, next) => {
   if (!userId || !monthStartDate || !Array.isArray(entries)) {
     return res.status(400).json({ error: 'userId, monthStartDate and entries are required' })
   }
+  if (await isPendingUser(userId)) {
+    return res.status(403).json({ error: 'Your manager still needs to approve you before you can log hours.' })
+  }
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
@@ -167,6 +185,9 @@ router.post('/submit', async (req, res, next) => {
   const { userId, monthStartDate, entries } = req.body
   if (!userId || !monthStartDate || !Array.isArray(entries)) {
     return res.status(400).json({ error: 'userId, monthStartDate and entries are required' })
+  }
+  if (await isPendingUser(userId)) {
+    return res.status(403).json({ error: 'Your manager still needs to approve you before you can log hours.' })
   }
   const client = await pool.connect()
   try {

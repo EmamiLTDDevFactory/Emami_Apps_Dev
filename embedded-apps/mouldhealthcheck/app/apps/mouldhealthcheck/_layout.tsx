@@ -13,10 +13,12 @@ function RootLayoutNav() {
   // it has its own centered loading/error UI and unmounts the instant role resolution succeeds,
   // so the persistent bar has no useful "back"/"logout" action to offer there yet.
   const onEntryGate = segments[segments.length - 1] === "mouldhealthcheck";
+  // The side pane (CustomTabs) only exists on (tabs) screens — modals get the bars but no pane.
+  const onTabs = (segments as string[]).includes("(tabs)");
 
   return (
     <>
-      {!onEntryGate && <HubActionBar />}
+      {!onEntryGate && <HubActionBar onTabs={onTabs} />}
       <Stack
         screenOptions={{
           headerShown: false,

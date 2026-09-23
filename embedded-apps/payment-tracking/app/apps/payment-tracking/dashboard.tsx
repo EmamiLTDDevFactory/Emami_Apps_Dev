@@ -18,7 +18,7 @@ import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, typ
  * so every KPI/chart on this screen always matches what's currently filtered by both. */
 export default function ProvisionDashboard() {
   const router = useRouter();
-  const { email, isAdmin, roleLoading } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
   const { month, year } = useMonthYear();
   const [rows, setRows] = useState<PaymentTrackingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +28,7 @@ export default function ProvisionDashboard() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (!isAdmin || !email) {
+    if (role !== 'Admin' || !email) {
       setLoading(false);
       return;
     }
@@ -38,7 +38,7 @@ export default function ProvisionDashboard() {
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load provision data.'))
       .finally(() => setLoading(false));
-  }, [email, isAdmin, roleLoading, year]);
+  }, [email, role, roleLoading, year]);
 
   const monthRows = useMemo(() => filterByMonth(rows, month), [rows, month]);
   const filteredRows = useMemo(() => applyProvisionFilters(monthRows, filters), [monthRows, filters]);
@@ -80,7 +80,7 @@ export default function ProvisionDashboard() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (!isAdmin) {
+  if (role !== 'Admin') {
     return (
       <View style={styles.centerWrap}>
         <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
@@ -185,7 +185,7 @@ export default function ProvisionDashboard() {
           </View>
 
           <View style={styles.chartsRow}>
-            <View style={[styles.card, styles.flex1]}>
+            <View style={[styles.card, styles.chartCard]}>
               <Text style={styles.cardTitle}>Pending bill value by status</Text>
               <Text style={styles.cardSubtitle}>The provision lifecycle from Service Entry Sheet not created through accepted. Tap a bar for its line items.</Text>
               <HorizontalBarBreakdown
@@ -199,7 +199,7 @@ export default function ProvisionDashboard() {
               />
             </View>
 
-            <View style={[styles.card, styles.flex1]}>
+            <View style={[styles.card, styles.chartCard]}>
               <Text style={styles.cardTitle}>Pending bill value by cost center</Text>
               <Text style={styles.cardSubtitle}>Top 8 cost centers by open value — tap a bar for its line items.</Text>
               <HorizontalBarBreakdown
@@ -215,7 +215,7 @@ export default function ProvisionDashboard() {
           </View>
 
           <View style={styles.chartsRow}>
-            <View style={[styles.card, styles.flex1]}>
+            <View style={[styles.card, styles.chartCard]}>
               <Text style={styles.cardTitle}>Pending bill value by vendor</Text>
               <Text style={styles.cardSubtitle}>Top 8 vendors by open value across the current filter. Tap a bar for its line items.</Text>
               <HorizontalBarBreakdown
@@ -229,7 +229,7 @@ export default function ProvisionDashboard() {
               />
             </View>
 
-            <View style={[styles.card, styles.flex1]}>
+            <View style={[styles.card, styles.chartCard]}>
               <Text style={styles.cardTitle}>Pending bill value by country</Text>
               <Text style={styles.cardSubtitle}>Every country (Land1) with open provisions. Tap a bar for its line items.</Text>
               <HorizontalBarBreakdown
@@ -302,6 +302,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
+  },
+  // flex: 1 alone won't wrap onto its own line on a narrow screen (flex-basis: 0% lets two cards
+  // just keep shrinking side by side instead) — minWidth forces chartsRow's flexWrap to actually
+  // stack them full-width on a phone, same pattern as kpiStyles.card's own minWidth+flexGrow.
+  chartCard: {
+    flex: 1,
+    minWidth: 300,
   },
   card: {
     borderWidth: 1,

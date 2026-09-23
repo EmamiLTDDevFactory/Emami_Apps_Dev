@@ -153,8 +153,8 @@ export default function CancelledScreen() {
     <View style={styles.screen}>
       <View style={styles.sticky}>
         <View style={styles.kpiRow}>
-          <KPICard icon="✕" label="Total Cancelled" value={`${dcRows.length}/${totalInvCn}`} color={colors.red} />
-          <KPICard icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${casesCn.toFixed(0)} cases`} />
+          <KPICard compact icon="✕" label="Total Cancelled" value={`${dcRows.length}/${totalInvCn}`} color={colors.red} />
+          <KPICard compact icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${casesCn.toFixed(0)} cases`} />
         </View>
 
         <FilterRow>
@@ -250,10 +250,10 @@ function CancelledCard({ row, bg }: { row: CancelledInvoice; bg: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 12, paddingBottom: 28 },
-  sticky: { padding: 12, paddingBottom: 0, backgroundColor: colors.bg },
+  sticky: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 0, backgroundColor: colors.bg },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 28 },
-  kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  kpiRow: { flexDirection: 'row', gap: 6, marginBottom: 4 },
   card: {
     borderWidth: 1,
     borderColor: colors.redBd,

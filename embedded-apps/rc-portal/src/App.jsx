@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import Analytics from './pages/Analytics';
 import Onboarding from './pages/Onboarding';
 import ConsultantDetail from './pages/ConsultantDetail';
 import Closure from './pages/Closure';
@@ -15,10 +16,16 @@ import { getHubEmail, loginWithHubEmail } from './lib/hubEmailLogin';
 /** Tries logging in via the email the EmamiApps hub already captured (same-origin localStorage)
  * before any route ever renders — skips the Employee ID + OTP screen entirely when it succeeds.
  * Only attempted when there's no existing session already, so it never overrides an active login.
- * Falls back to the normal login screen, unchanged, if there's no hub email or the SAP call
- * fails — see src/lib/hubEmailLogin.js. */
+ *
+ * Also reports whether a hub email was found at all, via `hubEmailDetected` — App() uses that to
+ * decide whether the old Employee ID + OTP screen should even be reachable (see the render guard
+ * below). A hub email that fails to resolve in SAP is treated the same way Non CTC Expense's
+ * equivalent case is: the visitor genuinely came from the hub, so they ARE signed in — SAP simply
+ * has no record for their email. Sending them back to the Emami Apps dashboard is correct there;
+ * showing them a login form with nothing useful to type is not. */
 function useHubEmailBootstrap() {
   const [ready, setReady] = useState(false);
+  const [hubEmailDetected, setHubEmailDetected] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('isAuthenticated') === 'true') {
@@ -31,6 +38,8 @@ function useHubEmailBootstrap() {
       setReady(true);
       return;
     }
+
+    setHubEmailDetected(true);
 
     let cancelled = false;
     loginWithHubEmail(hubEmail).then((result) => {
@@ -45,16 +54,19 @@ function useHubEmailBootstrap() {
         localStorage.setItem('employeeTm', result.tm || '');
         localStorage.setItem('employeeLd', result.ld || '');
         localStorage.setItem('employeeOd', result.od || '');
+        setReady(true);
       } else {
-        console.warn('[hub-email-login] Falling back to manual login:', result.error);
+        console.warn('[hub-email-login] Hub email did not resolve in SAP:', result.error);
+        window.location.href = '/';
+        // Deliberately no setReady(true) here — the full-page navigation above supersedes
+        // whatever would otherwise render next, same reasoning as Non CTC Expense's AuthContext.
       }
-      setReady(true);
     });
 
     return () => { cancelled = true; };
   }, []);
 
-  return ready;
+  return { ready, hubEmailDetected };
 }
 
 /** Browser Back should always exit cleanly to the EmamiApps hub Dashboard once there's no more
@@ -172,15 +184,41 @@ const AppLayout = () => (
 );
 
 export default function App() {
-  const bootstrapped = useHubEmailBootstrap();
+  const { ready: bootstrapped, hubEmailDetected } = useHubEmailBootstrap();
   useExitToHubOnBack();
 
   if (!bootstrapped) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs">
-        <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/90 px-6 py-5 shadow-xl">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30">
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-white px-6 py-5 shadow-lg border border-slate-200">
           <Loader2 className="h-8 w-8 animate-spin text-rc-teal" />
           <span className="text-sm font-medium text-slate-600">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Real deployment, but this browser never went through the hub at all (no hub email found) —
+  // most likely someone opened this URL directly (e.g. a shared link) instead of through the hub.
+  // The Employee ID + OTP screen is legacy from before the hub/Microsoft-SSO integration and
+  // shouldn't be reachable here anymore — send them to sign in through the hub instead, same
+  // guard every other embedded app in this repo already has (see Timesheet's AppContext.jsx).
+  // Skipped entirely in standalone local dev, where there's no hub around this app at all.
+  const isAuthenticated = sessionStorage.getItem('isAuthenticated') === 'true';
+  if (!import.meta.env.DEV && !hubEmailDetected && !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-slate-50">
+        <div className="max-w-sm w-full rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-sm font-semibold text-slate-800">Sign in through Emami Apps</p>
+          <p className="mt-1 text-sm text-slate-500">
+            This page isn't reachable directly — open the Resource &amp; Consultant Portal from the Emami Apps hub instead.
+          </p>
+          <a
+            href="/"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-rc-teal px-4 py-2 text-sm font-semibold text-white hover:bg-rc-teal-dark"
+          >
+            Back to Emami Apps
+          </a>
         </div>
       </div>
     );
@@ -194,6 +232,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/consultants" element={<Dashboard />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/consultants/:consultantId" element={<ConsultantDetail />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/onboarding/:consultantId/edit" element={<Onboarding />} />

@@ -98,6 +98,32 @@ export async function apiMasterDataUpdate(id, payload, email) {
   );
 }
 
+// --- Saved views ---------------------------------------------------------
+export async function apiSavedViews(email) {
+  return json(await fetch(`${API_BASE}/saved-views`, { headers: { 'X-User-Email': email || '' } }));
+}
+export async function apiSavedViewCreate(name, config, shared, email) {
+  return json(
+    await fetch(`${API_BASE}/saved-views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      body: JSON.stringify({ name, config, shared }),
+    })
+  );
+}
+export async function apiSavedViewUpdate(id, patch, email) {
+  return json(
+    await fetch(`${API_BASE}/saved-views/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      body: JSON.stringify(patch),
+    })
+  );
+}
+export async function apiSavedViewDelete(id, email) {
+  return json(await fetch(`${API_BASE}/saved-views/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+}
+
 // --- Import Center -------------------------------------------------------
 export async function apiImportList(email) {
   return json(await fetch(`${API_BASE}/import-center/imports`, { headers: { 'X-User-Email': email || '' } }));

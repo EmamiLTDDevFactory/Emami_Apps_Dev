@@ -34,6 +34,10 @@ import {
 } from "../utils/sapNotify";
 
 export default function CreateAudit() {
+    const currentUser = JSON.parse(
+        localStorage.getItem("currentUser")
+    );
+
     const [auditCategory, setAuditCategory] =
         useState("Depot");
 
@@ -221,6 +225,7 @@ export default function CreateAudit() {
                         : SAP_FLAG.ONSITE_AUDIT_SCHEDULED,
                 depot: selectedDepot?.code || depot,
                 dueDate: dueDate.toDate(),
+                email: currentUser?.email ?? "",
             });
 
             alert("Audit created successfully.");

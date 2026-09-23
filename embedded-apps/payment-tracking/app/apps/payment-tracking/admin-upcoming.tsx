@@ -1,19 +1,29 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, radii } from '../../../src/theme/tokens';
 import {
+  fetchPoAttachment,
   fetchVendorPOFollowups,
   submitProvisionApproval,
   submitProvisionApprovalBatch,
+  type PoAttachment,
   type ProvisionConfirmation,
   type VendorPOFollowupRow,
 } from '../../../src/lib/paymentTrackingApi';
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../../src/lib/pdfAttachment';
 import { ProvisionHero } from '../../../src/components/ProvisionUI';
+import { QuotationPreviewModal } from '../../../src/components/QuotationPreviewModal';
 import { usePaymentTrackingAuth } from '../../../src/context/PaymentTrackingAuthContext';
+import { useMonthYear } from '../../../src/context/MonthYearContext';
+import { filterByMonth, filterByFiscalYear } from '../../../src/lib/provisionMetrics';
+
+// Matches the hub's own useIsWideScreen breakpoint and this app's _layout.tsx copy of this
+// constant — a compact desktop layout kicks in at the same viewport width the side pane docks
+// at, web only (native mobile/tablet keeps the roomier spacing).
+const WIDE_BREAKPOINT = 768;
 
 function todayIso(): string {
   return new Date().toISOString().split('T')[0];
@@ -71,18 +81,18 @@ function initialRowState(row: VendorPOFollowupRow): RowState {
  * `minimumDate` — used only for Revised Delivery Date (no back-dating), never Invoice Date (a
  * real invoice is routinely dated in the past). */
 function DateField({
-  value, onChange, label, minDate,
+  value, onChange, label, minDate, compact,
 }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
   minDate?: string;
+  compact?: boolean;
 }) {
   const [showPicker, setShowPicker] = useState(false);
 
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error — raw DOM element, valid under react-native-web
       <input
         type="date"
         value={value}
@@ -91,13 +101,13 @@ function DateField({
         aria-label={label}
         style={{
           width: '100%',
-          height: 42,
-          padding: '8px 10px',
+          height: compact ? 34 : 42,
+          padding: compact ? '6px 8px' : '8px 10px',
           borderRadius: 8,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.white,
           color: colors.ink,
-          fontSize: 13.5,
+          fontSize: compact ? 12.5 : 13.5,
           boxSizing: 'border-box',
         }}
       />
@@ -129,41 +139,54 @@ function DateField({
 
 /** Read-only label/value pair — wraps onto its own line on a narrow screen instead of ever
  * forcing horizontal scroll, since this screen has no wide fixed-column table anywhere. */
-function InfoField({ label, value }: { label: string; value: string }) {
+function InfoField({ label, value, compact }: { label: string; value: string; compact?: boolean }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={2}>{value || '—'}</Text>
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>{label}</Text>
+      <Text style={[styles.infoValue, compact && styles.infoValueCompact]} numberOfLines={2}>{value || '—'}</Text>
     </View>
   );
 }
 
 function EditableField({
-  label, value, onChange, keyboardType,
+  label, value, onChange, keyboardType, compact,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   keyboardType?: 'decimal-pad';
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>{label} *</Text>
-      <TextInput value={value} onChangeText={onChange} keyboardType={keyboardType} style={styles.editInput} />
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType={keyboardType}
+        style={[styles.editInput, compact && styles.editInputCompact]}
+      />
     </View>
   );
 }
 
 /** Attach Invoice (PDF) — restricted to `application/pdf` at the picker level (native picker and
- * web's underlying `<input accept>` both honor it), mandatory whenever the invoice fields
- * themselves are (see rowMandatoryError). */
-function AttachField({ fileName, attaching, onPick }: { fileName: string; attaching: boolean; onPick: () => void }) {
+ * web's underlying `<input accept>` both honor it). Optional, per instruction — no longer gates
+ * "Send for Invoice Approval" (see rowMandatoryError). */
+function AttachField({
+  fileName, attaching, onPick, compact,
+}: {
+  fileName: string;
+  attaching: boolean;
+  onPick: () => void;
+  compact?: boolean;
+}) {
   return (
-    <View style={styles.infoField}>
-      <Text style={styles.infoLabel}>Attach Invoice (PDF) *</Text>
-      <Pressable style={styles.attachBtn} onPress={onPick} disabled={attaching} accessibilityRole="button">
-        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={15} color={colors.rust} />
-        <Text style={styles.attachBtnText} numberOfLines={1}>
+    <View style={[styles.infoField, compact && styles.infoFieldCompact]}>
+      <Text style={[styles.infoLabel, compact && styles.infoLabelCompact]}>Attach Invoice (PDF)</Text>
+      <Pressable style={[styles.attachBtn, compact && styles.attachBtnCompact]} onPress={onPick} disabled={attaching} accessibilityRole="button">
+        <Ionicons name={fileName ? 'document-attach-outline' : 'attach-outline'} size={compact ? 13 : 15} color={colors.rust} />
+        <Text style={[styles.attachBtnText, compact && styles.attachBtnTextCompact]} numberOfLines={1}>
           {attaching ? 'Attaching…' : (fileName || 'Choose PDF file')}
         </Text>
       </Pressable>
@@ -180,7 +203,8 @@ function AttachField({ fileName, attaching, onPick }: { fileName: string; attach
  * the PDF attachment, then send for approval (row-wise or as a multi-select mass batch) — POSTs to
  * ZProvHeader (see paymentTrackingApi.ts's submitProvisionApproval/submitProvisionApprovalBatch). */
 export default function AdminUpcomingProvision() {
-  const { email } = usePaymentTrackingAuth();
+  const { email, role, roleLoading } = usePaymentTrackingAuth();
+  const { month, year } = useMonthYear();
   const [rows, setRows] = useState<VendorPOFollowupRow[]>([]);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -191,15 +215,53 @@ export default function AdminUpcomingProvision() {
   const [modalTouched, setModalTouched] = useState(false);
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [quotationLoadingKey, setQuotationLoadingKey] = useState<string | null>(null);
+  const [quotation, setQuotation] = useState<PoAttachment | null>(null);
+  // Compact layout only for a wide web viewport (desktop) — native/mobile keeps the roomier
+  // spacing this screen already had.
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= WIDE_BREAKPOINT;
+
+  /** "View Quotation" on a PO tile — a keyed GetEntity read against ZPOAttachmentSet by Ebeln, per
+   * instruction (see fetchPoAttachment). A PO with nothing on file yet surfaces as a banner, not
+   * an error state, since that's an expected, common case, not a failure. */
+  const handleViewQuotation = async (row: VendorPOFollowupRow) => {
+    setQuotationLoadingKey(row.key);
+    try {
+      const att = await fetchPoAttachment(row.poNumber);
+      if (!att) {
+        setBanner({ type: 'error', message: `No quotation is on file for PO ${row.poNumber} yet.` });
+      } else {
+        setQuotation(att);
+      }
+    } catch (err) {
+      setBanner({ type: 'error', message: err instanceof Error ? err.message : 'Could not load this quotation.' });
+    } finally {
+      setQuotationLoadingKey(null);
+    }
+  };
+
+  // Month/Year (the bar every Provision Tracking screen shares — see MonthYearBar.tsx) narrows by
+  // delivery date client-side, same as Pending Approval's own monthYearRows; ZVendorPOFollowupSet
+  // has no Gjahr server filter to send the year to, so both dimensions apply here.
+  const monthYearRows = useMemo(
+    () => filterByFiscalYear(filterByMonth(rows, month), year),
+    [rows, month, year]
+  );
 
   useEffect(() => {
-    if (!email) {
+    if (roleLoading) return;
+    if (role !== 'Finance' || !email) {
       setLoading(false);
-      setLoadError('Not signed in.');
       return;
     }
     setLoading(true);
     setLoadError(null);
+    // NOTE: this screen's "all vendors" scope has historically relied on the backend/SAP
+    // recognizing the caller's email as an Admin and expanding the GET beyond that vendor's own
+    // rows — now that this tab moved to Finance, confirm the backend also expands scope for
+    // Finance emails, not just Admin ones; otherwise a Finance user hits this route but only gets
+    // their own vendor's rows (or none).
     fetchVendorPOFollowups(email, 'U')
       .then((data) => {
         setRows(data);
@@ -209,7 +271,7 @@ export default function AdminUpcomingProvision() {
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load upcoming provision items.'))
       .finally(() => setLoading(false));
-  }, [email]);
+  }, [email, role, roleLoading]);
 
   const patchRow = useCallback((key: string, patch: Partial<RowState>) => {
     setRowState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
@@ -285,15 +347,14 @@ export default function AdminUpcomingProvision() {
     setModalKey(null);
   };
 
-  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are the mandatory ones; Delivery
-  // Confirmed = No -> those are hidden entirely (see the fieldGrid render below) and instead the
-  // Revised Delivery Date + Comments popup (already mandatory via confirmModal) is what's required.
+  // Delivery Confirmed = Yes -> invoice fields + PDF attachment are optional (per instruction, no
+  // longer required to send for invoice approval — only validated if something was actually typed
+  // in, so a stray non-numeric Invoice Amount still gets caught). Delivery Confirmed = No -> those
+  // are hidden entirely (see the fieldGrid render below) and instead the Revised Delivery Date +
+  // Comments popup (already mandatory via confirmModal) is what's required.
   function rowMandatoryError(state: RowState): string | null {
     if (state.delvConf) {
-      if (!state.invoiceNo.trim()) return 'Invoice Number is required.';
-      if (!state.invoiceDate) return 'Invoice Date is required.';
-      if (!state.invoiceAmount.trim() || Number.isNaN(Number(state.invoiceAmount))) return 'A valid Invoice Amount is required.';
-      if (!state.attachmentBase64) return 'An invoice attachment (PDF) is required.';
+      if (state.invoiceAmount.trim() && Number.isNaN(Number(state.invoiceAmount))) return 'Invoice Amount must be a valid number.';
     } else {
       if (!state.revisedDelDate) return 'Revised Delivery Date is required when delivery is not confirmed.';
       if (!state.comments.trim()) return 'Comments are required when delivery is not confirmed.';
@@ -379,9 +440,28 @@ export default function AdminUpcomingProvision() {
     }
   };
 
+  if (roleLoading) {
+    return (
+      <View style={styles.centerWrap}>
+        <ActivityIndicator size="large" color={colors.rust} />
+      </View>
+    );
+  }
+
+  // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
+  // is still reachable by a typed URL.
+  if (role !== 'Finance') {
+    return (
+      <View style={styles.centerWrap}>
+        <Ionicons name="lock-closed-outline" size={22} color={colors.inkSoft} />
+        <Text style={styles.deniedText}>Upcoming Provision (All Vendors) is only available to Finance.</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.panel}>
+    <ScrollView contentContainerStyle={[styles.scroll, isDesktopWeb && styles.scrollCompact]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.panel, isDesktopWeb && styles.panelCompact]}>
         <ProvisionHero
           eyebrow="Provision Tracking"
           title="Upcoming Provision — All Vendors"
@@ -413,10 +493,12 @@ export default function AdminUpcomingProvision() {
           <Text style={styles.errorText}>{loadError}</Text>
         ) : rows.length === 0 ? (
           <Text style={styles.emptyText}>No upcoming provision items.</Text>
+        ) : monthYearRows.length === 0 ? (
+          <Text style={styles.emptyText}>No upcoming provision items for the selected month/year.</Text>
         ) : (
           <>
             {selected.size > 0 && (
-              <View style={styles.massBar}>
+              <View style={[styles.massBar, isDesktopWeb && styles.massBarCompact]}>
                 <Text style={styles.massBarText}>{selected.size} selected</Text>
                 <Pressable
                   style={[styles.massBtn, massSubmitting && styles.btnDisabled]}
@@ -433,16 +515,17 @@ export default function AdminUpcomingProvision() {
               </View>
             )}
 
-            {rows.map((row) => {
+            {monthYearRows.map((row) => {
               const state = rowState[row.key];
               if (!state) return null;
               return (
-                <View key={row.key} style={[styles.card, state.submitted && styles.cardSubmitted]}>
+                <View key={row.key} style={[styles.card, state.submitted && styles.cardSubmitted, isDesktopWeb && styles.cardCompact]}>
                   <View style={styles.cardHeader}>
                     {!state.submitted && (
                       <Pressable
                         onPress={() => toggleSelected(row.key)}
                         style={styles.checkbox}
+                        hitSlop={8}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: selected.has(row.key) }}
                         accessibilityLabel={`Select PO ${row.poNumber} item ${row.poItemNo}`}
@@ -455,9 +538,25 @@ export default function AdminUpcomingProvision() {
                       </Pressable>
                     )}
                     <View style={styles.flex1}>
-                      <Text style={styles.cardTitle}>PO {row.poNumber} · Item {row.poItemNo}</Text>
-                      {row.materialDesc ? <Text style={styles.cardSubtitle} numberOfLines={1}>{row.materialDesc}</Text> : null}
+                      <Text style={[styles.cardTitle, isDesktopWeb && styles.cardTitleCompact]}>PO {row.poNumber} · Item {row.poItemNo}</Text>
+                      {row.materialDesc ? <Text style={[styles.cardSubtitle, isDesktopWeb && styles.cardSubtitleCompact]} numberOfLines={1}>{row.materialDesc}</Text> : null}
                     </View>
+                    <Pressable
+                      style={styles.quotationBtn}
+                      onPress={() => handleViewQuotation(row)}
+                      disabled={quotationLoadingKey === row.key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View quotation for PO ${row.poNumber}`}
+                    >
+                      {quotationLoadingKey === row.key ? (
+                        <ActivityIndicator size="small" color={colors.rust} />
+                      ) : (
+                        <>
+                          <Ionicons name="document-attach-outline" size={13} color={colors.rust} />
+                          <Text style={styles.quotationBtnText}>Quotation</Text>
+                        </>
+                      )}
+                    </Pressable>
                     {state.submitted && (
                       <View style={styles.submittedBadge}>
                         <Ionicons name="checkmark-circle" size={13} color={colors.green} />
@@ -466,16 +565,16 @@ export default function AdminUpcomingProvision() {
                     )}
                   </View>
 
-                  <View style={styles.fieldGrid}>
-                    <InfoField label="Service Text" value={row.serviceText} />
-                    <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} />
-                    <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} />
+                  <View style={[styles.fieldGrid, isDesktopWeb && styles.fieldGridCompact]}>
+                    <InfoField label="Service Text" value={row.serviceText} compact={isDesktopWeb} />
+                    <InfoField label="Delivery Date" value={formatDisplayDate(row.deliveryDate)} compact={isDesktopWeb} />
+                    <InfoField label="Provision Value" value={row.provisionValue ? `${row.provisionValue} ${row.currency}` : '—'} compact={isDesktopWeb} />
                     {state.delvConf && (state.submitted ? (
                       <>
-                        <InfoField label="Invoice Number" value={state.invoiceNo} />
-                        <InfoField label="Invoice Date" value={formatDisplayDate(state.invoiceDate)} />
-                        <InfoField label="Invoice Amount" value={state.invoiceAmount} />
-                        <InfoField label="Attach Invoice (PDF)" value={state.attachmentName} />
+                        <InfoField label="Invoice Number" value={state.invoiceNo} compact={isDesktopWeb} />
+                        <InfoField label="Invoice Date" value={formatDisplayDate(state.invoiceDate)} compact={isDesktopWeb} />
+                        <InfoField label="Invoice Amount" value={state.invoiceAmount} compact={isDesktopWeb} />
+                        <InfoField label="Attach Invoice (PDF)" value={state.attachmentName} compact={isDesktopWeb} />
                       </>
                     ) : (
                       <>
@@ -483,13 +582,15 @@ export default function AdminUpcomingProvision() {
                           label="Invoice Number"
                           value={state.invoiceNo}
                           onChange={(v) => patchRow(row.key, { invoiceNo: v })}
+                          compact={isDesktopWeb}
                         />
-                        <View style={styles.infoField}>
-                          <Text style={styles.infoLabel}>Invoice Date *</Text>
+                        <View style={[styles.infoField, isDesktopWeb && styles.infoFieldCompact]}>
+                          <Text style={[styles.infoLabel, isDesktopWeb && styles.infoLabelCompact]}>Invoice Date</Text>
                           <DateField
                             value={state.invoiceDate}
                             onChange={(v) => patchRow(row.key, { invoiceDate: v })}
                             label="Invoice Date"
+                            compact={isDesktopWeb}
                           />
                         </View>
                         <EditableField
@@ -497,23 +598,25 @@ export default function AdminUpcomingProvision() {
                           value={state.invoiceAmount}
                           onChange={(v) => patchRow(row.key, { invoiceAmount: v })}
                           keyboardType="decimal-pad"
+                          compact={isDesktopWeb}
                         />
                         <AttachField
                           fileName={state.attachmentName}
                           attaching={state.attaching}
                           onPick={() => handlePickAttachment(row.key)}
+                          compact={isDesktopWeb}
                         />
                       </>
                     ))}
                     {!state.delvConf && (
                       <>
-                        <InfoField label="Revised Delivery Date" value={formatDisplayDate(state.revisedDelDate)} />
-                        <InfoField label="Comments" value={state.comments} />
+                        <InfoField label="Revised Delivery Date" value={formatDisplayDate(state.revisedDelDate)} compact={isDesktopWeb} />
+                        <InfoField label="Comments" value={state.comments} compact={isDesktopWeb} />
                       </>
                     )}
                   </View>
 
-                  <View style={styles.delvConfRow}>
+                  <View style={[styles.delvConfRow, isDesktopWeb && styles.delvConfRowCompact]}>
                     <Text style={styles.delvConfLabel}>Delivery Confirmed?</Text>
                     <View style={styles.delvConfOptions}>
                       <Pressable
@@ -539,7 +642,7 @@ export default function AdminUpcomingProvision() {
 
                   {!state.submitted && (
                     <Pressable
-                      style={[styles.sendBtn, state.submitting && styles.btnDisabled]}
+                      style={[styles.sendBtn, state.submitting && styles.btnDisabled, isDesktopWeb && styles.sendBtnCompact]}
                       onPress={() => submitRow(row)}
                       disabled={state.submitting}
                       accessibilityRole="button"
@@ -601,27 +704,100 @@ export default function AdminUpcomingProvision() {
           </View>
         </View>
       </Modal>
+
+      {quotation && <QuotationPreviewModal attachment={quotation} onClose={() => setQuotation(null)} />}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  centerWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    gap: 12,
+  },
+  deniedText: {
+    fontSize: 13,
+    color: colors.inkSoft,
+  },
   scroll: {
-    padding: 20,
-    paddingBottom: 60,
+    padding: 14,
+    paddingBottom: 40,
   },
   panel: {
+    gap: 8,
+  },
+  scrollCompact: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  panelCompact: {
     gap: 10,
+  },
+  massBarCompact: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  cardCompact: {
+    padding: 12,
+    gap: 8,
+  },
+  cardTitleCompact: {
+    fontSize: 12.5,
+  },
+  cardSubtitleCompact: {
+    fontSize: 10.5,
+  },
+  // Fixed-width columns instead of the base infoField's flexGrow: a field like Invoice Amount
+  // has no business stretching to match Service Text's width just because there's room left in
+  // the row — that's what was producing the oversized fields and uneven-looking gaps on a wide
+  // desktop viewport. Every field gets the same stable width here; the row simply wraps to as
+  // many columns as fit, with normal (not distracting) leftover space only at a row's own end.
+  fieldGridCompact: {
+    gap: 12,
+  },
+  infoFieldCompact: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    minWidth: 0,
+    width: 152,
+    gap: 3,
+  },
+  infoLabelCompact: {
+    fontSize: 9.5,
+  },
+  infoValueCompact: {
+    fontSize: 12.5,
+  },
+  editInputCompact: {
+    paddingVertical: 6,
+    fontSize: 12.5,
+  },
+  attachBtnCompact: {
+    paddingVertical: 6,
+  },
+  attachBtnTextCompact: {
+    fontSize: 12.5,
+  },
+  delvConfRowCompact: {
+    paddingTop: 8,
+  },
+  sendBtnCompact: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   flex1: { flex: 1 },
   loadingWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    paddingVertical: 40,
+    gap: 10,
   },
   loadingText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   errorText: {
@@ -630,18 +806,18 @@ const styles = StyleSheet.create({
     color: colors.red,
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: colors.inkSoft,
     textAlign: 'center',
-    paddingVertical: 40,
+    paddingVertical: 28,
   },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     borderRadius: radii.lg,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
   },
   bannerSuccess: {
@@ -659,25 +835,28 @@ const styles = StyleSheet.create({
   },
   massBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 8,
+    columnGap: 8,
     backgroundColor: colors.white,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   massBarText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink,
   },
   massBtn: {
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
   },
   massBtnText: {
     color: colors.white,
@@ -689,11 +868,11 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.white,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    gap: 8,
+    padding: 9,
+    gap: 6,
     ...Platform.select({
       web: { boxShadow: '0 2px 8px rgba(31,27,51,0.06)' },
       default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
@@ -704,19 +883,21 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    gap: 8,
+    rowGap: 6,
+    columnGap: 6,
   },
   checkbox: {
     padding: 2,
   },
   cardTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     color: colors.ink,
   },
   cardSubtitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: colors.inkSoft,
     marginTop: 1,
   },
@@ -729,6 +910,22 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     paddingHorizontal: 8,
   },
+  quotationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    backgroundColor: colors.appBg,
+  },
+  quotationBtnText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.rust,
+  },
   submittedBadgeText: {
     fontSize: 10,
     fontWeight: '700',
@@ -737,61 +934,61 @@ const styles = StyleSheet.create({
   fieldGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   infoField: {
-    minWidth: 130,
+    minWidth: 104,
     flexGrow: 1,
     flexBasis: '30%',
     gap: 2,
   },
   infoLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
     color: colors.inkSoft,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   infoValue: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '600',
     color: colors.ink,
   },
   editInput: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    fontSize: 13,
+    borderRadius: 7,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    fontSize: 12.5,
     color: colors.ink,
     backgroundColor: colors.white,
   },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   dateBtnText: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: colors.ink,
     fontWeight: '600',
   },
   attachBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    borderRadius: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 7,
     backgroundColor: colors.white,
   },
   attachBtnText: {
@@ -802,11 +999,14 @@ const styles = StyleSheet.create({
   },
   delvConfRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    rowGap: 6,
+    columnGap: 6,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   delvConfLabel: {
     fontSize: 12,
@@ -852,8 +1052,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     backgroundColor: colors.rust,
     borderRadius: radii.md,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   sendBtnText: {
     color: colors.white,

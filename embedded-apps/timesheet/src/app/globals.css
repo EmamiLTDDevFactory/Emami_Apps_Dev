@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  /* appBg, same cool light wash the hub's own main content area uses (not the rainbow gradient
+     the old Vite Timesheet had) — a plain, subtle backdrop for glass cards to actually read as
+     translucent against, rather than a busy multi-hue background competing with them. */
+  background: #eef0f4;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d9d4ee;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b9b0e0;
+}
+
+@layer components {
+  /* Flat card — same shape/shadow language as fm-po-deviation's .card, used where a solid (not
+     translucent) surface reads better, e.g. inside a modal that's already over a glass backdrop. */
+  .card {
+    @apply rounded-xl2 border border-border bg-white shadow-card;
+  }
+
+  /* The app's signature touch: a frosted, brand-tinted glass surface — translucent white over the
+     appBg wash, blurred, with a soft rust-tinted glow underneath the structural shadow. Used on
+     primary panels (dashboard stat cards, the timesheet grid container, sidebar, modals) — not on
+     buttons/inputs/nav text, so it reads as deliberate elevation rather than a generic effect
+     slapped on everything. */
+  .glass-card {
+    @apply rounded-xl2 border border-glassBorder bg-glass backdrop-blur-glass shadow-glassCard transition-shadow;
+  }
+  .glass-card:hover {
+    @apply shadow-glassCardHover;
+  }
+
+  .glass-panel {
+    @apply rounded-xl3 border border-glassBorder bg-glass backdrop-blur-glassHeavy shadow-pop;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-rustLight via-rust to-rustDeep text-white shadow-card hover:shadow-cardHover focus-visible:ring-rust;
+  }
+  .btn-ghost {
+    @apply btn border border-border bg-white text-ink hover:bg-appBg focus-visible:ring-rust;
+  }
+  .btn-success {
+    @apply btn bg-green text-white hover:bg-green/90 focus-visible:ring-green;
+  }
+  .btn-danger {
+    @apply btn bg-red text-white hover:bg-red/90 focus-visible:ring-red;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold;
+  }
+}

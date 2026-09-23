@@ -6,7 +6,7 @@ import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
-import { FIELDS, FIELD_LABELS } from '../shared/constants.js';
+import { FIELDS, FIELD_LABELS, DATE_FIELDS, LEGACY_FIELD_LABELS } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 import {
   InfoIcon, FileExcelIcon, DownloadIcon, UploadCloudIcon, RefreshIcon,
@@ -41,9 +41,89 @@ function downloadTemplate(masterData) {
   XLSX.writeFile(buildTemplateWorkbook(masterData), 'DevTracker_Import_Template.xlsx');
 }
 
+// Excel keeps a date cell as a serial number (days since 1899-12-30), and sheet_to_json hands
+// that straight through — so a filled-in "Start Date" used to arrive as 46037.0001 and land
+// verbatim in the item's date column, which is `text` server-side and therefore accepted without
+// a single error. Every date in this app is a plain 'YYYY-MM-DD' string (what ItemPanel's
+// <input type="date"> writes), so coerce to exactly that.
+//
+// SSF.parse_date_code reads the serial's own calendar parts. Going via `new Date()` +
+// toISOString() instead would shift the day back by one for any timezone east of UTC (IST
+// included) — local midnight on the 15th is 18:30Z on the 14th.
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function toDateString(val) {
+  if (val === null || val === undefined) return '';
+
+  // Defensive: nothing in this file asks for Date objects (see the XLSX.read call), but a cell
+  // can still surface as one. Round to the nearest whole day before reading the parts — SheetJS's
+  // serial->Date conversion drifts a few ms either side of midnight, which naive part-reading
+  // turns into an off-by-one-day.
+  if (val instanceof Date) {
+    if (Number.isNaN(val.getTime())) return '';
+    const local = val.getTime() - val.getTimezoneOffset() * 60000;
+    const d = new Date(Math.round(local / 86400000) * 86400000);
+    return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+  }
+
+  // The normal path: an Excel date cell is a serial number (days since 1899-12-30), and
+  // parse_date_code reads its calendar parts directly, with no timezone in the loop at all.
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    const d = XLSX.SSF.parse_date_code(val);
+    return d ? `${d.y}-${pad2(d.m)}-${pad2(d.d)}` : '';
+  }
+
+  const str = String(val).trim();
+  if (!str) return '';
+  // Already the shape we want (someone typed it, or formatted the column as text).
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // A typed-in date with / - or . separators. Real sheets mix conventions in one column — the
+  // IT automation list this was built against carries US "6/30/2025" alongside "10.10.2025" —
+  // so the order is decided per value by whichever component cannot be a month, NOT assumed.
+  //
+  // When both components are <= 12 the value is genuinely ambiguous (01/02/2026 is two different
+  // days depending on who typed it) and there is nothing in the cell to settle it. Those are
+  // returned untouched rather than guessed: the column is text, so the original survives and
+  // stays visibly unconverted, which is recoverable. A silently wrong date is not.
+  const parts = str.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (parts) {
+    const a = Number(parts[1]);
+    const b = Number(parts[2]);
+    const year = parts[3];
+    if (a > 12 && b >= 1 && b <= 12) return `${year}-${pad2(b)}-${pad2(a)}`; // dd/mm/yyyy
+    if (b > 12 && a >= 1 && a <= 12) return `${year}-${pad2(a)}-${pad2(b)}`; // mm/dd/yyyy
+    return str; // ambiguous, or nonsense like 30/30/2025 — leave it alone
+  }
+  return str;
+}
+
 // Reverse of FIELD_LABELS, so an uploaded sheet's human-readable header row ("Module",
 // "Business Impact", …) maps back to the FIELDS keys the API expects.
-const LABEL_TO_FIELD = Object.fromEntries(FIELDS.map((f) => [(FIELD_LABELS[f] || f).trim(), f]));
+//
+// Matched case- and whitespace-insensitively, which is load-bearing rather than cosmetic:
+// 5830f2e re-capitalised every label ('Development / item title' -> 'Development / Item Title'),
+// and the old exact match meant a template downloaded before that lost its title column. Headers
+// like "Status" and "Remarks" still matched, so rows weren't empty — they just arrived with no
+// devList, and the server rejected every single one with "Development / Item Title is required".
+// Real Excel files also carry stray double spaces and non-breaking spaces from manual editing.
+const normalizeHeader = (s) => String(s).replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Built lowest-precedence first, so a current label always wins over a legacy one or a raw key.
+const LABEL_TO_FIELD = (() => {
+  const map = {};
+  FIELDS.forEach((f) => { map[normalizeHeader(f)] = f; });
+  Object.entries(LEGACY_FIELD_LABELS).forEach(([f, label]) => { map[normalizeHeader(label)] = f; });
+  FIELDS.forEach((f) => { map[normalizeHeader(FIELD_LABELS[f] || f)] = f; });
+  return map;
+})();
+
+// The sheet's first row as written, used only to name the offending columns in an error.
+function headerLabels(worksheet) {
+  const [header = []] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
+  return header.map((h) => String(h).trim()).filter(Boolean);
+}
 
 function rowsFromSheet(worksheet) {
   const raw = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
@@ -51,8 +131,11 @@ function rowsFromSheet(worksheet) {
     .map((r) => {
       const out = {};
       for (const [label, val] of Object.entries(r)) {
-        const key = LABEL_TO_FIELD[String(label).trim()];
-        if (key) out[key] = typeof val === 'string' ? val.trim() : val;
+        const key = LABEL_TO_FIELD[normalizeHeader(label)];
+        if (!key) continue;
+        out[key] = DATE_FIELDS.has(key)
+          ? toDateString(val)
+          : (typeof val === 'string' ? val.trim() : val);
       }
       return out;
     })
@@ -145,11 +228,26 @@ export default function ImportCenter() {
     setUploading(true);
     try {
       const buffer = await file.arrayBuffer();
+      // Deliberately NOT cellDates:true — that converts a date cell into a JS Date via UTC
+      // arithmetic that lands ~10ms short of midnight (serial 46037, a clean 15 Jan, comes back
+      // as 2026-01-14T18:29:59.999Z), so both its local and UTC parts read as the 14th. Left
+      // numeric, the serial decodes exactly via SSF.parse_date_code in toDateString above.
       const wb = XLSX.read(buffer, { type: 'array' });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const rows = rowsFromSheet(sheet);
       if (!rows.length) {
         setUploadError('No data rows found in that file.');
+        return;
+      }
+      // Caught here rather than left to the server, which can only reject the rows one at a time
+      // and reports it as "Development / Item Title is required" on every single line — which
+      // reads like the data is wrong when the real problem is the header row.
+      if (!rows.some((r) => String(r.devList ?? '').trim())) {
+        const unknown = headerLabels(sheet).filter((h) => !LABEL_TO_FIELD[normalizeHeader(h)]);
+        setUploadError(
+          `No "${FIELD_LABELS.devList}" column found, so there is nothing to import. Download the Excel format above and copy your data into it.`
+          + (unknown.length ? ` Unrecognised columns: ${unknown.slice(0, 6).join(', ')}${unknown.length > 6 ? '…' : ''}.` : '')
+        );
         return;
       }
       await apiImportRun(file.name, rows, email);
@@ -178,7 +276,7 @@ export default function ImportCenter() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="importCenter" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="mountain" />
+      <Sidebar active="importCenter" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 

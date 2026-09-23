@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from '../../../src/context/AuthContext';
 import { ClaimProvider } from '../../../src/context/ClaimContext';
 import { ActivityIndicator, Image, LogBox, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Head from 'expo-router/head';
 
 // Suppress dev-mode error overlay so red X does not appear during demo
 LogBox.ignoreAllLogs();
@@ -41,10 +42,17 @@ function RootLayoutNav() {
   // login screen, session lost while inside the app), and they are self-correcting on every run,
   // so nothing is lost by dropping the first-settle special case. Keep it that way: never
   // navigate to the screen that is already showing.
+  const inAuthGroup = segments[0] === 'apps' && segments[1] === 'expense' && segments[2] === 'login';
+  // Same condition the effect below acts on, computed here too (not just inside the effect) so
+  // the render below can suppress painting the protected (tabs) screen for the one frame between
+  // "we know we're not authenticated" and "router.replace() has actually taken effect" — an
+  // effect only runs after a render has already committed, so without this a shared link opened
+  // with no session could flash the Dashboard's shell (no real data, but visible) before bouncing
+  // to /login.
+  const needsLoginRedirect = !isInitializing && !isAuthenticated && !inAuthGroup;
+
   useEffect(() => {
     if (isInitializing) return;
-
-    const inAuthGroup = segments[0] === 'apps' && segments[1] === 'expense' && segments[2] === 'login';
 
     let target: string | null = null;
     if (!isAuthenticated && !inAuthGroup) {
@@ -86,7 +94,11 @@ function RootLayoutNav() {
   //     torn down and popstate never fires at all.
   // Keep this section empty.
 
-  if (isInitializing) {
+  // isInitializing covers the initial session/hub-login resolution; needsLoginRedirect covers the
+  // brief window after that resolves unauthenticated but before router.replace() (fired by the
+  // effect above) has actually navigated away — both must show this same loading state instead of
+  // the real screen underneath, or an unauthenticated visitor could see a flash of it.
+  if (isInitializing || needsLoginRedirect) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color="#005A9E" />
@@ -178,13 +190,20 @@ function RootLayoutNav() {
   );
 }
 
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
 export default function RootLayout() {
   return (
+    <>
+      <Head>
+        <title>Non CTC Expense</title>
+      </Head>
     <AuthProvider>
       <ClaimProvider>
         <RootLayoutNav />
       </ClaimProvider>
     </AuthProvider>
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { getRetVal } from '@/lib/api';
-import { canonicalDelayColor, canonicalDelayLabel, eddVsTodayColor } from '@/lib/delay';
+import { delayStatusColor, delayStatusLabel, delayVsEddLabel, eddVsTodayColor } from '@/lib/delay';
 import { fd, finr, gsvFmt, sfloat, sv, toDate } from '@/lib/format';
 import { exportReportToExcel, ReportType } from '@/lib/export';
 import { AnyInvoiceRow } from '@/types/models';
@@ -256,8 +256,8 @@ const TYPE_EXTRA_COLUMNS: Record<ReportType, ColumnDef[]> = {
     { key: 'dispatch_date', label: 'Dispatch Date', width: 100 },
     { key: 'actual_delivery_date', label: 'Actual Delivery', width: 105 },
     { key: '_edd', label: 'Exp. Delivery', width: 100 },
-    { key: 'total_delay', label: 'Delay (Days)', width: 95 },
-    { key: '_delay', label: 'Delay vs EDD', width: 95 },
+    { key: 'total_delay', label: 'Delay', width: 95 },
+    { key: '_delay', label: 'Delay vs EDD(Days)', width: 110 },
     { key: 'transporter', label: 'Transporter', width: 130 },
   ],
   returned: [
@@ -327,14 +327,25 @@ function Cell({ col, row }: { col: ColumnDef; row: ComputedRow }) {
       </Text>
     );
   }
-  if (key === '_delay' || key === 'total_delay') {
-    const v = key === '_delay' ? row._delay : sfloat(row.total_delay);
+  if (key === 'total_delay') {
+    const v = sfloat(row.total_delay);
     if (v === null || v === undefined) {
       return <Text style={[styles.cellText, styles.cellMuted]}>—</Text>;
     }
     return (
-      <Text style={[styles.cellText, { color: canonicalDelayColor(v), fontWeight: '700' }]} numberOfLines={1}>
-        {canonicalDelayLabel(v)}
+      <Text style={[styles.cellText, { color: delayStatusColor(v), fontWeight: '700' }]} numberOfLines={1}>
+        {delayStatusLabel(v)}
+      </Text>
+    );
+  }
+  if (key === '_delay') {
+    const v = row._delay;
+    if (v === null || v === undefined) {
+      return <Text style={[styles.cellText, styles.cellMuted]}>—</Text>;
+    }
+    return (
+      <Text style={[styles.cellText, { color: delayStatusColor(v), fontWeight: '700' }]} numberOfLines={1}>
+        {delayVsEddLabel(v)}
       </Text>
     );
   }

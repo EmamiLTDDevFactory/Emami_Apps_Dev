@@ -38,3 +38,15 @@ export function hasHubSession(): boolean {
 export function hubLogoutUrl(): string {
   return '/?logout=1';
 }
+
+/** "first.last@emamigroup.com" -> "First Last" — same helper as the other embedded apps'
+ * hubEmailLogin.ts, for the title bar's signed-in-user pill. */
+export function nameFromEmail(email: string): string {
+  const local = email.split('@')[0] || '';
+  const name = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(' ');
+  return name || email;
+}

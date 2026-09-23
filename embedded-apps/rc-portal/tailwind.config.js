@@ -28,13 +28,8 @@ export default {
           800: '#2C2461',
         },
       },
-      backgroundImage: {
-        'rc-gradient': 'linear-gradient(135deg, #F3F1FB 0%, #EEF0F4 100%)',
-        'rc-dashboard': 'linear-gradient(135deg, rgba(109,91,245,0.5) 0%, rgba(217,236,199,0.9) 100%)',
-        'rc-section': 'linear-gradient(90deg, #E6E3F5 0%, #6EE7B7 100%)',
-      },
       boxShadow: {
-        rc: '0 4px 16px rgba(36,30,61,0.08)',
+        rc: '0 1px 3px rgba(15,23,42,0.08)',
       },
     },
   },

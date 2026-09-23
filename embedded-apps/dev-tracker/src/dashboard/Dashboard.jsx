@@ -1,18 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import ItemPanel from './ItemPanel.jsx';
-import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail } from '../shared/api.js';
+import { apiList, apiMasterData, apiUpdate, apiDelete, getCurrentUserEmail, apiSavedViews, apiSavedViewCreate, apiSavedViewDelete } from '../shared/api.js';
 import { groupMasterData, activeValues, categoryColorMap } from '../shared/masterData.js';
 import { revisedTarget, isOverdue, fmtDate, daysBetween, todayStr, datesToAutoFillForStatus, shortId } from '../shared/utils.js';
 import { KANBAN_COLUMNS, FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
-import {
-  CalendarIcon, FilterIcon, DownloadIcon, PlusIcon, GridIcon, TableIcon, MoreIcon,
-  EyeIcon, PencilIcon, CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon,
-} from '../shared/icons.jsx';
+import { CalendarIcon, FilterIcon, DownloadIcon, PlusIcon, GridIcon, TableIcon, MoreIcon, EyeIcon, PencilIcon, CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon, StarIcon, TrashIcon } from '../shared/icons.jsx';
 
 const SORT_OPTIONS = [
   { key: 'priority', label: 'Priority' },
@@ -21,6 +19,24 @@ const SORT_OPTIONS = [
   { key: 'title', label: 'Title' },
 ];
 const PAGE_SIZES = [10, 15, 25, 50];
+// Swimlanes, not alternative columns: the board's columns stay bound to status so dragging a
+// card between them still means "move this to that status". Grouping adds a second axis on top
+// of that rather than replacing it, which is the only arrangement where both gestures keep a
+// single obvious meaning.
+const GROUP_OPTIONS = [
+  { key: '', label: 'No grouping' },
+  { key: 'area', label: 'Module' },
+  { key: 'developer', label: 'Developer' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'impact', label: 'Business Impact' },
+  { key: 'devFactory', label: 'Dev Factory' },
+];
+const GROUP_BLANK = '—';
+const LANE_AUTO_COLLAPSE_OVER = 6;
+// Sentinel for the owner filter meaning "whoever is signed in" — resolved against the session
+// email at filter time, so a saved/shared link stays personal to whoever opens it.
+const PRESET_MINE = '__me__';
+const PRESET_LABELS = { active: 'active', completed: 'completed', overdue: 'overdue', mine: 'your' };
 
 // Fallbacks used until someone picks a custom color for that value on the Master Data page
 // (Status/Priority now carry hasColor: true there, same as Area) — priorityStyle/statusStyle
@@ -111,6 +127,12 @@ function pageList(current, total) {
 }
 
 export default function Dashboard() {
+  // "My Work" is this same component loaded with ?preset=mine — captured once at mount,
+  // before the handoff effect below strips that query param off the URL, so the sidebar
+  // still knows which link was actually clicked.
+  const [activeNav] = useState(() => (
+    new URLSearchParams(window.location.search).get('preset') === 'mine' ? 'myWork' : 'dashboard'
+  ));
   const [items, setItems] = useState([]);
   const [masterData, setMasterData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -122,12 +144,21 @@ export default function Dashboard() {
   const [dateEnd, setDateEnd] = useState('');
   const [search, setSearch] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
+  // '' | 'active' | 'completed' — the lifecycle buckets Home's KPI cards count, so clicking a
+  // card can land here showing exactly the rows behind that number. Kept separate from
+  // filterStatus because "Active" spans several statuses rather than being one of them.
+  const [lifecycle, setLifecycle] = useState('');
   const [filterImpact, setFilterImpact] = useState('');
   const [filterComplexity, setFilterComplexity] = useState('');
   const [filterDevFactory, setFilterDevFactory] = useState('');
   const [filterReasonCategory, setFilterReasonCategory] = useState('');
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState('board');
+  const [groupBy, setGroupBy] = useState('');
+  const [collapsedLanes, setCollapsedLanes] = useState(() => new Set());
+  const [savedViews, setSavedViews] = useState([]);
+  const [activeViewId, setActiveViewId] = useState('');
+  const viewApplyRef = useRef(false);
   const [sortBy, setSortBy] = useState('priority');
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(1);
@@ -156,20 +187,32 @@ export default function Dashboard() {
       return;
     }
     reload().finally(() => setLoading(false));
+    reloadViews();
   }, []);
 
   // Handle the Home page's search handoff (?aiSearch=…) and the ?action=new draft handoff.
   useEffect(() => {
     if (loading) return;
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('aiArea') && !params.has('aiStatus') && !params.has('aiPriority') && !params.has('aiOverdue') && !params.has('aiSearch') && !params.has('action')) return;
+    if (!params.has('aiArea') && !params.has('aiStatus') && !params.has('aiPriority') && !params.has('aiOverdue') && !params.has('aiSearch') && !params.has('preset') && !params.has('action')) return;
     let touched = false;
+    // Home's KPI cards and hero tiles hand off which bucket was clicked, so the number on the
+    // card and the rows listed here are always the same set.
+    const preset = params.get('preset');
+    if (preset === 'active' || preset === 'completed') { setLifecycle(preset); touched = true; }
+    if (preset === 'overdue') { setOverdueOnly(true); touched = true; }
+    if (preset === 'mine') { setOwnerFilter(PRESET_MINE); touched = true; }
     if (params.get('aiArea')) { setModuleArea(params.get('aiArea')); touched = true; }
     if (params.get('aiStatus')) { setFilterStatus(params.get('aiStatus')); touched = true; }
     if (params.get('aiPriority')) { setFilterPriority(params.get('aiPriority')); touched = true; }
     if (params.get('aiOverdue') === '1') { setOverdueOnly(true); touched = true; }
     if (params.get('aiSearch')) { setSearch(params.get('aiSearch')); touched = true; }
-    if (touched) setCommandResponse({ text: 'Filters applied from your last search.', clearable: true });
+    if (touched) {
+      setCommandResponse({
+        text: preset ? `Showing ${PRESET_LABELS[preset] || 'the selected'} items.` : 'Filters applied from your last search.',
+        clearable: true,
+      });
+    }
     if (params.get('action') === 'new') setPanel({ mode: 'new', item: null });
     window.history.replaceState({}, '', ROUTES.dashboard);
   }, [loading]);
@@ -184,14 +227,34 @@ export default function Dashboard() {
   const priorityColors = useMemo(() => categoryColorMap(masterData, 'priority'), [masterData]);
   const statusColors = useMemo(() => categoryColorMap(masterData, 'status'), [masterData]);
 
+  // "My Work": items where the signed-in person is the developer or either SPOC. The item
+  // columns hold display names ("Indranil", "Anjani K"), not emails, so this matches on the
+  // profile name and falls back to the local part of the address when no name is resolved.
+  const myNames = useMemo(() => {
+    const out = [];
+    if (profileName) out.push(profileName.trim().toLowerCase());
+    if (email) out.push(String(email).split('@')[0].replace(/[._]/g, ' ').trim().toLowerCase());
+    return out.filter(Boolean);
+  }, [profileName, email]);
+
+  const isMine = useCallback((it) => {
+    if (!myNames.length) return false;
+    const fields = [it.developer, it.spocIT, it.spocFunction].map((v) => (v || '').trim().toLowerCase());
+    return fields.some((f) => f && myNames.some((n) => f === n || f.startsWith(n) || n.startsWith(f)));
+  }, [myNames]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = items.filter((it) => {
       if (moduleArea && it.area !== moduleArea) return false;
-      if (ownerFilter && it.developer !== ownerFilter) return false;
+      if (ownerFilter === PRESET_MINE) {
+        if (!isMine(it)) return false;
+      } else if (ownerFilter && it.developer !== ownerFilter) return false;
       if (filterStatus && it.status !== filterStatus) return false;
       if (filterPriority && it.priority !== filterPriority) return false;
       if (overdueOnly && !isOverdue(it)) return false;
+      if (lifecycle === 'active' && ['Completed', 'Cancelled'].includes(it.status)) return false;
+      if (lifecycle === 'completed' && it.status !== 'Completed') return false;
       if (dateStart && (!it.targetDate || it.targetDate < dateStart)) return false;
       if (dateEnd && (!it.targetDate || it.targetDate > dateEnd)) return false;
       if (filterImpact && it.impact !== filterImpact) return false;
@@ -205,20 +268,136 @@ export default function Dashboard() {
       return true;
     });
     return sortItems(rows, sortBy, sortDir);
-  }, [items, moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, sortBy, sortDir]);
+  }, [items, isMine, moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, sortBy, sortDir]);
 
   const moreFiltersCount = [filterImpact, filterComplexity, filterDevFactory, filterReasonCategory].filter(Boolean).length;
 
-  useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
+  useEffect(() => { setPage(1); }, [moduleArea, ownerFilter, filterStatus, filterPriority, overdueOnly, lifecycle, dateStart, dateEnd, filterImpact, filterComplexity, filterDevFactory, filterReasonCategory, search, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageSafe = Math.min(page, totalPages);
   const pageRows = useMemo(() => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize), [filtered, pageSafe, pageSize]);
 
-  const columns = useMemo(() => KANBAN_COLUMNS.map((col) => ({
-    ...col,
-    cards: filtered.filter((it) => col.statuses.includes(it.status)),
-  })), [filtered]);
+  // One lane when ungrouped, so the board renders through the same path either way.
+  const swimlanes = useMemo(() => {
+    const toColumns = (rows) => KANBAN_COLUMNS.map((col) => ({
+      ...col,
+      cards: rows.filter((it) => col.statuses.includes(it.status)),
+    }));
+    if (!groupBy) return [{ key: '__all__', label: null, count: filtered.length, columns: toColumns(filtered) }];
+    const byValue = new Map();
+    for (const it of filtered) {
+      const v = String(it[groupBy] ?? '').trim() || GROUP_BLANK;
+      if (!byValue.has(v)) byValue.set(v, []);
+      byValue.get(v).push(it);
+    }
+    return Array.from(byValue.entries())
+      // Unset values last: a lane of items missing the field being grouped on is the least
+      // interesting one, and putting it first pushes the real groups below the fold.
+      .sort(([a], [b]) => (a === GROUP_BLANK ? 1 : b === GROUP_BLANK ? -1 : a.localeCompare(b)))
+      .map(([label, rows]) => ({ key: label, label, count: rows.length, columns: toColumns(rows) }));
+  }, [filtered, groupBy]);
+
+  // Grouping by Developer on the current data produces 47 lanes, 312 of the items sitting in
+  // the unassigned one — expanded by default that is a page nobody can scan. Past a handful of
+  // lanes, start them collapsed so the grouping reads as a summary that opens on demand.
+  useEffect(() => {
+    if (!groupBy) { setCollapsedLanes(new Set()); return; }
+    const keys = swimlanes.map((l) => l.key);
+    setCollapsedLanes(keys.length > LANE_AUTO_COLLAPSE_OVER ? new Set(keys) : new Set());
+    // Deliberately keyed on the grouping field alone: recomputing this whenever `swimlanes`
+    // changes would slam every lane shut again on each keystroke in the search box.
+  }, [groupBy]);
+
+  function toggleLane(key) {
+    setCollapsedLanes((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  // The filter set has grown twice already, so capture and restore are driven off one table
+  // rather than two hand-written object literals that would silently stop matching.
+  const VIEW_FILTERS = useMemo(() => ([
+    ['moduleArea', moduleArea, setModuleArea], ['ownerFilter', ownerFilter, setOwnerFilter],
+    ['filterStatus', filterStatus, setFilterStatus], ['filterPriority', filterPriority, setFilterPriority],
+    ['filterImpact', filterImpact, setFilterImpact], ['filterComplexity', filterComplexity, setFilterComplexity],
+    ['filterDevFactory', filterDevFactory, setFilterDevFactory], ['filterReasonCategory', filterReasonCategory, setFilterReasonCategory],
+    ['dateStart', dateStart, setDateStart], ['dateEnd', dateEnd, setDateEnd],
+    ['search', search, setSearch], ['lifecycle', lifecycle, setLifecycle],
+    ['overdueOnly', overdueOnly, setOverdueOnly], ['sortBy', sortBy, setSortBy],
+    ['sortDir', sortDir, setSortDir], ['groupBy', groupBy, setGroupBy], ['viewMode', viewMode, setViewMode],
+  ]), [moduleArea, ownerFilter, filterStatus, filterPriority, filterImpact, filterComplexity,
+       filterDevFactory, filterReasonCategory, dateStart, dateEnd, search, lifecycle, overdueOnly,
+       sortBy, sortDir, groupBy, viewMode]);
+
+  const currentConfig = useMemo(
+    () => Object.fromEntries(VIEW_FILTERS.map(([k, v]) => [k, v])),
+    [VIEW_FILTERS]
+  );
+
+  // Editing any filter by hand drops the saved-view selection: the dropdown would otherwise
+  // keep naming a view whose filters are no longer what is on screen. Applying a view is itself
+  // a filter change, so it arms this ref first to spend the resulting pass — without that, a
+  // view would clear its own selection the instant it was chosen.
+  useEffect(() => {
+    if (viewApplyRef.current) { viewApplyRef.current = false; return; }
+    setActiveViewId('');
+  }, [currentConfig]);
+
+  function applyConfig(config) {
+    viewApplyRef.current = true;
+    // Only keys the saved view actually carried are applied, and anything it omits is reset to
+    // its default — otherwise a view saved before a filter existed would inherit whatever that
+    // filter happened to be set to when it was opened.
+    for (const [key, , setter] of VIEW_FILTERS) {
+      const saved = config?.[key];
+      if (key === 'overdueOnly') setter(saved === true);
+      else if (key === 'sortBy') setter(saved || 'priority');
+      else if (key === 'sortDir') setter(saved || 'asc');
+      else if (key === 'viewMode') setter(saved === 'table' ? 'table' : 'board');
+      else setter(typeof saved === 'string' ? saved : '');
+    }
+  }
+
+  async function reloadViews() {
+    try { setSavedViews(await apiSavedViews(email) || []); } catch { setSavedViews([]); }
+  }
+
+  async function handleSaveView() {
+    const name = window.prompt('Name this view (e.g. "My overdue SAP items")');
+    if (!name || !name.trim()) return;
+    const shared = window.confirm('Share this view with the whole team?\n\nOK = shared, Cancel = keep it private to you.');
+    try {
+      const created = await apiSavedViewCreate(name.trim(), currentConfig, shared, email);
+      await reloadViews();
+      // Saving does not change any filter, so no pass is pending to suppress here.
+      setActiveViewId(created?.id || '');
+    } catch (e) {
+      setDragError(e.message || 'Failed to save view');
+    }
+  }
+
+  async function handleDeleteView() {
+    const view = savedViews.find((v) => v.id === activeViewId);
+    if (!view) return;
+    if (!window.confirm(`Delete the saved view "${view.name}"?`)) return;
+    try {
+      await apiSavedViewDelete(view.id, email);
+      setActiveViewId('');
+      await reloadViews();
+    } catch (e) {
+      setDragError(e.message || 'Failed to delete view');
+    }
+  }
+
+  function handleSelectView(id) {
+    if (!id) { setActiveViewId(''); clearFilters(); return; }
+    setActiveViewId(id);
+    const view = savedViews.find((v) => v.id === id);
+    if (view) applyConfig(view.config);
+  }
 
   function handleSortClick(key) {
     if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -227,25 +406,26 @@ export default function Dashboard() {
 
   function clearFilters() {
     setModuleArea(''); setOwnerFilter(''); setFilterStatus(''); setFilterPriority('');
-    setDateStart(''); setDateEnd(''); setOverdueOnly(false); setSearch('');
+    setDateStart(''); setDateEnd(''); setOverdueOnly(false); setSearch(''); setLifecycle('');
     setFilterImpact(''); setFilterComplexity(''); setFilterDevFactory(''); setFilterReasonCategory('');
     setCommandResponse(null);
   }
 
-  function exportCsv() {
+  // Exports what is on screen — the filtered, sorted rows — not the whole table. Exporting
+  // everything regardless of the filters made the button useless for the "send me just the
+  // overdue MM items" case it exists for. Written as .xlsx with the same column order and
+  // headers as the import template, so an export can be edited and fed straight back through
+  // Import Center.
+  function exportRows() {
     const header = FIELDS.map((f) => FIELD_LABELS[f] || f);
-    const rows = items.map((it) => FIELDS.map((f) => {
-      const v = it[f] == null ? '' : String(it[f]);
-      return `"${v.replace(/"/g, '""')}"`;
-    }));
-    const csv = [header.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dev-tracker-items.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    const body = filtered.map((it) => FIELDS.map((f) => (it[f] == null ? '' : it[f])));
+    const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+    ws['!cols'] = header.map(() => ({ wch: 22 }));
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: header.length - 1 } }) };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Items');
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `dev-tracker-${filtered.length === items.length ? 'all' : 'filtered'}-${stamp}.xlsx`);
   }
 
   function onSaved() {
@@ -335,7 +515,7 @@ export default function Dashboard() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="dashboard" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="skyline" />
+      <Sidebar active={activeNav} isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
@@ -452,12 +632,58 @@ export default function Dashboard() {
             </button>
           </div>
           <div className="view-toolbar-right">
+            <select
+              className="saved-view-select"
+              value={activeViewId}
+              onChange={(e) => handleSelectView(e.target.value)}
+              aria-label="Saved views"
+              title="Apply a saved view"
+            >
+              <option value="">All items</option>
+              {savedViews.filter((v) => v.mine).length > 0 && (
+                <optgroup label="My views">
+                  {savedViews.filter((v) => v.mine).map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </optgroup>
+              )}
+              {savedViews.filter((v) => !v.mine).length > 0 && (
+                <optgroup label="Shared with the team">
+                  {savedViews.filter((v) => !v.mine).map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}{v.ownerName ? ` — ${v.ownerName}` : ''}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={handleSaveView} title="Save the current filters as a named view">
+              <StarIcon size={14} /> Save view
+            </button>
+            {activeViewId && savedViews.find((v) => v.id === activeViewId)?.mine && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleDeleteView} title="Delete this saved view">
+                <TrashIcon size={14} />
+              </button>
+            )}
             <span className="sort-label">Sort by</span>
             <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setSortDir('asc'); }}>
               {SORT_OPTIONS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={exportCsv}>
-              <DownloadIcon size={14} /> Export CSV
+            {viewMode === 'board' && (
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+                aria-label="Group board into swimlanes"
+                title="Group the board into swimlanes"
+              >
+                {GROUP_OPTIONS.map((o) => (
+                  <option key={o.key} value={o.key}>{o.key ? `Group: ${o.label}` : o.label}</option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={exportRows}
+              title={filtered.length === items.length ? 'Export all items to Excel' : `Export the ${filtered.length} filtered items to Excel`}
+            >
+              <DownloadIcon size={14} /> Export{filtered.length !== items.length ? ` (${filtered.length})` : ''}
             </button>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setPanel({ mode: 'new', item: null })}>
               <PlusIcon size={14} /> New Item
@@ -475,8 +701,19 @@ export default function Dashboard() {
         {loading ? (
           <div className="empty-state">Loading items…</div>
         ) : viewMode === 'board' ? (
-          <div className="board">
-            {columns.map((col) => (
+          <div className="board-lanes">
+            {swimlanes.map((lane) => (
+            <section className={`lane${lane.label === null ? ' lane-plain' : ''}`} key={lane.key}>
+              {lane.label !== null && (
+                <button type="button" className="lane-head" onClick={() => toggleLane(lane.key)} aria-expanded={!collapsedLanes.has(lane.key)}>
+                  <span className={`lane-caret${collapsedLanes.has(lane.key) ? '' : ' is-open'}`}><ChevronRightIcon size={12} /></span>
+                  <span className="lane-name">{lane.label}</span>
+                  <span className="lane-count">{lane.count}</span>
+                </button>
+              )}
+              {!collapsedLanes.has(lane.key) && (
+              <div className="board">
+            {lane.columns.map((col) => (
               <div
                 className={`col${dragOverCol === col.key ? ' col-drag-over' : ''}`}
                 key={col.key}
@@ -529,6 +766,10 @@ export default function Dashboard() {
                   })
                 )}
               </div>
+            ))}
+              </div>
+              )}
+            </section>
             ))}
           </div>
         ) : (

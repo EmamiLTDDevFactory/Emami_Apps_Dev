@@ -46,9 +46,15 @@ export function breakdownBy(
  * this is a plain string-slice compare, no Date parsing/timezone risk. Applied on top of whatever
  * the SAP Gjahr filter already scoped the fetch to (see useMonthYear's header comment). Generic so
  * it also works on VendorPOFollowupRow (Pending Approval), not just PaymentTrackingRow. */
+/** A blank deliveryDate is NOT the same as "outside the selected month" — some rows (confirmed on
+ * Pending Approval: certain Zaction buckets, e.g. Mail-for-P2P/Reverse-SES, have no schedule line
+ * at all, per Eindt's own "not every row is guaranteed a schedule line" note above) never carry a
+ * date to begin with. Excluding them here previously made real, actionable data silently vanish
+ * from Pending Approval whenever a row like that came back — fixed 2026-09-15. A row with no date
+ * always passes; only a row with a real date outside the selected month is filtered out. */
 export function filterByMonth<T extends { deliveryDate: string }>(rows: T[], month: string): T[] {
   if (!month || month === 'all') return rows;
-  return rows.filter((r) => r.deliveryDate && r.deliveryDate.slice(5, 7) === month);
+  return rows.filter((r) => !r.deliveryDate || r.deliveryDate.slice(5, 7) === month);
 }
 
 // Matches MonthYearContext's own FY_START_MONTH — kept as a second constant rather than importing
@@ -67,10 +73,12 @@ export function fiscalYearOf(deliveryDate: string): string {
 
 /** Narrows rows to a financial year by their delivery date, client-side — for entities like
  * ZVendorPOFollowupSet (Pending Approval) that don't expose a Gjahr server filter the way
- * ZProvisionTrackSet does (see paymentTrackingApi.ts's fetchProvisionPOs). */
+ * ZProvisionTrackSet does (see paymentTrackingApi.ts's fetchProvisionPOs). Same "no date is not
+ * the same as wrong year" fix as filterByMonth above — a row with no delivery date always passes.
+ */
 export function filterByFiscalYear<T extends { deliveryDate: string }>(rows: T[], year: string): T[] {
   if (!year) return rows;
-  return rows.filter((r) => fiscalYearOf(r.deliveryDate) === year);
+  return rows.filter((r) => !r.deliveryDate || fiscalYearOf(r.deliveryDate) === year);
 }
 
 /** 'YYYY-MM-DD' -> 'DD Mon YYYY' for display; '' for a blank/unparseable date rather than
