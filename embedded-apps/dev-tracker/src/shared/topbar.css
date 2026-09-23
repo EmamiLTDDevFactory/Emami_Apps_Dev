@@ -90,6 +90,6 @@
   .topbar { flex-wrap: wrap; gap: 12px; }
   .topbar-search { order: 2; flex: 1 1 100%; max-width: none; }
   .topbar-kbd { display: none; }
-  .topbar-side { order: 1; margin-left: auto; }
+  .topbar-side { order: 1; margin-left: auto; padding-left: 0; border-left: none; }
   .topbar-user-text { display: none; }
 }

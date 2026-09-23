@@ -1,146 +1,79 @@
-/* App shell: fixed-width left sidebar + flexible main content. Pages that adopt this
-   (Home, QA Support, Change Log, Import Center) wrap their content in .shell-main
-   alongside <Sidebar/>; pages that still use the older AccountBar strip are unaffected.
+/* App shell: left sidebar + flexible main content. Every page wraps its content in .shell-main
+   alongside <Sidebar/>.
 
-   The sidebar is a light blue tint of the page's own background — distinct enough to
-   read as its own panel without resorting to a dark theme. Scoped to .sidebar itself
-   (not tokens.css) since it's this one component's own look, not an app-wide theme. */
+   The sidebar matches the Emami Apps hub's own side pane (hub-next/src/components/Sidebar.tsx):
+   white panel with a hairline right border, 27px color-coded icon chips, and the active row as a
+   light tint + 3px left bar in that row's own color (`--item`, set inline per link). It is always
+   a side pane — docked on wide screens, an off-canvas drawer below 900px. */
 .app-shell { display: flex; min-height: 100vh; align-items: stretch; }
 
 .sidebar {
-  --sb-bg: oklch(93% 0.05 235);
-  --sb-bg-2: oklch(89% 0.06 232);
-  --sb-border: oklch(82% 0.05 233);
-  --sb-hover: oklch(87% 0.055 233);
-  --sb-active-bg: var(--accent-soft);
-  --sb-active-text: var(--accent);
-
-  width: 228px;
+  width: 212px;
   flex-shrink: 0;
-  background: linear-gradient(165deg, var(--sb-bg), var(--sb-bg-2));
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar-brand {
   display: flex; align-items: center; justify-content: center;
-  padding: 22px 16px 20px; text-decoration: none;
-  border-bottom: 1px solid var(--sb-border); transition: background .12s ease;
+  padding: 18px 16px 4px; text-decoration: none;
 }
-.sidebar-brand:hover { background: var(--sb-hover); }
-.sidebar-logo { width: 104px; height: auto; object-fit: contain; flex-shrink: 0; }
+.sidebar-logo { width: 132px; height: auto; object-fit: contain; flex-shrink: 0; }
+.sidebar-app-name {
+  text-align: center; font-size: 10.5px; font-weight: 700; letter-spacing: 0.8px;
+  text-transform: uppercase; color: var(--muted); padding: 0 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-subtitle { font-size: 15px; font-weight: 700; color: var(--text); padding: 12px 20px 0; }
 
-.sidebar-subtitle { font-size: 15px; font-weight: 700; color: var(--text); padding: 2px 20px 12px; }
-
-.sidebar-nav { overflow-y: auto; padding: 12px 10px 10px; flex-shrink: 0; }
+.sidebar-nav { flex: 1; padding: 12px 10px 10px; }
 .sidebar-link {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
-  font-size: 12.5px; font-weight: 500; color: var(--text-2); text-decoration: none;
-  margin-bottom: 2px; transition: background .12s ease, color .12s ease;
+  display: flex; align-items: center; gap: 8px; padding: 7px 7px; margin-bottom: 4px;
+  border-radius: 12px; border-left: 3px solid transparent;
+  font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none;
+  transition: background .12s ease, color .12s ease;
 }
-.sidebar-link svg { flex-shrink: 0; color: var(--muted); transition: color .12s ease; }
-.sidebar-link:hover { background: var(--sb-hover); color: var(--text); }
-.sidebar-link:hover svg { color: var(--text-2); }
-.sidebar-link.active { background: var(--accent); color: oklch(99% 0 0); font-weight: 600; box-shadow: 0 6px 16px -8px var(--accent); }
-.sidebar-link.active svg { color: oklch(99% 0 0); }
-.sidebar-link.active:hover { background: var(--accent-2); color: oklch(99% 0 0); }
-.sidebar-link-trailing { margin-top: 10px; padding-top: 13px; border-top: 1px solid var(--sb-border); }
-
-/* A stacked-checklist-card motif filling the dead space above the footer — drawn inline
-   (not a stock photo — nothing to license or hotlink) so it reads as "tracked work" rather
-   than abstract color. Sits over a soft accent color wash, faded to transparent at the top
-   edge so it blends into --sb-bg instead of cutting in sharply. */
-.sidebar-visual {
-  flex: 1;
-  min-height: 150px;
-  position: relative;
-  overflow: hidden;
+.sidebar-link-chip {
+  width: 27px; height: 27px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--item); background: color-mix(in srgb, var(--item) 12%, transparent);
+  transition: background .12s ease, color .12s ease;
 }
-.sidebar-visual::before {
-  content: '';
-  position: absolute; inset: -20% -10%;
-  background:
-    radial-gradient(circle at 30% 30%, oklch(58% 0.19 280 / 0.16), transparent 55%),
-    radial-gradient(circle at 75% 70%, oklch(58% 0.12 195 / 0.13), transparent 50%);
-  filter: blur(6px);
+.sidebar-link:hover { background: color-mix(in srgb, var(--item) 6%, transparent); color: var(--text); }
+.sidebar-link.active {
+  background: color-mix(in srgb, #4F3FD6 8%, transparent);
+  border-left-color: var(--item); color: var(--item); font-weight: 700;
 }
-.sidebar-visual-art {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-  width: 84%; max-width: 210px; height: auto; opacity: 0.55; pointer-events: none;
-}
-.sidebar-visual::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(to top, var(--sb-bg-2) 0%, transparent 60%);
+.sidebar-link.active .sidebar-link-chip { background: var(--item); color: #fff; }
+.sidebar-link-trailing { margin-top: 14px; position: relative; }
+.sidebar-link-trailing::after {
+  content: ''; position: absolute; left: 4px; right: 4px; top: -8px; height: 1px; background: var(--border);
 }
 
-.sidebar-version { font-size: 10px; color: var(--text-2); padding: 6px 10px 2px; opacity: .8; }
-
-/* Dashboard's dark "skyline" visual variant — see Sidebar's `visual` prop. Scoped entirely
-   to these two new classes so every other page (still passing no `visual`) is untouched. */
-.sidebar-visual-skyline {
-  position: relative; overflow: hidden;
-  background: linear-gradient(180deg, oklch(24% 0.05 258) 0%, oklch(14% 0.045 258) 100%);
-}
-.sidebar-skyline-art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 62%; }
-.sidebar-skyline-tagline {
-  position: absolute; left: 22px; bottom: 26px; display: flex; flex-direction: column;
-  font-size: 17px; font-weight: 700; line-height: 1.28; color: oklch(98% 0 0);
-}
-.sidebar-skyline-rule { width: 34px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 8px; }
-.sidebar-skyline .sidebar-footer { background: oklch(14% 0.045 258); border-top: none; }
-.sidebar-skyline .sidebar-version { color: oklch(60% 0.02 258); padding: 10px 20px 16px; opacity: 1; }
-
-/* Import Center's dark "mountain" visual variant — see Sidebar's `visual` prop. Same
-   structure as the skyline variant above, just its own art + tagline. */
-.sidebar-visual-mountain {
-  position: relative; overflow: hidden;
-  background: linear-gradient(180deg, oklch(30% 0.055 250) 0%, oklch(16% 0.05 252) 100%);
-}
-.sidebar-mountain-art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 62%; }
-.sidebar-mountain-tagline {
-  position: absolute; left: 22px; bottom: 26px; display: flex; flex-direction: column;
-  font-size: 17px; font-weight: 700; line-height: 1.28; color: oklch(98% 0 0);
-}
-.sidebar-mountain-rule { width: 34px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 8px; }
-.sidebar-mountain .sidebar-footer { background: oklch(16% 0.05 252); border-top: none; }
-.sidebar-mountain .sidebar-version { color: oklch(64% 0.03 252); padding: 10px 20px 16px; opacity: 1; }
-
-/* QA Support's dark "forest" visual variant — see Sidebar's `visual` prop. Same structure
-   as skyline/mountain, its own art + tagline. */
-.sidebar-visual-forest {
-  position: relative; overflow: hidden;
-  background: linear-gradient(180deg, oklch(26% 0.045 230) 0%, oklch(14% 0.04 232) 100%);
-}
-.sidebar-forest-art { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 64%; }
-.sidebar-forest-tagline {
-  position: absolute; left: 22px; bottom: 26px; display: flex; flex-direction: column;
-  font-size: 16px; font-weight: 700; line-height: 1.3; color: oklch(98% 0 0);
-}
-.sidebar-forest-rule { width: 34px; height: 3px; border-radius: 2px; background: var(--accent); margin-top: 8px; }
-.sidebar-forest .sidebar-footer { background: oklch(14% 0.04 232); border-top: none; }
-.sidebar-forest .sidebar-version { color: oklch(62% 0.025 232); padding: 10px 20px 16px; opacity: 1; }
-
-.sidebar-footer { border-top: 1px solid var(--sb-border); padding: 11px 10px; flex-shrink: 0; }
+.sidebar-footer { border-top: 1px solid var(--border); padding: 10px 10px 14px; flex-shrink: 0; }
 .sidebar-hub-link {
   display: flex; align-items: center; gap: 7px; width: 100%; background: none; border: none;
-  padding: 7px 9px; border-radius: 8px; font-size: 11.5px; font-weight: 500; color: var(--text-2);
-  cursor: pointer; margin-bottom: 6px; text-align: left;
+  padding: 7px 9px; border-radius: 10px; font-size: 12px; font-weight: 500; color: var(--text-2);
+  cursor: pointer; margin-bottom: 6px; text-align: left; font-family: inherit;
 }
-.sidebar-hub-link:hover { background: var(--sb-hover); color: var(--text); }
+.sidebar-hub-link:hover { background: var(--accent-soft); color: var(--accent); }
+.sidebar-copyright { font-size: 11px; color: var(--muted); padding: 4px 9px 0; }
 
-.sidebar-user { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 9px; position: relative; }
+.sidebar-user { display: flex; align-items: center; gap: 8px; padding: 5px 7px; border-radius: 9px; position: relative; margin-bottom: 4px; }
 .sidebar-avatar { width: 26px; height: 26px; font-size: 10.5px; background: var(--accent); }
 .sidebar-user-text { min-width: 0; flex: 1; line-height: 1.3; }
 .sidebar-user-name { font-size: 11.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user-email { font-size: 9.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-signout-toggle { background: none; border: none; color: var(--text-2); cursor: pointer; padding: 5px; border-radius: 7px; flex-shrink: 0; display: flex; }
-.sidebar-signout-toggle:hover { background: var(--sb-hover); color: var(--st-red); }
+.sidebar-signout-toggle:hover { background: var(--st-red-soft); color: var(--st-red); }
 .sidebar-signout-menu {
-  position: absolute; bottom: 46px; right: 6px; background: var(--surface);
+  position: absolute; bottom: 40px; right: 6px; background: var(--surface);
   border: 1px solid var(--border-strong); border-radius: 10px;
   box-shadow: 0 12px 28px -12px oklch(0% 0 0 / 0.4);
   min-width: 140px; padding: 6px; z-index: 20;
@@ -152,22 +85,58 @@
 }
 .sidebar-signout-menu button:hover { background: var(--st-red-soft); }
 
+/* Drawer-only chrome — hidden while the sidebar is docked. */
+.sidebar-mobilebar, .sidebar-backdrop, .sidebar-close-btn { display: none; }
+
 .shell-main { flex: 1; min-width: 0; padding: 26px 32px 40px; }
 
+/* Tablets and phones: the sidebar becomes an off-canvas drawer (same pane, same look) opened
+   from a slim sticky top bar — like the hub's own mobile drawer — instead of a horizontal strip. */
 @media (max-width: 900px) {
-  .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: static; flex-direction: column; }
-  .sidebar-brand { padding: 16px; }
-  .sidebar-logo { width: 92px; }
-  .sidebar-nav { display: flex; flex-wrap: nowrap; overflow-x: auto; padding: 8px 12px; gap: 4px; }
-  .sidebar-link { white-space: nowrap; margin-bottom: 0; flex-shrink: 0; }
-  .sidebar-link-trailing { margin-top: 0; padding-top: 10px; border-top: none; border-left: 1px solid var(--sb-border); padding-left: 14px; }
-  .sidebar-visual { display: none; }
-  .sidebar-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .sidebar-hub-link { width: auto; margin-bottom: 0; }
-  .sidebar-user { flex-shrink: 0; }
+  .app-shell { display: block; }
+
+  .sidebar-mobilebar {
+    display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 40;
+    padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .sidebar-menu-btn {
+    display: flex; padding: 6px; margin-left: -6px; background: none; border: none;
+    color: var(--text); cursor: pointer; border-radius: 8px;
+  }
+  .sidebar-menu-btn:hover { background: var(--bg-alt); }
+  .sidebar-mobilebar-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; min-width: 0; }
+  .sidebar-mobilebar-brand img { height: 34px; width: auto; }
+  .sidebar-mobilebar-brand span { font-size: 13.5px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .sidebar-mobilebar-page {
+    margin-left: auto; font-size: 12px; font-weight: 600; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100%; z-index: 70;
+    width: min(260px, 82vw);
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 0 0 30px oklch(20% 0.05 280 / 0.2);
+  }
+  .sidebar.is-open { transform: translateX(0); }
+  .sidebar-logo { width: 150px; }
+
+  .sidebar-close-btn {
+    display: flex; position: absolute; top: 10px; right: 10px; padding: 6px;
+    background: none; border: none; color: var(--muted); cursor: pointer; border-radius: 8px;
+  }
+  .sidebar-close-btn:hover { background: var(--bg-alt); color: var(--text); }
+
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 60;
+    background: oklch(20% 0.04 285 / 0.35);
+  }
 }
 @media (max-width: 640px) {
-  .shell-main { padding: 22px 18px 32px; }
-  .sidebar-hub-link span:last-child { display: none; }
+  .shell-main { padding: 18px 14px 32px; }
+  .sidebar-mobilebar-page { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
 }

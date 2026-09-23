@@ -276,7 +276,7 @@ export default function ImportCenter() {
 
   return (
     <div className="app-shell">
-      <Sidebar active="importCenter" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="mountain" />
+      <Sidebar active="importCenter" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 

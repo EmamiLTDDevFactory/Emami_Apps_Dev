@@ -515,7 +515,7 @@ export default function Dashboard() {
 
   return (
     <div className="app-shell">
-      <Sidebar active={activeNav} isAdmin={isAdmin} email={email} name={profileName} identityInTopbar visual="skyline" />
+      <Sidebar active={activeNav} isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
       <main className="shell-main">
         <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={visibleNotifications} onMarkAllRead={markAllRead} onClear={clear} />
 
