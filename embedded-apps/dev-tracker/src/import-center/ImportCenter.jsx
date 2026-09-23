@@ -4,9 +4,11 @@ import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
-import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
+import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, apiMasterDataCreate, apiMasterDataUpdate, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
-import { FIELDS, FIELD_LABELS, DATE_FIELDS, LEGACY_FIELD_LABELS } from '../shared/constants.js';
+import { FIELDS, FIELD_LABELS, DATE_FIELDS, LEGACY_FIELD_LABELS, CATEGORIES } from '../shared/constants.js';
+import { hexToSoft } from '../shared/utils.js';
+import { readDropdownSheet, planImport, colorForNewValue } from './importMapping.js';
 import { ROUTES } from '../shared/routes.js';
 import {
   InfoIcon, FileExcelIcon, DownloadIcon, UploadCloudIcon, RefreshIcon,
@@ -163,6 +165,28 @@ function downloadErrorReport(log) {
   URL.revokeObjectURL(url);
 }
 
+const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.key, FIELD_LABELS[c.key] || c.label]));
+
+/** Plain-text summary of what planImport() will change, for the confirm dialog and the notice
+ * shown after the import. */
+function describePlan(plan, max = 6) {
+  const lines = [];
+  const byCat = {};
+  for (const a of plan.toAdd) (byCat[a.category] ||= []).push(a.value);
+  for (const e of plan.toEnable) (byCat[e.category] ||= []).push(`${e.value} (re-enabled)`);
+  for (const [cat, values] of Object.entries(byCat)) {
+    lines.push(`Add to Master Data – ${CATEGORY_LABEL[cat] || cat}: ${values.slice(0, max).join(', ')}${values.length > max ? `, +${values.length - max} more` : ''}`);
+  }
+  for (const [cat, pairs] of Object.entries(plan.mapped)) {
+    const entries = Object.entries(pairs).sort((a, b) => b[1] - a[1]);
+    lines.push(`Map ${CATEGORY_LABEL[cat] || cat}: ${entries.slice(0, max).map(([p, n]) => `${p} (${n})`).join(', ')}${entries.length > max ? `, +${entries.length - max} more` : ''}`);
+  }
+  for (const [cat, vals] of Object.entries(plan.cleared)) {
+    lines.push(`Leave ${CATEGORY_LABEL[cat] || cat} blank for: ${Object.keys(vals).slice(0, max).join(', ')}`);
+  }
+  return lines;
+}
+
 export default function ImportCenter() {
   const [access, setAccess] = useState('checking'); // checking | allowed
   const email = getCurrentUserEmail();
@@ -176,6 +200,7 @@ export default function ImportCenter() {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [importNotice, setImportNotice] = useState(null);
   const [rowMenuId, setRowMenuId] = useState(null);
   const [viewLog, setViewLog] = useState(null);
   const fileInputRef = useRef(null);
@@ -224,6 +249,7 @@ export default function ImportCenter() {
 
   async function handleFile(file) {
     setUploadError(null);
+    setImportNotice(null);
     if (!file) return;
     const nameLower = file.name.toLowerCase();
     if (!nameLower.endsWith('.xlsx') && !nameLower.endsWith('.xls')) {
@@ -259,9 +285,39 @@ export default function ImportCenter() {
         );
         return;
       }
-      await apiImportRun(file.name, rows, email);
+      // Map the rows' dropdown values onto Master Data (and add what's missing) first — the
+      // server rejects any row holding a value that isn't active in Master Data. Master Data is
+      // re-read here so the plan reflects anything another admin changed since the page opened.
+      const freshMaster = (await apiMasterData(email)) || [];
+      const plan = planImport(rows, freshMaster, readDropdownSheet(wb, LABEL_TO_FIELD, normalizeHeader));
+      const summary = describePlan(plan);
+      if (summary.length && !window.confirm(`Importing ${rows.length} row${rows.length === 1 ? '' : 's'} from "${file.name}" will:\n\n• ${summary.join('\n• ')}\n\nThe original wording of any mapped Status is kept in Remarks. Continue?`)) {
+        return;
+      }
+      for (const row of plan.toEnable) {
+        await apiMasterDataUpdate(row.id, { active: true }, email);
+      }
+      const colorCats = new Set(CATEGORIES.filter((c) => c.hasColor).map((c) => c.key));
+      let colorIndex = 0;
+      for (const add of plan.toAdd) {
+        const payload = { category: add.category, value: add.value };
+        if (colorCats.has(add.category)) {
+          payload.color = colorForNewValue(colorIndex++);
+          payload.softColor = hexToSoft(payload.color);
+        }
+        try {
+          await apiMasterDataCreate(payload, email);
+        } catch (e) {
+          // Someone else added it in the meantime — fine, it exists now.
+          if (!/already exists/i.test(e.message || '')) throw e;
+        }
+      }
+      if (plan.toAdd.length || plan.toEnable.length) setMasterData((await apiMasterData(email)) || []);
+
+      await apiImportRun(file.name, plan.rows, email);
       await reloadImports();
       setShowAll(false);
+      if (summary.length) setImportNotice(summary);
     } catch (e) {
       setUploadError(e.message || 'Failed to import file');
     } finally {
@@ -357,6 +413,12 @@ export default function ImportCenter() {
             </div>
             <div className="import-dropzone-note">Supported format: .xlsx (Max size: 10MB)</div>
             {uploadError && <div className="import-error">{uploadError}</div>}
+            {importNotice && (
+              <div className="import-notice">
+                <strong>Import finished. Master Data and value mapping applied:</strong>
+                <ul>{importNotice.map((line) => <li key={line}>{line}</li>)}</ul>
+              </div>
+            )}
           </div>
         </div>
 
