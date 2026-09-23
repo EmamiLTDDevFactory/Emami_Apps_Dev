@@ -1,6 +1,6 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
@@ -70,7 +70,7 @@ export const NAV: NavItem[] = [
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'My Profile', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: CircleUserRound },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
   { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];

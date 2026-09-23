@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Menu, ChevronDown, User, Settings, LogOut, Download } from 'lucide-react';
+import { Search, Menu, ChevronDown, User, LogOut, Download } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, shadows } from '../theme/tokens';
 import { useAuth } from '../context/AuthContext';
 import { useIsWideScreen } from '../hooks/useIsWideScreen';
@@ -171,7 +171,6 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
               <p style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 2, marginBottom: 0 }}>{currentUser.email}</p>
             </div>
             <MenuRow icon={<User size={15} color={colors.inkSoft} />} label="Profile" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
-            <MenuRow icon={<Settings size={15} color={colors.inkSoft} />} label="Settings" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
             <MenuRow icon={<LogOut size={15} color={colors.inkSoft} />} label="Sign out" onClick={() => { setProfileOpen(false); logout(); }} />
           </div>
         </>
