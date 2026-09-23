@@ -120,13 +120,23 @@ function dayRowTone(date: Date, workingDayOverrides?: Set<string>) {
   return { row: '', dayText: 'text-inkSoft', badge: null as { label: string; cls: string } | null };
 }
 
-function LeaveSelect({ dateIso, value, onChange }: { dateIso: string; value: string; onChange: (dateIso: string, value: string) => void }) {
+function LeaveSelect({
+  dateIso,
+  value,
+  onChange,
+  className = 'mt-1 py-1 text-[11px]',
+}: {
+  dateIso: string;
+  value: string;
+  onChange: (dateIso: string, value: string) => void;
+  className?: string;
+}) {
   return (
     <select
       aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
       value={value}
       onChange={(e) => onChange(dateIso, e.target.value)}
-      className="mt-1 w-full rounded-md border border-border bg-white px-1.5 py-1 text-[11px] text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+      className={`w-full rounded-md border border-border bg-white px-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust ${className}`}
     >
       <option value="">Present</option>
       {LEAVE_TYPES.map((lt) => (
@@ -581,19 +591,22 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               <th scope="col" className="sticky top-0 z-20 w-[9%] bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Day
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-left font-semibold text-inkSoft">
+                Attendance
+              </th>
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 In Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Out Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Hours of Work
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[16%] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[17%] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Task
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[37%] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[29%] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
                 Task Description
               </th>
             </tr>
@@ -620,25 +633,28 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               if (onLeave) {
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
-                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
+                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-middle font-semibold text-ink ${rowTint || 'bg-white'}`}>
                       <div className="flex flex-col items-start gap-0.5">
                         <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
-                    <td className="px-3 py-2 align-top">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
-                        <span className="inline-block rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
-                      </div>
-                      {!readOnly && !isOffDay(date, workingDayOverrides) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                    <td className="px-3 py-2 align-middle">
+                      <span className={`whitespace-nowrap font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                     </td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top">
+                    <td className="px-2 py-2 align-middle">
+                      {!readOnly && !isOffDay(date, workingDayOverrides) ? (
+                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                      ) : (
+                        <span className="inline-block whitespace-nowrap rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle">
                       <span className="inline-block rounded-md bg-tealBg px-2 py-1 text-xs font-semibold text-teal">0h</span>
                     </td>
-                    <td colSpan={2} className="px-2 py-2 align-top">
+                    <td colSpan={2} className="px-2 py-2 align-middle">
                       {readOnly ? (
                         <span className={row.leaveNote ? 'text-ink' : 'italic text-inkSoft'}>{row.leaveNote || 'No reason given'}</span>
                       ) : (
@@ -659,22 +675,23 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               if (!working) {
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
-                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
+                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-middle font-semibold text-ink ${rowTint || 'bg-white'}`}>
                       <div className="flex flex-col items-start gap-0.5">
                         <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
-                    <td className="px-3 py-2 align-top">
-                      <div className="flex items-center gap-1.5">
+                    <td className="px-3 py-2 align-middle">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                         {tone.badge && <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>{tone.badge.label}</span>}
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td colSpan={2} className="px-2 py-2 text-center align-top italic text-inkSoft">
+                    <td className="px-2 py-2 align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td colSpan={2} className="px-2 py-2 text-center align-middle italic text-inkSoft">
                       Non-working day
                     </td>
                   </tr>
@@ -692,19 +709,23 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                   {lineIndex === 0 && (
                     <>
                       <th scope="row" rowSpan={rowSpan} className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                        <div className="flex flex-col items-start gap-0.5">
+                        <div className="flex min-h-[30px] flex-col items-start justify-center gap-0.5">
                           <span>{formatDayOrdinal(date)}</span>
                           {todayBadge}
                         </div>
                       </th>
                       <td rowSpan={rowSpan} className="px-3 py-2 align-top">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex h-[30px] items-center gap-1.5 whitespace-nowrap">
                           <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                           {tone.badge && <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>{tone.badge.label}</span>}
                         </div>
-                        {!readOnly && working && zero && <div className="mt-1 text-[10px] font-medium text-amber">No hours</div>}
-                        {over && <div className="mt-1 text-[10px] font-medium text-red">Exceeds {MAX_HOURS_PER_DAY}h</div>}
-                        {!readOnly && working && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top">
+                        {readOnly ? (
+                          <div className="flex h-[30px] items-center text-inkSoft">{row.inTime ? 'Present' : '-'}</div>
+                        ) : (
+                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                        )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
                         {readOnly ? (
@@ -760,9 +781,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
-                        <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
-                          {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
-                        </span>
+                        <div className="flex min-h-[30px] items-center justify-center gap-1.5 whitespace-nowrap">
+                          <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
+                            {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
+                          </span>
+                          {!readOnly && zero && <span className="text-[10px] font-medium text-amber">No hours</span>}
+                          {over && <span title={`Exceeds ${MAX_HOURS_PER_DAY}h`} className="text-[10px] font-medium text-red">&gt;{MAX_HOURS_PER_DAY}h</span>}
+                        </div>
                       </td>
                     </>
                   )}
@@ -828,14 +853,14 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-glassRust bg-glassRust">
-              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-white px-3 py-3 text-left font-semibold text-ink">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-white px-3 py-3 text-left font-semibold text-ink">
                 Total hours this month
               </th>
               <td className="px-2 py-3 text-center font-bold text-rust">{totals.month.toFixed(2).replace(/\.00$/, '')}h</td>
               <td colSpan={2}></td>
             </tr>
             <tr className="border-t border-glassRust bg-glassRust">
-              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left font-semibold text-ink">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left font-semibold text-ink">
                 Total leave this month
               </th>
               <td className="px-2 py-2.5 text-center font-bold text-rust">
