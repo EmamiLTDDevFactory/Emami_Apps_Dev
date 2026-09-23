@@ -18,7 +18,13 @@ export const ROUTES = {
   // Not its own page — the Dashboard filtered to the signed-in person's items (see the
   // ?preset= handoff it reads). Kept here so the sidebar links to one place rather than
   // hard-coding the query string.
-  myWork: `${BASE_PATH}/dashboard/?preset=mine`,
+  myWork: `${BASE_PATH}/dashboard/?preset=mine#list`,
+  // Project workspace views (Jira-style) — all the same page, switched by hash.
+  board: `${BASE_PATH}/dashboard/#board`,
+  backlog: `${BASE_PATH}/dashboard/#backlog`,
+  issues: `${BASE_PATH}/dashboard/#list`,
+  timeline: `${BASE_PATH}/dashboard/#timeline`,
+  reports: `${BASE_PATH}/dashboard/#reports`,
   changeLog: `${BASE_PATH}/change-log/`,
   importCenter: `${BASE_PATH}/import-center/`,
   settings: `${BASE_PATH}/settings/`,

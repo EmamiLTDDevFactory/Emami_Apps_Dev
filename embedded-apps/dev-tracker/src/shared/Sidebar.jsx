@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon } from './icons.jsx';
+import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon, ListIcon, TimelineIcon, TableIcon, BarChartIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
 function backToEmamiApps() {
@@ -11,10 +11,16 @@ function backToEmamiApps() {
 
 // One flat nav list. `color` is each row's own accent, the same per-item color coding the Emami
 // Apps hub sidebar uses (hub-next/src/theme/tokens.ts navColors) — Home keeps the brand indigo.
+// The project rows (Board … Issues) all open the same workspace page, switched by hash — Jira's
+// project sidebar. `section` starts a labelled group above that row.
 const NAV = [
   { key: 'home', label: 'Home', href: () => ROUTES.home, icon: HomeIcon, color: '#4F3FD6' },
-  { key: 'dashboard', label: 'Dashboard', href: () => ROUTES.dashboard, icon: BoardIcon, color: '#0EA5E9' },
-  { key: 'myWork', label: 'My Work', href: () => ROUTES.myWork, icon: StarIcon, color: '#DB2777' },
+  { key: 'board', label: 'Board', href: () => ROUTES.board, icon: BoardIcon, color: '#0EA5E9', section: 'SAP Development' },
+  { key: 'backlog', label: 'Backlog', href: () => ROUTES.backlog, icon: ListIcon, color: '#2563EB' },
+  { key: 'timeline', label: 'Timeline', href: () => ROUTES.timeline, icon: TimelineIcon, color: '#7C3AED' },
+  { key: 'issues', label: 'Issues', href: () => ROUTES.issues, icon: TableIcon, color: '#0D9488' },
+  { key: 'reports', label: 'Reports', href: () => ROUTES.reports, icon: BarChartIcon, color: '#16A34A' },
+  { key: 'myWork', label: 'My Work', href: () => ROUTES.myWork, icon: StarIcon, color: '#DB2777', section: 'Workspace' },
   { key: 'masterData', label: 'Master Data', href: () => ROUTES.admin, icon: DatabaseIcon, color: '#9333EA', adminOnly: true },
   { key: 'qaSupport', label: 'QA Support', href: () => ROUTES.qaSupport, icon: ShieldIcon, color: '#16A34A' },
   { key: 'importCenter', label: 'Import Center', href: () => ROUTES.importCenter, icon: UploadCloudIcon, color: '#0891B2', adminOnly: true },
@@ -81,8 +87,9 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
             const IconComp = item.icon;
             const isActive = active === item.key;
             return (
+              <React.Fragment key={item.key}>
+              {item.section && <div className="sidebar-section">{item.section}</div>}
               <a
-                key={item.key}
                 className={`sidebar-link${isActive ? ' active' : ''}${item.trailing ? ' sidebar-link-trailing' : ''}`}
                 href={item.href()}
                 style={{ '--item': item.color }}
@@ -92,6 +99,7 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
                 <span className="sidebar-link-chip"><IconComp size={15} strokeWidth={2.2} /></span>
                 <span>{item.label}</span>
               </a>
+              </React.Fragment>
             );
           })}
         </nav>

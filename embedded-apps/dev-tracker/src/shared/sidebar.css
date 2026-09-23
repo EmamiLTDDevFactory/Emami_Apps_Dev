@@ -140,3 +140,9 @@
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }
 }
+
+/* Group label above the project rows (Board … Reports) and the workspace rows below them. */
+.sidebar-section {
+  margin: 12px 0 5px 10px; font-size: 9.5px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--muted);
+}

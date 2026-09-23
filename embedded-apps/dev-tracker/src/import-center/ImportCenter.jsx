@@ -44,7 +44,7 @@ function downloadTemplate(masterData) {
 // Excel keeps a date cell as a serial number (days since 1899-12-30), and sheet_to_json hands
 // that straight through — so a filled-in "Start Date" used to arrive as 46037.0001 and land
 // verbatim in the item's date column, which is `text` server-side and therefore accepted without
-// a single error. Every date in this app is a plain 'YYYY-MM-DD' string (what ItemPanel's
+// a single error. Every date in this app is a plain 'YYYY-MM-DD' string (what the issue view's
 // <input type="date"> writes), so coerce to exactly that.
 //
 // SSF.parse_date_code reads the serial's own calendar parts. Going via `new Date()` +
