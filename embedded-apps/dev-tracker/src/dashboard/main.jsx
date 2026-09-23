@@ -4,7 +4,7 @@ import '../shared/tokens.css';
 import '../shared/base.css';
 import '../shared/sidebar.css';
 import '../shared/topbar.css';
-import './dashboard.css';
+import './workspace/workspace.css';
 import Dashboard from './Dashboard.jsx';
 
 createRoot(document.getElementById('root')).render(<Dashboard />);

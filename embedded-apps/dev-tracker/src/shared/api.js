@@ -241,3 +241,44 @@ export async function isDevTrackerAdmin(email) {
   const data = await apiAccessMe(email);
   return !!data?.success && Array.isArray(data.apps) && data.apps.some((a) => a.appId === 'dev-tracker' && a.role === 'Admin');
 }
+
+// --- Project management (comments, sprints) ------------------------------
+// Both 404 on an API that predates these routes; callers treat that as "feature not deployed
+// yet" (see useWorkspaceData's pmReady) rather than an error.
+function withJson(method, body, email) {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  };
+}
+export async function apiComments(itemId, email) {
+  return json(await fetch(`${API_BASE}/items/${itemId}/comments`, { headers: { 'X-User-Email': email || '' } }));
+}
+export async function apiCommentCreate(itemId, body, email) {
+  return json(await fetch(`${API_BASE}/items/${itemId}/comments`, withJson('POST', { body }, email)));
+}
+export async function apiCommentUpdate(id, body, email) {
+  return json(await fetch(`${API_BASE}/comments/${id}`, withJson('PUT', { body }, email)));
+}
+export async function apiCommentDelete(id, email) {
+  return json(await fetch(`${API_BASE}/comments/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+}
+export async function apiSprints(email) {
+  return json(await fetch(`${API_BASE}/sprints`, { headers: { 'X-User-Email': email || '' } }));
+}
+export async function apiSprintCreate(fields, email) {
+  return json(await fetch(`${API_BASE}/sprints`, withJson('POST', fields, email)));
+}
+export async function apiSprintUpdate(id, fields, email) {
+  return json(await fetch(`${API_BASE}/sprints/${id}`, withJson('PUT', fields, email)));
+}
+export async function apiSprintStart(id, fields, email) {
+  return json(await fetch(`${API_BASE}/sprints/${id}/start`, withJson('POST', fields, email)));
+}
+export async function apiSprintComplete(id, moveTo, email) {
+  return json(await fetch(`${API_BASE}/sprints/${id}/complete`, withJson('POST', { moveTo }, email)));
+}
+export async function apiSprintDelete(id, email) {
+  return json(await fetch(`${API_BASE}/sprints/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+}

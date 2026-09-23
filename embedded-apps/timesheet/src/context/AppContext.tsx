@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getHubSessionToken } from '../lib/hubAccess';
 
 // Loosely typed on purpose — this context is a faithful behavioral port of the original Vite
@@ -37,10 +37,25 @@ const TOKEN_KEY = 'timesheet-api-token';
 // Hardcoded (not a NEXT_PUBLIC_* env var) on purpose, same reasoning as the original Vite app's
 // own comment here: an env var of this shape can collide with another embedded app's own
 // Amplify-console-level global var of the same name. This app's own backend (server/) is deployed
-// on 172.17.2.21 as its own prod PM2 process (timesheet-api, port 4101, Prdhubfactory's
-// "timesheet" schema), reachable via the nginx /api/timesheet/ route; in local dev it's reached
-// directly (no Vite-proxy equivalent under `next dev`).
-const API_BASE = process.env.NODE_ENV !== 'production' ? 'http://localhost:4000/api' : 'https://audit-capa-api.emamiapps.in/api/timesheet/api';
+// on 172.17.2.21 as two separate PM2 processes: timesheet-api (prod, port 4101, Prdhubfactory's
+// "timesheet" schema) and timesheet-api-dev (dev, port 4100, Devhubfactory's "timesheet" schema),
+// reachable via the nginx /api/timesheet/ and /dev-api/timesheet/ routes respectively.
+//
+// This MUST split on hostname, the same way every other embedded app with both a dev and a prod
+// deployment does (see e.g. payment-tracking's hubAccessApi.ts, audit-capa's emamiAppsUrl.js). A
+// 2026-09-16 migration briefly hardcoded this to the prod route unconditionally, which broke
+// Timesheet on dev.emamiapps.in in two ways: (1) prod's backend never allowed dev's origin in its
+// CORS config, and, less obviously but more seriously, (2) prod's backend verifies hub session
+// tokens against a DIFFERENT signing secret than the one dev's actual login (the
+// emami-apps-hub-auth-dev Lambda) issues them with — timesheet-api-dev's secret was already
+// correctly set to match that Lambda, so a real dev login token can only ever verify successfully
+// against timesheet-api-dev, never timesheet-api. No amount of re-logging-in fixes that; only
+// calling the right backend does. In local dev it's reached directly (no Vite-proxy equivalent
+// under `next dev`).
+const TIMESHEET_HOSTNAME_IS_DEV = typeof window !== 'undefined' && window.location.hostname.includes('dev');
+const API_BASE = process.env.NODE_ENV !== 'production'
+  ? 'http://localhost:4000/api'
+  : `https://audit-capa-api.emamiapps.in${TIMESHEET_HOSTNAME_IS_DEV ? '/dev-api/timesheet' : '/api/timesheet'}/api`;
 
 function loadSession(): Session {
   try {
@@ -149,28 +164,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession({ currentUserId: userId, isLoggedIn: true });
   }
 
-  // Establishes this tab's session token before anything else can load. Three cases:
-  //  1. A hub session token is present (see src/lib/hubAccess.ts) - ALWAYS re-verify it against
-  //     this app's own backend (POST /auth/hub-login), even if we already have a working session
-  //     from earlier. That re-check is what re-reads the current Manage Access role every time,
-  //     so promoting/demoting someone there takes effect the next time they open Timesheet,
-  //     instead of being stuck behind whatever role got baked into a session token that can
-  //     otherwise live for 30 days. If this re-check fails for a transient reason (network
-  //     hiccup) but we already had a working session, fall back to that rather than hard-failing
-  //     someone who was already in.
-  //  2. No hub token, but a session persists from last time (demo login, standalone dev) - reuse
-  //     it; an expired/invalid token surfaces as the ordinary load-error retry.
+  // Establishes this tab's session token before anything else can load. Three cases, checked in
+  // this order so Timesheet's OWN session (up to SESSION_EXPIRES_IN, 30d by default) is what
+  // keeps it usable, not the hub's separate, shorter-lived session:
+  //  1. We already have a working session/token from earlier (hub or demo login) - trust it and
+  //     go straight to refresh(), without re-depending on the hub session still being alive too.
+  //     A dead hub session no longer takes Timesheet down with it; only this app's own token
+  //     dying does (surfaced as the ordinary loadError 401 -> retryHubBootstrap recovery below).
+  //     Trade-off: a Manage Access role change now takes effect the next time a fresh token is
+  //     actually needed (this one expiring, or a real sign-out/sign-in), not on every open.
+  //  2. No working session yet, but a hub session token is present (see src/lib/hubAccess.ts) -
+  //     verify it against this app's own backend (POST /auth/hub-login) to get one.
   //  3. No hub token and no session at all - genuinely standalone (e.g. `npm run dev`). Fetch the
   //     demo user list (unauthenticated) so Login has someone to pick from; demoLogin (below) is
   //     what actually gets a token once someone's picked.
   const bootstrapFromHub = useCallback(() => {
     const hubToken = getHubSessionToken();
+    let cancelled = false;
+
+    if (session.isLoggedIn && loadToken()) {
+      setHubEmailDetected(!!hubToken);
+      setHubBootstrapped(true);
+      refresh();
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (hubToken) {
       setHubEmailDetected(true);
       setHubError(null);
 
-      let cancelled = false;
       api('/auth/hub-login', { method: 'POST', body: JSON.stringify({ hubToken }) })
         .then(async ({ user, token }: AnyRecord) => {
           if (cancelled) return;
@@ -180,13 +204,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
         .catch((err: Error) => {
           if (cancelled) return;
-          if (session.isLoggedIn) {
-            // Already had a working session before this re-check - don't block on a transient
-            // failure, just keep using what we have.
-            refresh();
+          console.error('[auth] Could not verify hub access:', err.message);
+          // In standalone/local dev there's no real hub to verify against (see ALLOW_DEMO_LOGIN
+          // in server/src/routes/auth.js) - a leftover/stale hub token here shouldn't dead-end the
+          // app, so fall back to the demo "log in as" picker instead of the hard error block below.
+          // In production this hub token is real and its own real failure, so keep blocking there -
+          // never fall through to the free-pick demo dropdown for an actual hub user (see the
+          // render guard further down).
+          if (process.env.NODE_ENV !== 'production') {
+            setHubEmailDetected(false);
+            api('/auth/demo-users')
+              .then(setDemoUsers)
+              .catch((e: Error) => console.error('[auth] Could not load demo users:', e.message));
             return;
           }
-          console.error('[auth] Could not verify hub access:', err.message);
           setHubError(err.message || 'Could not verify your access.');
         })
         .finally(() => {
@@ -322,12 +353,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Persist the current in-progress entries for a user's month as a Draft. Editing a Rejected
   // timesheet intentionally keeps its status Rejected (not Draft) so the rejection banner/comment
   // stays visible - enforced server-side.
+  //
+  // Saves for the same month are serialized, latest-wins: the server replaces a month's entries
+  // wholesale (DELETE + INSERT), so two overlapping requests collide on entry ids and the later
+  // one fails. That used to silently drop a Clock In/Out location - the punch's time-only save
+  // was still in flight when the geolocation lookup finished and fired a second save carrying the
+  // place name. Now a save issued mid-flight just waits, and only the newest entries are sent.
+  const draftSaveQueue = useRef<Record<string, { running: boolean; pending: AnyRecord[] | null }>>({});
   async function saveDraftEntries(userId: string, monthStartDate: string, entries: AnyRecord[]) {
+    const key = `${userId}_${monthStartDate}`;
+    const slot = (draftSaveQueue.current[key] ||= { running: false, pending: null });
+    slot.pending = entries;
+    if (slot.running) return;
+    slot.running = true;
     try {
-      upsertTimesheet(await api('/timesheets/draft', { method: 'POST', body: JSON.stringify({ userId, monthStartDate, entries }) }));
-      refreshLeaveBalance(userId);
-    } catch (err) {
-      console.error('Failed to save draft:', err);
+      while (slot.pending) {
+        const next = slot.pending;
+        slot.pending = null;
+        try {
+          const body = JSON.stringify({ userId, monthStartDate, entries: next });
+          // keepalive lets a save flushed on page refresh/close still reach the server (browsers
+          // cap keepalive bodies at 64KB; a month of entries is comfortably under that).
+          upsertTimesheet(await api('/timesheets/draft', { method: 'POST', body, keepalive: body.length < 60000 }));
+          refreshLeaveBalance(userId);
+        } catch (err) {
+          console.error('Failed to save draft:', err);
+        }
+      }
+    } finally {
+      slot.running = false;
     }
   }
 

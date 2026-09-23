@@ -12,17 +12,38 @@ const FIELDS = [
     'targetDate', 'devTime', 'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer'
 ];
 
+// Jira-style project-management fields, added after the original 28. Kept in their own list so
+// the Import Center keeps validating/inserting exactly the original columns, while item create/
+// update accept both. issueNo is not here: it is assigned by the database (DEFAULT nextval) and
+// is never client-writable, so a key like DEV-42 can't be forged or collide.
+const PM_FIELDS = ['issueType', 'description', 'storyPoints', 'epicId', 'sprintId', 'parentId', 'labels', 'reporter', 'rank'];
+const ALL_FIELDS = [...FIELDS, ...PM_FIELDS];
+const ISSUE_TYPES = ['Epic', 'Story', 'Task', 'Bug', 'Sub-task'];
+const DONE_STATUSES = ['Completed', 'Cancelled'];
+
 // Column names are camelCase to match the JSON the frontend already sends —
 // Postgres folds unquoted identifiers to lowercase, so every reference to
 // these columns must be double-quoted to preserve the exact case.
 const q = (col) => `"${col}"`;
 
-function normalize(body) {
+function normalize(body, fields = FIELDS) {
     const row = {};
-    FIELDS.forEach((f) => {
+    fields.forEach((f) => {
         const val = body[f];
         row[f] = (val === undefined || val === null || val === '') ? null : val;
     });
+    return row;
+}
+
+// Numeric PM columns arrive as strings from form inputs; a non-number becomes null rather than
+// failing the whole save with a Postgres type error.
+function coercePmNumbers(row) {
+    for (const f of ['storyPoints', 'rank']) {
+        if (row[f] == null) continue;
+        const n = Number(row[f]);
+        row[f] = Number.isFinite(n) ? n : null;
+    }
+    if (row.issueType && !ISSUE_TYPES.includes(row.issueType)) row.issueType = 'Task';
     return row;
 }
 
@@ -199,9 +220,83 @@ async function initSchema() {
         )
     `);
 
+    await initProjectManagementSchema();
+
     await seedMasterDataIfEmpty();
 
     console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data, dev_tracker.import_logs).');
+}
+
+// Jira-style additions: issue keys, issue types, epics/sub-tasks (self-references on items),
+// sprints, comments. Everything is ADD ... IF NOT EXISTS so it is safe to run on every cold start
+// and never touches existing data. Existing items get Task as their type and a key number in
+// creation order, so the oldest item becomes DEV-1.
+async function initProjectManagementSchema() {
+    await pool.query('CREATE SEQUENCE IF NOT EXISTS dev_tracker.issue_no_seq');
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "issueNo" integer`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "issueType" text DEFAULT 'Task'`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS description text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "storyPoints" real`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "epicId" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "sprintId" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "parentId" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS labels text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS reporter text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS rank double precision`);
+    await pool.query(`UPDATE dev_tracker.items SET "issueType" = 'Task' WHERE "issueType" IS NULL`);
+
+    // Backfill key numbers for rows that predate the column (or were imported without one),
+    // continuing after the highest number already handed out, then move the sequence past it.
+    await pool.query(`
+        WITH base AS (SELECT COALESCE(MAX("issueNo"), 0) AS m FROM dev_tracker.items),
+             numbered AS (
+                SELECT id, (SELECT m FROM base) + row_number() OVER (ORDER BY "createdAt", id) AS n
+                FROM dev_tracker.items WHERE "issueNo" IS NULL
+             )
+        UPDATE dev_tracker.items i SET "issueNo" = numbered.n FROM numbered WHERE i.id = numbered.id
+    `);
+    await pool.query(`SELECT setval('dev_tracker.issue_no_seq', GREATEST((SELECT COALESCE(MAX("issueNo"), 0) FROM dev_tracker.items), 1))`);
+    await pool.query(`ALTER TABLE dev_tracker.items ALTER COLUMN "issueNo" SET DEFAULT nextval('dev_tracker.issue_no_seq')`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS items_issue_no_idx ON dev_tracker.items ("issueNo")`);
+    await pool.query(`UPDATE dev_tracker.items SET rank = EXTRACT(EPOCH FROM "createdAt") * 1000 WHERE rank IS NULL`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS items_sprint_idx ON dev_tracker.items ("sprintId")`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS items_epic_idx ON dev_tracker.items ("epicId")`);
+
+    // Snapshot columns (committed*/completed*) are written once, at start and at completion, so
+    // the velocity report reflects what the team actually committed to rather than whatever the
+    // sprint's membership looks like after items were later moved around.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.sprints (
+            id text PRIMARY KEY,
+            name text NOT NULL,
+            goal text,
+            "startDate" text,
+            "endDate" text,
+            state text NOT NULL DEFAULT 'future' CHECK (state IN ('future','active','closed')),
+            "committedPoints" real,
+            "committedCount" integer,
+            "completedPoints" real,
+            "completedCount" integer,
+            "startedAt" timestamptz,
+            "completedAt" timestamptz,
+            "createdBy" text,
+            "createdAt" timestamptz DEFAULT now(),
+            "updatedAt" timestamptz DEFAULT now()
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.comments (
+            id text PRIMARY KEY,
+            "itemId" text NOT NULL REFERENCES dev_tracker.items(id) ON DELETE CASCADE,
+            body text NOT NULL,
+            "authorEmail" text NOT NULL,
+            "authorName" text,
+            "createdAt" timestamptz DEFAULT now(),
+            "updatedAt" timestamptz DEFAULT now()
+        )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS comments_item_idx ON dev_tracker.comments ("itemId")`);
 }
 
 // Seeded once, only if the table is empty — these match exactly what used to be hardcoded in
@@ -280,8 +375,8 @@ router.get('/items', requireDevTrackerAccess, async (req, res) => {
 router.get('/items/:id/history', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT field, "oldValue", "newValue", "changedAt" FROM dev_tracker.item_history
-             WHERE "itemId" = $1 ORDER BY "changedAt" DESC LIMIT 50`,
+            `SELECT id, field, "oldValue", "newValue", "changedAt", "changedByUsername" FROM dev_tracker.item_history
+             WHERE "itemId" = $1 ORDER BY "changedAt" DESC LIMIT 200`,
             [req.params.id]
         );
         res.json(result.rows);
@@ -294,14 +389,19 @@ router.get('/items/:id/history', requireDevTrackerAccess, async (req, res) => {
 // CREATE item
 router.post('/items', requireDevTrackerAccess, async (req, res) => {
     const id = crypto.randomUUID();
-    const row = normalize(req.body);
+    const row = coercePmNumbers(normalize(req.body, ALL_FIELDS));
     if (!row.devList || !String(row.devList).trim()) {
         return res.status(400).json({ error: 'devList is required' });
     }
     try {
-        const cols = FIELDS.map(q).join(', ');
-        const placeholders = FIELDS.map((_, i) => `$${i + 2}`).join(', ');
-        const values = FIELDS.map((f) => row[f]);
+        const changedBy = await resolveDisplayName(req);
+        if (!row.status) row.status = 'Not Started';
+        if (!row.issueType) row.issueType = 'Task';
+        if (!row.reporter) row.reporter = changedBy;
+        if (row.rank == null) row.rank = Date.now();
+        const cols = ALL_FIELDS.map(q).join(', ');
+        const placeholders = ALL_FIELDS.map((_, i) => `$${i + 2}`).join(', ');
+        const values = ALL_FIELDS.map((f) => row[f]);
         const result = await pool.query(
             `INSERT INTO dev_tracker.items (id, ${cols}) VALUES ($1, ${placeholders}) RETURNING *`,
             [id, ...values]
@@ -309,7 +409,6 @@ router.post('/items', requireDevTrackerAccess, async (req, res) => {
         // Logged as a history entry too, using the sentinel field name "__created__" — this is
         // what lets the recent-activity feed show "X created Y" alongside ordinary field-level
         // changes, using the same one table rather than a second, parallel log just for creation.
-        const changedBy = await resolveDisplayName(req);
         await pool.query(
             `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, $2, $3, $4, $5)`,
             [id, '__created__', null, row.devList, changedBy]
@@ -328,11 +427,24 @@ router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
         const existing = existingResult.rows[0];
         if (!existing) return res.status(404).json({ error: 'Item not found' });
 
-        const row = normalize(req.body);
+        // A field the body leaves out entirely keeps its stored value, so callers that predate
+        // the PM fields (Import Center exports, older cached pages) can't wipe them, and the
+        // board/backlog can send just what changed. An explicit '' or null still clears a field.
+        const body = req.body || {};
+        const row = coercePmNumbers(normalize(body, ALL_FIELDS));
+        ALL_FIELDS.forEach((f) => {
+            if (!(f in body)) row[f] = existing[f] ?? null;
+        });
+        if (!row.devList || !String(row.devList).trim()) {
+            return res.status(400).json({ error: 'devList is required' });
+        }
+        if (row.epicId && row.epicId === req.params.id) row.epicId = null;
+        if (row.parentId && row.parentId === req.params.id) row.parentId = null;
         const changedBy = await resolveDisplayName(req);
 
         const historyInserts = [];
-        FIELDS.forEach((f) => {
+        ALL_FIELDS.forEach((f) => {
+            if (f === 'rank') return; // reordering the backlog isn't a change worth logging
             const oldVal = existing[f] ?? '';
             const newVal = row[f] ?? '';
             if (String(oldVal) !== String(newVal)) {
@@ -346,8 +458,8 @@ router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
         });
         await Promise.all(historyInserts);
 
-        const setClause = FIELDS.map((f, i) => `${q(f)} = $${i + 2}`).join(', ');
-        const values = FIELDS.map((f) => row[f]);
+        const setClause = ALL_FIELDS.map((f, i) => `${q(f)} = $${i + 2}`).join(', ');
+        const values = ALL_FIELDS.map((f) => row[f]);
         const result = await pool.query(
             `UPDATE dev_tracker.items SET ${setClause}, "updatedAt" = now() WHERE id = $1 RETURNING *`,
             [req.params.id, ...values]
@@ -364,10 +476,254 @@ router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM dev_tracker.items WHERE id = $1 RETURNING id', [req.params.id]);
         if (result.rowCount === 0) return res.status(404).json({ error: 'Item not found' });
+        // Deleting an epic or parent leaves its children in place, just unlinked.
+        await pool.query('UPDATE dev_tracker.items SET "epicId" = NULL WHERE "epicId" = $1', [req.params.id]);
+        await pool.query('UPDATE dev_tracker.items SET "parentId" = NULL WHERE "parentId" = $1', [req.params.id]);
         res.status(204).end();
     } catch (err) {
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to delete item' });
+    }
+});
+
+// ============================================================
+// Comments — the discussion thread on an issue. Anyone with app access can comment; only the
+// author can edit, and the author or a Dev Tracker admin can delete.
+// ============================================================
+function callerEmail(req) {
+    return String(req.get('x-user-email') || '').trim().toLowerCase();
+}
+
+async function isAdminEmail(email) {
+    const { rows } = await pool.query(
+        `SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = 'dev-tracker' AND role = 'Admin'`,
+        [email]
+    );
+    return rows.length > 0;
+}
+
+router.get('/items/:id/comments', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = callerEmail(req);
+        const result = await pool.query(
+            'SELECT * FROM dev_tracker.comments WHERE "itemId" = $1 ORDER BY "createdAt" ASC',
+            [req.params.id]
+        );
+        res.json(result.rows.map((r) => ({ ...r, mine: r.authorEmail === email })));
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load comments' });
+    }
+});
+
+router.post('/items/:id/comments', requireDevTrackerAccess, async (req, res) => {
+    const text = String(req.body?.body || '').trim();
+    if (!text) return res.status(400).json({ error: 'Comment is empty' });
+    try {
+        const { rows: [item] } = await pool.query('SELECT id FROM dev_tracker.items WHERE id = $1', [req.params.id]);
+        if (!item) return res.status(404).json({ error: 'Item not found' });
+        const authorName = await resolveDisplayName(req);
+        const result = await pool.query(
+            `INSERT INTO dev_tracker.comments (id, "itemId", body, "authorEmail", "authorName")
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [crypto.randomUUID(), req.params.id, text.slice(0, 20000), callerEmail(req), authorName]
+        );
+        // Commenting counts as activity on the item, so it stops reading as "stalled".
+        await pool.query('UPDATE dev_tracker.items SET "updatedAt" = now() WHERE id = $1', [req.params.id]);
+        res.status(201).json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to add comment' });
+    }
+});
+
+router.put('/comments/:id', requireDevTrackerAccess, async (req, res) => {
+    const text = String(req.body?.body || '').trim();
+    if (!text) return res.status(400).json({ error: 'Comment is empty' });
+    try {
+        const result = await pool.query(
+            `UPDATE dev_tracker.comments SET body = $3, "updatedAt" = now()
+             WHERE id = $1 AND "authorEmail" = $2 RETURNING *`,
+            [req.params.id, callerEmail(req), text.slice(0, 20000)]
+        );
+        if (!result.rowCount) return res.status(403).json({ error: 'Only the author can edit this comment' });
+        res.json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to update comment' });
+    }
+});
+
+router.delete('/comments/:id', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = callerEmail(req);
+        const { rows: [c] } = await pool.query('SELECT "authorEmail" FROM dev_tracker.comments WHERE id = $1', [req.params.id]);
+        if (!c) return res.status(404).json({ error: 'Comment not found' });
+        if (c.authorEmail !== email && !(await isAdminEmail(email))) {
+            return res.status(403).json({ error: 'Only the author or an admin can delete this comment' });
+        }
+        await pool.query('DELETE FROM dev_tracker.comments WHERE id = $1', [req.params.id]);
+        res.status(204).end();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete comment' });
+    }
+});
+
+// ============================================================
+// Sprints — time-boxed iterations, Scrum style. Lifecycle is future -> active -> closed, with
+// at most one active sprint at a time (the board shows "the" active sprint). Items join a
+// sprint through their own sprintId; a sprint row never lists its items.
+// ============================================================
+async function sprintTotals(sprintId) {
+    const { rows: [t] } = await pool.query(
+        `SELECT COUNT(*)::int AS count,
+                COALESCE(SUM("storyPoints"), 0)::real AS points,
+                COUNT(*) FILTER (WHERE status = ANY($2))::int AS "doneCount",
+                COALESCE(SUM("storyPoints") FILTER (WHERE status = ANY($2)), 0)::real AS "donePoints"
+         FROM dev_tracker.items WHERE "sprintId" = $1 AND COALESCE("issueType", 'Task') <> 'Epic'`,
+        [sprintId, DONE_STATUSES]
+    );
+    return t;
+}
+
+router.get('/sprints', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM dev_tracker.sprints
+             ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'future' THEN 1 ELSE 2 END,
+                      CASE WHEN state = 'closed' THEN NULL ELSE "startDate" END ASC NULLS LAST,
+                      "completedAt" DESC NULLS LAST, "createdAt" ASC`
+        );
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load sprints' });
+    }
+});
+
+router.post('/sprints', requireDevTrackerAccess, async (req, res) => {
+    const { name, goal, startDate, endDate } = req.body || {};
+    try {
+        let sprintName = String(name || '').trim();
+        if (!sprintName) {
+            const { rows: [{ c }] } = await pool.query('SELECT COUNT(*)::int AS c FROM dev_tracker.sprints');
+            sprintName = `Sprint ${c + 1}`;
+        }
+        const createdBy = await resolveDisplayName(req);
+        const result = await pool.query(
+            `INSERT INTO dev_tracker.sprints (id, name, goal, "startDate", "endDate", "createdBy")
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [crypto.randomUUID(), sprintName.slice(0, 80), goal || null, startDate || null, endDate || null, createdBy]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to create sprint' });
+    }
+});
+
+router.put('/sprints/:id', requireDevTrackerAccess, async (req, res) => {
+    const { name, goal, startDate, endDate } = req.body || {};
+    try {
+        const { rows: [s] } = await pool.query('SELECT * FROM dev_tracker.sprints WHERE id = $1', [req.params.id]);
+        if (!s) return res.status(404).json({ error: 'Sprint not found' });
+        const result = await pool.query(
+            `UPDATE dev_tracker.sprints SET name = $2, goal = $3, "startDate" = $4, "endDate" = $5, "updatedAt" = now()
+             WHERE id = $1 RETURNING *`,
+            [
+                req.params.id,
+                name != null && String(name).trim() ? String(name).trim().slice(0, 80) : s.name,
+                goal !== undefined ? (goal || null) : s.goal,
+                startDate !== undefined ? (startDate || null) : s.startDate,
+                endDate !== undefined ? (endDate || null) : s.endDate,
+            ]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to update sprint' });
+    }
+});
+
+router.post('/sprints/:id/start', requireDevTrackerAccess, async (req, res) => {
+    const { startDate, endDate, name, goal } = req.body || {};
+    try {
+        const { rows: [s] } = await pool.query('SELECT * FROM dev_tracker.sprints WHERE id = $1', [req.params.id]);
+        if (!s) return res.status(404).json({ error: 'Sprint not found' });
+        if (s.state !== 'future') return res.status(400).json({ error: 'Only a future sprint can be started' });
+        const { rows: active } = await pool.query(`SELECT name FROM dev_tracker.sprints WHERE state = 'active'`);
+        if (active.length) return res.status(409).json({ error: `Complete "${active[0].name}" before starting another sprint` });
+        const start = startDate || s.startDate || new Date().toISOString().slice(0, 10);
+        const end = endDate || s.endDate;
+        if (!end) return res.status(400).json({ error: 'An end date is required to start a sprint' });
+        if (end < start) return res.status(400).json({ error: 'End date must be after the start date' });
+        const totals = await sprintTotals(req.params.id);
+        const result = await pool.query(
+            `UPDATE dev_tracker.sprints SET state = 'active', "startDate" = $2, "endDate" = $3,
+                name = COALESCE(NULLIF($4, ''), name), goal = COALESCE($5, goal),
+                "committedPoints" = $6, "committedCount" = $7, "startedAt" = now(), "updatedAt" = now()
+             WHERE id = $1 RETURNING *`,
+            [req.params.id, start, end, name ? String(name).trim().slice(0, 80) : '', goal ?? null, totals.points, totals.count]
+        );
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to start sprint' });
+    }
+});
+
+// Completing a sprint moves every unfinished item to `moveTo` (another open sprint's id) or, with
+// moveTo null, back to the backlog — and logs that sprintId change in item_history like any edit.
+router.post('/sprints/:id/complete', requireDevTrackerAccess, async (req, res) => {
+    const moveTo = req.body?.moveTo || null;
+    try {
+        const { rows: [s] } = await pool.query('SELECT * FROM dev_tracker.sprints WHERE id = $1', [req.params.id]);
+        if (!s) return res.status(404).json({ error: 'Sprint not found' });
+        if (s.state !== 'active') return res.status(400).json({ error: 'Only the active sprint can be completed' });
+        if (moveTo) {
+            const { rows: [target] } = await pool.query('SELECT state FROM dev_tracker.sprints WHERE id = $1', [moveTo]);
+            if (!target || target.state === 'closed' || moveTo === req.params.id) {
+                return res.status(400).json({ error: 'Pick an open sprint (or the backlog) for unfinished items' });
+            }
+        }
+        const totals = await sprintTotals(req.params.id);
+        const changedBy = await resolveDisplayName(req);
+        const { rows: open } = await pool.query(
+            `SELECT id FROM dev_tracker.items WHERE "sprintId" = $1 AND NOT (status = ANY($2))`,
+            [req.params.id, DONE_STATUSES]
+        );
+        for (const it of open) {
+            await pool.query('UPDATE dev_tracker.items SET "sprintId" = $2, "updatedAt" = now() WHERE id = $1', [it.id, moveTo]);
+            await pool.query(
+                `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, 'sprintId', $2, $3, $4)`,
+                [it.id, req.params.id, moveTo || '', changedBy]
+            );
+        }
+        const result = await pool.query(
+            `UPDATE dev_tracker.sprints SET state = 'closed', "completedAt" = now(),
+                "completedPoints" = $2, "completedCount" = $3, "updatedAt" = now()
+             WHERE id = $1 RETURNING *`,
+            [req.params.id, totals.donePoints, totals.doneCount]
+        );
+        res.json({ ...result.rows[0], movedCount: open.length });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to complete sprint' });
+    }
+});
+
+router.delete('/sprints/:id', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const { rows: [s] } = await pool.query('SELECT state FROM dev_tracker.sprints WHERE id = $1', [req.params.id]);
+        if (!s) return res.status(404).json({ error: 'Sprint not found' });
+        if (s.state === 'closed') return res.status(400).json({ error: 'A completed sprint is kept for reporting' });
+        await pool.query('UPDATE dev_tracker.items SET "sprintId" = NULL WHERE "sprintId" = $1', [req.params.id]);
+        await pool.query('DELETE FROM dev_tracker.sprints WHERE id = $1', [req.params.id]);
+        res.status(204).end();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete sprint' });
     }
 });
 
@@ -608,7 +964,9 @@ router.post('/import-center/imports', requireDevTrackerAdmin, async (req, res) =
         const errors = [];
         for (let i = 0; i < rows.length; i++) {
             const rawRow = rows[i] || {};
-            const rowNum = i + 2; // account for the spreadsheet's header row
+            // The client sends each row's real Excel line (it skips blank rows, so i + 2 drifts
+            // after the first one); i + 2 — header row + 1-based — is the fallback for older clients.
+            const rowNum = Number.isInteger(rawRow.sheetRow) ? rawRow.sheetRow : i + 2;
             const title = String(rawRow.devList || '').trim();
             if (!title) {
                 errors.push({ row: rowNum, reason: 'Development / Item Title is required' });

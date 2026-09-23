@@ -5,7 +5,6 @@ import { LogIn, LogOut, MapPin, X, Check, Plus } from 'lucide-react';
 import {
   formatDayNum,
   formatDayOrdinal,
-  formatTime,
   formatWeekday,
   isOffDay,
   isWorkingSaturday,
@@ -120,13 +119,23 @@ function dayRowTone(date: Date, workingDayOverrides?: Set<string>) {
   return { row: '', dayText: 'text-inkSoft', badge: null as { label: string; cls: string } | null };
 }
 
-function LeaveSelect({ dateIso, value, onChange }: { dateIso: string; value: string; onChange: (dateIso: string, value: string) => void }) {
+function LeaveSelect({
+  dateIso,
+  value,
+  onChange,
+  className = 'mt-1 py-1 text-[11px]',
+}: {
+  dateIso: string;
+  value: string;
+  onChange: (dateIso: string, value: string) => void;
+  className?: string;
+}) {
   return (
     <select
       aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
       value={value}
       onChange={(e) => onChange(dateIso, e.target.value)}
-      className="mt-1 w-full rounded-md border border-border bg-white px-1.5 py-1 text-[11px] text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+      className={`w-full rounded-md border border-border bg-white px-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust ${className}`}
     >
       <option value="">Present</option>
       {LEAVE_TYPES.map((lt) => (
@@ -182,35 +191,66 @@ function PunchButton({
 
 // Displays a captured punch (time + geotagged place). `onReset` (today only, still editable)
 // clears it so a mis-tap can be redone; without it (read-only, or a past day) it's plain display.
+// The desktop table shows a box the same height as the time inputs on other rows - the time, a
+// location pin (green if captured, grey if not) and a small reset icon - with the place name as
+// small text underneath (truncated, full name on hover). Mobile cards use the compact layout.
 function PunchResult({
   time,
   location,
-  capturedAt,
   onReset,
   compact,
 }: {
   time: string;
   location?: string;
-  capturedAt?: string;
   onReset?: () => void;
   compact?: boolean;
 }) {
+  const resetButton = onReset && (
+    <button
+      type="button"
+      onClick={onReset}
+      title="Reset"
+      aria-label={`Reset ${time}`}
+      className="shrink-0 text-inkSoft hover:text-red focus:outline-none focus-visible:text-red"
+    >
+      <X size={13} />
+    </button>
+  );
+
+  if (compact) {
+    return (
+      <div className="flex flex-col items-start gap-0.5">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          {time}
+          {resetButton}
+        </span>
+        {location ? (
+          <span className="flex max-w-full items-center gap-0.5 truncate text-[10px] text-green">
+            <MapPin size={9} className="shrink-0" />
+            <span className="truncate">{location}</span>
+          </span>
+        ) : (
+          <span className="text-[10px] italic text-inkSoft">No location captured</span>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex flex-col gap-0.5 ${compact ? 'items-start' : 'items-center'}`}>
-      <span className={`font-semibold text-ink ${compact ? 'text-sm' : ''}`}>{time}</span>
+    <div className="flex w-full flex-col items-stretch gap-0.5">
+      <div className="flex h-[30px] w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white px-1.5 text-xs">
+        <span className="font-semibold text-ink">{time}</span>
+        <span title={location || 'No location captured'} aria-label={location || 'No location captured'} className={`shrink-0 ${location ? 'text-green' : 'text-inkSoft/50'}`}>
+          <MapPin size={13} />
+        </span>
+        {resetButton}
+      </div>
       {location ? (
-        <span className="flex items-center gap-0.5 break-words text-[10px] text-green">
-          <MapPin size={9} className="shrink-0" />
+        <span title={location} className="truncate text-[10px] leading-tight text-green">
           {location}
         </span>
       ) : (
-        <span className="text-[10px] italic text-inkSoft">No location captured</span>
-      )}
-      {capturedAt && <span className="text-[9px] text-inkSoft">at {formatTime(capturedAt)}</span>}
-      {onReset && (
-        <button type="button" onClick={onReset} className="text-[10px] text-inkSoft hover:text-red focus:outline-none focus-visible:underline">
-          Reset
-        </button>
+        <span className="text-[10px] italic leading-tight text-inkSoft">No location captured</span>
       )}
     </div>
   );
@@ -377,11 +417,27 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     },
   }));
 
+  // Refreshing/closing the tab inside the autosave debounce window used to drop that last change
+  // (e.g. a punch's location landing right before a reload) - flush it on the way out instead.
+  const pendingAutosave = useRef<DayMap | null>(null);
+  useEffect(() => {
+    function flush() {
+      if (!pendingAutosave.current || !onAutosave) return;
+      clearTimeout(saveTimer.current);
+      onAutosave(buildEntries(pendingAutosave.current));
+      pendingAutosave.current = null;
+    }
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  });
+
   function scheduleAutosave(nextMap: DayMap) {
     if (readOnly || !onAutosave) return;
     setSaveState('saving');
     clearTimeout(saveTimer.current);
+    pendingAutosave.current = nextMap;
     saveTimer.current = setTimeout(() => {
+      pendingAutosave.current = null;
       onAutosave(buildEntries(nextMap));
       setSaveState('saved');
       clearTimeout(savedAtTimer.current);
@@ -455,12 +511,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   }
 
   // Clears a mis-tapped punch (time + its location) so it can be redone - today only, before the
-  // day is locked in by submission.
+  // day is locked in by submission. Resetting the clock-in also clears the clock-out: otherwise
+  // re-clocking in after already clocking out leaves an out time earlier than the new in time
+  // (0h for the day).
   function resetPunch(date: string, which: 'in' | 'out') {
-    const timeField = which === 'in' ? 'inTime' : 'outTime';
-    const locationField = which === 'in' ? 'inLocation' : 'outLocation';
-    const locationAtField = which === 'in' ? 'inLocationAt' : 'outLocationAt';
-    updateDayField(date, { [timeField]: '', [locationField]: '', [locationAtField]: '' } as Partial<DayRow>);
+    const clearOut = { outTime: '', outLocation: '', outLocationAt: '' };
+    updateDayField(date, (which === 'in' ? { inTime: '', inLocation: '', inLocationAt: '', ...clearOut } : clearOut) as Partial<DayRow>);
   }
 
   // Setting a leave type clears any time/task entries for that day (leave and working hours are
@@ -581,19 +637,22 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               <th scope="col" className="sticky top-0 z-20 w-[9%] bg-white px-3 py-3 text-left font-semibold text-inkSoft">
                 Day
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-left font-semibold text-inkSoft">
+                Attendance
+              </th>
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 In Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Out Time
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[10%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[9%] whitespace-nowrap bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Hours of Work
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[16%] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[17%] bg-white px-2 py-3 text-center font-semibold text-inkSoft">
                 Task
               </th>
-              <th scope="col" className="sticky top-0 z-20 w-[37%] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
+              <th scope="col" className="sticky top-0 z-20 w-[29%] bg-white px-2 py-3 text-left font-semibold text-inkSoft">
                 Task Description
               </th>
             </tr>
@@ -620,25 +679,28 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               if (onLeave) {
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
-                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
+                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-middle font-semibold text-ink ${rowTint || 'bg-white'}`}>
                       <div className="flex flex-col items-start gap-0.5">
                         <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
-                    <td className="px-3 py-2 align-top">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
-                        <span className="inline-block rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
-                      </div>
-                      {!readOnly && !isOffDay(date, workingDayOverrides) && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                    <td className="px-3 py-2 align-middle">
+                      <span className={`whitespace-nowrap font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                     </td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top">
+                    <td className="px-2 py-2 align-middle">
+                      {!readOnly && !isOffDay(date, workingDayOverrides) ? (
+                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                      ) : (
+                        <span className="inline-block whitespace-nowrap rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle">
                       <span className="inline-block rounded-md bg-tealBg px-2 py-1 text-xs font-semibold text-teal">0h</span>
                     </td>
-                    <td colSpan={2} className="px-2 py-2 align-top">
+                    <td colSpan={2} className="px-2 py-2 align-middle">
                       {readOnly ? (
                         <span className={row.leaveNote ? 'text-ink' : 'italic text-inkSoft'}>{row.leaveNote || 'No reason given'}</span>
                       ) : (
@@ -659,22 +721,23 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               if (!working) {
                 return (
                   <tr key={dateIso} ref={isToday ? todayRowRef : undefined} className={`border-b border-border last:border-0 ${rowTint} ${todayRowCls}`}>
-                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
+                    <th scope="row" className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-middle font-semibold text-ink ${rowTint || 'bg-white'}`}>
                       <div className="flex flex-col items-start gap-0.5">
                         <span>{formatDayOrdinal(date)}</span>
                         {todayBadge}
                       </div>
                     </th>
-                    <td className="px-3 py-2 align-top">
-                      <div className="flex items-center gap-1.5">
+                    <td className="px-3 py-2 align-middle">
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                         {tone.badge && <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>{tone.badge.label}</span>}
                       </div>
                     </td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td className="px-2 py-2 text-center align-top text-inkSoft">-</td>
-                    <td colSpan={2} className="px-2 py-2 text-center align-top italic text-inkSoft">
+                    <td className="px-2 py-2 align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td className="px-2 py-2 text-center align-middle text-inkSoft">-</td>
+                    <td colSpan={2} className="px-2 py-2 text-center align-middle italic text-inkSoft">
                       Non-working day
                     </td>
                   </tr>
@@ -692,30 +755,34 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                   {lineIndex === 0 && (
                     <>
                       <th scope="row" rowSpan={rowSpan} className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 text-left align-top font-semibold text-ink ${rowTint || 'bg-white'}`}>
-                        <div className="flex flex-col items-start gap-0.5">
+                        <div className="flex min-h-[30px] flex-col items-start justify-center gap-0.5">
                           <span>{formatDayOrdinal(date)}</span>
                           {todayBadge}
                         </div>
                       </th>
                       <td rowSpan={rowSpan} className="px-3 py-2 align-top">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex h-[30px] items-center gap-1.5 whitespace-nowrap">
                           <span className={`font-medium ${tone.dayText}`}>{formatWeekday(date)}</span>
                           {tone.badge && <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone.badge.cls}`}>{tone.badge.label}</span>}
                         </div>
-                        {!readOnly && working && zero && <div className="mt-1 text-[10px] font-medium text-amber">No hours</div>}
-                        {over && <div className="mt-1 text-[10px] font-medium text-red">Exceeds {MAX_HOURS_PER_DAY}h</div>}
-                        {!readOnly && working && <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />}
+                      </td>
+                      <td rowSpan={rowSpan} className="px-2 py-2 align-top">
+                        {readOnly ? (
+                          <div className="flex h-[30px] items-center text-inkSoft">{row.inTime ? 'Present' : '-'}</div>
+                        ) : (
+                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                        )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
                         {readOnly ? (
                           row.inTime ? (
-                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} />
+                            <PunchResult time={row.inTime} location={row.inLocation} />
                           ) : (
                             <span className="text-ink">-</span>
                           )
                         ) : dateIso === todayIso ? (
                           row.inTime ? (
-                            <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} />
+                            <PunchResult time={row.inTime} location={row.inLocation} onReset={() => resetPunch(dateIso, 'in')} />
                           ) : (
                             <PunchButton label="Clock In" tone="in" locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                           )
@@ -732,13 +799,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
                         {readOnly ? (
                           row.outTime ? (
-                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} />
+                            <PunchResult time={row.outTime} location={row.outLocation} />
                           ) : (
                             <span className="text-ink">-</span>
                           )
                         ) : dateIso === todayIso ? (
                           row.outTime ? (
-                            <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} />
+                            <PunchResult time={row.outTime} location={row.outLocation} onReset={() => resetPunch(dateIso, 'out')} />
                           ) : (
                             <PunchButton
                               label="Clock Out"
@@ -760,9 +827,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
-                        <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
-                          {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
-                        </span>
+                        <div className="flex min-h-[30px] items-center justify-center gap-1.5 whitespace-nowrap">
+                          <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
+                            {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
+                          </span>
+                          {!readOnly && zero && <span className="text-[10px] font-medium text-amber">No hours</span>}
+                          {over && <span title={`Exceeds ${MAX_HOURS_PER_DAY}h`} className="text-[10px] font-medium text-red">&gt;{MAX_HOURS_PER_DAY}h</span>}
+                        </div>
                       </td>
                     </>
                   )}
@@ -828,14 +899,14 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-glassRust bg-glassRust">
-              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-white px-3 py-3 text-left font-semibold text-ink">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-white px-3 py-3 text-left font-semibold text-ink">
                 Total hours this month
               </th>
               <td className="px-2 py-3 text-center font-bold text-rust">{totals.month.toFixed(2).replace(/\.00$/, '')}h</td>
               <td colSpan={2}></td>
             </tr>
             <tr className="border-t border-glassRust bg-glassRust">
-              <th scope="row" colSpan={4} className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left font-semibold text-ink">
+              <th scope="row" colSpan={5} className="sticky left-0 z-10 bg-white px-3 py-2.5 text-left font-semibold text-ink">
                 Total leave this month
               </th>
               <td className="px-2 py-2.5 text-center font-bold text-rust">
@@ -947,13 +1018,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">In Time</span>
                       {readOnly ? (
                         row.inTime ? (
-                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} compact />
+                          <PunchResult time={row.inTime} location={row.inLocation} compact />
                         ) : (
                           <span className="block text-sm text-ink">-</span>
                         )
                       ) : dateIso === todayIso ? (
                         row.inTime ? (
-                          <PunchResult time={row.inTime} location={row.inLocation} capturedAt={row.inLocationAt} onReset={() => resetPunch(dateIso, 'in')} compact />
+                          <PunchResult time={row.inTime} location={row.inLocation} onReset={() => resetPunch(dateIso, 'in')} compact />
                         ) : (
                           <PunchButton label="Clock In" tone="in" compact locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                         )
@@ -970,13 +1041,13 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">Out Time</span>
                       {readOnly ? (
                         row.outTime ? (
-                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} compact />
+                          <PunchResult time={row.outTime} location={row.outLocation} compact />
                         ) : (
                           <span className="block text-sm text-ink">-</span>
                         )
                       ) : dateIso === todayIso ? (
                         row.outTime ? (
-                          <PunchResult time={row.outTime} location={row.outLocation} capturedAt={row.outLocationAt} onReset={() => resetPunch(dateIso, 'out')} compact />
+                          <PunchResult time={row.outTime} location={row.outLocation} onReset={() => resetPunch(dateIso, 'out')} compact />
                         ) : (
                           <PunchButton
                             label="Clock Out"

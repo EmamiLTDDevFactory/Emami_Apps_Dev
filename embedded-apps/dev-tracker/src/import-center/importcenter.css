@@ -39,6 +39,10 @@
 .import-dropzone-or { font-size: 10px; color: var(--muted); }
 .import-dropzone-note { font-size: 10px; color: var(--muted); text-align: center; margin-top: 9px; }
 .import-error { margin-top: 9px; font-size: 10.5px; color: var(--st-red); text-align: center; }
+.import-notice { margin-top: 10px; padding: 10px 12px; border-radius: 9px; background: var(--st-green-soft); border: 1px solid color-mix(in srgb, var(--st-green) 25%, transparent); font-size: 11.5px; color: var(--text-2); text-align: left; }
+.import-notice strong { display: block; color: var(--st-green); margin-bottom: 4px; }
+.import-notice ul { margin: 0; padding-left: 18px; }
+.import-notice li { margin: 2px 0; line-height: 1.45; }
 
 .import-history-card { padding: 18px 20px 8px; }
 .import-history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
