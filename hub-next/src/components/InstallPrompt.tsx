@@ -134,6 +134,9 @@ export default function InstallPrompt() {
     : 'Get a desktop shortcut and open Emami Apps in its own window, one click from your taskbar, without searching for the site.';
 
   const steps = !pwa.isStandalone && pwa.isSecureContext && platform === 'ios' ? iosSteps() : null;
+  // Chrome/Edge/Firefox on iOS only got "Add to Home Screen" in iOS 16.4 — on older iPhones it's
+  // Safari-only, so point people there if the option is missing.
+  const nonSafariIos = steps !== null && /CriOS|EdgiOS|FxiOS/i.test(window.navigator.userAgent);
 
   const fallback = pwa.canPromptInstall || steps
     ? null
@@ -159,9 +162,14 @@ export default function InstallPrompt() {
                 </li>
               ))}
             </ol>
-          ) : (
-            <Body>{fallback ?? offer}</Body>
-          )}
+          ) : null}
+          {steps && nonSafariIos ? (
+            <Body style={{ marginTop: 4 }}>
+              Don&apos;t see &quot;Add to Home Screen&quot;? Your iPhone may be older than iOS 16.4 — open{' '}
+              <strong style={{ color: colors.ink }}>{window.location.host}</strong> in Safari, tap the Share icon, then &quot;Add to Home Screen&quot;.
+            </Body>
+          ) : null}
+          {steps ? null : <Body>{fallback ?? offer}</Body>}
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
