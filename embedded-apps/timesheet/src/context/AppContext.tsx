@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getHubSessionToken } from '../lib/hubAccess';
 
 // Loosely typed on purpose — this context is a faithful behavioral port of the original Vite
@@ -353,12 +353,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Persist the current in-progress entries for a user's month as a Draft. Editing a Rejected
   // timesheet intentionally keeps its status Rejected (not Draft) so the rejection banner/comment
   // stays visible - enforced server-side.
+  //
+  // Saves for the same month are serialized, latest-wins: the server replaces a month's entries
+  // wholesale (DELETE + INSERT), so two overlapping requests collide on entry ids and the later
+  // one fails. That used to silently drop a Clock In/Out location - the punch's time-only save
+  // was still in flight when the geolocation lookup finished and fired a second save carrying the
+  // place name. Now a save issued mid-flight just waits, and only the newest entries are sent.
+  const draftSaveQueue = useRef<Record<string, { running: boolean; pending: AnyRecord[] | null }>>({});
   async function saveDraftEntries(userId: string, monthStartDate: string, entries: AnyRecord[]) {
+    const key = `${userId}_${monthStartDate}`;
+    const slot = (draftSaveQueue.current[key] ||= { running: false, pending: null });
+    slot.pending = entries;
+    if (slot.running) return;
+    slot.running = true;
     try {
-      upsertTimesheet(await api('/timesheets/draft', { method: 'POST', body: JSON.stringify({ userId, monthStartDate, entries }) }));
-      refreshLeaveBalance(userId);
-    } catch (err) {
-      console.error('Failed to save draft:', err);
+      while (slot.pending) {
+        const next = slot.pending;
+        slot.pending = null;
+        try {
+          const body = JSON.stringify({ userId, monthStartDate, entries: next });
+          // keepalive lets a save flushed on page refresh/close still reach the server (browsers
+          // cap keepalive bodies at 64KB; a month of entries is comfortably under that).
+          upsertTimesheet(await api('/timesheets/draft', { method: 'POST', body, keepalive: body.length < 60000 }));
+          refreshLeaveBalance(userId);
+        } catch (err) {
+          console.error('Failed to save draft:', err);
+        }
+      }
+    } finally {
+      slot.running = false;
     }
   }
 
