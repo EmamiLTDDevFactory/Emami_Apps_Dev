@@ -8,7 +8,7 @@ import { apiImportList, apiImportRun, apiImportDelete, apiMasterData, apiMasterD
 import { activeValues } from '../shared/masterData.js';
 import { FIELDS, FIELD_LABELS, DATE_FIELDS, LEGACY_FIELD_LABELS, CATEGORIES } from '../shared/constants.js';
 import { hexToSoft } from '../shared/utils.js';
-import { readDropdownSheet, planImport, colorForNewValue } from './importMapping.js';
+import { readDropdownSheet, planImport, colorForNewValue, findNonIntegerCells } from './importMapping.js';
 import { ROUTES } from '../shared/routes.js';
 import {
   InfoIcon, FileExcelIcon, DownloadIcon, UploadCloudIcon, RefreshIcon,
@@ -282,6 +282,18 @@ export default function ImportCenter() {
         setUploadError(
           `No "${FIELD_LABELS.devList}" column found, so there is nothing to import. Download the Excel format above and copy your data into it.`
           + (unknown.length ? ` Unrecognised columns: ${unknown.slice(0, 6).join(', ')}${unknown.length > 6 ? '…' : ''}.` : '')
+        );
+        return;
+      }
+      const badNumbers = Object.entries(findNonIntegerCells(rows));
+      if (badNumbers.length) {
+        const parts = badNumbers.map(([f, cells]) => {
+          const eg = cells[0];
+          return `"${FIELD_LABELS[f] || f}" has text in ${cells.length} row${cells.length === 1 ? '' : 's'} (e.g. row ${eg.row}: "${eg.value.slice(0, 40)}${eg.value.length > 40 ? '…' : ''}")`;
+        });
+        setUploadError(
+          `Nothing was imported. ${parts.join('; ')} — these columns only take whole numbers. `
+          + 'Your columns are probably shifted: check each column\'s data sits under the matching header in the Excel format, then upload again.'
         );
         return;
       }

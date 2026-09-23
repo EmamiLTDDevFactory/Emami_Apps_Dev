@@ -158,6 +158,25 @@ export function planImport(rows, masterData, sheetValues) {
   return { rows: out, toAdd: [...toAdd.values()], toEnable: [...toEnable.values()], mapped, cleared };
 }
 
+// Item fields stored as whole numbers server-side — anything else in them makes that row's INSERT
+// fail with a bare "server error", so they're checked here instead.
+export const INTEGER_FIELDS = ['hypercare', 'devTime', 'rework'];
+
+/** Rows (1-based sheet row numbers, header = row 1) whose whole-number fields hold something
+ * that isn't one: { field: [{ row, value }] }. Text there almost always means the pasted columns
+ * are shifted relative to the template's headers, so the import stops instead of saving the rest
+ * of those rows with every later column in the wrong place. */
+export function findNonIntegerCells(rows) {
+  const out = {};
+  rows.forEach((r, i) => {
+    for (const f of INTEGER_FIELDS) {
+      const v = norm(r[f]);
+      if (v && !/^-?\d+$/.test(v)) (out[f] ||= []).push({ row: i + 2, value: v });
+    }
+  });
+  return out;
+}
+
 export function colorForNewValue(index) {
   return NEW_VALUE_COLORS[index % NEW_VALUE_COLORS.length];
 }
