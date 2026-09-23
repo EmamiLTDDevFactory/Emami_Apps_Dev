@@ -417,11 +417,27 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     },
   }));
 
+  // Refreshing/closing the tab inside the autosave debounce window used to drop that last change
+  // (e.g. a punch's location landing right before a reload) - flush it on the way out instead.
+  const pendingAutosave = useRef<DayMap | null>(null);
+  useEffect(() => {
+    function flush() {
+      if (!pendingAutosave.current || !onAutosave) return;
+      clearTimeout(saveTimer.current);
+      onAutosave(buildEntries(pendingAutosave.current));
+      pendingAutosave.current = null;
+    }
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  });
+
   function scheduleAutosave(nextMap: DayMap) {
     if (readOnly || !onAutosave) return;
     setSaveState('saving');
     clearTimeout(saveTimer.current);
+    pendingAutosave.current = nextMap;
     saveTimer.current = setTimeout(() => {
+      pendingAutosave.current = null;
       onAutosave(buildEntries(nextMap));
       setSaveState('saved');
       clearTimeout(savedAtTimer.current);
