@@ -5,7 +5,11 @@ import {
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+// 'All' first, then every category A-Z (case-insensitive) — sorted here rather than hand-ordered
+// so a newly added category lands in the right place. Every category list in the hub (Home tiles,
+// side pane, filter bar, My Applications) renders from this one array.
+const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+export const CATEGORIES: CategoryFilter[] = ['All', ...[...CATEGORY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))];
 
 /**
  * Live app URLs. Every real app renders inline on the launch screen — same-origin apps
