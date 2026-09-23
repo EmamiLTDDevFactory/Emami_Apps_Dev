@@ -56,6 +56,7 @@ const PRESET_CHIPS = [
 
 export default function FilterBar({ filters, setFilters, items, epics, options, searchRef, showEpics = true, extra }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [assigneeQuery, setAssigneeQuery] = useState('');
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
   const assigneeCounts = useMemo(() => {
@@ -69,6 +70,13 @@ export default function FilterBar({ filters, setFilters, items, epics, options, 
   const top = assigneeCounts.slice(0, VISIBLE_AVATARS);
   const rest = assigneeCounts.slice(VISIBLE_AVATARS);
   const restSelected = filters.assignees.filter((a) => rest.includes(a) || a === UNASSIGNED).length;
+  // Typing searches every assignee, not just the ones past the avatar row, so anyone can be
+  // picked by name without scanning the faces first.
+  const aq = assigneeQuery.trim().toLowerCase();
+  const popAssignees = aq
+    ? assigneeCounts.filter((n) => n.toLowerCase().includes(aq)).sort((a, b) => a.localeCompare(b))
+    : rest;
+  const showUnassigned = !aq || 'unassigned'.includes(aq);
   const labelOptions = useMemo(() => {
     const s = new Set();
     for (const it of items) for (const l of parseLabels(it.labels)) s.add(l);
@@ -102,18 +110,22 @@ export default function FilterBar({ filters, setFilters, items, epics, options, 
             <button type="button" className={`pm-avatar-more${restSelected ? ' is-on' : ''}`} onClick={() => setMoreOpen((o) => !o)} title="More assignees">
               {rest.length ? `+${rest.length}` : '…'}
             </button>
-            <Popover open={moreOpen} onClose={() => setMoreOpen(false)} className="pm-pop-wide">
+            <Popover open={moreOpen} onClose={() => { setMoreOpen(false); setAssigneeQuery(''); }} className="pm-pop-wide">
+              <input className="pm-pop-search" autoFocus placeholder="Search assignees" aria-label="Search assignees" value={assigneeQuery} onChange={(e) => setAssigneeQuery(e.target.value)} />
               <div className="pm-pop-scroll">
-                <label className="pm-pop-check">
-                  <input type="checkbox" checked={filters.assignees.includes(UNASSIGNED)} onChange={() => set({ assignees: toggleIn(filters.assignees, UNASSIGNED) })} />
-                  <Avatar name="" size={20} /> <span>Unassigned</span>
-                </label>
-                {rest.map((name) => (
+                {showUnassigned && (
+                  <label className="pm-pop-check">
+                    <input type="checkbox" checked={filters.assignees.includes(UNASSIGNED)} onChange={() => set({ assignees: toggleIn(filters.assignees, UNASSIGNED) })} />
+                    <Avatar name="" size={20} /> <span>Unassigned</span>
+                  </label>
+                )}
+                {popAssignees.map((name) => (
                   <label key={name} className="pm-pop-check">
                     <input type="checkbox" checked={filters.assignees.includes(name)} onChange={() => set({ assignees: toggleIn(filters.assignees, name) })} />
                     <Avatar name={name} size={20} /> <span>{name}</span>
                   </label>
                 ))}
+                {!showUnassigned && !popAssignees.length && <div className="pm-pop-empty">No matches</div>}
               </div>
             </Popover>
           </span>
