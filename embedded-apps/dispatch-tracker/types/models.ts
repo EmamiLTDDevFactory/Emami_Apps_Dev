@@ -84,6 +84,8 @@ export interface DispatchDetail {
   depot: string;
   customer_name: string;
   town: string;
+  channel: string;
+  distance_km: number;
   no_of_cases: number;
   gross_weight_kg: number;
   invoice_value: number;
@@ -106,6 +108,8 @@ export interface CompletedInvoice {
   depot: string;
   customer_name: string;
   town: string;
+  channel: string;
+  distance_km: number;
   no_of_cases: number;
   gross_weight_kg: number;
   invoice_value: number;
@@ -125,6 +129,8 @@ export interface ReturnedInvoice {
   depot: string;
   customer_name: string;
   town: string;
+  channel: string;
+  distance_km: number;
   no_of_cases: number;
   gross_weight_kg: number;
   invoice_value: number;
@@ -141,6 +147,8 @@ export interface CancelledInvoice {
   depot: string;
   customer_name: string;
   town: string;
+  channel: string;
+  distance_km: number;
   no_of_cases: number;
   gross_weight_kg: number;
   invoice_value: number;

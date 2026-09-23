@@ -400,6 +400,14 @@ function InvoiceCard({
           </Text>
         </Field>
 
+        <Field label="Channel">
+          <Text style={styles.fieldValue}>{row.channel || '—'}</Text>
+        </Field>
+
+        <Field label="Distance">
+          <Text style={styles.fieldValue}>{row.distance_km ? `${Math.round(row.distance_km)} km` : '—'}</Text>
+        </Field>
+
         <Field label="Delay">
           <Text style={{ fontSize: 11, fontWeight: '700', color: delayColor }}>{delayLabel}</Text>
         </Field>
