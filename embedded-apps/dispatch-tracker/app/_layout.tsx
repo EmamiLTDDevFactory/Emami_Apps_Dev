@@ -4,14 +4,22 @@ import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { DataProvider } from '@/contexts/DataContext';
 import { colors } from '@/constants/theme';
+import Head from 'expo-router/head';
 
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
 export default function RootLayout() {
   return (
+    <>
+      <Head>
+        <title>Dispatch Tracker</title>
+      </Head>
     <AuthProvider>
       <DataProvider>
         <RootNavigator />
       </DataProvider>
     </AuthProvider>
+    </>
   );
 }
 

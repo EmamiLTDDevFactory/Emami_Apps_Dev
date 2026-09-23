@@ -258,6 +258,50 @@ export async function fetchSubmissionRecords(year: string, email: string): Promi
   }));
 }
 
+/** One ZmarketRateSet row with everything Admin's Market Rate Entry screen needs: the vendor/
+ * material identity and SubDone status Submission History reads, plus the fields a re-save has to
+ * send back (material type, rate UOM, market name, GST, date) — so a row the Admin fills in goes
+ * out through saveMarketRates exactly like a vendor's own submission would. */
+export interface RateEntryRecord extends SubmissionRecord {
+  materialType: string;
+  marketName: string;
+  igst: string;
+  sgst: string;
+  cgst: string;
+  /** Zdate as yyyy-mm-dd (the rate's "valid from" date). */
+  validFrom: string;
+}
+
+/** Same read as fetchSubmissionRecords (ZmarketRateSet by Zyear + the signed-in Admin's email,
+ * which is what returns every vendor's rows for an Admin), mapped with the extra fields above. */
+export async function fetchRateEntryRecords(year: string, email: string): Promise<RateEntryRecord[]> {
+  const { data } = await sapClient.get(`/${FLAT_RATE_ENTITY_SET}`, {
+    params: { '$format': 'json', '$filter': `Zyear eq '${year}' and Email eq '${email}'` },
+  });
+  const results = data?.d?.results;
+  if (!Array.isArray(results)) return [];
+  return results.map((li: any) => ({
+    email: li.Email || '',
+    vendorCode: li.Lifnr || '',
+    vendorName: li.Name1 || '',
+    materialCode: li.Matnr || '',
+    materialDesc: li.Maktx || '',
+    materialType: li.Mtart || '',
+    zyear: li.Zyear || '',
+    zmonth: li.Zmonth || '',
+    rate: li.Zrate != null ? String(li.Zrate) : '',
+    ratePer: li.ZratePer || '',
+    marketName: li.ZmarketName || '',
+    igst: li.Igst != null ? String(li.Igst) : '',
+    sgst: li.Sgst != null ? String(li.Sgst) : '',
+    cgst: li.Cgst != null ? String(li.Cgst) : '',
+    validFrom: parseODataDate(li.Zdate),
+    submitted: li.SubDone === 'X',
+    submittedOn: parseODataDate(li.CrDate),
+    rateId: li.RateId || '',
+  }));
+}
+
 function randomRateId(): string {
   // "BATCH-<digits>" mirrors the example payload's shape ("BATCH-001", 9 chars). RateId is a
   // fixed-length SAP field — a 6-digit suffix (12 chars total) blew past its max length and SAP

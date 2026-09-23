@@ -5,12 +5,10 @@ const { URL } = require("url");
 // See: OData Integration Guide for CAPA & Audit Notifications
 // Service: ZQM_CAPA_AUDIT_SRV, Protocol: OData v2 (JSON), Method: POST
 //
-// Host matches RC Portal's SAP_BASE_URL (embedded-apps/rc-portal/backend/server.js) —
-// the entry point to this proxy whose POSTs are known to work today. Overridable via
-// SAP_NGD_BASE_URL so infra can move it without a code change.
+// Overridable via SAP_NGD_BASE_URL so infra can move it without a code change.
 const NGD_BASE =
   process.env.SAP_NGD_BASE_URL ||
-  "https://emamiapi.emamigroup.com/api/NGD/ZQM_CAPA_AUDIT_SRV";
+  "https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZQM_CAPA_AUDIT_SRV";
 
 // A hung proxy must never hold a request open indefinitely — Dispatch Tracker's /LoginSet
 // call taught us that, where the same middleware hung until Azure returned a 504 minutes

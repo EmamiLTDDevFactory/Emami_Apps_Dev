@@ -275,6 +275,8 @@ function ReturnedCard({ row, bg, retVals }: { row: ReturnedInvoice; bg: string; 
         <Field label="Value" value={finr(row.invoice_value)} color="#d29922" bold />
         <Field label="Act. Delivery" value={fd(row.actual_delivery_date)} />
         <Field label="Receiving Date" value={fd(row.receiving_date)} color={colors.purple} bold />
+        <Field label="Channel" value={row.channel || '—'} />
+        <Field label="Distance" value={row.distance_km ? `${Math.round(row.distance_km)} km` : '—'} />
         <View style={[styles.field, styles.fieldNarrow]}>
           <Text style={styles.fieldLabel}>Return Type</Text>
           <View style={styles.retPill}>

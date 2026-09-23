@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Landmark, Wallet, Grid3x3, Lock, ClipboardCheck, TrendingUp, Code2, Truck, Users, Shuffle, Package } from 'lucide-react';
+import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import CompanyPulseCard from '../../components/CompanyPulseCard';
@@ -12,19 +12,20 @@ import { useIsWideScreen } from '../../hooks/useIsWideScreen';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
 import { APPS, CATEGORIES, appById } from '../../data/mockData';
-import { colors, fonts, fontWeights, radii, appColor, catColor } from '../../theme/tokens';
+import { colors, fonts, fontWeights, radii, appColor, catColor, motion } from '../../theme/tokens';
+import { useTiltHover } from '../../hooks/useTiltHover';
 import type { AppItem, CategoryFilter } from '../../types';
 
 /** One icon per category tile — 'All' isn't a real category (see catColor's fallback-to-rust for
  * it too), so it gets a neutral catalog glyph rather than something that'd imply it's just another
- * segment. */
+ * segment. IBD/Supply Chain/CPD/HR/IT match the reference Emami Apps sidebar's own icon glyphs. */
 const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   All: LayoutGrid,
   CQA: ClipboardCheck,
-  CPD: TrendingUp,
-  IT: Code2,
-  'Supply Chain': Truck,
-  IBD: Wallet,
+  CPD: ShieldCheck,
+  IT: Monitor,
+  'Supply Chain': Box,
+  IBD: Globe,
   HR: Users,
   'Cross-Function': Shuffle,
   Packaging: Package,
@@ -43,6 +44,61 @@ const CATEGORY_DESCRIPTIONS: Record<string, string> = {
   Packaging: 'Mould health inspection',
   Finance: 'Non-CTC expense claims',
 };
+
+/** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow
+ * on hover (see useTiltHover), then eases back flat on mouse-leave. Kept as its own component
+ * (not inlined in the .map() below) since a tilt hook needs one hook instance per tile. */
+function HoverTile({
+  tileStyle, tileNameStyle, iconBox, iconSize, accent, locked, disabled, onClick, ariaLabel, title, icon: Icon, name, subtitle,
+}: {
+  tileStyle: React.CSSProperties;
+  tileNameStyle: React.CSSProperties;
+  iconBox: number;
+  iconSize: number;
+  accent: string;
+  locked?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  title?: string;
+  icon: LucideIcon;
+  name: string;
+  subtitle: React.ReactNode;
+}) {
+  const { ref, hovered, tiltTransform, handlers } = useTiltHover<HTMLButtonElement>();
+  const active = hovered && !disabled;
+  const scale = active ? motion.hoverScale : 1;
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      {...(disabled ? {} : handlers)}
+      style={{
+        ...tileStyle,
+        backgroundColor: locked ? colors.appBg : colors.white,
+        boxShadow: locked ? 'none' : active ? `0 14px 24px 0 ${accent}26` : `0 3px 8px 0 ${accent}1a`,
+        opacity: locked ? 0.6 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transform: disabled ? undefined : `${tiltTransform} scale(${scale})`,
+        transformStyle: 'preserve-3d',
+        transition: `transform ${motion.duration.base}ms ${motion.easeSmooth}, box-shadow ${motion.duration.base}ms ${motion.easeSmooth}`,
+        willChange: 'transform',
+      }}
+      aria-disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+    >
+      <div style={{ width: iconBox, height: iconBox, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
+        {locked ? <Lock size={iconSize - 1} color={accent} strokeWidth={2.1} /> : <Icon size={iconSize} color={accent} strokeWidth={2.1} />}
+      </div>
+      <p style={{ ...tileNameStyle, color: locked ? colors.inkSoft : colors.ink }}>{name}</p>
+      {subtitle}
+    </button>
+  );
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -148,83 +204,25 @@ export default function HomePage() {
           const categoryApps = c === 'All' ? [] : APPS.filter((a) => a.cat === c);
           const locked = c !== 'All' && categoryApps.length > 0 && categoryApps.every((a) => !unlockedAppIds.has(a.id));
           return (
-            <button
+            <HoverTile
               key={c}
-              type="button"
+              tileStyle={tileStyle}
+              tileNameStyle={tileNameStyle}
+              iconBox={tileIconBox}
+              iconSize={tileIconSize}
+              accent={accent}
+              locked={locked}
               disabled={locked}
               onClick={() => openCategory(c)}
-              style={{
-                ...tileStyle,
-                backgroundColor: locked ? colors.appBg : colors.white,
-                boxShadow: locked ? 'none' : `0 3px 8px 0 ${accent}1a`,
-                opacity: locked ? 0.6 : 1,
-                cursor: locked ? 'not-allowed' : 'pointer',
-              }}
-              aria-disabled={locked}
-              aria-label={locked ? `${c}, locked — no apps in this category yet` : `Open ${c} applications in a new tab`}
-            >
-              <div style={{ width: tileIconBox, height: tileIconBox, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
-                {locked ? <Lock size={tileIconSize - 1} color={accent} strokeWidth={2.1} /> : <Icon size={tileIconSize} color={accent} strokeWidth={2.1} />}
-              </div>
-              <p style={{ ...tileNameStyle, color: locked ? colors.inkSoft : colors.ink }}>
-                {c}
-              </p>
-              {locked ? (
-                <span style={{ fontSize: 8, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
-                  Locked
-                </span>
-              ) : (
-                <p
-                  style={{
-                    fontSize: 9.5,
-                    lineHeight: '12px',
-                    color: colors.inkSoft,
-                    fontFamily: fonts.sansRegular,
-                    margin: 0,
-                    textAlign: 'center',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {CATEGORY_DESCRIPTIONS[c]}
-                </p>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {visibleRecent.length > 0 && (
-        <>
-          <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap }}>
-            {visibleRecent.map((r) => {
-              const app = appById(r.id);
-              if (!app) return null;
-              const Icon = app.icon;
-              const accent = appColor(app.id);
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => openApp(app)}
-                  style={{
-                    ...tileStyle,
-                    backgroundColor: colors.white,
-                    boxShadow: `0 3px 8px 0 ${accent}1a`,
-                    cursor: 'pointer',
-                  }}
-                  aria-label={`Open ${app.name}`}
-                  title={app.name}
-                >
-                  <div style={{ width: tileIconBox, height: tileIconBox, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
-                    <Icon size={tileIconSize} color={accent} strokeWidth={2.1} />
-                  </div>
-                  <p style={{ ...tileNameStyle, color: colors.ink }}>
-                    {app.name}
-                  </p>
+              icon={Icon}
+              name={c}
+              ariaLabel={locked ? `${c}, locked — no apps in this category yet` : `Open ${c} applications in a new tab`}
+              subtitle={
+                locked ? (
+                  <span style={{ fontSize: 8, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
+                    Locked
+                  </span>
+                ) : (
                   <p
                     style={{
                       fontSize: 9.5,
@@ -239,9 +237,56 @@ export default function HomePage() {
                       overflow: 'hidden',
                     }}
                   >
-                    {r.when}
+                    {CATEGORY_DESCRIPTIONS[c]}
                   </p>
-                </button>
+                )
+              }
+            />
+          );
+        })}
+      </div>
+
+      {visibleRecent.length > 0 && (
+        <>
+          <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap }}>
+            {visibleRecent.map((r) => {
+              const app = appById(r.id);
+              if (!app) return null;
+              const Icon = app.icon;
+              const accent = appColor(app.id);
+              return (
+                <HoverTile
+                  key={r.id}
+                  tileStyle={tileStyle}
+                  tileNameStyle={tileNameStyle}
+                  iconBox={tileIconBox}
+                  iconSize={tileIconSize}
+                  accent={accent}
+                  onClick={() => openApp(app)}
+                  icon={Icon}
+                  name={app.name}
+                  ariaLabel={`Open ${app.name}`}
+                  title={app.name}
+                  subtitle={
+                    <p
+                      style={{
+                        fontSize: 9.5,
+                        lineHeight: '12px',
+                        color: colors.inkSoft,
+                        fontFamily: fonts.sansRegular,
+                        margin: 0,
+                        textAlign: 'center',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {r.when}
+                    </p>
+                  }
+                />
               );
             })}
           </div>

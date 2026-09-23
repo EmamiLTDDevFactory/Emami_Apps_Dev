@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from '../../../src/context/AuthContext';
 import { ClaimProvider } from '../../../src/context/ClaimContext';
 import { ActivityIndicator, Image, LogBox, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Head from 'expo-router/head';
 
 // Suppress dev-mode error overlay so red X does not appear during demo
 LogBox.ignoreAllLogs();
@@ -189,13 +190,20 @@ function RootLayoutNav() {
   );
 }
 
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
 export default function RootLayout() {
   return (
+    <>
+      <Head>
+        <title>Non CTC Expense</title>
+      </Head>
     <AuthProvider>
       <ClaimProvider>
         <RootLayoutNav />
       </ClaimProvider>
     </AuthProvider>
+    </>
   );
 }
 

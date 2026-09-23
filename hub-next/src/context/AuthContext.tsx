@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { storage } from '../lib/storage';
+import { resetInstallOfferForNewLogin } from '../hooks/usePwaInstall';
 import {
   getMyProfile,
   getMicrosoftSignOutUrl,
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // puts the correct URL in the address bar; nothing extra is needed here.
     setIsLoggedIn(true);
     storage.setItem(AUTH_STORAGE_KEY, 'true');
+    resetInstallOfferForNewLogin();
     if (email) {
       setUserEmail(email);
       storage.setItem(AUTH_EMAIL_STORAGE_KEY, email);

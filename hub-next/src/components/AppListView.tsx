@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import FilterBar from './FilterBar';
 import AppGrid from './AppGrid';
@@ -28,15 +28,24 @@ function AppListViewContent({ title, onlyFavorites }: AppListViewProps) {
   const unlockedAppIds = useUnlockedAppIds();
   const appRoles = useAppRoles();
 
-  // Seeds the category filter from ?category=... (see the Home page's segregation tiles, which
-  // route here instead of filtering in place) — only read once, on the initial render; switching
-  // categories from the FilterBar itself after that is plain local state, same as before.
+  // Seeds the category filter from ?category=... (see the Home page's segregation tiles and the
+  // Sidebar's category section, which both route here instead of filtering in place).
   const requestedCategory = searchParams.get('category');
   const initialCategory: CategoryFilter = (CATEGORIES as string[]).includes(requestedCategory || '')
     ? (requestedCategory as CategoryFilter)
     : 'All';
   const [category, setCategory] = useState<CategoryFilter>(initialCategory);
   const [sort, setSort] = useState<SortOption>('Alphabetical');
+
+  // The page stays mounted across category-to-category navigation (only the query string changes),
+  // so the useState initializer above never re-runs on its own — without this effect, clicking a
+  // different category tile/sidebar item while already on /my-applications left the grid showing
+  // the previous category even though the URL and the Sidebar's own highlight had moved on.
+  useEffect(() => {
+    if (requestedCategory && (CATEGORIES as string[]).includes(requestedCategory)) {
+      setCategory(requestedCategory as CategoryFilter);
+    }
+  }, [requestedCategory]);
 
   const apps = useFilteredApps({ query, category, sort, favorites, onlyFavorites });
 

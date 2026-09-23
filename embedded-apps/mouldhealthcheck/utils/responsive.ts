@@ -11,8 +11,9 @@ export const BREAKPOINTS = {
   laptop: 1024,
 } as const;
 
-/** Width of the persistent left nav rail shown at tablet width and up (see CustomTabs). */
-export const SIDEBAR_WIDTH = 232;
+/** Width of the persistent left side pane shown at tablet width and up (see CustomTabs) — 218px,
+ * the same as the other embedded apps' side pane (market-rate/src/components/SidePane.tsx). */
+export const SIDEBAR_WIDTH = 218;
 
 export type Breakpoint = "phone" | "tablet" | "laptop";
 

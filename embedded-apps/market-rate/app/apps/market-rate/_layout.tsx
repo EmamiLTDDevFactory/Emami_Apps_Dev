@@ -8,13 +8,14 @@ import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { MarketRateAuthProvider, useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
+import Head from 'expo-router/head';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 type NavItem = SidePaneItem & {
-  href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
+  href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/rate-entry' | '/apps/market-rate/master-data';
   adminOnly?: boolean;
   hiddenForAdmin?: boolean;
 };
@@ -29,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
+  // Admin fills in / corrects rates vendors haven't submitted, for any vendor × material.
+  { href: '/apps/market-rate/rate-entry', label: 'Market Rate Entry', icon: 'create-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 
@@ -72,7 +75,7 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
 // signed them in — so on mount, check for a real hub session (not just a stray email left over in
 // localStorage) and bounce straight back to the hub to sign in if there isn't one, rather than
 // ever rendering the form for an unauthenticated visitor who typed the URL directly.
-export default function MarketRateLayout() {
+function MarketRateLayoutContent() {
   const { width } = useWindowDimensions();
   const isWideScreen = width >= WIDE_BREAKPOINT;
   const [authorized, setAuthorized] = useState<boolean | null>(null);
@@ -157,6 +160,7 @@ export default function MarketRateLayout() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="dashboard" />
                 <Stack.Screen name="submission-history" />
+                <Stack.Screen name="rate-entry" />
                 <Stack.Screen name="master-data" />
               </Stack>
             </SafeAreaView>
@@ -245,3 +249,16 @@ const styles = StyleSheet.create({
     maxWidth: 140,
   },
 });
+
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
+export default function MarketRateLayout() {
+  return (
+    <>
+      <Head>
+        <title>Current Market Rate</title>
+      </Head>
+      <MarketRateLayoutContent />
+    </>
+  );
+}

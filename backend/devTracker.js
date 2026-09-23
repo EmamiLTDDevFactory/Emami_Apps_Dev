@@ -7,8 +7,9 @@ const router = express.Router();
 const FIELDS = [
     'devList', 'status', 'area', 'func', 'impact', 'complexity', 'priority',
     'spocFunction', 'spocIT', 'devFactory', 'startDate', 'reqDiscussion', 'fsPrep',
-    'development', 'itTesting', 'userTesting', 'hypercare', 'targetDate', 'devTime',
-    'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer'
+    'development', 'itTesting', 'userTesting', 'hypercare',
+    'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
+    'targetDate', 'devTime', 'rework', 'reasonCategory', 'reasonDelay', 'remarks', 'developer'
 ];
 
 // Column names are camelCase to match the JSON the frontend already sends —
@@ -71,6 +72,10 @@ async function initSchema() {
             "itTesting" text,
             "userTesting" text,
             hypercare integer,
+            "hypercareDate" text,
+            "onHoldDate" text,
+            "completedDate" text,
+            "cancelledDate" text,
             "targetDate" text,
             "devTime" integer,
             rework integer,
@@ -82,6 +87,15 @@ async function initSchema() {
             "updatedAt" timestamptz DEFAULT now()
         )
     `);
+    // Added after dev_tracker.items already existed in some deployments — ADD COLUMN IF NOT
+    // EXISTS makes this idempotent instead of failing on a table that predates these columns.
+    // Each backs a status's own "reached this stage on" date (Hypercare/On Hold/Completed/
+    // Cancelled), same idea as the pre-existing reqDiscussion/fsPrep/itTesting/userTesting
+    // columns but for the four statuses STAGE_PIPELINE doesn't cover — see MANUAL_STATUS_DATES.
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "hypercareDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "onHoldDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "completedDate" text`);
+    await pool.query(`ALTER TABLE dev_tracker.items ADD COLUMN IF NOT EXISTS "cancelledDate" text`);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS dev_tracker.item_history (
             id serial PRIMARY KEY,
@@ -97,6 +111,27 @@ async function initSchema() {
     // makes this idempotent instead of failing on a table that predates this column.
     await pool.query(`ALTER TABLE dev_tracker.item_history ADD COLUMN IF NOT EXISTS "changedByUsername" text`);
 
+    // A named, reusable Dashboard filter/sort/grouping combination. The config is stored as
+    // jsonb rather than a column per filter because the Dashboard's filter set has grown twice
+    // already (impact/complexity/devFactory/reasonCategory, then lifecycle) and each addition
+    // would otherwise be a migration. Nothing server-side reads inside it — it is handed back
+    // to the page exactly as it was saved — so an older client simply ignores keys it predates.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.saved_views (
+            id text PRIMARY KEY,
+            name text NOT NULL,
+            "ownerEmail" text NOT NULL,
+            "ownerName" text,
+            shared boolean NOT NULL DEFAULT false,
+            config jsonb NOT NULL,
+            "createdAt" timestamptz DEFAULT now(),
+            "updatedAt" timestamptz DEFAULT now()
+        )
+    `);
+    // Every read filters on one of these two, and the list is re-fetched on each Dashboard load.
+    await pool.query(`CREATE INDEX IF NOT EXISTS saved_views_owner_idx ON dev_tracker.saved_views ("ownerEmail")`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS saved_views_shared_idx ON dev_tracker.saved_views (shared) WHERE shared`);
+
     // Dropdown option values (Status, Area, Priority, Impact, Complexity, Dev Factory, Reason
     // category), editable from the "Manage master data" tile instead of being hardcoded in
     // app.js. "active" is a soft-delete flag — a retired option must keep rendering correctly on
@@ -105,7 +140,7 @@ async function initSchema() {
         CREATE TABLE IF NOT EXISTS dev_tracker.master_data (
             id text PRIMARY KEY,
             category text NOT NULL CHECK (category IN
-                ('status','area','priority','impact','complexity','devFactory','reasonCategory')),
+                ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday')),
             value text NOT NULL,
             color text,
             "softColor" text,
@@ -115,6 +150,14 @@ async function initSchema() {
             "updatedAt" timestamptz DEFAULT now(),
             UNIQUE(category, value)
         )
+    `);
+    // 'holiday' (Resource Utilization's working-day calendar) added after this table already
+    // existed in some deployments — widen the CHECK constraint the same idempotent way
+    // "changedByUsername" was added to item_history above, instead of a one-off migration script.
+    await pool.query(`ALTER TABLE dev_tracker.master_data DROP CONSTRAINT IF EXISTS master_data_category_check`);
+    await pool.query(`
+        ALTER TABLE dev_tracker.master_data ADD CONSTRAINT master_data_category_check CHECK (category IN
+            ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday'))
     `);
 
     try {
@@ -137,9 +180,28 @@ async function initSchema() {
         console.error('[dev-tracker] Migration of legacy public.items failed:', err.message);
     }
 
+    // One row per Import Center run (see POST /import-center/imports) — a summary of the
+    // upload, not the imported data itself (that lands in dev_tracker.items like any other
+    // create). `errors` holds a per-row reason for every row that wasn't imported, so the
+    // page's "view" action can show why without re-parsing the original file.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.import_logs (
+            id text PRIMARY KEY,
+            "fileName" text NOT NULL,
+            "uploadedByEmail" text,
+            "uploadedByName" text,
+            "totalRows" integer NOT NULL DEFAULT 0,
+            successful integer NOT NULL DEFAULT 0,
+            failed integer NOT NULL DEFAULT 0,
+            status text NOT NULL DEFAULT 'Completed',
+            errors jsonb NOT NULL DEFAULT '[]',
+            "createdAt" timestamptz DEFAULT now()
+        )
+    `);
+
     await seedMasterDataIfEmpty();
 
-    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data).');
+    console.log('[dev-tracker] Schema up to date (dev_tracker.items, dev_tracker.item_history, dev_tracker.master_data, dev_tracker.import_logs).');
 }
 
 // Seeded once, only if the table is empty — these match exactly what used to be hardcoded in
@@ -309,7 +371,7 @@ router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
-const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory', 'holiday'];
 
 // Gates the master-data WRITE routes to users granted the "Admin" role for the 'dev-tracker' app
 // in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact
@@ -411,6 +473,208 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
 });
 
 // ============================================================
+// Saved views — a named Dashboard filter/sort/grouping combination. Available to every user
+// with app access (not admin-gated): the whole point is that someone who looks at "my overdue
+// MM items" daily stops rebuilding it by hand. A view is private to its owner unless they mark
+// it shared, and only the owner can rename or delete one, so a shared view can't be edited out
+// from under the people using it.
+// ============================================================
+const MAX_SAVED_VIEWS_PER_USER = 50;
+
+router.get('/saved-views', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const result = await pool.query(
+            `SELECT * FROM dev_tracker.saved_views
+             WHERE "ownerEmail" = $1 OR shared = true
+             ORDER BY shared ASC, name ASC`,
+            [email]
+        );
+        // `mine` saves the client re-deriving ownership to decide whether to show delete/rename.
+        res.json(result.rows.map((r) => ({ ...r, mine: r.ownerEmail === email })));
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load saved views' });
+    }
+});
+
+router.post('/saved-views', requireDevTrackerAccess, async (req, res) => {
+    const { name, config, shared } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'name is required' });
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+        return res.status(400).json({ error: 'config must be an object' });
+    }
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rows: [{ count }] } = await pool.query(
+            'SELECT COUNT(*)::int AS count FROM dev_tracker.saved_views WHERE "ownerEmail" = $1', [email]
+        );
+        if (count >= MAX_SAVED_VIEWS_PER_USER) {
+            return res.status(400).json({ error: `You already have ${MAX_SAVED_VIEWS_PER_USER} saved views — delete one first.` });
+        }
+        const ownerName = await resolveDisplayName(req);
+        const result = await pool.query(
+            `INSERT INTO dev_tracker.saved_views (id, name, "ownerEmail", "ownerName", shared, config)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [crypto.randomUUID(), String(name).trim().slice(0, 80), email, ownerName, shared === true, JSON.stringify(config)]
+        );
+        res.status(201).json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to save view' });
+    }
+});
+
+router.put('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
+    const { name, config, shared } = req.body || {};
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rows: [existing] } = await pool.query('SELECT * FROM dev_tracker.saved_views WHERE id = $1', [req.params.id]);
+        if (!existing) return res.status(404).json({ error: 'View not found' });
+        if (existing.ownerEmail !== email) return res.status(403).json({ error: 'Only the owner can change this view' });
+        const result = await pool.query(
+            `UPDATE dev_tracker.saved_views
+                SET name = $2, shared = $3, config = $4, "updatedAt" = now()
+              WHERE id = $1 RETURNING *`,
+            [
+                req.params.id,
+                name != null ? String(name).trim().slice(0, 80) : existing.name,
+                shared != null ? shared === true : existing.shared,
+                JSON.stringify(config && typeof config === 'object' && !Array.isArray(config) ? config : existing.config),
+            ]
+        );
+        res.json({ ...result.rows[0], mine: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to update view' });
+    }
+});
+
+router.delete('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const { rowCount } = await pool.query(
+            'DELETE FROM dev_tracker.saved_views WHERE id = $1 AND "ownerEmail" = $2', [req.params.id, email]
+        );
+        if (!rowCount) return res.status(403).json({ error: 'Only the owner can delete this view' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete view' });
+    }
+});
+
+// ============================================================
+// Import Center — bulk-load items from a spreadsheet. The browser parses the .xlsx itself
+// (SheetJS, client-side) and posts plain row objects keyed by the same FIELDS the New Item
+// form uses; this endpoint validates and inserts each one exactly like POST /items would,
+// then writes one summary row to import_logs so the page can show its own run history.
+// ============================================================
+const IMPORT_CHECKED_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory'];
+const IMPORT_CATEGORY_LABELS = {
+    status: 'Status', area: 'Module', priority: 'Priority', impact: 'Business Impact',
+    complexity: 'Technical Complexity', devFactory: 'Dev Factory', reasonCategory: 'Reason for Delay',
+};
+
+router.get('/import-center/imports', requireDevTrackerAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM dev_tracker.import_logs ORDER BY "createdAt" DESC LIMIT 100');
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load import history' });
+    }
+});
+
+router.post('/import-center/imports', requireDevTrackerAdmin, async (req, res) => {
+    const { fileName, rows } = req.body || {};
+    if (!fileName || !String(fileName).trim()) {
+        return res.status(400).json({ error: 'fileName is required' });
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+        return res.status(400).json({ error: 'No rows to import' });
+    }
+
+    try {
+        const changedBy = await resolveDisplayName(req);
+        const mdResult = await pool.query('SELECT category, value FROM dev_tracker.master_data WHERE active = true');
+        const validValues = {};
+        for (const r of mdResult.rows) {
+            if (!validValues[r.category]) validValues[r.category] = new Set();
+            validValues[r.category].add(r.value);
+        }
+
+        let successful = 0;
+        const errors = [];
+        for (let i = 0; i < rows.length; i++) {
+            const rawRow = rows[i] || {};
+            const rowNum = i + 2; // account for the spreadsheet's header row
+            const title = String(rawRow.devList || '').trim();
+            if (!title) {
+                errors.push({ row: rowNum, reason: 'Development / Item Title is required' });
+                continue;
+            }
+            const badField = IMPORT_CHECKED_CATEGORIES.find((cat) => {
+                const v = rawRow[cat];
+                return v && validValues[cat] && !validValues[cat].has(String(v).trim());
+            });
+            if (badField) {
+                errors.push({ row: rowNum, reason: `Unknown ${IMPORT_CATEGORY_LABELS[badField]}: "${rawRow[badField]}"` });
+                continue;
+            }
+            try {
+                const row = normalize(rawRow);
+                const id = crypto.randomUUID();
+                const cols = FIELDS.map(q).join(', ');
+                const placeholders = FIELDS.map((_, idx) => `$${idx + 2}`).join(', ');
+                const values = FIELDS.map((f) => row[f]);
+                await pool.query(`INSERT INTO dev_tracker.items (id, ${cols}) VALUES ($1, ${placeholders})`, [id, ...values]);
+                await pool.query(
+                    `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, $2, $3, $4, $5)`,
+                    [id, '__created__', null, row.devList, changedBy]
+                );
+                successful++;
+            } catch (err) {
+                console.error('[dev-tracker] import row failed:', err.message);
+                errors.push({ row: rowNum, reason: 'Could not save row (server error)' });
+            }
+        }
+
+        const logResult = await pool.query(
+            `INSERT INTO dev_tracker.import_logs
+                (id, "fileName", "uploadedByEmail", "uploadedByName", "totalRows", successful, failed, status, errors)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [
+                crypto.randomUUID(),
+                String(fileName).trim(),
+                String(req.get('x-user-email') || '').trim().toLowerCase(),
+                changedBy,
+                rows.length,
+                successful,
+                rows.length - successful,
+                'Completed',
+                JSON.stringify(errors),
+            ]
+        );
+        res.status(201).json(logResult.rows[0]);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Import failed' });
+    }
+});
+
+router.delete('/import-center/imports/:id', requireDevTrackerAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('DELETE FROM dev_tracker.import_logs WHERE id = $1 RETURNING id', [req.params.id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Import not found' });
+        res.status(204).end();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to delete import log' });
+    }
+});
+
+// ============================================================
 // Recent activity feed — the last few real changes made across all
 // items, with who made them, shown on the home page's "Recent
 // activity" card.
@@ -422,12 +686,36 @@ router.get('/activity', requireDevTrackerAccess, async (req, res) => {
             FROM dev_tracker.item_history h
             JOIN dev_tracker.items i ON i.id = h."itemId"
             ORDER BY h."changedAt" DESC
-            LIMIT 5
+            LIMIT 10
         `);
         res.json(result.rows);
     } catch (err) {
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to load recent activity' });
+    }
+});
+
+// ============================================================
+// Change Log — every item_history row across every item (not just the
+// last 5 the Home widget above shows), with the item's own area/status
+// along for the ride so the Change Log page can filter by them without
+// a second round trip. Every field-level change and every "__created__"
+// row is included; the page itself applies user/field/area/status/date
+// filters client-side, same as Dashboard already does with items.
+// ============================================================
+router.get('/activity/log', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT h.id, h."itemId", h.field, h."oldValue", h."newValue", h."changedAt", h."changedByUsername",
+                   i."devList", i.area, i.status
+            FROM dev_tracker.item_history h
+            JOIN dev_tracker.items i ON i.id = h."itemId"
+            ORDER BY h."changedAt" DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load change log' });
     }
 });
 

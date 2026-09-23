@@ -37,9 +37,25 @@ const TOKEN_KEY = 'timesheet-api-token';
 // Hardcoded (not a NEXT_PUBLIC_* env var) on purpose, same reasoning as the original Vite app's
 // own comment here: an env var of this shape can collide with another embedded app's own
 // Amplify-console-level global var of the same name. This app's own backend (server/) is deployed
-// on 172.17.2.21, reachable via the existing nginx /dev-api/timesheet/ route in production; in
-// local dev it's reached directly (no Vite-proxy equivalent under `next dev`).
-const API_BASE = process.env.NODE_ENV !== 'production' ? 'http://localhost:4000/api' : 'https://audit-capa-api.emamiapps.in/dev-api/timesheet/api';
+// on 172.17.2.21 as two separate PM2 processes: timesheet-api (prod, port 4101, Prdhubfactory's
+// "timesheet" schema) and timesheet-api-dev (dev, port 4100, Devhubfactory's "timesheet" schema),
+// reachable via the nginx /api/timesheet/ and /dev-api/timesheet/ routes respectively.
+//
+// This MUST split on hostname, the same way every other embedded app with both a dev and a prod
+// deployment does (see e.g. payment-tracking's hubAccessApi.ts, audit-capa's emamiAppsUrl.js). A
+// 2026-09-16 migration briefly hardcoded this to the prod route unconditionally, which broke
+// Timesheet on dev.emamiapps.in in two ways: (1) prod's backend never allowed dev's origin in its
+// CORS config, and, less obviously but more seriously, (2) prod's backend verifies hub session
+// tokens against a DIFFERENT signing secret than the one dev's actual login (the
+// emami-apps-hub-auth-dev Lambda) issues them with — timesheet-api-dev's secret was already
+// correctly set to match that Lambda, so a real dev login token can only ever verify successfully
+// against timesheet-api-dev, never timesheet-api. No amount of re-logging-in fixes that; only
+// calling the right backend does. In local dev it's reached directly (no Vite-proxy equivalent
+// under `next dev`).
+const TIMESHEET_HOSTNAME_IS_DEV = typeof window !== 'undefined' && window.location.hostname.includes('dev');
+const API_BASE = process.env.NODE_ENV !== 'production'
+  ? 'http://localhost:4000/api'
+  : `https://audit-capa-api.emamiapps.in${TIMESHEET_HOSTNAME_IS_DEV ? '/dev-api/timesheet' : '/api/timesheet'}/api`;
 
 function loadSession(): Session {
   try {

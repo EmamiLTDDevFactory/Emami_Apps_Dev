@@ -1,11 +1,15 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
-  HelpCircle, Settings, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
-export const CATEGORIES: CategoryFilter[] = ['All', 'CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+// 'All' first, then every category A-Z (case-insensitive) — sorted here rather than hand-ordered
+// so a newly added category lands in the right place. Every category list in the hub (Home tiles,
+// side pane, filter bar, My Applications) renders from this one array.
+const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance'];
+export const CATEGORIES: CategoryFilter[] = ['All', ...[...CATEGORY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))];
 
 /**
  * Live app URLs. Every real app renders inline on the launch screen — same-origin apps
@@ -29,7 +33,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   // "payment-tracking" for routing stability) is PO Followup's sibling app.
   'payment-tracking': '/apps/payment-tracking', // IBD Provision Tracking
   timesheet: '/apps/timesheet', // TimeSheet
-  'fm-po-deviation': '/apps/fm-po-deviation', // PO Deviation Approval
+  'fm-po-deviation': '/apps/fm-po-deviation', // PO Approval
   mediclaim: '/apps/mediclaim', // Mediclaim Policy
   'term-policy': '/apps/term-policy', // Term Policy
   'cashflow-forecast': '/apps/cashflow-forecast', // CashFlow Intelligence
@@ -48,7 +52,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0 },
-  { id: 'fm-po-deviation', name: 'PO Deviation Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0 },
+  { id: 'fm-po-deviation', name: 'PO Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0 },
   { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0 },
   { id: 'term-policy', name: 'Term Policy', desc: 'Submit your Term Life policy details and view admin submission reports.', cat: 'Cross-Function', icon: ShieldCheck, uses: 0 },
   { id: 'cashflow-forecast', name: 'CashFlow Intelligence', desc: 'AI-driven 13-week cash flow forecast, risk dashboard and explainability with SAP OData integration.', cat: 'Finance', icon: LineChart, uses: 0 },
@@ -66,7 +70,7 @@ export const NAV: NavItem[] = [
   { id: 'MyApplications', label: 'My Applications', icon: LayoutGrid },
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
-  { id: 'Settings', label: 'My Profile', icon: Settings },
+  { id: 'Settings', label: 'My Profile', icon: CircleUserRound },
   { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
   { id: 'Administration', label: 'Administration', icon: BarChart3 },
 ];

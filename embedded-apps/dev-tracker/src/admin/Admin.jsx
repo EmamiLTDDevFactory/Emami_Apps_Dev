@@ -1,13 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import AccountBar from '../shared/AccountBar.jsx';
-import { apiMasterData, apiMasterDataCreate, apiMasterDataUpdate, getCurrentUserEmail, isDevTrackerAdmin } from '../shared/api.js';
+import Sidebar from '../shared/Sidebar.jsx';
+import Topbar from '../shared/Topbar.jsx';
+import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
+import { apiMasterData, apiMasterDataCreate, apiMasterDataUpdate, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData } from '../shared/masterData.js';
 import { hexToSoft } from '../shared/utils.js';
 import { CATEGORIES } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
 
+// Master Data has no items/activity of its own to drive the Topbar's bell with real
+// notifications, so it's passed a permanently-empty list — genuinely nothing to show
+// here, not a stubbed-out feature.
+const NO_NOTIFICATIONS = [];
+function noop() {}
+
 export default function Admin() {
-  const [access, setAccess] = useState('checking'); // checking | denied | allowed
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [addingCategory, setAddingCategory] = useState(null);
@@ -16,21 +23,19 @@ export default function Admin() {
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const email = getCurrentUserEmail();
+  const { isAdmin, roleLabel, profileName } = useDevTrackerSession(email);
 
   useEffect(() => {
     if (!email) {
       window.location.href = ROUTES.home;
       return;
     }
-    isDevTrackerAdmin(email).then((ok) => {
-      if (!ok) {
-        window.location.href = ROUTES.home;
-      } else {
-        setAccess('allowed');
-        loadMasterData();
-      }
-    });
   }, [email]);
+
+  useEffect(() => {
+    if (isAdmin === false) window.location.href = ROUTES.home;
+    else if (isAdmin === true) loadMasterData();
+  }, [isAdmin]);
 
   function loadMasterData() {
     apiMasterData(email).then((r) => setRows(r || []));
@@ -93,35 +98,47 @@ export default function Admin() {
     }
   }
 
-  if (access !== 'allowed') {
-    return <div className="empty-state">Checking access…</div>;
+  if (!email) return null;
+
+  // Rendered inside the shell, not instead of it — losing the Sidebar/Topbar while
+  // access is still resolving (or for a denied user, briefly, before the redirect lands)
+  // would strand someone with no way to navigate away.
+  if (isAdmin !== true) {
+    return (
+      <div className="app-shell">
+        <Sidebar active="masterData" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+        <main className="shell-main">
+          <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={NO_NOTIFICATIONS} onMarkAllRead={noop} onClear={noop} />
+          <div className="empty-state">Checking access…</div>
+        </main>
+      </div>
+    );
   }
 
   return (
-    <div className="admin-stage">
-      <AccountBar />
-      <div className="admin-header">
-        <div>
-          <a className="back-link" href={ROUTES.home}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-            Home
-          </a>
-          <div className="eyebrow">SAP Change &amp; Development Log</div>
-          <h1 className="h1">Manage Master Data</h1>
-        </div>
-        <div style={{ fontSize: 12.5, color: 'var(--muted)', maxWidth: 280, textAlign: 'right', lineHeight: 1.5 }}>
-          Click any value to rename or recolor it. Toggling a value off keeps it on past items but removes it from new entries.
-        </div>
-      </div>
+    <div className="app-shell">
+      <Sidebar active="masterData" isAdmin={isAdmin} email={email} name={profileName} identityInTopbar />
+      <main className="shell-main">
+        <Topbar email={email} name={profileName} roleLabel={roleLabel} notifications={NO_NOTIFICATIONS} onMarkAllRead={noop} onClear={noop} />
 
-      <div className="card">
+        <div className="admin-header">
+          <div>
+            <div className="eyebrow">SAP Change &amp; Development Log</div>
+            <h1 className="h1">Manage Master Data</h1>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--muted)', maxWidth: 280, textAlign: 'right', lineHeight: 1.5 }}>
+            Click any value to rename or recolor it. Toggling a value off keeps it on past items but removes it from new entries.
+          </div>
+        </div>
+
+        <div className="card">
         {CATEGORIES.map((cat) => {
           const values = grouped[cat.key] || [];
           return (
             <div className="shelf" key={cat.key}>
               <div className="shelf-head">
                 <span className="shelf-name">{cat.label}</span>
-                <span className="shelf-count">{values.length} values{cat.key === 'area' ? ' · drives color coding everywhere' : ''}</span>
+                <span className="shelf-count">{values.length} values{cat.hasColor ? ' · drives color coding everywhere' : ''}</span>
               </div>
               <div className="chips">
                 {values.map((row) => (
@@ -162,7 +179,7 @@ export default function Admin() {
                     <input
                       type="text"
                       autoFocus
-                      placeholder="New value"
+                      placeholder={cat.key === 'holiday' ? 'YYYY-MM-DD Holiday name' : 'New value'}
                       value={addValue}
                       onChange={(e) => setAddValue(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && submitAdd(cat)}
@@ -172,7 +189,7 @@ export default function Admin() {
                 ) : (
                   <button className="chip-add" onClick={() => { setAddingCategory(cat.key); setAddValue(''); setError(null); }}>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Add {cat.key === 'area' ? 'area' : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : ''}
+                    Add {cat.key === 'area' ? 'area' : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : cat.key === 'holiday' ? 'holiday' : ''}
                   </button>
                 )}
               </div>
@@ -180,7 +197,8 @@ export default function Admin() {
             </div>
           );
         })}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

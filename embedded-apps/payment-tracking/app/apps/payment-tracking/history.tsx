@@ -1015,6 +1015,9 @@ const styles = StyleSheet.create({
   checkbox: {
     padding: 2,
   },
+  checkbox: {
+    padding: 2,
+  },
   cardTitle: {
     fontSize: 12,
     fontWeight: '800',

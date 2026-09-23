@@ -240,17 +240,24 @@ const BASE_COLUMNS: ColumnDef[] = [
   { key: 'status', label: 'Status', width: 90 },
 ];
 
+const CHANNEL_DISTANCE_COLUMNS: ColumnDef[] = [
+  { key: 'channel', label: 'Channel', width: 90 },
+  { key: 'distance_km', label: 'Distance', width: 90 },
+];
+
 const TYPE_EXTRA_COLUMNS: Record<ReportType, ColumnDef[]> = {
-  all: [{ key: 'no_of_cases', label: 'Cases', width: 70 }],
+  all: [{ key: 'no_of_cases', label: 'Cases', width: 70 }, ...CHANNEL_DISTANCE_COLUMNS],
   pending: [
     { key: '_edd', label: 'Exp. Delivery', width: 100 },
     { key: 'no_of_cases', label: 'Cases', width: 70 },
+    ...CHANNEL_DISTANCE_COLUMNS,
   ],
   dispatched: [
     { key: 'dispatch_date', label: 'Dispatch Date', width: 100 },
     { key: '_edd', label: 'Exp. Delivery', width: 100 },
     { key: 'transporter', label: 'Transporter', width: 130 },
     { key: 'lr_no', label: 'LR No', width: 90 },
+    ...CHANNEL_DISTANCE_COLUMNS,
   ],
   completed: [
     { key: 'dispatch_date', label: 'Dispatch Date', width: 100 },
@@ -259,15 +266,18 @@ const TYPE_EXTRA_COLUMNS: Record<ReportType, ColumnDef[]> = {
     { key: 'total_delay', label: 'Delay', width: 95 },
     { key: '_delay', label: 'Delay vs EDD(Days)', width: 110 },
     { key: 'transporter', label: 'Transporter', width: 130 },
+    ...CHANNEL_DISTANCE_COLUMNS,
   ],
   returned: [
     { key: 'actual_delivery_date', label: 'Actual Delivery', width: 105 },
     { key: 'receiving_date', label: 'Receiving Date', width: 105 },
     { key: 'cancel_reason', label: 'Reason', width: 180 },
+    ...CHANNEL_DISTANCE_COLUMNS,
   ],
   cancelled: [
     { key: 'cancel_date', label: 'Cancel Date', width: 95 },
     { key: 'cancel_reason', label: 'Reason', width: 180 },
+    ...CHANNEL_DISTANCE_COLUMNS,
   ],
 };
 

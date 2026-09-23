@@ -280,6 +280,8 @@ export default function DispatchedScreen() {
                       <Info label="Transporter" value={truncate(row.transporter, 21, true)} />
                       <Info label="Vehicle No" value={row.vehicle_no || '—'} />
                       <Info label="Vehicle Type" value={row.vehicle_type || '—'} />
+                      <Info label="Channel" value={row.channel || '—'} />
+                      <Info label="Distance" value={row.distance_km ? `${Math.round(row.distance_km)} km` : '—'} />
                     </View>
                   </Pressable>
                 );
