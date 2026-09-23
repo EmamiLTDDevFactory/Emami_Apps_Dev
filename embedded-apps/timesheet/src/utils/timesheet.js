@@ -12,6 +12,7 @@ export const STATUS = {
 export const MAX_HOURS_PER_DAY = 12
 export const HOURS_PER_WEEKDAY = 8
 export const PAYROLL_CUTOFF_DAYS = 10 // days after month end an Approved timesheet becomes Locked
+export const SUBMIT_WINDOW_LAST_DAY = 5 // a month can still be submitted up to this day of the next month
 
 // Leave types that draw from the yearly leave balance pool. Mirrors
 // server/src/routes/leaveBalances.js's own copy (the server can't import from src/). Unpaid
@@ -89,6 +90,16 @@ export function computeRowTotal(entries, taskId) {
 export function expectedHoursToDate(monthStartIso, referenceDate = new Date(), leaveDaysToDate = 0, overrides) {
   const base = countWorkingDaysUpTo(monthStartIso, referenceDate, overrides) * HOURS_PER_WEEKDAY
   return Math.max(0, base - leaveDaysToDate * HOURS_PER_WEEKDAY)
+}
+
+// A month's timesheet can be submitted any time during the month itself and
+// up to the SUBMIT_WINDOW_LAST_DAY-th of the following month (e.g. September
+// until 5 October), after which it's closed. Mirrors
+// server/src/routes/timesheets.js's own copy.
+export function getSubmitWindow(monthStartIso, referenceDate = new Date()) {
+  const nextMonthStart = addDays(monthEndDate(monthStartIso), 1)
+  const closesOn = new Date(nextMonthStart.getFullYear(), nextMonthStart.getMonth(), SUBMIT_WINDOW_LAST_DAY, 23, 59, 59, 999)
+  return { closesOn, closed: referenceDate.getTime() > closesOn.getTime() }
 }
 
 export function isMonthIncomplete(entries, monthStartIso, referenceDate = new Date()) {

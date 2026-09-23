@@ -4,6 +4,17 @@ import { pool } from '../db/pool.js'
 
 const router = Router()
 
+// A month can be edited (draft-saved) and submitted during the month itself and up to the SUBMIT_WINDOW_LAST_DAY-th of the
+// following month (e.g. September until 5 October). Mirrors src/utils/timesheet.js's
+// getSubmitWindow (the server can't import from src/).
+const SUBMIT_WINDOW_LAST_DAY = 5
+
+function isWithinSubmitWindow(monthStartDate, now = new Date()) {
+  const [y, m] = monthStartDate.split('-').map(Number)
+  const closesOn = new Date(y, m, SUBMIT_WINDOW_LAST_DAY, 23, 59, 59, 999) // m is 1-based, so this is next month
+  return now <= closesOn
+}
+
 function mapEntry(row) {
   return {
     id: row.id,
@@ -150,6 +161,12 @@ router.post('/draft', async (req, res, next) => {
       [userId, monthStartDate],
     )
     const existing = rows[0]
+    if (existing?.status !== 'Rejected' && !isWithinSubmitWindow(monthStartDate)) {
+      await client.query('ROLLBACK')
+      return res.status(400).json({
+        error: `A month's timesheet can only be edited until the ${SUBMIT_WINDOW_LAST_DAY}th of the following month.`,
+      })
+    }
     if (existing) {
       if (existing.status !== 'Draft' && existing.status !== 'Rejected') {
         await client.query('ROLLBACK')
@@ -197,6 +214,12 @@ router.post('/submit', async (req, res, next) => {
       [userId, monthStartDate],
     )
     const existing = rows[0]
+    if (existing?.status !== 'Rejected' && !isWithinSubmitWindow(monthStartDate)) {
+      await client.query('ROLLBACK')
+      return res.status(400).json({
+        error: `A month's timesheet can only be submitted until the ${SUBMIT_WINDOW_LAST_DAY}th of the following month.`,
+      })
+    }
     const nextStatus = existing?.status === 'Rejected' ? 'Resubmitted' : 'Submitted'
     let id = existing?.id
     if (existing) {

@@ -8,8 +8,8 @@ import { useToast } from '../../context/ToastContext';
 import TimesheetGrid from '../../components/TimesheetGrid';
 import StatusBadge from '../../components/StatusBadge';
 import MonthSelector from '../../components/MonthSelector';
-import { addMonths, currentMonthStartIso, isOffDay, parseISODate, toISODate } from '../../utils/date';
-import { expectedHoursToDate, getDisplayStatus, isReadOnly, wasEverRejected } from '../../utils/timesheet';
+import { addMonths, currentMonthStartIso, formatDayOrdinal, isOffDay, parseISODate, toISODate } from '../../utils/date';
+import { expectedHoursToDate, getDisplayStatus, getSubmitWindow, isReadOnly, wasEverRejected } from '../../utils/timesheet';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
 
 export default function MyTimesheetPage() {
@@ -38,7 +38,15 @@ export default function MyTimesheetPage() {
 
   const timesheet = getTimesheet(currentUser.id, viewedMonth);
   const displayStatus = getDisplayStatus(timesheet || { status: 'Draft' });
-  const readOnly = timesheet ? isReadOnly(timesheet) : false;
+  const statusReadOnly = timesheet ? isReadOnly(timesheet) : false;
+  const rejected = timesheet?.status === 'Rejected';
+  // A month can be edited and submitted during the month itself and until the 5th of the month
+  // after (e.g. September's timesheet until 5 October); after that it's read-only. A Rejected
+  // timesheet stays editable and can always be resubmitted, since the manager may send it back
+  // after the window has closed.
+  const submitWindow = getSubmitWindow(viewedMonth);
+  const windowClosed = !rejected && submitWindow.closed;
+  const readOnly = statusReadOnly || windowClosed;
 
   const tasks = useMemo(() => {
     return getAssignedTasks(currentUser.id).map((t: any) => ({
@@ -104,8 +112,10 @@ export default function MyTimesheetPage() {
   const expected = expectedHoursToDate(viewedMonth, new Date(), leaveDaysToDate, workingDayOverridesSet);
   const incomplete = liveTotal < expected;
   const noTasks = tasks.length === 0;
-  const showSubmit = !readOnly;
-  const rejected = timesheet?.status === 'Rejected';
+  // Last month keeps showing a (disabled) button once its window closes, so it's clear why it
+  // can't be submitted; older months don't show it at all.
+  const lastMonth = toISODate(addMonths(parseISODate(thisMonth), -1));
+  const showSubmit = !statusReadOnly && (rejected || viewedMonth === thisMonth || viewedMonth === lastMonth);
 
   return (
     <div className="space-y-5">
@@ -165,10 +175,13 @@ export default function MyTimesheetPage() {
 
       {showSubmit && (
         <div className="flex flex-col items-start gap-2">
-          <button type="button" onClick={handleSubmit} disabled={incomplete || noTasks} className="btn-primary">
+          <button type="button" onClick={handleSubmit} disabled={incomplete || noTasks || windowClosed} className="btn-primary">
             {rejected ? 'Resubmit for Approval' : 'Submit for Approval'}
           </button>
-          {!noTasks && incomplete && (
+          {!windowClosed && !rejected && (
+            <p className="text-xs text-inkSoft">You can submit this timesheet until {formatDayOrdinal(submitWindow.closesOn)}.</p>
+          )}
+          {!windowClosed && !noTasks && incomplete && (
             <p className="text-xs text-amber">
               You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
               submitting.
@@ -177,7 +190,12 @@ export default function MyTimesheetPage() {
         </div>
       )}
 
-      {readOnly && <p className="text-xs text-inkSoft">This timesheet is {displayStatus.toLowerCase()} and can no longer be edited.</p>}
+      {statusReadOnly && <p className="text-xs text-inkSoft">This timesheet is {displayStatus.toLowerCase()} and can no longer be edited.</p>}
+      {!statusReadOnly && windowClosed && (
+        <p className="text-xs text-amber">
+          This timesheet&apos;s submission window closed on {formatDayOrdinal(submitWindow.closesOn)} and it can no longer be edited.
+        </p>
+      )}
     </div>
   );
 }
