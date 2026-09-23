@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { colors } from '@/constants/theme';
 import { isoDate, todayDate, toDate } from '@/lib/format';
+import { edDeliveryDelay } from '@/lib/delay';
 import { ApiError, postComplete } from '@/lib/api';
 import { useData } from '@/contexts/DataContext';
 import { DispatchDetail } from '@/types/models';
@@ -47,14 +48,21 @@ export function DeliverModal({
   async function handleConfirm() {
     setSubmitting(true);
     try {
+      const deliveredIso = isoDate(actualDeliveryDate);
       await postComplete({
         invoice_no: row.invoice_no,
         werks: row.depot,
         row_data: row,
-        actual_delivery_date: isoDate(actualDeliveryDate),
+        actual_delivery_date: deliveredIso,
       });
       applyLocalStatus(row.invoice_no, 'Completed', {
-        actual_delivery_date: isoDate(actualDeliveryDate),
+        actual_delivery_date: deliveredIso,
+        // Dispatched rows carry no meaningful total_delay of their own — recompute it here from
+        // EDD vs the delivery date just confirmed, the same way normalizeInvoice does for a fresh
+        // fetch (lib/sapMapping.ts). Without this, this optimistic patch left the row's old
+        // (usually 0) total_delay in place until the next refetch, so a just-delivered invoice
+        // showed "On-time" on the Completed tab even when it was badly late.
+        total_delay: edDeliveryDelay(row.edd, deliveredIso) ?? 0,
       });
       onDone(`✅ ${row.invoice_no} marked as delivered`, 'success');
     } catch (e) {
