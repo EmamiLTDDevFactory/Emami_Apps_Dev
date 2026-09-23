@@ -148,28 +148,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSession({ currentUserId: userId, isLoggedIn: true });
   }
 
-  // Establishes this tab's session token before anything else can load. Three cases:
-  //  1. A hub session token is present (see src/lib/hubAccess.ts) - ALWAYS re-verify it against
-  //     this app's own backend (POST /auth/hub-login), even if we already have a working session
-  //     from earlier. That re-check is what re-reads the current Manage Access role every time,
-  //     so promoting/demoting someone there takes effect the next time they open Timesheet,
-  //     instead of being stuck behind whatever role got baked into a session token that can
-  //     otherwise live for 30 days. If this re-check fails for a transient reason (network
-  //     hiccup) but we already had a working session, fall back to that rather than hard-failing
-  //     someone who was already in.
-  //  2. No hub token, but a session persists from last time (demo login, standalone dev) - reuse
-  //     it; an expired/invalid token surfaces as the ordinary load-error retry.
+  // Establishes this tab's session token before anything else can load. Three cases, checked in
+  // this order so Timesheet's OWN session (up to SESSION_EXPIRES_IN, 30d by default) is what
+  // keeps it usable, not the hub's separate, shorter-lived session:
+  //  1. We already have a working session/token from earlier (hub or demo login) - trust it and
+  //     go straight to refresh(), without re-depending on the hub session still being alive too.
+  //     A dead hub session no longer takes Timesheet down with it; only this app's own token
+  //     dying does (surfaced as the ordinary loadError 401 -> retryHubBootstrap recovery below).
+  //     Trade-off: a Manage Access role change now takes effect the next time a fresh token is
+  //     actually needed (this one expiring, or a real sign-out/sign-in), not on every open.
+  //  2. No working session yet, but a hub session token is present (see src/lib/hubAccess.ts) -
+  //     verify it against this app's own backend (POST /auth/hub-login) to get one.
   //  3. No hub token and no session at all - genuinely standalone (e.g. `npm run dev`). Fetch the
   //     demo user list (unauthenticated) so Login has someone to pick from; demoLogin (below) is
   //     what actually gets a token once someone's picked.
   const bootstrapFromHub = useCallback(() => {
     const hubToken = getHubSessionToken();
+    let cancelled = false;
+
+    if (session.isLoggedIn && loadToken()) {
+      setHubEmailDetected(!!hubToken);
+      setHubBootstrapped(true);
+      refresh();
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (hubToken) {
       setHubEmailDetected(true);
       setHubError(null);
 
-      let cancelled = false;
       api('/auth/hub-login', { method: 'POST', body: JSON.stringify({ hubToken }) })
         .then(async ({ user, token }: AnyRecord) => {
           if (cancelled) return;
@@ -179,12 +188,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
         .catch((err: Error) => {
           if (cancelled) return;
-          if (session.isLoggedIn) {
-            // Already had a working session before this re-check - don't block on a transient
-            // failure, just keep using what we have.
-            refresh();
-            return;
-          }
           console.error('[auth] Could not verify hub access:', err.message);
           setHubError(err.message || 'Could not verify your access.');
         })
