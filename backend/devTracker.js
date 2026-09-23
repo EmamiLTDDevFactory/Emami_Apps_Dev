@@ -964,7 +964,9 @@ router.post('/import-center/imports', requireDevTrackerAdmin, async (req, res) =
         const errors = [];
         for (let i = 0; i < rows.length; i++) {
             const rawRow = rows[i] || {};
-            const rowNum = i + 2; // account for the spreadsheet's header row
+            // The client sends each row's real Excel line (it skips blank rows, so i + 2 drifts
+            // after the first one); i + 2 — header row + 1-based — is the fallback for older clients.
+            const rowNum = Number.isInteger(rawRow.sheetRow) ? rawRow.sheetRow : i + 2;
             const title = String(rawRow.devList || '').trim();
             if (!title) {
                 errors.push({ row: rowNum, reason: 'Development / Item Title is required' });

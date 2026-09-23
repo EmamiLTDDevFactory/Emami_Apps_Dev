@@ -141,7 +141,11 @@ function rowsFromSheet(worksheet) {
       }
       return out;
     })
-    .filter((r) => Object.values(r).some((v) => String(v ?? '').trim() !== ''));
+    // sheetRow is the row's real line in Excel (SheetJS's hidden __rowNum__ is 0-based). Blank
+    // rows are dropped below, so without it every error after a blank row named the wrong line.
+    .map((out, i) => ({ out, sheetRow: raw[i].__rowNum__ + 1 }))
+    .filter(({ out }) => Object.values(out).some((v) => String(v ?? '').trim() !== ''))
+    .map(({ out, sheetRow }) => ({ ...out, sheetRow }));
 }
 
 function fmtDateTime(iso) {

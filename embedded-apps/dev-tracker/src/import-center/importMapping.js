@@ -171,7 +171,7 @@ export function findNonIntegerCells(rows) {
   rows.forEach((r, i) => {
     for (const f of INTEGER_FIELDS) {
       const v = norm(r[f]);
-      if (v && !/^-?\d+$/.test(v)) (out[f] ||= []).push({ row: i + 2, value: v });
+      if (v && !/^-?\d+$/.test(v)) (out[f] ||= []).push({ row: r.sheetRow || i + 2, value: v });
     }
   });
   return out;
