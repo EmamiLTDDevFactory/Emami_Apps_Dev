@@ -8,6 +8,7 @@ import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { MarketRateAuthProvider, useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
+import Head from 'expo-router/head';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -72,7 +73,7 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
 // signed them in — so on mount, check for a real hub session (not just a stray email left over in
 // localStorage) and bounce straight back to the hub to sign in if there isn't one, rather than
 // ever rendering the form for an unauthenticated visitor who typed the URL directly.
-export default function MarketRateLayout() {
+function MarketRateLayoutContent() {
   const { width } = useWindowDimensions();
   const isWideScreen = width >= WIDE_BREAKPOINT;
   const [authorized, setAuthorized] = useState<boolean | null>(null);
@@ -245,3 +246,16 @@ const styles = StyleSheet.create({
     maxWidth: 140,
   },
 });
+
+// Browser tab title — without this the tab showed the bare URL (Expo Router's static HTML ships an
+// empty <title>).
+export default function MarketRateLayout() {
+  return (
+    <>
+      <Head>
+        <title>Current Market Rate</title>
+      </Head>
+      <MarketRateLayoutContent />
+    </>
+  );
+}
