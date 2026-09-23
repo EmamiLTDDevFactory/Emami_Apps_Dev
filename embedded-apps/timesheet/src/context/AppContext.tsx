@@ -205,6 +205,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .catch((err: Error) => {
           if (cancelled) return;
           console.error('[auth] Could not verify hub access:', err.message);
+          // In standalone/local dev there's no real hub to verify against (see ALLOW_DEMO_LOGIN
+          // in server/src/routes/auth.js) - a leftover/stale hub token here shouldn't dead-end the
+          // app, so fall back to the demo "log in as" picker instead of the hard error block below.
+          // In production this hub token is real and its own real failure, so keep blocking there -
+          // never fall through to the free-pick demo dropdown for an actual hub user (see the
+          // render guard further down).
+          if (process.env.NODE_ENV !== 'production') {
+            setHubEmailDetected(false);
+            api('/auth/demo-users')
+              .then(setDemoUsers)
+              .catch((e: Error) => console.error('[auth] Could not load demo users:', e.message));
+            return;
+          }
           setHubError(err.message || 'Could not verify your access.');
         })
         .finally(() => {
