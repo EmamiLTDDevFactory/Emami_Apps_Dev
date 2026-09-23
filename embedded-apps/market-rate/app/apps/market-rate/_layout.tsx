@@ -15,7 +15,7 @@ function formatDateCompact(d: Date): string {
 }
 
 type NavItem = SidePaneItem & {
-  href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/master-data';
+  href: '/apps/market-rate/' | '/apps/market-rate/dashboard' | '/apps/market-rate/submission-history' | '/apps/market-rate/rate-entry' | '/apps/market-rate/master-data';
   adminOnly?: boolean;
   hiddenForAdmin?: boolean;
 };
@@ -30,6 +30,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/apps/market-rate/', label: 'Home', icon: 'home-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/dashboard', label: 'History', icon: 'grid-outline', hiddenForAdmin: true },
   { href: '/apps/market-rate/submission-history', label: 'Submission History', icon: 'bar-chart-outline', adminOnly: true },
+  // Admin fills in / corrects rates vendors haven't submitted, for any vendor × material.
+  { href: '/apps/market-rate/rate-entry', label: 'Market Rate Entry', icon: 'create-outline', adminOnly: true },
   { href: '/apps/market-rate/master-data', label: 'Master Data', icon: 'cloud-upload-outline', adminOnly: true },
 ];
 
@@ -158,6 +160,7 @@ function MarketRateLayoutContent() {
                 <Stack.Screen name="index" />
                 <Stack.Screen name="dashboard" />
                 <Stack.Screen name="submission-history" />
+                <Stack.Screen name="rate-entry" />
                 <Stack.Screen name="master-data" />
               </Stack>
             </SafeAreaView>
