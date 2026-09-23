@@ -79,7 +79,9 @@ async function api(path: string, options?: RequestInit): Promise<any> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const err = new Error(body.error || `Request failed (${res.status})`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -104,6 +106,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>(loadSession);
   const [data, setData] = useState<AppData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Set only when loadError came from a 401 (bad/expired session token) rather than a transient
+  // network/server issue - distinguishes "retry the same request" from "the stored token itself
+  // is the problem", which a plain refresh() can never fix since it resends that same token.
+  const [loadErrorIsAuth, setLoadErrorIsAuth] = useState(false);
   // Gates first render on the hub sign-in check below - true immediately for a manual/demo
   // session, or once the hub check (found or not) has resolved, so the manual Login screen never
   // flashes in between.
@@ -129,9 +135,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // time until the server itself says otherwise via a 401.
   const refresh = useCallback(() => {
     setLoadError(null);
+    setLoadErrorIsAuth(false);
     return loadAllData()
       .then(setData)
-      .catch((err) => setLoadError(err.message));
+      .catch((err: Error & { status?: number }) => {
+        setLoadError(err.message);
+        setLoadErrorIsAuth(err.status === 401);
+      });
   }, []);
 
   function login(userId: string) {
@@ -570,7 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         <div className="glass-panel max-w-sm p-6 text-center">
           <p className="text-sm font-semibold text-red">Couldn&apos;t reach the TimeSheet server</p>
           <p className="mt-1 text-sm text-ink">{loadError}</p>
-          <button type="button" onClick={refresh} className="btn-danger mt-4 w-full">
+          <button type="button" onClick={loadErrorIsAuth ? retryHubBootstrap : refresh} className="btn-danger mt-4 w-full">
             Retry
           </button>
         </div>
