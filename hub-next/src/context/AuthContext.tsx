@@ -49,6 +49,24 @@ const ACTIVITY_WRITE_THROTTLE_MS = 60 * 1000;
 /** How often the elapsed-since-last-activity check runs while signed in. */
 const INACTIVITY_CHECK_INTERVAL_MS = 60 * 1000;
 
+/** True when the stored hub session JWT is past its own `exp` (backend/sessionAuth.js signs it
+ * for 12h). The inactivity check below only measures idle time, so someone active for more than
+ * 12 hours used to keep a dead token while the hub still looked signed in — and every embedded
+ * app that verifies it (TimeSheet's /auth/hub-login, Audit & CAPA) then refused them with
+ * "session has expired". A missing or unreadable token is not treated as expired, so this never
+ * signs anyone out on a token it can't read. */
+function hubTokenExpired(): boolean {
+  const token = storage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  if (!token) return false;
+  try {
+    const part = token.split('.')[1] || '';
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof payload.exp === 'number' && Date.now() >= payload.exp * 1000;
+  } catch {
+    return false;
+  }
+}
+
 interface AuthContextValue {
   /** True once startup (persisted-session restore + any ?ssoToken=/?magicToken=/?logout= query
    * param on this URL) has resolved — gates the very first render so the app never flashes the
@@ -186,7 +204,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let restoredEmail = persistedEmail;
       const restoredMethod = persistedMethod;
 
-      if (persistedLoggedIn && persistedEmail && !(await checkStillAuthorized(persistedEmail))) {
+      // An expired hub token ends the persisted session here, so the person signs in again and
+      // gets a fresh token instead of a hub that looks signed in but whose token every
+      // embedded app rejects (see hubTokenExpired).
+      if (persistedLoggedIn && (hubTokenExpired() || (persistedEmail && !(await checkStillAuthorized(persistedEmail))))) {
         storage.removeItems([AUTH_STORAGE_KEY, AUTH_EMAIL_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, AUTH_METHOD_STORAGE_KEY]);
         restoredLoggedIn = false;
         restoredEmail = null;
@@ -313,7 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const lastRecordedRaw = storage.getItem(LAST_ACTIVITY_STORAGE_KEY);
     const lastRecorded = lastRecordedRaw ? Number(lastRecordedRaw) : Date.now();
-    if (Date.now() - lastRecorded > INACTIVITY_LIMIT_MS) {
+    if (Date.now() - lastRecorded > INACTIVITY_LIMIT_MS || hubTokenExpired()) {
       logout({ skipSsoRedirect: true });
       return;
     }
@@ -333,7 +354,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const intervalId = setInterval(() => {
       const raw = storage.getItem(LAST_ACTIVITY_STORAGE_KEY);
       const last = raw ? Number(raw) : Date.now();
-      if (Date.now() - last > INACTIVITY_LIMIT_MS) {
+      // Same local-only sign-out once the hub token itself runs out, even for an active user.
+      if (Date.now() - last > INACTIVITY_LIMIT_MS || hubTokenExpired()) {
         logout({ skipSsoRedirect: true });
       }
     }, INACTIVITY_CHECK_INTERVAL_MS);

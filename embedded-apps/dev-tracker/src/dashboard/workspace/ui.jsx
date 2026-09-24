@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ISSUE_TYPE_META, PRIORITY_META, CATEGORY_META, statusCategory, typeOf, issueKey } from '../../shared/pm.js';
+import { ISSUE_TYPE_META, PRIORITY_META, CATEGORY_META, statusCategory, statusMeta, typeOf, issueKey } from '../../shared/pm.js';
 
 // Small presentational pieces shared by every workspace view. Visual language follows Jira's:
 // 16px colored issue-type squares, arrow priority icons, uppercase status lozenges, round avatars.
@@ -65,7 +65,7 @@ export function Avatar({ name, size = 24, ring = false, title }) {
 }
 
 export function StatusLozenge({ status, overdue = false }) {
-  const cat = CATEGORY_META[statusCategory(status)];
+  const cat = statusMeta(status);
   return (
     <span className="pm-lozenge" style={{ background: cat.bg, color: cat.fg }} title={overdue ? `${status} — overdue` : status}>
       {status || 'Not Started'}
@@ -126,7 +126,7 @@ export function Popover({ open, onClose, children, align = 'left', className = '
 // of statuses grouped by category, like Jira's workflow dropdown on the issue view.
 export function StatusPicker({ status, statuses, onChange, disabled, size = 'md' }) {
   const [open, setOpen] = useState(false);
-  const cat = CATEGORY_META[statusCategory(status)];
+  const cat = statusMeta(status);
   const groups = ['todo', 'inprogress', 'done'].map((c) => ({ c, list: statuses.filter((s) => statusCategory(s) === c) })).filter((g) => g.list.length);
   return (
     <span className="pm-rel">

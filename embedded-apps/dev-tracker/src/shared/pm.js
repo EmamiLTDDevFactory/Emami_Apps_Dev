@@ -9,6 +9,10 @@ export const ALL_ITEM_FIELDS = [...FIELDS, ...PM_FIELDS];
 
 export const PROJECT_KEY = 'DEV';
 export const PROJECT_NAME = 'SAP Development';
+// Shown in front of an item's number (Assignment-12). PROJECT_KEY stays as the short project
+// avatar; links shared before the rename used DEV-12, which the Dashboard still resolves.
+export const ISSUE_KEY_PREFIX = 'Assignment';
+export const LEGACY_ISSUE_KEY_PREFIX = 'DEV';
 
 export const ISSUE_TYPES = [
   { key: 'Epic', color: '#904EE2', description: 'A large body of work that groups stories and tasks.' },
@@ -41,6 +45,13 @@ export const CATEGORY_META = {
 export function statusCategory(status) {
   return STATUS_CATEGORY[status] || 'todo';
 }
+// Cancelled still groups as Done (board column, progress, backlog), but is colored red so it
+// never reads as a green "finished" item.
+export const CANCELLED_META = { bg: '#FFECEB', fg: '#AE2E24', bar: '#C9372C' };
+export function statusMeta(status) {
+  const cat = CATEGORY_META[statusCategory(status)];
+  return status === 'Cancelled' ? { ...cat, ...CANCELLED_META } : cat;
+}
 export function isDone(it) {
   return statusCategory(it?.status) === 'done';
 }
@@ -53,7 +64,7 @@ export const PRIORITY_META = {
 
 export function issueKey(it) {
   if (!it) return '';
-  if (it.issueNo != null) return `${PROJECT_KEY}-${it.issueNo}`;
+  if (it.issueNo != null) return `${ISSUE_KEY_PREFIX}-${it.issueNo}`;
   return `${it.area || 'GEN'}-${shortId(it.id)}`;
 }
 export function typeOf(it) {

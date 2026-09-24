@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TypeIcon, epicColor, ProgressBar, IssueKey } from './ui.jsx';
-import { CATEGORY_META, statusCategory, isEpic, typeOf, byRank, issueKey, shiftDate } from '../../shared/pm.js';
+import { CATEGORY_META, statusCategory, statusMeta, isEpic, typeOf, byRank, issueKey, shiftDate } from '../../shared/pm.js';
 import { todayStr, revisedTarget, isOverdue, fmtDate, daysBetween } from '../../shared/utils.js';
 import { ChevronRightIcon } from '../../shared/icons.jsx';
+import { assignmentPlan, buildHolidaySet, toISODate } from '../../shared/resourceUtil.js';
 
 const ZOOMS = [
   { key: 'weeks', label: 'Weeks', px: 26 },
@@ -16,11 +17,17 @@ const NO_EPIC = '__none__';
 const isIso = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim());
 const iso = (v) => (isIso(v) ? String(v).trim() : '');
 
-function startOf(it) {
-  return iso(it.startDate) || iso(String(it.createdAt || '').slice(0, 10));
+function targetOf(it) {
+  return isIso(it.targetDate) ? revisedTarget({ ...it, targetDate: String(it.targetDate).trim() }) : '';
 }
-function endOf(it) {
-  return (isIso(it.targetDate) ? revisedTarget({ ...it, targetDate: String(it.targetDate).trim() }) : '') || iso(it.completedDate);
+
+// Bars use the same plan as Resource Utilization (resourceUtil.js assignmentPlan): Start Date ->
+// revised Target Date when both exist, otherwise estimated from the stage dates, and a lone date
+// sized by the estimated man-days in working days. Estimated bars are striped; dragging one saves
+// its dates as real Start/Target Dates. Items with no usable date at all show "No dates".
+function planBar(it, holidaySet) {
+  const { window: win, estimated } = assignmentPlan(it, targetOf, holidaySet);
+  return win ? { s: toISODate(win.start), e: toISODate(win.end), estimated: estimated.dates } : null;
 }
 
 // Jira-style timeline (roadmap): epics with their issues as bars on a calendar, from start date
@@ -32,6 +39,11 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
   const [drag, setDrag] = useState(null); // { id, mode, x0, dStart, dEnd, delta }
   const scrollRef = useRef(null);
   const px = ZOOMS.find((z) => z.key === zoom).px;
+
+  const holidaySet = useMemo(() => buildHolidaySet(ws.masterData), [ws.masterData]);
+  const bars = useMemo(() => new Map(items.map((it) => [String(it.id), planBar(it, holidaySet)])), [items, holidaySet]);
+  const startOf = (it) => bars.get(String(it.id))?.s || '';
+  const estimatedCount = useMemo(() => [...bars.values()].filter((b) => b?.estimated).length, [bars]);
 
   const groups = useMemo(() => {
     const itemIds = new Set(items.map((i) => String(i.id)));
@@ -52,7 +64,7 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
       });
     }
     return out;
-  }, [items, ws.epics, pmReady]);
+  }, [items, ws.epics, pmReady, bars]);
 
   // Epics and the no-epic group start expanded when there are few of them.
   useEffect(() => {
@@ -62,10 +74,10 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
   const range = useMemo(() => {
     let min = shiftDate(todayStr(), -30);
     let max = shiftDate(todayStr(), 90);
-    for (const it of items) {
-      const s = startOf(it); const e = endOf(it);
-      if (s && s < min) min = s;
-      if (e && e > max) max = e;
+    for (const b of bars.values()) {
+      if (!b) continue;
+      if (b.s < min) min = b.s;
+      if (b.e > max) max = b.e;
     }
     // Snap to month boundaries so the header starts on a clean edge.
     const start = `${min.slice(0, 7)}-01`;
@@ -73,7 +85,7 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
     endD.setMonth(endD.getMonth() + 2);
     const end = endD.toISOString().slice(0, 10);
     return { start, end, days: daysBetween(start, end) };
-  }, [items]);
+  }, [bars]);
 
   const width = range.days * px;
   const x = (date) => daysBetween(range.start, date) * px;
@@ -108,15 +120,17 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
     return out;
   }, [range, zoom]);
 
-  function barFor(it, fallbackFromChildren = []) {
-    let s = startOf(it); let e = endOf(it);
-    if ((!s || !e) && fallbackFromChildren.length) {
-      const ss = fallbackFromChildren.map(startOf).filter(Boolean).sort();
-      const es = fallbackFromChildren.map(endOf).filter(Boolean).sort();
-      s = s || ss[0]; e = e || es[es.length - 1];
-    }
-    if (!s || !e || e < s) return null;
-    return { s, e };
+  // An epic without real dates of its own spans its children's bars instead.
+  function barFor(it, children = []) {
+    const own = bars.get(String(it.id)) || null;
+    if (own && !own.estimated) return own;
+    const kids = children.map((c) => bars.get(String(c.id))).filter(Boolean);
+    if (!kids.length) return own;
+    return {
+      s: kids.map((b) => b.s).sort()[0],
+      e: kids.map((b) => b.e).sort()[kids.length - 1],
+      estimated: kids.some((b) => b.estimated),
+    };
   }
 
   function onPointerDown(ev, it, mode, bar) {
@@ -158,16 +172,15 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
       if (drag.mode === 'move') { s = shiftDate(s, drag.delta); e = shiftDate(e, drag.delta); }
       else e = shiftDate(e, drag.delta) < s ? s : shiftDate(e, drag.delta);
     }
-    const cat = statusCategory(it.status);
     const left = x(s);
     const w = Math.max(px, (daysBetween(s, e) + 1) * px);
     const overdue = isOverdue(it);
-    const bg = color || CATEGORY_META[cat].bar;
+    const bg = color || statusMeta(it.status).bar;
     return (
       <div
-        className={`pm-tl-bar${epic ? ' is-epic' : ''}${overdue ? ' is-overdue' : ''}${drag && String(drag.id) === String(it.id) ? ' is-dragging' : ''}`}
+        className={`pm-tl-bar${epic ? ' is-epic' : ''}${bar.estimated ? ' is-estimated' : ''}${overdue ? ' is-overdue' : ''}${drag && String(drag.id) === String(it.id) ? ' is-dragging' : ''}`}
         style={{ left, width: w, '--bar': bg }}
-        title={`${issueKey(it)} ${it.devList}\n${fmtDate(s)} → ${fmtDate(e)}${overdue ? ' (overdue)' : ''}`}
+        title={`${issueKey(it)} ${it.devList}\n${fmtDate(s)} → ${fmtDate(e)}${bar.estimated ? ' (estimated from stage dates — drag to set real dates)' : ''}${overdue ? ' (overdue)' : ''}`}
         onPointerDown={(ev) => onPointerDown(ev, it, 'move', bar)}
       >
         {w > 70 && <span className="pm-tl-bar-label">{it.devList}</span>}
@@ -184,7 +197,10 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
     <div className="pm-timeline">
       <div className="pm-view-bar">
         <div className="pm-view-bar-left">
-          <span className="pm-muted">Drag a bar to reschedule, or its right edge to change the due date.</span>
+          <span className="pm-muted">
+            Drag a bar to reschedule, or its right edge to change the due date.
+            {estimatedCount > 0 && <> {estimatedCount} of {items.length} bars are estimated from stage dates (striped) — fill in Start and Target Date to replace them.</>}
+          </span>
         </div>
         <div className="pm-view-bar-right">
           <button type="button" className="pm-btn pm-btn-subtle pm-btn-sm" onClick={() => { const el = scrollRef.current; if (el) el.scrollLeft = Math.max(0, todayX - el.clientWidth * 0.3); }}>Today</button>
@@ -254,6 +270,7 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
       </div>
       <div className="pm-tl-legend">
         {['todo', 'inprogress', 'done'].map((c) => <span key={c}><i style={{ background: CATEGORY_META[c].bar }} />{CATEGORY_META[c].label}</span>)}
+        <span><i className="pm-tl-legend-estimated" />Estimated dates</span>
         <span><i className="pm-tl-legend-overdue" />Overdue</span>
         <span><i className="pm-tl-legend-today" />Today</span>
       </div>
