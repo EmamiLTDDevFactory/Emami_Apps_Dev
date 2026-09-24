@@ -891,6 +891,16 @@
     .kpi, .kpi::before, .kpi::after, .kpi-ico, .insight { transition: none; }
   }
   .card { animation-fill-mode: backwards; }
+
+  /* Breadcrumb trail on inner pages (Home › Master Data › …) — every ancestor is a link. */
+  .breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; margin: 0 0 8px -6px; font-size: 12px; font-weight: 600; }
+  .breadcrumb button {
+    display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 7px; border: none; border-radius: 7px; background: none; cursor: pointer;
+    color: var(--accent); font: inherit; transition: background .15s ease, color .15s ease;
+  }
+  .breadcrumb button:hover { background: var(--accent-soft); color: var(--accent-2); }
+  .breadcrumb .bc-sep { color: var(--border-strong); font-weight: 700; }
+  .breadcrumb [aria-current="page"] { padding: 0 6px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -956,14 +966,14 @@
     </div>
     <div class="page-head view-head view-head-master">
       <div>
-        <div class="page-eyebrow">Salescode Data</div>
+        <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page">Master Data</span></nav>
         <h1 class="page-title">Master Data</h1>
         <p class="page-sub">Master data maintained for Salescode — products, distributors, tax, pricing and more.</p>
       </div>
     </div>
     <div class="page-head view-head view-head-trans">
       <div>
-        <div class="page-eyebrow">Salescode Data</div>
+        <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page">Transactional Data</span></nav>
         <h1 class="page-title">Transactional Data</h1>
         <p class="page-sub">Transactional and operational data exchanged with Salescode — orders, returns, claims and QPS.</p>
       </div>
@@ -998,7 +1008,7 @@
       <div class="hero-band">
         <div class="hb-top">
           <div class="hb-title">
-            <button type="button" class="crumb" data-nav="master"><span data-icon="chevronLeft" data-size="14"></span>Master Data</button>
+            <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><button type="button" data-nav="master">Master Data</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page">Pricing Master</span></nav>
             <h1 class="page-title">Pricing Master</h1>
             <p class="page-sub">Pricing on every invoice line created in a date range — MRP, base rate, margins, discounts, GST and net value, straight from SAP.</p>
             <div class="head-meta">
