@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Sidebar from '../shared/Sidebar.jsx';
 import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
@@ -126,6 +126,69 @@ function StatTile({ icon: Icon, tone, label, value, sub }) {
   );
 }
 
+// Hover card for a timeline row's Workload cell: the man-days behind the % plus a short list of
+// the assignments eating that capacity. Rendered position: fixed from the cell's own rect because
+// .ru-timeline-card clips overflow — an absolutely-positioned card would be cut off. The project
+// list scrolls inside a fixed max-height, so the card stays hoverable (see keepWorkloadTip).
+function fmtMd(n) { return `${(Math.round(n * 10) / 10).toFixed(1)} md`; }
+function WorkloadTip({ tip, periodStart, periodEnd, holidaySet, areaColors, onMouseEnter, onMouseLeave }) {
+  const { row, anchor } = tip;
+  const { stats, bucket, resource, role } = row;
+  const projects = stats.overlapping
+    .map((a) => ({ a, md: allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet) }))
+    .sort((x, y) => y.md - x.md);
+  const free = stats.availableManDays - stats.allocatedManDays;
+  // Open below the cell in the top half of the viewport, above it in the bottom half.
+  const below = anchor.top < window.innerHeight / 2;
+  const style = below
+    ? { left: anchor.left, top: anchor.top }
+    : { left: anchor.left, bottom: window.innerHeight - anchor.bottom };
+  return (
+    <div className="ru-wtip" role="tooltip" style={style} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      <div className="ru-wtip-head">
+        <div>
+          <div className="ru-wtip-name">{resource.name}</div>
+          <div className="ru-wtip-sub">{role} · {fmtDate(toISODate(periodStart), { withYear: false })} – {fmtDate(toISODate(periodEnd), { withYear: false })}</div>
+        </div>
+        <div className="ru-wtip-pct" style={{ color: bucket.color }}>{Math.round(stats.utilizationPct)}%</div>
+      </div>
+      <div className="ru-wtip-bucket"><i style={{ background: bucket.color }} />{bucket.label}</div>
+      <div className="ru-wtip-md">
+        <div><span>Allocated</span><b className="mono">{fmtMd(stats.allocatedManDays)}</b></div>
+        <div><span>Available</span><b className="mono">{fmtMd(stats.availableManDays)}</b></div>
+        <div>
+          <span>{free >= 0 ? 'Free' : 'Over by'}</span>
+          <b className="mono" style={{ color: free < 0 ? 'var(--st-red)' : undefined }}>{fmtMd(Math.abs(free))}</b>
+        </div>
+      </div>
+      <div className="ru-wtip-section">Projects in period ({projects.length})</div>
+      {!projects.length && <div className="ru-wtip-empty">No allocations in this period</div>}
+      {projects.length > 0 && (
+        <div className="ru-wtip-list">
+          {projects.map(({ a, md }) => {
+        const meta = areaColors[a.module] || { color: 'var(--mod-fallback)', softColor: 'var(--bg-alt)' };
+        const pct = stats.availableManDays > 0 ? (md / stats.availableManDays) * 100 : 0;
+        return (
+          <div className="ru-wtip-proj" key={`${a.role}::${a.item.id}`}>
+            <div className="ru-wtip-proj-top">
+              <span className="ru-wtip-proj-title">{a.item.devList}</span>
+              <span className="mono ru-wtip-proj-md">{fmtMd(md)} · {Math.round(pct)}%</span>
+            </div>
+            <div className="ru-wtip-proj-meta">
+              {a.module && <span className="ru-wtip-chip" style={{ background: meta.softColor, color: meta.color }}>{a.module}</span>}
+              <span>{a.item.status}</span>
+              <span>·</span>
+              <span>{fmtDate(a.item.startDate, { withYear: false })} – {fmtDate(toISODate(a.window.end), { withYear: false })}</span>
+            </div>
+          </div>
+        );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ResourceUtilization() {
   const [items, setItems] = useState([]);
   const [masterData, setMasterData] = useState([]);
@@ -151,6 +214,35 @@ export default function ResourceUtilization() {
 
   const [summaryGroupBy, setSummaryGroupBy] = useState('resource');
   const [summarySearch, setSummarySearch] = useState('');
+  const [workloadTip, setWorkloadTip] = useState(null); // { row, anchor: DOMRect-ish } while a Workload cell is hovered
+
+  const workloadTipHideTimer = useRef(null);
+
+  // A fixed-position card would drift away from its cell on page scroll, so just close it —
+  // except for scrolls inside the card's own project list.
+  useEffect(() => {
+    if (!workloadTip) return undefined;
+    const close = (e) => {
+      if (e.target instanceof Element && e.target.closest('.ru-wtip')) return;
+      setWorkloadTip(null);
+    };
+    window.addEventListener('scroll', close, true);
+    return () => window.removeEventListener('scroll', close, true);
+  }, [workloadTip]);
+  useEffect(() => () => clearTimeout(workloadTipHideTimer.current), []);
+  function showWorkloadTip(e, row) {
+    clearTimeout(workloadTipHideTimer.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setWorkloadTip({ row, anchor: { left: rect.right + 6, top: rect.top, bottom: rect.bottom } });
+  }
+  // Short grace period so the pointer can cross the gap from the cell onto the card to scroll it.
+  function hideWorkloadTip() {
+    clearTimeout(workloadTipHideTimer.current);
+    workloadTipHideTimer.current = setTimeout(() => setWorkloadTip(null), 150);
+  }
+  function keepWorkloadTip() {
+    clearTimeout(workloadTipHideTimer.current);
+  }
 
   const email = getCurrentUserEmail();
   const { isAdmin, roleLabel, profileName } = useDevTrackerSession(email);
@@ -482,7 +574,14 @@ export default function ResourceUtilization() {
                       </div>
                     </div>
                     <div className="ru-row-role-col">{r.role}</div>
-                    <div className="ru-row-workload-col">
+                    <div
+                      className="ru-row-workload-col is-hoverable"
+                      tabIndex={0}
+                      onMouseEnter={(e) => showWorkloadTip(e, r)}
+                      onMouseLeave={hideWorkloadTip}
+                      onFocus={(e) => showWorkloadTip(e, r)}
+                      onBlur={() => setWorkloadTip(null)}
+                    >
                       <span className="ru-workload-pct">{Math.round(r.stats.utilizationPct)}%</span>
                       <span className="ru-workload-track"><span className="ru-workload-fill" style={{ width: `${Math.min(100, r.stats.utilizationPct)}%`, background: r.bucket.color }} /></span>
                     </div>
@@ -516,6 +615,9 @@ export default function ResourceUtilization() {
                 );
               })}
             </div>
+            {workloadTip && (
+              <WorkloadTip tip={workloadTip} periodStart={periodStart} periodEnd={periodEnd} holidaySet={holidaySet} areaColors={areaColors} onMouseEnter={keepWorkloadTip} onMouseLeave={hideWorkloadTip} />
+            )}
 
             <div className="ru-bottom-grid">
               <div className="ru-panel">
