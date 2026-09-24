@@ -93,7 +93,7 @@
   .icon-btn {
     display: inline-flex; align-items: center; justify-content: center; position: relative;
     width: 36px; height: 36px; border: none; border-radius: 9px; background: none; cursor: pointer;
-    color: var(--text-2);
+    color: var(--text-2); flex-shrink: 0;
   }
   .icon-btn:hover { background: var(--bg); color: var(--text); }
   .search {
@@ -106,8 +106,8 @@
     flex: 1; min-width: 0; border: none; outline: none; background: none;
     font: inherit; font-size: 13px; color: var(--text);
   }
-  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .user { display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid var(--border); min-width: 0; }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; }
+  .user { display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid var(--border); min-width: 0; flex-shrink: 0; }
   .avatar {
     width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -133,6 +133,12 @@
     margin-left: auto; padding-left: 22px; border-left: 2px solid var(--border-strong);
     font-size: 14px; line-height: 1.5; color: var(--text-2); white-space: nowrap;
   }
+
+  /* Views (see setView): Home shows the hero and both panels; Master Data / Transactional Data
+     show only their own panel. */
+  body[data-view="master"] .hero, body[data-view="master"] #transactional,
+  body[data-view="transactional"] .hero, body[data-view="transactional"] #master { display: none; }
+  body[data-view="master"] .section, body[data-view="transactional"] .section { margin-top: 0; }
 
   /* Sections */
   .section {
@@ -185,8 +191,8 @@
   }
   /* Below this the sidebar becomes a drawer behind the menu button. */
   @media (max-width: 860px) {
-    .sidebar { transform: translateX(-100%); box-shadow: 0 0 40px oklch(0% 0 0 / .18); }
-    body.nav-open .sidebar { transform: none; }
+    .sidebar { transform: translateX(-100%); }
+    body.nav-open .sidebar { transform: none; box-shadow: 0 0 40px oklch(0% 0 0 / .18); }
     body.nav-open .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: oklch(0% 0 0 / .3); }
     .main { margin-left: 0; }
   }
@@ -201,9 +207,17 @@
     .grid { grid-template-columns: minmax(0, 1fr); padding: 14px; }
     .section-head { padding: 12px 14px; }
   }
+  /* Hub gate: until the hub session is confirmed (see hasHubSession) only the spinner shows, so an
+     anonymous visitor never sees the page flash before being sent back to the hub. */
+  body:not(.is-authed) > :not(.boot) { display: none !important; }
+  body.is-authed .boot { display: none; }
+  .boot { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); }
+  .boot-spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--accent); border-top-color: transparent; animation: boot-spin .9s linear infinite; }
+  @keyframes boot-spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
+<div class="boot" role="status" aria-label="Loading"><div class="boot-spinner"></div></div>
 
 <aside class="sidebar" id="sidebar">
   <img class="logo" src="assets/emami-apps-logo.png" alt="Emami Apps">
@@ -278,18 +292,21 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
-  // Same hub conventions as dev-tracker (src/shared/api.js, Sidebar.jsx): served same-origin under
-  // /apps/salescode/, so the hub's login is read straight from localStorage, and with no login the
-  // page sends you back to the hub rather than rendering for an anonymous visitor.
+  // Same hub login as every sibling embedded app (see e.g. payment-tracking/src/lib/hubEmailLogin.ts
+  // and journal-anomaly-agent's HubGate.tsx): no login screen of its own. Served same-origin under
+  // /apps/salescode/, so it reads the keys the hub's AuthContext writes on login — and it's the
+  // session token, not just the email, that counts, since the token is what the hub clears on
+  // logout (an email alone can be a stale leftover). No session → straight back to the hub.
   const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
+  const HUB_TOKEN_STORAGE_KEY = 'emami_apps_session_token';
+  // Hub identity API, split dev/prod off the hostname like the other apps' accessApiBase().
+  const ACCESS_API_BASE = `https://audit-capa-api.emamiapps.in${window.location.hostname.includes('dev') ? '/dev-api' : ''}/api`;
 
   // Lucide icon bodies (24x24, stroke), inlined so the page stays dependency-free.
   const ICONS = {
     home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
     fileText: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
-    chart: '<path d="M3 3v18h18"/><path d="M8 17v-3"/><path d="M13 17V9"/><path d="M18 17V5"/>',
-    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
     box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
     barcode: '<path d="M4 5v14"/><path d="M8 5v14"/><path d="M11 5v14"/><path d="M15 5v14"/><path d="M17 5v14"/><path d="M20 5v14"/>',
@@ -318,12 +335,9 @@
   };
 
   const NAV = [
-    { id: 'home', label: 'Home', icon: 'home', target: 'top' },
-    { id: 'master', label: 'Master Data', icon: 'database', target: 'master' },
-    { id: 'transactional', label: 'Transactional Data', icon: 'fileText', target: 'transactional' },
-    { id: 'reports', label: 'Reports', icon: 'chart' },
-    { id: 'config', label: 'Configuration', icon: 'settings' },
-    { id: 'users', label: 'User Management', icon: 'users' },
+    { id: 'home', label: 'Home', icon: 'home' },
+    { id: 'master', label: 'Master Data', icon: 'database' },
+    { id: 'transactional', label: 'Transactional Data', icon: 'fileText' },
   ];
 
   const MASTER = [
@@ -359,6 +373,13 @@
       return null;
     }
   }
+  function hasHubSession() {
+    try {
+      return Boolean(localStorage.getItem(HUB_TOKEN_STORAGE_KEY) && getCurrentUserEmail());
+    } catch {
+      return false;
+    }
+  }
 
   // The hub only stores the email, so the display name is derived from it
   // (abhishek.tripathi@… → "Abhishek Tripathi").
@@ -371,6 +392,21 @@
   function initials(email) {
     const parts = nameParts(email);
     return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
+  }
+  // The real name from the hub profile (same GET /me dev-tracker's useDevTrackerSession reads);
+  // the email-derived name above stays on screen if it's unavailable.
+  async function loadProfileName(email) {
+    try {
+      const res = await fetch(`${ACCESS_API_BASE}/me?email=${encodeURIComponent(email)}`);
+      const data = res.ok ? await res.json() : null;
+      const name = data?.success ? data.profile?.name?.trim() : '';
+      if (!name) return;
+      const words = name.split(/\s+/);
+      $('userName').textContent = name;
+      $('userInitials').textContent = ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase() || initials(email);
+    } catch {
+      /* keep the email-derived name */
+    }
   }
 
   let toastTimer;
@@ -412,12 +448,26 @@
 
   function closeDrawer() { document.body.classList.remove('nav-open'); }
 
+  // Each sidebar entry is its own view, kept in the URL hash (#master / #transactional; none for
+  // Home) so Back/Forward and a refresh land on the same panel.
+  function viewFromHash() {
+    const id = window.location.hash.slice(1);
+    return NAV.some((n) => n.id === id) ? id : 'home';
+  }
+  function setView(id) {
+    document.body.dataset.view = id;
+    renderNav(id);
+    window.scrollTo(0, 0);
+  }
+
   // ---- wiring ----
   document.querySelectorAll('[data-icon]').forEach((el) => {
     el.outerHTML = icon(el.dataset.icon, Number(el.dataset.size) || 20);
   });
-  renderNav('home');
+  setView(viewFromHash());
   render();
+  window.addEventListener('hashchange', () => setView(viewFromHash()));
+  window.addEventListener('popstate', () => setView(viewFromHash()));
 
   $('search').addEventListener('input', (e) => render(e.target.value));
 
@@ -429,15 +479,12 @@
     }
     const nav = e.target.closest('[data-nav]');
     if (nav) {
-      const item = NAV.find((n) => n.id === nav.dataset.nav);
+      const id = nav.dataset.nav;
       closeDrawer();
-      if (!item.target) {
-        toast(`${item.label} is coming soon.`);
-        return;
-      }
-      renderNav(item.id);
-      if (item.target === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
-      else $(item.target).scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (id === viewFromHash()) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      if (id === 'home') history.pushState(null, '', window.location.pathname + window.location.search);
+      else window.location.hash = id;
+      setView(id); // pushState doesn't fire hashchange; for a hash change this just repeats it harmlessly
     }
   });
 
@@ -450,14 +497,16 @@
   $('bellBtn').addEventListener('click', () => toast('No new notifications.'));
   $('backToHub').addEventListener('click', () => { window.location.href = '/'; });
 
-  const email = getCurrentUserEmail();
-  if (!email) {
+  if (!hasHubSession()) {
     window.location.href = '/';
   } else {
+    const email = getCurrentUserEmail();
     $('userInitials').textContent = initials(email);
     $('userName').textContent = displayName(email);
     $('userEmail').textContent = email;
     $('user').hidden = false;
+    document.body.classList.add('is-authed');
+    loadProfileName(email);
   }
 </script>
 
