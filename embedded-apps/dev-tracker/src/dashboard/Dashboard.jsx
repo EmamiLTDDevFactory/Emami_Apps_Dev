@@ -4,7 +4,7 @@ import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { getCurrentUserEmail, apiSavedViews, apiSavedViewCreate, apiSavedViewDelete } from '../shared/api.js';
-import { PROJECT_NAME, PROJECT_KEY, issueKey, namesForMe } from '../shared/pm.js';
+import { PROJECT_NAME, PROJECT_KEY, LEGACY_ISSUE_KEY_PREFIX, issueKey, namesForMe } from '../shared/pm.js';
 import { StarIcon, TrashIcon } from '../shared/icons.jsx';
 import { useWorkspace } from './workspace/useWorkspace.js';
 import { EMPTY_FILTERS, applyFilters } from './workspace/filters.js';
@@ -20,7 +20,7 @@ import CreateIssueModal from './workspace/CreateIssueModal.jsx';
 // The project workspace, Jira style. Still served at /dashboard/ so every existing link into it
 // (Home's KPI drill-downs, the AI command bar, Topbar search, "My Work") keeps working; the view
 // lives in the URL hash (#board, #backlog, #list, #timeline, #reports) and an open issue in
-// ?issue=DEV-12, so both survive a reload and can be shared as links.
+// ?issue=Assignment-12, so both survive a reload and can be shared as links.
 const VIEWS = [
   { key: 'board', label: 'Board', nav: 'board' },
   { key: 'backlog', label: 'Backlog', nav: 'backlog' },
@@ -128,11 +128,12 @@ export default function Dashboard() {
     window.history.replaceState({}, '', url);
   }, [ws.loading]);
 
-  // Resolve ?issue=DEV-12 (or a raw id) once items are in.
+  // Resolve ?issue=Assignment-12 (or an older DEV-12 link, or a raw id) once items are in.
   useEffect(() => {
     if (!pendingKey || ws.loading) return;
     const k = pendingKey.toUpperCase();
-    const hit = ws.items.find((it) => issueKey(it).toUpperCase() === k || String(it.id) === pendingKey);
+    const legacy = k.match(new RegExp(`^${LEGACY_ISSUE_KEY_PREFIX}-(\\d+)$`));
+    const hit = ws.items.find((it) => issueKey(it).toUpperCase() === k || (legacy && String(it.issueNo) === legacy[1]) || String(it.id) === pendingKey);
     if (hit) setOpenId(String(hit.id));
     else setToast({ kind: 'error', text: `Issue ${pendingKey} was not found.` });
     setPendingKey(null);

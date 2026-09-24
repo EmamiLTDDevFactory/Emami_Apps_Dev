@@ -9,6 +9,10 @@ export const ALL_ITEM_FIELDS = [...FIELDS, ...PM_FIELDS];
 
 export const PROJECT_KEY = 'DEV';
 export const PROJECT_NAME = 'SAP Development';
+// Shown in front of an item's number (Assignment-12). PROJECT_KEY stays as the short project
+// avatar; links shared before the rename used DEV-12, which the Dashboard still resolves.
+export const ISSUE_KEY_PREFIX = 'Assignment';
+export const LEGACY_ISSUE_KEY_PREFIX = 'DEV';
 
 export const ISSUE_TYPES = [
   { key: 'Epic', color: '#904EE2', description: 'A large body of work that groups stories and tasks.' },
@@ -53,7 +57,7 @@ export const PRIORITY_META = {
 
 export function issueKey(it) {
   if (!it) return '';
-  if (it.issueNo != null) return `${PROJECT_KEY}-${it.issueNo}`;
+  if (it.issueNo != null) return `${ISSUE_KEY_PREFIX}-${it.issueNo}`;
   return `${it.area || 'GEN'}-${shortId(it.id)}`;
 }
 export function typeOf(it) {
