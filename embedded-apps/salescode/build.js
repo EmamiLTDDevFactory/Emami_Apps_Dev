@@ -1,4 +1,4 @@
-// Salescode has no bundler — it's one hand-written index.html. This just reproduces the
+// Salescode has no bundler — it's one hand-written index.html plus assets/. This just reproduces the
 // folder-based dist/ shape scripts/build-embedded-apps.js merges into the hub (the same
 // dist/apps/<name>/ layout dev-tracker's vite.config.js produces), so the page lands at
 // /apps/salescode/.
@@ -13,4 +13,5 @@ const outDir = path.join(dist, 'apps', 'salescode');
 fs.rmSync(path.join(dist, 'apps'), { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 fs.copyFileSync(path.join(__dirname, 'index.html'), path.join(outDir, 'index.html'));
-console.log('Built dist/apps/salescode/index.html');
+fs.cpSync(path.join(__dirname, 'assets'), path.join(outDir, 'assets'), { recursive: true });
+console.log('Built dist/apps/salescode/ (index.html + assets/)');
