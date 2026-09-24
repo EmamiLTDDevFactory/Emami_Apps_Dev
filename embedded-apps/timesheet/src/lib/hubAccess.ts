@@ -19,3 +19,18 @@ export function getHubSessionToken(): string | null {
     return null;
   }
 }
+
+// True when the hub token is past its own `exp` (the hub signs it for 12h). Used only to pick the
+// right way out of the "Couldn't verify your access" screen - a dead hub token can't be fixed by
+// retrying here, only by signing in to Emami Apps again. Unreadable tokens count as not expired.
+export function isHubSessionTokenExpired(): boolean {
+  const token = getHubSessionToken();
+  if (!token) return false;
+  try {
+    const part = token.split('.')[1] || '';
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    return typeof payload.exp === 'number' && Date.now() >= payload.exp * 1000;
+  } catch {
+    return false;
+  }
+}

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { getHubSessionToken } from '../lib/hubAccess';
+import { getHubSessionToken, isHubSessionTokenExpired } from '../lib/hubAccess';
 
 // Loosely typed on purpose — this context is a faithful behavioral port of the original Vite
 // app's AppContext.jsx (same API shape, same server contract), not a type-safety rewrite. The
@@ -662,14 +662,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // manager. Show a retryable error instead; the demo picker below is only reachable when
   // hubEmailDetected is false (i.e. no hub token at all).
   if (hubEmailDetected && hubError && !session.isLoggedIn) {
+    // An expired Emami Apps token can't be fixed by retrying here - send the person back to the
+    // hub, which signs out a session whose token has run out (hub-next AuthContext's
+    // hubTokenExpired) and asks them to sign in, so the next open gets a fresh token.
+    const hubTokenExpired = isHubSessionTokenExpired();
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="glass-panel max-w-sm p-6 text-center">
           <p className="text-sm font-semibold text-red">Couldn&apos;t verify your access</p>
           <p className="mt-1 text-sm text-ink">{hubError}</p>
-          <button type="button" onClick={retryHubBootstrap} className="btn-danger mt-4 w-full">
-            Retry
-          </button>
+          {hubTokenExpired ? (
+            <button type="button" onClick={() => { window.location.href = '/'; }} className="btn-danger mt-4 w-full">
+              Sign in to Emami Apps again
+            </button>
+          ) : (
+            <button type="button" onClick={retryHubBootstrap} className="btn-danger mt-4 w-full">
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );
