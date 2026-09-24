@@ -126,10 +126,8 @@ export function nameMatches(value, myNames) {
   return !!v && myNames.some((n) => v === n || v.startsWith(n) || n.startsWith(v));
 }
 
-// Timezone-safe day arithmetic on 'YYYY-MM-DD' strings. utils.js's addDays() builds a local-
-// midnight Date and reads it back as UTC, so east of UTC (IST) it lands one day short —
-// addDays(d, 1) returns d itself, which would make any day-by-day loop never end. The new
-// workspace code (timeline, sprints, reports) uses this instead.
+// Timezone-safe day arithmetic on 'YYYY-MM-DD' strings, used by the workspace code (timeline,
+// sprints, reports). utils.js's addDays() now does the same UTC math.
 export function shiftDate(dateStr, days) {
   if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
