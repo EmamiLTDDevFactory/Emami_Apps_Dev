@@ -33,20 +33,6 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   SD: Handshake,
 };
 
-const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  All: 'Every application in one place',
-  CQA: 'Audits & CAPA tracking',
-  CPD: 'Market rates & delivery confirmation',
-  IT: 'Development tracker & timesheets',
-  'Supply Chain': 'Dispatch tracking',
-  IBD: 'IBD provision & payment tracking',
-  HR: 'Recruitment consultant management',
-  'Cross-Function': 'Mediclaim, term policy & PO approval',
-  Packaging: 'Mould health inspection',
-  Finance: 'Non-CTC expense claims',
-  SD: 'Salescode',
-};
-
 /** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow
  * on hover (see useTiltHover), then eases back flat on mouse-leave. Kept as its own component
  * (not inlined in the .map() below) since a tilt hook needs one hook instance per tile. */
@@ -224,24 +210,7 @@ export default function HomePage() {
                   <span style={{ fontSize: 8, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
                     Locked
                   </span>
-                ) : (
-                  <p
-                    style={{
-                      fontSize: 9.5,
-                      lineHeight: '12px',
-                      color: colors.inkSoft,
-                      fontFamily: fonts.sansRegular,
-                      margin: 0,
-                      textAlign: 'center',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {CATEGORY_DESCRIPTIONS[c]}
-                  </p>
-                )
+                ) : null
               }
             />
           );
