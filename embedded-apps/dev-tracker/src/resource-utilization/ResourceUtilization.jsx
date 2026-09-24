@@ -9,7 +9,7 @@ import { fmtDate, revisedTarget } from '../shared/utils.js';
 import {
   toISODate, allocatedManDaysInPeriod, buildAllocations, buildResourceUniverse, matchesFilters,
   overlapsPeriod, bucketFor, UTIL_BUCKETS, resourceStatus, RESOURCE_STATUS_META,
-  computeResourceStats, allocationPct, allocationByModule, buildHolidaySet,
+  computeResourceStats, allocationPct, allocationByModule, buildHolidaySet, countWorkingDays,
   ESTIMATED_MAN_DAYS, DEFAULT_ESTIMATED_MAN_DAYS, SPOC_ESTIMATE_SHARE,
 } from '../shared/resourceUtil.js';
 import {
@@ -31,6 +31,13 @@ const AVATAR_PALETTE = ['var(--st-purple)', 'var(--st-blue)', 'var(--st-teal)', 
 // Each timeline bar gets its own full-height lane (bar + gap) instead of the old thin
 // stacked strip, so a title + date range both fit inside the bar like the reference design.
 const BAR_LANE_HEIGHT = 52;
+// Timeline zoom. Months fits the whole period into the visible track (but never below
+// MIN_PX_PER_DAY, so a long range scrolls instead of squashing bars into slivers); Weeks and Days
+// zoom in to roughly DAYS_IN_VIEW days per screen and the track scrolls sideways — so the same
+// assignment's bar genuinely gets longer as the scale gets finer.
+const DAYS_IN_VIEW = { Weeks: 21, Days: 10 };
+const MIN_PX_PER_DAY = 5;
+const SIDE_COLS_WIDTH = 152 + 104 + 88; // Resource + Role + Workload columns (.ru-axis-side etc.)
 
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
@@ -47,6 +54,7 @@ function avatarColor(name) {
 function buildAxis(start, end, granularity) {
   const totalMs = end - start + 86400000;
   const pct = (d) => Math.max(0, Math.min(100, ((d - start) / totalMs) * 100));
+  const dayPct = (86400000 / totalMs) * 100; // one day's width, as a % of the track
   const ticks = [];
   if (granularity === 'Months') {
     let cur = startOfMonth(start);
@@ -65,11 +73,12 @@ function buildAxis(start, end, granularity) {
   } else {
     let cur = new Date(start);
     while (cur <= end) {
-      ticks.push({ date: new Date(cur), label: `${cur.getDate()}` });
+      // Day labels sit in the middle of their day column rather than on its left edge.
+      ticks.push({ date: new Date(cur), label: `${cur.toLocaleDateString('en-US', { weekday: 'short' })} ${cur.getDate()}`, mid: true });
       cur = addDaysD(cur, 1);
     }
   }
-  return { pct, ticks, start, end };
+  return { pct, dayPct, ticks, start, end };
 }
 
 function Donut({ segments, total, centerLabel, centerSub, size = 90 }) {
@@ -341,6 +350,42 @@ export default function ResourceUtilization() {
 
   const axis = useMemo(() => buildAxis(periodStart, periodEnd, granularity), [periodStart, periodEnd, granularity]);
 
+  // --- Timeline zoom (see DAYS_IN_VIEW) -------------------------------------------------
+  const [timelineEl, setTimelineEl] = useState(null);
+  const [trackViewport, setTrackViewport] = useState(0); // visible px for the date track
+  useEffect(() => {
+    if (!timelineEl) return undefined;
+    const measure = () => setTrackViewport(Math.max(0, timelineEl.clientWidth - SIDE_COLS_WIDTH));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(timelineEl);
+    return () => ro.disconnect();
+  }, [timelineEl]);
+  const periodDays = Math.round((periodEnd - periodStart) / 86400000) + 1;
+  const trackWidth = useMemo(() => {
+    if (!trackViewport || periodDays <= 0) return 0;
+    const fit = trackViewport / periodDays;
+    const pxPerDay = granularity === 'Months' ? Math.max(MIN_PX_PER_DAY, fit) : Math.max(fit, trackViewport / DAYS_IN_VIEW[granularity]);
+    return Math.floor(periodDays * pxPerDay);
+  }, [trackViewport, periodDays, granularity]);
+  const trackStyle = trackWidth ? { width: trackWidth, flex: '1 0 auto' } : undefined;
+  // On a scale or range change, bring Today (or else the period start) into view.
+  const trackMeasured = trackWidth > 0;
+  useEffect(() => {
+    if (!timelineEl || !trackMeasured) return;
+    const todayX = todayInRange ? (axis.pct(today) / 100) * trackWidth : 0;
+    timelineEl.scrollLeft = Math.max(0, todayX - trackViewport * 0.3);
+  }, [timelineEl, trackMeasured, granularity, periodStart, periodEnd]);
+  // Sundays, 2nd/4th Saturdays and holidays, shaded once days are wide enough to read.
+  const offDays = useMemo(() => {
+    if (granularity === 'Months') return [];
+    const out = [];
+    for (let d = new Date(periodStart); d <= periodEnd; d = addDaysD(d, 1)) {
+      if (!countWorkingDays(d, d, holidaySet)) out.push(d);
+    }
+    return out;
+  }, [granularity, periodStart, periodEnd, holidaySet]);
+
   function shiftRange(dir) {
     const spanDays = Math.round((periodEnd - periodStart) / 86400000) + 1;
     setRange((r) => ({ start: addDaysD(r.start, dir * spanDays), end: addDaysD(r.end, dir * spanDays) }));
@@ -579,13 +624,13 @@ export default function ResourceUtilization() {
         {/* ---------------------------- Timeline View ---------------------------- */}
         {view === 'timeline' && (
           <>
-            <div className="ru-timeline-card">
+            <div className="ru-timeline-card" ref={setTimelineEl}>
               <div className="ru-axis-header">
                 <div className="ru-axis-side">Resource ({resourceRows.length})</div>
                 <div className="ru-axis-role-col">Role</div>
                 <div className="ru-axis-workload-col">Workload</div>
-                <div className="ru-axis-track">
-                  {axis.ticks.map((t, i) => <span key={i} className="ru-axis-tick" style={{ left: `${axis.pct(t.date)}%` }}>{t.label}</span>)}
+                <div className="ru-axis-track" style={trackStyle}>
+                  {axis.ticks.map((t, i) => <span key={i} className={`ru-axis-tick${t.mid ? ' is-mid' : ''}`} style={{ left: `${axis.pct(t.date) + (t.mid ? axis.dayPct / 2 : 0)}%` }}>{t.label}</span>)}
                   {todayInRange && <span className="today-pill" style={{ left: `${axis.pct(today)}%` }}>Today</span>}
                   {todayInRange && <div className="today-line" style={{ left: `${axis.pct(today)}%` }} />}
                 </div>
@@ -615,7 +660,8 @@ export default function ResourceUtilization() {
                       <span className="ru-workload-pct">{Math.round(r.stats.utilizationPct)}%</span>
                       <span className="ru-workload-track"><span className="ru-workload-fill" style={{ width: `${Math.min(100, r.stats.utilizationPct)}%`, background: r.bucket.color }} /></span>
                     </div>
-                    <div className="ru-row-track" style={{ height: rowHeight }}>
+                    <div className="ru-row-track" style={{ ...trackStyle, height: rowHeight }}>
+                      {offDays.map((d) => <div key={d.getTime()} className="ru-offday" style={{ left: `${axis.pct(d)}%`, width: `${axis.dayPct}%` }} />)}
                       {axis.ticks.map((t, i) => <div key={i} className="month-div" style={{ left: `${axis.pct(t.date)}%`, opacity: 0.4 }} />)}
                       {todayInRange && <div className="today-line" style={{ left: `${axis.pct(today)}%`, opacity: 0.4 }} />}
                       {!bars.length && <span className="ru-row-empty">No allocations in this period</span>}
@@ -623,7 +669,7 @@ export default function ResourceUtilization() {
                         const s = a.window.start < periodStart ? periodStart : a.window.start;
                         const e = a.window.end > periodEnd ? periodEnd : a.window.end;
                         const left = axis.pct(s);
-                        const width = Math.max(1.5, axis.pct(e) - left);
+                        const width = Math.max(1.5, axis.pct(addDaysD(e, 1)) - left); // through the end of the last day
                         const meta = areaColors[a.module] || { color: 'var(--mod-fallback)', softColor: 'var(--bg-alt)' };
                         const completed = a.item.status === 'Completed';
                         const overdue = !['Completed', 'Cancelled'].includes(a.item.status) && a.window.end < today;
