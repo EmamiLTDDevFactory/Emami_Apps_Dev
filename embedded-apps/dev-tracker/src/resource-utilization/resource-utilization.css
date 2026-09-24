@@ -31,6 +31,40 @@
 .ru-row-role-col { width: 104px; flex-shrink: 0; padding: 8px; display: flex; align-items: center; font-size: 10.5px; color: var(--text-2); border-right: 1px solid var(--border); }
 .ru-row-workload-col { width: 88px; flex-shrink: 0; padding: 8px; display: flex; flex-direction: column; justify-content: center; gap: 4px; border-right: 1px solid var(--border); }
 .ru-workload-pct { font-size: 11px; font-weight: 700; color: var(--text); }
+.ru-row-workload-col.is-hoverable { cursor: help; outline: none; }
+.ru-row-workload-col.is-hoverable:hover, .ru-row-workload-col.is-hoverable:focus-visible { background: var(--bg-alt); }
+
+/* Workload hover card (see WorkloadTip in ResourceUtilization.jsx) — position: fixed so the
+   timeline card's overflow: hidden can't clip it. Kept compact; the project list scrolls. */
+.ru-wtip {
+  position: fixed; z-index: 50; width: 260px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 9px;
+  padding: 9px 10px; box-shadow: 0 10px 24px -10px oklch(0% 0 0 / 0.3);
+  font-size: 10px; color: var(--text-2);
+}
+.ru-wtip-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ru-wtip-name { font-size: 11.5px; font-weight: 700; color: var(--text); }
+.ru-wtip-sub { font-size: 9px; color: var(--muted); margin-top: 1px; }
+.ru-wtip-pct { font-size: 15px; font-weight: 800; line-height: 1; }
+.ru-wtip-bucket { display: flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 9.5px; font-weight: 600; color: var(--text-2); }
+.ru-wtip-bucket i { width: 6px; height: 6px; border-radius: 999px; display: inline-block; }
+.ru-wtip-md { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 7px 0 8px; }
+.ru-wtip-md > div { background: var(--bg-alt); border-radius: 6px; padding: 4px 6px; display: flex; flex-direction: column; gap: 1px; }
+.ru-wtip-md span { font-size: 8.5px; color: var(--muted); font-weight: 600; }
+.ru-wtip-md b { font-size: 10.5px; color: var(--text); }
+.ru-wtip-section { font-size: 8.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+/* ~3 projects visible, the rest scroll; overscroll-behavior stops the wheel spilling onto the page. */
+.ru-wtip-list {
+  max-height: 128px; overflow-y: auto; overscroll-behavior: contain;
+  margin-right: -6px; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+}
+.ru-wtip-proj { padding: 5px 0; border-top: 1px solid var(--border); }
+.ru-wtip-proj-top { display: flex; justify-content: space-between; gap: 8px; }
+.ru-wtip-proj-title { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ru-wtip-proj-md { flex-shrink: 0; font-weight: 600; color: var(--text); font-size: 9.5px; }
+.ru-wtip-proj-meta { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 9px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.ru-wtip-chip { padding: 0 5px; border-radius: 999px; font-weight: 700; font-size: 8.5px; }
+.ru-wtip-empty { font-size: 9.5px; color: var(--muted); padding-top: 3px; }
 .ru-row-track { flex: 1; position: relative; padding: 5px 0; }
 .ru-row-empty { position: absolute; left: 12px; top: 11px; font-size: 10px; color: var(--muted); }
 
@@ -112,3 +146,5 @@
 .ru-group-caret.collapsed { transform: rotate(-90deg); }
 .ru-group-title { font-size: 11px; font-weight: 700; color: var(--text); }
 .ru-group-meta { font-size: 10px; color: var(--muted); margin-left: auto; }
+/* The page-wide est. tag, scaled down to the hover card's text size. */
+.ru-wtip .ru-est-tag { margin-left: 4px; padding: 0 3px; font-size: 8px; vertical-align: 0; }

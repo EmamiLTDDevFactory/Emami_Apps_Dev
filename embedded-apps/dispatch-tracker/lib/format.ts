@@ -63,6 +63,14 @@ export function fmtCw(cases: unknown, grossWt: unknown): string {
   return parts.length ? parts.join('  ·  ') : '—';
 }
 
+/** Cases count. SAP's Fkimg is often fractional (0.080, 0.125) — toFixed(0) rounded those to
+ *  "0", so keep up to 3 decimals and drop trailing zeros (1.000 → "1", 0.080 → "0.08"). */
+export function fmtCases(v: unknown, fb = '—'): string {
+  const n = sfloat(v);
+  if (!n) return fb;
+  return String(Number(n.toFixed(3)));
+}
+
 export function daysBetween(a: Date, b: Date): number {
   const ms = a.setHours(0, 0, 0, 0) - b.setHours(0, 0, 0, 0);
   return Math.round(ms / 86400000);

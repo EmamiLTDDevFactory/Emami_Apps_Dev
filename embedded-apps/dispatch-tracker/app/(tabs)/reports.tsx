@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { getRetVal } from '@/lib/api';
 import { delayStatusColor, delayStatusLabel, delayVsEddLabel, eddVsTodayColor } from '@/lib/delay';
-import { fd, finr, gsvFmt, sfloat, sv, toDate } from '@/lib/format';
+import { fd, finr, gsvFmt, sfloat, sv, toDate, fmtCases } from '@/lib/format';
 import { exportReportToExcel, ReportType } from '@/lib/export';
 import { AnyInvoiceRow } from '@/types/models';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -257,6 +257,7 @@ const TYPE_EXTRA_COLUMNS: Record<ReportType, ColumnDef[]> = {
     { key: '_edd', label: 'Exp. Delivery', width: 100 },
     { key: 'transporter', label: 'Transporter', width: 130 },
     { key: 'lr_no', label: 'LR No', width: 90 },
+    { key: 'no_of_cases', label: 'Cases', width: 70 },
     ...CHANNEL_DISTANCE_COLUMNS,
   ],
   completed: [
@@ -266,17 +267,20 @@ const TYPE_EXTRA_COLUMNS: Record<ReportType, ColumnDef[]> = {
     { key: 'total_delay', label: 'Delay', width: 95 },
     { key: '_delay', label: 'Delay vs EDD(Days)', width: 110 },
     { key: 'transporter', label: 'Transporter', width: 130 },
+    { key: 'no_of_cases', label: 'Cases', width: 70 },
     ...CHANNEL_DISTANCE_COLUMNS,
   ],
   returned: [
     { key: 'actual_delivery_date', label: 'Actual Delivery', width: 105 },
     { key: 'receiving_date', label: 'Receiving Date', width: 105 },
     { key: 'cancel_reason', label: 'Reason', width: 180 },
+    { key: 'no_of_cases', label: 'Cases', width: 70 },
     ...CHANNEL_DISTANCE_COLUMNS,
   ],
   cancelled: [
     { key: 'cancel_date', label: 'Cancel Date', width: 95 },
     { key: 'cancel_reason', label: 'Reason', width: 180 },
+    { key: 'no_of_cases', label: 'Cases', width: 70 },
     ...CHANNEL_DISTANCE_COLUMNS,
   ],
 };
@@ -358,6 +362,9 @@ function Cell({ col, row }: { col: ColumnDef; row: ComputedRow }) {
         {delayVsEddLabel(v)}
       </Text>
     );
+  }
+  if (key === 'no_of_cases') {
+    return <Text style={[styles.cellText, { color: colors.g700 }]}>{fmtCases(row.no_of_cases)}</Text>;
   }
   if (key === 'distance_km') {
     const km = sfloat((row as unknown as Record<string, unknown>).distance_km);
@@ -712,7 +719,7 @@ export default function ReportsScreen() {
         <View style={styles.statStrip}>
           <StatCell label="Records" value={String(cnt)} />
           <StatCell label="Total Value" value={finr(gsv)} color={colors.amber} />
-          <StatCell label="Total Cases" value={cases.toFixed(0)} />
+          <StatCell label="Total Cases" value={fmtCases(cases, '0')} />
           <StatCell label="Avg Value" value={cnt ? finr(avg) : '—'} />
         </View>
       </View>

@@ -5,7 +5,7 @@ import { colors, radius, shadow } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { PendingInvoice } from '@/types/models';
-import { fd, finr, fmtCw, sfloat, toDate } from '@/lib/format';
+import { fd, finr, fmtCw, sfloat, toDate, fmtCases } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { KPICard } from '@/components/KPICard';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -153,7 +153,7 @@ export default function PendingScreen() {
         <View style={styles.kpiRow}>
           <KPICard compact icon="⏳" label="Pending" value={`${filtered.length}/${sorted.length}`} color={colors.amber} />
           <KPICard compact icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
-          <KPICard compact icon="📦" label="Total Cases" value={cases.toFixed(0)} color={colors.teal} />
+          <KPICard compact icon="📦" label="Total Cases" value={fmtCases(cases, '0')} color={colors.teal} />
           <KPICard compact icon="📍" label="Towns" value={String(towns)} color={colors.navy} />
         </View>
       </View>

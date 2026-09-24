@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { colors, radius, shadow, slaBuckets } from '@/constants/theme';
 import { dashboardDelayColor } from '@/lib/delay';
-import { finr, gsvFmt } from '@/lib/format';
+import { finr, gsvFmt, fmtCases } from '@/lib/format';
 import { AnyInvoiceRow } from '@/types/models';
 
 /** Ported 1:1 from dis_shared_components.py's render_dashboard(). */
@@ -356,7 +356,7 @@ export default function DashboardScreen() {
       </KpiRow>
       <KpiRow>
         <KPICard icon="💰" label="Total GSV" value={gsvFmt(totalGsv)} color={colors.gsvOrange} sub="invoice value" />
-        <KPICard icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.casesSlate} />
+        <KPICard icon="📦" label="Total Cases" value={fmtCases(totalCases, '0')} color={colors.casesSlate} />
       </KpiRow>
       <KpiRow>
         <KPICard icon="🎯" label="On-Time %" value={`${otp.toFixed(1)}%`} color={otpColor} sub={`${onTimeCount} of ${totalCompleted} delivered`} />
@@ -571,7 +571,7 @@ function DepotOverviewTable({
               <Td text={String(r.returned)} width={70} align="right" style={{ color: colors.purple, fontWeight: '700' }} />
               <Td text={String(r.cancelled)} width={70} align="right" style={{ color: colors.red, fontWeight: '700' }} />
               <Td text={finr(r.gsv)} width={110} align="right" />
-              <Td text={r.cases.toFixed(0)} width={70} align="right" />
+              <Td text={fmtCases(r.cases, '0')} width={70} align="right" />
             </View>
           ))}
         </View>
