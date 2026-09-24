@@ -136,7 +136,7 @@ function WorkloadTip({ tip, periodStart, periodEnd, holidaySet, areaColors, onMo
   const { row, anchor } = tip;
   const { stats, bucket, resource, role } = row;
   const projects = stats.overlapping
-    .map((a) => ({ a, md: allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet) }))
+    .map((a) => ({ a, md: allocatedManDaysInPeriod(a.window, a.manDays, periodStart, periodEnd, holidaySet) }))
     .sort((x, y) => y.md - x.md);
   const free = stats.availableManDays - stats.allocatedManDays;
   // Open below the cell in the top half of the viewport, above it in the bottom half.
@@ -167,22 +167,26 @@ function WorkloadTip({ tip, periodStart, periodEnd, holidaySet, areaColors, onMo
       {projects.length > 0 && (
         <div className="ru-wtip-list">
           {projects.map(({ a, md }) => {
-        const meta = areaColors[a.module] || { color: 'var(--mod-fallback)', softColor: 'var(--bg-alt)' };
-        const pct = stats.availableManDays > 0 ? (md / stats.availableManDays) * 100 : 0;
-        return (
-          <div className="ru-wtip-proj" key={`${a.role}::${a.item.id}`}>
-            <div className="ru-wtip-proj-top">
-              <span className="ru-wtip-proj-title">{a.item.devList}</span>
-              <span className="mono ru-wtip-proj-md">{fmtMd(md)} · {Math.round(pct)}%</span>
-            </div>
-            <div className="ru-wtip-proj-meta">
-              {a.module && <span className="ru-wtip-chip" style={{ background: meta.softColor, color: meta.color }}>{a.module}</span>}
-              <span>{a.item.status}</span>
-              <span>·</span>
-              <span>{fmtDate(a.item.startDate, { withYear: false })} – {fmtDate(toISODate(a.window.end), { withYear: false })}</span>
-            </div>
-          </div>
-        );
+            const meta = areaColors[a.module] || { color: 'var(--mod-fallback)', softColor: 'var(--bg-alt)' };
+            const pct = stats.availableManDays > 0 ? (md / stats.availableManDays) * 100 : 0;
+            return (
+              <div className="ru-wtip-proj" key={`${a.role}::${a.item.id}`}>
+                <div className="ru-wtip-proj-top">
+                  <span className="ru-wtip-proj-title">{a.item.devList}</span>
+                  <span className="mono ru-wtip-proj-md">
+                    {fmtMd(md)} · {Math.round(pct)}%
+                    {a.estimated.manDays && <span className="ru-est-tag" title="Estimated from Technical Complexity">est.</span>}
+                  </span>
+                </div>
+                <div className="ru-wtip-proj-meta">
+                  {a.module && <span className="ru-wtip-chip" style={{ background: meta.softColor, color: meta.color }}>{a.module}</span>}
+                  <span>{a.item.status}</span>
+                  <span>·</span>
+                  <span>{fmtDate(toISODate(a.window.start), { withYear: false })} – {fmtDate(toISODate(a.window.end), { withYear: false })}</span>
+                  {a.estimated.dates && <span className="ru-est-tag" title="Estimated from stage dates">est.</span>}
+                </div>
+              </div>
+            );
           })}
         </div>
       )}

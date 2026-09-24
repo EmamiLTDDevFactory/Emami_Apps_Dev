@@ -146,3 +146,5 @@
 .ru-group-caret.collapsed { transform: rotate(-90deg); }
 .ru-group-title { font-size: 11px; font-weight: 700; color: var(--text); }
 .ru-group-meta { font-size: 10px; color: var(--muted); margin-left: auto; }
+/* The page-wide est. tag, scaled down to the hover card's text size. */
+.ru-wtip .ru-est-tag { margin-left: 4px; padding: 0 3px; font-size: 8px; vertical-align: 0; }
