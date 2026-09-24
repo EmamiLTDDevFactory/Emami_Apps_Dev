@@ -5,7 +5,7 @@ import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { getRetVal } from '@/lib/api';
-import { fd, finr, fmtCw, toDate } from '@/lib/format';
+import { fd, finr, fmtCw, toDate, fmtCases } from '@/lib/format';
 import { ReturnedInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
@@ -188,7 +188,7 @@ export default function ReturnedScreen() {
           <KPICard compact icon="↩" label="Total Returns" value={`${drRows.length}/${totalInvR}`} color={colors.purple} />
           <KPICard compact icon="📦" label="Full Returns" value={String(fullCnt)} color={colors.navy} />
           <KPICard compact icon="🔄" label="Partial Returns" value={String(partialCnt)} color={colors.amber} />
-          <KPICard compact icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${casesR.toFixed(0)} cases`} />
+          <KPICard compact icon="💰" label="GSV Returned" value={finr(gsvR)} color={colors.red} sub={`${fmtCases(casesR, "0")} cases`} />
         </View>
 
         <FilterRow>

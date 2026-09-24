@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, shadow } from '@/constants/theme';
-import { fd, finr, toDate } from '@/lib/format';
+import { fd, finr, toDate, fmtCases } from '@/lib/format';
 import { eddVsTodayColor } from '@/lib/delay';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
@@ -68,10 +68,6 @@ function statusBadgeFor(status: string): { status: 'delivered' | 'returned' | 'c
   if (status === 'Returned') return { status: 'returned', label: 'RETURNED' };
   if (status === 'Cancelled') return { status: 'cancelled', label: 'CANCELLED' };
   return { status: 'inTransit', label: 'IN TRANSIT' };
-}
-
-function fmtCases(v: number | null | undefined): string {
-  return v ? v.toFixed(0) : '—';
 }
 
 function fmtWeight(v: number | null | undefined): string {
@@ -223,7 +219,7 @@ export default function DispatchedScreen() {
 
         <View style={styles.kpiRow}>
           <KPICard compact icon="🚚" label="Dispatched" value={`${filtered.length}/${totalForDepot}`} color={colors.teal} />
-          <KPICard compact icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.navy} />
+          <KPICard compact icon="📦" label="Total Cases" value={fmtCases(totalCases, '0')} color={colors.navy} />
           <KPICard compact icon="💰" label="GSV" value={finr(totalGsv)} color={colors.amber} />
         </View>
 
