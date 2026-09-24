@@ -81,8 +81,15 @@ router.post('/hub-login', async (req, res, next) => {
     let hubPayload
     try {
       hubPayload = jwt.verify(hubToken, HUB_AUTH_JWT_SECRET)
-    } catch {
-      return res.status(401).json({ error: 'Your Emami Apps session has expired. Please sign in to Emami Apps again.' })
+    } catch (err) {
+      // Only a real expiry is reported as one. Anything else (bad signature above all) means this
+      // server's HUB_AUTH_JWT_SECRET doesn't match the one the hub's login signed the token with -
+      // signing in again can't fix that, so say so instead of sending people round in circles.
+      if (err?.name === 'TokenExpiredError') {
+        return res.status(401).json({ error: 'Your Emami Apps session has expired. Please sign in to Emami Apps again.' })
+      }
+      console.error(`[auth] hub token rejected: ${err?.name}: ${err?.message}`)
+      return res.status(401).json({ error: `Couldn't verify your Emami Apps session (${err?.message || 'invalid token'}). Please contact IT.` })
     }
 
     const email = String(hubPayload?.email || '').trim().toLowerCase()
