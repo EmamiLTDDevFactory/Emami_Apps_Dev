@@ -2,9 +2,12 @@
  * Salescode (SD category = the SAP SD module) — master and transactional data for Emami products
  * sold through Salescode, from SAP ECC. This route serves the invoice/pricing rows, via the
  * ZSALESCODE_ODATA_SRV_SRV OData service (entity set Pricing_dataSet, backed by Z table
- * ZSD_SC_PRIC_API). Backs the
- * embedded-apps/salescode page. Self-contained, mounted under /salescode in server.js — purely
- * additive, doesn't touch any other route.
+ * ZSD_SC_PRIC_API). Self-contained, mounted under /salescode in server.js — purely additive,
+ * doesn't touch any other route.
+ *
+ * Not called today: the embedded-apps/salescode page reads Pricing_dataSet straight from the
+ * browser through the NGD proxy (the Non-CTC Expense pattern) and gates on the Salescode grant
+ * client-side. This route is kept, date-range ready, for a later move to server-side enforcement.
  *
  * SAP_GATEWAY_URL is the service root. It defaults to the NGD proxy (the same one audit-capa's
  * sapNgdService.js uses for ZQM_CAPA_AUDIT_SRV), which is reachable from the AWS-hosted backend
@@ -36,6 +39,18 @@ const REQUEST_TIMEOUT_MS = Number(process.env.SAP_GATEWAY_TIMEOUT_MS || 30000);
 // front is what keeps the value safe to interpolate into the $filter string literal below — a
 // quote or space can't get through, so it can't break out of the filter expression.
 const DISTRIBUTOR_RE = /^[A-Za-z0-9]{1,10}$/;
+// Created-on date range (from/to, YYYY-MM-DD) — the service filters on CreationDate. Same reasoning: only this exact shape reaches the
+// datetime'...' literals. Pricing_dataSet can't page, so the span is capped to keep one call's
+// payload (and SAP's work) bounded.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_RANGE_DAYS = Number(process.env.SALESCODE_MAX_RANGE_DAYS || 93);
+
+function parseIsoDate(s) {
+    if (!ISO_DATE_RE.test(s)) return null;
+    const d = new Date(`${s}T00:00:00Z`);
+    // Rejects impossible dates like 2026-02-30, which Date would silently roll over.
+    return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : d;
+}
 
 // Only the selected SD/IT users granted the Salescode tile in Manage Access (the same
 // emami_apps.authorized_user_apps row that decides whether the tile shows for them). A granted
@@ -60,13 +75,32 @@ async function requireSalescodeAccess(req, res, next) {
     }
 }
 
+// GET /invoices?from=YYYY-MM-DD&to=YYYY-MM-DD[&distributor=...] — Pricing Master rows for a
+// created-on date range (both ends inclusive), optionally narrowed to one distributor. A lone
+// distributor (no dates) is still accepted, as before.
 router.get('/invoices', requireSalescodeAccess, async (req, res) => {
     const distributor = String(req.query.distributor || '').trim();
-    if (!distributor) {
-        return res.status(400).json({ error: 'distributor query parameter is required' });
-    }
-    if (!DISTRIBUTOR_RE.test(distributor)) {
+    const fromRaw = String(req.query.from || '').trim();
+    const toRaw = String(req.query.to || '').trim();
+    if (distributor && !DISTRIBUTOR_RE.test(distributor)) {
         return res.status(400).json({ error: 'distributor must be 1-10 letters or digits' });
+    }
+    if (Boolean(fromRaw) !== Boolean(toRaw)) {
+        return res.status(400).json({ error: 'from and to must be given together' });
+    }
+    const from = fromRaw ? parseIsoDate(fromRaw) : null;
+    const to = toRaw ? parseIsoDate(toRaw) : null;
+    if (fromRaw && (!from || !to)) {
+        return res.status(400).json({ error: 'from and to must be valid dates (YYYY-MM-DD)' });
+    }
+    if (from && from > to) {
+        return res.status(400).json({ error: 'from must be on or before to' });
+    }
+    if (from && (to - from) / 86400000 + 1 > MAX_RANGE_DAYS) {
+        return res.status(400).json({ error: `Date range can be at most ${MAX_RANGE_DAYS} days` });
+    }
+    if (!distributor && !from) {
+        return res.status(400).json({ error: 'Give a date range (from and to) or a distributor' });
     }
     // The NGD proxy signs in to SAP itself; only a direct Gateway URL needs Basic auth. Half a
     // credential pair is a misconfiguration either way.
@@ -79,7 +113,13 @@ router.get('/invoices', requireSalescodeAccess, async (req, res) => {
     // be silently ignored anyway. Add them back once paging is enabled on the SAP side.
     // encodeURIComponent (spaces as %20), not URLSearchParams (spaces as "+") — %20 is the form
     // the service was actually verified with, and not every Gateway/proxy decodes "+" in $filter.
-    const query = `$filter=${encodeURIComponent(`DistributorCode eq '${distributor}'`)}&$format=json`;
+    // CreationDate is Edm.DateTime, so OData v2 wants datetime'YYYY-MM-DDT00:00:00' literals.
+    const conditions = [];
+    if (from) {
+        conditions.push(`CreationDate ge datetime'${fromRaw}T00:00:00'`, `CreationDate le datetime'${toRaw}T00:00:00'`);
+    }
+    if (distributor) conditions.push(`DistributorCode eq '${distributor}'`);
+    const query = `$filter=${encodeURIComponent(conditions.join(' and '))}&$format=json`;
 
     try {
         const response = await fetch(`${SAP_BASE_URL}/Pricing_dataSet?${query}`, {

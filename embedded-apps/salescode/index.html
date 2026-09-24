@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/emami-apps-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   /* Salescode Data Centre — a sidebar shell plus tiles for every master and transactional dataset
      SAP shares with Salescode. The look is Dev Tracker's, ported to plain CSS: tokens from
@@ -48,7 +48,7 @@
   }
   button { font: inherit; color: inherit; }
   svg { flex-shrink: 0; }
-  .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  .mono { font-variant-numeric: tabular-nums; } /* same face as the hub — digits line up via tabular figures */
   .avatar {
     width: 31px; height: 31px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -297,6 +297,274 @@
   .sidebar-link { transition: background .15s ease, color .15s ease, padding .15s ease; }
   .sidebar-link:not(.is-active):hover { padding-left: 10px; }
 
+  /* ---------- Pricing Master (dataset view, #pricing) — enterprise grid ---------- */
+  .dataset-view { display: none; }
+  body[data-view="pricing"] #pricingView { display: block; }
+  body[data-view="pricing"] .view-head-pricing { display: flex; }
+  body[data-view="pricing"] #master, body[data-view="pricing"] #transactional { display: none; }
+  .crumb {
+    display: inline-flex; align-items: center; gap: 3px; margin: 0 0 8px -6px; padding: 3px 10px 3px 4px;
+    border: none; border-radius: 999px; background: none; color: var(--accent);
+    font-size: 11.5px; font-weight: 600; cursor: pointer; transition: background .15s ease;
+  }
+  .crumb:hover { background: var(--accent-soft); }
+
+  /* Header meta: data source + freshness + actions */
+  .view-head-pricing { align-items: flex-end; }
+  .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .meta-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 7px;
+    background: var(--surface); border: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-2);
+  }
+  .meta-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--st-green); box-shadow: 0 0 0 3px var(--st-green-soft); }
+  .meta-chip.is-source { font-weight: 500; }
+  .head-actions { display: flex; gap: 8px; }
+  .head-btn {
+    display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / .04); transition: border-color .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease;
+  }
+  .head-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); box-shadow: 0 6px 14px -10px var(--accent); }
+  .head-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .head-btn.is-spinning svg { animation: boot-spin .8s linear infinite; }
+
+  /* Filter bar (Fiori-style): labelled fields in one row, action at the end */
+  .filterbar {
+    display: grid; grid-template-columns: minmax(300px, 1.2fr) auto auto; grid-template-areas: "range quick go" "hint hint hint";
+    align-items: end; gap: 10px 16px; padding: 16px 18px; margin-bottom: 18px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / .03), 0 14px 30px -26px oklch(30% 0.08 280 / .3);
+  }
+  .fb-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .fb-field:nth-of-type(1) { grid-area: range; }
+  .fb-field:nth-of-type(2) { grid-area: quick; }
+  .fb-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .date-range {
+    display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 6px 0 12px; min-width: 0;
+    border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--muted);
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .date-range:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent); }
+  .date-range.is-invalid { border-color: var(--st-red); box-shadow: 0 0 0 4px var(--st-red-soft); }
+  .date-range input {
+    flex: 1; min-width: 0; height: 32px; padding: 0 6px; border: none; border-radius: 6px; outline: none; background: none;
+    font: 600 13px 'IBM Plex Sans', system-ui, sans-serif; color: var(--text); color-scheme: light; font-variant-numeric: tabular-nums;
+  }
+  .date-range input:focus { background: var(--bg-alt); }
+  .date-range-sep { color: var(--muted); font-weight: 600; }
+  .segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--bg-alt); border: 1px solid var(--border); }
+  .segmented button {
+    height: 32px; padding: 0 12px; border: none; border-radius: 7px; background: none; cursor: pointer; white-space: nowrap;
+    font-size: 12px; font-weight: 600; color: var(--text-2); transition: background .15s ease, color .15s ease, box-shadow .15s ease;
+  }
+  .segmented button:hover { color: var(--text); }
+  .segmented button.is-on { background: var(--surface); color: var(--accent); box-shadow: 0 1px 2px oklch(0% 0 0 / .08), 0 0 0 1px var(--border); }
+  .query-hint { grid-area: hint; margin: 0; font-size: 11.5px; color: var(--muted); }
+  .query-hint.is-error { color: var(--st-red); font-weight: 600; }
+  .btn-primary {
+    grid-area: go; height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 20px;
+    border: none; border-radius: 10px; cursor: pointer; white-space: nowrap;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-size: 13px; font-weight: 600;
+    box-shadow: 0 10px 20px -12px var(--accent); transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 26px -12px var(--accent); }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn-primary:disabled { opacity: .65; cursor: progress; transform: none; }
+  .btn-link { border: none; background: none; padding: 4px 2px; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .btn-link:hover { text-decoration: underline; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 600;
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+  /* States */
+  .state-card {
+    display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 52px 24px;
+    background: color-mix(in srgb, var(--surface) 82%, transparent); border: 1px dashed var(--border-strong); border-radius: 14px; color: var(--text-2);
+  }
+  .state-card.is-error { border-style: solid; border-color: color-mix(in srgb, var(--st-red) 28%, var(--border)); background: linear-gradient(180deg, var(--st-red-soft), var(--surface) 75%); }
+  .state-icon { width: 56px; height: 56px; border-radius: 16px; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .state-card.is-error .state-icon { background: var(--st-red-soft); color: var(--st-red); box-shadow: none; }
+  .state-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+  .state-text { margin: 0; max-width: 480px; font-size: 12.5px; line-height: 1.6; }
+  .state-card .btn-ghost { margin-top: 8px; }
+
+  /* KPI tiles — value in text ink, compact; the trend is a micro bar chart */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 2fr); gap: 12px; margin-bottom: 16px; }
+  .kpi {
+    position: relative; min-width: 0; padding: 14px 16px 13px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: 0 1px 2px oklch(0% 0 0 / .03), 0 12px 26px -24px oklch(30% 0.08 280 / .35);
+  }
+  .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .kpi-label .kpi-ico { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
+  .kpi-value { margin-top: 10px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .kpi-sub { margin-top: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-sub b { color: var(--text-2); font-weight: 600; }
+  .kpi.is-wide { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: end; }
+  .kpi.is-wide .kpi-text { min-width: 0; }
+  .micro { position: relative; height: 58px; min-width: 0; }
+  .micro svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .micro .bar { fill: color-mix(in srgb, var(--accent) 30%, var(--surface)); transition: fill .12s ease; }
+  .micro .bar.is-last { fill: var(--accent); }
+  .micro .hit { fill: transparent; cursor: default; }
+  .micro .hit:hover + .bar, .micro .bar.is-hot { fill: var(--accent-2); }
+  .micro .base { stroke: var(--border-strong); stroke-width: 1; }
+  .micro-caption { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .micro-tip {
+    position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 5; pointer-events: none; white-space: nowrap;
+    padding: 6px 9px; border-radius: 8px; background: var(--text); color: #fff; font-size: 11px; line-height: 1.35;
+    box-shadow: 0 10px 22px -10px oklch(0% 0 0 / .45);
+  }
+  .micro-tip b { display: block; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* Grid card */
+  .grid-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 20px;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / .03), 0 16px 34px -28px oklch(30% 0.08 280 / .35);
+  }
+  .grid-toolbar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .gt-title { display: flex; align-items: baseline; gap: 8px; margin-right: 4px; }
+  .gt-name { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+  .gt-count { font-size: 11.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .filter-box { flex: 1 1 220px; max-width: 340px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 11px; border-radius: 9px; background: var(--bg-alt); color: var(--muted); border: 1px solid transparent; }
+  .filter-box:focus-within { border-color: var(--accent); background: var(--surface); }
+  .filter-box input { flex: 1; min-width: 0; border: none; outline: none; background: none; font: inherit; font-size: 12.5px; color: var(--text); }
+  .gt-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .tool-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 11px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 600;
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  .tool-btn:hover, .tool-btn[aria-expanded="true"] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); background: var(--accent-soft); }
+  .btn-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 10.5px; display: inline-flex; align-items: center; justify-content: center; }
+  .btn-badge[hidden], .chip-row[hidden] { display: none; }
+  .btn-count { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .tool-group { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); }
+  .tool-group select { height: 30px; max-width: 160px; border: none; outline: none; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .sort-dir { height: 26px; padding: 0 8px; border: none; border-radius: 7px; background: var(--bg-alt); color: var(--text-2); font-size: 11.5px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .sort-dir:hover { background: var(--accent-soft); color: var(--accent); }
+  .density button { width: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+
+  .pop-anchor { position: relative; }
+  .columns-pop {
+    position: absolute; top: 40px; right: 0; z-index: 30; width: 440px; max-width: calc(100vw - 40px); padding: 10px;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 18px 36px -18px oklch(0% 0 0 / .3);
+  }
+  .columns-pop-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .columns-pop-head button { border: none; background: none; margin-left: 8px; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; text-transform: none; letter-spacing: 0; }
+  .columns-list { max-height: 340px; overflow: auto; }
+  .col-group-title { grid-column: 1 / -1; padding: 8px 6px 2px; font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--accent); }
+  .col-group { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+  .columns-list label { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 7px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+  .columns-list label:hover { background: var(--bg-alt); }
+  .columns-list input { accent-color: var(--accent); }
+
+  .filter-panel { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-alt) 55%, var(--surface)); }
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .filter-grid label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .filter-grid label > span { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+  .filter-grid select { height: 34px; min-width: 0; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface); font: inherit; font-size: 12.5px; color: var(--text); outline: none; cursor: pointer; }
+  .filter-grid select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+  .filter-grid select.is-set { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-soft); font-weight: 600; }
+  .filter-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px 0 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 600; }
+  .chip b { font-weight: 700; color: var(--text); }
+  .chip button { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: none; color: var(--accent); cursor: pointer; }
+  .chip button:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
+  /* The data grid */
+  .table-wrap { overflow: auto; max-height: 64vh; }
+  .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; --cell-y: 10px; }
+  .data-table.is-compact { font-size: 12px; --cell-y: 5px; }
+  .data-table thead tr.groups th {
+    top: 0; height: 28px; padding: 0 14px; cursor: default; text-align: left;
+    font-size: 10px; letter-spacing: .08em; color: var(--text-2); background: color-mix(in srgb, var(--bg-alt) 70%, var(--surface));
+    border-bottom: 1px solid var(--border); border-left: 1px solid var(--border);
+  }
+  .data-table thead tr.groups th:first-child { border-left: none; }
+  /* Group labels stay readable while the grid scrolls sideways: pinned just right of the frozen first column (--pin-w, set in renderPricing). */
+  .data-table thead tr.groups th span { position: sticky; left: calc(var(--pin-w, 0px) + 14px); display: inline-flex; align-items: center; gap: 6px; }
+  .data-table thead tr.groups th:first-child span { position: static; }
+  .data-table thead tr.groups th span::before { content: ''; width: 6px; height: 6px; border-radius: 2px; background: var(--g, var(--accent)); }
+  .data-table th {
+    position: sticky; top: 28px; z-index: 2; padding: 9px 14px; text-align: left; white-space: nowrap; cursor: pointer; user-select: none;
+    background: var(--bg-alt); border-bottom: 1px solid var(--border-strong);
+    font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+  }
+  .data-table th.g-start { border-left: 1px solid var(--border); }
+  .data-table th:hover { color: var(--text); }
+  .data-table th.is-sorted { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+  .sort-ind { display: inline-block; margin-left: 3px; }
+  .data-table th.num, .data-table td.num { text-align: right; }
+  .data-table td {
+    padding: var(--cell-y) 14px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); white-space: nowrap;
+    color: var(--text); background: var(--surface); font-variant-numeric: tabular-nums;
+  }
+  .data-table td.g-start { border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+  .data-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--bg-alt) 45%, var(--surface)); }
+  .data-table tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+  .data-table tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset -1px 0 0 var(--border); }
+  .data-table th:first-child, .data-table td:first-child { position: sticky; left: 0; z-index: 1; box-shadow: inset -1px 0 0 var(--border); }
+  .data-table thead th:first-child { z-index: 4; }
+  .data-table td.wide { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .data-table tfoot td {
+    position: sticky; bottom: 0; z-index: 2; padding: 10px 14px; background: var(--surface);
+    border-top: 1px solid var(--border-strong); font-weight: 700; color: var(--text); box-shadow: 0 -8px 16px -14px oklch(0% 0 0 / .25);
+  }
+  .data-table tfoot td:first-child { z-index: 3; }
+  .tfoot-label { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--bg-alt); color: var(--text-2); font-size: 11px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--border); }
+  .tag.is-free { background: var(--st-green-soft); color: var(--st-green); box-shadow: none; }
+  .free-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--st-green-soft); color: var(--st-green); font-size: 9.5px; font-weight: 700; letter-spacing: .03em; vertical-align: 1px; }
+  .unit { font-size: 11px; color: var(--muted); }
+  .strong { font-weight: 700; }
+  .muted { color: var(--muted); }
+  .skel { display: block; height: 11px; border-radius: 6px; background: linear-gradient(90deg, var(--bg-alt) 25%, var(--border) 50%, var(--bg-alt) 75%); background-size: 200% 100%; animation: skel 1.2s linear infinite; }
+  @keyframes skel { to { background-position: -200% 0; } }
+
+  .grid-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; padding: 10px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+  .page-size { display: inline-flex; align-items: center; gap: 8px; }
+  .page-size select { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font: inherit; font-size: 12px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+  .page-info { font-variant-numeric: tabular-nums; }
+  .pager { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+  .pager button { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-2); cursor: pointer; }
+  .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .pager button:disabled { opacity: .4; cursor: default; }
+  .page-num { min-width: 64px; text-align: center; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 1280px) {
+    .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpi.is-wide { grid-column: 1 / -1; }
+  }
+  @media (max-width: 900px) {
+    .filterbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "range" "quick" "hint" "go"; }
+    .segmented:not(.density) { display: flex; overflow-x: auto; }
+    .segmented:not(.density) button { flex: 1 0 auto; }
+    .btn-primary { width: 100%; }
+    .view-head-pricing { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .kpi.is-wide { grid-template-columns: minmax(0, 1fr); }
+    .grid-toolbar { padding: 12px; }
+    .filter-box { max-width: none; flex-basis: 100%; order: 3; }
+    .gt-actions { margin-left: 0; order: 4; }
+    .tool-label { display: none; }
+    .pop-anchor { position: static; }
+    .columns-pop { top: calc(100% - 6px); left: 12px; right: 12px; width: auto; max-width: none; }
+    .filter-panel, .chip-row { padding-left: 12px; padding-right: 12px; }
+    .grid-footer { padding: 10px 12px; }
+    .page-info { order: 3; width: 100%; }
+    .table-wrap { max-height: 62vh; }
+  }
+  @media (max-width: 520px) {
+    .col-group { grid-template-columns: 1fr; }
+    .kpi-value { font-size: 21px; }
+  }
+
   /* Toast (used for datasets that aren't wired up yet) */
   .toast {
     position: fixed; left: 50%; bottom: 24px; z-index: 90; transform: translate(-50%, 20px);
@@ -368,6 +636,261 @@
     .sidebar, .card, .card-icon { transition: none; }
     .card { animation: none; }
   }
+
+  /* ================= Hub alignment =================
+     Matches the Emami Apps hub (hub-next/src/theme/tokens.ts): IBM Plex Sans only (no mono — digits
+     line up via tabular figures instead), the hub type scale (10.5 / 12 / 13.5 / 14.5 / 16 / 18 / 22),
+     its uppercase-label treatment, plumDeep-tinted shadows, 10–14px radii and its ease-out curve.
+     Last in the sheet on purpose, so it settles every earlier rule; responsive tweaks repeat below. */
+  :root {
+    --sh-sm: 0 1px 4px 0 #15112914;
+    --sh-md: 0 4px 10px 0 #1511291a;
+    --sh-lg: 0 10px 20px 0 #15112924;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --label: 600 10.5px/1.2 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  body { font-feature-settings: 'tnum' 0; letter-spacing: 0; }
+  .mono, .tag, .meta-chip.is-source, .date-range input, .query-field input, .kpi-value, .stat-value, .data-table td, .page-clock, .page-info, .page-num {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+  }
+  .mono { letter-spacing: .01em; }
+
+  /* Type scale */
+  .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+  .page-sub { font-size: 13px; line-height: 1.55; margin-top: 5px; color: var(--text-2); }
+  .page-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; margin-bottom: 7px; }
+  .panel-title { font-size: 14.5px; font-weight: 700; letter-spacing: 0; }
+  .panel-sub { font-size: 12px; }
+  .card-title { font-size: 13.5px; font-weight: 600; letter-spacing: 0; }
+  .card-desc { font-size: 12px; }
+  .sidebar-section, .query-label, .fb-label, .stat-label, .kpi-card-label, .filter-grid label > span, .columns-pop-head, .col-group-title, .tfoot-label {
+    font: var(--label); letter-spacing: .04em; text-transform: uppercase;
+  }
+  .data-table th { font-weight: 600; font-size: 10.5px; letter-spacing: .03em; }
+  .data-table thead tr.groups th { font-weight: 700; font-size: 10px; letter-spacing: .06em; }
+  .data-table td { font-size: 12.5px; }
+  .data-table.is-compact td { font-size: 12px; }
+
+  /* Surfaces: hub shadows + radii */
+  .topbar, .panel, .grid-card, .kpi, .filterbar, .state-card, .columns-pop, .topbar-menu { box-shadow: var(--sh-sm); }
+  .columns-pop, .topbar-menu { box-shadow: var(--sh-lg); }
+  .panel, .grid-card { border-radius: 14px; }
+  .kpi { border-radius: 12px; }
+  .card { border-radius: 12px; transition: border-color .18s var(--ease), box-shadow .2s var(--ease), transform .2s var(--ease); }
+  .card:hover { box-shadow: var(--sh-md); transform: translateY(-2px); }
+  .card:hover .card-icon { transform: none; }
+  .btn-primary, .head-btn, .tool-btn, .btn-ghost, .preset, .segmented button { transition-timing-function: var(--ease); }
+  .btn-primary { background: linear-gradient(135deg, #6D5BF5, var(--accent) 55%, var(--accent-2)); box-shadow: var(--sh-md); font-weight: 600; letter-spacing: .01em; }
+  .btn-primary:hover { box-shadow: var(--sh-lg); }
+  .head-btn { box-shadow: none; }
+  .head-btn:hover:not(:disabled) { box-shadow: var(--sh-sm); }
+  :where(button, select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Pricing Master: one dynamic-page header (title + meta + actions + filter bar) ---- */
+  body[data-view="pricing"] .view-head-pricing {
+    margin-bottom: 0; padding: 18px 22px 16px; gap: 16px 24px;
+    background: var(--surface); border: 1px solid var(--border); border-bottom: none; border-radius: 14px 14px 0 0;
+    box-shadow: var(--sh-sm);
+  }
+  body[data-view="pricing"] .view-head-pricing .crumb { margin-bottom: 6px; }
+  body[data-view="pricing"] .view-head-pricing .page-sub { max-width: 640px; }
+  .head-meta { margin-top: 10px; }
+  .meta-chip[hidden] { display: none; }
+  .meta-chip { height: 24px; border-radius: 6px; background: var(--bg-alt); border-color: transparent; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+  .meta-chip.is-source { font-weight: 600; color: var(--accent); background: var(--accent-soft); }
+  .filterbar {
+    margin-bottom: 16px; padding: 14px 22px 14px; border-radius: 0 0 14px 14px; border-top: 1px solid var(--border);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-alt) 70%, var(--surface)), var(--surface));
+  }
+  .date-range { height: 38px; border-radius: 10px; }
+  .date-range input { font-weight: 600; font-size: 13px; }
+  .segmented { border-radius: 10px; }
+  .segmented button { height: 30px; font-size: 12px; }
+  .btn-primary { height: 38px; border-radius: 10px; }
+
+  /* KPI tiles: quieter, hub-sized numbers */
+  .kpi-grid { gap: 12px; }
+  .kpi { padding: 14px 16px; }
+  .kpi-label { font: var(--label); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); gap: 8px; }
+  .kpi-label .kpi-ico { width: 20px; height: 20px; border-radius: 6px; }
+  .kpi-value { margin-top: 10px; font-size: 20px; font-weight: 700; letter-spacing: -0.005em; }
+  .kpi-sub { font-size: 12px; margin-top: 4px; }
+
+  /* Grid: calmer — hairlines, no zebra, soft header, tinted sort column */
+  .grid-card { overflow: visible; }
+  .grid-toolbar { padding: 12px 18px; }
+  .gt-name { font-size: 14.5px; font-weight: 700; letter-spacing: 0; }
+  .gt-count { font-size: 12px; font-weight: 500; }
+  .tool-btn, .tool-group, .filter-box { height: 32px; border-radius: 8px; }
+  .tool-btn { font-size: 12px; }
+  .data-table th { background: #F7F6FC; color: #6B7280; border-bottom: 1px solid var(--border); }
+  .data-table thead tr.groups th { background: var(--surface); color: var(--text-2); }
+  .data-table th.is-sorted { color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, #F7F6FC); box-shadow: inset 0 -2px 0 var(--accent); }
+  .data-table tbody tr:nth-child(even) td { background: var(--surface); }
+  .data-table tbody tr:hover td { background: #F7F6FC; }
+  .data-table td { border-bottom-color: color-mix(in srgb, var(--border) 80%, transparent); color: var(--text); }
+  .tag { height: 20px; padding: 0 7px; border-radius: 5px; font-size: 11px; font-weight: 600; background: var(--bg-alt); box-shadow: none; color: var(--text-2); }
+  .tag.is-free, .free-tag { background: #1F7A4D17; color: #1F7A4D; }
+  .data-table tfoot td { background: #FBFAFE; }
+  .grid-footer { padding: 10px 18px; font-size: 12px; }
+  .pager button, .page-size select { border-radius: 8px; }
+  .chip { border-radius: 8px; }
+
+  @media (max-width: 900px) {
+    body[data-view="pricing"] .view-head-pricing { padding: 16px; }
+    .filterbar { padding: 14px 16px; }
+  }
+  @media (max-width: 640px) {
+    .page-title { font-size: 20px; }
+    .kpi-value { font-size: 19px; }
+  }
+
+  /* ================= Pricing Master — page header + insights =================
+     Title, source/freshness and actions on the page itself; the filter bar and KPI tiles are
+     white cards below it; ranked insight cards and the white data grid follow. */
+  .hero-band { margin-bottom: 0; }
+  .hb-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 18px; }
+  .hb-title { min-width: 0; }
+  .hb-title .crumb { margin: 0 0 6px -6px; }
+  .hb-title .page-sub { max-width: 640px; }
+  .hero-band .head-actions { display: flex; gap: 8px; }
+  .hero-band .filterbar {
+    margin: 0 0 16px; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--border);
+    background: var(--surface); box-shadow: var(--sh-sm);
+  }
+  .kpi-grid[hidden] { display: none; }
+  .hero-band .kpi-grid { margin: 0 0 16px; }
+  .kpi { transition: box-shadow .2s var(--ease), border-color .2s var(--ease), transform .2s var(--ease); }
+  .kpi:hover { box-shadow: var(--sh-md); border-color: var(--border-strong); }
+
+  /* Insights: ranked bar lists + billing mix */
+  .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .insight { min-width: 0; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--sh-sm); }
+  .insight-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .insight-title { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .insight-note { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .rank { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 6px 0; }
+  .rank + .rank { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+  .rank-n { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; }
+  .rank-label { min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-label small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  .rank-value { font-size: 12.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+  .rank-bar { grid-column: 2 / 4; height: 6px; border-radius: 999px; background: var(--bg-alt); overflow: hidden; }
+  .rank-bar span { display: block; height: 100%; border-radius: 999px; background: var(--hue, var(--accent)); transition: width .5s var(--ease); }
+  .mix { margin-bottom: 14px; }
+  .mix:last-child { margin-bottom: 0; }
+  .mix-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 7px; }
+  .mix-bar { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: var(--bg-alt); }
+  .mix-bar span { height: 100%; }
+  .mix-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; font-size: 11.5px; color: var(--muted); }
+  .mix-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+  .mix-legend b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 1100px) {
+    .insights { grid-template-columns: 1fr 1fr; }
+    .insights .insight:last-child { grid-column: 1 / -1; }
+  }
+  @media (max-width: 768px) {
+    .hero-band .head-actions { width: 100%; }
+    .hero-band .head-btn { flex: 1; justify-content: center; }
+    .hero-band .filterbar { padding: 14px 16px; }
+    .insights { grid-template-columns: 1fr; }
+  }
+
+  /* ================= Tiles & grid finish =================
+     KPI tiles: a per-tile accent (--tone) drives the icon chip, a corner glow, the top edge and the
+     hover shadow; values count up and the micro bars grow in (JS). Grid: coloured group band,
+     inline data bars on Net value, scroll-aware shadows, row selection and a tinted totals row. */
+  .kpi { --tone: #4F3FD6; position: relative; overflow: hidden; isolation: isolate; border-radius: 14px; padding: 16px 18px 15px; animation: tile-in .5s var(--ease) backwards; }
+  .kpi:nth-child(2) { animation-delay: .04s; } .kpi:nth-child(3) { animation-delay: .08s; } .kpi:nth-child(4) { animation-delay: .12s; } .kpi:nth-child(5) { animation-delay: .16s; }
+  .kpi.tone-blue { --tone: #2563EB; } .kpi.tone-green { --tone: #0F9F6E; } .kpi.tone-amber { --tone: #D97706; } .kpi.tone-violet { --tone: #7C3AED; }
+  .kpi::before {
+    content: ''; position: absolute; z-index: -1; top: -46px; right: -46px; width: 150px; height: 150px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--tone) 16%, transparent), transparent);
+    transition: transform .45s var(--ease), opacity .3s var(--ease); opacity: .9;
+  }
+  .kpi::after {
+    content: ''; position: absolute; top: 0; left: 18px; right: 18px; height: 3px; border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, var(--tone), color-mix(in srgb, var(--tone) 35%, transparent));
+    transform: scaleX(.35); transform-origin: left; transition: transform .45s var(--ease);
+  }
+  .kpi:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tone) 28%, var(--border)); box-shadow: 0 16px 30px -18px color-mix(in srgb, var(--tone) 55%, transparent), var(--sh-sm); }
+  .kpi:hover::before { transform: scale(1.35); opacity: 1; }
+  .kpi:hover::after { transform: scaleX(1); }
+  .kpi-label .kpi-ico {
+    width: 26px; height: 26px; border-radius: 8px; color: #fff;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--tone) 72%, white), var(--tone));
+    box-shadow: 0 6px 14px -7px var(--tone); transition: transform .35s var(--ease);
+  }
+  .kpi:hover .kpi-ico { transform: scale(1.1) rotate(-6deg); }
+  .kpi-value { font-size: 24px; letter-spacing: -0.02em; margin-top: 12px; }
+  .kpi-sub b { color: var(--tone); }
+  .micro .bar { fill: color-mix(in srgb, var(--tone) 26%, var(--surface)); transform-box: fill-box; transform-origin: bottom; animation: bar-grow .6s var(--ease) both; }
+  .micro .bar.is-last { fill: var(--tone); }
+  .micro .hit:hover + .bar, .micro .bar.is-hot { fill: color-mix(in srgb, var(--tone) 80%, black); }
+  @keyframes tile-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  /* Insight cards share the tile hover */
+  .insight { transition: box-shadow .25s var(--ease), transform .25s var(--ease), border-color .25s var(--ease); animation: tile-in .5s var(--ease) backwards; }
+  .insight:hover { transform: translateY(-2px); box-shadow: var(--sh-md); border-color: var(--border-strong); }
+  .rank { border-radius: 8px; transition: background .15s ease; }
+  .rank:hover { background: var(--bg-alt); }
+  .rank-bar span { animation: bar-fill .8s var(--ease) both; transform-origin: left; }
+  @keyframes bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+  /* ---- Grid ---- */
+  .grid-card { border-radius: 16px; overflow: hidden; }
+  .grid-card .columns-pop { z-index: 40; }
+  .grid-toolbar { background: linear-gradient(180deg, #FCFBFF, var(--surface)); }
+  .data-table { --cell-y: 11px; }
+  .data-table.is-compact { --cell-y: 6px; }
+  .data-table thead tr.groups th {
+    height: 30px; background: var(--surface); box-shadow: inset 0 3px 0 var(--g); border-left: 1px solid var(--border); padding-top: 3px;
+  }
+  .data-table thead tr.groups th span {
+    padding: 3px 9px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    color: color-mix(in srgb, var(--g) 85%, black); background: color-mix(in srgb, var(--g) 11%, transparent);
+  }
+  .data-table thead tr.groups th span::before { display: none; }
+  .data-table th { top: 30px; height: 38px; background: linear-gradient(180deg, #FAF9FE, #F3F1FB); color: #5B6070; }
+  .table-wrap.is-scrolled-y thead tr:not(.groups) th { box-shadow: 0 6px 12px -8px rgba(21, 17, 41, .25); }
+  .table-wrap.is-scrolled-y thead tr:not(.groups) th.is-sorted { box-shadow: inset 0 -2px 0 var(--accent), 0 6px 12px -8px rgba(21, 17, 41, .25); }
+  .data-table td:first-child, .data-table th:first-child { transition: box-shadow .2s ease; }
+  .table-wrap.is-scrolled-x td:first-child, .table-wrap.is-scrolled-x thead tr:not(.groups) th:first-child { box-shadow: inset -1px 0 0 var(--border), 10px 0 14px -10px rgba(21, 17, 41, .28); }
+  .data-table tbody tr { animation: row-in .35s var(--ease) backwards; }
+  .data-table tbody tr:nth-child(n+2) { animation-delay: calc(min(var(--r, 0), 12) * 18ms); }
+  @keyframes row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .data-table tbody tr:nth-child(even) td { background: #FCFBFF; }
+  .data-table tbody tr:hover td { background: #F4F2FE; }
+  .data-table tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset -1px 0 0 var(--border); }
+  .data-table tbody tr.is-selected td { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+  .data-table tbody tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--accent), inset -1px 0 0 var(--border); }
+  .data-table tbody tr.is-free td:first-child { box-shadow: inset 3px 0 0 #1F9D63, inset -1px 0 0 var(--border); }
+  .data-table tbody tr { cursor: pointer; }
+
+  .cell-date b { display: block; font-weight: 600; }
+  .cell-date small { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+  .data-table.is-compact .cell-date small { display: none; }
+  .databar { position: relative; display: inline-block; min-width: 116px; padding: 3px 8px; border-radius: 6px; text-align: right; font-weight: 700; isolation: isolate; }
+  .databar::before {
+    content: ''; position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--w); border-radius: 6px;
+    background: linear-gradient(90deg, color-mix(in srgb, #0F9F6E 10%, transparent), color-mix(in srgb, #0F9F6E 22%, transparent));
+    animation: bar-fill .7s var(--ease) both; transform-origin: left;
+  }
+  .databar.is-zero { font-weight: 500; color: var(--muted); }
+
+  .data-table tfoot td { background: linear-gradient(180deg, #F6F4FD, #EFECFB); border-top: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)); color: var(--text); }
+  .data-table tfoot td.num { color: #3B2FB0; font-size: 13px; }
+  .tfoot-label { color: #3B2FB0; }
+  .grid-footer { background: #FCFBFF; }
+  .pager button:not(:disabled):hover { background: var(--accent-soft); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kpi, .insight, .data-table tbody tr, .micro .bar, .rank-bar span, .databar::before { animation: none; }
+    .kpi, .kpi::before, .kpi::after, .kpi-ico, .insight { transition: none; }
+  }
+  .card { animation-fill-mode: backwards; }
 </style>
 </head>
 <body>
@@ -446,6 +969,7 @@
       </div>
     </div>
 
+
     <section class="panel" id="master" style="--item: var(--master)">
       <div class="panel-head">
         <span class="panel-icon"><span data-icon="database" data-size="16"></span></span>
@@ -468,6 +992,104 @@
         <span class="panel-count" id="transCount"></span>
       </div>
       <div class="grid" id="transGrid"></div>
+    </section>
+
+    <section class="dataset-view" id="pricingView" style="--item: var(--master)">
+      <div class="hero-band">
+        <div class="hb-top">
+          <div class="hb-title">
+            <button type="button" class="crumb" data-nav="master"><span data-icon="chevronLeft" data-size="14"></span>Master Data</button>
+            <h1 class="page-title">Pricing Master</h1>
+            <p class="page-sub">Pricing on every invoice line created in a date range — MRP, base rate, margins, discounts, GST and net value, straight from SAP.</p>
+            <div class="head-meta">
+              <span class="meta-chip is-source" title="SAP OData service ZSALESCODE_ODATA_SRV_SRV, entity set Pricing_dataSet">SAP ECC · Pricing_dataSet</span>
+              <span class="meta-chip" id="freshChip" hidden><span class="dot"></span><span id="freshText"></span></span>
+            </div>
+          </div>
+          <div class="head-actions">
+            <button type="button" class="head-btn" id="refreshBtn" disabled><span data-icon="redo" data-size="14"></span>Refresh</button>
+            <button type="button" class="head-btn" id="pricingExport" disabled><span data-icon="download" data-size="14"></span>Export CSV</button>
+          </div>
+        </div>
+      <form class="filterbar" id="pricingForm" autocomplete="off" novalidate>
+        <div class="fb-field">
+          <span class="fb-label" id="rangeLabel">Created on</span>
+          <div class="date-range" role="group" aria-labelledby="rangeLabel">
+            <span class="date-range-icon" data-icon="calendar" data-size="16"></span>
+            <input type="date" id="fromDate" required aria-label="From" aria-describedby="rangeHint">
+            <span class="date-range-sep" aria-hidden="true">→</span>
+            <input type="date" id="toDate" required aria-label="To" aria-describedby="rangeHint">
+          </div>
+        </div>
+        <div class="fb-field">
+          <span class="fb-label">Quick range</span>
+          <div class="segmented" role="group" aria-label="Quick ranges">
+            <button type="button" class="preset" data-preset="today">Today</button>
+            <button type="button" class="preset" data-preset="7">7 days</button>
+            <button type="button" class="preset" data-preset="30">30 days</button>
+            <button type="button" class="preset" data-preset="month">This month</button>
+            <button type="button" class="preset" data-preset="lastMonth">Last month</button>
+          </div>
+        </div>
+        <button type="submit" class="btn-primary" id="rangeSubmit"><span data-icon="search" data-size="15"></span><span>Fetch pricing</span></button>
+        <p class="query-hint" id="rangeHint">Both days included · up to 93 days per fetch.</p>
+      </form>
+        <div class="kpi-grid" id="pricingStats" hidden></div>
+      </div>
+
+      <div id="pricingState"></div>
+
+      <div id="pricingResults" hidden>
+        <div class="insights" id="pricingInsights"></div>
+
+        <div class="grid-card">
+          <div class="grid-toolbar">
+            <div class="gt-title">
+              <span class="gt-name">Invoice lines</span>
+              <span class="gt-count" id="pricingCount"></span>
+            </div>
+            <label class="filter-box"><span data-icon="search" data-size="14"></span><input id="pricingSearch" placeholder="Search invoice, material, batch, order…" aria-label="Search results"></label>
+            <div class="gt-actions">
+              <button type="button" class="tool-btn" id="filtersBtn" aria-expanded="false" aria-controls="filterPanel"><span data-icon="filter" data-size="14"></span><span class="tool-label">Filters</span><span class="btn-badge" id="filterBadge" hidden></span></button>
+              <div class="tool-group sort-group">
+                <span data-icon="sort" data-size="14"></span>
+                <select id="sortField" aria-label="Sort by"></select>
+                <button type="button" class="sort-dir" id="sortDir" aria-label="Toggle sort direction"></button>
+              </div>
+              <div class="pop-anchor">
+                <button type="button" class="tool-btn" id="columnsBtn" aria-expanded="false" aria-controls="columnsPop"><span data-icon="columns" data-size="14"></span><span class="tool-label">Columns</span><span class="btn-count" id="columnsCount"></span></button>
+                <div class="columns-pop" id="columnsPop" hidden>
+                  <div class="columns-pop-head"><span>Show columns</span><span><button type="button" id="colsAll">All</button><button type="button" id="colsCore">Key columns</button></span></div>
+                  <div class="columns-list" id="columnsList"></div>
+                </div>
+              </div>
+              <div class="segmented density" role="group" aria-label="Row density">
+                <button type="button" data-density="comfortable" title="Comfortable rows"><span data-icon="rows" data-size="14"></span></button>
+                <button type="button" data-density="compact" title="Compact rows"><span data-icon="rowsCompact" data-size="14"></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="filter-panel" id="filterPanel" hidden>
+            <div class="filter-grid" id="filterGrid"></div>
+            <div class="filter-actions"><button type="button" class="btn-link" id="filtersClear">Clear all filters</button></div>
+          </div>
+          <div class="chip-row" id="filterChips" hidden></div>
+          <div class="table-wrap"><table class="data-table" id="pricingTable"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+          <div class="grid-footer">
+            <label class="page-size">Rows per page
+              <select id="pageSize"><option>25</option><option>50</option><option>100</option><option value="0">All</option></select>
+            </label>
+            <span class="page-info" id="pageInfo"></span>
+            <div class="pager">
+              <button type="button" id="pageFirst" aria-label="First page"><span data-icon="chevronsLeft" data-size="14"></span></button>
+              <button type="button" id="pagePrev" aria-label="Previous page"><span data-icon="chevronLeft" data-size="14"></span></button>
+              <span class="page-num" id="pageNum"></span>
+              <button type="button" id="pageNext" aria-label="Next page"><span data-icon="chevron" data-size="14"></span></button>
+              <button type="button" id="pageLast" aria-label="Last page"><span data-icon="chevronsRight" data-size="14"></span></button>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <footer class="page-footer"><span>Emami Apps | Salescode</span><span>Better Systems | Brighter Tomorrow</span></footer>
@@ -511,6 +1133,7 @@
     send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     upload: '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     logOut: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
@@ -518,6 +1141,14 @@
     arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+    filter: '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>',
+    sort: '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
+    columns: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+    rows: '<rect width="18" height="7" x="3" y="3" rx="1.5"/><rect width="18" height="7" x="3" y="14" rx="1.5"/>',
+    rowsCompact: '<path d="M3 5h18"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M3 20h18"/>',
+    chevronsLeft: '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
+    chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
   };
   function icon(name, size = 20) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -545,7 +1176,7 @@
     { title: 'MT Channel Master', desc: 'View MT channel master data', icon: 'share', hue: 'teal' },
     { title: 'NSV Master', desc: 'View NSV master data', icon: 'bars', hue: 'pink' },
     { title: 'NSV Actual Master', desc: 'View NSV actual master data', icon: 'trend', hue: 'purple' },
-    { title: 'Pricing Master', desc: 'View pricing master data', icon: 'tag', hue: 'blue' },
+    { title: 'Pricing Master', desc: 'View pricing master data', icon: 'tag', hue: 'blue', view: 'pricing' },
     { title: 'Distributor Credit Master', desc: 'View distributor credit master data', icon: 'card', hue: 'green' },
   ];
 
@@ -653,7 +1284,7 @@
     const shown = items.filter((d) => !q || d.title.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q));
     el.innerHTML = shown.length
       ? shown.map((d, i) => `
-          <button type="button" class="card" style="--hue:${HUES[d.hue]}; --i:${i}" data-title="${esc(d.title)}">
+          <button type="button" class="card" style="--hue:${HUES[d.hue]}; --i:${i}" data-title="${esc(d.title)}"${d.view ? ` data-view="${d.view}"` : ''}>
             <span class="card-icon">${icon(d.icon, 18)}</span>
             <span class="card-text">
               <span class="card-title">${esc(d.title)}</span>
@@ -692,14 +1323,21 @@
   }
 
   // Each sidebar entry is its own view, kept in the URL hash (#master / #transactional; none for
-  // Home) so Back/Forward and a refresh land on the same panel.
+  // Home) so Back/Forward and a refresh land on the same panel. Dataset views (#pricing) live
+  // under their sidebar entry, which stays highlighted.
+  const DATASET_VIEWS = { pricing: { parent: 'master', label: 'Pricing Master' } };
   function viewFromHash() {
     const id = window.location.hash.slice(1);
-    return NAV.some((n) => n.id === id) ? id : 'home';
+    return NAV.some((n) => n.id === id) || DATASET_VIEWS[id] ? id : 'home';
   }
   function setView(id) {
     document.body.dataset.view = id;
-    renderNav(id);
+    renderNav(DATASET_VIEWS[id]?.parent || id);
+    if (DATASET_VIEWS[id]) $('mobilePage').textContent = DATASET_VIEWS[id].label;
+    if (id === 'pricing' && !pricing.rows.length && !$('pricingState').innerHTML) {
+      if (!$('fromDate').value) setRangeInputs(presetRange('month'));
+      idleState();
+    }
     window.scrollTo(0, 0);
   }
   function goTo(id) {
@@ -709,6 +1347,599 @@
     else window.location.hash = id;
     setView(id); // pushState doesn't fire hashchange; for a hash change this just repeats it harmlessly
   }
+
+  // ---- Pricing Master ----
+  // Rows come from the SAP OData entity set Pricing_dataSet (ZSALESCODE_ODATA_SRV_SRV, key
+  // InvoiceNumber + ItemNo: one row per invoice line), read straight from the browser through the
+  // shared Azure NGD proxy — the same direct-to-SAP pattern Non-CTC Expense uses
+  // (embedded-apps/non-ctc-expense/src/config/api.ts): no backend of our own to deploy, and the
+  // proxy signs in to SAP itself and allows emamiapps.in origins (CORS). Access is gated here on
+  // the viewer's Salescode grant in Manage Access (see requirePricingAccess).
+  // backend/salescode.js keeps an equivalent server route (GET /salescode/invoices?from=&to=) for
+  // a later move to server-side enforcement; nothing calls it today.
+  //
+  // Only the landscape segment changes between environments — same host, same service name:
+  //   Development (NGD) — ACTIVE, where ZSALESCODE_ODATA_SRV_SRV is registered today.
+  //   Quality (NGQ):    …/api/NGQ/ZSALESCODE_ODATA_SRV_SRV
+  //   Production (NWP): …/api/NWP/ZSALESCODE_ODATA_SRV_SRV — needs the service transported and
+  //                     activated in /IWFND/MAINT_SERVICE there first.
+  const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZSALESCODE_ODATA_SRV_SRV';
+  const MAX_RANGE_DAYS = 93; // Pricing_dataSet can't page, so one fetch is capped
+  const PREFS_KEY = 'salescode_pricing_prefs'; // hidden columns, page size, density — per browser
+
+  // OData v2 JSON: Edm.DateTime arrives as "/Date(ms)/" (SAP dates are UTC midnight), Edm.Time as
+  // "PT13H45M10S", Edm.Decimal as a string. SAP also zero-pads numeric keys (ALPHA conversion).
+  function odataDate(v) { const m = /\/Date\((-?\d+)/.exec(String(v || '')); return m ? new Date(Number(m[1])) : null; }
+  function fmtDay(d, opts = { day: '2-digit', month: 'short', year: 'numeric' }) { return d ? d.toLocaleDateString('en-GB', { ...opts, timeZone: 'UTC' }) : '—'; }
+  const fmtDate = (v) => fmtDay(odataDate(v));
+  function isoDate(v) { const d = odataDate(v); return d ? d.toISOString().slice(0, 10) : ''; }
+  function fmtTime(v) {
+    const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(String(v || ''));
+    return m && v ? `${String(m[1] || 0).padStart(2, '0')}:${String(m[2] || 0).padStart(2, '0')}:${String(m[3] || 0).padStart(2, '0')}` : '';
+  }
+  const moneyFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const qtyFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 });
+  const compactFmt = new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 2 });
+  const num = (v) => { const n = Number(v); return v === '' || v == null || !Number.isFinite(n) ? null : n; };
+  const unpad = (v) => String(v ?? '').replace(/^0+(?=\d)/, '');
+  const blank = (v) => v == null || String(v).trim() === '' || /^0+$/.test(String(v).trim());
+  const text = (v) => (v == null || String(v).trim() === '' ? '—' : esc(String(v)));
+  const isFree = (r) => !blank(r.FreeLineItemNo) || !blank(r.MainMaterial);
+  function gstType(r) { return (num(r.IgstPct) || 0) > 0 ? 'IGST (inter-state)' : 'CGST + SGST (intra-state)'; }
+
+  // Column groups (the band above the headers) and every Pricing_data property under its group,
+  // with the SEGW label. `core` = kept by "Key columns"; all show by default; the first is pinned.
+  const GROUPS = {
+    doc: { label: 'Document', color: '#4F3FD6' }, cust: { label: 'Customer', color: '#2563EB' }, mat: { label: 'Material', color: '#0D9488' },
+    price: { label: 'Pricing', color: '#9333EA' }, gst: { label: 'GST', color: '#EA580C' }, value: { label: 'Value', color: '#16A34A' },
+    audit: { label: 'Audit', color: '#64748B' },
+  };
+  const COLS = [
+    { key: 'InvoiceNumber', label: 'Billing document', type: 'code', group: 'doc', core: true, pinned: true },
+    { key: 'ItemNo', label: 'Item', type: 'code', group: 'doc', core: true },
+    { key: 'InvoiceDate', label: 'Billing date', type: 'date', group: 'doc', core: true },
+    { key: 'BillType', label: 'Billing type', type: 'tag', group: 'doc' },
+    { key: 'BillNumber', label: 'Reference', type: 'text', group: 'doc' },
+    { key: 'OrderNumber', label: 'Sales document', type: 'code', group: 'doc' },
+    { key: 'DistributorCode', label: 'Customer', type: 'code', group: 'cust', core: true },
+    { key: 'SalesOrg', label: 'Sales org.', type: 'tag', group: 'cust' },
+    { key: 'DistChannel', label: 'Distr. channel', type: 'tag', group: 'cust' },
+    { key: 'CustomerGroup', label: 'Customer group', type: 'tag', group: 'cust' },
+    { key: 'MaterialCode', label: 'Material', type: 'code', group: 'mat', core: true },
+    { key: 'MaterialDesc', label: 'Description', type: 'text', group: 'mat', wide: true, core: true },
+    { key: 'BatchCode', label: 'Batch', type: 'code', group: 'mat', core: true },
+    { key: 'Qty', label: 'Invoiced qty', type: 'qty', group: 'mat', core: true },
+    { key: 'Uom', label: 'Sales unit', type: 'text', group: 'mat', core: true },
+    { key: 'ItemCategory', label: 'Item category', type: 'tag', group: 'mat' },
+    { key: 'FreeLineItemNo', label: 'Free line item', type: 'code', group: 'mat' },
+    { key: 'MainMaterial', label: 'Main material', type: 'code', group: 'mat' },
+    { key: 'Ratio', label: 'Ratio %', type: 'pct', group: 'mat' },
+    { key: 'Mrp', label: 'MRP', type: 'money', group: 'price', core: true },
+    { key: 'BaseRate', label: 'Base rate', type: 'money', group: 'price', core: true },
+    { key: 'DistMarginPct', label: 'Dist. margin %', type: 'pct', group: 'price', core: true },
+    { key: 'SsMarginPct', label: 'SS margin %', type: 'pct', group: 'price' },
+    { key: 'RetailerMarginPct', label: 'Retailer margin %', type: 'pct', group: 'price', core: true },
+    { key: 'TradeDiscountPct', label: 'Trade discount %', type: 'pct', group: 'price', core: true },
+    { key: 'CgstPct', label: 'CGST %', type: 'pct', group: 'gst' },
+    { key: 'SgstPct', label: 'SGST %', type: 'pct', group: 'gst' },
+    { key: 'IgstPct', label: 'IGST %', type: 'pct', group: 'gst' },
+    { key: 'NetAmount', label: 'Net value', type: 'money', group: 'value', strong: true, core: true },
+    { key: 'Tax', label: 'Tax', type: 'money', group: 'value', core: true },
+    { key: 'Waerk', label: 'Doc. currency', type: 'text', group: 'value' },
+    { key: 'CreationDate', label: 'Created on', type: 'date', group: 'audit' },
+    { key: 'CreationTime', label: 'Created at', type: 'time', group: 'audit' },
+    { key: 'ZzLastChanged', label: 'Last changed', type: 'date', group: 'audit' },
+  ];
+  const NUMERIC = new Set(['qty', 'money', 'pct']);
+  function cell(c, r) {
+    const v = r[c.key];
+    switch (c.type) {
+      case 'code': return blank(v) ? '<span class="muted">—</span>' : `<span class="mono">${esc(unpad(v))}</span>`;
+      case 'tag': return blank(v) && v !== '00' ? '<span class="muted">—</span>' : `<span class="tag${c.key === 'ItemCategory' && isFree(r) ? ' is-free' : ''}">${esc(String(v))}</span>`;
+      case 'date': return fmtDate(v);
+      case 'time': return fmtTime(v) || '—';
+      case 'qty': return num(v) === null ? '—' : qtyFmt.format(num(v));
+      case 'money': { const n = num(v); const s = n === null ? '—' : moneyFmt.format(n); return c.strong ? `<span class="strong">${s}</span>` : s; }
+      case 'pct': return num(v) === null ? '—' : `${qtyFmt.format(num(v))}%`;
+      default: return text(v);
+    }
+  }
+  function sortValue(c, r) {
+    const v = r[c.key];
+    if (c.type === 'date') return odataDate(v)?.getTime() || 0;
+    if (c.type === 'time') return fmtTime(v);
+    if (NUMERIC.has(c.type)) return num(v) ?? -Infinity;
+    if (c.type === 'code') return /^\d+$/.test(String(v || '')) ? Number(v) : String(v || '').toLowerCase();
+    return String(v || '').toLowerCase();
+  }
+  function csvValue(c, r) {
+    const v = r[c.key];
+    if (c.type === 'date') return isoDate(v);
+    if (c.type === 'time') return fmtTime(v);
+    return v ?? '';
+  }
+
+  // Filters offered in the panel. Options are built from the loaded rows, so each list only holds
+  // values that actually occur in this date range.
+  const FILTERS = [
+    { key: 'DistributorCode', label: 'Customer', value: (r) => r.DistributorCode, option: (v) => unpad(v) },
+    { key: 'MaterialCode', label: 'Material', value: (r) => r.MaterialCode, option: (v, r) => `${unpad(v)} · ${r.MaterialDesc || ''}` },
+    { key: 'BatchCode', label: 'Batch', value: (r) => r.BatchCode },
+    { key: 'SalesOrg', label: 'Sales org.', value: (r) => r.SalesOrg },
+    { key: 'DistChannel', label: 'Distr. channel', value: (r) => r.DistChannel },
+    { key: 'CustomerGroup', label: 'Customer group', value: (r) => r.CustomerGroup },
+    { key: 'ItemCategory', label: 'Item category', value: (r) => r.ItemCategory },
+    { key: 'BillType', label: 'Billing type', value: (r) => r.BillType },
+    { key: 'gst', label: 'GST type', value: gstType },
+    { key: 'free', label: 'Line type', value: (r) => (isFree(r) ? 'Free goods' : 'Billed') },
+  ];
+
+  const prefs = (() => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } })();
+  const pricing = {
+    rows: [], range: null, fetchedAt: null, sort: { key: 'CreationDate', dir: -1 }, filters: {}, search: '', controller: null, page: 1,
+    hidden: new Set(Array.isArray(prefs.hidden) ? prefs.hidden : []),
+    pageSize: [25, 50, 100, 0].includes(prefs.pageSize) ? prefs.pageSize : 50,
+    density: prefs.density === 'compact' ? 'compact' : 'comfortable',
+  };
+  function savePrefs() {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ hidden: [...pricing.hidden], pageSize: pricing.pageSize, density: pricing.density })); } catch { /* per-browser only */ }
+  }
+  const saveHidden = savePrefs;
+  const visibleCols = () => COLS.filter((c) => c.pinned || !pricing.hidden.has(c.key));
+
+  // ---- date range ----
+  const today = () => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); };
+  const ymd = (d) => d.toISOString().slice(0, 10);
+  const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+  const utc = (s) => new Date(`${s}T00:00:00Z`);
+  function presetRange(p) {
+    const t = today();
+    if (p === 'today') return [t, t];
+    if (p === '7') return [addDays(t, -6), t];
+    if (p === '30') return [addDays(t, -29), t];
+    if (p === 'month') return [new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1)), t];
+    if (p === 'lastMonth') return [new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 1, 1)), new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 0))];
+    return null;
+  }
+  function markPreset() {
+    const from = $('fromDate').value; const to = $('toDate').value;
+    document.querySelectorAll('.preset').forEach((b) => {
+      const r = presetRange(b.dataset.preset);
+      b.classList.toggle('is-on', Boolean(r) && ymd(r[0]) === from && ymd(r[1]) === to);
+    });
+  }
+  function setRangeInputs([from, to]) {
+    $('fromDate').value = ymd(from);
+    $('toDate').value = ymd(to);
+    clearRangeError();
+    markPreset();
+  }
+  const RANGE_HINT = `Both days included · up to ${MAX_RANGE_DAYS} days per fetch.`;
+  function rangeError(msg, field) {
+    $('rangeHint').textContent = msg;
+    $('rangeHint').classList.add('is-error');
+    document.querySelector('.date-range').classList.add('is-invalid');
+    $(field === 'toDate' ? 'toDate' : 'fromDate').focus();
+  }
+  function clearRangeError() {
+    $('rangeHint').textContent = RANGE_HINT;
+    $('rangeHint').classList.remove('is-error');
+    document.querySelector('.date-range').classList.remove('is-invalid');
+  }
+
+  // ---- states ----
+  function setPricingState(html) {
+    $('pricingState').innerHTML = html;
+    $('pricingResults').hidden = Boolean(html);
+    $('pricingStats').hidden = Boolean(html);
+  }
+  function stateCard({ iconName, title, body, error = false, retry = false }) {
+    return `<div class="state-card${error ? ' is-error' : ''}">
+      <span class="state-icon">${icon(iconName, 24)}</span>
+      <p class="state-title">${title}</p><p class="state-text">${body}</p>
+      ${retry ? `<button type="button" class="btn-ghost" id="pricingRetry">${icon('redo', 14)}Try again</button>` : ''}
+    </div>`;
+  }
+  function idleState() {
+    setPricingState(stateCard({ iconName: 'calendar', title: 'Pick a created-on date range',
+      body: 'Choose From and To dates (or a quick range) and fetch — you’ll get the pricing on every invoice line created in that period: MRP, base rate, margins, discounts, GST and net value.' }));
+  }
+  function loadingState() {
+    const cols = visibleCols().slice(0, 12);
+    setPricingState('');
+    $('pricingStats').innerHTML = ['', '', '', '', ' is-wide'].map((w) => `<div class="kpi${w}"><div><span class="skel" style="width:55%"></span><span class="skel" style="width:40%;height:22px;margin-top:12px"></span><span class="skel" style="width:70%;margin-top:10px"></span></div></div>`).join('');
+    $('pricingCount').textContent = '';
+    $('filterChips').hidden = true;
+    $('pricingTable').tHead.innerHTML = `<tr>${cols.map((c) => `<th class="${NUMERIC.has(c.type) ? 'num' : ''}" style="top:0">${c.label}</th>`).join('')}</tr>`;
+    $('pricingTable').tBodies[0].innerHTML = Array.from({ length: 8 }, () => `<tr>${cols.map(() => '<td><span class="skel"></span></td>').join('')}</tr>`).join('');
+    $('pricingTable').tFoot.innerHTML = '';
+    $('pricingInsights').innerHTML = [1, 2, 3].map(() => '<div class="insight"><span class="skel" style="width:45%"></span>' + '<span class="skel" style="margin-top:16px"></span>'.repeat(4) + '</div>').join('');
+    $('pageInfo').textContent = '';
+    $('pageNum').textContent = '';
+  }
+  function setHeaderMeta() {
+    const has = Boolean(pricing.fetchedAt);
+    $('freshChip').hidden = !has;
+    if (has) $('freshText').textContent = `Updated ${pricing.fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · ${fmtDay(utc(pricing.range.from))} – ${fmtDay(utc(pricing.range.to))}`;
+    $('refreshBtn').disabled = !pricing.range;
+    $('pricingExport').disabled = !pricing.rows.length;
+  }
+
+  // ---- fetch ----
+  // Salescode grant from Manage Access, checked once per page load. Fails closed: if the check
+  // can't be made, pricing isn't loaded (the viewer can retry).
+  let accessCheck = null;
+  function requirePricingAccess() {
+    accessCheck ||= fetch(`${ACCESS_API_BASE}/access/me?email=${encodeURIComponent(getCurrentUserEmail() || '')}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(Object.assign(new Error('access check failed'), { kind: 'access-check' }))))
+      .then((data) => {
+        if (!data?.success || !(data.apps || []).some((a) => a.appId === APP_ID)) throw Object.assign(new Error('no grant'), { kind: 'no-access' });
+        return true;
+      })
+      .catch((err) => { accessCheck = null; throw err.kind ? err : Object.assign(err, { kind: 'access-check' }); });
+    return accessCheck;
+  }
+
+  async function fetchPricing(range) {
+    const from = range?.from ?? $('fromDate').value;
+    const to = range?.to ?? $('toDate').value;
+    if (!from || !to) return rangeError(!from && !to ? 'Choose a From and a To date.' : !from ? 'Choose a From date.' : 'Choose a To date.', !from ? 'fromDate' : 'toDate');
+    if (from > to) return rangeError('From must be on or before To.', 'fromDate');
+    const days = (utc(to) - utc(from)) / 86400000 + 1;
+    if (days > MAX_RANGE_DAYS) return rangeError(`That’s ${days} days — pick ${MAX_RANGE_DAYS} days or fewer.`, 'fromDate');
+    clearRangeError();
+
+    pricing.controller?.abort();
+    const controller = new AbortController();
+    pricing.controller = controller;
+    $('rangeSubmit').disabled = true;
+    $('refreshBtn').classList.add('is-spinning');
+    loadingState();
+    try {
+      await requirePricingAccess();
+      // The service's entity-set read filters on CreationDate (Edm.DateTime, both ends inclusive).
+      // from/to are the date inputs' own YYYY-MM-DD values (validated above), so they're safe inside
+      // the datetime'...' literals. encodeURIComponent keeps spaces as %20, the form the proxy takes.
+      const filter = `CreationDate ge datetime'${from}T00:00:00' and CreationDate le datetime'${to}T00:00:00'`;
+      const res = await fetch(`${SAP_BASE_URL}/Pricing_dataSet?$filter=${encodeURIComponent(filter)}&$format=json`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) throw Object.assign(new Error(`SAP responded ${res.status}`), { kind: 'sap', status: res.status });
+      const body = await res.json().catch(() => { throw Object.assign(new Error('bad JSON'), { kind: 'sap' }); });
+      pricing.rows = (body?.d?.results ?? []).map(({ __metadata, ...fields }) => fields);
+      pricing.range = { from, to };
+      pricing.fetchedAt = new Date();
+      pricing.filters = {};
+      pricing.search = '';
+      pricing.page = 1;
+      $('pricingSearch').value = '';
+      setHeaderMeta();
+      if (!pricing.rows.length) {
+        setPricingState(stateCard({ iconName: 'search', title: 'No invoice lines in this range',
+          body: `SAP returned no pricing lines created between ${fmtDay(utc(from))} and ${fmtDay(utc(to))}. Try a wider range.` }));
+        return;
+      }
+      setPricingState('');
+      buildFilterPanel();
+      renderPricing();
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      const { kind, status } = err;
+      const msg = kind === 'no-access' ? 'Your account doesn’t have Salescode access yet. Ask an Emami Apps admin to grant Salescode in Manage Access.'
+        : kind === 'access-check' ? 'Couldn’t confirm your Salescode access with Emami Apps. Check your connection and try again.'
+        : kind === 'sap' && status === 400 ? 'SAP rejected this request. Check that the Pricing service accepts a CreationDate range.'
+        : kind === 'sap' && status === 404 ? 'The SAP Pricing service wasn’t found on this system. It may not be registered or activated yet.'
+        : kind === 'sap' ? `SAP didn’t return pricing for this range${status ? ` (error ${status})` : ''}. It may be busy — try again in a moment.`
+        : 'Couldn’t reach SAP. Check your connection and try again.';
+      setPricingState(stateCard({ iconName: 'x', title: 'Couldn’t load pricing', body: msg, error: true, retry: kind !== 'no-access' }));
+    } finally {
+      if (pricing.controller === controller) {
+        $('rangeSubmit').disabled = false;
+        $('refreshBtn').classList.remove('is-spinning');
+        pricing.controller = null;
+      }
+    }
+  }
+
+  // ---- filter / sort / columns ----
+  function buildFilterPanel() {
+    $('filterGrid').innerHTML = FILTERS.map((f) => {
+      const seen = new Map();
+      pricing.rows.forEach((r) => { const v = f.value(r); if (v != null && String(v).trim() !== '' && !seen.has(v)) seen.set(v, r); });
+      const opts = [...seen.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
+      return `<label><span>${f.label}</span><select data-filter="${f.key}"${opts.length < 2 ? ' disabled' : ''}>
+        <option value="">All${opts.length ? ` (${opts.length})` : ''}</option>
+        ${opts.map(([v, r]) => `<option value="${esc(String(v))}">${esc(f.option ? f.option(v, r) : String(v))}</option>`).join('')}
+      </select></label>`;
+    }).join('');
+  }
+  function filteredPricing() {
+    const q = pricing.search.trim().toLowerCase();
+    const active = FILTERS.filter((f) => pricing.filters[f.key] != null);
+    const rows = pricing.rows.filter((r) => {
+      if (active.some((f) => String(f.value(r)) !== pricing.filters[f.key])) return false;
+      if (!q) return true;
+      return [r.InvoiceNumber, unpad(r.InvoiceNumber), r.MaterialCode, unpad(r.MaterialCode), r.MaterialDesc, r.BatchCode, r.OrderNumber, unpad(r.OrderNumber), r.BillNumber, r.DistributorCode, unpad(r.DistributorCode)]
+        .some((v) => String(v || '').toLowerCase().includes(q));
+    });
+    const col = COLS.find((c) => c.key === pricing.sort.key) || COLS[2];
+    const dir = pricing.sort.dir;
+    return rows.sort((a, b) => {
+      const x = sortValue(col, a); const y = sortValue(col, b);
+      if (x < y) return -dir;
+      if (x > y) return dir;
+      return String(a.InvoiceNumber).localeCompare(String(b.InvoiceNumber)) || (Number(a.ItemNo) - Number(b.ItemNo));
+    });
+  }
+  function setSort(key, dir) {
+    const c = COLS.find((x) => x.key === key);
+    pricing.sort = { key, dir: dir ?? (pricing.sort.key === key ? -pricing.sort.dir : (c.type === 'date' || NUMERIC.has(c.type) ? -1 : 1)) };
+    pricing.page = 1;
+    renderPricing();
+  }
+  function renderSortControls() {
+    $('sortField').innerHTML = Object.entries(GROUPS).map(([g, meta]) => `<optgroup label="${meta.label}">${COLS.filter((c) => c.group === g).map((c) => `<option value="${c.key}"${c.key === pricing.sort.key ? ' selected' : ''}>${c.label}</option>`).join('')}</optgroup>`).join('');
+    const c = COLS.find((x) => x.key === pricing.sort.key);
+    const up = pricing.sort.dir > 0;
+    $('sortDir').textContent = c.type === 'date' ? (up ? '↑ Oldest' : '↓ Newest') : NUMERIC.has(c.type) ? (up ? '↑ Low–high' : '↓ High–low') : (up ? '↑ A–Z' : '↓ Z–A');
+  }
+  function renderColumnsList() {
+    $('columnsList').innerHTML = Object.entries(GROUPS).map(([g, meta]) => `<div class="col-group"><div class="col-group-title">${meta.label}</div>${COLS.filter((c) => c.group === g).map((c) => `<label><input type="checkbox" data-col="${c.key}"${c.pinned || !pricing.hidden.has(c.key) ? ' checked' : ''}${c.pinned ? ' disabled' : ''}><span>${c.label}</span></label>`).join('')}</div>`).join('');
+    $('columnsCount').textContent = `${visibleCols().length}/${COLS.length}`;
+  }
+  function renderDensity() {
+    $('pricingTable').classList.toggle('is-compact', pricing.density === 'compact');
+    document.querySelectorAll('[data-density]').forEach((b) => b.classList.toggle('is-on', b.dataset.density === pricing.density));
+  }
+
+  // ---- KPI tiles + micro chart ----
+  // Net value per billing day (per week once the range passes 45 days), for the tile's micro bars.
+  function netSeries(rows) {
+    const { from, to } = pricing.range;
+    const start = utc(from).getTime();
+    const days = (utc(to).getTime() - start) / 86400000 + 1;
+    const step = days > 45 ? 7 : 1;
+    const bins = Array.from({ length: Math.ceil(days / step) }, (_, i) => {
+      const s = new Date(start + i * step * 86400000);
+      const e = new Date(Math.min(start + ((i + 1) * step - 1) * 86400000, utc(to).getTime()));
+      return { s, e, v: 0 };
+    });
+    rows.forEach((r) => {
+      const d = odataDate(r.CreationDate) || odataDate(r.InvoiceDate);
+      if (!d) return;
+      const i = Math.floor((d.getTime() - start) / 86400000 / step);
+      if (bins[i]) bins[i].v += num(r.NetAmount) || 0;
+    });
+    return { bins, step };
+  }
+  function renderMicro(el) {
+    const { bins, step } = el._series;
+    const W = Math.max(60, el.clientWidth); const H = 52; const gap = bins.length > 60 ? 1 : 2;
+    const bw = Math.max(1, (W - gap * (bins.length - 1)) / bins.length);
+    const max = Math.max(...bins.map((b) => b.v), 1);
+    const r = Math.min(2, bw / 2);
+    const bars = bins.map((b, i) => {
+      const x = i * (bw + gap);
+      const h = b.v > 0 ? Math.max(2, (b.v / max) * (H - 4)) : 0;
+      const y = H - h;
+      // Rounded data end (top), square at the baseline.
+      const path = h ? `M${x},${H}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${H}Z` : '';
+      return `<rect class="hit" x="${x - gap / 2}" y="0" width="${bw + gap}" height="${H}" data-i="${i}"></rect><path class="bar${i === bins.length - 1 ? ' is-last' : ''}" d="${path}"></path>`;
+    }).join('');
+    el.querySelector('svg').setAttribute('viewBox', `0 0 ${W} ${H}`);
+    el.querySelector('svg').innerHTML = `${bars}<line class="base" x1="0" x2="${W}" y1="${H + 0.5}" y2="${H + 0.5}"></line>`;
+    el._geom = { bw, gap, step };
+  }
+  function microTip(el, i) {
+    const tip = el.querySelector('.micro-tip');
+    el.querySelectorAll('.bar.is-hot').forEach((b) => b.classList.remove('is-hot'));
+    if (i == null) { tip.hidden = true; return; }
+    const b = el._series.bins[i];
+    const { bw, gap, step } = el._geom;
+    const label = step === 1 ? fmtDay(b.s, { weekday: 'short', day: '2-digit', month: 'short' }) : `${fmtDay(b.s, { day: '2-digit', month: 'short' })} – ${fmtDay(b.e, { day: '2-digit', month: 'short' })}`;
+    tip.innerHTML = `${label}<b>${moneyFmt.format(b.v)}</b>`;
+    tip.style.left = `${Math.min(Math.max(i * (bw + gap) + bw / 2, 50), el.clientWidth - 50)}px`;
+    tip.hidden = false;
+    el.querySelectorAll('.bar')[i]?.classList.add('is-hot');
+  }
+  const microObserver = new ResizeObserver((entries) => entries.forEach((e) => e.target._series && renderMicro(e.target)));
+
+  // Whole-number KPI values tick up from 0 when the data changes (skipped for reduced motion).
+  function countUp() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.kpi-value[data-count]').forEach((el) => {
+      const target = Number(el.dataset.count); const t0 = performance.now(); const dur = 650;
+      const step = (t) => { const k = Math.min(1, (t - t0) / dur); el.textContent = qtyFmt.format(Math.round(target * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    });
+  }
+  function renderKpis(rows) {
+    const cur = [...new Set(rows.map((r) => r.Waerk).filter(Boolean))];
+    const sym = cur.length === 1 && cur[0] === 'INR' ? '₹' : '';
+    const sum = (k) => rows.reduce((s, r) => s + (num(r[k]) || 0), 0);
+    const net = sum('NetAmount'); const tax = sum('Tax');
+    const free = rows.filter(isFree).length;
+    const invoices = new Set(rows.map((r) => r.InvoiceNumber)).size;
+    const tile = (ico, label, value, sub, tone, count) => `<div class="kpi tone-${tone}"><div class="kpi-label"><span class="kpi-ico">${icon(ico, 13)}</span>${label}</div><div class="kpi-value"${count != null ? ` data-count="${count}"` : ''}>${value}</div><div class="kpi-sub">${sub}</div></div>`;
+    const { from, to } = pricing.range;
+    $('pricingStats').innerHTML = [
+      tile('fileText', 'Invoice lines', qtyFmt.format(rows.length), `across <b>${qtyFmt.format(invoices)}</b> invoices`, 'indigo', rows.length),
+      tile('users', 'Customers', qtyFmt.format(new Set(rows.map((r) => r.DistributorCode)).size), `<b>${qtyFmt.format(new Set(rows.map((r) => r.MaterialCode)).size)}</b> materials billed`, 'blue', new Set(rows.map((r) => r.DistributorCode)).size),
+      tile('tag', 'Free-goods lines', qtyFmt.format(free), rows.length ? `<b>${Math.round((free / rows.length) * 100)}%</b> of lines` : '—', 'green', free),
+      tile('card', 'Tax', `${sym}${compactFmt.format(tax)}`, `${moneyFmt.format(tax)}`, 'amber'),
+      `<div class="kpi is-wide tone-violet">
+        <div class="kpi-text">
+          <div class="kpi-label"><span class="kpi-ico">${icon('trend', 13)}</span>Net value</div>
+          <div class="kpi-value">${sym}${compactFmt.format(net)}</div>
+          <div class="kpi-sub">${moneyFmt.format(net)}${cur.length === 1 ? ` ${esc(cur[0])}` : ''}</div>
+        </div>
+        <div>
+          <div class="micro" id="netMicro" role="img" aria-label="Net value by created-on ${(utc(to) - utc(from)) / 86400000 + 1 > 45 ? 'week' : 'day'}"><svg preserveAspectRatio="none"></svg><div class="micro-tip" hidden></div></div>
+          <div class="micro-caption"><span>${fmtDay(utc(from), { day: '2-digit', month: 'short' })}</span><span>by ${(utc(to) - utc(from)) / 86400000 + 1 > 45 ? 'week' : 'day'}</span><span>${fmtDay(utc(to), { day: '2-digit', month: 'short' })}</span></div>
+        </div>
+      </div>`,
+    ].join('');
+    countUp();
+    const micro = $('netMicro');
+    micro._series = netSeries(rows);
+    renderMicro(micro);
+    microObserver.observe(micro);
+    micro.addEventListener('mousemove', (e) => { const h = e.target.closest('.hit'); microTip(micro, h ? Number(h.dataset.i) : null); });
+    micro.addEventListener('mouseleave', () => microTip(micro, null));
+  }
+
+  // ---- insights: top customers / materials by net value, billing mix ----
+  // Ranked bar lists carry their values as text (no colour-only reading); one hue per card.
+  function topBy(rows, key, n = 5) {
+    const m = new Map();
+    rows.forEach((r) => { const k = r[key]; if (!k) return; const e = m.get(k) || { key: k, v: 0, lines: 0, sample: r }; e.v += num(r.NetAmount) || 0; e.lines++; m.set(k, e); });
+    return [...m.values()].sort((a, b) => b.v - a.v).slice(0, n);
+  }
+  function renderInsights(rows) {
+    const cur = [...new Set(rows.map((r) => r.Waerk).filter(Boolean))];
+    const sym = cur.length === 1 && cur[0] === 'INR' ? '₹' : '';
+    const rankCard = (title, items, hue, label) => {
+      const max = Math.max(...items.map((i) => i.v), 1);
+      return `<div class="insight" style="--hue:${hue}">
+        <div class="insight-head"><h3 class="insight-title">${title}</h3><span class="insight-note">by net value · top ${items.length}</span></div>
+        ${items.length ? items.map((i, n) => `<div class="rank" title="${esc(moneyFmt.format(i.v))} · ${i.lines} lines">
+          <span class="rank-n">${n + 1}</span>
+          <span class="rank-label">${label(i)}</span>
+          <span class="rank-value">${sym}${compactFmt.format(i.v)}</span>
+          <span class="rank-bar"><span style="width:${Math.max(2, (i.v / max) * 100)}%"></span></span>
+        </div>`).join('') : '<p class="muted" style="font-size:12px;margin:0">No lines.</p>'}
+      </div>`;
+    };
+    const netOf = (list) => list.reduce((s, r) => s + (num(r.NetAmount) || 0), 0);
+    const inter = rows.filter((r) => (num(r.IgstPct) || 0) > 0);
+    const intra = rows.filter((r) => !((num(r.IgstPct) || 0) > 0));
+    const free = rows.filter(isFree).length;
+    const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+    const netAll = netOf(rows) || 1;
+    const mix = (label, parts, total) => `<div class="mix">
+      <div class="mix-label"><span>${label}</span></div>
+      <div class="mix-bar">${parts.filter((pt) => pt.v > 0).map((pt) => `<span style="width:${(pt.v / total) * 100}%;background:${pt.c}" title="${pt.name}: ${pct(pt.v, total)}"></span>`).join('')}</div>
+      <div class="mix-legend">${parts.map((pt) => `<span><i style="background:${pt.c}"></i>${pt.name} <b>${pctOf(pt.v, total)}%</b></span>`).join('')}</div>
+    </div>`;
+    const pct = (v, t) => `${pctOf(v, t)}%`;
+    $('pricingInsights').innerHTML = [
+      rankCard('Top customers', topBy(rows, 'DistributorCode'), '#4F3FD6', (i) => `${esc(unpad(i.key))}<small>${i.lines} lines · ${esc(i.sample.SalesOrg || '')}/${esc(i.sample.DistChannel || '')}</small>`),
+      rankCard('Top materials', topBy(rows, 'MaterialCode'), '#0D9488', (i) => `${esc(i.sample.MaterialDesc || unpad(i.key))}<small>${esc(unpad(i.key))} · ${i.lines} lines</small>`),
+      `<div class="insight">
+        <div class="insight-head"><h3 class="insight-title">Billing mix</h3><span class="insight-note">${qtyFmt.format(rows.length)} lines</span></div>
+        ${mix('Net value by GST type', [{ name: 'Intra-state (CGST+SGST)', v: netOf(intra), c: '#4F3FD6' }, { name: 'Inter-state (IGST)', v: netOf(inter), c: '#0D9488' }], netAll)}
+        ${mix('Lines by type', [{ name: 'Billed', v: rows.length - free, c: '#4F3FD6' }, { name: 'Free goods', v: free, c: '#1F7A4D' }], rows.length || 1)}
+      </div>`,
+    ].join('');
+  }
+
+  // ---- grid ----
+  function renderPricing() {
+    const all = pricing.rows;
+    const rows = filteredPricing();
+    const cols = visibleCols();
+    renderKpis(rows);
+    renderInsights(rows);
+    $('pricingCount').textContent = rows.length === all.length ? `${qtyFmt.format(all.length)} lines` : `${qtyFmt.format(rows.length)} of ${qtyFmt.format(all.length)} lines`;
+
+    // filters: badge, highlighted selects, chips
+    const active = FILTERS.filter((f) => pricing.filters[f.key] != null);
+    $('filterBadge').hidden = !active.length;
+    $('filterBadge').textContent = active.length;
+    document.querySelectorAll('#filterGrid select').forEach((s) => { s.value = pricing.filters[s.dataset.filter] ?? ''; s.classList.toggle('is-set', Boolean(s.value)); });
+    $('filterChips').hidden = !active.length;
+    $('filterChips').innerHTML = active.map((f) => {
+      const sample = pricing.rows.find((r) => String(f.value(r)) === pricing.filters[f.key]);
+      const shown = f.option && sample ? f.option(pricing.filters[f.key], sample) : pricing.filters[f.key];
+      return `<span class="chip">${f.label}: <b>${esc(shown)}</b><button type="button" data-unfilter="${f.key}" aria-label="Remove ${f.label} filter">${icon('x', 12)}</button></span>`;
+    }).join('') + (active.length > 1 ? '<button type="button" class="btn-link" id="chipsClear">Clear all</button>' : '');
+
+    renderSortControls();
+    renderColumnsList();
+    renderDensity();
+
+    // Group band: the pinned first column gets its own cell (a wide sticky cell would slide over
+    // its neighbours), then one cell per run of visible columns in the same group.
+    const runs = [];
+    cols.forEach((c, i) => {
+      const last = runs[runs.length - 1];
+      if (i > 0 && last && last.group === c.group && !(i === 1 && cols[0].pinned)) last.span++;
+      else runs.push({ group: c.group, span: 1, cont: i === 1 && cols[0].pinned && cols[0].group === c.group });
+    });
+    const starts = new Set(); let idx = 0;
+    runs.forEach((r) => { if (!r.cont) starts.add(idx); idx += r.span; });
+    const groupRow = `<tr class="groups">${runs.map((r) => `<th colspan="${r.span}" style="--g:${GROUPS[r.group].color}${r.cont ? ';border-left:none' : ''}">${r.cont ? '' : `<span>${GROUPS[r.group].label}</span>`}</th>`).join('')}</tr>`;
+    const headRow = `<tr>${cols.map((c, i) => {
+      const on = pricing.sort.key === c.key;
+      return `<th class="${NUMERIC.has(c.type) ? 'num' : ''}${on ? ' is-sorted' : ''}${i && starts.has(i) ? ' g-start' : ''}" data-sort="${c.key}" title="Sort by ${c.label}" aria-sort="${on ? (pricing.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}">${c.label}${on ? `<span class="sort-ind">${pricing.sort.dir > 0 ? '↑' : '↓'}</span>` : ''}</th>`;
+    }).join('')}</tr>`;
+    $('pricingTable').tHead.innerHTML = groupRow + headRow;
+    const pin = $('pricingTable').querySelector('thead tr:not(.groups) th');
+    $('pricingTable').style.setProperty('--pin-w', `${pin ? pin.offsetWidth : 0}px`);
+
+    // page
+    const size = pricing.pageSize || rows.length || 1;
+    const pages = Math.max(1, Math.ceil(rows.length / size));
+    pricing.page = Math.min(Math.max(1, pricing.page), pages);
+    const startRow = (pricing.page - 1) * size;
+    const pageRows = rows.slice(startRow, startRow + size);
+    const maxNet = Math.max(...rows.map((r) => num(r.NetAmount) || 0), 1);
+    $('pricingTable').tBodies[0].innerHTML = pageRows.length
+      ? pageRows.map((r, ri) => `<tr style="--r:${ri}"${isFree(r) ? ' class="is-free"' : ''}>${cols.map((c, i) => {
+        let content = cell(c, r) + (c.key === 'InvoiceNumber' && isFree(r) ? '<span class="free-tag">FREE</span>' : '');
+        if (c.key === 'InvoiceDate' || c.key === 'CreationDate') { const d = odataDate(r[c.key]); if (d) content = `<span class="cell-date"><b>${fmtDay(d)}</b><small>${fmtDay(d, { weekday: 'long' })}</small></span>`; }
+        if (c.key === 'NetAmount') { const n = num(r.NetAmount) || 0; content = `<span class="databar${n ? '' : ' is-zero'}" style="--w:${Math.max(0, (n / maxNet) * 100)}%">${moneyFmt.format(n)}</span>`; }
+        return `<td class="${NUMERIC.has(c.type) ? 'num' : ''}${c.wide ? ' wide' : ''}${i && starts.has(i) ? ' g-start' : ''}"${c.wide ? ` title="${text(r[c.key])}"` : ''}>${content}</td>`;
+      }).join('')}</tr>`).join('')
+      : `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:32px">No lines match the current search and filters.</td></tr>`;
+
+    // Totals over every filtered line (not just this page). Qty only sums when the unit is shared.
+    const units = new Set(rows.map((r) => r.Uom).filter(Boolean));
+    const totals = { NetAmount: 'money', Tax: 'money', Qty: units.size === 1 ? 'qty' : null };
+    $('pricingTable').tFoot.innerHTML = rows.length ? `<tr>${cols.map((c, i) => {
+      if (i === 0) return `<td><span class="tfoot-label">Total · ${qtyFmt.format(rows.length)} lines</span></td>`;
+      const kind = totals[c.key];
+      if (!kind) return `<td class="${i && starts.has(i) ? 'g-start' : ''}"></td>`;
+      const s = rows.reduce((a, r) => a + (num(r[c.key]) || 0), 0);
+      return `<td class="num${starts.has(i) ? ' g-start' : ''}">${kind === 'money' ? moneyFmt.format(s) : `${qtyFmt.format(s)} <span class="unit">${esc([...units][0])}</span>`}</td>`;
+    }).join('')}</tr>` : '';
+
+    $('pageSize').value = String(pricing.pageSize);
+    $('pageInfo').textContent = rows.length ? `${qtyFmt.format(startRow + 1)}–${qtyFmt.format(startRow + pageRows.length)} of ${qtyFmt.format(rows.length)}` : '0 of 0';
+    $('pageNum').textContent = `${pricing.page} / ${pages}`;
+    $('pageFirst').disabled = $('pagePrev').disabled = pricing.page <= 1;
+    $('pageNext').disabled = $('pageLast').disabled = pricing.page >= pages;
+  }
+  (() => {
+    const wrap = $('pricingTable').closest('.table-wrap');
+    wrap.addEventListener('scroll', () => {
+      wrap.classList.toggle('is-scrolled-y', wrap.scrollTop > 2);
+      wrap.classList.toggle('is-scrolled-x', wrap.scrollLeft > 2);
+    }, { passive: true });
+    $('pricingTable').tBodies[0].addEventListener('click', (e) => {
+      const tr = e.target.closest('tr');
+      if (!tr || !tr.parentElement) return;
+      const was = tr.classList.contains('is-selected');
+      tr.parentElement.querySelectorAll('tr.is-selected').forEach((x) => x.classList.remove('is-selected'));
+      if (!was) tr.classList.add('is-selected');
+    });
+  })();
+  function goPage(p) { pricing.page = p; renderPricing(); $('pricingTable').closest('.table-wrap').scrollTop = 0; }
+
+  function exportPricing() {
+    const rows = filteredPricing();
+    const cols = visibleCols();
+    const q = (v) => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const csv = [cols.map((c) => q(c.label)).join(','), ...rows.map((r) => cols.map((c) => q(csvValue(c, r))).join(','))].join('\r\n');
+    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `pricing-${pricing.range.from}-to-${pricing.range.to}.csv` });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function setColumnsPop(open) { $('columnsPop').hidden = !open; $('columnsBtn').setAttribute('aria-expanded', String(open)); }
 
   // ---- wiring ----
   document.querySelectorAll('[data-icon]').forEach((el) => {
@@ -726,20 +1957,65 @@
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#userBox')) setUserMenu(false);
+    if (!e.target.closest('.pop-anchor')) setColumnsPop(false);
     const card = e.target.closest('.card');
     if (card) {
-      toast(`${card.dataset.title} is coming soon — the SAP connection is being set up.`);
+      if (card.dataset.view) goTo(card.dataset.view);
+      else toast(`${card.dataset.title} is coming soon — the SAP connection is being set up.`);
       return;
     }
+    const th = e.target.closest('#pricingTable th[data-sort]');
+    if (th) { setSort(th.dataset.sort); return; }
+    if (e.target.closest('#pricingRetry')) { fetchPricing(); return; }
+    const preset = e.target.closest('.preset');
+    if (preset) { setRangeInputs(presetRange(preset.dataset.preset)); return; }
+    const unfilter = e.target.closest('[data-unfilter]');
+    if (unfilter) { delete pricing.filters[unfilter.dataset.unfilter]; pricing.page = 1; renderPricing(); return; }
+    if (e.target.closest('#chipsClear, #filtersClear')) { pricing.filters = {}; pricing.page = 1; renderPricing(); return; }
     const nav = e.target.closest('[data-nav]');
     if (nav) goTo(nav.dataset.nav);
   });
 
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('search').focus(); }
-    if (e.key === 'Escape') { closeDrawer(); setUserMenu(false); }
+    if (e.key === 'Escape') { closeDrawer(); setUserMenu(false); setColumnsPop(false); }
   });
 
+  $('pricingForm').addEventListener('submit', (e) => { e.preventDefault(); fetchPricing(); });
+  ['fromDate', 'toDate'].forEach((id) => $(id).addEventListener('change', () => { clearRangeError(); markPreset(); }));
+  $('refreshBtn').addEventListener('click', () => pricing.range && fetchPricing(pricing.range));
+  $('pricingSearch').addEventListener('input', (e) => { pricing.search = e.target.value; pricing.page = 1; renderPricing(); });
+  $('filtersBtn').addEventListener('click', () => {
+    const open = $('filterPanel').hidden;
+    $('filterPanel').hidden = !open;
+    $('filtersBtn').setAttribute('aria-expanded', String(open));
+  });
+  $('filterGrid').addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-filter]');
+    if (!sel) return;
+    if (sel.value) pricing.filters[sel.dataset.filter] = sel.value; else delete pricing.filters[sel.dataset.filter];
+    pricing.page = 1;
+    renderPricing();
+  });
+  $('sortField').addEventListener('change', (e) => setSort(e.target.value));
+  $('sortDir').addEventListener('click', () => setSort(pricing.sort.key, -pricing.sort.dir));
+  $('columnsBtn').addEventListener('click', () => setColumnsPop($('columnsPop').hidden));
+  $('columnsList').addEventListener('change', (e) => {
+    const key = e.target.dataset.col;
+    if (!key) return;
+    if (e.target.checked) pricing.hidden.delete(key); else pricing.hidden.add(key);
+    saveHidden();
+    renderPricing();
+  });
+  $('colsAll').addEventListener('click', () => { pricing.hidden.clear(); saveHidden(); renderPricing(); });
+  $('colsCore').addEventListener('click', () => { pricing.hidden = new Set(COLS.filter((c) => !c.core).map((c) => c.key)); saveHidden(); renderPricing(); });
+  document.querySelectorAll('[data-density]').forEach((b) => b.addEventListener('click', () => { pricing.density = b.dataset.density; savePrefs(); renderDensity(); }));
+  $('pageSize').addEventListener('change', (e) => { pricing.pageSize = Number(e.target.value); savePrefs(); goPage(1); });
+  $('pageFirst').addEventListener('click', () => goPage(1));
+  $('pagePrev').addEventListener('click', () => goPage(pricing.page - 1));
+  $('pageNext').addEventListener('click', () => goPage(pricing.page + 1));
+  $('pageLast').addEventListener('click', () => goPage(Infinity));
+  $('pricingExport').addEventListener('click', exportPricing);
   $('menuBtn').addEventListener('click', openDrawer);
   $('closeBtn').addEventListener('click', closeDrawer);
   $('backdrop').addEventListener('click', closeDrawer);
