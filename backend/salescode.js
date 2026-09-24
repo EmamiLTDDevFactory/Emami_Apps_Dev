@@ -6,11 +6,12 @@
  * embedded-apps/salescode page. Self-contained, mounted under /salescode in server.js — purely
  * additive, doesn't touch any other route.
  *
- * SAP_GATEWAY_URL is the service root, e.g.
+ * SAP_GATEWAY_URL is the service root. It defaults to the NGD proxy (the same one audit-capa's
+ * sapNgdService.js uses for ZQM_CAPA_AUDIT_SRV), which is reachable from the AWS-hosted backend
+ * and signs in to SAP itself, so no credentials are needed. It can be pointed at the on-prem
+ * Gateway instead for a local run on the Emami network, e.g.
  *   http://emamidev.emami.local:8080/sap/opu/odata/sap/ZSALESCODE_ODATA_SRV_SRV
- * That host is on-prem only — a deployment with no route to it (the AWS-hosted backend, unlike a
- * local run on the Emami network) needs this pointed at something reachable instead, e.g. the
- * NGD proxy audit-capa's sapNgdService.js already uses for ZQM_CAPA_AUDIT_SRV.
+ * in which case SAP_SERVICE_USER / SAP_SERVICE_PASS must be set and are sent as Basic auth.
  *
  * Deliberately uses the built-in fetch (as stockQuote.js does) rather than axios: axios isn't a
  * dependency of this backend, and a failed require here would take down every route on the
@@ -22,7 +23,10 @@ const { pool } = require('./db');
 
 const router = express.Router();
 
-const SAP_BASE_URL = (process.env.SAP_GATEWAY_URL || '').replace(/\/+$/, '');
+const SAP_BASE_URL = (
+    process.env.SAP_GATEWAY_URL ||
+    'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZSALESCODE_ODATA_SRV_SRV'
+).replace(/\/+$/, '');
 const SAP_USER = process.env.SAP_SERVICE_USER || '';
 const SAP_PASS = process.env.SAP_SERVICE_PASS || '';
 // Same fail-fast posture as sapNgdService.js — a hung gateway must never hold a request open.
@@ -64,8 +68,10 @@ router.get('/invoices', requireSalescodeAccess, async (req, res) => {
     if (!DISTRIBUTOR_RE.test(distributor)) {
         return res.status(400).json({ error: 'distributor must be 1-10 letters or digits' });
     }
-    if (!SAP_BASE_URL || !SAP_USER || !SAP_PASS) {
-        console.error('[salescode] SAP_GATEWAY_URL / SAP_SERVICE_USER / SAP_SERVICE_PASS not set');
+    // The NGD proxy signs in to SAP itself; only a direct Gateway URL needs Basic auth. Half a
+    // credential pair is a misconfiguration either way.
+    if (Boolean(SAP_USER) !== Boolean(SAP_PASS)) {
+        console.error('[salescode] Only one of SAP_SERVICE_USER / SAP_SERVICE_PASS is set');
         return res.status(503).json({ error: 'Salescode is not configured on this server yet' });
     }
 
@@ -79,7 +85,9 @@ router.get('/invoices', requireSalescodeAccess, async (req, res) => {
         const response = await fetch(`${SAP_BASE_URL}/Pricing_dataSet?${query}`, {
             headers: {
                 Accept: 'application/json',
-                Authorization: 'Basic ' + Buffer.from(`${SAP_USER}:${SAP_PASS}`).toString('base64'),
+                ...(SAP_USER && {
+                    Authorization: 'Basic ' + Buffer.from(`${SAP_USER}:${SAP_PASS}`).toString('base64'),
+                }),
             },
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });

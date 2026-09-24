@@ -3,200 +3,354 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Salescode</title>
+<title>Salescode Data Centre</title>
+<link rel="icon" type="image/png" href="assets/emami-apps-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* Placeholder for the Salescode app while its data views and SAP connection are built.
-     Tokens are dev-tracker's src/shared/tokens.css (the hub's own palette from
-     hub-next/src/theme/tokens.ts, in OKLCH) and the card is its shared/comingsoon.css, so this
-     reads as part of Emami Apps. --tile is the hub's SD category colour (theme/tokens.ts), the
-     category (the SAP SD module) the Salescode tile sits under. */
+  /* Salescode Data Centre — home of the Salescode app: a sidebar shell plus tiles for every master
+     and transactional dataset SAP shares with Salescode. Base tokens are dev-tracker's
+     src/shared/tokens.css (the hub's palette from hub-next/src/theme/tokens.ts) so this reads as
+     part of Emami Apps; the per-tile hues are local to this page. */
   :root {
-    --bg: oklch(95.5% 0.006 264.5);
-    --bg-alt: oklch(96.3% 0.013 295.3);
+    --bg: oklch(97.2% 0.006 250);
     --surface: oklch(100% 0 0);
-    --border: oklch(92.3% 0.024 293.6);
-    --border-strong: oklch(84% 0.03 293);
-    --text: oklch(23.9% 0.045 290.2);
-    --text-2: oklch(38% 0.03 288);
-    --muted: oklch(55.1% 0.023 264.4);
-    --accent: oklch(48.7% 0.219 279.2);
-    --accent-soft: oklch(94% 0.035 279);
-    --accent-2: oklch(41.3% 0.194 277.8);
-    --st-green: oklch(48% 0.13 150);
-    --st-green-soft: oklch(94% 0.028 150);
-    --tile: #EA580C;
-    --tile-soft: color-mix(in srgb, #EA580C 12%, transparent);
+    --border: oklch(92.5% 0.012 255);
+    --border-strong: oklch(86% 0.018 255);
+    --text: oklch(24% 0.06 262);
+    --text-2: oklch(40% 0.03 262);
+    --muted: oklch(56% 0.02 262);
+    --navy: oklch(30% 0.1 262);
+    --accent: oklch(52% 0.17 258);
+    --accent-soft: oklch(95% 0.03 250);
+    --master: oklch(52% 0.17 258);
+    --master-soft: oklch(95.5% 0.025 250);
+    --trans: oklch(55% 0.12 165);
+    --trans-soft: oklch(96% 0.03 165);
+    --danger: oklch(58% 0.21 27);
+    --sidebar-w: 232px;
+    --shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 8px 20px -16px oklch(0% 0 0 / 0.14);
   }
 
   * { box-sizing: border-box; }
+  html, body { margin: 0; }
   body {
-    margin: 0; min-height: 100vh;
+    min-height: 100vh;
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
     background: var(--bg); color: var(--text);
   }
+  button { font: inherit; color: inherit; }
+  svg { flex-shrink: 0; }
   .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
 
-  .page { max-width: 1080px; margin: 0 auto; padding: 20px 16px 40px; }
-
-  /* Top strip — same bordered-surface treatment as dev-tracker's .topbar. */
-  .topbar {
-    display: flex; align-items: center; gap: 14px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    padding: 8px 14px; box-shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 8px 18px -18px oklch(0% 0 0 / 0.10);
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: 30;
+    display: flex; flex-direction: column;
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 18px 14px 18px;
+    transition: transform .2s ease;
   }
-  .hub-link {
-    display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px;
-    border: none; border-radius: 8px; background: none; cursor: pointer;
-    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text-2); white-space: nowrap;
+  .logo { display: block; width: 112px; height: auto; margin: 0 auto; }
+  .app-label {
+    margin: 8px 0 22px; text-align: center;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: var(--navy);
+  }
+  .nav { display: grid; gap: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 10px 12px; border: 1px solid transparent; border-radius: 10px;
+    background: none; cursor: pointer; text-align: left;
+    font-size: 13.5px; font-weight: 500; color: var(--text-2);
     transition: background .12s ease, color .12s ease;
   }
-  .hub-link:hover { background: var(--bg-alt); color: var(--accent); }
-  .brand { display: flex; align-items: center; gap: 10px; padding-left: 14px; border-left: 1px solid var(--border); min-width: 0; }
-  .brand-chip {
-    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--tile); color: #fff;
+  .nav-item svg { color: var(--navy); }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.is-active {
+    background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--navy); font-weight: 600;
   }
-  .brand-name { font-size: 14px; font-weight: 700; }
-  .brand-sub { font-size: 11px; color: var(--muted); }
-  .user { display: flex; align-items: center; gap: 9px; margin-left: auto; padding-left: 14px; border-left: 1px solid var(--border); min-width: 0; }
+  .nav-item.is-active svg { color: var(--accent); }
+  .sidebar-foot { margin-top: auto; display: grid; gap: 14px; }
+  .hub-link {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  }
+  .hub-link:hover { color: var(--accent); border-color: var(--border-strong); }
+  .tagline { padding: 0 6px; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+  .scrim { display: none; }
+
+  /* ---------- Main column ---------- */
+  .main { margin-left: var(--sidebar-w); min-height: 100vh; min-width: 0; }
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 24px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+  }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; position: relative;
+    width: 36px; height: 36px; border: none; border-radius: 9px; background: none; cursor: pointer;
+    color: var(--text-2);
+  }
+  .icon-btn:hover { background: var(--bg); color: var(--text); }
+  .search {
+    display: flex; align-items: center; gap: 8px; flex: 0 1 300px; min-width: 0;
+    padding: 0 12px; height: 36px; border-radius: 9px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  }
+  .search:focus-within { border-color: var(--accent); background: var(--surface); }
+  .search input {
+    flex: 1; min-width: 0; border: none; outline: none; background: none;
+    font: inherit; font-size: 13px; color: var(--text);
+  }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .user { display: flex; align-items: center; gap: 10px; padding-left: 12px; border-left: 1px solid var(--border); min-width: 0; }
   .avatar {
-    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600;
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
   }
-  .user-email { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+  .user-name { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .user-email { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
 
-  /* Coming-soon card — dev-tracker's shared/comingsoon.css, widened for the roadmap. */
-  .coming-soon {
-    max-width: 560px; margin: 7vh auto 0; text-align: center;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-    padding: 40px 36px 34px;
-    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.03), 0 20px 44px -24px oklch(0% 0 0 / 0.12);
+  .content { padding: 22px 24px 40px; }
+
+  /* Hero */
+  .hero {
+    position: relative; overflow: hidden;
+    display: flex; align-items: center; gap: 24px;
+    padding: 28px 30px; border-radius: 16px; border: 1px solid var(--border);
+    background:
+      radial-gradient(120% 140% at 85% 120%, oklch(90% 0.05 250 / .7), transparent 60%),
+      linear-gradient(100deg, oklch(98.5% 0.008 250), oklch(95% 0.03 250));
   }
-  .coming-soon-icon {
-    width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 18px;
+  .hero h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.015em; color: var(--navy); }
+  .hero p { margin: 6px 0 0; font-size: 15px; color: var(--text-2); }
+  .hero-aside {
+    margin-left: auto; padding-left: 22px; border-left: 2px solid var(--border-strong);
+    font-size: 14px; line-height: 1.5; color: var(--text-2); white-space: nowrap;
+  }
+
+  /* Sections */
+  .section {
+    margin-top: 20px; border: 1px solid var(--border); border-radius: 16px;
+    background: var(--surface); overflow: hidden; box-shadow: var(--shadow);
+    scroll-margin-top: 76px;
+  }
+  .section-head { display: flex; align-items: center; gap: 14px; padding: 14px 20px; }
+  .section[data-kind="master"] .section-head { background: var(--master-soft); color: var(--master); }
+  .section[data-kind="trans"] .section-head { background: var(--trans-soft); color: var(--trans); }
+  .section-head h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--navy); }
+  .section-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--text-2); }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px 20px 20px; }
+
+  .card {
+    display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0;
+    padding: 14px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--surface); cursor: pointer; text-align: left;
+    transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+  }
+  .card:hover { border-color: color-mix(in srgb, var(--hue) 45%, var(--border)); box-shadow: var(--shadow); transform: translateY(-1px); }
+  .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card-icon {
+    width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    background: var(--tile-soft); color: var(--tile);
+    background: color-mix(in srgb, var(--hue) 13%, white); color: var(--hue);
   }
-  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-  .h1 { font-size: 27px; font-weight: 600; letter-spacing: -0.01em; margin: 6px 0 0; }
-  .coming-soon-desc { font-size: 13.5px; color: var(--text-2); line-height: 1.6; margin: 10px 0 0; }
+  .card-text { min-width: 0; flex: 1; }
+  .card-title { font-size: 13.5px; font-weight: 600; color: var(--navy); }
+  .card-desc { margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .card-chev { color: var(--text-2); }
+  .empty { grid-column: 1 / -1; padding: 8px 0; font-size: 13px; color: var(--muted); }
 
-  .section-label { margin: 26px 0 10px; text-align: left; }
-  .coming-soon-list {
-    text-align: left; margin: 0; padding: 16px 18px 16px 34px; border-radius: 12px;
-    background: var(--bg-alt); font-size: 12.5px; color: var(--text-2); line-height: 1.9;
+  /* Toast (used for datasets that aren't wired up yet) */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; z-index: 50; transform: translate(-50%, 20px);
+    max-width: calc(100vw - 32px); padding: 11px 16px; border-radius: 10px;
+    background: var(--navy); color: #fff; font-size: 13px; box-shadow: var(--shadow);
+    opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease;
   }
-  .coming-soon-list li::marker { color: var(--accent); }
+  .toast.is-open { opacity: 1; transform: translate(-50%, 0); }
 
-  /* Rollout steps — where the app is today, so users know what to expect next. */
-  .steps { list-style: none; margin: 0; padding: 0; text-align: left; display: grid; gap: 8px; }
-  .step {
-    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
-    border: 1px solid var(--border); border-radius: 12px; font-size: 12.5px; color: var(--text-2);
+  @media (max-width: 1080px) {
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  .step-dot {
-    width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 600; background: var(--bg-alt); color: var(--muted);
+  .main { transition: margin-left .2s ease; }
+  @media (min-width: 861px) {
+    body.nav-collapsed .sidebar { transform: translateX(-100%); }
+    body.nav-collapsed .main { margin-left: 0; }
   }
-  .step-title { font-weight: 600; color: var(--text); }
-  .step-state { margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-  .step.is-done .step-dot { background: var(--st-green); color: #fff; }
-  .step.is-done .step-state { color: var(--st-green); }
-  .step.is-current { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--accent-soft); }
-  .step.is-current .step-dot { background: var(--accent); color: #fff; }
-  .step.is-current .step-state { color: var(--accent); }
-
-  .coming-soon-badge {
-    display: inline-block; margin-top: 24px; font-size: 10.5px; font-weight: 700;
-    letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
-    background: var(--accent-soft); padding: 5px 12px; border-radius: 999px;
+  /* Below this the sidebar becomes a drawer behind the menu button. */
+  @media (max-width: 860px) {
+    .sidebar { transform: translateX(-100%); box-shadow: 0 0 40px oklch(0% 0 0 / .18); }
+    body.nav-open .sidebar { transform: none; }
+    body.nav-open .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: oklch(0% 0 0 / .3); }
+    .main { margin-left: 0; }
   }
-  .foot { margin-top: 18px; text-align: center; font-size: 11.5px; color: var(--muted); }
-
   @media (max-width: 640px) {
-    .brand-sub, .user-email, .hub-link-lead { display: none; }
-    .coming-soon { margin-top: 24px; padding: 32px 20px 28px; }
-    .h1 { font-size: 23px; }
+    .topbar { padding: 10px 16px; gap: 8px; }
+    .content { padding: 16px 16px 32px; }
+    .user-text { display: none; }
+    .user { padding-left: 8px; }
+    .hero { flex-direction: column; align-items: flex-start; padding: 22px 20px; }
+    .hero h1 { font-size: 24px; }
+    .hero-aside { margin-left: 0; }
+    .grid { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+    .section-head { padding: 12px 14px; }
   }
 </style>
 </head>
 <body>
 
-<div class="page">
-  <header class="topbar">
+<aside class="sidebar" id="sidebar">
+  <img class="logo" src="assets/emami-apps-logo.png" alt="Emami Apps">
+  <div class="app-label">SALESCODE DATA CENTRE</div>
+  <nav class="nav" id="nav" aria-label="Salescode"></nav>
+  <div class="sidebar-foot">
     <button type="button" class="hub-link" id="backToHub">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-      <span><span class="hub-link-lead">Back to </span>Emami Apps</span>
+      Back to Emami Apps
     </button>
-    <div class="brand">
-      <span class="brand-chip" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
-      </span>
-      <div>
-        <div class="brand-name">Salescode</div>
-        <div class="brand-sub">SD · Master &amp; transactional data</div>
+    <div class="tagline">Better Systems<br>Brighter Tomorrow</div>
+  </div>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="main">
+  <header class="topbar">
+    <button type="button" class="icon-btn" id="menuBtn" aria-label="Toggle menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <label class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="search" id="search" placeholder="Search dataset..." autocomplete="off" aria-label="Search dataset">
+    </label>
+    <div class="top-right">
+      <button type="button" class="icon-btn" id="bellBtn" aria-label="Notifications">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </button>
+      <div class="user" id="user" hidden>
+        <span class="avatar" id="userInitials"></span>
+        <div class="user-text">
+          <div class="user-name" id="userName"></div>
+          <div class="user-email" id="userEmail"></div>
+        </div>
       </div>
-    </div>
-    <div class="user" id="user" hidden>
-      <span class="avatar mono" id="userInitials"></span>
-      <span class="user-email" id="userEmail"></span>
     </div>
   </header>
 
-  <main class="coming-soon">
-    <div class="coming-soon-icon" aria-hidden="true">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
-    </div>
-    <div class="eyebrow">SD · Salescode</div>
-    <h1 class="h1">Salescode</h1>
-    <p class="coming-soon-desc">
-      View SD master and transactional data for Emami products sold through SalesCode.ai, the sales platform used by our field teams, distributors and retailers. Everything you need, in one place.
-    </p>
+  <main class="content">
+    <section class="hero">
+      <div>
+        <h1>Salescode Data Centre</h1>
+        <p>View Salescode related data directly from SAP.</p>
+      </div>
+      <div class="hero-aside">Data today<br>for a better tomorrow</div>
+    </section>
 
-    <div class="eyebrow section-label">What you'll be able to do</div>
-    <ul class="coming-soon-list">
-      <li>Master data SAP shares with SalesCode: products, distributors and prices</li>
-      <li>Transactional data: the invoice, order and billing lines for products sold through SalesCode</li>
-      <li>MRP, base rate, margins, discounts and GST for each material</li>
-      <li>Search by distributor code and export results for further analysis</li>
-    </ul>
+    <section class="section" id="master" data-kind="master">
+      <div class="section-head">
+        <span data-icon="database" data-size="30"></span>
+        <div>
+          <h2>Master Data</h2>
+          <p>View master data maintained for Salescode.</p>
+        </div>
+      </div>
+      <div class="grid" id="masterGrid"></div>
+    </section>
 
-    <div class="eyebrow section-label">Rollout</div>
-    <ol class="steps">
-      <li class="step is-done">
-        <span class="step-dot">✓</span>
-        <span class="step-title">App available in Emami Apps</span>
-        <span class="step-state">Done</span>
-      </li>
-      <li class="step is-current">
-        <span class="step-dot">2</span>
-        <span class="step-title">Master &amp; transactional data views</span>
-        <span class="step-state">In progress</span>
-      </li>
-      <li class="step">
-        <span class="step-dot">3</span>
-        <span class="step-title">Live data from SAP</span>
-        <span class="step-state">Up next</span>
-      </li>
-    </ol>
-
-    <span class="coming-soon-badge">In development</span>
+    <section class="section" id="transactional" data-kind="trans">
+      <div class="section-head">
+        <span data-icon="fileText" data-size="30"></span>
+        <div>
+          <h2>Transactional Data</h2>
+          <p>View transactional and operational data for Salescode.</p>
+        </div>
+      </div>
+      <div class="grid" id="transGrid"></div>
+    </section>
   </main>
-
-  <p class="foot">Access is managed by your Emami Apps administrator.</p>
 </div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
   // Same hub conventions as dev-tracker (src/shared/api.js, Sidebar.jsx): served same-origin under
   // /apps/salescode/, so the hub's login is read straight from localStorage, and with no login the
   // page sends you back to the hub rather than rendering for an anonymous visitor.
   const HUB_EMAIL_STORAGE_KEY = 'emami_apps_user_email';
+
+  // Lucide icon bodies (24x24, stroke), inlined so the page stays dependency-free.
+  const ICONS = {
+    home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+    fileText: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    chart: '<path d="M3 3v18h18"/><path d="M8 17v-3"/><path d="M13 17V9"/><path d="M18 17V5"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    barcode: '<path d="M4 5v14"/><path d="M8 5v14"/><path d="M11 5v14"/><path d="M15 5v14"/><path d="M17 5v14"/><path d="M20 5v14"/>',
+    share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/>',
+    bars: '<path d="M3 3v18h18"/><path d="M7 16v-4"/><path d="M11 16V9"/><path d="M15 16v-6"/><path d="M19 16V6"/>',
+    trend: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+    tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/>',
+    card: '<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+    undo: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+    redo: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    upload: '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/>',
+    chevron: '<path d="m9 18 6-6-6-6"/>',
+  };
+  function icon(name, size = 20) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+  }
+
+  const HUES = {
+    blue: 'oklch(55% 0.17 255)', green: 'oklch(56% 0.14 150)', purple: 'oklch(52% 0.2 300)',
+    orange: 'oklch(64% 0.17 50)', teal: 'oklch(58% 0.11 185)', pink: 'oklch(58% 0.2 350)',
+    red: 'oklch(58% 0.21 20)', amber: 'oklch(70% 0.15 75)',
+  };
+
+  const NAV = [
+    { id: 'home', label: 'Home', icon: 'home', target: 'top' },
+    { id: 'master', label: 'Master Data', icon: 'database', target: 'master' },
+    { id: 'transactional', label: 'Transactional Data', icon: 'fileText', target: 'transactional' },
+    { id: 'reports', label: 'Reports', icon: 'chart' },
+    { id: 'config', label: 'Configuration', icon: 'settings' },
+    { id: 'users', label: 'User Management', icon: 'users' },
+  ];
+
+  const MASTER = [
+    { title: 'Product Master', desc: 'View product master data', icon: 'box', hue: 'blue' },
+    { title: 'Distributor Master', desc: 'View distributor master data', icon: 'users', hue: 'green' },
+    { title: 'Tax Master', desc: 'View tax master data', icon: 'fileText', hue: 'purple' },
+    { title: 'Batch Master', desc: 'View batch master data', icon: 'barcode', hue: 'orange' },
+    { title: 'MT Channel Master', desc: 'View MT channel master data', icon: 'share', hue: 'teal' },
+    { title: 'NSV Master', desc: 'View NSV master data', icon: 'bars', hue: 'pink' },
+    { title: 'NSV Actual Master', desc: 'View NSV actual master data', icon: 'trend', hue: 'purple' },
+    { title: 'Pricing Master', desc: 'View pricing master data', icon: 'tag', hue: 'blue' },
+    { title: 'Distributor Credit Master', desc: 'View distributor credit master data', icon: 'card', hue: 'green' },
+  ];
+
+  const TRANSACTIONAL = [
+    { title: 'Primary Fetch', desc: 'View primary fetch data', icon: 'download', hue: 'blue' },
+    { title: 'Primary Returns', desc: 'View primary returns data', icon: 'redo', hue: 'orange' },
+    { title: 'Sale Order Push', desc: 'View sale order push data', icon: 'cart', hue: 'teal' },
+    { title: 'Return Order Push', desc: 'View return order push data', icon: 'undo', hue: 'red' },
+    { title: 'E-Claim Fetch', desc: 'View e-claim fetch data', icon: 'fileText', hue: 'purple' },
+    { title: 'E-Claim Push', desc: 'View e-claim push data', icon: 'send', hue: 'teal' },
+    { title: 'QPS Fetch', desc: 'View QPS fetch data', icon: 'search', hue: 'amber' },
+    { title: 'QPS Push', desc: 'View QPS push data', icon: 'upload', hue: 'blue' },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function getCurrentUserEmail() {
     try {
@@ -206,22 +360,104 @@
     }
   }
 
+  // The hub only stores the email, so the display name is derived from it
+  // (abhishek.tripathi@… → "Abhishek Tripathi").
+  function nameParts(email) {
+    return email.split('@')[0].split(/[._-]+/).filter(Boolean);
+  }
+  function displayName(email) {
+    return nameParts(email).map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase()).join(' ') || email;
+  }
   function initials(email) {
-    const parts = email.split('@')[0].split(/[._-]+/).filter(Boolean);
+    const parts = nameParts(email);
     return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
   }
 
-  document.getElementById('backToHub').addEventListener('click', () => {
-    window.location.href = '/';
+  let toastTimer;
+  function toast(message) {
+    const el = $('toast');
+    el.textContent = message;
+    el.classList.add('is-open');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('is-open'), 2600);
+  }
+
+  function renderNav(activeId) {
+    $('nav').innerHTML = NAV.map((n) => `
+      <button type="button" class="nav-item${n.id === activeId ? ' is-active' : ''}" data-nav="${n.id}">
+        ${icon(n.icon, 18)}<span>${n.label}</span>
+      </button>`).join('');
+  }
+
+  function renderGrid(el, items, query) {
+    const q = query.trim().toLowerCase();
+    const shown = items.filter((d) => !q || d.title.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q));
+    el.innerHTML = shown.length
+      ? shown.map((d) => `
+          <button type="button" class="card" style="--hue:${HUES[d.hue]}" data-title="${esc(d.title)}">
+            <span class="card-icon">${icon(d.icon, 22)}</span>
+            <span class="card-text">
+              <span class="card-title">${esc(d.title)}</span>
+              <span class="card-desc" style="display:block">${esc(d.desc)}</span>
+            </span>
+            <span class="card-chev">${icon('chevron', 18)}</span>
+          </button>`).join('')
+      : '<div class="empty">No datasets match your search.</div>';
+  }
+
+  function render(query = '') {
+    renderGrid($('masterGrid'), MASTER, query);
+    renderGrid($('transGrid'), TRANSACTIONAL, query);
+  }
+
+  function closeDrawer() { document.body.classList.remove('nav-open'); }
+
+  // ---- wiring ----
+  document.querySelectorAll('[data-icon]').forEach((el) => {
+    el.outerHTML = icon(el.dataset.icon, Number(el.dataset.size) || 20);
   });
+  renderNav('home');
+  render();
+
+  $('search').addEventListener('input', (e) => render(e.target.value));
+
+  document.addEventListener('click', (e) => {
+    const card = e.target.closest('.card');
+    if (card) {
+      toast(`${card.dataset.title} is coming soon — the SAP connection is being set up.`);
+      return;
+    }
+    const nav = e.target.closest('[data-nav]');
+    if (nav) {
+      const item = NAV.find((n) => n.id === nav.dataset.nav);
+      closeDrawer();
+      if (!item.target) {
+        toast(`${item.label} is coming soon.`);
+        return;
+      }
+      renderNav(item.id);
+      if (item.target === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
+      else $(item.target).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
+  // Menu button: opens the drawer on narrow screens, collapses the sidebar on wide ones.
+  $('menuBtn').addEventListener('click', () => {
+    const narrow = window.matchMedia('(max-width: 860px)').matches;
+    document.body.classList.toggle(narrow ? 'nav-open' : 'nav-collapsed');
+  });
+  $('scrim').addEventListener('click', closeDrawer);
+  $('bellBtn').addEventListener('click', () => toast('No new notifications.'));
+  $('backToHub').addEventListener('click', () => { window.location.href = '/'; });
 
   const email = getCurrentUserEmail();
   if (!email) {
     window.location.href = '/';
   } else {
-    document.getElementById('userInitials').textContent = initials(email);
-    document.getElementById('userEmail').textContent = email;
-    document.getElementById('user').hidden = false;
+    $('userInitials').textContent = initials(email);
+    $('userName').textContent = displayName(email);
+    $('userEmail').textContent = email;
+    $('user').hidden = false;
   }
 </script>
 
