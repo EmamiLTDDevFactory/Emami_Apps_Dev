@@ -10,11 +10,12 @@ import {
   toISODate, allocatedManDaysInPeriod, buildAllocations, buildResourceUniverse, matchesFilters,
   overlapsPeriod, bucketFor, UTIL_BUCKETS, resourceStatus, RESOURCE_STATUS_META,
   computeResourceStats, allocationPct, allocationByModule, buildHolidaySet,
+  ESTIMATED_MAN_DAYS, DEFAULT_ESTIMATED_MAN_DAYS, SPOC_ESTIMATE_SHARE,
 } from '../shared/resourceUtil.js';
 import {
   CalendarIcon, FilterIcon, DownloadIcon, GridIcon, MoreIcon, SearchIcon,
   CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon, UsersIcon, CheckCircleIcon,
-  BarChartIcon, LayersIcon, AlertIcon, ChevronDownIcon,
+  BarChartIcon, LayersIcon, AlertIcon, ChevronDownIcon, InfoIcon,
 } from '../shared/icons.jsx';
 
 const VIEW_OPTIONS = [
@@ -174,7 +175,7 @@ export default function ResourceUtilization() {
   const holidaySet = useMemo(() => buildHolidaySet(masterData), [masterData]);
 
   const universe = useMemo(() => buildResourceUniverse(items), [items]);
-  const allAllocations = useMemo(() => buildAllocations(items, revisedTarget), [items]);
+  const allAllocations = useMemo(() => buildAllocations(items, revisedTarget, holidaySet), [items, holidaySet]);
   const resourceNameOptions = useMemo(() => universe.map((r) => r.name).sort(), [universe]);
 
   const filters = useMemo(() => ({ resourceName: filterResource, role: filterRole, module: filterModule, status: filterStatus }), [filterResource, filterRole, filterModule, filterStatus]);
@@ -217,6 +218,11 @@ export default function ResourceUtilization() {
     : 0;
   const overlappingAllocations = useMemo(() => filteredAllocations.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd)), [filteredAllocations, periodStart, periodEnd]);
   const totalAllocationsCount = overlappingAllocations.length;
+  // How much of what's on screen rests on the Target Date / Man-days fallbacks (see
+  // assignmentPlan) — surfaced so nobody reads an estimate as a planned figure.
+  const estimatedDatesCount = overlappingAllocations.filter((a) => a.estimated.dates).length;
+  const estimatedEffortCount = overlappingAllocations.filter((a) => a.estimated.manDays).length;
+  const undatedCount = useMemo(() => new Set(filteredAllocations.filter((a) => !a.window).map((a) => a.item.id)).size, [filteredAllocations]);
 
   const utilDistribution = UTIL_BUCKETS.map((b) => ({ key: b.key, label: b.label, color: b.color, value: resourceRows.filter((r) => r.bucket.key === b.key).length }));
   const moduleAlloc = useMemo(() => allocationByModule(filteredAllocations, periodStart, periodEnd, holidaySet), [filteredAllocations, periodStart, periodEnd, holidaySet]);
@@ -250,13 +256,14 @@ export default function ResourceUtilization() {
 
   // --- Allocation Table rows: one row per resource<->assignment allocation overlapping period --
   const allocationRows = useMemo(() => overlappingAllocations.map((a) => {
-    const manDays = a.window ? allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet) : 0;
+    const manDays = a.window ? allocatedManDaysInPeriod(a.window, a.manDays, periodStart, periodEnd, holidaySet) : 0;
     const pct = allocationPct(a, periodStart, periodEnd, holidaySet);
     return {
       key: `${a.resourceName}::${a.role}::${a.item.id}`,
       resourceName: a.resourceName, role: a.role, title: a.item.devList, module: a.module,
-      startDate: a.item.startDate, endDate: a.window ? toISODate(a.window.end) : (revisedTarget(a.item) || a.item.targetDate || ''),
+      startDate: a.window ? toISODate(a.window.start) : a.item.startDate, endDate: a.window ? toISODate(a.window.end) : (revisedTarget(a.item) || a.item.targetDate || ''),
       manDays, pct, status: a.item.status, remarks: a.item.remarks, item: a.item,
+      estDates: a.estimated.dates, estManDays: a.estimated.manDays,
     };
   }), [overlappingAllocations, periodStart, periodEnd, holidaySet]);
 
@@ -327,8 +334,9 @@ export default function ResourceUtilization() {
   }
 
   function exportCsv() {
-    const header = ['Resource', 'Role', 'Assignment', 'Module', 'Start Date', 'End Date', 'Man-days (period)', 'Allocation %', 'Status', 'Remarks'];
-    const rows = allocationRows.map((r) => [r.resourceName, r.role, r.title, r.module || '', r.startDate || '', r.endDate || '', r.manDays.toFixed(1), `${Math.round(r.pct)}%`, r.status, r.remarks || '']);
+    const header = ['Resource', 'Role', 'Assignment', 'Module', 'Start Date', 'End Date', 'Man-days (period)', 'Allocation %', 'Status', 'Estimated', 'Remarks'];
+    const estLabel = (r) => [r.estDates && 'Dates', r.estManDays && 'Man-days'].filter(Boolean).join(' + ');
+    const rows = allocationRows.map((r) => [r.resourceName, r.role, r.title, r.module || '', r.startDate || '', r.endDate || '', r.manDays.toFixed(1), `${Math.round(r.pct)}%`, r.status, estLabel(r), r.remarks || '']);
     const csv = [header, ...rows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -454,6 +462,24 @@ export default function ResourceUtilization() {
           )}
         </div>
 
+        {(estimatedDatesCount > 0 || estimatedEffortCount > 0 || undatedCount > 0) && (
+          <div className="ru-estimate-note">
+            <InfoIcon size={15} />
+            <div>
+              {(estimatedDatesCount > 0 || estimatedEffortCount > 0) && (
+                <span>
+                  Some items have no Target Date or Man-days, so estimates are used and marked <span className="ru-est-tag">est.</span> —
+                  {estimatedDatesCount > 0 && <> dates for {estimatedDatesCount} of {totalAllocationsCount} allocations come from their stage dates</>}
+                  {estimatedDatesCount > 0 && estimatedEffortCount > 0 && ';'}
+                  {estimatedEffortCount > 0 && <> effort for {estimatedEffortCount} comes from Technical Complexity (High {ESTIMATED_MAN_DAYS.High}, Medium {ESTIMATED_MAN_DAYS.Medium}, Low {ESTIMATED_MAN_DAYS.Low}, otherwise {DEFAULT_ESTIMATED_MAN_DAYS} man-days; a Functional SPOC counts {Math.round(SPOC_ESTIMATE_SHARE * 100)}% of that)</>}.
+                  {' '}Fill in Target Date and Man-days on an item to replace its estimate.
+                </span>
+              )}
+              {undatedCount > 0 && <span> {undatedCount} item{undatedCount === 1 ? ' has' : 's have'} no dates at all and can't be placed on the timeline.</span>}
+            </div>
+          </div>
+        )}
+
         {/* ---------------------------- Timeline View ---------------------------- */}
         {view === 'timeline' && (
           <>
@@ -498,13 +524,14 @@ export default function ResourceUtilization() {
                         const meta = areaColors[a.module] || { color: 'var(--mod-fallback)', softColor: 'var(--bg-alt)' };
                         const completed = a.item.status === 'Completed';
                         const overdue = !['Completed', 'Cancelled'].includes(a.item.status) && a.window.end < today;
-                        const dateRange = `${fmtDate(a.item.startDate, { withYear: false })} – ${fmtDate(toISODate(a.window.end), { withYear: false })}`;
+                        const dateRange = `${fmtDate(toISODate(a.window.start), { withYear: false })} – ${fmtDate(toISODate(a.window.end), { withYear: false })}`;
+                        const estNote = [a.estimated.dates && 'dates', a.estimated.manDays && 'man-days'].filter(Boolean).join(' and ');
                         return (
                           <div
                             key={idx}
-                            className="bar"
+                            className={`bar${a.estimated.dates ? ' is-estimated' : ''}`}
                             style={{ left: `${left}%`, width: `${width}%`, top: 8 + idx * BAR_LANE_HEIGHT, background: meta.softColor, opacity: completed ? 0.6 : 1, borderBottom: overdue ? '3px solid var(--st-red)' : 'none' }}
-                            title={`${a.item.devList} — ${dateRange}${completed ? ' (completed)' : ''}`}
+                            title={`${a.item.devList} — ${dateRange}${completed ? ' (completed)' : ''}${estNote ? ` — estimated ${estNote}` : ''}`}
                           >
                             <span className="bar-title" style={{ color: meta.color }}>{a.item.devList}{completed ? ' ✓' : ''}</span>
                             <span className="bar-dates">{dateRange}</span>
@@ -542,7 +569,7 @@ export default function ResourceUtilization() {
                           <div className="ru-upcoming-title">{a.item.devList}</div>
                           <div className="ru-upcoming-sub">Starts in {days} day{days === 1 ? '' : 's'}</div>
                         </div>
-                        <div className="ru-upcoming-date mono">{fmtDate(a.item.startDate)}</div>
+                        <div className="ru-upcoming-date mono">{fmtDate(toISODate(a.window.start))}</div>
                       </div>
                     );
                   })}
@@ -586,9 +613,9 @@ export default function ResourceUtilization() {
                       <td>{r.role}</td>
                       <td>{r.title}</td>
                       <td>{r.module || '—'}</td>
-                      <td className="mono">{r.startDate ? fmtDate(r.startDate) : '—'}</td>
-                      <td className="mono">{r.endDate ? fmtDate(r.endDate) : '—'}</td>
-                      <td className="mono">{r.manDays.toFixed(1)}</td>
+                      <td className="mono">{r.startDate ? fmtDate(r.startDate) : '—'}{r.estDates && <span className="ru-est-tag" title="Estimated from stage dates">est.</span>}</td>
+                      <td className="mono">{r.endDate ? fmtDate(r.endDate) : '—'}{r.estDates && <span className="ru-est-tag" title="Estimated from stage dates">est.</span>}</td>
+                      <td className="mono">{r.manDays.toFixed(1)}{r.estManDays && <span className="ru-est-tag" title="Estimated from Technical Complexity">est.</span>}</td>
                       <td>
                         <div className="ru-util-cell">
                           <span className="ru-workload-track sm"><span className="ru-workload-fill" style={{ width: `${Math.min(100, r.pct)}%`, background: bucketFor(r.pct).color }} /></span>

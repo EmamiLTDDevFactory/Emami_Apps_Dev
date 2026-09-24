@@ -93,6 +93,73 @@ export function assignmentWindow(item, revisedTargetFn) {
   return { start, end };
 }
 
+// --- Fallbacks for items missing Target Date / Man-days --------------------------------
+// Imported trackers often carry a Start Date and the per-stage dates but no Target Date, and
+// almost never Man-days — which left this page blank. Rather than drop those items, each gap
+// gets an estimate, flagged on the allocation (`estimated`) so the UI can mark it as such:
+//   - Start: Start Date, else the earliest stage date.
+//   - End:   revised Target Date, else the latest stage date on/after the start.
+//   - Only one usable date: the window is sized to the estimated man-days in working days —
+//     forward from a Start Date, but back from a lone stage date, since stage dates (Hypercare
+//     especially) mark where the work ends up, not where it begins.
+//   - Man-days: Man-days if set, else by Technical Complexity (ESTIMATED_MAN_DAYS), capped at
+//     the window's working days — one person can't put more than a full day into a day. The
+//     Functional SPOC gets SPOC_ESTIMATE_SHARE of an estimate (real Man-days still count in
+//     full for both roles, as before): a SPOC on 18 estimated High items otherwise showed
+//     1400% utilization.
+// Items with no usable date at all stay off the timeline (window null), as before.
+const STAGE_DATE_FIELDS = ['reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'hypercareDate', 'completedDate'];
+export const ESTIMATED_MAN_DAYS = { High: 20, Medium: 10, Low: 5 };
+export const DEFAULT_ESTIMATED_MAN_DAYS = 10;
+export const SPOC_ESTIMATE_SHARE = 0.25;
+
+// Only real YYYY-MM-DD values count — stage fields also hold "Done"/"TBD" text.
+function isoDate(v) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim()) ? parseDate(String(v).trim()) : null;
+}
+export function estimatedManDays(item) {
+  return ESTIMATED_MAN_DAYS[item.complexity] ?? DEFAULT_ESTIMATED_MAN_DAYS;
+}
+// The date `n` working days out from `from` (inclusive of `from`), stepping by `dir` (+1/-1).
+function spanWorkingDays(from, n, dir, holidaySet) {
+  const cur = new Date(from);
+  let counted = isWorkingDay(cur, holidaySet) ? 1 : 0;
+  for (let guard = 0; counted < n && guard < 3660; guard++) {
+    cur.setDate(cur.getDate() + dir);
+    if (isWorkingDay(cur, holidaySet)) counted++;
+  }
+  return cur;
+}
+
+export function assignmentPlan(item, revisedTargetFn, holidaySet) {
+  const actualMd = Number(item.devTime);
+  const hasMd = Number.isFinite(actualMd) && actualMd > 0;
+  const estMd = hasMd ? actualMd : estimatedManDays(item);
+  const actual = assignmentWindow(item, revisedTargetFn);
+  if (actual) {
+    return { window: actual, manDays: hasMd ? actualMd : Math.min(estMd, countWorkingDays(actual.start, actual.end, holidaySet) || estMd), estimated: { dates: false, manDays: !hasMd } };
+  }
+  const stageDates = STAGE_DATE_FIELDS.map((f) => isoDate(item[f])).filter(Boolean).sort((a, b) => a - b);
+  const givenStart = isoDate(item.startDate);
+  const target = isoDate(revisedTargetFn(item));
+  let start = givenStart;
+  let end = target && (!start || target >= start) ? target : null;
+  if (!end) {
+    const later = stageDates.filter((d) => !start || d >= start);
+    end = later.length ? later[later.length - 1] : null;
+  }
+  // No Start Date: the earliest stage date starts the window, unless it's the only date there is.
+  if (!start && stageDates.length && stageDates[0] < end) start = stageDates[0];
+  if (!start && !end) return { window: null, manDays: estMd, estimated: { dates: true, manDays: !hasMd } };
+  if (!end || end.getTime() === start?.getTime()) {
+    if (givenStart) end = spanWorkingDays(start, estMd, 1, holidaySet);
+    else { end = end || start; start = spanWorkingDays(end, estMd, -1, holidaySet); }
+  } else if (!start) start = spanWorkingDays(end, estMd, -1, holidaySet);
+  const window = { start, end };
+  const manDays = hasMd ? actualMd : Math.min(estMd, countWorkingDays(start, end, holidaySet) || estMd);
+  return { window, manDays, estimated: { dates: true, manDays: !hasMd } };
+}
+
 // An assignment's man-days contribution to [periodStart, periodEnd], proportional to how much
 // of the assignment's own working-day span falls inside the period (gap #3 above).
 export function allocatedManDaysInPeriod(win, manDays, periodStart, periodEnd, holidaySet) {
@@ -118,19 +185,22 @@ export function availableManDays(periodStart, periodEnd, holidaySet) {
 // the previous roster model: the same assignment legitimately consumes both people's capacity.
 const ROLE_FIELD = { Developer: 'developer', 'Functional SPOC': 'spocFunction' };
 
-export function buildAllocations(items, revisedTargetFn) {
+export function buildAllocations(items, revisedTargetFn, holidaySet) {
   const allocations = [];
   for (const item of items || []) {
     if (item.status === 'Cancelled') continue; // cancelled work never consumed capacity
+    const plan = assignmentPlan(item, revisedTargetFn, holidaySet);
     for (const role of Object.keys(ROLE_FIELD)) {
       const name = item[ROLE_FIELD[role]];
       if (!name) continue;
-      const win = assignmentWindow(item, revisedTargetFn);
       allocations.push({
         resourceName: name,
         role,
         item,
-        window: win, // null when the item has no usable start/target date — excluded from timeline/effort math, but the allocation itself (and resource) still exists
+        window: plan.window, // null when the item has no usable date at all — excluded from timeline/effort math, but the allocation itself (and resource) still exists
+        // Man-days, or the complexity estimate when that's blank (see assignmentPlan).
+        manDays: plan.estimated.manDays && role === 'Functional SPOC' ? plan.manDays * SPOC_ESTIMATE_SHARE : plan.manDays,
+        estimated: plan.estimated,
         module: item.area || null,
       });
     }
@@ -210,7 +280,7 @@ export function resourceStatus({ utilizationPct, hasActiveOverlap }) {
 // allocs: this resource's allocations that already passed the non-date filters.
 export function computeResourceStats(allocs, periodStart, periodEnd, holidaySet) {
   const overlapping = allocs.filter((a) => overlapsPeriod(a.window, periodStart, periodEnd));
-  const allocatedManDays = overlapping.reduce((sum, a) => sum + allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet), 0);
+  const allocatedManDays = overlapping.reduce((sum, a) => sum + allocatedManDaysInPeriod(a.window, a.manDays, periodStart, periodEnd, holidaySet), 0);
   const available = availableManDays(periodStart, periodEnd, holidaySet);
   const utilizationPct = available > 0 ? (allocatedManDays / available) * 100 : 0;
   const activeOverlapping = overlapping.filter((a) => isActiveAssignment(a.item));
@@ -230,7 +300,7 @@ export function computeResourceStats(allocs, periodStart, periodEnd, holidaySet)
 // period — i.e. how much of the person's capacity this one assignment alone is eating.
 export function allocationPct(alloc, periodStart, periodEnd, holidaySet) {
   if (!alloc.window) return 0;
-  const manDays = allocatedManDaysInPeriod(alloc.window, Number(alloc.item.devTime) || 0, periodStart, periodEnd, holidaySet);
+  const manDays = allocatedManDaysInPeriod(alloc.window, alloc.manDays, periodStart, periodEnd, holidaySet);
   const available = availableManDays(periodStart, periodEnd, holidaySet);
   return available > 0 ? (manDays / available) * 100 : 0;
 }
@@ -246,7 +316,7 @@ export function allocationByModule(allocs, periodStart, periodEnd, holidaySet) {
   let totalManDays = 0;
   for (const a of overlapping) {
     const mod = a.module || 'Unassigned';
-    const md = allocatedManDaysInPeriod(a.window, Number(a.item.devTime) || 0, periodStart, periodEnd, holidaySet);
+    const md = allocatedManDaysInPeriod(a.window, a.manDays, periodStart, periodEnd, holidaySet);
     manDaysByModule[mod] = (manDaysByModule[mod] || 0) + md;
     countByModule[mod] = (countByModule[mod] || 0) + 1;
     totalManDays += md;
