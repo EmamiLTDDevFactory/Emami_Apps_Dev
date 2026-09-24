@@ -52,11 +52,14 @@ export function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Calendar-day arithmetic done in UTC, so the result doesn't depend on the viewer's timezone
+// (a local-midnight Date read back via toISOString lands a day short in IST). A value that
+// isn't a real date comes back '' rather than throwing.
 export function addDays(dateStr, days) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + (Number(days) || 0));
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = String(dateStr).trim().split('-').map(Number);
+  const out = new Date(Date.UTC(y, m - 1, d + (Number(days) || 0)));
+  return Number.isNaN(out.getTime()) ? '' : out.toISOString().slice(0, 10);
 }
 
 export function revisedTarget(row) {

@@ -11,11 +11,16 @@ const ZOOMS = [
 ];
 const NO_EPIC = '__none__';
 
+// Only real YYYY-MM-DD values count — imported items carry text like "Done"/"TBD" in date
+// fields, and one of those reaching the range math below throws and blanks the whole page.
+const isIso = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim());
+const iso = (v) => (isIso(v) ? String(v).trim() : '');
+
 function startOf(it) {
-  return it.startDate || (it.createdAt ? String(it.createdAt).slice(0, 10) : '');
+  return iso(it.startDate) || iso(String(it.createdAt || '').slice(0, 10));
 }
 function endOf(it) {
-  return revisedTarget(it) || it.completedDate || '';
+  return (isIso(it.targetDate) ? revisedTarget({ ...it, targetDate: String(it.targetDate).trim() }) : '') || iso(it.completedDate);
 }
 
 // Jira-style timeline (roadmap): epics with their issues as bars on a calendar, from start date
@@ -136,12 +141,12 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
     const patch = {};
     if (d.mode === 'move') {
       patch.startDate = shiftDate(d.bar.s, d.delta);
-      patch.targetDate = shiftDate(it.targetDate || shiftDate(d.bar.e, -rework), d.delta);
+      patch.targetDate = shiftDate(iso(it.targetDate) || shiftDate(d.bar.e, -rework), d.delta);
     } else {
       const newEnd = shiftDate(d.bar.e, d.delta);
       if (newEnd < d.bar.s) return;
       patch.targetDate = shiftDate(newEnd, -rework);
-      if (!it.startDate) patch.startDate = d.bar.s;
+      if (!iso(it.startDate)) patch.startDate = d.bar.s;
     }
     try { await updateItem(it.id, patch); } catch (e) { onError(e.message || 'Could not update dates'); }
   }
