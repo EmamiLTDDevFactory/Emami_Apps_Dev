@@ -115,7 +115,7 @@ export const STATUS_COLOR_DASHBOARD = {
   Hypercare: { bg: '#fdf2df', fg: '#a56a12' },
   Completed: { bg: 'var(--st-green-soft)', fg: 'var(--st-green)' },
   'On Hold': { bg: '#fdf0e3', fg: '#c4711b' },
-  Cancelled: { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
+  Cancelled: { bg: 'var(--st-red-soft)', fg: 'var(--st-red)' },
 };
 export const STATUS_COLOR_HOME = {
   'Not Started': { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
@@ -127,7 +127,7 @@ export const STATUS_COLOR_HOME = {
   Hypercare: { bg: 'var(--st-amber-soft)', fg: 'var(--st-amber)' },
   Completed: { bg: 'var(--st-green-soft)', fg: 'var(--st-green)' },
   'On Hold': { bg: 'var(--st-amber-soft)', fg: 'var(--st-amber)' },
-  Cancelled: { bg: 'var(--st-gray-soft)', fg: 'var(--st-gray)' },
+  Cancelled: { bg: 'var(--st-red-soft)', fg: 'var(--st-red)' },
 };
 
 // Kanban board column grouping for the Dashboard — the 10 pipeline statuses grouped

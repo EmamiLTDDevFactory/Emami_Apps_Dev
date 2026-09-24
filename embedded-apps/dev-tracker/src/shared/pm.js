@@ -45,6 +45,13 @@ export const CATEGORY_META = {
 export function statusCategory(status) {
   return STATUS_CATEGORY[status] || 'todo';
 }
+// Cancelled still groups as Done (board column, progress, backlog), but is colored red so it
+// never reads as a green "finished" item.
+export const CANCELLED_META = { bg: '#FFECEB', fg: '#AE2E24', bar: '#C9372C' };
+export function statusMeta(status) {
+  const cat = CATEGORY_META[statusCategory(status)];
+  return status === 'Cancelled' ? { ...cat, ...CANCELLED_META } : cat;
+}
 export function isDone(it) {
   return statusCategory(it?.status) === 'done';
 }

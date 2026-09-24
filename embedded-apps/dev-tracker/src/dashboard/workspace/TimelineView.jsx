@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TypeIcon, epicColor, ProgressBar, IssueKey } from './ui.jsx';
-import { CATEGORY_META, statusCategory, isEpic, typeOf, byRank, issueKey, shiftDate } from '../../shared/pm.js';
+import { CATEGORY_META, statusCategory, statusMeta, isEpic, typeOf, byRank, issueKey, shiftDate } from '../../shared/pm.js';
 import { todayStr, revisedTarget, isOverdue, fmtDate, daysBetween } from '../../shared/utils.js';
 import { ChevronRightIcon } from '../../shared/icons.jsx';
 
@@ -158,11 +158,10 @@ export default function TimelineView({ ws, items, onOpen, onError }) {
       if (drag.mode === 'move') { s = shiftDate(s, drag.delta); e = shiftDate(e, drag.delta); }
       else e = shiftDate(e, drag.delta) < s ? s : shiftDate(e, drag.delta);
     }
-    const cat = statusCategory(it.status);
     const left = x(s);
     const w = Math.max(px, (daysBetween(s, e) + 1) * px);
     const overdue = isOverdue(it);
-    const bg = color || CATEGORY_META[cat].bar;
+    const bg = color || statusMeta(it.status).bar;
     return (
       <div
         className={`pm-tl-bar${epic ? ' is-epic' : ''}${overdue ? ' is-overdue' : ''}${drag && String(drag.id) === String(it.id) ? ' is-dragging' : ''}`}
