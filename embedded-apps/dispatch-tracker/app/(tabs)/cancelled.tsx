@@ -4,7 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { fd, finr, fmtCw, sv, toDate } from '@/lib/format';
+import { fd, finr, fmtCw, sv, toDate, fmtCases } from '@/lib/format';
 import { CancelledInvoice } from '@/types/models';
 import { KPICard } from '@/components/KPICard';
 import { EmptyState } from '@/components/EmptyState';
@@ -154,7 +154,7 @@ export default function CancelledScreen() {
       <View style={styles.sticky}>
         <View style={styles.kpiRow}>
           <KPICard compact icon="✕" label="Total Cancelled" value={`${dcRows.length}/${totalInvCn}`} color={colors.red} />
-          <KPICard compact icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${casesCn.toFixed(0)} cases`} />
+          <KPICard compact icon="💰" label="GSV Cancelled" value={finr(gsvCn)} color={colors.gray} sub={`${fmtCases(casesCn, "0")} cases`} />
         </View>
 
         <FilterRow>

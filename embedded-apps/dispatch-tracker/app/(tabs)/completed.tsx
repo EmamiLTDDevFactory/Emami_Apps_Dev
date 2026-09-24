@@ -12,8 +12,8 @@ import { Pagination } from '@/components/Pagination';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
-import { canonicalDelayColor, canonicalDelayLabel, eddVsActualColor, isOnTimeExact } from '@/lib/delay';
-import { fd, finr, fmtCw, toDate, todayDate } from '@/lib/format';
+import { delayStatusColor, delayStatusLabel, eddVsActualColor, isOnTimeOrEarly } from '@/lib/delay';
+import { fd, finr, fmtCw, toDate, todayDate, fmtCases } from '@/lib/format';
 import { CompletedInvoice } from '@/types/models';
 
 /**
@@ -145,7 +145,7 @@ export default function CompletedScreen() {
 
   const gsv = filteredSorted.reduce((s, r) => s + (Number(r.invoice_value) || 0), 0);
   const totalCases = filteredSorted.reduce((s, r) => s + (Number(r.no_of_cases) || 0), 0);
-  const onTimeCount = filteredSorted.filter((r) => isOnTimeExact(Number(r.total_delay) || 0)).length;
+  const onTimeCount = filteredSorted.filter((r) => isOnTimeOrEarly(Number(r.total_delay) || 0)).length;
   const avgDelay = filteredSorted.length
     ? filteredSorted.reduce((s, r) => s + (Number(r.total_delay) || 0), 0) / filteredSorted.length
     : 0;
@@ -221,7 +221,7 @@ export default function CompletedScreen() {
 
         <View style={styles.kpiRow}>
           <KPICard compact icon="✅" label="Completed" value={`${filteredSorted.length}/${totalForDepot}`} color={colors.green} />
-          <KPICard compact icon="📦" label="Total Cases" value={totalCases.toFixed(0)} color={colors.teal} />
+          <KPICard compact icon="📦" label="Total Cases" value={fmtCases(totalCases, '0')} color={colors.teal} />
           <KPICard compact icon="💰" label="GSV" value={finr(gsv)} color={colors.amber} />
           <KPICard
             compact
@@ -348,8 +348,8 @@ function InvoiceCard({
   const eddColor = eddVsActualColor(row.edd, row.actual_delivery_date);
   const eddText = row.edd ? fd(row.edd) : '—';
   const totalDelay = Number(row.total_delay) || 0;
-  const delayColor = canonicalDelayColor(totalDelay);
-  const delayLabel = canonicalDelayLabel(totalDelay);
+  const delayColor = delayStatusColor(totalDelay);
+  const delayLabel = delayStatusLabel(totalDelay);
 
   const body = (
     <View style={styles.card}>

@@ -28,20 +28,20 @@ const COLUMN_SETS: Record<ReportType, string[]> = {
   ],
   dispatched: [
     'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
-    'dispatch_date', '_edd', 'transporter', 'lr_no', 'channel', 'distance_km',
+    'dispatch_date', '_edd', 'transporter', 'lr_no', 'no_of_cases', 'channel', 'distance_km',
   ],
   completed: [
     'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
     'dispatch_date', 'actual_delivery_date', '_edd', 'total_delay', '_delay', 'transporter',
-    'channel', 'distance_km',
+    'no_of_cases', 'channel', 'distance_km',
   ],
   returned: [
     'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
-    'actual_delivery_date', 'receiving_date', 'cancel_reason', 'channel', 'distance_km',
+    'actual_delivery_date', 'receiving_date', 'cancel_reason', 'no_of_cases', 'channel', 'distance_km',
   ],
   cancelled: [
     'invoice_no', 'depot', 'customer_name', 'town', 'invoice_date', 'invoice_value', 'status',
-    'cancel_date', 'cancel_reason', 'channel', 'distance_km',
+    'cancel_date', 'cancel_reason', 'no_of_cases', 'channel', 'distance_km',
   ],
 };
 
