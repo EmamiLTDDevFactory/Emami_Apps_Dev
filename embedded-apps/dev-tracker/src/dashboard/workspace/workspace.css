@@ -382,6 +382,8 @@
 }
 .pm-tl-bar.is-epic { top: 10px; height: 22px; }
 .pm-tl-bar.is-overdue { box-shadow: 0 0 0 2px var(--st-red); }
+/* Dates estimated from stage dates (TimelineView planBar): the same color, striped. */
+.pm-tl-bar.is-estimated { background-image: repeating-linear-gradient(135deg, transparent 0 6px, oklch(100% 0 0 / .3) 6px 12px); }
 .pm-tl-bar.is-dragging { cursor: grabbing; opacity: .85; box-shadow: 0 4px 12px oklch(0% 0 0 / .25); }
 .pm-tl-bar-label { color: #fff; font-size: 11.5px; font-weight: 600; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .pm-tl-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
@@ -390,6 +392,7 @@
 .pm-tl-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--text-2); }
 .pm-tl-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .pm-tl-legend i { width: 18px; height: 8px; border-radius: 2px; display: inline-block; }
+.pm-tl-legend-estimated { background: #8993A4 repeating-linear-gradient(135deg, transparent 0 3px, oklch(100% 0 0 / .45) 3px 6px); }
 .pm-tl-legend-overdue { background: var(--surface); box-shadow: 0 0 0 2px var(--st-red); }
 .pm-tl-legend-today { width: 2px !important; height: 14px !important; background: oklch(62% 0.19 40); }
 
