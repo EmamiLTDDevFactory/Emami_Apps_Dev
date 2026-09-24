@@ -15,13 +15,13 @@ import { normalizeInvoice } from './sapMapping';
 
 const TOKEN_KEY = 'dis_session_token';
 
-// SAP system base URLs — NGQ is the active one. NGD/NWP are kept here, commented
+// SAP system base URLs — NGD is the active one. NGQ/NWP are kept here, commented
 // out, for quick switching if needed.
 // const API_BASE_NWP = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_DISP_INTL_ANALYTICS_SRV';
-const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
-// const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
+// const API_BASE_NGQ = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGQ/ZIT_DISP_INTL_ANALYTICS_SRV';
+const API_BASE_NGD = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_DISP_INTL_ANALYTICS_SRV';
 
-export const API_BASE_URL = API_BASE_NGQ;
+export const API_BASE_URL = API_BASE_NGD;
 
 export class ApiError extends Error {
   status: number;
