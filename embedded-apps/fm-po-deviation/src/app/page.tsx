@@ -177,6 +177,22 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [email]);
 
+  // Approval History always shows what SAP has right now: opening it, or switching between its
+  // Approved / Rejected tabs, re-reads that list (PoSet, Email + Status 'A' or 'R') rather than
+  // relying on the copy fetched when the page first loaded.
+  const loadHistoryTab = (tab: HistoryTab) => {
+    if (!email) return;
+    if (tab === 'approved') loadApproved(email); else loadRejected(email);
+  };
+  const openMainTab = (tab: MainTab) => {
+    setMainTab(tab);
+    if (tab === 'history') loadHistoryTab(historyTab);
+  };
+  const openHistoryTab = (tab: HistoryTab) => {
+    setHistoryTab(tab);
+    loadHistoryTab(tab);
+  };
+
   const filteredPending = useMemo(
     () => sortRows(filterRows(pending, pendingSearch), pendingSort),
     [pending, pendingSearch, pendingSort]
@@ -311,7 +327,7 @@ export default function HomePage() {
         {(['pending', 'history'] as MainTab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => setMainTab(tab)}
+            onClick={() => openMainTab(tab)}
             className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-sm font-bold transition-colors ${
               mainTab === tab ? 'bg-rust text-white shadow-sm' : 'text-inkSoft hover:text-ink'
             }`}
@@ -425,7 +441,7 @@ export default function HomePage() {
             {(['approved', 'rejected'] as HistoryTab[]).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setHistoryTab(tab)}
+                onClick={() => openHistoryTab(tab)}
                 className={`rounded-lg px-3.5 py-1.5 text-sm font-bold transition-colors ${
                   historyTab === tab
                     ? tab === 'approved' ? 'bg-greenBg text-green' : 'bg-redBg text-red'
