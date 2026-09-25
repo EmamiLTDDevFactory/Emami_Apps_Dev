@@ -135,7 +135,10 @@ export default function FinanceScreen() {
 
   const handleRelease = async (id: string) => {
     const claim = claims.find(c => c.id === id);
-    if (claim && claim.stcd3) {
+    // 'B' (Top Level) never picks a tax code here — Finance already selected and sent it to SAP
+    // on their own earlier release call, so asking again at B's final posting step is redundant
+    // and was blocking B from posting. B always goes straight to the simple confirm below.
+    if (claim && claim.stcd3 && currentUser?.role !== 'B') {
       setReleaseConfirmClaimId(id);
       setTaxModalVisible(true);
       setTaxLoading(true);
