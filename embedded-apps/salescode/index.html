@@ -297,11 +297,11 @@
   .sidebar-link { transition: background .15s ease, color .15s ease, padding .15s ease; }
   .sidebar-link:not(.is-active):hover { padding-left: 10px; }
 
-  /* ---------- Pricing Master (dataset view, #pricing) — enterprise grid ---------- */
+  /* ---------- Master dataset view (#pricing, #batch, …) — enterprise grid ---------- */
   .dataset-view { display: none; }
-  body[data-view="pricing"] #pricingView { display: block; }
-  body[data-view="pricing"] .view-head-pricing { display: flex; }
-  body[data-view="pricing"] #master, body[data-view="pricing"] #transactional { display: none; }
+  body[data-view="dataset"] #datasetView { display: block; }
+  body[data-view="dataset"] .view-head-dataset { display: flex; }
+  body[data-view="dataset"] #master, body[data-view="dataset"] #transactional { display: none; }
   .crumb {
     display: inline-flex; align-items: center; gap: 3px; margin: 0 0 8px -6px; padding: 3px 10px 3px 4px;
     border: none; border-radius: 999px; background: none; color: var(--accent);
@@ -310,7 +310,7 @@
   .crumb:hover { background: var(--accent-soft); }
 
   /* Header meta: data source + freshness + actions */
-  .view-head-pricing { align-items: flex-end; }
+  .view-head-dataset { align-items: flex-end; }
   .head-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
   .meta-chip {
     display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 7px;
@@ -391,33 +391,6 @@
   .state-card .btn-ghost { margin-top: 8px; }
 
   /* KPI tiles — value in text ink, compact; the trend is a micro bar chart */
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 2fr); gap: 12px; margin-bottom: 16px; }
-  .kpi {
-    position: relative; min-width: 0; padding: 14px 16px 13px; border-radius: 14px;
-    background: var(--surface); border: 1px solid var(--border);
-    box-shadow: 0 1px 2px oklch(0% 0 0 / .03), 0 12px 26px -24px oklch(30% 0.08 280 / .35);
-  }
-  .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--muted); }
-  .kpi-label .kpi-ico { width: 22px; height: 22px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
-  .kpi-value { margin-top: 10px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .kpi-sub { margin-top: 5px; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .kpi-sub b { color: var(--text-2); font-weight: 600; }
-  .kpi.is-wide { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: end; }
-  .kpi.is-wide .kpi-text { min-width: 0; }
-  .micro { position: relative; height: 58px; min-width: 0; }
-  .micro svg { display: block; width: 100%; height: 100%; overflow: visible; }
-  .micro .bar { fill: color-mix(in srgb, var(--accent) 30%, var(--surface)); transition: fill .12s ease; }
-  .micro .bar.is-last { fill: var(--accent); }
-  .micro .hit { fill: transparent; cursor: default; }
-  .micro .hit:hover + .bar, .micro .bar.is-hot { fill: var(--accent-2); }
-  .micro .base { stroke: var(--border-strong); stroke-width: 1; }
-  .micro-caption { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .micro-tip {
-    position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 5; pointer-events: none; white-space: nowrap;
-    padding: 6px 9px; border-radius: 8px; background: var(--text); color: #fff; font-size: 11px; line-height: 1.35;
-    box-shadow: 0 10px 22px -10px oklch(0% 0 0 / .45);
-  }
-  .micro-tip b { display: block; font-size: 12px; font-variant-numeric: tabular-nums; }
 
   /* Grid card */
   .grid-card {
@@ -475,6 +448,18 @@
   .chip button { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: none; color: var(--accent); cursor: pointer; }
   .chip button:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 
+  /* Table / JSON switch. JSON view: the page's records exactly as SAP sent them. Monospace here
+     only — it's code, where the hub's Plex Sans would misalign keys. */
+  .view-toggle button { display: inline-flex; align-items: center; gap: 6px; }
+  .grid-card.is-json .table-only, .grid-card:not(.is-json) .json-only { display: none; }
+  .json-wrap { position: relative; overflow: auto; max-height: 64vh; background: var(--bg-alt); }
+  .json-wrap pre {
+    margin: 0; padding: 14px 16px; font-family: ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace;
+    font-size: 12px; line-height: 1.6; color: var(--text); white-space: pre; tab-size: 2;
+  }
+  .json-wrap .jk { color: #7C3AED; } .json-wrap .js { color: #047857; } .json-wrap .jn { color: #B45309; } .json-wrap .jp { color: var(--muted); }
+  .json-head { color: var(--muted); font-style: italic; }
+
   /* The data grid */
   .table-wrap { overflow: auto; max-height: 64vh; }
   .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; --cell-y: 10px; }
@@ -485,7 +470,7 @@
     border-bottom: 1px solid var(--border); border-left: 1px solid var(--border);
   }
   .data-table thead tr.groups th:first-child { border-left: none; }
-  /* Group labels stay readable while the grid scrolls sideways: pinned just right of the frozen first column (--pin-w, set in renderPricing). */
+  /* Group labels stay readable while the grid scrolls sideways: pinned just right of the frozen first column (--pin-w, set in renderDataset). */
   .data-table thead tr.groups th span { position: sticky; left: calc(var(--pin-w, 0px) + 14px); display: inline-flex; align-items: center; gap: 6px; }
   .data-table thead tr.groups th:first-child span { position: static; }
   .data-table thead tr.groups th span::before { content: ''; width: 6px; height: 6px; border-radius: 2px; background: var(--g, var(--accent)); }
@@ -534,21 +519,14 @@
   .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .pager button:disabled { opacity: .4; cursor: default; }
   .page-num { min-width: 64px; text-align: center; font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; }
-
-  @media (max-width: 1280px) {
-    .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .kpi.is-wide { grid-column: 1 / -1; }
-  }
   @media (max-width: 900px) {
     .filterbar { grid-template-columns: minmax(0, 1fr); grid-template-areas: "range" "quick" "hint" "go"; }
-    .segmented:not(.density) { display: flex; overflow-x: auto; }
-    .segmented:not(.density) button { flex: 1 0 auto; }
+    .segmented:not(.density):not(.view-toggle) { display: flex; overflow-x: auto; }
+    .segmented:not(.density):not(.view-toggle) button { flex: 1 0 auto; }
     .btn-primary { width: 100%; }
-    .view-head-pricing { flex-direction: column; align-items: flex-start; }
+    .view-head-dataset { flex-direction: column; align-items: flex-start; }
   }
   @media (max-width: 768px) {
-    .kpi-grid { grid-template-columns: 1fr 1fr; }
-    .kpi.is-wide { grid-template-columns: minmax(0, 1fr); }
     .grid-toolbar { padding: 12px; }
     .filter-box { max-width: none; flex-basis: 100%; order: 3; }
     .gt-actions { margin-left: 0; order: 4; }
@@ -562,7 +540,6 @@
   }
   @media (max-width: 520px) {
     .col-group { grid-template-columns: 1fr; }
-    .kpi-value { font-size: 21px; }
   }
 
   /* Toast (used for datasets that aren't wired up yet) */
@@ -650,7 +627,7 @@
     --label: 600 10.5px/1.2 'IBM Plex Sans', system-ui, sans-serif;
   }
   body { font-feature-settings: 'tnum' 0; letter-spacing: 0; }
-  .mono, .tag, .meta-chip.is-source, .date-range input, .query-field input, .kpi-value, .stat-value, .data-table td, .page-clock, .page-info, .page-num {
+  .mono, .tag, .meta-chip.is-source, .date-range input, .query-field input, .stat-value, .data-table td, .page-clock, .page-info, .page-num {
     font-family: 'IBM Plex Sans', system-ui, sans-serif; font-variant-numeric: tabular-nums;
   }
   .mono { letter-spacing: .01em; }
@@ -663,7 +640,7 @@
   .panel-sub { font-size: 12px; }
   .card-title { font-size: 13.5px; font-weight: 600; letter-spacing: 0; }
   .card-desc { font-size: 12px; }
-  .sidebar-section, .query-label, .fb-label, .stat-label, .kpi-card-label, .filter-grid label > span, .columns-pop-head, .col-group-title, .tfoot-label {
+  .sidebar-section, .query-label, .fb-label, .stat-label, .filter-grid label > span, .columns-pop-head, .col-group-title, .tfoot-label {
     font: var(--label); letter-spacing: .04em; text-transform: uppercase;
   }
   .data-table th { font-weight: 600; font-size: 10.5px; letter-spacing: .03em; }
@@ -672,10 +649,9 @@
   .data-table.is-compact td { font-size: 12px; }
 
   /* Surfaces: hub shadows + radii */
-  .topbar, .panel, .grid-card, .kpi, .filterbar, .state-card, .columns-pop, .topbar-menu { box-shadow: var(--sh-sm); }
+  .topbar, .panel, .grid-card, .filterbar, .state-card, .columns-pop, .topbar-menu { box-shadow: var(--sh-sm); }
   .columns-pop, .topbar-menu { box-shadow: var(--sh-lg); }
   .panel, .grid-card { border-radius: 14px; }
-  .kpi { border-radius: 12px; }
   .card { border-radius: 12px; transition: border-color .18s var(--ease), box-shadow .2s var(--ease), transform .2s var(--ease); }
   .card:hover { box-shadow: var(--sh-md); transform: translateY(-2px); }
   .card:hover .card-icon { transform: none; }
@@ -686,14 +662,14 @@
   .head-btn:hover:not(:disabled) { box-shadow: var(--sh-sm); }
   :where(button, select, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* ---- Pricing Master: one dynamic-page header (title + meta + actions + filter bar) ---- */
-  body[data-view="pricing"] .view-head-pricing {
+  /* ---- Master dataset view: one dynamic-page header (title + meta + actions + filter bar) ---- */
+  body[data-view="dataset"] .view-head-dataset {
     margin-bottom: 0; padding: 18px 22px 16px; gap: 16px 24px;
     background: var(--surface); border: 1px solid var(--border); border-bottom: none; border-radius: 14px 14px 0 0;
     box-shadow: var(--sh-sm);
   }
-  body[data-view="pricing"] .view-head-pricing .crumb { margin-bottom: 6px; }
-  body[data-view="pricing"] .view-head-pricing .page-sub { max-width: 640px; }
+  body[data-view="dataset"] .view-head-dataset .crumb { margin-bottom: 6px; }
+  body[data-view="dataset"] .view-head-dataset .page-sub { max-width: 640px; }
   .head-meta { margin-top: 10px; }
   .meta-chip[hidden] { display: none; }
   .meta-chip { height: 24px; border-radius: 6px; background: var(--bg-alt); border-color: transparent; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
@@ -709,12 +685,6 @@
   .btn-primary { height: 38px; border-radius: 10px; }
 
   /* KPI tiles: quieter, hub-sized numbers */
-  .kpi-grid { gap: 12px; }
-  .kpi { padding: 14px 16px; }
-  .kpi-label { font: var(--label); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); gap: 8px; }
-  .kpi-label .kpi-ico { width: 20px; height: 20px; border-radius: 6px; }
-  .kpi-value { margin-top: 10px; font-size: 20px; font-weight: 700; letter-spacing: -0.005em; }
-  .kpi-sub { font-size: 12px; margin-top: 4px; }
 
   /* Grid: calmer — hairlines, no zebra, soft header, tinted sort column */
   .grid-card { overflow: visible; }
@@ -737,17 +707,16 @@
   .chip { border-radius: 8px; }
 
   @media (max-width: 900px) {
-    body[data-view="pricing"] .view-head-pricing { padding: 16px; }
+    body[data-view="dataset"] .view-head-dataset { padding: 16px; }
     .filterbar { padding: 14px 16px; }
   }
   @media (max-width: 640px) {
     .page-title { font-size: 20px; }
-    .kpi-value { font-size: 19px; }
   }
 
-  /* ================= Pricing Master — page header + insights =================
-     Title, source/freshness and actions on the page itself; the filter bar and KPI tiles are
-     white cards below it; ranked insight cards and the white data grid follow. */
+  /* ================= Master dataset view — page header =================
+     Title, source/freshness and actions on the page itself; the filter bar is a white card
+     below it, then the white data grid. */
   .hero-band { margin-bottom: 0; }
   .hb-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; margin-bottom: 18px; }
   .hb-title { min-width: 0; }
@@ -758,85 +727,20 @@
     margin: 0 0 16px; padding: 16px 20px; border-radius: 14px; border: 1px solid var(--border);
     background: var(--surface); box-shadow: var(--sh-sm);
   }
-  .kpi-grid[hidden] { display: none; }
-  .hero-band .kpi-grid { margin: 0 0 16px; }
-  .kpi { transition: box-shadow .2s var(--ease), border-color .2s var(--ease), transform .2s var(--ease); }
-  .kpi:hover { box-shadow: var(--sh-md); border-color: var(--border-strong); }
 
   /* Insights: ranked bar lists + billing mix */
-  .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
-  .insight { min-width: 0; padding: 16px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--sh-sm); }
-  .insight-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
-  .insight-title { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
-  .insight-note { font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .rank { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 6px 0; }
-  .rank + .rank { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
-  .rank-n { font-size: 11px; font-weight: 700; color: var(--muted); text-align: center; }
-  .rank-label { min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rank-label small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
-  .rank-value { font-size: 12.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
-  .rank-bar { grid-column: 2 / 4; height: 6px; border-radius: 999px; background: var(--bg-alt); overflow: hidden; }
-  .rank-bar span { display: block; height: 100%; border-radius: 999px; background: var(--hue, var(--accent)); transition: width .5s var(--ease); }
-  .mix { margin-bottom: 14px; }
-  .mix:last-child { margin-bottom: 0; }
-  .mix-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 7px; }
-  .mix-bar { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: var(--bg-alt); }
-  .mix-bar span { height: 100%; }
-  .mix-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; font-size: 11.5px; color: var(--muted); }
-  .mix-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
-  .mix-legend b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
-
-  @media (max-width: 1100px) {
-    .insights { grid-template-columns: 1fr 1fr; }
-    .insights .insight:last-child { grid-column: 1 / -1; }
-  }
   @media (max-width: 768px) {
     .hero-band .head-actions { width: 100%; }
     .hero-band .head-btn { flex: 1; justify-content: center; }
     .hero-band .filterbar { padding: 14px 16px; }
-    .insights { grid-template-columns: 1fr; }
   }
 
   /* ================= Tiles & grid finish =================
      KPI tiles: a per-tile accent (--tone) drives the icon chip, a corner glow, the top edge and the
      hover shadow; values count up and the micro bars grow in (JS). Grid: coloured group band,
      inline data bars on Net value, scroll-aware shadows, row selection and a tinted totals row. */
-  .kpi { --tone: #4F3FD6; position: relative; overflow: hidden; isolation: isolate; border-radius: 14px; padding: 16px 18px 15px; animation: tile-in .5s var(--ease) backwards; }
-  .kpi:nth-child(2) { animation-delay: .04s; } .kpi:nth-child(3) { animation-delay: .08s; } .kpi:nth-child(4) { animation-delay: .12s; } .kpi:nth-child(5) { animation-delay: .16s; }
-  .kpi.tone-blue { --tone: #2563EB; } .kpi.tone-green { --tone: #0F9F6E; } .kpi.tone-amber { --tone: #D97706; } .kpi.tone-violet { --tone: #7C3AED; }
-  .kpi::before {
-    content: ''; position: absolute; z-index: -1; top: -46px; right: -46px; width: 150px; height: 150px; border-radius: 50%; pointer-events: none;
-    background: radial-gradient(closest-side, color-mix(in srgb, var(--tone) 16%, transparent), transparent);
-    transition: transform .45s var(--ease), opacity .3s var(--ease); opacity: .9;
-  }
-  .kpi::after {
-    content: ''; position: absolute; top: 0; left: 18px; right: 18px; height: 3px; border-radius: 0 0 3px 3px;
-    background: linear-gradient(90deg, var(--tone), color-mix(in srgb, var(--tone) 35%, transparent));
-    transform: scaleX(.35); transform-origin: left; transition: transform .45s var(--ease);
-  }
-  .kpi:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tone) 28%, var(--border)); box-shadow: 0 16px 30px -18px color-mix(in srgb, var(--tone) 55%, transparent), var(--sh-sm); }
-  .kpi:hover::before { transform: scale(1.35); opacity: 1; }
-  .kpi:hover::after { transform: scaleX(1); }
-  .kpi-label .kpi-ico {
-    width: 26px; height: 26px; border-radius: 8px; color: #fff;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--tone) 72%, white), var(--tone));
-    box-shadow: 0 6px 14px -7px var(--tone); transition: transform .35s var(--ease);
-  }
-  .kpi:hover .kpi-ico { transform: scale(1.1) rotate(-6deg); }
-  .kpi-value { font-size: 24px; letter-spacing: -0.02em; margin-top: 12px; }
-  .kpi-sub b { color: var(--tone); }
-  .micro .bar { fill: color-mix(in srgb, var(--tone) 26%, var(--surface)); transform-box: fill-box; transform-origin: bottom; animation: bar-grow .6s var(--ease) both; }
-  .micro .bar.is-last { fill: var(--tone); }
-  .micro .hit:hover + .bar, .micro .bar.is-hot { fill: color-mix(in srgb, var(--tone) 80%, black); }
-  @keyframes tile-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  @keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 
   /* Insight cards share the tile hover */
-  .insight { transition: box-shadow .25s var(--ease), transform .25s var(--ease), border-color .25s var(--ease); animation: tile-in .5s var(--ease) backwards; }
-  .insight:hover { transform: translateY(-2px); box-shadow: var(--sh-md); border-color: var(--border-strong); }
-  .rank { border-radius: 8px; transition: background .15s ease; }
-  .rank:hover { background: var(--bg-alt); }
-  .rank-bar span { animation: bar-fill .8s var(--ease) both; transform-origin: left; }
   @keyframes bar-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
   /* ---- Grid ---- */
@@ -887,8 +791,7 @@
   .pager button:not(:disabled):hover { background: var(--accent-soft); }
 
   @media (prefers-reduced-motion: reduce) {
-    .kpi, .insight, .data-table tbody tr, .micro .bar, .rank-bar span, .databar::before { animation: none; }
-    .kpi, .kpi::before, .kpi::after, .kpi-ico, .insight { transition: none; }
+    .data-table tbody tr, .databar::before { animation: none; }
   }
   .card { animation-fill-mode: backwards; }
 
@@ -1004,26 +907,26 @@
       <div class="grid" id="transGrid"></div>
     </section>
 
-    <section class="dataset-view" id="pricingView" style="--item: var(--master)">
+    <section class="dataset-view" id="datasetView" style="--item: var(--master)">
       <div class="hero-band">
         <div class="hb-top">
           <div class="hb-title">
-            <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><button type="button" data-nav="master">Master Data</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page">Pricing Master</span></nav>
-            <h1 class="page-title">Pricing Master</h1>
-            <p class="page-sub">Pricing on every invoice line created in a date range — MRP, base rate, margins, discounts, GST and net value, straight from SAP.</p>
+            <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><button type="button" data-nav="master">Master Data</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page" id="dsCrumb"></span></nav>
+            <h1 class="page-title" id="dsTitle"></h1>
+            <p class="page-sub" id="dsSub"></p>
             <div class="head-meta">
-              <span class="meta-chip is-source" title="SAP OData service ZSALESCODE_ODATA_SRV_SRV, entity set Pricing_dataSet">SAP ECC · Pricing_dataSet</span>
+              <span class="meta-chip is-source" id="dsSource"></span>
               <span class="meta-chip" id="freshChip" hidden><span class="dot"></span><span id="freshText"></span></span>
             </div>
           </div>
           <div class="head-actions">
             <button type="button" class="head-btn" id="refreshBtn" disabled><span data-icon="redo" data-size="14"></span>Refresh</button>
-            <button type="button" class="head-btn" id="pricingExport" disabled><span data-icon="download" data-size="14"></span>Export CSV</button>
+            <button type="button" class="head-btn" id="dsExport" disabled><span data-icon="download" data-size="14"></span>Export CSV</button>
           </div>
         </div>
-      <form class="filterbar" id="pricingForm" autocomplete="off" novalidate>
+      <form class="filterbar" id="dsForm" autocomplete="off" novalidate>
         <div class="fb-field">
-          <span class="fb-label" id="rangeLabel">Created on</span>
+          <span class="fb-label" id="rangeLabel">Sent on</span>
           <div class="date-range" role="group" aria-labelledby="rangeLabel">
             <span class="date-range-icon" data-icon="calendar" data-size="16"></span>
             <input type="date" id="fromDate" required aria-label="From" aria-describedby="rangeHint">
@@ -1041,39 +944,42 @@
             <button type="button" class="preset" data-preset="lastMonth">Last month</button>
           </div>
         </div>
-        <button type="submit" class="btn-primary" id="rangeSubmit"><span data-icon="search" data-size="15"></span><span>Fetch pricing</span></button>
+        <button type="submit" class="btn-primary" id="rangeSubmit"><span data-icon="search" data-size="15"></span><span>Fetch data</span></button>
         <p class="query-hint" id="rangeHint">Both days included · up to 93 days per fetch.</p>
       </form>
-        <div class="kpi-grid" id="pricingStats" hidden></div>
       </div>
 
-      <div id="pricingState"></div>
+      <div id="dsState"></div>
 
-      <div id="pricingResults" hidden>
-        <div class="insights" id="pricingInsights"></div>
+      <div id="dsResults" hidden>
 
         <div class="grid-card">
           <div class="grid-toolbar">
             <div class="gt-title">
-              <span class="gt-name">Invoice lines</span>
-              <span class="gt-count" id="pricingCount"></span>
+              <span class="gt-name" id="dsRowsLabel"></span>
+              <span class="gt-count" id="dsCount"></span>
             </div>
-            <label class="filter-box"><span data-icon="search" data-size="14"></span><input id="pricingSearch" placeholder="Search invoice, material, batch, order…" aria-label="Search results"></label>
+            <label class="filter-box"><span data-icon="search" data-size="14"></span><input id="dsSearch" aria-label="Search results"></label>
             <div class="gt-actions">
+              <div class="segmented view-toggle" role="group" aria-label="Show as">
+                <button type="button" data-format="table" title="Show as a table"><span data-icon="columns" data-size="14"></span>Table</button>
+                <button type="button" data-format="json" title="Show each record line as SAP sent it"><span data-icon="braces" data-size="14"></span>JSON</button>
+              </div>
+              <button type="button" class="tool-btn json-only" id="jsonCopy"><span data-icon="copy" data-size="14"></span><span class="tool-label">Copy JSON</span></button>
               <button type="button" class="tool-btn" id="filtersBtn" aria-expanded="false" aria-controls="filterPanel"><span data-icon="filter" data-size="14"></span><span class="tool-label">Filters</span><span class="btn-badge" id="filterBadge" hidden></span></button>
               <div class="tool-group sort-group">
                 <span data-icon="sort" data-size="14"></span>
                 <select id="sortField" aria-label="Sort by"></select>
                 <button type="button" class="sort-dir" id="sortDir" aria-label="Toggle sort direction"></button>
               </div>
-              <div class="pop-anchor">
+              <div class="pop-anchor table-only">
                 <button type="button" class="tool-btn" id="columnsBtn" aria-expanded="false" aria-controls="columnsPop"><span data-icon="columns" data-size="14"></span><span class="tool-label">Columns</span><span class="btn-count" id="columnsCount"></span></button>
                 <div class="columns-pop" id="columnsPop" hidden>
                   <div class="columns-pop-head"><span>Show columns</span><span><button type="button" id="colsAll">All</button><button type="button" id="colsCore">Key columns</button></span></div>
                   <div class="columns-list" id="columnsList"></div>
                 </div>
               </div>
-              <div class="segmented density" role="group" aria-label="Row density">
+              <div class="segmented density table-only" role="group" aria-label="Row density">
                 <button type="button" data-density="comfortable" title="Comfortable rows"><span data-icon="rows" data-size="14"></span></button>
                 <button type="button" data-density="compact" title="Compact rows"><span data-icon="rowsCompact" data-size="14"></span></button>
               </div>
@@ -1084,7 +990,8 @@
             <div class="filter-actions"><button type="button" class="btn-link" id="filtersClear">Clear all filters</button></div>
           </div>
           <div class="chip-row" id="filterChips" hidden></div>
-          <div class="table-wrap"><table class="data-table" id="pricingTable"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+          <div class="table-wrap table-only"><table class="data-table" id="dsTable"><thead></thead><tbody></tbody><tfoot></tfoot></table></div>
+          <div class="json-wrap json-only"><pre id="dsJson"></pre></div>
           <div class="grid-footer">
             <label class="page-size">Rows per page
               <select id="pageSize"><option>25</option><option>50</option><option>100</option><option value="0">All</option></select>
@@ -1159,6 +1066,8 @@
     rowsCompact: '<path d="M3 5h18"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M3 20h18"/>',
     chevronsLeft: '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
     chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
+    braces: '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   };
   function icon(name, size = 20) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -1178,16 +1087,17 @@
     { id: 'transactional', label: 'Transactional Data', icon: 'fileText', color: '#0D9488' },
   ];
 
+  // Every master tile opens the shared dataset view (DATASETS below) for its SAP API type.
   const MASTER = [
-    { title: 'Product Master', desc: 'View product master data', icon: 'box', hue: 'blue' },
-    { title: 'Distributor Master', desc: 'View distributor master data', icon: 'users', hue: 'green' },
-    { title: 'Tax Master', desc: 'View tax master data', icon: 'fileText', hue: 'purple' },
-    { title: 'Batch Master', desc: 'View batch master data', icon: 'barcode', hue: 'orange' },
-    { title: 'MT Channel Master', desc: 'View MT channel master data', icon: 'share', hue: 'teal' },
-    { title: 'NSV Master', desc: 'View NSV master data', icon: 'bars', hue: 'pink' },
-    { title: 'NSV Actual Master', desc: 'View NSV actual master data', icon: 'trend', hue: 'purple' },
-    { title: 'Pricing Master', desc: 'View pricing master data', icon: 'tag', hue: 'blue', view: 'pricing' },
-    { title: 'Distributor Credit Master', desc: 'View distributor credit master data', icon: 'card', hue: 'green' },
+    { title: 'Product Master', desc: 'View product master data', icon: 'box', hue: 'blue', view: 'product', api: 'PRD' },
+    { title: 'Distributor Master', desc: 'View distributor master data', icon: 'users', hue: 'green', view: 'distributor', api: 'DIS' },
+    { title: 'Tax Master', desc: 'View tax master data', icon: 'fileText', hue: 'purple', view: 'tax', api: 'TAX' },
+    { title: 'Batch Master', desc: 'View batch master data', icon: 'barcode', hue: 'orange', view: 'batch', api: 'BCH' },
+    { title: 'MT Channel Master', desc: 'View MT channel master data', icon: 'share', hue: 'teal', view: 'mt-channel', api: 'MTC' },
+    { title: 'NSV Master', desc: 'View NSV master data', icon: 'bars', hue: 'pink', view: 'nsv', api: 'NSV' },
+    { title: 'NSV Actual Master', desc: 'View NSV actual master data', icon: 'trend', hue: 'purple', view: 'nsv-actual', api: 'ACT' },
+    { title: 'Pricing Master', desc: 'View pricing master data', icon: 'tag', hue: 'blue', view: 'pricing', api: 'PRC' },
+    { title: 'Distributor Credit Master', desc: 'View distributor credit master data', icon: 'card', hue: 'green', view: 'credit', api: 'DCR' },
   ];
 
   const TRANSACTIONAL = [
@@ -1333,21 +1243,17 @@
   }
 
   // Each sidebar entry is its own view, kept in the URL hash (#master / #transactional; none for
-  // Home) so Back/Forward and a refresh land on the same panel. Dataset views (#pricing) live
-  // under their sidebar entry, which stays highlighted.
-  const DATASET_VIEWS = { pricing: { parent: 'master', label: 'Pricing Master' } };
+  // Home) so Back/Forward and a refresh land on the same panel. Every master tile opens the shared
+  // dataset view under its own hash (#pricing, #batch, …); the Master Data entry stays highlighted.
+  const DATASET_VIEWS = Object.fromEntries(MASTER.map((m) => [m.view, { parent: 'master', label: m.title, api: m.api }]));
   function viewFromHash() {
     const id = window.location.hash.slice(1);
     return NAV.some((n) => n.id === id) || DATASET_VIEWS[id] ? id : 'home';
   }
   function setView(id) {
-    document.body.dataset.view = id;
+    document.body.dataset.view = DATASET_VIEWS[id] ? 'dataset' : id;
     renderNav(DATASET_VIEWS[id]?.parent || id);
-    if (DATASET_VIEWS[id]) $('mobilePage').textContent = DATASET_VIEWS[id].label;
-    if (id === 'pricing' && !pricing.rows.length && !$('pricingState').innerHTML) {
-      if (!$('fromDate').value) setRangeInputs(presetRange('month'));
-      idleState();
-    }
+    if (DATASET_VIEWS[id]) { $('mobilePage').textContent = DATASET_VIEWS[id].label; openDataset(id); }
     window.scrollTo(0, 0);
   }
   function goTo(id) {
@@ -1358,15 +1264,18 @@
     setView(id); // pushState doesn't fire hashchange; for a hash change this just repeats it harmlessly
   }
 
-  // ---- Pricing Master ----
-  // Rows come from the SAP OData entity set Pricing_dataSet (ZSALESCODE_ODATA_SRV_SRV, key
-  // InvoiceNumber + ItemNo: one row per invoice line), read straight from the browser through the
-  // shared Azure NGD proxy — the same direct-to-SAP pattern Non-CTC Expense uses
+  // ---- Master datasets ----
+  // Rows come from the SAP OData entity set SClogSet (ZSALESCODE_ODATA_SRV_SRV, entity type SClog,
+  // key ApiTyp + Erdat + Ertim): SAP's log of each batch it pushed to Salescode. Every master tile
+  // has its own API type (MASTER[].api — PRC pricing, BCH batch, TAX tax, …); each log row's
+  // Request is the JSON SAP sent, { <msgType>Req: { type, records: [...] } }, and its records are
+  // the lines shown here (see recordsFromLog). Read straight from the browser through the shared
+  // Azure NGD proxy — the same direct-to-SAP pattern Non-CTC Expense uses
   // (embedded-apps/non-ctc-expense/src/config/api.ts): no backend of our own to deploy, and the
   // proxy signs in to SAP itself and allows emamiapps.in origins (CORS). Access is gated here on
-  // the viewer's Salescode grant in Manage Access (see requirePricingAccess).
-  // backend/salescode.js keeps an equivalent server route (GET /salescode/invoices?from=&to=) for
-  // a later move to server-side enforcement; nothing calls it today.
+  // the viewer's Salescode grant in Manage Access (see requireSalescodeAccess).
+  // backend/salescode.js keeps an older server route (GET /salescode/invoices, Pricing_dataSet)
+  // for a later move to server-side enforcement; nothing calls it today.
   //
   // Only the landscape segment changes between environments — same host, same service name:
   //   Development (NGD) — ACTIVE, where ZSALESCODE_ODATA_SRV_SRV is registered today.
@@ -1374,8 +1283,9 @@
   //   Production (NWP): …/api/NWP/ZSALESCODE_ODATA_SRV_SRV — needs the service transported and
   //                     activated in /IWFND/MAINT_SERVICE there first.
   const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZSALESCODE_ODATA_SRV_SRV';
-  const MAX_RANGE_DAYS = 93; // Pricing_dataSet can't page, so one fetch is capped
-  const PREFS_KEY = 'salescode_pricing_prefs'; // hidden columns, page size, density — per browser
+  const MAX_RANGE_DAYS = 93; // SClogSet can't page, so one fetch is capped
+  const PREFS_KEY = 'salescode_grid_prefs'; // hidden columns (per master), page size, density, format — per browser
+  const OLD_PREFS_KEY = 'salescode_pricing_prefs'; // before every master had a view; hidden = Pricing's
 
   // OData v2 JSON: Edm.DateTime arrives as "/Date(ms)/" (SAP dates are UTC midnight), Edm.Time as
   // "PT13H45M10S", Edm.Decimal as a string. SAP also zero-pads numeric keys (ALPHA conversion).
@@ -1389,7 +1299,6 @@
   }
   const moneyFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const qtyFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 });
-  const compactFmt = new Intl.NumberFormat('en-IN', { notation: 'compact', maximumFractionDigits: 2 });
   const num = (v) => { const n = Number(v); return v === '' || v == null || !Number.isFinite(n) ? null : n; };
   const unpad = (v) => String(v ?? '').replace(/^0+(?=\d)/, '');
   const blank = (v) => v == null || String(v).trim() === '' || /^0+$/.test(String(v).trim());
@@ -1397,49 +1306,228 @@
   const isFree = (r) => !blank(r.FreeLineItemNo) || !blank(r.MainMaterial);
   function gstType(r) { return (num(r.IgstPct) || 0) > 0 ? 'IGST (inter-state)' : 'CGST + SGST (intra-state)'; }
 
-  // Column groups (the band above the headers) and every Pricing_data property under its group,
-  // with the SEGW label. `core` = kept by "Key columns"; all show by default; the first is pinned.
-  const GROUPS = {
-    doc: { label: 'Document', color: '#4F3FD6' }, cust: { label: 'Customer', color: '#2563EB' }, mat: { label: 'Material', color: '#0D9488' },
-    price: { label: 'Pricing', color: '#9333EA' }, gst: { label: 'GST', color: '#EA580C' }, value: { label: 'Value', color: '#16A34A' },
-    audit: { label: 'Audit', color: '#64748B' },
-  };
-  const COLS = [
-    { key: 'InvoiceNumber', label: 'Billing document', type: 'code', group: 'doc', core: true, pinned: true },
-    { key: 'ItemNo', label: 'Item', type: 'code', group: 'doc', core: true },
-    { key: 'InvoiceDate', label: 'Billing date', type: 'date', group: 'doc', core: true },
-    { key: 'BillType', label: 'Billing type', type: 'tag', group: 'doc' },
-    { key: 'BillNumber', label: 'Reference', type: 'text', group: 'doc' },
-    { key: 'OrderNumber', label: 'Sales document', type: 'code', group: 'doc' },
-    { key: 'DistributorCode', label: 'Customer', type: 'code', group: 'cust', core: true },
-    { key: 'SalesOrg', label: 'Sales org.', type: 'tag', group: 'cust' },
-    { key: 'DistChannel', label: 'Distr. channel', type: 'tag', group: 'cust' },
-    { key: 'CustomerGroup', label: 'Customer group', type: 'tag', group: 'cust' },
-    { key: 'MaterialCode', label: 'Material', type: 'code', group: 'mat', core: true },
-    { key: 'MaterialDesc', label: 'Description', type: 'text', group: 'mat', wide: true, core: true },
-    { key: 'BatchCode', label: 'Batch', type: 'code', group: 'mat', core: true },
-    { key: 'Qty', label: 'Invoiced qty', type: 'qty', group: 'mat', core: true },
-    { key: 'Uom', label: 'Sales unit', type: 'text', group: 'mat', core: true },
-    { key: 'ItemCategory', label: 'Item category', type: 'tag', group: 'mat' },
-    { key: 'FreeLineItemNo', label: 'Free line item', type: 'code', group: 'mat' },
-    { key: 'MainMaterial', label: 'Main material', type: 'code', group: 'mat' },
-    { key: 'Ratio', label: 'Ratio %', type: 'pct', group: 'mat' },
-    { key: 'Mrp', label: 'MRP', type: 'money', group: 'price', core: true },
-    { key: 'BaseRate', label: 'Base rate', type: 'money', group: 'price', core: true },
-    { key: 'DistMarginPct', label: 'Dist. margin %', type: 'pct', group: 'price', core: true },
-    { key: 'SsMarginPct', label: 'SS margin %', type: 'pct', group: 'price' },
-    { key: 'RetailerMarginPct', label: 'Retailer margin %', type: 'pct', group: 'price', core: true },
-    { key: 'TradeDiscountPct', label: 'Trade discount %', type: 'pct', group: 'price', core: true },
-    { key: 'CgstPct', label: 'CGST %', type: 'pct', group: 'gst' },
-    { key: 'SgstPct', label: 'SGST %', type: 'pct', group: 'gst' },
-    { key: 'IgstPct', label: 'IGST %', type: 'pct', group: 'gst' },
-    { key: 'NetAmount', label: 'Net value', type: 'money', group: 'value', strong: true, core: true },
-    { key: 'Tax', label: 'Tax', type: 'money', group: 'value', core: true },
-    { key: 'Waerk', label: 'Doc. currency', type: 'text', group: 'value' },
-    { key: 'CreationDate', label: 'Created on', type: 'date', group: 'audit' },
-    { key: 'CreationTime', label: 'Created at', type: 'time', group: 'audit' },
-    { key: 'ZzLastChanged', label: 'Last changed', type: 'date', group: 'audit' },
+  // One SClog row → its record lines. Payloads use camelCase names, plain YYYY-MM-DD / HH:MM:SS
+  // strings and space-padded values; keys are capitalised (invoiceNumber → InvoiceNumber, the
+  // Pricing_data style the column configs use), values trimmed, dates and times turned into the
+  // OData shapes the grid renders ("/Date(ms)/", "PT..H..M..S"; SAP's empty 0000-00-00 → blank),
+  // and each line is tagged with the push it came in. Only records are kept — the payload's
+  // accessToken is dropped.
+  const PUSH_STATUS = { S: 'Success', E: 'Error', W: 'Warning', I: 'Info', A: 'Aborted' };
+  function recordsFromLog(log) {
+    let req = null; let resp = null;
+    try { req = JSON.parse(log.Request); } catch { /* unreadable payload: no lines */ }
+    try { resp = JSON.parse(log.Response); } catch { /* optional */ }
+    const records = Object.values(req || {}).find((v) => Array.isArray(v?.records))?.records || [];
+    const batch = Object.values(resp || {}).find((v) => v && typeof v === 'object' && !Array.isArray(v)) || {};
+    const shape = (v) => {
+      if (typeof v !== 'string') return v;
+      const s = v.trim();
+      if (s === '0000-00-00') return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `/Date(${Date.parse(`${s}T00:00:00Z`)})/`;
+      const t = /^(\d{2}):(\d{2}):(\d{2})$/.exec(s);
+      return t ? `PT${t[1]}H${t[2]}M${t[3]}S` : s;
+    };
+    const cap = (k) => k[0].toUpperCase() + k.slice(1);
+    return records.map((rec) => {
+      const row = {};
+      Object.entries(rec).forEach(([k, v]) => { if (k !== 'controller' && k) row[cap(k)] = shape(v); });
+      row.SentOn = log.Erdat;
+      row.SentAt = log.Ertim;
+      row.PushStatus = PUSH_STATUS[log.MsgTyp] || log.MsgTyp || '';
+      row.PushMessage = log.Message || '';
+      row.BatchId = batch.batchId || '';
+      // The record line untouched, for the JSON view. Non-enumerable so search, CSV and the
+      // column inference below never see it.
+      Object.defineProperty(row, 'raw', { value: rec });
+      return row;
+    });
+  }
+
+  // Per-master config: column groups (the band above the headers), columns keyed by the
+  // capitalised payload field, filters and search fields. `core` = kept by "Key columns"; all show
+  // by default; `pinned` sticks to the left. Payload fields a config doesn't list are still shown,
+  // after its columns, with inferred labels and types — and a master with no columns configured
+  // (Product, Distributor: no pushes logged yet to model them on) is built that way entirely.
+  // Every master also gets the Salescode push columns (PUSH_COLS) and a push-status filter.
+  const PUSH_GROUP = { push: { label: 'Salescode push', color: '#0891B2' } };
+  const PUSH_COLS = [
+    { key: 'SentOn', label: 'Sent on', type: 'date', group: 'push', core: true },
+    { key: 'SentAt', label: 'Sent at', type: 'time', group: 'push' },
+    { key: 'PushStatus', label: 'Push status', type: 'tag', group: 'push', core: true },
+    { key: 'PushMessage', label: 'SAP message', type: 'text', group: 'push', wide: true },
+    { key: 'BatchId', label: 'Salescode batch', type: 'code', group: 'push' },
   ];
+  const PUSH_FILTER = { key: 'PushStatus', label: 'Push status' };
+  const col = (key, label, type, group, extra) => ({ key, label, type, group, ...extra });
+  const DATASETS = {
+    product: {
+      noun: 'product record', sub: 'Product master records SAP sent to Salescode in a date range, straight from SAP.',
+    },
+    distributor: {
+      noun: 'distributor record', sub: 'Distributor master records SAP sent to Salescode in a date range, straight from SAP.',
+    },
+    tax: {
+      noun: 'tax rule', sub: 'GST rates by HSN code that SAP sent to Salescode in a date range — CGST, SGST and IGST, straight from SAP.',
+      groups: { hsn: { label: 'HSN', color: '#4F3FD6' }, gst: { label: 'GST', color: '#EA580C' } },
+      cols: [
+        col('HsnCode', 'HSN code', 'code', 'hsn', { core: true, pinned: true }),
+        col('Cgst', 'CGST %', 'pct', 'gst', { core: true }), col('Sgst', 'SGST %', 'pct', 'gst', { core: true }), col('Igst', 'IGST %', 'pct', 'gst', { core: true }),
+      ],
+      filters: [
+        { key: 'Igst', label: 'IGST %', option: (v) => `${qtyFmt.format(num(v) ?? 0)}%` },
+        { key: 'Cgst', label: 'CGST %', option: (v) => `${qtyFmt.format(num(v) ?? 0)}%` },
+      ],
+      search: ['HsnCode'], placeholder: 'Search HSN code…',
+    },
+    batch: {
+      noun: 'batch', sub: 'Batches SAP sent to Salescode in a date range — material, plant, manufacture and expiry dates, straight from SAP.',
+      groups: { batch: { label: 'Batch', color: '#EA580C' }, life: { label: 'Shelf life', color: '#0D9488' } },
+      cols: [
+        col('BatchCode', 'Batch', 'code', 'batch', { core: true, pinned: true }), col('MaterialCode', 'Material', 'code', 'batch', { core: true }),
+        col('Plant', 'Plant', 'tag', 'batch', { core: true }),
+        col('MfdDate', 'Manufactured on', 'date', 'life', { core: true }), col('ExpiryDate', 'Expires on', 'date', 'life', { core: true }),
+      ],
+      filters: [{ key: 'Plant', label: 'Plant' }, { key: 'MaterialCode', label: 'Material', option: (v) => unpad(v) }],
+      search: ['BatchCode', 'MaterialCode'], placeholder: 'Search batch or material…',
+    },
+    'mt-channel': {
+      noun: 'channel discount', sub: 'MT channel-wise retailer discounts SAP sent to Salescode in a date range — condition, outlet category, SKU group and validity, straight from SAP.',
+      groups: { cond: { label: 'Condition', color: '#0D9488' }, item: { label: 'Item', color: '#2563EB' }, disc: { label: 'Discount', color: '#9333EA' } },
+      cols: [
+        col('CondType', 'Condition type', 'tag', 'cond', { core: true, pinned: true }), col('OutletCategory', 'Outlet category', 'tag', 'cond', { core: true }),
+        col('CrsSkuGroupCode', 'SKU group', 'code', 'item', { core: true }), col('MaterialCode', 'Material', 'code', 'item', { core: true }),
+        col('DiscountPct', 'Discount', 'qty', 'disc', { core: true }), col('Uom', 'Unit', 'text', 'disc', { core: true }),
+        col('ValidFrom', 'Valid from', 'date', 'disc', { core: true }), col('ValidTo', 'Valid to', 'date', 'disc', { core: true }),
+      ],
+      filters: [{ key: 'CondType', label: 'Condition type' }, { key: 'OutletCategory', label: 'Outlet category' }, { key: 'Uom', label: 'Unit' }],
+      search: ['CrsSkuGroupCode', 'MaterialCode', 'OutletCategory', 'CondType'], placeholder: 'Search SKU group, material, outlet category…',
+    },
+    nsv: {
+      noun: 'NSV rate', sub: 'Provisional net sales value rates by SKU group SAP sent to Salescode in a date range, straight from SAP.',
+      groups: { org: { label: 'Organisation', color: '#2563EB' }, sku: { label: 'SKU group', color: '#0D9488' }, period: { label: 'Period', color: '#EA580C' }, rate: { label: 'Rate', color: '#16A34A' } },
+      cols: [
+        col('CrsSkuGroupCode', 'SKU group', 'code', 'sku', { core: true, pinned: true }), col('CrsSkuGroupName', 'SKU group name', 'text', 'sku', { core: true, wide: true }),
+        col('SalesOrg', 'Sales org.', 'tag', 'org', { core: true }), col('DistChannel', 'Distr. channel', 'tag', 'org', { core: true }), col('CompanyCode', 'Company code', 'tag', 'org'),
+        col('FiscalYear', 'Fiscal year', 'code', 'period', { core: true }), col('Period', 'Period', 'code', 'period', { core: true }), col('ObjectVersion', 'Version', 'code', 'period'),
+        col('NetRateProv', 'Net rate (provisional)', 'money', 'rate', { core: true, strong: true }),
+      ],
+      filters: [{ key: 'SalesOrg', label: 'Sales org.' }, { key: 'DistChannel', label: 'Distr. channel' }, { key: 'FiscalYear', label: 'Fiscal year' }, { key: 'Period', label: 'Period', option: (v) => unpad(v) }],
+      search: ['CrsSkuGroupCode', 'CrsSkuGroupName'], placeholder: 'Search SKU group code or name…',
+    },
+    'nsv-actual': {
+      noun: 'NSV actual rate', sub: 'Actual net sales value rates by SKU group SAP sent to Salescode in a date range, straight from SAP.',
+      groups: { org: { label: 'Organisation', color: '#2563EB' }, sku: { label: 'SKU group', color: '#0D9488' }, period: { label: 'Period', color: '#EA580C' }, rate: { label: 'Rate', color: '#16A34A' } },
+      cols: [
+        col('CrsSkuGroupCode', 'SKU group', 'code', 'sku', { core: true, pinned: true }), col('CrsSkuGroupName', 'SKU group name', 'text', 'sku', { core: true, wide: true }),
+        col('SalesOrg', 'Sales org.', 'tag', 'org', { core: true }), col('DistChannel', 'Distr. channel', 'tag', 'org', { core: true }),
+        col('CustomerGroup', 'Customer group', 'tag', 'org', { core: true }), col('CompanyCode', 'Company code', 'tag', 'org'),
+        col('FiscalYear', 'Fiscal year', 'code', 'period', { core: true }), col('Period', 'Period', 'code', 'period', { core: true }), col('ObjectVersion', 'Version', 'code', 'period'),
+        col('NetRateActual', 'Net rate (actual)', 'money', 'rate', { core: true, strong: true }),
+      ],
+      filters: [{ key: 'SalesOrg', label: 'Sales org.' }, { key: 'DistChannel', label: 'Distr. channel' }, { key: 'CustomerGroup', label: 'Customer group' }, { key: 'FiscalYear', label: 'Fiscal year' }, { key: 'Period', label: 'Period', option: (v) => unpad(v) }],
+      search: ['CrsSkuGroupCode', 'CrsSkuGroupName'], placeholder: 'Search SKU group code or name…',
+    },
+    pricing: {
+      noun: 'invoice line', sub: 'Pricing on every invoice line SAP sent to Salescode in a date range — MRP, base rate, margins, discounts, GST and net value, straight from SAP.',
+      idle: 'Choose From and To dates (or a quick range) and fetch — you’ll get the pricing on every invoice line SAP sent to Salescode in that period: MRP, base rate, margins, discounts, GST and net value.',
+      groups: {
+        doc: { label: 'Document', color: '#4F3FD6' }, cust: { label: 'Customer', color: '#2563EB' }, mat: { label: 'Material', color: '#0D9488' },
+        price: { label: 'Pricing', color: '#9333EA' }, gst: { label: 'GST', color: '#EA580C' }, value: { label: 'Value', color: '#16A34A' },
+        audit: { label: 'Audit', color: '#64748B' },
+      },
+      cols: [
+        col('InvoiceNumber', 'Billing document', 'code', 'doc', { core: true, pinned: true }),
+        col('ItemNo', 'Item', 'code', 'doc', { core: true }),
+        col('InvoiceDate', 'Billing date', 'date', 'doc', { core: true }),
+        col('BillType', 'Billing type', 'tag', 'doc'),
+        col('BillNumber', 'Reference', 'text', 'doc'),
+        col('OrderNumber', 'Sales document', 'code', 'doc'),
+        col('DistributorCode', 'Customer', 'code', 'cust', { core: true }),
+        col('SalesOrg', 'Sales org.', 'tag', 'cust'),
+        col('DistChannel', 'Distr. channel', 'tag', 'cust'),
+        col('CustomerGroup', 'Customer group', 'tag', 'cust'),
+        col('MaterialCode', 'Material', 'code', 'mat', { core: true }),
+        col('MaterialDesc', 'Description', 'text', 'mat', { wide: true, core: true }),
+        col('BatchCode', 'Batch', 'code', 'mat', { core: true }),
+        col('Qty', 'Invoiced qty', 'qty', 'mat', { core: true }),
+        col('Uom', 'Sales unit', 'text', 'mat', { core: true }),
+        col('ItemCategory', 'Item category', 'tag', 'mat'),
+        col('FreeLineItemNo', 'Free line item', 'code', 'mat'),
+        col('MainMaterial', 'Main material', 'code', 'mat'),
+        col('Ratio', 'Ratio %', 'pct', 'mat'),
+        col('Mrp', 'MRP', 'money', 'price', { core: true }),
+        col('BaseRate', 'Base rate', 'money', 'price', { core: true }),
+        col('DistMarginPct', 'Dist. margin %', 'pct', 'price', { core: true }),
+        col('SsMarginPct', 'SS margin %', 'pct', 'price'),
+        col('RetailerMarginPct', 'Retailer margin %', 'pct', 'price', { core: true }),
+        col('TradeDiscountPct', 'Trade discount %', 'pct', 'price', { core: true }),
+        col('CgstPct', 'CGST %', 'pct', 'gst'),
+        col('SgstPct', 'SGST %', 'pct', 'gst'),
+        col('IgstPct', 'IGST %', 'pct', 'gst'),
+        col('NetAmount', 'Net value', 'money', 'value', { strong: true, core: true }),
+        col('Tax', 'Tax', 'money', 'value', { core: true }),
+        col('CreationDate', 'Created on', 'date', 'audit'),
+        col('CreationTime', 'Created at', 'time', 'audit'),
+      ],
+      filters: [
+        { key: 'DistributorCode', label: 'Customer', option: (v) => unpad(v) },
+        { key: 'MaterialCode', label: 'Material', option: (v, r) => `${unpad(v)} · ${r.MaterialDesc || ''}` },
+        { key: 'BatchCode', label: 'Batch' },
+        { key: 'SalesOrg', label: 'Sales org.' },
+        { key: 'DistChannel', label: 'Distr. channel' },
+        { key: 'CustomerGroup', label: 'Customer group' },
+        { key: 'ItemCategory', label: 'Item category' },
+        { key: 'BillType', label: 'Billing type' },
+        { key: 'gst', label: 'GST type', value: gstType },
+        { key: 'free', label: 'Line type', value: (r) => (isFree(r) ? 'Free goods' : 'Billed') },
+      ],
+      search: ['InvoiceNumber', 'MaterialCode', 'MaterialDesc', 'BatchCode', 'OrderNumber', 'BillNumber', 'DistributorCode'],
+      placeholder: 'Search invoice, material, batch, order…',
+      // Totals row (over every filtered line); Qty only sums when the unit is shared.
+      totals: { NetAmount: 'money', Tax: 'money', Qty: 'qty' },
+      bar: 'NetAmount', // net-value data bars
+      rowClass: (r) => (isFree(r) ? 'is-free' : ''),
+      tieBreak: (a, b) => String(a.InvoiceNumber).localeCompare(String(b.InvoiceNumber)) || (Number(a.ItemNo) - Number(b.ItemNo)),
+    },
+    credit: {
+      noun: 'credit record', sub: 'Distributor credit positions SAP sent to Salescode in a date range — credit limit, receivables and special liability, straight from SAP.',
+      groups: { cust: { label: 'Distributor', color: '#2563EB' }, credit: { label: 'Credit', color: '#16A34A' } },
+      cols: [
+        col('DistributorCode', 'Distributor', 'code', 'cust', { core: true, pinned: true }), col('SalesOrg', 'Sales org.', 'tag', 'cust', { core: true }),
+        col('CreditLimit', 'Credit limit', 'money', 'credit', { core: true, strong: true }), col('Receivables', 'Receivables', 'money', 'credit', { core: true }),
+        col('SpecialLiability', 'Special liability', 'money', 'credit', { core: true }),
+      ],
+      filters: [{ key: 'SalesOrg', label: 'Sales org.' }, { key: 'DistributorCode', label: 'Distributor', option: (v) => unpad(v) }],
+      search: ['DistributorCode'], placeholder: 'Search distributor…',
+      totals: { CreditLimit: 'money', Receivables: 'money', SpecialLiability: 'money' },
+      bar: 'CreditLimit',
+    },
+  };
+
+  // Fields a config doesn't cover: "crsSkuGroupCode" → "Crs sku group code", typed from the values.
+  function humanize(key) {
+    const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim().toLowerCase();
+    return words[0].toUpperCase() + words.slice(1);
+  }
+  function inferType(rows, key) {
+    const vals = rows.map((r) => r[key]).filter((v) => v != null && String(v).trim() !== '').slice(0, 200);
+    if (!vals.length) return 'text';
+    if (vals.every((v) => /^\/Date\(/.test(String(v)))) return 'date';
+    if (vals.every((v) => /^PT\d/.test(String(v)))) return 'time';
+    if (vals.every((v) => typeof v === 'number' || /^-?\d+\.\d+$/.test(String(v)))) return 'qty';
+    if (vals.every((v) => /^\d+$/.test(String(v)))) return 'code';
+    return 'text';
+  }
+  function buildColumns(conf, rows) {
+    const known = new Set([...(conf.cols || []), ...PUSH_COLS].map((c) => c.key));
+    const extra = [];
+    rows.slice(0, 500).forEach((r) => Object.keys(r).forEach((k) => { if (!known.has(k)) { known.add(k); extra.push(k); } }));
+    const auto = extra.map((k) => ({ key: k, label: humanize(k), type: inferType(rows, k), group: 'data', core: true }));
+    const cols = [...(conf.cols || []), ...auto, ...PUSH_COLS];
+    if (!cols.some((c) => c.pinned)) cols[0] = { ...cols[0], pinned: true };
+    return cols;
+  }
+
   const NUMERIC = new Set(['qty', 'money', 'pct']);
   function cell(c, r) {
     const v = r[c.key];
@@ -1469,33 +1557,67 @@
     return v ?? '';
   }
 
-  // Filters offered in the panel. Options are built from the loaded rows, so each list only holds
-  // values that actually occur in this date range.
-  const FILTERS = [
-    { key: 'DistributorCode', label: 'Customer', value: (r) => r.DistributorCode, option: (v) => unpad(v) },
-    { key: 'MaterialCode', label: 'Material', value: (r) => r.MaterialCode, option: (v, r) => `${unpad(v)} · ${r.MaterialDesc || ''}` },
-    { key: 'BatchCode', label: 'Batch', value: (r) => r.BatchCode },
-    { key: 'SalesOrg', label: 'Sales org.', value: (r) => r.SalesOrg },
-    { key: 'DistChannel', label: 'Distr. channel', value: (r) => r.DistChannel },
-    { key: 'CustomerGroup', label: 'Customer group', value: (r) => r.CustomerGroup },
-    { key: 'ItemCategory', label: 'Item category', value: (r) => r.ItemCategory },
-    { key: 'BillType', label: 'Billing type', value: (r) => r.BillType },
-    { key: 'gst', label: 'GST type', value: gstType },
-    { key: 'free', label: 'Line type', value: (r) => (isFree(r) ? 'Free goods' : 'Billed') },
-  ];
-
-  const prefs = (() => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch { return {}; } })();
-  const pricing = {
-    rows: [], range: null, fetchedAt: null, sort: { key: 'CreationDate', dir: -1 }, filters: {}, search: '', controller: null, page: 1,
-    hidden: new Set(Array.isArray(prefs.hidden) ? prefs.hidden : []),
+  // ---- state ----
+  // Grid preferences are per browser: page size, density and Table/JSON for every master, hidden
+  // columns per master. Each master keeps its own loaded rows, range, sort, filters and search for
+  // the page's lifetime, so going Pricing → Batch → Pricing doesn't refetch.
+  const prefs = (() => {
+    const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } };
+    const p = read(PREFS_KEY) || read(OLD_PREFS_KEY) || {};
+    if (Array.isArray(p.hidden)) p.hidden = { pricing: p.hidden };
+    return p;
+  })();
+  const ui = {
     pageSize: [25, 50, 100, 0].includes(prefs.pageSize) ? prefs.pageSize : 50,
     density: prefs.density === 'compact' ? 'compact' : 'comfortable',
+    format: prefs.format === 'json' ? 'json' : 'table',
+    hidden: prefs.hidden && typeof prefs.hidden === 'object' ? prefs.hidden : {},
   };
   function savePrefs() {
-    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ hidden: [...pricing.hidden], pageSize: pricing.pageSize, density: pricing.density })); } catch { /* per-browser only */ }
+    ui.hidden[ds.id] = [...ds.hidden];
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(ui)); } catch { /* per-browser only */ }
   }
-  const saveHidden = savePrefs;
-  const visibleCols = () => COLS.filter((c) => c.pinned || !pricing.hidden.has(c.key));
+  const states = {};
+  function datasetState(id) {
+    const conf = DATASETS[id] || {};
+    states[id] ||= {
+      id, conf, api: DATASET_VIEWS[id].api, title: DATASET_VIEWS[id].label,
+      groups: { ...(conf.groups || {}), data: { label: 'Record', color: '#4F3FD6' }, ...PUSH_GROUP },
+      cols: buildColumns(conf, []), filters: [...(conf.filters || []), PUSH_FILTER].map((f) => ({ value: (r) => r[f.key], ...f })),
+      rows: [], range: null, fetchedAt: null, sort: { key: 'SentOn', dir: -1 }, filterValues: {}, search: '', controller: null, page: 1,
+      stateHtml: null, hidden: new Set(Array.isArray(ui.hidden[id]) ? ui.hidden[id] : []),
+    };
+    return states[id];
+  }
+  let ds = datasetState('pricing');
+  const visibleCols = () => ds.cols.filter((c) => c.pinned || !ds.hidden.has(c.key));
+  const nouns = () => { const n = ds.conf.noun || 'record'; return /(s|x|ch|sh)$/.test(n) ? `${n}es` : `${n}s`; }; // batch → batches
+
+  // Switch the shared dataset view to another master: header text, then whatever that master
+  // last showed (its rows, its error/empty card) or the "pick a range" card.
+  function openDataset(id) {
+    if (ds.id !== id) {
+      ds.controller?.abort();
+      ds = datasetState(id);
+    }
+    const noun = nouns();
+    $('dsCrumb').textContent = ds.title;
+    $('dsTitle').textContent = ds.title;
+    $('dsSub').textContent = ds.conf.sub || `${ds.title} records SAP sent to Salescode in a date range, straight from SAP.`;
+    $('dsSource').textContent = `SAP ECC · SClogSet · ${ds.api}`;
+    $('dsSource').title = `SAP OData service ZSALESCODE_ODATA_SRV_SRV, entity set SClogSet, API type ${ds.api}`;
+    $('dsRowsLabel').textContent = noun[0].toUpperCase() + noun.slice(1);
+    $('dsSearch').placeholder = ds.conf.placeholder || 'Search…';
+    $('dsSearch').value = ds.search;
+    $('filterPanel').hidden = true;
+    $('filtersBtn').setAttribute('aria-expanded', 'false');
+    if (ds.range) setRangeInputs([utc(ds.range.from), utc(ds.range.to)]);
+    else if (!$('fromDate').value) setRangeInputs(presetRange('month'));
+    setHeaderMeta();
+    if (ds.rows.length) { setDsState(''); buildFilterPanel(); renderDataset(); }
+    else if (ds.stateHtml) setDsState(ds.stateHtml);
+    else idleState();
+  }
 
   // ---- date range ----
   const today = () => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); };
@@ -1538,48 +1660,48 @@
   }
 
   // ---- states ----
-  function setPricingState(html) {
-    $('pricingState').innerHTML = html;
-    $('pricingResults').hidden = Boolean(html);
-    $('pricingStats').hidden = Boolean(html);
+  function setDsState(html) {
+    ds.stateHtml = html || null;
+    $('dsState').innerHTML = html;
+    $('dsResults').hidden = Boolean(html);
   }
   function stateCard({ iconName, title, body, error = false, retry = false }) {
     return `<div class="state-card${error ? ' is-error' : ''}">
       <span class="state-icon">${icon(iconName, 24)}</span>
       <p class="state-title">${title}</p><p class="state-text">${body}</p>
-      ${retry ? `<button type="button" class="btn-ghost" id="pricingRetry">${icon('redo', 14)}Try again</button>` : ''}
+      ${retry ? `<button type="button" class="btn-ghost" id="dsRetry">${icon('redo', 14)}Try again</button>` : ''}
     </div>`;
   }
   function idleState() {
-    setPricingState(stateCard({ iconName: 'calendar', title: 'Pick a created-on date range',
-      body: 'Choose From and To dates (or a quick range) and fetch — you’ll get the pricing on every invoice line created in that period: MRP, base rate, margins, discounts, GST and net value.' }));
+    setDsState(stateCard({ iconName: 'calendar', title: 'Pick a sent-on date range',
+      body: ds.conf.idle || `Choose From and To dates (or a quick range) and fetch — you’ll get every ${esc(ds.conf.noun || 'record')} SAP sent to Salescode for ${esc(ds.title)} in that period.` }));
+    ds.stateHtml = null; // the idle card isn't a result to come back to
   }
   function loadingState() {
     const cols = visibleCols().slice(0, 12);
-    setPricingState('');
-    $('pricingStats').innerHTML = ['', '', '', '', ' is-wide'].map((w) => `<div class="kpi${w}"><div><span class="skel" style="width:55%"></span><span class="skel" style="width:40%;height:22px;margin-top:12px"></span><span class="skel" style="width:70%;margin-top:10px"></span></div></div>`).join('');
-    $('pricingCount').textContent = '';
+    setDsState('');
+    $('dsCount').textContent = '';
     $('filterChips').hidden = true;
-    $('pricingTable').tHead.innerHTML = `<tr>${cols.map((c) => `<th class="${NUMERIC.has(c.type) ? 'num' : ''}" style="top:0">${c.label}</th>`).join('')}</tr>`;
-    $('pricingTable').tBodies[0].innerHTML = Array.from({ length: 8 }, () => `<tr>${cols.map(() => '<td><span class="skel"></span></td>').join('')}</tr>`).join('');
-    $('pricingTable').tFoot.innerHTML = '';
-    $('pricingInsights').innerHTML = [1, 2, 3].map(() => '<div class="insight"><span class="skel" style="width:45%"></span>' + '<span class="skel" style="margin-top:16px"></span>'.repeat(4) + '</div>').join('');
+    $('dsTable').tHead.innerHTML = `<tr>${cols.map((c) => `<th class="${NUMERIC.has(c.type) ? 'num' : ''}" style="top:0">${c.label}</th>`).join('')}</tr>`;
+    $('dsTable').tBodies[0].innerHTML = Array.from({ length: 8 }, () => `<tr>${cols.map(() => '<td><span class="skel"></span></td>').join('')}</tr>`).join('');
+    $('dsTable').tFoot.innerHTML = '';
+    $('dsJson').innerHTML = '';
     $('pageInfo').textContent = '';
     $('pageNum').textContent = '';
   }
   function setHeaderMeta() {
-    const has = Boolean(pricing.fetchedAt);
+    const has = Boolean(ds.fetchedAt);
     $('freshChip').hidden = !has;
-    if (has) $('freshText').textContent = `Updated ${pricing.fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · ${fmtDay(utc(pricing.range.from))} – ${fmtDay(utc(pricing.range.to))}`;
-    $('refreshBtn').disabled = !pricing.range;
-    $('pricingExport').disabled = !pricing.rows.length;
+    if (has) $('freshText').textContent = `Updated ${ds.fetchedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} · ${fmtDay(utc(ds.range.from))} – ${fmtDay(utc(ds.range.to))}`;
+    $('refreshBtn').disabled = !ds.range;
+    $('dsExport').disabled = !ds.rows.length;
   }
 
   // ---- fetch ----
   // Salescode grant from Manage Access, checked once per page load. Fails closed: if the check
-  // can't be made, pricing isn't loaded (the viewer can retry).
+  // can't be made, nothing is loaded (the viewer can retry).
   let accessCheck = null;
-  function requirePricingAccess() {
+  function requireSalescodeAccess() {
     accessCheck ||= fetch(`${ACCESS_API_BASE}/access/me?email=${encodeURIComponent(getCurrentUserEmail() || '')}`)
       .then((res) => (res.ok ? res.json() : Promise.reject(Object.assign(new Error('access check failed'), { kind: 'access-check' }))))
       .then((data) => {
@@ -1590,7 +1712,7 @@
     return accessCheck;
   }
 
-  async function fetchPricing(range) {
+  async function fetchDataset(range) {
     const from = range?.from ?? $('fromDate').value;
     const to = range?.to ?? $('toDate').value;
     if (!from || !to) return rangeError(!from && !to ? 'Choose a From and a To date.' : !from ? 'Choose a From date.' : 'Choose a To date.', !from ? 'fromDate' : 'toDate');
@@ -1599,64 +1721,73 @@
     if (days > MAX_RANGE_DAYS) return rangeError(`That’s ${days} days — pick ${MAX_RANGE_DAYS} days or fewer.`, 'fromDate');
     clearRangeError();
 
-    pricing.controller?.abort();
+    const st = ds;
+    st.controller?.abort();
     const controller = new AbortController();
-    pricing.controller = controller;
+    st.controller = controller;
     $('rangeSubmit').disabled = true;
     $('refreshBtn').classList.add('is-spinning');
     loadingState();
     try {
-      await requirePricingAccess();
-      // The service's entity-set read filters on CreationDate (Edm.DateTime, both ends inclusive).
-      // from/to are the date inputs' own YYYY-MM-DD values (validated above), so they're safe inside
-      // the datetime'...' literals. encodeURIComponent keeps spaces as %20, the form the proxy takes.
-      const filter = `CreationDate ge datetime'${from}T00:00:00' and CreationDate le datetime'${to}T00:00:00'`;
-      const res = await fetch(`${SAP_BASE_URL}/Pricing_dataSet?$filter=${encodeURIComponent(filter)}&$format=json`, {
+      await requireSalescodeAccess();
+      // SClogSet requires both an Erdat range (the day SAP sent the batch, both ends inclusive) and
+      // an ApiTyp, and its ABAP reads them in that order — with ApiTyp first SAP answers "ApiTyp
+      // filter is mandatory", so keep Erdat first. from/to are the date inputs' own YYYY-MM-DD
+      // values (validated above) and the API type comes from MASTER, so both are safe inside the
+      // literals. encodeURIComponent keeps spaces as %20, the form the proxy takes.
+      const filter = `Erdat ge datetime'${from}T00:00:00' and Erdat le datetime'${to}T00:00:00' and ApiTyp eq '${st.api}'`;
+      const res = await fetch(`${SAP_BASE_URL}/SClogSet?$filter=${encodeURIComponent(filter)}&$format=json`, {
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       });
       if (!res.ok) throw Object.assign(new Error(`SAP responded ${res.status}`), { kind: 'sap', status: res.status });
       const body = await res.json().catch(() => { throw Object.assign(new Error('bad JSON'), { kind: 'sap' }); });
-      pricing.rows = (body?.d?.results ?? []).map(({ __metadata, ...fields }) => fields);
-      pricing.range = { from, to };
-      pricing.fetchedAt = new Date();
-      pricing.filters = {};
-      pricing.search = '';
-      pricing.page = 1;
-      $('pricingSearch').value = '';
+      st.rows = (body?.d?.results ?? []).flatMap(recordsFromLog);
+      st.cols = buildColumns(st.conf, st.rows);
+      st.range = { from, to };
+      st.fetchedAt = new Date();
+      st.filterValues = {};
+      st.search = '';
+      st.page = 1;
+      if (st !== ds) return; // viewer moved to another master meanwhile; this one shows when they come back
+      $('dsSearch').value = '';
       setHeaderMeta();
-      if (!pricing.rows.length) {
-        setPricingState(stateCard({ iconName: 'search', title: 'No invoice lines in this range',
-          body: `SAP returned no pricing lines created between ${fmtDay(utc(from))} and ${fmtDay(utc(to))}. Try a wider range.` }));
+      if (!st.rows.length) {
+        setDsState(stateCard({ iconName: 'search', title: `No ${esc(nouns())} in this range`,
+          body: `SAP sent no ${esc(st.title)} data (API type ${st.api}) to Salescode between ${fmtDay(utc(from))} and ${fmtDay(utc(to))}. Try a wider range.` }));
         return;
       }
-      setPricingState('');
+      setDsState('');
       buildFilterPanel();
-      renderPricing();
+      renderDataset();
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError' || st !== ds) return;
       const { kind, status } = err;
       const msg = kind === 'no-access' ? 'Your account doesn’t have Salescode access yet. Ask an Emami Apps admin to grant Salescode in Manage Access.'
         : kind === 'access-check' ? 'Couldn’t confirm your Salescode access with Emami Apps. Check your connection and try again.'
-        : kind === 'sap' && status === 400 ? 'SAP rejected this request. Check that the Pricing service accepts a CreationDate range.'
-        : kind === 'sap' && status === 404 ? 'The SAP Pricing service wasn’t found on this system. It may not be registered or activated yet.'
-        : kind === 'sap' ? `SAP didn’t return pricing for this range${status ? ` (error ${status})` : ''}. It may be busy — try again in a moment.`
+        : kind === 'sap' && status === 400 ? `SAP rejected this request. Check that SClogSet accepts an Erdat range with ApiTyp ${st.api}.`
+        : kind === 'sap' && status === 404 ? 'The SAP Salescode service wasn’t found on this system. It may not be registered or activated yet.'
+        : kind === 'sap' ? `SAP didn’t return ${esc(st.title)} data for this range${status ? ` (error ${status})` : ''}. It may be busy — try again in a moment.`
         : 'Couldn’t reach SAP. Check your connection and try again.';
-      setPricingState(stateCard({ iconName: 'x', title: 'Couldn’t load pricing', body: msg, error: true, retry: kind !== 'no-access' }));
+      setDsState(stateCard({ iconName: 'x', title: `Couldn’t load ${esc(st.title)}`, body: msg, error: true, retry: kind !== 'no-access' }));
     } finally {
-      if (pricing.controller === controller) {
-        $('rangeSubmit').disabled = false;
-        $('refreshBtn').classList.remove('is-spinning');
-        pricing.controller = null;
+      if (st.controller === controller) {
+        st.controller = null;
+        if (st === ds) {
+          $('rangeSubmit').disabled = false;
+          $('refreshBtn').classList.remove('is-spinning');
+        }
       }
     }
   }
 
   // ---- filter / sort / columns ----
+  // Options are built from the loaded rows, so each list only holds values that actually occur
+  // in this date range.
   function buildFilterPanel() {
-    $('filterGrid').innerHTML = FILTERS.map((f) => {
+    $('filterGrid').innerHTML = ds.filters.map((f) => {
       const seen = new Map();
-      pricing.rows.forEach((r) => { const v = f.value(r); if (v != null && String(v).trim() !== '' && !seen.has(v)) seen.set(v, r); });
+      ds.rows.forEach((r) => { const v = f.value(r); if (v != null && String(v).trim() !== '' && !seen.has(v)) seen.set(v, r); });
       const opts = [...seen.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
       return `<label><span>${f.label}</span><select data-filter="${f.key}"${opts.length < 2 ? ' disabled' : ''}>
         <option value="">All${opts.length ? ` (${opts.length})` : ''}</option>
@@ -1664,204 +1795,64 @@
       </select></label>`;
     }).join('');
   }
-  function filteredPricing() {
-    const q = pricing.search.trim().toLowerCase();
-    const active = FILTERS.filter((f) => pricing.filters[f.key] != null);
-    const rows = pricing.rows.filter((r) => {
-      if (active.some((f) => String(f.value(r)) !== pricing.filters[f.key])) return false;
+  function filteredRows() {
+    const q = ds.search.trim().toLowerCase();
+    const active = ds.filters.filter((f) => ds.filterValues[f.key] != null);
+    const searchKeys = ds.conf.search || ds.cols.filter((c) => c.type === 'code' || c.type === 'text' || c.type === 'tag').map((c) => c.key);
+    const rows = ds.rows.filter((r) => {
+      if (active.some((f) => String(f.value(r)) !== ds.filterValues[f.key])) return false;
       if (!q) return true;
-      return [r.InvoiceNumber, unpad(r.InvoiceNumber), r.MaterialCode, unpad(r.MaterialCode), r.MaterialDesc, r.BatchCode, r.OrderNumber, unpad(r.OrderNumber), r.BillNumber, r.DistributorCode, unpad(r.DistributorCode)]
-        .some((v) => String(v || '').toLowerCase().includes(q));
+      return searchKeys.some((k) => { const v = String(r[k] ?? '').toLowerCase(); return v.includes(q) || unpad(v).includes(q); });
     });
-    const col = COLS.find((c) => c.key === pricing.sort.key) || COLS[2];
-    const dir = pricing.sort.dir;
+    const c = ds.cols.find((x) => x.key === ds.sort.key) || ds.cols[0];
+    const dir = ds.sort.dir;
+    const tie = ds.conf.tieBreak || (() => 0);
     return rows.sort((a, b) => {
-      const x = sortValue(col, a); const y = sortValue(col, b);
+      const x = sortValue(c, a); const y = sortValue(c, b);
       if (x < y) return -dir;
       if (x > y) return dir;
-      return String(a.InvoiceNumber).localeCompare(String(b.InvoiceNumber)) || (Number(a.ItemNo) - Number(b.ItemNo));
+      return tie(a, b);
     });
   }
   function setSort(key, dir) {
-    const c = COLS.find((x) => x.key === key);
-    pricing.sort = { key, dir: dir ?? (pricing.sort.key === key ? -pricing.sort.dir : (c.type === 'date' || NUMERIC.has(c.type) ? -1 : 1)) };
-    pricing.page = 1;
-    renderPricing();
+    const c = ds.cols.find((x) => x.key === key);
+    ds.sort = { key, dir: dir ?? (ds.sort.key === key ? -ds.sort.dir : (c.type === 'date' || NUMERIC.has(c.type) ? -1 : 1)) };
+    ds.page = 1;
+    renderDataset();
   }
+  const colGroups = () => Object.entries(ds.groups).filter(([g]) => ds.cols.some((c) => c.group === g));
   function renderSortControls() {
-    $('sortField').innerHTML = Object.entries(GROUPS).map(([g, meta]) => `<optgroup label="${meta.label}">${COLS.filter((c) => c.group === g).map((c) => `<option value="${c.key}"${c.key === pricing.sort.key ? ' selected' : ''}>${c.label}</option>`).join('')}</optgroup>`).join('');
-    const c = COLS.find((x) => x.key === pricing.sort.key);
-    const up = pricing.sort.dir > 0;
+    $('sortField').innerHTML = colGroups().map(([g, meta]) => `<optgroup label="${meta.label}">${ds.cols.filter((c) => c.group === g).map((c) => `<option value="${c.key}"${c.key === ds.sort.key ? ' selected' : ''}>${c.label}</option>`).join('')}</optgroup>`).join('');
+    const c = ds.cols.find((x) => x.key === ds.sort.key) || ds.cols[0];
+    const up = ds.sort.dir > 0;
     $('sortDir').textContent = c.type === 'date' ? (up ? '↑ Oldest' : '↓ Newest') : NUMERIC.has(c.type) ? (up ? '↑ Low–high' : '↓ High–low') : (up ? '↑ A–Z' : '↓ Z–A');
   }
   function renderColumnsList() {
-    $('columnsList').innerHTML = Object.entries(GROUPS).map(([g, meta]) => `<div class="col-group"><div class="col-group-title">${meta.label}</div>${COLS.filter((c) => c.group === g).map((c) => `<label><input type="checkbox" data-col="${c.key}"${c.pinned || !pricing.hidden.has(c.key) ? ' checked' : ''}${c.pinned ? ' disabled' : ''}><span>${c.label}</span></label>`).join('')}</div>`).join('');
-    $('columnsCount').textContent = `${visibleCols().length}/${COLS.length}`;
+    $('columnsList').innerHTML = colGroups().map(([g, meta]) => `<div class="col-group"><div class="col-group-title">${meta.label}</div>${ds.cols.filter((c) => c.group === g).map((c) => `<label><input type="checkbox" data-col="${c.key}"${c.pinned || !ds.hidden.has(c.key) ? ' checked' : ''}${c.pinned ? ' disabled' : ''}><span>${c.label}</span></label>`).join('')}</div>`).join('');
+    $('columnsCount').textContent = `${visibleCols().length}/${ds.cols.length}`;
   }
   function renderDensity() {
-    $('pricingTable').classList.toggle('is-compact', pricing.density === 'compact');
-    document.querySelectorAll('[data-density]').forEach((b) => b.classList.toggle('is-on', b.dataset.density === pricing.density));
-  }
-
-  // ---- KPI tiles + micro chart ----
-  // Net value per billing day (per week once the range passes 45 days), for the tile's micro bars.
-  function netSeries(rows) {
-    const { from, to } = pricing.range;
-    const start = utc(from).getTime();
-    const days = (utc(to).getTime() - start) / 86400000 + 1;
-    const step = days > 45 ? 7 : 1;
-    const bins = Array.from({ length: Math.ceil(days / step) }, (_, i) => {
-      const s = new Date(start + i * step * 86400000);
-      const e = new Date(Math.min(start + ((i + 1) * step - 1) * 86400000, utc(to).getTime()));
-      return { s, e, v: 0 };
-    });
-    rows.forEach((r) => {
-      const d = odataDate(r.CreationDate) || odataDate(r.InvoiceDate);
-      if (!d) return;
-      const i = Math.floor((d.getTime() - start) / 86400000 / step);
-      if (bins[i]) bins[i].v += num(r.NetAmount) || 0;
-    });
-    return { bins, step };
-  }
-  function renderMicro(el) {
-    const { bins, step } = el._series;
-    const W = Math.max(60, el.clientWidth); const H = 52; const gap = bins.length > 60 ? 1 : 2;
-    const bw = Math.max(1, (W - gap * (bins.length - 1)) / bins.length);
-    const max = Math.max(...bins.map((b) => b.v), 1);
-    const r = Math.min(2, bw / 2);
-    const bars = bins.map((b, i) => {
-      const x = i * (bw + gap);
-      const h = b.v > 0 ? Math.max(2, (b.v / max) * (H - 4)) : 0;
-      const y = H - h;
-      // Rounded data end (top), square at the baseline.
-      const path = h ? `M${x},${H}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${H}Z` : '';
-      return `<rect class="hit" x="${x - gap / 2}" y="0" width="${bw + gap}" height="${H}" data-i="${i}"></rect><path class="bar${i === bins.length - 1 ? ' is-last' : ''}" d="${path}"></path>`;
-    }).join('');
-    el.querySelector('svg').setAttribute('viewBox', `0 0 ${W} ${H}`);
-    el.querySelector('svg').innerHTML = `${bars}<line class="base" x1="0" x2="${W}" y1="${H + 0.5}" y2="${H + 0.5}"></line>`;
-    el._geom = { bw, gap, step };
-  }
-  function microTip(el, i) {
-    const tip = el.querySelector('.micro-tip');
-    el.querySelectorAll('.bar.is-hot').forEach((b) => b.classList.remove('is-hot'));
-    if (i == null) { tip.hidden = true; return; }
-    const b = el._series.bins[i];
-    const { bw, gap, step } = el._geom;
-    const label = step === 1 ? fmtDay(b.s, { weekday: 'short', day: '2-digit', month: 'short' }) : `${fmtDay(b.s, { day: '2-digit', month: 'short' })} – ${fmtDay(b.e, { day: '2-digit', month: 'short' })}`;
-    tip.innerHTML = `${label}<b>${moneyFmt.format(b.v)}</b>`;
-    tip.style.left = `${Math.min(Math.max(i * (bw + gap) + bw / 2, 50), el.clientWidth - 50)}px`;
-    tip.hidden = false;
-    el.querySelectorAll('.bar')[i]?.classList.add('is-hot');
-  }
-  const microObserver = new ResizeObserver((entries) => entries.forEach((e) => e.target._series && renderMicro(e.target)));
-
-  // Whole-number KPI values tick up from 0 when the data changes (skipped for reduced motion).
-  function countUp() {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    document.querySelectorAll('.kpi-value[data-count]').forEach((el) => {
-      const target = Number(el.dataset.count); const t0 = performance.now(); const dur = 650;
-      const step = (t) => { const k = Math.min(1, (t - t0) / dur); el.textContent = qtyFmt.format(Math.round(target * (1 - (1 - k) ** 3))); if (k < 1) requestAnimationFrame(step); };
-      requestAnimationFrame(step);
-    });
-  }
-  function renderKpis(rows) {
-    const cur = [...new Set(rows.map((r) => r.Waerk).filter(Boolean))];
-    const sym = cur.length === 1 && cur[0] === 'INR' ? '₹' : '';
-    const sum = (k) => rows.reduce((s, r) => s + (num(r[k]) || 0), 0);
-    const net = sum('NetAmount'); const tax = sum('Tax');
-    const free = rows.filter(isFree).length;
-    const invoices = new Set(rows.map((r) => r.InvoiceNumber)).size;
-    const tile = (ico, label, value, sub, tone, count) => `<div class="kpi tone-${tone}"><div class="kpi-label"><span class="kpi-ico">${icon(ico, 13)}</span>${label}</div><div class="kpi-value"${count != null ? ` data-count="${count}"` : ''}>${value}</div><div class="kpi-sub">${sub}</div></div>`;
-    const { from, to } = pricing.range;
-    $('pricingStats').innerHTML = [
-      tile('fileText', 'Invoice lines', qtyFmt.format(rows.length), `across <b>${qtyFmt.format(invoices)}</b> invoices`, 'indigo', rows.length),
-      tile('users', 'Customers', qtyFmt.format(new Set(rows.map((r) => r.DistributorCode)).size), `<b>${qtyFmt.format(new Set(rows.map((r) => r.MaterialCode)).size)}</b> materials billed`, 'blue', new Set(rows.map((r) => r.DistributorCode)).size),
-      tile('tag', 'Free-goods lines', qtyFmt.format(free), rows.length ? `<b>${Math.round((free / rows.length) * 100)}%</b> of lines` : '—', 'green', free),
-      tile('card', 'Tax', `${sym}${compactFmt.format(tax)}`, `${moneyFmt.format(tax)}`, 'amber'),
-      `<div class="kpi is-wide tone-violet">
-        <div class="kpi-text">
-          <div class="kpi-label"><span class="kpi-ico">${icon('trend', 13)}</span>Net value</div>
-          <div class="kpi-value">${sym}${compactFmt.format(net)}</div>
-          <div class="kpi-sub">${moneyFmt.format(net)}${cur.length === 1 ? ` ${esc(cur[0])}` : ''}</div>
-        </div>
-        <div>
-          <div class="micro" id="netMicro" role="img" aria-label="Net value by created-on ${(utc(to) - utc(from)) / 86400000 + 1 > 45 ? 'week' : 'day'}"><svg preserveAspectRatio="none"></svg><div class="micro-tip" hidden></div></div>
-          <div class="micro-caption"><span>${fmtDay(utc(from), { day: '2-digit', month: 'short' })}</span><span>by ${(utc(to) - utc(from)) / 86400000 + 1 > 45 ? 'week' : 'day'}</span><span>${fmtDay(utc(to), { day: '2-digit', month: 'short' })}</span></div>
-        </div>
-      </div>`,
-    ].join('');
-    countUp();
-    const micro = $('netMicro');
-    micro._series = netSeries(rows);
-    renderMicro(micro);
-    microObserver.observe(micro);
-    micro.addEventListener('mousemove', (e) => { const h = e.target.closest('.hit'); microTip(micro, h ? Number(h.dataset.i) : null); });
-    micro.addEventListener('mouseleave', () => microTip(micro, null));
-  }
-
-  // ---- insights: top customers / materials by net value, billing mix ----
-  // Ranked bar lists carry their values as text (no colour-only reading); one hue per card.
-  function topBy(rows, key, n = 5) {
-    const m = new Map();
-    rows.forEach((r) => { const k = r[key]; if (!k) return; const e = m.get(k) || { key: k, v: 0, lines: 0, sample: r }; e.v += num(r.NetAmount) || 0; e.lines++; m.set(k, e); });
-    return [...m.values()].sort((a, b) => b.v - a.v).slice(0, n);
-  }
-  function renderInsights(rows) {
-    const cur = [...new Set(rows.map((r) => r.Waerk).filter(Boolean))];
-    const sym = cur.length === 1 && cur[0] === 'INR' ? '₹' : '';
-    const rankCard = (title, items, hue, label) => {
-      const max = Math.max(...items.map((i) => i.v), 1);
-      return `<div class="insight" style="--hue:${hue}">
-        <div class="insight-head"><h3 class="insight-title">${title}</h3><span class="insight-note">by net value · top ${items.length}</span></div>
-        ${items.length ? items.map((i, n) => `<div class="rank" title="${esc(moneyFmt.format(i.v))} · ${i.lines} lines">
-          <span class="rank-n">${n + 1}</span>
-          <span class="rank-label">${label(i)}</span>
-          <span class="rank-value">${sym}${compactFmt.format(i.v)}</span>
-          <span class="rank-bar"><span style="width:${Math.max(2, (i.v / max) * 100)}%"></span></span>
-        </div>`).join('') : '<p class="muted" style="font-size:12px;margin:0">No lines.</p>'}
-      </div>`;
-    };
-    const netOf = (list) => list.reduce((s, r) => s + (num(r.NetAmount) || 0), 0);
-    const inter = rows.filter((r) => (num(r.IgstPct) || 0) > 0);
-    const intra = rows.filter((r) => !((num(r.IgstPct) || 0) > 0));
-    const free = rows.filter(isFree).length;
-    const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
-    const netAll = netOf(rows) || 1;
-    const mix = (label, parts, total) => `<div class="mix">
-      <div class="mix-label"><span>${label}</span></div>
-      <div class="mix-bar">${parts.filter((pt) => pt.v > 0).map((pt) => `<span style="width:${(pt.v / total) * 100}%;background:${pt.c}" title="${pt.name}: ${pct(pt.v, total)}"></span>`).join('')}</div>
-      <div class="mix-legend">${parts.map((pt) => `<span><i style="background:${pt.c}"></i>${pt.name} <b>${pctOf(pt.v, total)}%</b></span>`).join('')}</div>
-    </div>`;
-    const pct = (v, t) => `${pctOf(v, t)}%`;
-    $('pricingInsights').innerHTML = [
-      rankCard('Top customers', topBy(rows, 'DistributorCode'), '#4F3FD6', (i) => `${esc(unpad(i.key))}<small>${i.lines} lines · ${esc(i.sample.SalesOrg || '')}/${esc(i.sample.DistChannel || '')}</small>`),
-      rankCard('Top materials', topBy(rows, 'MaterialCode'), '#0D9488', (i) => `${esc(i.sample.MaterialDesc || unpad(i.key))}<small>${esc(unpad(i.key))} · ${i.lines} lines</small>`),
-      `<div class="insight">
-        <div class="insight-head"><h3 class="insight-title">Billing mix</h3><span class="insight-note">${qtyFmt.format(rows.length)} lines</span></div>
-        ${mix('Net value by GST type', [{ name: 'Intra-state (CGST+SGST)', v: netOf(intra), c: '#4F3FD6' }, { name: 'Inter-state (IGST)', v: netOf(inter), c: '#0D9488' }], netAll)}
-        ${mix('Lines by type', [{ name: 'Billed', v: rows.length - free, c: '#4F3FD6' }, { name: 'Free goods', v: free, c: '#1F7A4D' }], rows.length || 1)}
-      </div>`,
-    ].join('');
+    $('dsTable').classList.toggle('is-compact', ui.density === 'compact');
+    document.querySelectorAll('[data-density]').forEach((b) => b.classList.toggle('is-on', b.dataset.density === ui.density));
   }
 
   // ---- grid ----
-  function renderPricing() {
-    const all = pricing.rows;
-    const rows = filteredPricing();
+  function renderDataset() {
+    const all = ds.rows;
+    const rows = filteredRows();
     const cols = visibleCols();
-    renderKpis(rows);
-    renderInsights(rows);
-    $('pricingCount').textContent = rows.length === all.length ? `${qtyFmt.format(all.length)} lines` : `${qtyFmt.format(rows.length)} of ${qtyFmt.format(all.length)} lines`;
+    const noun = nouns();
+    $('dsCount').textContent = rows.length === all.length ? `${qtyFmt.format(all.length)} ${noun}` : `${qtyFmt.format(rows.length)} of ${qtyFmt.format(all.length)} ${noun}`;
 
     // filters: badge, highlighted selects, chips
-    const active = FILTERS.filter((f) => pricing.filters[f.key] != null);
+    const active = ds.filters.filter((f) => ds.filterValues[f.key] != null);
     $('filterBadge').hidden = !active.length;
     $('filterBadge').textContent = active.length;
-    document.querySelectorAll('#filterGrid select').forEach((s) => { s.value = pricing.filters[s.dataset.filter] ?? ''; s.classList.toggle('is-set', Boolean(s.value)); });
+    document.querySelectorAll('#filterGrid select').forEach((s) => { s.value = ds.filterValues[s.dataset.filter] ?? ''; s.classList.toggle('is-set', Boolean(s.value)); });
     $('filterChips').hidden = !active.length;
     $('filterChips').innerHTML = active.map((f) => {
-      const sample = pricing.rows.find((r) => String(f.value(r)) === pricing.filters[f.key]);
-      const shown = f.option && sample ? f.option(pricing.filters[f.key], sample) : pricing.filters[f.key];
+      const sample = ds.rows.find((r) => String(f.value(r)) === ds.filterValues[f.key]);
+      const shown = f.option && sample ? f.option(ds.filterValues[f.key], sample) : ds.filterValues[f.key];
       return `<span class="chip">${f.label}: <b>${esc(shown)}</b><button type="button" data-unfilter="${f.key}" aria-label="Remove ${f.label} filter">${icon('x', 12)}</button></span>`;
     }).join('') + (active.length > 1 ? '<button type="button" class="btn-link" id="chipsClear">Clear all</button>' : '');
 
@@ -1879,55 +1870,59 @@
     });
     const starts = new Set(); let idx = 0;
     runs.forEach((r) => { if (!r.cont) starts.add(idx); idx += r.span; });
-    const groupRow = `<tr class="groups">${runs.map((r) => `<th colspan="${r.span}" style="--g:${GROUPS[r.group].color}${r.cont ? ';border-left:none' : ''}">${r.cont ? '' : `<span>${GROUPS[r.group].label}</span>`}</th>`).join('')}</tr>`;
+    const groupRow = `<tr class="groups">${runs.map((r) => `<th colspan="${r.span}" style="--g:${ds.groups[r.group].color}${r.cont ? ';border-left:none' : ''}">${r.cont ? '' : `<span>${ds.groups[r.group].label}</span>`}</th>`).join('')}</tr>`;
     const headRow = `<tr>${cols.map((c, i) => {
-      const on = pricing.sort.key === c.key;
-      return `<th class="${NUMERIC.has(c.type) ? 'num' : ''}${on ? ' is-sorted' : ''}${i && starts.has(i) ? ' g-start' : ''}" data-sort="${c.key}" title="Sort by ${c.label}" aria-sort="${on ? (pricing.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}">${c.label}${on ? `<span class="sort-ind">${pricing.sort.dir > 0 ? '↑' : '↓'}</span>` : ''}</th>`;
+      const on = ds.sort.key === c.key;
+      return `<th class="${NUMERIC.has(c.type) ? 'num' : ''}${on ? ' is-sorted' : ''}${i && starts.has(i) ? ' g-start' : ''}" data-sort="${c.key}" title="Sort by ${c.label}" aria-sort="${on ? (ds.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}">${c.label}${on ? `<span class="sort-ind">${ds.sort.dir > 0 ? '↑' : '↓'}</span>` : ''}</th>`;
     }).join('')}</tr>`;
-    $('pricingTable').tHead.innerHTML = groupRow + headRow;
-    const pin = $('pricingTable').querySelector('thead tr:not(.groups) th');
-    $('pricingTable').style.setProperty('--pin-w', `${pin ? pin.offsetWidth : 0}px`);
+    $('dsTable').tHead.innerHTML = groupRow + headRow;
+    const pin = $('dsTable').querySelector('thead tr:not(.groups) th');
+    $('dsTable').style.setProperty('--pin-w', `${pin ? pin.offsetWidth : 0}px`);
 
     // page
-    const size = pricing.pageSize || rows.length || 1;
+    const size = ui.pageSize || rows.length || 1;
     const pages = Math.max(1, Math.ceil(rows.length / size));
-    pricing.page = Math.min(Math.max(1, pricing.page), pages);
-    const startRow = (pricing.page - 1) * size;
+    ds.page = Math.min(Math.max(1, ds.page), pages);
+    const startRow = (ds.page - 1) * size;
     const pageRows = rows.slice(startRow, startRow + size);
-    const maxNet = Math.max(...rows.map((r) => num(r.NetAmount) || 0), 1);
-    $('pricingTable').tBodies[0].innerHTML = pageRows.length
-      ? pageRows.map((r, ri) => `<tr style="--r:${ri}"${isFree(r) ? ' class="is-free"' : ''}>${cols.map((c, i) => {
+    const bar = ds.conf.bar;
+    const maxBar = bar ? Math.max(...rows.map((r) => num(r[bar]) || 0), 1) : 1;
+    $('dsTable').tBodies[0].innerHTML = pageRows.length
+      ? pageRows.map((r, ri) => { const cls = ds.conf.rowClass?.(r); return `<tr style="--r:${ri}"${cls ? ` class="${cls}"` : ''}>${cols.map((c, i) => {
         let content = cell(c, r) + (c.key === 'InvoiceNumber' && isFree(r) ? '<span class="free-tag">FREE</span>' : '');
-        if (c.key === 'InvoiceDate' || c.key === 'CreationDate') { const d = odataDate(r[c.key]); if (d) content = `<span class="cell-date"><b>${fmtDay(d)}</b><small>${fmtDay(d, { weekday: 'long' })}</small></span>`; }
-        if (c.key === 'NetAmount') { const n = num(r.NetAmount) || 0; content = `<span class="databar${n ? '' : ' is-zero'}" style="--w:${Math.max(0, (n / maxNet) * 100)}%">${moneyFmt.format(n)}</span>`; }
+        if (c.type === 'date') { const d = odataDate(r[c.key]); if (d) content = `<span class="cell-date"><b>${fmtDay(d)}</b><small>${fmtDay(d, { weekday: 'long' })}</small></span>`; }
+        if (c.key === bar) { const n = num(r[bar]) || 0; content = `<span class="databar${n ? '' : ' is-zero'}" style="--w:${Math.max(0, (n / maxBar) * 100)}%">${moneyFmt.format(n)}</span>`; }
         return `<td class="${NUMERIC.has(c.type) ? 'num' : ''}${c.wide ? ' wide' : ''}${i && starts.has(i) ? ' g-start' : ''}"${c.wide ? ` title="${text(r[c.key])}"` : ''}>${content}</td>`;
-      }).join('')}</tr>`).join('')
-      : `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:32px">No lines match the current search and filters.</td></tr>`;
+      }).join('')}</tr>`; }).join('')
+      : `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:32px">No ${noun} match the current search and filters.</td></tr>`;
+    renderJson(pageRows);
 
-    // Totals over every filtered line (not just this page). Qty only sums when the unit is shared.
+    // Totals over every filtered line (not just this page), for the master's `totals` columns.
+    // A qty total only sums when the unit is shared.
     const units = new Set(rows.map((r) => r.Uom).filter(Boolean));
-    const totals = { NetAmount: 'money', Tax: 'money', Qty: units.size === 1 ? 'qty' : null };
-    $('pricingTable').tFoot.innerHTML = rows.length ? `<tr>${cols.map((c, i) => {
-      if (i === 0) return `<td><span class="tfoot-label">Total · ${qtyFmt.format(rows.length)} lines</span></td>`;
+    const totals = { ...(ds.conf.totals || {}) };
+    if (totals.Qty && units.size !== 1) delete totals.Qty;
+    $('dsTable').tFoot.innerHTML = rows.length ? `<tr>${cols.map((c, i) => {
+      if (i === 0) return `<td><span class="tfoot-label">Total · ${qtyFmt.format(rows.length)} ${noun}</span></td>`;
       const kind = totals[c.key];
       if (!kind) return `<td class="${i && starts.has(i) ? 'g-start' : ''}"></td>`;
       const s = rows.reduce((a, r) => a + (num(r[c.key]) || 0), 0);
       return `<td class="num${starts.has(i) ? ' g-start' : ''}">${kind === 'money' ? moneyFmt.format(s) : `${qtyFmt.format(s)} <span class="unit">${esc([...units][0])}</span>`}</td>`;
     }).join('')}</tr>` : '';
 
-    $('pageSize').value = String(pricing.pageSize);
+    $('pageSize').value = String(ui.pageSize);
     $('pageInfo').textContent = rows.length ? `${qtyFmt.format(startRow + 1)}–${qtyFmt.format(startRow + pageRows.length)} of ${qtyFmt.format(rows.length)}` : '0 of 0';
-    $('pageNum').textContent = `${pricing.page} / ${pages}`;
-    $('pageFirst').disabled = $('pagePrev').disabled = pricing.page <= 1;
-    $('pageNext').disabled = $('pageLast').disabled = pricing.page >= pages;
+    $('pageNum').textContent = `${ds.page} / ${pages}`;
+    $('pageFirst').disabled = $('pagePrev').disabled = ds.page <= 1;
+    $('pageNext').disabled = $('pageLast').disabled = ds.page >= pages;
   }
   (() => {
-    const wrap = $('pricingTable').closest('.table-wrap');
+    const wrap = $('dsTable').closest('.table-wrap');
     wrap.addEventListener('scroll', () => {
       wrap.classList.toggle('is-scrolled-y', wrap.scrollTop > 2);
       wrap.classList.toggle('is-scrolled-x', wrap.scrollLeft > 2);
     }, { passive: true });
-    $('pricingTable').tBodies[0].addEventListener('click', (e) => {
+    $('dsTable').tBodies[0].addEventListener('click', (e) => {
       const tr = e.target.closest('tr');
       if (!tr || !tr.parentElement) return;
       const was = tr.classList.contains('is-selected');
@@ -1935,15 +1930,43 @@
       if (!was) tr.classList.add('is-selected');
     });
   })();
-  function goPage(p) { pricing.page = p; renderPricing(); $('pricingTable').closest('.table-wrap').scrollTop = 0; }
+  function goPage(p) { ds.page = p; renderDataset(); $('dsTable').closest('.table-wrap').scrollTop = 0; $('dsJson').parentElement.scrollTop = 0; }
 
-  function exportPricing() {
-    const rows = filteredPricing();
+  // ---- JSON view ----
+  // The same lines the table shows (search, filters, sort and page all apply), but as the record
+  // lines from SAP's Request payload, unmodified — padding and all. The text is valid JSON, so it
+  // can be copied straight out of the view as well as with Copy JSON (which takes every filtered
+  // line, not just this page).
+  function highlightJson(json) {
+    return esc(json).replace(/(&quot;(?:[^&\\]|\\.|&(?!quot;))*&quot;)(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)\b|([{}[\],])/g,
+      (m, str, colon, lit, punct) => (str ? `<span class="${colon ? 'jk' : 'js'}">${str}</span>${colon || ''}` : lit ? `<span class="jn">${lit}</span>` : `<span class="jp">${punct}</span>`));
+  }
+  function renderJson(pageRows) {
+    $('dsJson').innerHTML = pageRows.length
+      ? highlightJson(JSON.stringify(pageRows.map((r) => r.raw), null, 2))
+      : `<span class="json-head">No ${nouns()} match the current search and filters.</span>`;
+  }
+  function renderFormat() {
+    document.querySelector('#dsResults .grid-card').classList.toggle('is-json', ui.format === 'json');
+    document.querySelectorAll('[data-format]').forEach((b) => { const on = b.dataset.format === ui.format; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+  }
+  async function copyJson() {
+    const recs = filteredRows().map((r) => r.raw);
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(recs, null, 2));
+      toast(`Copied ${qtyFmt.format(recs.length)} record line${recs.length === 1 ? '' : 's'} as JSON`);
+    } catch {
+      toast('Couldn’t copy — select the JSON and copy it instead');
+    }
+  }
+
+  function exportCsv() {
+    const rows = filteredRows();
     const cols = visibleCols();
     const q = (v) => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
     const csv = [cols.map((c) => q(c.label)).join(','), ...rows.map((r) => cols.map((c) => q(csvValue(c, r))).join(','))].join('\r\n');
     const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
-    const a = Object.assign(document.createElement('a'), { href: url, download: `pricing-${pricing.range.from}-to-${pricing.range.to}.csv` });
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${ds.id}-${ds.range.from}-to-${ds.range.to}.csv` });
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1974,14 +1997,14 @@
       else toast(`${card.dataset.title} is coming soon — the SAP connection is being set up.`);
       return;
     }
-    const th = e.target.closest('#pricingTable th[data-sort]');
+    const th = e.target.closest('#dsTable th[data-sort]');
     if (th) { setSort(th.dataset.sort); return; }
-    if (e.target.closest('#pricingRetry')) { fetchPricing(); return; }
+    if (e.target.closest('#dsRetry')) { fetchDataset(); return; }
     const preset = e.target.closest('.preset');
     if (preset) { setRangeInputs(presetRange(preset.dataset.preset)); return; }
     const unfilter = e.target.closest('[data-unfilter]');
-    if (unfilter) { delete pricing.filters[unfilter.dataset.unfilter]; pricing.page = 1; renderPricing(); return; }
-    if (e.target.closest('#chipsClear, #filtersClear')) { pricing.filters = {}; pricing.page = 1; renderPricing(); return; }
+    if (unfilter) { delete ds.filterValues[unfilter.dataset.unfilter]; ds.page = 1; renderDataset(); return; }
+    if (e.target.closest('#chipsClear, #filtersClear')) { ds.filterValues = {}; ds.page = 1; renderDataset(); return; }
     const nav = e.target.closest('[data-nav]');
     if (nav) goTo(nav.dataset.nav);
   });
@@ -1991,10 +2014,10 @@
     if (e.key === 'Escape') { closeDrawer(); setUserMenu(false); setColumnsPop(false); }
   });
 
-  $('pricingForm').addEventListener('submit', (e) => { e.preventDefault(); fetchPricing(); });
+  $('dsForm').addEventListener('submit', (e) => { e.preventDefault(); fetchDataset(); });
   ['fromDate', 'toDate'].forEach((id) => $(id).addEventListener('change', () => { clearRangeError(); markPreset(); }));
-  $('refreshBtn').addEventListener('click', () => pricing.range && fetchPricing(pricing.range));
-  $('pricingSearch').addEventListener('input', (e) => { pricing.search = e.target.value; pricing.page = 1; renderPricing(); });
+  $('refreshBtn').addEventListener('click', () => ds.range && fetchDataset(ds.range));
+  $('dsSearch').addEventListener('input', (e) => { ds.search = e.target.value; ds.page = 1; renderDataset(); });
   $('filtersBtn').addEventListener('click', () => {
     const open = $('filterPanel').hidden;
     $('filterPanel').hidden = !open;
@@ -2003,29 +2026,32 @@
   $('filterGrid').addEventListener('change', (e) => {
     const sel = e.target.closest('select[data-filter]');
     if (!sel) return;
-    if (sel.value) pricing.filters[sel.dataset.filter] = sel.value; else delete pricing.filters[sel.dataset.filter];
-    pricing.page = 1;
-    renderPricing();
+    if (sel.value) ds.filterValues[sel.dataset.filter] = sel.value; else delete ds.filterValues[sel.dataset.filter];
+    ds.page = 1;
+    renderDataset();
   });
   $('sortField').addEventListener('change', (e) => setSort(e.target.value));
-  $('sortDir').addEventListener('click', () => setSort(pricing.sort.key, -pricing.sort.dir));
+  $('sortDir').addEventListener('click', () => setSort(ds.sort.key, -ds.sort.dir));
   $('columnsBtn').addEventListener('click', () => setColumnsPop($('columnsPop').hidden));
   $('columnsList').addEventListener('change', (e) => {
     const key = e.target.dataset.col;
     if (!key) return;
-    if (e.target.checked) pricing.hidden.delete(key); else pricing.hidden.add(key);
-    saveHidden();
-    renderPricing();
+    if (e.target.checked) ds.hidden.delete(key); else ds.hidden.add(key);
+    savePrefs();
+    renderDataset();
   });
-  $('colsAll').addEventListener('click', () => { pricing.hidden.clear(); saveHidden(); renderPricing(); });
-  $('colsCore').addEventListener('click', () => { pricing.hidden = new Set(COLS.filter((c) => !c.core).map((c) => c.key)); saveHidden(); renderPricing(); });
-  document.querySelectorAll('[data-density]').forEach((b) => b.addEventListener('click', () => { pricing.density = b.dataset.density; savePrefs(); renderDensity(); }));
-  $('pageSize').addEventListener('change', (e) => { pricing.pageSize = Number(e.target.value); savePrefs(); goPage(1); });
+  $('colsAll').addEventListener('click', () => { ds.hidden.clear(); savePrefs(); renderDataset(); });
+  $('colsCore').addEventListener('click', () => { ds.hidden = new Set(ds.cols.filter((c) => !c.core).map((c) => c.key)); savePrefs(); renderDataset(); });
+  document.querySelectorAll('[data-density]').forEach((b) => b.addEventListener('click', () => { ui.density = b.dataset.density; savePrefs(); renderDensity(); }));
+  document.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', () => { ui.format = b.dataset.format; savePrefs(); renderFormat(); if (ui.format === 'json') setColumnsPop(false); }));
+  $('jsonCopy').addEventListener('click', copyJson);
+  renderFormat();
+  $('pageSize').addEventListener('change', (e) => { ui.pageSize = Number(e.target.value); savePrefs(); goPage(1); });
   $('pageFirst').addEventListener('click', () => goPage(1));
-  $('pagePrev').addEventListener('click', () => goPage(pricing.page - 1));
-  $('pageNext').addEventListener('click', () => goPage(pricing.page + 1));
+  $('pagePrev').addEventListener('click', () => goPage(ds.page - 1));
+  $('pageNext').addEventListener('click', () => goPage(ds.page + 1));
   $('pageLast').addEventListener('click', () => goPage(Infinity));
-  $('pricingExport').addEventListener('click', exportPricing);
+  $('dsExport').addEventListener('click', exportCsv);
   $('menuBtn').addEventListener('click', openDrawer);
   $('closeBtn').addEventListener('click', closeDrawer);
   $('backdrop').addEventListener('click', closeDrawer);
