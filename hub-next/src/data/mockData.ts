@@ -1,14 +1,14 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet,
+  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
 // 'All' first, then every category A-Z (case-insensitive) — sorted here rather than hand-ordered
 // so a newly added category lands in the right place. Every category list in the hub (Home tiles,
 // side pane, filter bar, My Applications) renders from this one array.
-const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance', 'SD'];
+const CATEGORY_NAMES: CategoryFilter[] = ['CQA', 'CPD', 'IT', 'Supply Chain', 'IBD', 'HR', 'Cross-Function', 'Packaging', 'Finance', 'SD', 'MSD'];
 export const CATEGORIES: CategoryFilter[] = ['All', ...[...CATEGORY_NAMES].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))];
 
 /**
@@ -40,6 +40,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'journal-anomaly-agent': '/apps/journal-anomaly-agent', // Journal Entry & GL Anomaly Agent
   'credit-risk-advisory': '/apps/credit-risk-advisory', // Credit Risk Advisory
   salescode: '/apps/salescode', // Salescode
+  'audit-tool': '/apps/audit-tool', // Audit Tool (MSD internal audit)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -60,6 +61,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'journal-anomaly-agent', name: 'Journal Entry & GL Anomaly Agent', desc: 'AI-driven journal entry and GL anomaly monitoring, case management and audit evidence with SAP OData integration.', cat: 'Finance', icon: ScanSearch, uses: 0 },
   { id: 'credit-risk-advisory', name: 'Credit Risk Advisory', desc: 'Credit risk advisory command center — executive KPIs, worklist, Customer 360, portfolio analytics and governed approval workflow with SAP OData integration.', cat: 'Finance', icon: ShieldAlert, uses: 0 },
   { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0 },
+  { id: 'audit-tool', name: 'Audit Tool', desc: 'MSD internal audit — masters, checklist, audit scheduling and kickoff, observations workflow and MIS reporting on SAP.', cat: 'MSD', icon: FileSearch, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

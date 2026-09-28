@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, Briefcase, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import { useAuth } from '../../context/AuthContext';
@@ -30,6 +30,7 @@ const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
   Packaging: Package,
   Finance: Landmark,
   SD: Handshake,
+  MSD: Briefcase,
 };
 
 /** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow

@@ -29,6 +29,7 @@ const AUDIT_CAPA_APP_ID = 'audit-capa';
 const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
 const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
 const FM_PO_DEVIATION_APP_ID = 'fm-po-deviation';
+const AUDIT_TOOL_APP_ID = 'audit-tool';
 /** Apps shown here alphabetically by name — insertion order in mockData.ts reflects when each
  * app was added to the hub, not a meaningful display order. */
 const SORTED_APPS = [...APPS].sort((a, b) => a.name.localeCompare(b.name));
@@ -38,6 +39,9 @@ function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
   if (appId === PAYMENT_TRACKING_APP_ID) return [null, 'User', 'Admin', 'Finance'];
   // PO Approval has no Admin/User bifurcation — access is a single granted role.
   if (appId === FM_PO_DEVIATION_APP_ID) return [null, 'User'];
+  // Audit Tool's own screen roles (Audit Head, Performer/Reviewer, Masters, Scheduling...) come
+  // from SAP (ZST_AUTH_USERSet / CheckAuditHeadSet), so the hub only grants access, not a role.
+  if (appId === AUDIT_TOOL_APP_ID) return [null, 'User'];
   return [null, 'User', 'Admin'];
 }
 
