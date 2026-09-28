@@ -11,6 +11,7 @@
 // Microsoft Entra, since that's derived from the same base URL. Falls back to
 // NEXT_PUBLIC_AUTH_API_URL so this doesn't break if the new env var isn't set yet.
 import type { AccessChangeEntry, AccessLevel, AppRole, MyAccess, UserAccessEntry, UserAppGrant } from '../types';
+import { authFetch } from './authFetch';
 
 const ACCESS_API_URL =
   process.env.NEXT_PUBLIC_ACCESS_API_URL || process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -27,7 +28,7 @@ async function parseResult(res: Response): Promise<ApiResult> {
 
 export async function listAuthorizedUsers(): Promise<{ ok: boolean; users?: UserAccessEntry[]; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/access/users`);
+    const res = await authFetch(`${ACCESS_API_URL}/access/users`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load authorized users.' };
     return { ok: true, users: data.users };
@@ -51,7 +52,7 @@ export async function addAuthorizedUser(
   mobile?: string
 ): Promise<ApiResult & { apps?: UserAppGrant[] }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/access/users`, {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, actingEmail, mobile: mobile || undefined }),
@@ -69,7 +70,7 @@ export async function addAuthorizedUser(
 export async function removeAuthorizedUser(email: string, actingEmail?: string): Promise<ApiResult> {
   try {
     const qs = actingEmail ? `?actingEmail=${encodeURIComponent(actingEmail)}` : '';
-    const res = await fetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}${qs}`, { method: 'DELETE' });
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}${qs}`, { method: 'DELETE' });
     return await parseResult(res);
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };
@@ -79,7 +80,7 @@ export async function removeAuthorizedUser(email: string, actingEmail?: string):
 /** Flips a user active/inactive — inactive users keep their app grants but are blocked at login. */
 export async function setUserActive(email: string, isActive: boolean, actingEmail?: string): Promise<ApiResult> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/active`, {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/active`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive, actingEmail }),
@@ -103,12 +104,12 @@ export async function setAppAccess(
   try {
     const url = `${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/apps/${encodeURIComponent(appId)}`;
     const res = role
-      ? await fetch(url, {
+      ? await authFetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role, depot: depot ?? null, actingEmail }),
         })
-      : await fetch(url + (actingEmail ? `?actingEmail=${encodeURIComponent(actingEmail)}` : ''), { method: 'DELETE' });
+      : await authFetch(url + (actingEmail ? `?actingEmail=${encodeURIComponent(actingEmail)}` : ''), { method: 'DELETE' });
     return await parseResult(res);
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };
@@ -120,7 +121,7 @@ export async function setAppAccess(
 export async function getAccessHistory(email?: string): Promise<{ ok: boolean; changes?: AccessChangeEntry[]; error?: string }> {
   try {
     const qs = email ? `?email=${encodeURIComponent(email)}` : '';
-    const res = await fetch(`${ACCESS_API_URL}/access/history${qs}`);
+    const res = await authFetch(`${ACCESS_API_URL}/access/history${qs}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load change history.' };
     return { ok: true, changes: data.changes };
@@ -133,7 +134,7 @@ export async function getAccessHistory(email?: string): Promise<{ ok: boolean; c
  * Access nav item/screen and to decide which app tiles render unlocked (see AuthContext.tsx). */
 export async function getMyAccess(email: string): Promise<MyAccess | null> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/access/me?email=${encodeURIComponent(email)}`);
+    const res = await authFetch(`${ACCESS_API_URL}/access/me?email=${encodeURIComponent(email)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return null;
     return { accessLevel: data.accessLevel, apps: data.apps };
@@ -149,7 +150,7 @@ export async function getMyAccess(email: string): Promise<MyAccess | null> {
  * beyond disabling the controls the caller couldn't use anyway. */
 export async function setAccessLevel(email: string, accessLevel: AccessLevel, actingEmail: string): Promise<ApiResult> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/access-level`, {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/access-level`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accessLevel, actingEmail }),

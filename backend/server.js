@@ -6,6 +6,8 @@ const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = re
 const { formatTimeSpent, normalizeIndianMobile } = require('./userProfile');
 const { syncAuditCapaAccess, revokeAuditCapaAccess } = require('./auditCapaSync');
 const { recordAccessChange, listAccessChanges } = require('./accessHistory');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('./sessionAuth');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -59,6 +61,47 @@ apiRouter.use('/dev-tracker', require('./devTracker'));
 apiRouter.use('/salescode', require('./salescode'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Guards every route that lists users or changes anyone's access. These used to trust whatever
+ * `actingEmail` the request carried, with no check on the caller at all, so anyone who knew the
+ * URL could grant themselves Admin on any app. Now the caller must send their Emami Apps session
+ * token (`Authorization: Bearer <token>`, the JWT the hub stores at sign-in), it must verify
+ * against HUB_AUTH_JWT_SECRET, and that person must be an active Super Admin or Admin — the same
+ * rule the hub's own Manage Access / Administration screens use to show themselves. The verified
+ * email is put on `req.verifiedEmail`, and routes use it as the acting user instead of any
+ * `actingEmail` the client sends, so the audit history and the access-level rules below can't be
+ * spoofed either. */
+const ACCESS_MANAGER_LEVELS = ['Super Admin', 'Admin'];
+async function requireAccessManager(req, res, next) {
+    const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+    if (!match || !JWT_SECRET) {
+        return res.status(401).json({ success: false, error: 'Sign in to Emami Apps to manage access.' });
+    }
+    let email;
+    try {
+        email = String(jwt.verify(match[1].trim(), JWT_SECRET)?.email || '').trim().toLowerCase();
+    } catch {
+        return res.status(401).json({ success: false, error: 'Your Emami Apps session has expired or is invalid. Please sign in again.' });
+    }
+    if (!email) {
+        return res.status(401).json({ success: false, error: 'Invalid Emami Apps session.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            'SELECT access_level, is_active FROM emami_apps.authorized_users WHERE email = $1',
+            [email]
+        );
+        const caller = rows[0];
+        if (!caller || caller.is_active === false || !ACCESS_MANAGER_LEVELS.includes(caller.access_level)) {
+            return res.status(403).json({ success: false, error: 'You do not have permission to manage access.' });
+        }
+        req.verifiedEmail = email;
+        next();
+    } catch (err) {
+        console.error('[access] Could not check the caller\'s access level:', err.message);
+        res.status(500).json({ success: false, error: 'Could not verify your access.' });
+    }
+}
 /** Most apps use the generic User/Admin pair. Audit & CAPA has its own role vocabulary — CQA
  * (elevated, equivalent to Admin) and Depot (base, equivalent to User) — see auditCapaSync.js,
  * which is what actually makes this role take effect inside that app. Provision Tracking
@@ -105,6 +148,9 @@ apiRouter.get('/access/authorized/:email', async (req, res) => {
 
 /** Manage Access — list every authorized user with active status, hub-wide access level, and
  * their per-app roles. */
+// Not behind requireAccessManager (yet): embedded-apps/timesheet/server calls this server-to-server,
+// with no user token, for its Manage Team "Add employee" search. It only reads; every route that
+// changes access is guarded.
 apiRouter.get('/access/users', async (req, res) => {
     try {
         const { rows } = await pool.query(`
@@ -147,7 +193,7 @@ apiRouter.get('/access/users', async (req, res) => {
  * revoked doesn't inflate these numbers. "Active" for the 7d/30d counts means both currently
  * authorized (is_active) AND recently logged in — a deactivated user who logged in yesterday
  * doesn't count, since they can no longer sign in. One round trip via scalar subqueries. */
-apiRouter.get('/admin/overview', async (req, res) => {
+apiRouter.get('/admin/overview', requireAccessManager, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             WITH scope AS (
@@ -201,7 +247,7 @@ apiRouter.get('/admin/overview', async (req, res) => {
  * emami_apps.user_profile_stats. LEFT JOINed (not INNER) against both authorized_user_apps and
  * user_profile_stats so a user with zero app grants or who has never logged in still appears
  * (with an empty apps array / null usage) instead of being dropped. One query, no N+1. */
-apiRouter.get('/admin/roster', async (req, res) => {
+apiRouter.get('/admin/roster', requireAccessManager, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT au.email,
@@ -256,7 +302,7 @@ apiRouter.get('/admin/roster', async (req, res) => {
  * getTopApps: only APP_OPEN events carry a reliable app_id today (FAVORITE_ADD/REMOVE don't), so
  * opens/first/last-opened is what's actually available. Covers every app the user has ever opened,
  * not just their currently-granted ones — useful if a grant was since revoked. */
-apiRouter.get('/admin/user/:email/apps', async (req, res) => {
+apiRouter.get('/admin/user/:email/apps', requireAccessManager, async (req, res) => {
     const email = String(req.params.email || '').trim().toLowerCase();
     if (!email) {
         return res.status(400).json({ success: false, error: 'email is required.' });
@@ -294,7 +340,7 @@ apiRouter.get('/admin/user/:email/apps', async (req, res) => {
  * Scoped through the same `scope` (active authorized users) as /admin/overview's own app_opens
  * CTE, so an app's total doesn't get inflated by opens from someone who's since been deactivated
  * or removed. */
-apiRouter.get('/admin/apps', async (req, res) => {
+apiRouter.get('/admin/apps', requireAccessManager, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             WITH scope AS (
@@ -335,7 +381,7 @@ apiRouter.get('/admin/apps', async (req, res) => {
  * above (that one's "every app one user opened"; this is "every user who opened one app"). Not
  * scoped to currently-granted users, same reasoning as that endpoint: someone whose grant has
  * since been revoked still shows here if they used it while they had access. */
-apiRouter.get('/admin/app/:appId/users', async (req, res) => {
+apiRouter.get('/admin/app/:appId/users', requireAccessManager, async (req, res) => {
     const appId = String(req.params.appId || '').trim();
     if (!appId) {
         return res.status(400).json({ success: false, error: 'appId is required.' });
@@ -412,9 +458,9 @@ apiRouter.get('/access/me', async (req, res) => {
  * this person logs in for the first time (see userProfile.js's upsertLoginProfile). There's no
  * users row to update yet at Add-User time. `actingEmail` (the admin doing the adding) is optional
  * but expected from the frontend — recorded on the USER_ADDED history row either way. */
-apiRouter.post('/access/users', async (req, res) => {
+apiRouter.post('/access/users', requireAccessManager, async (req, res) => {
     const email = (req.body?.email || '').trim().toLowerCase();
-    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
+    const actingEmail = req.verifiedEmail;
     if (!EMAIL_RE.test(email)) {
         return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
     }
@@ -457,9 +503,9 @@ apiRouter.post('/access/users', async (req, res) => {
  * Admin can't be removed this way either, same reasoning as the active-toggle guard below.
  * `actingEmail` comes as a query param (not a body) since this is a DELETE — matches how every
  * other DELETE route in this file already takes its target purely from the URL. */
-apiRouter.delete('/access/users/:email', async (req, res) => {
+apiRouter.delete('/access/users/:email', requireAccessManager, async (req, res) => {
     const email = req.params.email.toLowerCase();
-    const actingEmail = String(req.query?.actingEmail || '').trim().toLowerCase() || null;
+    const actingEmail = req.verifiedEmail;
     if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email)) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be removed.' });
     }
@@ -477,10 +523,10 @@ apiRouter.delete('/access/users/:email', async (req, res) => {
  * without losing their app grants. The permanent Super Admin can't be deactivated either — an
  * "access level can't be changed" guarantee is meaningless if the same account can just be locked
  * out instead. */
-apiRouter.patch('/access/users/:email/active', async (req, res) => {
+apiRouter.patch('/access/users/:email/active', requireAccessManager, async (req, res) => {
     const email = req.params.email.toLowerCase();
     const isActive = !!req.body?.isActive;
-    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
+    const actingEmail = req.verifiedEmail;
     if (PERMANENT_SUPER_ADMIN_EMAILS.includes(email) && !isActive) {
         return res.status(403).json({ success: false, error: 'The Super Admin account cannot be deactivated.' });
     }
@@ -523,9 +569,9 @@ apiRouter.patch('/access/users/:email/active', async (req, res) => {
  * `actingEmail` identifies the caller — same "email in the body, no bearer token" posture as the
  * rest of this backend; the frontend passes the signed-in user's own email (AuthContext).
  */
-apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
+apiRouter.patch('/access/users/:email/access-level', requireAccessManager, async (req, res) => {
     const targetEmail = req.params.email.toLowerCase();
-    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase();
+    const actingEmail = req.verifiedEmail;
     const accessLevel = req.body?.accessLevel;
 
     if (!ACCESS_LEVELS.includes(accessLevel) || accessLevel === 'Super Admin') {
@@ -584,10 +630,10 @@ apiRouter.patch('/access/users/:email/access-level', async (req, res) => {
 });
 
 /** Grant (or change the role on) one app for an existing authorized user. */
-apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
+apiRouter.post('/access/users/:email/apps/:appId', requireAccessManager, async (req, res) => {
     const role = req.body?.role;
     const depot = req.body?.depot || null;
-    const actingEmail = String(req.body?.actingEmail || '').trim().toLowerCase() || null;
+    const actingEmail = req.verifiedEmail;
     const appId = req.params.appId;
     const validRoles = validRolesForApp(appId);
     if (!validRoles.includes(role)) {
@@ -634,10 +680,10 @@ apiRouter.post('/access/users/:email/apps/:appId', async (req, res) => {
 });
 
 /** Revoke one app from an existing authorized user. */
-apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
+apiRouter.delete('/access/users/:email/apps/:appId', requireAccessManager, async (req, res) => {
     const email = req.params.email.toLowerCase();
     const appId = req.params.appId;
-    const actingEmail = String(req.query?.actingEmail || '').trim().toLowerCase() || null;
+    const actingEmail = req.verifiedEmail;
     try {
         const { rows: [before] } = await pool.query(
             'SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2',
@@ -672,7 +718,7 @@ apiRouter.delete('/access/users/:email/apps/:appId', async (req, res) => {
 /** Change-history audit feed for the Administration tab — pass ?email= for one user's own history
  * (the roster's user-detail dialog), omit it for the org-wide feed (the tab's own Change History
  * section). See accessHistory.js for what's recorded and by which routes above. */
-apiRouter.get('/access/history', async (req, res) => {
+apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
     const email = req.query?.email ? String(req.query.email).trim().toLowerCase() : undefined;
     try {
         const changes = await listAccessChanges({ targetEmail: email });

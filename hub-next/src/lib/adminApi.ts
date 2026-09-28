@@ -4,6 +4,7 @@
 // own file rather than accessApi.ts since that one owns Manage Access *mutations*; this is
 // read-only aggregate data for a different screen/audience.
 import type { AccessLevel, UserAppGrant } from '../types';
+import { authFetch } from './authFetch';
 
 const ACCESS_API_URL =
   process.env.NEXT_PUBLIC_ACCESS_API_URL || process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -42,7 +43,7 @@ export interface AdminRosterEntry {
 
 export async function getAdminOverview(): Promise<{ ok: boolean; overview?: AdminOverview; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/admin/overview`);
+    const res = await authFetch(`${ACCESS_API_URL}/admin/overview`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load the overview.' };
     return { ok: true, overview: data.overview };
@@ -53,7 +54,7 @@ export async function getAdminOverview(): Promise<{ ok: boolean; overview?: Admi
 
 export async function getAdminRoster(): Promise<{ ok: boolean; users?: AdminRosterEntry[]; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/admin/roster`);
+    const res = await authFetch(`${ACCESS_API_URL}/admin/roster`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load the user roster.' };
     return { ok: true, users: data.users };
@@ -72,7 +73,7 @@ export interface AdminUserAppStat {
 /** Per-app drill-down for one user — backs the app-tile tap in the roster's user-detail dialog. */
 export async function getAdminUserAppStats(email: string): Promise<{ ok: boolean; apps?: AdminUserAppStat[]; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/admin/user/${encodeURIComponent(email)}/apps`);
+    const res = await authFetch(`${ACCESS_API_URL}/admin/user/${encodeURIComponent(email)}/apps`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load per-app stats.' };
     return { ok: true, apps: data.apps };
@@ -93,7 +94,7 @@ export interface AdminAppStat {
  * Backs the "App-wise Usage" sheet in the Excel export. */
 export async function getAdminAppStats(): Promise<{ ok: boolean; apps?: AdminAppStat[]; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/admin/apps`);
+    const res = await authFetch(`${ACCESS_API_URL}/admin/apps`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load app-wise usage.' };
     return { ok: true, apps: data.apps };
@@ -114,7 +115,7 @@ export interface AdminAppUserStat {
  * per-app drill-down dialog and its own standalone Excel export. */
 export async function getAdminAppUserStats(appId: string): Promise<{ ok: boolean; users?: AdminAppUserStat[]; error?: string }> {
   try {
-    const res = await fetch(`${ACCESS_API_URL}/admin/app/${encodeURIComponent(appId)}/users`);
+    const res = await authFetch(`${ACCESS_API_URL}/admin/app/${encodeURIComponent(appId)}/users`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load per-user stats for this app.' };
     return { ok: true, users: data.users };
