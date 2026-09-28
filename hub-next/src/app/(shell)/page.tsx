@@ -4,7 +4,6 @@ import React, { useRef } from 'react';
 import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
-import CompanyPulseCard from '../../components/CompanyPulseCard';
 import { useAuth } from '../../context/AuthContext';
 import { useUnlockedAppIds } from '../../hooks/useAppAccess';
 import { useRecentApps } from '../../hooks/useRecentApps';
@@ -174,8 +173,6 @@ export default function HomePage() {
   return (
     <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', padding: 16, paddingBottom: 40 }}>
       <DashboardHero name={profile?.name || userEmail || ''} />
-
-      <CompanyPulseCard />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <div style={{ width: 26, height: 26, borderRadius: radii.md, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
