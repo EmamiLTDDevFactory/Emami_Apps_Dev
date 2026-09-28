@@ -911,7 +911,7 @@
       <div class="hero-band">
         <div class="hb-top">
           <div class="hb-title">
-            <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><button type="button" data-nav="master">Master Data</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page" id="dsCrumb"></span></nav>
+            <nav class="breadcrumb" aria-label="Breadcrumb"><button type="button" data-nav="home"><span data-icon="home" data-size="13"></span>Home</button><span class="bc-sep" aria-hidden="true">›</span><button type="button" data-nav="master" id="dsParent">Master Data</button><span class="bc-sep" aria-hidden="true">›</span><span aria-current="page" id="dsCrumb"></span></nav>
             <h1 class="page-title" id="dsTitle"></h1>
             <p class="page-sub" id="dsSub"></p>
             <div class="head-meta">
@@ -1087,7 +1087,8 @@
     { id: 'transactional', label: 'Transactional Data', icon: 'fileText', color: '#0D9488' },
   ];
 
-  // Every master tile opens the shared dataset view (DATASETS below) for its SAP API type.
+  // Every master tile opens the shared dataset view (DATASETS below) for its SAP API type; so do
+  // the transactional tiles (TRANSACTIONAL).
   const MASTER = [
     { title: 'Product Master', desc: 'View product master data', icon: 'box', hue: 'blue', view: 'product', api: 'PRD' },
     { title: 'Distributor Master', desc: 'View distributor master data', icon: 'users', hue: 'green', view: 'distributor', api: 'DIS' },
@@ -1100,14 +1101,17 @@
     { title: 'Distributor Credit Master', desc: 'View distributor credit master data', icon: 'card', hue: 'green', view: 'credit', api: 'DCR' },
   ];
 
+  // Transactional tiles open the same dataset view. `fetch` = SAP pulls the data from Salescode
+  // (lines in the log's Response); the rest are SAP pushes (lines in its Request, as for masters).
+  // E-Claim Push and QPS Push have no SAP API type yet, so they stay "coming soon".
   const TRANSACTIONAL = [
-    { title: 'Primary Fetch', desc: 'View primary fetch data', icon: 'download', hue: 'blue' },
-    { title: 'Primary Returns', desc: 'View primary returns data', icon: 'redo', hue: 'orange' },
-    { title: 'Sale Order Push', desc: 'View sale order push data', icon: 'cart', hue: 'teal' },
-    { title: 'Return Order Push', desc: 'View return order push data', icon: 'undo', hue: 'red' },
-    { title: 'E-Claim Fetch', desc: 'View e-claim fetch data', icon: 'fileText', hue: 'purple' },
+    { title: 'Primary Fetch', desc: 'View primary fetch data', icon: 'download', hue: 'blue', view: 'primary-fetch', api: 'PIF', fetch: true },
+    { title: 'Primary Returns', desc: 'View primary returns data', icon: 'redo', hue: 'orange', view: 'primary-returns', api: 'PIR', fetch: true },
+    { title: 'Sale Order Push', desc: 'View sale order push data', icon: 'cart', hue: 'teal', view: 'sale-order-push', api: 'SOP' },
+    { title: 'Return Order Push', desc: 'View return order push data', icon: 'undo', hue: 'red', view: 'return-order-push', api: 'RTP' },
+    { title: 'E-Claim Fetch', desc: 'View e-claim fetch data', icon: 'fileText', hue: 'purple', view: 'eclaim-fetch', api: 'ECL', fetch: true },
     { title: 'E-Claim Push', desc: 'View e-claim push data', icon: 'send', hue: 'teal' },
-    { title: 'QPS Fetch', desc: 'View QPS fetch data', icon: 'search', hue: 'amber' },
+    { title: 'QPS Fetch', desc: 'View QPS fetch data', icon: 'search', hue: 'amber', view: 'qps-fetch', api: 'QPS', fetch: true },
     { title: 'QPS Push', desc: 'View QPS push data', icon: 'upload', hue: 'blue' },
   ];
 
@@ -1245,7 +1249,11 @@
   // Each sidebar entry is its own view, kept in the URL hash (#master / #transactional; none for
   // Home) so Back/Forward and a refresh land on the same panel. Every master tile opens the shared
   // dataset view under its own hash (#pricing, #batch, …); the Master Data entry stays highlighted.
-  const DATASET_VIEWS = Object.fromEntries(MASTER.map((m) => [m.view, { parent: 'master', label: m.title, api: m.api }]));
+  // Transactional tiles likewise (#qps-fetch, …), under Transactional Data.
+  const DATASET_VIEWS = Object.fromEntries([
+    ...MASTER.map((m) => [m.view, { parent: 'master', label: m.title, api: m.api }]),
+    ...TRANSACTIONAL.filter((t) => t.view).map((t) => [t.view, { parent: 'transactional', label: t.title, api: t.api, fetch: Boolean(t.fetch) }]),
+  ]);
   function viewFromHash() {
     const id = window.location.hash.slice(1);
     return NAV.some((n) => n.id === id) || DATASET_VIEWS[id] ? id : 'home';
@@ -1312,33 +1320,56 @@
   // OData shapes the grid renders ("/Date(ms)/", "PT..H..M..S"; SAP's empty 0000-00-00 → blank),
   // and each line is tagged with the push it came in. Only records are kept — the payload's
   // accessToken is dropped.
+  // Fetch logs (PIF, PIR, ECL, QPS — SAP pulling from Salescode) are the other way round: the
+  // Request is only the query (startTime/endTime window) and the lines are the Response's
+  // { <msgType>: { data: [...] } }. A data entry with header + items[] (+ conditions[], paired by
+  // position) is a document, flattened to one line per item carrying its header's fields.
   const PUSH_STATUS = { S: 'Success', E: 'Error', W: 'Warning', I: 'Info', A: 'Aborted' };
+  const payloadBody = (json) => Object.values(json || {}).find((v) => v && typeof v === 'object' && !Array.isArray(v)) || {};
+  function fetchLines(doc) {
+    if (!Array.isArray(doc?.items)) return [{ fields: doc, raw: doc }];
+    return doc.items.map((item, i) => {
+      const { itmNumber, ...cond } = doc.conditions?.[i] || {};
+      return { fields: { ...(doc.header || {}), ...cond, ...item }, raw: { header: doc.header, item, condition: doc.conditions?.[i] } };
+    });
+  }
+  const logWhen = (s) => (typeof s === 'string' && s ? s.replace('T', ' ').slice(0, 16) : '');
   function recordsFromLog(log) {
     let req = null; let resp = null;
     try { req = JSON.parse(log.Request); } catch { /* unreadable payload: no lines */ }
     try { resp = JSON.parse(log.Response); } catch { /* optional */ }
-    const records = Object.values(req || {}).find((v) => Array.isArray(v?.records))?.records || [];
-    const batch = Object.values(resp || {}).find((v) => v && typeof v === 'object' && !Array.isArray(v)) || {};
-    const shape = (v) => {
+    const reqBody = payloadBody(req);
+    const respBody = payloadBody(resp);
+    const fetched = !Array.isArray(reqBody.records) && Array.isArray(respBody.data);
+    const lines = fetched ? respBody.data.flatMap(fetchLines) : (reqBody.records || []).map((rec) => ({ fields: rec, raw: rec }));
+    const shape = (v, k) => {
       if (typeof v !== 'string') return v;
       const s = v.trim();
-      if (s === '0000-00-00') return '';
+      if (s === '0000-00-00' || s === 'null') return '';
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `/Date(${Date.parse(`${s}T00:00:00Z`)})/`;
+      // SAP-style YYYYMMDD (e.g. PIR's purchDate) — only on *Date fields, so 8-digit codes stay codes.
+      const d8 = /Date$/.test(k) && /^(\d{4})(\d{2})(\d{2})$/.exec(s);
+      if (d8 && !Number.isNaN(Date.parse(`${d8[1]}-${d8[2]}-${d8[3]}T00:00:00Z`))) return `/Date(${Date.parse(`${d8[1]}-${d8[2]}-${d8[3]}T00:00:00Z`)})/`;
       const t = /^(\d{2}):(\d{2}):(\d{2})$/.exec(s);
       return t ? `PT${t[1]}H${t[2]}M${t[3]}S` : s;
     };
     const cap = (k) => k[0].toUpperCase() + k.slice(1);
-    return records.map((rec) => {
+    return lines.map(({ fields, raw }) => {
       const row = {};
-      Object.entries(rec).forEach(([k, v]) => { if (k !== 'controller' && k) row[cap(k)] = shape(v); });
+      Object.entries(fields || {}).forEach(([k, v]) => { if (k !== 'controller' && k && (v === null || typeof v !== 'object')) row[cap(k)] = shape(v, k); });
       row.SentOn = log.Erdat;
       row.SentAt = log.Ertim;
       row.PushStatus = PUSH_STATUS[log.MsgTyp] || log.MsgTyp || '';
       row.PushMessage = log.Message || '';
-      row.BatchId = batch.batchId || '';
+      if (fetched) {
+        row.WindowFrom = logWhen(reqBody.startTime);
+        row.WindowTo = logWhen(reqBody.endTime);
+      } else {
+        row.BatchId = respBody.batchId || '';
+      }
       // The record line untouched, for the JSON view. Non-enumerable so search, CSV and the
       // column inference below never see it.
-      Object.defineProperty(row, 'raw', { value: rec });
+      Object.defineProperty(row, 'raw', { value: raw });
       return row;
     });
   }
@@ -1358,7 +1389,58 @@
     { key: 'BatchId', label: 'Salescode batch', type: 'code', group: 'push' },
   ];
   const PUSH_FILTER = { key: 'PushStatus', label: 'Push status' };
+  // Fetch datasets get these instead: when SAP fetched, how it went and the window it asked for.
+  // SAP re-runs a fetch over an overlapping window, so the same claim can come in more than one
+  // run — the Fetch run filter narrows to one.
+  const FETCH_GROUP = { push: { label: 'Salescode fetch', color: '#0891B2' } };
+  const FETCH_COLS = [
+    { key: 'SentOn', label: 'Fetched on', type: 'date', group: 'push', core: true },
+    { key: 'SentAt', label: 'Fetched at', type: 'time', group: 'push', core: true },
+    { key: 'PushStatus', label: 'Fetch status', type: 'tag', group: 'push', core: true },
+    { key: 'PushMessage', label: 'SAP message', type: 'text', group: 'push', wide: true },
+    { key: 'WindowFrom', label: 'Window from', type: 'text', group: 'push' },
+    { key: 'WindowTo', label: 'Window to', type: 'text', group: 'push' },
+  ];
+  const FETCH_FILTERS = [
+    { key: 'PushStatus', label: 'Fetch status' },
+    { key: 'run', label: 'Fetch run', value: (r) => `${isoDate(r.SentOn)} ${fmtTime(r.SentAt)}`, option: (v) => `${fmtDay(utc(v.slice(0, 10)))} · ${v.slice(11)}` },
+  ];
+  const logCols = (fetch) => (fetch ? FETCH_COLS : PUSH_COLS);
   const col = (key, label, type, group, extra) => ({ key, label, type, group, ...extra });
+  // E-Claim and QPS fetches share one claim-line layout; only the pinned key and noun differ.
+  const claimDataset = ({ noun, sub, pinned, placeholder }) => ({
+    noun, sub,
+    groups: {
+      claim: { label: 'Claim', color: '#9333EA' }, cust: { label: 'Distributor', color: '#2563EB' }, geo: { label: 'Geography', color: '#0D9488' },
+      mat: { label: 'Material', color: '#EA580C' }, value: { label: 'Value', color: '#16A34A' }, audit: { label: 'Workflow', color: '#64748B' },
+    },
+    cols: [
+      col(pinned, pinned === 'PromoId' ? 'Promo ID' : 'Claim ID', 'code', 'claim', { core: true, pinned: true }),
+      col(pinned === 'PromoId' ? 'ClaimId' : 'PromoId', pinned === 'PromoId' ? 'Claim ID' : 'Promo ID', 'code', 'claim', { core: true }),
+      col('Indicator', 'Indicator', 'tag', 'claim'), col('ClaimStatus', 'Status', 'tag', 'claim', { core: true }),
+      col('Consumption', 'Consumption', 'tag', 'claim', { core: true }),
+      col('Year', 'Year', 'code', 'claim'), col('Month', 'Month', 'code', 'claim', { core: true }),
+      col('DbCode', 'Distributor', 'code', 'cust', { core: true }), col('DistributorName', 'Distributor name', 'text', 'cust', { core: true, wide: true }),
+      col('SalesOrg', 'Sales org.', 'tag', 'cust'),
+      col('Zone', 'Zone', 'text', 'geo'), col('Region', 'Region', 'tag', 'geo', { core: true }), col('CommonRegion', 'State', 'text', 'geo', { core: true }), col('Depot', 'Depot', 'tag', 'geo'),
+      col('MaterialNo', 'Material', 'code', 'mat', { core: true }), col('Qty', 'Qty', 'qty', 'mat'),
+      col('SecondarySalesValue', 'Secondary sales', 'money', 'value', { core: true }),
+      col('InitialClaimAmount', 'Initial claim', 'money', 'value'),
+      col('FinalClaimAmount', 'Final claim', 'money', 'value', { core: true, strong: true }),
+      col('CreatedOn', 'Created on', 'date', 'audit', { core: true }), col('CreatedAt', 'Created at', 'text', 'audit'),
+      col('PostingDate', 'Posted on', 'date', 'audit'), col('VerifiedBy', 'Verified by', 'code', 'audit'), col('ApprovedBy', 'Approved by', 'code', 'audit'),
+      col('Narration', 'Narration', 'text', 'audit', { wide: true }),
+    ],
+    filters: [
+      { key: 'ClaimStatus', label: 'Status' }, { key: 'Consumption', label: 'Consumption' },
+      { key: 'DbCode', label: 'Distributor', option: (v, r) => `${unpad(v)} · ${r.DistributorName || ''}` },
+      { key: 'Region', label: 'Region' }, { key: 'CommonRegion', label: 'State' }, { key: 'Month', label: 'Month' },
+      { key: 'PromoId', label: 'Promo ID' }, { key: 'MaterialNo', label: 'Material', option: (v) => unpad(v) },
+    ],
+    search: ['ClaimId', 'PromoId', 'DbCode', 'DistributorName', 'MaterialNo'], placeholder,
+    totals: { SecondarySalesValue: 'money', InitialClaimAmount: 'money', FinalClaimAmount: 'money' },
+    bar: 'FinalClaimAmount',
+  });
   const DATASETS = {
     product: {
       noun: 'product record', sub: 'Product master records SAP sent to Salescode in a date range, straight from SAP.',
@@ -1502,6 +1584,59 @@
       totals: { CreditLimit: 'money', Receivables: 'money', SpecialLiability: 'money' },
       bar: 'CreditLimit',
     },
+
+    // ---- Transactional ----
+    'primary-fetch': {
+      // No fetches logged on NGD yet to model columns on — built from the payload, like Product.
+      noun: 'primary line', sub: 'Primary data SAP fetched from Salescode in a date range, straight from SAP’s fetch log.',
+    },
+    'primary-returns': {
+      noun: 'return line', sub: 'Primary return documents SAP fetched from Salescode in a date range — one line per returned item, with its return header, straight from SAP’s fetch log.',
+      groups: { doc: { label: 'Return', color: '#EA580C' }, cust: { label: 'Distributor', color: '#2563EB' }, item: { label: 'Item', color: '#0D9488' }, value: { label: 'Value', color: '#16A34A' } },
+      cols: [
+        col('PurchNoC', 'Return reference', 'code', 'doc', { core: true, pinned: true }), col('DocType', 'Doc. type', 'tag', 'doc', { core: true }),
+        col('PurchDate', 'Return date', 'date', 'doc', { core: true }), col('PrimaryInvoiceNumber', 'Primary invoice', 'code', 'doc', { core: true }),
+        col('DistributorCode', 'Distributor', 'code', 'cust', { core: true }), col('SalesOrg', 'Sales org.', 'tag', 'cust'), col('DistrChan', 'Distr. channel', 'tag', 'cust'),
+        col('ItmNumber', 'Item', 'code', 'item'), col('Material', 'Material', 'code', 'item', { core: true }), col('Plant', 'Plant', 'tag', 'item'),
+        col('TargetQty', 'Qty', 'qty', 'item', { core: true }), col('SalesUnit', 'Unit', 'text', 'item', { core: true }),
+        col('CondValue', 'Condition value', 'money', 'value', { core: true, strong: true }),
+      ],
+      filters: [
+        { key: 'DocType', label: 'Doc. type' }, { key: 'DistributorCode', label: 'Distributor', option: (v) => unpad(v) },
+        { key: 'Material', label: 'Material', option: (v) => unpad(v) }, { key: 'SalesUnit', label: 'Unit' },
+      ],
+      search: ['PurchNoC', 'PrimaryInvoiceNumber', 'Material', 'DistributorCode'], placeholder: 'Search return reference, invoice, material…',
+      totals: { CondValue: 'money' },
+    },
+    'sale-order-push': {
+      noun: 'order', sub: 'Sale order numbers SAP sent back to Salescode in a date range — the Salescode order and the SAP sales order created for it, straight from SAP.',
+      groups: { order: { label: 'Order', color: '#0D9488' } },
+      cols: [
+        col('OrderNumber', 'Salescode order', 'code', 'order', { core: true, pinned: true }),
+        col('SapOrderNumber', 'SAP sales order', 'code', 'order', { core: true }),
+      ],
+      search: ['OrderNumber', 'SapOrderNumber'], placeholder: 'Search Salescode or SAP order…',
+    },
+    'return-order-push': {
+      noun: 'credit note', sub: 'Credit notes SAP sent to Salescode for returns and claims in a date range — source, SAP references and credit note, straight from SAP.',
+      groups: { src: { label: 'Source', color: '#DC2626' }, sap: { label: 'SAP documents', color: '#4F3FD6' }, cust: { label: 'Distributor', color: '#2563EB' } },
+      cols: [
+        col('ReferenceNumber', 'Salescode reference', 'code', 'src', { core: true, pinned: true }), col('SourceType', 'Source type', 'tag', 'src', { core: true }),
+        col('ErpReferenceNumber', 'SAP return order', 'code', 'sap', { core: true }), col('CreditNoteNumber', 'Credit note', 'code', 'sap', { core: true }),
+        col('CreditNoteDate', 'Credit note date', 'date', 'sap', { core: true }), col('AccountingNumber', 'Accounting doc.', 'code', 'sap', { core: true }),
+        col('DistributorCode', 'Distributor', 'code', 'cust', { core: true }), col('Month', 'Month', 'code', 'cust'), col('Year', 'Year', 'code', 'cust'),
+      ],
+      filters: [{ key: 'SourceType', label: 'Source type' }, { key: 'DistributorCode', label: 'Distributor', option: (v) => unpad(v) }, { key: 'Year', label: 'Year' }, { key: 'Month', label: 'Month' }],
+      search: ['ReferenceNumber', 'ErpReferenceNumber', 'CreditNoteNumber', 'AccountingNumber', 'DistributorCode'], placeholder: 'Search reference, credit note, SAP document…',
+    },
+    'eclaim-fetch': claimDataset({
+      noun: 'e-claim line', pinned: 'ClaimId', placeholder: 'Search claim, promo, distributor, material…',
+      sub: 'E-claims SAP fetched from Salescode in a date range — claim, distributor, secondary sales and claim amounts, straight from SAP’s fetch log.',
+    }),
+    'qps-fetch': claimDataset({
+      noun: 'QPS claim line', pinned: 'PromoId', placeholder: 'Search promo, claim, distributor, material…',
+      sub: 'QPS claims SAP fetched from Salescode in a date range — scheme, distributor, secondary sales and claim amounts, straight from SAP’s fetch log.',
+    }),
   };
 
   // Fields a config doesn't cover: "crsSkuGroupCode" → "Crs sku group code", typed from the values.
@@ -1518,12 +1653,12 @@
     if (vals.every((v) => /^\d+$/.test(String(v)))) return 'code';
     return 'text';
   }
-  function buildColumns(conf, rows) {
-    const known = new Set([...(conf.cols || []), ...PUSH_COLS].map((c) => c.key));
+  function buildColumns(conf, rows, fetch) {
+    const known = new Set([...(conf.cols || []), ...logCols(fetch)].map((c) => c.key));
     const extra = [];
     rows.slice(0, 500).forEach((r) => Object.keys(r).forEach((k) => { if (!known.has(k)) { known.add(k); extra.push(k); } }));
     const auto = extra.map((k) => ({ key: k, label: humanize(k), type: inferType(rows, k), group: 'data', core: true }));
-    const cols = [...(conf.cols || []), ...auto, ...PUSH_COLS];
+    const cols = [...(conf.cols || []), ...auto, ...logCols(fetch)];
     if (!cols.some((c) => c.pinned)) cols[0] = { ...cols[0], pinned: true };
     return cols;
   }
@@ -1580,10 +1715,11 @@
   const states = {};
   function datasetState(id) {
     const conf = DATASETS[id] || {};
+    const { api, label, parent, fetch = false } = DATASET_VIEWS[id];
     states[id] ||= {
-      id, conf, api: DATASET_VIEWS[id].api, title: DATASET_VIEWS[id].label,
-      groups: { ...(conf.groups || {}), data: { label: 'Record', color: '#4F3FD6' }, ...PUSH_GROUP },
-      cols: buildColumns(conf, []), filters: [...(conf.filters || []), PUSH_FILTER].map((f) => ({ value: (r) => r[f.key], ...f })),
+      id, conf, api, title: label, parent, fetch,
+      groups: { ...(conf.groups || {}), data: { label: 'Record', color: '#4F3FD6' }, ...(fetch ? FETCH_GROUP : PUSH_GROUP) },
+      cols: buildColumns(conf, [], fetch), filters: [...(conf.filters || []), ...(fetch ? FETCH_FILTERS : [PUSH_FILTER])].map((f) => ({ value: (r) => r[f.key], ...f })),
       rows: [], range: null, fetchedAt: null, sort: { key: 'SentOn', dir: -1 }, filterValues: {}, search: '', controller: null, page: 1,
       stateHtml: null, hidden: new Set(Array.isArray(ui.hidden[id]) ? ui.hidden[id] : []),
     };
@@ -1591,6 +1727,7 @@
   }
   let ds = datasetState('pricing');
   const visibleCols = () => ds.cols.filter((c) => c.pinned || !ds.hidden.has(c.key));
+  const sentVerb = () => (ds.fetch ? 'fetched from Salescode' : 'sent to Salescode');
   const nouns = () => { const n = ds.conf.noun || 'record'; return /(s|x|ch|sh)$/.test(n) ? `${n}es` : `${n}s`; }; // batch → batches
 
   // Switch the shared dataset view to another master: header text, then whatever that master
@@ -1603,7 +1740,11 @@
     const noun = nouns();
     $('dsCrumb').textContent = ds.title;
     $('dsTitle').textContent = ds.title;
-    $('dsSub').textContent = ds.conf.sub || `${ds.title} records SAP sent to Salescode in a date range, straight from SAP.`;
+    $('dsSub').textContent = ds.conf.sub || `${ds.title} records SAP ${sentVerb()} in a date range, straight from SAP.`;
+    $('dsParent').dataset.nav = ds.parent;
+    $('dsParent').textContent = NAV.find((n) => n.id === ds.parent).label;
+    $('datasetView').style.setProperty('--item', ds.parent === 'master' ? 'var(--master)' : 'var(--trans)');
+    $('rangeLabel').textContent = ds.fetch ? 'Fetched on' : 'Sent on';
     $('dsSource').textContent = `SAP ECC · SClogSet · ${ds.api}`;
     $('dsSource').title = `SAP OData service ZSALESCODE_ODATA_SRV_SRV, entity set SClogSet, API type ${ds.api}`;
     $('dsRowsLabel').textContent = noun[0].toUpperCase() + noun.slice(1);
@@ -1673,8 +1814,8 @@
     </div>`;
   }
   function idleState() {
-    setDsState(stateCard({ iconName: 'calendar', title: 'Pick a sent-on date range',
-      body: ds.conf.idle || `Choose From and To dates (or a quick range) and fetch — you’ll get every ${esc(ds.conf.noun || 'record')} SAP sent to Salescode for ${esc(ds.title)} in that period.` }));
+    setDsState(stateCard({ iconName: 'calendar', title: `Pick a ${ds.fetch ? 'fetched-on' : 'sent-on'} date range`,
+      body: ds.conf.idle || `Choose From and To dates (or a quick range) and fetch — you’ll get every ${esc(ds.conf.noun || 'record')} SAP ${sentVerb()} for ${esc(ds.title)} in that period.` }));
     ds.stateHtml = null; // the idle card isn't a result to come back to
   }
   function loadingState() {
@@ -1743,7 +1884,7 @@
       if (!res.ok) throw Object.assign(new Error(`SAP responded ${res.status}`), { kind: 'sap', status: res.status });
       const body = await res.json().catch(() => { throw Object.assign(new Error('bad JSON'), { kind: 'sap' }); });
       st.rows = (body?.d?.results ?? []).flatMap(recordsFromLog);
-      st.cols = buildColumns(st.conf, st.rows);
+      st.cols = buildColumns(st.conf, st.rows, st.fetch);
       st.range = { from, to };
       st.fetchedAt = new Date();
       st.filterValues = {};
@@ -1754,7 +1895,7 @@
       setHeaderMeta();
       if (!st.rows.length) {
         setDsState(stateCard({ iconName: 'search', title: `No ${esc(nouns())} in this range`,
-          body: `SAP sent no ${esc(st.title)} data (API type ${st.api}) to Salescode between ${fmtDay(utc(from))} and ${fmtDay(utc(to))}. Try a wider range.` }));
+          body: `SAP ${st.fetch ? 'fetched no' : 'sent no'} ${esc(st.title)} data (API type ${st.api}) ${st.fetch ? 'from' : 'to'} Salescode between ${fmtDay(utc(from))} and ${fmtDay(utc(to))}. Try a wider range.` }));
         return;
       }
       setDsState('');
