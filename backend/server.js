@@ -6,6 +6,7 @@ const { pool, testConnection, runMigrations, PERMANENT_SUPER_ADMIN_EMAILS } = re
 const { formatTimeSpent, normalizeIndianMobile } = require('./userProfile');
 const { syncAuditCapaAccess, revokeAuditCapaAccess } = require('./auditCapaSync');
 const { recordAccessChange, listAccessChanges } = require('./accessHistory');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./sessionAuth');
 
@@ -72,6 +73,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * `actingEmail` the client sends, so the audit history and the access-level rules below can't be
  * spoofed either. */
 const ACCESS_MANAGER_LEVELS = ['Super Admin', 'Admin'];
+/** Server-to-server callers (embedded-apps/timesheet/server's Add employee search) have no user
+ * session, so they prove themselves with HUB_INTERNAL_API_SECRET in an X-Internal-Secret header
+ * instead — the same shared-secret pattern as AUDIT_CAPA_SYNC_SECRET. Unset on either side means
+ * no internal access at all, never open access. */
+const HUB_INTERNAL_API_SECRET = process.env.HUB_INTERNAL_API_SECRET || '';
+function isInternalCaller(req) {
+    const sent = Buffer.from(String(req.get('x-internal-secret') || ''));
+    const expected = Buffer.from(HUB_INTERNAL_API_SECRET);
+    return expected.length > 0 && sent.length === expected.length && crypto.timingSafeEqual(sent, expected);
+}
+function requireAccessManagerOrInternal(req, res, next) {
+    if (isInternalCaller(req)) return next();
+    return requireAccessManager(req, res, next);
+}
+
 async function requireAccessManager(req, res, next) {
     const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     if (!match || !JWT_SECRET) {
@@ -148,10 +164,9 @@ apiRouter.get('/access/authorized/:email', async (req, res) => {
 
 /** Manage Access — list every authorized user with active status, hub-wide access level, and
  * their per-app roles. */
-// Not behind requireAccessManager (yet): embedded-apps/timesheet/server calls this server-to-server,
-// with no user token, for its Manage Team "Add employee" search. It only reads; every route that
-// changes access is guarded.
-apiRouter.get('/access/users', async (req, res) => {
+// The full user list (emails, mobiles, grants): the hub's Manage Access screen (signed-in Super
+// Admin / Admin) or TimeSheet's server (internal secret) only.
+apiRouter.get('/access/users', requireAccessManagerOrInternal, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT au.email,

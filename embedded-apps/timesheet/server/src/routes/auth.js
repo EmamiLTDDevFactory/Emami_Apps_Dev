@@ -33,7 +33,12 @@ const APP_ID = 'timesheet'
  * than leaking those constants into users.js too. */
 export async function fetchAllTimesheetGrantedEmails() {
   try {
-    const res = await fetch(`${HUB_ACCESS_API_BASE}/access/users`)
+    // The hub only lists users to a signed-in Manage Access admin or to a server holding the shared
+    // HUB_INTERNAL_API_SECRET (backend/server.js requireAccessManagerOrInternal) - this server has
+    // no user session here, so it sends the secret.
+    const res = await fetch(`${HUB_ACCESS_API_BASE}/access/users`, {
+      headers: process.env.HUB_INTERNAL_API_SECRET ? { 'X-Internal-Secret': process.env.HUB_INTERNAL_API_SECRET } : {},
+    })
     const data = await res.json().catch(() => null)
     if (!res.ok || !data?.success) return []
     return (data.users || [])
