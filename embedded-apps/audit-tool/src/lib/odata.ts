@@ -19,10 +19,16 @@
 //     formatting/comparison code ports unchanged.
 //  3. create() payloads are serialized the way ODataModel does it: Date -> "/Date(ms)/",
 //     {ms, __edmType:'Edm.Time'} -> "PT..H..M..S".
+// One deliberate addition over the Fiori: every read carries the signed-in hub user's email —
+// `Email eq '<email>'` ANDed onto each EntitySet $filter, and the email as the key of the blank
+// "current user" keyed reads (CheckAuditHeadSet(''), AuditNameCheckSet('')) — because through the
+// shared gateway SAP can no longer tell the user from the logon (sy-uname). create() payloads are
+// unchanged.
 // Errors reject with an ODataError carrying the same {message, statusCode, responseText} shape
 // ODataModel passes to error callbacks, so the Fiori app's own JSON.parse(oError.responseText)
 // message extraction ports unchanged too (see sapErrorMessage).
 import axios, { AxiosError } from 'axios';
+import { getHubEmail } from './hubEmailLogin';
 
 const SAP_BASE_URL =
   'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_MSD_TOOL_INTERNAL_AUDIT_SRV';
@@ -353,11 +359,27 @@ export interface ReadOptions {
   urlParameters?: Record<string, string>;
 }
 
-function buildQuery(opts: ReadOptions | undefined): string {
+/** The signed-in hub user's email. The Fiori app let SAP identify the user from the SAP logon
+ * (sy-uname); through the shared Azure gateway every call runs as the gateway's technical user, so
+ * the email is passed explicitly on every read instead — same posture as PO Approval
+ * (fm-po-deviation/src/lib/sapClient.ts). */
+function loginEmail(): string {
+  return (getHubEmail() || '').trim();
+}
+
+/** Adds `Email eq '<login email>'` to a read's filters. It's a separate path from every other
+ * filter, so UI5-style grouping ANDs it with the screen's own $filter. */
+function withEmailFilter(filters: Filter[] | undefined): Filter[] | undefined {
+  const email = loginEmail();
+  if (!email) return filters;
+  return [...(filters || []), F('Email', 'EQ', email)];
+}
+
+function buildQuery(opts: ReadOptions | undefined, includeEmail = true): string {
   const parts: string[] = [];
   const params = { ...(opts?.urlParameters || {}) };
   for (const [k, v] of Object.entries(params)) parts.push(`${k}=${encodeURIComponent(v)}`);
-  const filter = buildFilterString(opts?.filters);
+  const filter = buildFilterString(includeEmail ? withEmailFilter(opts?.filters) : opts?.filters);
   if (filter) parts.push(`$filter=${encodeURIComponent(filter)}`);
   parts.push('$format=json');
   return parts.join('&');
@@ -386,8 +408,12 @@ export async function read<T = any>(entitySet: string, opts?: ReadOptions): Prom
 
 /** oModel.read("/EntitySet('key')") — a keyed single-entity read; resolves to the entity. */
 export async function readEntity<T = any>(path: string, opts?: ReadOptions): Promise<T> {
+  // A keyed read can't take a $filter, so the login email goes in as the key instead of the
+  // Fiori's blank "current user" key: CheckAuditHeadSet('') -> CheckAuditHeadSet('<email>').
+  const email = loginEmail();
+  const keyed = email ? path.replace(/\(''\)$/, `('${encodeURIComponent(email.replace(/'/g, "''"))}')`) : path;
   try {
-    const { data } = await http.get(`${normalizePath(path)}?${buildQuery(opts)}`);
+    const { data } = await http.get(`${normalizePath(keyed)}?${buildQuery(opts, false)}`);
     return fromWire(data?.d ?? data) as T;
   } catch (err) {
     throw toODataError(err);
