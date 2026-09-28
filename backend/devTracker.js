@@ -1,6 +1,22 @@
 const express = require('express');
 const crypto = require('crypto');
 const { pool } = require('./db');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('./sessionAuth');
+
+// Who is calling: the email inside the caller's Emami Apps session token (the JWT the hub stores
+// at sign-in, sent as "Authorization: Bearer <token>"), verified against HUB_AUTH_JWT_SECRET.
+// This replaces trusting the X-User-Email header, which anyone could set to anyone's email to
+// read, edit or delete every item. Returns '' when there's no valid token.
+function verifiedHubEmail(req) {
+    const match = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '');
+    if (!match || !JWT_SECRET) return '';
+    try {
+        return String(jwt.verify(match[1].trim(), JWT_SECRET)?.email || '').trim().toLowerCase();
+    } catch {
+        return '';
+    }
+}
 
 const router = express.Router();
 
@@ -53,7 +69,7 @@ function coercePmNumbers(row) {
 // (see the recent-activity feed) to a real person instead of leaving them anonymous. Falls back to
 // the raw email, then to null, so a lookup failure never blocks the actual create/update.
 async function resolveDisplayName(req) {
-    const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+    const email = (req.verifiedEmail || '');
     if (!email) return null;
     try {
         const { rows } = await pool.query('SELECT name FROM emami_apps.users WHERE email = $1', [email]);
@@ -341,12 +357,12 @@ initSchema().catch((err) => console.error('[dev-tracker] Schema init failed:', e
 // same table useUnlockedAppIds() reads to decide whether the Dev Tracker tile even shows for a
 // user, so a real user always already has a row here. Before this, these routes had no identity
 // check of any kind: pasting the API URL directly, without ever signing into the hub, was enough
-// to read, create, edit, and delete every item. Same "email as identity, no bearer token" posture
-// as requireDevTrackerAdmin below and the rest of this hub (see /me, /access/me) — good enough to
-// close the "no auth at all" gap without changing the hub's existing trust model.
+// to read, create, edit, and delete every item. The caller is identified by their verified Emami
+// Apps session token (verifiedHubEmail above), not by an email the request claims.
 async function requireDevTrackerAccess(req, res, next) {
-    const email = String(req.get('x-user-email') || req.query.email || '').trim().toLowerCase();
-    if (!email) return res.status(401).json({ error: 'Sign-in required' });
+    const email = verifiedHubEmail(req);
+    if (!email) return res.status(401).json({ error: 'Your Emami Apps session has expired or is missing. Please sign in again.' });
+    req.verifiedEmail = email;
     try {
         const { rows } = await pool.query(
             `SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = 'dev-tracker'`,
@@ -491,7 +507,7 @@ router.delete('/items/:id', requireDevTrackerAccess, async (req, res) => {
 // author can edit, and the author or a Dev Tracker admin can delete.
 // ============================================================
 function callerEmail(req) {
-    return String(req.get('x-user-email') || '').trim().toLowerCase();
+    return (req.verifiedEmail || '');
 }
 
 async function isAdminEmail(email) {
@@ -733,14 +749,11 @@ const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complex
 // in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact
 // table backend/server.js's /access/* routes already read/write — emami_apps.authorized_user_apps
 // — via the same `pool` this file already imports, so no new DB connection or schema is needed.
-// Same "email as identity, no bearer token" posture as the rest of this hub (see /me, /access/me):
-// the caller sends their own email, which is enough for a UI-hiding-plus-server-check level of
-// protection, though it means anyone who can read the email out of localStorage could still spoof
-// it — acceptable here since these are internal SAP-process dropdown values, not sensitive data,
-// and matches the trust level every other endpoint in this hub already operates at.
+// Same verified-token identity as requireDevTrackerAccess, plus the Dev Tracker Admin role.
 async function requireDevTrackerAdmin(req, res, next) {
-    const email = String(req.get('x-user-email') || req.query.email || '').trim().toLowerCase();
-    if (!email) return res.status(401).json({ error: 'Sign-in required' });
+    const email = verifiedHubEmail(req);
+    if (!email) return res.status(401).json({ error: 'Your Emami Apps session has expired or is missing. Please sign in again.' });
+    req.verifiedEmail = email;
     try {
         const { rows } = await pool.query(
             `SELECT 1 FROM emami_apps.authorized_user_apps
@@ -839,7 +852,7 @@ const MAX_SAVED_VIEWS_PER_USER = 50;
 
 router.get('/saved-views', requireDevTrackerAccess, async (req, res) => {
     try {
-        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const email = (req.verifiedEmail || '');
         const result = await pool.query(
             `SELECT * FROM dev_tracker.saved_views
              WHERE "ownerEmail" = $1 OR shared = true
@@ -861,7 +874,7 @@ router.post('/saved-views', requireDevTrackerAccess, async (req, res) => {
         return res.status(400).json({ error: 'config must be an object' });
     }
     try {
-        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const email = (req.verifiedEmail || '');
         const { rows: [{ count }] } = await pool.query(
             'SELECT COUNT(*)::int AS count FROM dev_tracker.saved_views WHERE "ownerEmail" = $1', [email]
         );
@@ -884,7 +897,7 @@ router.post('/saved-views', requireDevTrackerAccess, async (req, res) => {
 router.put('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
     const { name, config, shared } = req.body || {};
     try {
-        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const email = (req.verifiedEmail || '');
         const { rows: [existing] } = await pool.query('SELECT * FROM dev_tracker.saved_views WHERE id = $1', [req.params.id]);
         if (!existing) return res.status(404).json({ error: 'View not found' });
         if (existing.ownerEmail !== email) return res.status(403).json({ error: 'Only the owner can change this view' });
@@ -908,7 +921,7 @@ router.put('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
 
 router.delete('/saved-views/:id', requireDevTrackerAccess, async (req, res) => {
     try {
-        const email = String(req.get('x-user-email') || '').trim().toLowerCase();
+        const email = (req.verifiedEmail || '');
         const { rowCount } = await pool.query(
             'DELETE FROM dev_tracker.saved_views WHERE id = $1 AND "ownerEmail" = $2', [req.params.id, email]
         );
@@ -1005,7 +1018,7 @@ router.post('/import-center/imports', requireDevTrackerAdmin, async (req, res) =
             [
                 crypto.randomUUID(),
                 String(fileName).trim(),
-                String(req.get('x-user-email') || '').trim().toLowerCase(),
+                (req.verifiedEmail || ''),
                 changedBy,
                 rows.length,
                 successful,

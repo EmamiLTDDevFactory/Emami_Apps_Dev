@@ -9,6 +9,22 @@ import { API_BASE, ACCESS_API_BASE, HUB_EMAIL_STORAGE_KEY } from './constants.js
 // redirects to '/' the instant it finds no email, so there's no other in-app moment to set
 // it by hand. Gated on import.meta.env.DEV, which Vite statically replaces with `false` in
 // `vite build`, so this whole branch is dead code (and stripped) in the real production build.
+// Every Dev Tracker API call identifies the caller with their Emami Apps session token (the JWT
+// the hub stores at sign-in), which the server verifies and takes the email from — see
+// backend/devTracker.js requireDevTrackerAccess. X-User-Email is still sent alongside it only so
+// this build keeps working against a server that hasn't been updated yet; an updated server
+// ignores it.
+const HUB_TOKEN_STORAGE_KEY = 'emami_apps_session_token';
+function authHeaders(email) {
+  let token = null;
+  try {
+    token = localStorage.getItem(HUB_TOKEN_STORAGE_KEY);
+  } catch {
+    // storage blocked — the server answers 401 and the page shows its sign-in message
+  }
+  return { 'X-User-Email': email || '', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
 export function getCurrentUserEmail() {
   try {
     if (import.meta.env.DEV) {
@@ -48,16 +64,16 @@ async function json(res) {
 
 // --- Items -----------------------------------------------------------
 export async function apiList(email) {
-  return json(await fetch(`${API_BASE}/items`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/items`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiHistory(id, email) {
-  return json(await fetch(`${API_BASE}/items/${id}/history`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/items/${id}/history`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiCreate(fields, email) {
   return json(
     await fetch(`${API_BASE}/items`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify(fields),
     })
   );
@@ -66,24 +82,24 @@ export async function apiUpdate(id, fields, email) {
   return json(
     await fetch(`${API_BASE}/items/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify(fields),
     })
   );
 }
 export async function apiDelete(id, email) {
-  return json(await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/items/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
 
 // --- Master data -------------------------------------------------------
 export async function apiMasterData(email) {
-  return json(await fetch(`${API_BASE}/master-data`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/master-data`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiMasterDataCreate(payload, email) {
   return json(
     await fetch(`${API_BASE}/master-data`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify(payload),
     })
   );
@@ -92,7 +108,7 @@ export async function apiMasterDataUpdate(id, payload, email) {
   return json(
     await fetch(`${API_BASE}/master-data/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify(payload),
     })
   );
@@ -100,13 +116,13 @@ export async function apiMasterDataUpdate(id, payload, email) {
 
 // --- Saved views ---------------------------------------------------------
 export async function apiSavedViews(email) {
-  return json(await fetch(`${API_BASE}/saved-views`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/saved-views`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiSavedViewCreate(name, config, shared, email) {
   return json(
     await fetch(`${API_BASE}/saved-views`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify({ name, config, shared }),
     })
   );
@@ -115,35 +131,35 @@ export async function apiSavedViewUpdate(id, patch, email) {
   return json(
     await fetch(`${API_BASE}/saved-views/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify(patch),
     })
   );
 }
 export async function apiSavedViewDelete(id, email) {
-  return json(await fetch(`${API_BASE}/saved-views/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/saved-views/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
 
 // --- Import Center -------------------------------------------------------
 export async function apiImportList(email) {
-  return json(await fetch(`${API_BASE}/import-center/imports`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/import-center/imports`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiImportRun(fileName, rows, email) {
   return json(
     await fetch(`${API_BASE}/import-center/imports`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify({ fileName, rows }),
     })
   );
 }
 export async function apiImportDelete(id, email) {
-  return json(await fetch(`${API_BASE}/import-center/imports/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/import-center/imports/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
 
 // --- Activity / AI -----------------------------------------------------
 export async function apiActivity(email) {
-  return json(await fetch(`${API_BASE}/activity`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/activity`, { headers: { ...authHeaders(email) } }));
 }
 // Sample rows shown by apiActivityLog below only in `npm run dev`, only until the deployed
 // API grows the /activity/log route this hits (see backend/devTracker.js) — lets the Change
@@ -200,7 +216,7 @@ function buildDummyActivityLog() {
 }
 export async function apiActivityLog(email) {
   try {
-    return await json(await fetch(`${API_BASE}/activity/log`, { headers: { 'X-User-Email': email || '' } }));
+    return await json(await fetch(`${API_BASE}/activity/log`, { headers: { ...authHeaders(email) } }));
   } catch (err) {
     if (import.meta.env.DEV) return buildDummyActivityLog();
     throw err;
@@ -210,7 +226,7 @@ export async function apiAiCommand(message, email) {
   return json(
     await fetch(`${API_BASE}/ai/command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
       body: JSON.stringify({ message }),
     })
   );
@@ -248,12 +264,12 @@ export async function isDevTrackerAdmin(email) {
 function withJson(method, body, email) {
   return {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-User-Email': email || '' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(email) },
     body: body === undefined ? undefined : JSON.stringify(body),
   };
 }
 export async function apiComments(itemId, email) {
-  return json(await fetch(`${API_BASE}/items/${itemId}/comments`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/items/${itemId}/comments`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiCommentCreate(itemId, body, email) {
   return json(await fetch(`${API_BASE}/items/${itemId}/comments`, withJson('POST', { body }, email)));
@@ -262,10 +278,10 @@ export async function apiCommentUpdate(id, body, email) {
   return json(await fetch(`${API_BASE}/comments/${id}`, withJson('PUT', { body }, email)));
 }
 export async function apiCommentDelete(id, email) {
-  return json(await fetch(`${API_BASE}/comments/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/comments/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
 export async function apiSprints(email) {
-  return json(await fetch(`${API_BASE}/sprints`, { headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/sprints`, { headers: { ...authHeaders(email) } }));
 }
 export async function apiSprintCreate(fields, email) {
   return json(await fetch(`${API_BASE}/sprints`, withJson('POST', fields, email)));
@@ -280,5 +296,5 @@ export async function apiSprintComplete(id, moveTo, email) {
   return json(await fetch(`${API_BASE}/sprints/${id}/complete`, withJson('POST', { moveTo }, email)));
 }
 export async function apiSprintDelete(id, email) {
-  return json(await fetch(`${API_BASE}/sprints/${id}`, { method: 'DELETE', headers: { 'X-User-Email': email || '' } }));
+  return json(await fetch(`${API_BASE}/sprints/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
