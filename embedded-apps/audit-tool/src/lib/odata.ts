@@ -22,8 +22,8 @@
 // One deliberate addition over the Fiori: every read carries the signed-in hub user's email —
 // `Email eq '<email>'` ANDed onto each EntitySet $filter, and the email as the key of the blank
 // "current user" keyed reads (CheckAuditHeadSet(''), AuditNameCheckSet('')) — because through the
-// shared gateway SAP can no longer tell the user from the logon (sy-uname). create() payloads are
-// unchanged.
+// shared gateway SAP can no longer tell the user from the logon (sy-uname). create() adds the same
+// email as a top-level Email field on every POST, unless the payload already has its own Email.
 // Errors reject with an ODataError carrying the same {message, statusCode, responseText} shape
 // ODataModel passes to error callbacks, so the Fiori app's own JSON.parse(oError.responseText)
 // message extraction ports unchanged too (see sapErrorMessage).
@@ -423,8 +423,13 @@ export async function readEntity<T = any>(path: string, opts?: ReadOptions): Pro
 /** oModel.create("/EntitySet", payload) — POST, including deep inserts. Resolves to the created
  * entity SAP echoes back (ODataModel's oData). */
 export async function create<T = any>(entitySet: string, payload: Record<string, unknown>): Promise<T> {
+  // Every POST also carries the signed-in user's email as a top-level Email field. A payload that
+  // already has its own Email keeps it — that's the record's own data, not the caller (e.g. the
+  // Users master's ZUSER_MASTERSet create/edit/delete, where Email is the user being maintained).
+  const email = loginEmail();
+  const body = email && !('Email' in payload) ? { ...payload, Email: email } : payload;
   try {
-    const { data } = await http.post(normalizePath(entitySet), toWire(payload));
+    const { data } = await http.post(normalizePath(entitySet), toWire(body));
     return fromWire(data?.d ?? data) as T;
   } catch (err) {
     throw toODataError(err);
