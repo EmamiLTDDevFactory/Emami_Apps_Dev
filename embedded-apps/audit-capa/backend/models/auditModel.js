@@ -1396,6 +1396,10 @@ const mapAudit = (row) => {
     generalInfo:
       parseJsonb(row.general_info) || {},
 
+    // NULL on audits created before Desktop moved to the Onsite flow.
+    unifiedFlow:
+      row.unified_flow === true,
+
     createdAt:
       row.created_at,
 
@@ -1504,7 +1508,9 @@ const createAudit = async (audit) => {
 
         checklist,
         capa_records,
-        general_info
+        general_info,
+
+        unified_flow
 
 
       )
@@ -1537,8 +1543,10 @@ const createAudit = async (audit) => {
 
         $18,
         $19,
-        $20
-        
+        $20,
+
+        TRUE
+
 
       )
 

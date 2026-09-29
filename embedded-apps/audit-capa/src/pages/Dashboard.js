@@ -65,6 +65,9 @@ export default function Dashboard() {
                 ["Open", "Rework Required"].includes(audit.status)
         ).length;
 
+    // Desktop audits now follow the Onsite flow; hides the legacy "Under Review" tile.
+    const SHOW_SELF_ASSESSMENT_KPIS = false;
+
     const underReviewAudits =
         audits.filter(
             a =>
@@ -507,17 +510,21 @@ export default function Dashboard() {
                     }}
                 />
 
-                <KpiSegment
-                    label="Under Review"
-                    value={underReviewAudits}
-                    color="#06B6D4"
-                    icon={<AutorenewIcon fontSize="small" />}
-                    active={dashboardView === "AUDITS" && selectedFilter === "Under Review"}
-                    onClick={() => {
-                        setDashboardView("AUDITS");
-                        setSelectedFilter("Under Review");
-                    }}
-                />
+                {/* "Under Review" is a legacy Desktop self-assessment status — hidden now that
+                    Desktop audits run the Onsite flow. */}
+                {SHOW_SELF_ASSESSMENT_KPIS && (
+                    <KpiSegment
+                        label="Under Review"
+                        value={underReviewAudits}
+                        color="#06B6D4"
+                        icon={<AutorenewIcon fontSize="small" />}
+                        active={dashboardView === "AUDITS" && selectedFilter === "Under Review"}
+                        onClick={() => {
+                            setDashboardView("AUDITS");
+                            setSelectedFilter("Under Review");
+                        }}
+                    />
+                )}
 
                 <KpiSegment
                     label="CAPA Open Audits"

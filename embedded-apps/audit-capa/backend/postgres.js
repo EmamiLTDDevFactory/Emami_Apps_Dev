@@ -76,6 +76,18 @@ async function runMigrations() {
     } catch (err) {
         console.error("[postgres] Notifications migration failed:", err.message);
     }
+
+    // Desktop audits now follow the Onsite flow (CQA fills checklist -> CAPA -> Depot).
+    // Additive, nullable, no default: rows that already exist stay NULL and keep the old
+    // Desktop self-assessment flow until they close; only newly created audits get TRUE.
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.audits ADD COLUMN IF NOT EXISTS unified_flow boolean;
+        `);
+        console.log("[postgres] audit_capa.audits schema up to date (unified_flow).");
+    } catch (err) {
+        console.error("[postgres] Audits unified_flow migration failed:", err.message);
+    }
 }
 
 module.exports = pool;

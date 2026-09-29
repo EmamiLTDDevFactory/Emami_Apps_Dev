@@ -94,6 +94,9 @@ export default function AuditList() {
     const inProgressCount =
         visibleAudits.filter(a => a.status === "In Progress").length;
 
+    // Desktop audits now follow the Onsite flow; hides the legacy self-assessment KPI tiles.
+    const SHOW_SELF_ASSESSMENT_KPIS = false;
+
     const selfAssessmentCount =
         visibleAudits.filter(a => a.status === "Self Assessment Submitted").length;
 
@@ -881,23 +884,29 @@ export default function AuditList() {
                         onClick={() => setSelectedKPI("In Progress")}
                     />
 
-                    <KpiSegment
-                        label="Self Assessment"
-                        value={selfAssessmentCount}
-                        color="#0EA5E9"
-                        icon={<RateReviewIcon fontSize="small" />}
-                        active={selectedKPI === "Self Assessment Submitted"}
-                        onClick={() => setSelectedKPI("Self Assessment Submitted")}
-                    />
+                    {/* Self-assessment statuses are only reachable by legacy Desktop
+                        audits now (Desktop runs the Onsite flow), so these tiles are hidden. */}
+                    {SHOW_SELF_ASSESSMENT_KPIS && (
+                        <>
+                            <KpiSegment
+                                label="Self Assessment"
+                                value={selfAssessmentCount}
+                                color="#0EA5E9"
+                                icon={<RateReviewIcon fontSize="small" />}
+                                active={selectedKPI === "Self Assessment Submitted"}
+                                onClick={() => setSelectedKPI("Self Assessment Submitted")}
+                            />
 
-                    <KpiSegment
-                        label="Rework Required"
-                        value={reworkRequiredCount}
-                        color="#F97316"
-                        icon={<ReplayIcon fontSize="small" />}
-                        active={selectedKPI === "Rework Required"}
-                        onClick={() => setSelectedKPI("Rework Required")}
-                    />
+                            <KpiSegment
+                                label="Rework Required"
+                                value={reworkRequiredCount}
+                                color="#F97316"
+                                icon={<ReplayIcon fontSize="small" />}
+                                active={selectedKPI === "Rework Required"}
+                                onClick={() => setSelectedKPI("Rework Required")}
+                            />
+                        </>
+                    )}
 
                     <KpiSegment
                         label="CAPA Open"

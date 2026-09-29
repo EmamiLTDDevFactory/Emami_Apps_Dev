@@ -205,11 +205,20 @@ export default function Annexure1() {
         currentUser?.role ===
         "Depot";
 
+    // Desktop audits created after the unified-flow change run exactly like
+    // Onsite (CQA fills checklist -> CAPA -> Depot). Only Desktop audits that
+    // pre-date it (unifiedFlow false) keep the old Depot self-assessment flow
+    // until they close — so `isDesktopAudit` below means "legacy self-assessment".
     const isDesktopAudit =
-        selectedAudit?.auditType === "Desktop";
+        selectedAudit?.auditType === "Desktop" &&
+        !selectedAudit?.unifiedFlow;
 
     const isOnsiteAudit =
-        selectedAudit?.auditType === "Onsite";
+        selectedAudit?.auditType === "Onsite" ||
+        (
+            selectedAudit?.auditType === "Desktop" &&
+            !!selectedAudit?.unifiedFlow
+        );
 
     // const canEditAnnexure =
     //     (isDesktopAudit && isDepot) ||
@@ -2454,7 +2463,7 @@ export default function Annexure1() {
                                                 <AuditQuestionCard
                                                     key={item.id}
                                                     item={item}
-                                                    auditType={selectedAudit?.auditType}
+                                                    auditType={isOnsiteAudit ? "Onsite" : selectedAudit?.auditType}
                                                     canEditAnnexure={canEditAnnexure}
                                                     handleStatusChange={
                                                         handleStatusChange

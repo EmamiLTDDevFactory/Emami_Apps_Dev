@@ -212,7 +212,7 @@ export default function CreateAudit() {
                         : "Onsite Audit Scheduled",
                 message:
                     auditType === "Desktop"
-                        ? `You have been nominated for self assessment audit for ${depot}`
+                        ? `Desktop audit has been scheduled for ${depot}`
                         : `Onsite audit has been scheduled for ${depot}`,
                 link: `/annexure1/${createdAudit.id}`,
             });
