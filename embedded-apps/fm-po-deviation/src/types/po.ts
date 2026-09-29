@@ -34,6 +34,8 @@ export interface PoRow {
   addInfo: string; // AddInfo — free-text: rejection reason on write, log actor on log rows
   initRem: string; // InitRem — log entry comments
   zname: string; // Zname — header "created by" display name
+  ekgrp: string; // Ekgrp — purchasing group
+  bukrs: string; // Bukrs — company code
   delDate: string; // DelDate — line item delivery date
   ccenter: string; // Ccenter — cost center
   gl: string; // Gl — GL account
