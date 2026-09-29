@@ -4,7 +4,8 @@ const {
   // replaceCAPAs,
   createCAPAs,
   updateCAPA,
-  uploadCAPAEvidenceController,
+  addCAPAEvidenceController,
+  removeCAPAEvidenceController,
   deleteCAPAsForAudit
 } = require("../controllers/capaController");
 
@@ -17,10 +18,18 @@ const uploadCAPAEvidence =
 //   uploadCAPAEvidenceController
 // } = require("../controllers/capaController");
 
+// Multi-evidence: one or more files per request (field "evidence"), appended
+// to the CAPA's evidence list. A single-file upload still works the same way.
 router.post(
   "/:id/evidence",
-  uploadCAPAEvidence.single("evidence"),
-  uploadCAPAEvidenceController
+  uploadCAPAEvidence.capaEvidenceArray,
+  addCAPAEvidenceController
+);
+
+// Soft remove (hidden from the list; file and record are kept).
+router.patch(
+  "/:id/evidence/:fileId/remove",
+  removeCAPAEvidenceController
 );
 
 router.get("/", getCAPAs);

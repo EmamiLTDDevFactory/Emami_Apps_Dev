@@ -24,6 +24,8 @@ import {
 } from "../utils/storage";
 import {
     saveChecklistDraft,
+    uploadChecklistEvidence,
+    getChecklistEvidences,
 } from "../utils/storage";
 
 import { useEffect } from "react";
@@ -74,6 +76,14 @@ import {
     getAuditById,
     updateAudit
 } from "../api/auditApi";
+import { calculateCompliance } from "../utils/complianceUtils";
+
+// Red asterisk for mandatory signature fields.
+const RequiredMark = () => (
+    <Box component="span" sx={{ color: "error.main", ml: 0.5 }}>
+        *
+    </Box>
+);
 
 export default function Annexure1() {
     const { id } = useParams();
@@ -275,6 +285,10 @@ export default function Annexure1() {
     //         isOnsiteAudit &&
     //         !isDepot
     //     );
+
+    const canRemoveChecklistEvidence =
+        canEditAnnexure &&
+        !["Closed", "CAPA Open"].includes(selectedAudit?.status);
 
     const isTablet =
         useMediaQuery(
@@ -1025,45 +1039,128 @@ export default function Annexure1() {
     //     setAuditItems(updatedItems);
     // };
 
-    const handleEvidenceUpload = (
+    // Latest checklist, for async evidence handlers (the upload can finish after
+    // other edits have changed auditItems).
+    const auditItemsRef = useRef(auditItems);
+    useEffect(() => {
+        auditItemsRef.current = auditItems;
+    }, [auditItems]);
+
+    const MAX_EVIDENCE_FILES = 10;
+    const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
+    // Full evidence list of a question, removed files included (they're kept,
+    // only hidden). Seeds from a pre-multi-evidence `evidence` if it was stored.
+    const allEvidences = (item) =>
+        Array.isArray(item.evidences)
+            ? item.evidences
+            : getChecklistEvidences(item);
+
+    const persistChecklist = async (nextItems) => {
+        setAuditItems(nextItems);
+        auditItemsRef.current = nextItems;
+
+        const updatedAudit = await updateAudit(Number(id), {
+            checklist: nextItems,
+        });
+
+        setSelectedAudit(updatedAudit);
+
+        setAudits((previous) =>
+            previous.map((audit) =>
+                audit.id === Number(id) ? updatedAudit : audit
+            )
+        );
+    };
+
+    const [uploadingEvidenceFor, setUploadingEvidenceFor] =
+        useState(null);
+
+    const handleEvidenceUpload = async (
         questionId,
-        file
+        fileList
     ) => {
 
-        if (!file) return;
+        const files = Array.from(fileList || []);
+        if (files.length === 0) return;
 
-        const updatedItems =
-            auditItems.map((item) =>
-                item.id === questionId
-                    ? {
-                        ...item,
-                        // evidence: {
-                        //     name: file.name,
-                        //     preview:
-                        //         URL.createObjectURL(file),
-                        // },
+        const question = auditItemsRef.current.find(
+            (item) => item.id === questionId
+        );
+        if (!question) return;
 
-                        // evidence: {
-                        //     fileName: file.name,
-                        //     filePath: "",
-                        //     uploadedBy: currentUser?.username,
-                        //     uploadedAt: new Date().toISOString(),
-                        //     preview: URL.createObjectURL(file),
-                        // }
-                        evidence: {
-                            auditId: Number(id),
-                            questionId: item.id,
-                            fileName: file.name,
-                            filePath: "",
-                            uploadedBy: currentUser?.username,
-                            uploadedAt: new Date().toISOString(),
-                            preview: URL.createObjectURL(file),
-                        }
-                    }
-                    : item
+        const activeCount = getChecklistEvidences(question).length;
+
+        if (activeCount + files.length > MAX_EVIDENCE_FILES) {
+            alert(
+                `A question can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`
+            );
+            return;
+        }
+
+        if (files.some((file) => file.size > MAX_EVIDENCE_BYTES)) {
+            alert("Each evidence file must be 10 MB or smaller.");
+            return;
+        }
+
+        try {
+            setUploadingEvidenceFor(questionId);
+
+            const uploaded = await uploadChecklistEvidence(
+                Number(id),
+                questionId,
+                files,
+                currentUser?.username || currentUser?.name || "CQA"
             );
 
-        setAuditItems(updatedItems);
+            await persistChecklist(
+                auditItemsRef.current.map((item) =>
+                    item.id === questionId
+                        ? {
+                            ...item,
+                            evidences: [
+                                ...allEvidences(item),
+                                ...uploaded,
+                            ],
+                        }
+                        : item
+                )
+            );
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "Unable to upload evidence.");
+        } finally {
+            setUploadingEvidenceFor(null);
+        }
+    };
+
+    // Soft remove: marked removed and hidden; the file and its record stay.
+    const handleEvidenceRemove = async (questionId, file) => {
+        try {
+            await persistChecklist(
+                auditItemsRef.current.map((item) =>
+                    item.id === questionId
+                        ? {
+                            ...item,
+                            evidences: allEvidences(item).map((evidence) =>
+                                evidence.id === file.id
+                                    ? {
+                                        ...evidence,
+                                        removed: true,
+                                        removedBy:
+                                            currentUser?.username || "",
+                                        removedAt: new Date().toISOString(),
+                                    }
+                                    : evidence
+                            ),
+                        }
+                        : item
+                )
+            );
+        } catch (error) {
+            console.error(error);
+            alert("Unable to remove evidence.");
+        }
     };
 
     const auditorSigRef =
@@ -1071,23 +1168,73 @@ export default function Annexure1() {
 
     const depotSigRef = useRef();
 
-    const [auditorSignature, setAuditorSignature] =
-        useState(null);
-
-    const handleAuditorSignatureUpload = (
-        event
-    ) => {
+    // An uploaded image counts as the signature: it's drawn into the signature
+    // pad (scaled to fit), so Submit Signature treats it exactly like a drawn one.
+    const handleSignatureUpload = (sigRef) => (event) => {
 
         const file =
             event.target.files?.[0];
 
-        if (!file) return;
+        // Reset so picking the same file again still fires onChange.
+        event.target.value = "";
 
-        setAuditorSignature({
-            name: file.name,
-            preview:
-                URL.createObjectURL(file),
-        });
+        if (!file || !sigRef.current) return;
+
+        if (!file.type.startsWith("image/")) {
+            alert("Please upload an image file.");
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            const img = new Image();
+
+            img.onload = () => {
+                const canvas = sigRef.current?.getCanvas();
+                if (!canvas) return;
+
+                // Fit + centre on an off-screen canvas the size of the pad, since
+                // signature_pad 2.x's fromDataURL always draws at (0,0).
+                const scale = Math.min(
+                    canvas.width / img.width,
+                    canvas.height / img.height
+                );
+                const width = img.width * scale;
+                const height = img.height * scale;
+
+                const fitted = document.createElement("canvas");
+                fitted.width = canvas.width;
+                fitted.height = canvas.height;
+                fitted
+                    .getContext("2d")
+                    .drawImage(
+                        img,
+                        (canvas.width - width) / 2,
+                        (canvas.height - height) / 2,
+                        width,
+                        height
+                    );
+
+                sigRef.current.clear();
+                sigRef.current.fromDataURL(
+                    fitted.toDataURL("image/png"),
+                    {
+                        ratio: 1,
+                        width: canvas.width,
+                        height: canvas.height,
+                    }
+                );
+            };
+
+            img.onerror = () =>
+                alert("Unable to read the signature image.");
+
+            img.src = dataUrl;
+        };
+
+        reader.readAsDataURL(file);
     };
 
     // const [depotSignatureSubmitted,
@@ -1099,6 +1246,19 @@ export default function Annexure1() {
         !depotSigRef.current.isEmpty();
 
     const handleDepotSignatureSubmit = async () => {
+
+        if (!selectedAudit?.depotInchargeName?.trim()) {
+            alert("Name of Depot Incharge is mandatory.");
+            return;
+        }
+
+        if (
+            !depotSigRef.current ||
+            depotSigRef.current.isEmpty()
+        ) {
+            alert("Please provide depot incharge signature.");
+            return;
+        }
 
         const depotSignature =
             depotSigRef.current
@@ -1352,23 +1512,10 @@ export default function Annexure1() {
     //             100
     //         ).toFixed(2);
 
-    const applicableQuestions = auditItems.filter(
-        item => item.status !== "NA"
-    ).length;
-
-    const compliantQuestions = auditItems.filter(
-        item =>
-            item.status !== "NA" &&
-            Number(item.actualScore) >= 2
-    ).length;
-
+    // Points-based (same as the Element Compliance table) — this is the value
+    // saved on the audit and shown on Audit Management / Reports / Dashboard.
     const compliancePercentage =
-        applicableQuestions === 0
-            ? "0.00"
-            : (
-                (compliantQuestions / applicableQuestions) *
-                100
-            ).toFixed(2);
+        calculateCompliance(auditItems);
 
     // const categoryCompliance = Object.entries(
     //     auditItems.reduce((acc, item) => {
@@ -2489,6 +2636,15 @@ export default function Annexure1() {
                                                     handleEvidenceUpload={
                                                         handleEvidenceUpload
                                                     }
+                                                    handleEvidenceRemove={
+                                                        handleEvidenceRemove
+                                                    }
+                                                    canRemoveEvidence={
+                                                        canRemoveChecklistEvidence
+                                                    }
+                                                    uploadingEvidence={
+                                                        uploadingEvidenceFor === item.id
+                                                    }
                                                 />
                                             ))}
                                         </Box>
@@ -2512,7 +2668,7 @@ export default function Annexure1() {
 
                     {/* console.log("selectedAudit", selectedAudit); */}
                     <TextField
-                        label="Name of Auditor"
+                        label={<>Name of Auditor<RequiredMark /></>}
                         value={selectedAudit?.auditor || ""}
 
                         InputProps={{
@@ -2528,7 +2684,7 @@ export default function Annexure1() {
                         fontWeight={600}
                         sx={{ mb: 1 }}
                     >
-                        Auditor Signature
+                        Auditor Signature<RequiredMark />
                     </Typography>
 
                     {
@@ -2611,7 +2767,7 @@ export default function Annexure1() {
                                                 hidden
                                                 type="file"
                                                 accept="image/*"
-                                                onChange={handleAuditorSignatureUpload}
+                                                onChange={handleSignatureUpload(auditorSigRef)}
                                             />
                                         </Button>
 
@@ -2779,7 +2935,7 @@ export default function Annexure1() {
                         }}
                     >
                         <TextField
-                            label="Name of Depot Incharge"
+                            label={<>Name of Depot Incharge<RequiredMark /></>}
                             value={
                                 selectedAudit?.depotInchargeName || ""
                             }
@@ -2811,7 +2967,7 @@ export default function Annexure1() {
                             fontWeight={600}
                             sx={{ mb: 1 }}
                         >
-                            Depot Incharge Signature
+                            Depot Incharge Signature<RequiredMark />
                         </Typography>
 
                     </Box>
@@ -2896,6 +3052,7 @@ export default function Annexure1() {
                                                 hidden
                                                 type="file"
                                                 accept="image/*"
+                                                onChange={handleSignatureUpload(depotSigRef)}
                                             />
                                         </Button>
 
@@ -3028,8 +3185,9 @@ export default function Annexure1() {
 
                     gap: 2,
 
+                    // Action buttons sit on the right for every audit type.
                     justifyContent:
-                        "space-between",
+                        "flex-end",
 
                     alignItems:
                         isAuditorTablet
@@ -3155,6 +3313,11 @@ export default function Annexure1() {
                                 // sx={{ mr: 2 }}
                                 onClick={async () => {
 
+                                    if (!selectedAudit?.auditorSignatureSubmitted) {
+                                        alert("Auditor signature is mandatory before completing the audit.");
+                                        return;
+                                    }
+
                                     try {
                                         const updatedAudit = await updateAudit(Number(id), {
                                             compliance: Number(compliancePercentage),
@@ -3279,6 +3442,11 @@ export default function Annexure1() {
                                 nonComplianceCount === 0
                             }
                             onClick={async () => {
+
+                                if (!selectedAudit?.auditorSignatureSubmitted) {
+                                    alert("Auditor signature is mandatory before generating CAPA.");
+                                    return;
+                                }
 
                                 // const missingActionPlan =
                                 //     auditItems.some(

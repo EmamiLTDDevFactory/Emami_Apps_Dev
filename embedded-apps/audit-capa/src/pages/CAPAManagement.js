@@ -34,8 +34,10 @@ import {
     updateAudit,
     updateCAPA,
     uploadCAPAEvidence,
-    downloadCAPAEvidence,
+    removeCAPAEvidence,
 } from "../utils/storage";
+import EvidenceList from "../components/common/EvidenceList";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 // import tab from "@mui/material/Tab";
 // import { useState } from "react";
 // import { useState } from "react";
@@ -58,8 +60,8 @@ import { AdapterDayjs }
 import { DatePicker }
     from "@mui/x-date-pickers";
 import {
+    getAudit,
     getCAPAs,
-    getEvidenceUrl,
 } from "../utils/storage";
 
 import {
@@ -165,7 +167,9 @@ export default function CAPAManagement() {
         useState([]);
 
     // const [evidenceFile, setEvidenceFile] = useState(null);
-    const [evidenceFiles, setEvidenceFiles] = useState({});
+    // CAPA id whose evidence is currently uploading (files upload as soon as
+    // they're picked, so they're saved and viewable before Submit).
+    const [uploadingEvidenceFor, setUploadingEvidenceFor] = useState(null);
     // const [evidenceCAPAId, setEvidenceCAPAId] = useState(null);
     const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
@@ -473,13 +477,97 @@ export default function CAPAManagement() {
     //     );
     // };
 
+    const MAX_EVIDENCE_FILES = 10;
+    const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
+    const activeCAPAEvidence = (item) =>
+        (item.evidenceFiles || []).filter((file) => !file.removed);
+
+    // Depot may remove only files added since the last submission: after a
+    // Send Back the earlier (already reviewed) files stay.
+    const canRemoveCAPAFile = (item, file, canEditCAPA) =>
+        canEditCAPA &&
+        (
+            !item.submittedDate ||
+            (
+                file.id !== "legacy" &&
+                new Date(file.uploadedAt) > new Date(item.submittedDate)
+            )
+        );
+
+    const mergeCAPAEvidence = (updatedCAPA) =>
+        setCapaData((previous) =>
+            previous.map((capa) =>
+                capa.id === updatedCAPA.id
+                    ? {
+                        ...capa,
+                        evidenceFiles: updatedCAPA.evidenceFiles,
+                        evidenceFileName: updatedCAPA.evidenceFileName,
+                        evidenceFilePath: updatedCAPA.evidenceFilePath,
+                        evidenceUploadedBy: updatedCAPA.evidenceUploadedBy,
+                        evidenceUploadedAt: updatedCAPA.evidenceUploadedAt,
+                    }
+                    : capa
+            )
+        );
+
+    const handleAddCAPAEvidence = async (item, fileList) => {
+
+        const files = Array.from(fileList || []);
+        if (files.length === 0) return;
+
+        const activeCount = activeCAPAEvidence(item).length;
+
+        if (activeCount + files.length > MAX_EVIDENCE_FILES) {
+            alert(
+                `A CAPA can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`
+            );
+            return;
+        }
+
+        if (files.some((file) => file.size > MAX_EVIDENCE_BYTES)) {
+            alert("Evidence file size must not exceed 10 MB.");
+            return;
+        }
+
+        try {
+            setUploadingEvidenceFor(item.id);
+
+            mergeCAPAEvidence(
+                await uploadCAPAEvidence(
+                    item.id,
+                    files,
+                    currentUser?.username || "Depot"
+                )
+            );
+        } catch (error) {
+            console.error("Evidence upload failed:", error);
+            alert(error.message || "Unable to upload evidence.");
+        } finally {
+            setUploadingEvidenceFor(null);
+        }
+    };
+
+    // Soft remove: hidden from the list; the file and its record are kept.
+    const handleRemoveCAPAEvidence = async (item, file) => {
+        try {
+            mergeCAPAEvidence(
+                await removeCAPAEvidence(
+                    item.id,
+                    file.id,
+                    currentUser?.username || ""
+                )
+            );
+        } catch (error) {
+            console.error("Evidence remove failed:", error);
+            alert(error.message || "Unable to remove evidence.");
+        }
+    };
+
     const canSubmitCAPA = (item) => {
 
         const hasEvidence =
-            Boolean(
-                evidenceFiles[item.id] ||
-                item.evidenceFilePath
-            );
+            activeCAPAEvidence(item).length > 0;
 
         return Boolean(
             item.rootCause?.trim() &&
@@ -490,10 +578,28 @@ export default function CAPAManagement() {
     };
 
     const handleSubmitCAPA = async (item) => {
-        const evidenceFile = evidenceFiles[item.id];
 
-        if (!evidenceFile) {
-            alert("Please attach evidence before submitting the CAPA.");
+        // Depot must sign the audit (name + signature on the checklist page) before
+        // any CAPA can be submitted. Re-fetch so a signature made in another tab counts.
+        let auditForSignature = currentAudit;
+        try {
+            auditForSignature = await getAudit(item.auditId || auditId);
+        } catch (error) {
+            console.error(error);
+        }
+
+        if (
+            !auditForSignature?.depotSignatureSubmitted ||
+            !auditForSignature?.depotInchargeName?.trim()
+        ) {
+            alert(
+                "Depot Incharge name and signature are mandatory before submitting the CAPA. Please sign on the audit checklist page first."
+            );
+            return;
+        }
+
+        if (activeCAPAEvidence(item).length === 0) {
+            alert("Please attach at least one evidence file before submitting the CAPA.");
             return;
         }
 
@@ -520,24 +626,8 @@ export default function CAPAManagement() {
                 }
             );
 
-            // 2. Upload evidence
-            await uploadCAPAEvidence(
-                item.id,
-                evidenceFile,
-                "Depot"
-            );
-
-            // 3. Reload CAPAs from backend
+            // 2. Evidence is already uploaded (on selection) - reload CAPAs.
             await refreshCAPAs();
-
-            // 4. Clear selected file
-            // setEvidenceFile(null);
-
-            setEvidenceFiles((previous) => {
-                const updated = { ...previous };
-                delete updated[item.id];
-                return updated;
-            });
 
             // setEvidenceCAPAId(null);
 
@@ -1195,6 +1285,13 @@ export default function CAPAManagement() {
                         item.status === "Sent Back"
                     );
 
+                // CQA Remarks: CQA only, and only while reviewing a submitted CAPA
+                // (same window as Accept & Close / Send Back). Locked while the CAPA
+                // is with the Depot (Open / Sent Back) and once it is Closed.
+                const canEditCqaRemarks =
+                    !isDepot &&
+                    item.status === "In Progress";
+
                 return (
                     <Card
                         key={item.id}
@@ -1321,21 +1418,22 @@ export default function CAPAManagement() {
                                         rows={3}
                                         value={item.cqaRemarks || ""}
                                         disabled={
-                                            isDepot
+                                            !canEditCqaRemarks
                                         }
-                                        required={!isDepot}
+                                        required={canEditCqaRemarks}
                                         error={
-                                            !isDepot &&
-                                            item.status === "In Progress" &&
+                                            canEditCqaRemarks &&
                                             !hasCqaRemarks(item)
                                         }
                                         // InputProps={{
                                         //     readOnly: isDepot,
                                         // }}
                                         helperText={
-                                            isDepot
-                                                ? "Remarks provided by CQA Auditor"
-                                                : "CQA Remarks are mandatory to Accept & Close or Send Back"
+                                            canEditCqaRemarks
+                                                ? "CQA Remarks are mandatory to Accept & Close or Send Back"
+                                                : isDepot || item.status === "Closed"
+                                                    ? "Remarks provided by CQA Auditor"
+                                                    : "CQA Remarks can be entered once the Depot submits the CAPA"
                                         }
                                         onChange={(e) =>
                                             handleSaveDraft(
@@ -1549,288 +1647,58 @@ export default function CAPAManagement() {
                                         Evidence <span style={{ color: "#DC2626" }}>*</span>
                                     </Typography>
 
-                                    <Button
-                                        variant="outlined"
-                                        component="label"
-                                        disabled={!canEditCAPA}
-                                    >
-                                        Select Evidence
-
-                                        <input
-                                            type="file"
-                                            hidden
-                                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
-                                            // onChange={(e) => {
-
-                                            //     const file =
-                                            //         e.target.files?.[0];
-
-                                            //     if (!file) {
-                                            //         return;
-                                            //     }
-
-                                            //     if (
-                                            //         file.size >
-                                            //         10 * 1024 * 1024
-                                            //     ) {
-                                            //         alert(
-                                            //             "Evidence file size must not exceed 10 MB."
-                                            //         );
-                                            //         return;
-                                            //     }
-
-                                            //     setEvidenceFile(file);
-                                            onChange={(e) => {
-
-                                                const file =
-                                                    e.target.files?.[0];
-
-                                                if (!file) {
-                                                    return;
-                                                }
-
-                                                if (
-                                                    file.size >
-                                                    10 * 1024 * 1024
-                                                ) {
-                                                    alert(
-                                                        "Evidence file size must not exceed 10 MB."
-                                                    );
-                                                    return;
-                                                }
-
-                                                setEvidenceFiles((previous) => ({
-                                                    ...previous,
-                                                    [item.id]: file,
-                                                }));
-
-                                                // }}
-                                                // setEvidenceCAPAId(item.id);
-                                            }}
-                                        // onChange={(e) => {
-                                        //     const file = e.target.files?.[0];
-
-                                        //     if (!file) {
-                                        //         return;
-                                        //     }
-
-                                        //     if (file.size > 10 * 1024 * 1024) {
-                                        //         alert(
-                                        //             "Evidence file size must not exceed 10 MB."
-                                        //         );
-                                        //         return;
-                                        //     }
-
-                                        //     setEvidenceFile(file);
-                                        // }}
-                                        />
-                                    </Button>
-
-                                    {/* {evidenceFile && (
-                                            <Typography
-                                                variant="body2"
-                                                sx={{ mt: 1 }}
+                                    {canEditCAPA && (
+                                        <>
+                                            <Button
+                                                variant="outlined"
+                                                component="label"
+                                                startIcon={<UploadFileIcon />}
+                                                disabled={uploadingEvidenceFor === item.id}
                                             >
-                                                Selected file:{" "}
-                                                <strong>
-                                                    {evidenceFile.name}
-                                                </strong>
-                                            </Typography>
-                                        )} */}
+                                                {uploadingEvidenceFor === item.id
+                                                    ? "Uploading..."
+                                                    : "Add Evidence Files"}
 
-                                    {evidenceFiles[item.id] && (
-                                        <Box
-                                            sx={{
-                                                mt: 1.5,
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 1,
-                                            }}
-                                        >
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                            >
-                                                Selected file:
-                                            </Typography>
-
-                                            <Typography
-                                                variant="body2"
-                                                fontWeight={600}
-                                                sx={{
-                                                    overflow: "hidden",
-                                                    textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap",
-                                                    maxWidth: 350,
-                                                }}
-                                            >
-                                                {evidenceFiles[item.id].name}
-                                            </Typography>
-                                        </Box>
-                                    )}
-
-
-                                    {item.evidenceFileName && item.evidenceFilePath && (
-                                        <Box
-                                            sx={{
-                                                mt: 2,
-                                                border: "1px solid #E5E7EB",
-                                                borderRadius: 2,
-                                                backgroundColor: "#FAFAFA",
-                                                px: 2,
-                                                py: 1.5,
-                                            }}
-                                        >
-                                            <Box
-                                                sx={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "space-between",
-                                                    gap: 2,
-                                                    flexWrap: "wrap",
-                                                }}
-                                            >
-                                                {/* File information */}
-                                                <Box
-                                                    sx={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: 1.5,
-                                                        minWidth: 0,
-                                                        flex: 1,
+                                                <input
+                                                    type="file"
+                                                    hidden
+                                                    multiple
+                                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                                                    onChange={(e) => {
+                                                        handleAddCAPAEvidence(
+                                                            item,
+                                                            e.target.files
+                                                        );
+                                                        e.target.value = "";
                                                     }}
-                                                >
-                                                    <Box
-                                                        sx={{
-                                                            width: 38,
-                                                            height: 38,
-                                                            borderRadius: 1.5,
-                                                            backgroundColor: "#EEF2FF",
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "center",
-                                                            flexShrink: 0,
-                                                        }}
-                                                    >
-                                                        <Typography
-                                                            sx={{
-                                                                fontSize: 18,
-                                                            }}
-                                                        >
-                                                            📎
-                                                        </Typography>
-                                                    </Box>
+                                                />
+                                            </Button>
 
-                                                    <Box
-                                                        sx={{
-                                                            minWidth: 0,
-                                                        }}
-                                                    >
-                                                        <Typography
-                                                            variant="body2"
-                                                            fontWeight={600}
-                                                            sx={{
-                                                                overflow: "hidden",
-                                                                textOverflow: "ellipsis",
-                                                                whiteSpace: "nowrap",
-                                                                maxWidth: 350,
-                                                            }}
-                                                        >
-                                                            {item.evidenceFileName}
-                                                        </Typography>
-
-                                                        <Typography
-                                                            variant="caption"
-                                                            color="text.secondary"
-                                                        >
-                                                            Uploaded by {item.evidenceUploadedBy || "Depot"}
-                                                            {item.evidenceUploadedAt &&
-                                                                ` • ${new Date(
-                                                                    item.evidenceUploadedAt
-                                                                ).toLocaleDateString()}`}
-                                                        </Typography>
-                                                    </Box>
-                                                </Box>
-
-                                                {/* Actions */}
-                                                <Box
-                                                    sx={{
-                                                        display: "flex",
-                                                        gap: 1,
-                                                        flexShrink: 0,
-                                                    }}
-                                                >
-                                                    <Button
-                                                        variant="outlined"
-                                                        size="small"
-                                                        onClick={() => {
-                                                            window.open(
-                                                                getEvidenceUrl(item.evidenceFilePath),
-                                                                "_blank",
-                                                                "noopener,noreferrer"
-                                                            );
-                                                        }}
-                                                    >
-                                                        Preview
-                                                    </Button>
-
-                                                    <Button
-                                                        variant="contained"
-                                                        size="small"
-                                                        onClick={async () => {
-                                                            try {
-                                                                await downloadCAPAEvidence(
-                                                                    item.evidenceFilePath,
-                                                                    item.evidenceFileName
-                                                                );
-                                                            } catch (error) {
-                                                                console.error(
-                                                                    "Evidence download failed:",
-                                                                    error
-                                                                );
-
-                                                                alert(
-                                                                    "Unable to download evidence."
-                                                                );
-                                                            }
-                                                        }}
-                                                    >
-                                                        Download
-                                                    </Button>
-                                                </Box>
-                                            </Box>
-                                        </Box>
-                                    )}
-
-                                    {/* {item.evidenceFilePath && (
-                                            <Box sx={{ mt: 2 }}>
-
-                                                <Typography
-                                                    variant="body2"
-                                                    fontWeight={600}
-                                                    sx={{ mb: 1 }}
-                                                >
-                                                    Uploaded Evidence
-                                                </Typography> */}
-
-
-
-                                    {/* {canEditCAPA && !evidenceFiles[item.id] && (
                                             <Typography
                                                 variant="caption"
-                                                color="error"
-                                                sx={{
-                                                    display: "block",
-                                                    mt: 1,
-                                                }}
+                                                color="text.secondary"
+                                                sx={{ display: "block", mt: 0.5 }}
                                             >
-                                                Evidence is mandatory before submitting CAPA.
+                                                Up to {MAX_EVIDENCE_FILES} files, 10 MB each (PDF, JPG, PNG, Word, Excel).
                                             </Typography>
-                                        )} */}
+                                        </>
+                                    )}
+
+                                    <Box sx={{ mt: 1.5 }}>
+                                        <EvidenceList
+                                            files={activeCAPAEvidence(item)}
+                                            canRemove={(file) =>
+                                                canRemoveCAPAFile(item, file, canEditCAPA)
+                                            }
+                                            onRemove={(file) =>
+                                                handleRemoveCAPAEvidence(item, file)
+                                            }
+                                            emptyText="No evidence uploaded yet."
+                                        />
+                                    </Box>
 
                                     {canEditCAPA &&
-                                        !evidenceFiles[item.id] &&
-                                        !item.evidenceFilePath && (
+                                        activeCAPAEvidence(item).length === 0 && (
                                             <Typography
                                                 variant="caption"
                                                 color="error"

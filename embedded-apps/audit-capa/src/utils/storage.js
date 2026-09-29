@@ -5,18 +5,21 @@ import {
   apiPost,
   API_ORIGIN,
 } from "../api/client";
+import { withChecklistCompliance } from "./complianceUtils";
 
 export const getAudits = () =>
-  apiGet("/audits");
+  apiGet("/audits").then((audits) =>
+    Array.isArray(audits) ? audits.map(withChecklistCompliance) : audits
+  );
 
 export const getAudit = (auditId) =>
-  apiGet(`/audits/${auditId}`);
+  apiGet(`/audits/${auditId}`).then(withChecklistCompliance);
 
 export const createAudit = (audit) =>
-  apiPost("/audits", audit);
+  apiPost("/audits", audit).then(withChecklistCompliance);
 
 export const updateAudit = (auditId, changes) =>
-  apiPatch(`/audits/${auditId}`, changes);
+  apiPatch(`/audits/${auditId}`, changes).then(withChecklistCompliance);
 
 export const deleteAudit = (auditId) =>
   apiDelete(`/audits/${auditId}`);
@@ -84,13 +87,13 @@ export const getChecklistDraft = async (auditId) => {
   return audit?.checklist || null;
 };
 
-export const uploadCAPAEvidence = async (
-  capaId,
-  file,
-  uploadedBy = "Depot"
-) => {
+// Evidence upload shared by CAPA and checklist: one request, many files
+// (multipart field "evidence"). Backend caps at 10 files / 10 MB each.
+const postEvidenceFiles = async (url, files, fields) => {
 
-  if (!file) {
+  const list = Array.from(files || []);
+
+  if (list.length === 0) {
     throw new Error(
       "Evidence file is required."
     );
@@ -98,23 +101,20 @@ export const uploadCAPAEvidence = async (
 
   const formData = new FormData();
 
-  formData.append(
-    "evidence",
-    file
+  list.forEach((file) =>
+    formData.append("evidence", file)
   );
 
-  formData.append(
-    "uploadedBy",
-    uploadedBy
-  );
-
-  const response = await fetch(
-    `${API_ORIGIN}/api/capas/${capaId}/evidence`,
-    {
-      method: "POST",
-      body: formData
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      formData.append(key, value);
     }
-  );
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData
+  });
 
   if (!response.ok) {
 
@@ -129,6 +129,55 @@ export const uploadCAPAEvidence = async (
   }
 
   return response.json();
+};
+
+// Accepts a single File or a list of Files; returns the updated CAPA
+// (with its full evidenceFiles list).
+export const uploadCAPAEvidence = (
+  capaId,
+  files,
+  uploadedBy = "Depot"
+) =>
+  postEvidenceFiles(
+    `${API_ORIGIN}/api/capas/${capaId}/evidence`,
+    files instanceof File ? [files] : files,
+    { uploadedBy }
+  );
+
+// Soft remove: hidden from the list, the file itself is kept on the server.
+export const removeCAPAEvidence = (
+  capaId,
+  fileId,
+  removedBy = ""
+) =>
+  apiPatch(
+    `/capas/${capaId}/evidence/${encodeURIComponent(fileId)}/remove`,
+    { removedBy }
+  );
+
+// Stores the files and returns their metadata, to be kept on the checklist
+// question (item.evidences) and saved with the audit's checklist.
+export const uploadChecklistEvidence = (
+  auditId,
+  questionId,
+  files,
+  uploadedBy = "CQA"
+) =>
+  postEvidenceFiles(
+    `${API_ORIGIN}/api/audits/${auditId}/checklist-evidence`,
+    files,
+    { questionId, uploadedBy }
+  );
+
+// Active (not removed) evidence files of a checklist question. Questions saved
+// before multi-evidence may carry a single `evidence` object; only one that was
+// really stored on the server (has a filePath) is shown.
+export const getChecklistEvidences = (item) => {
+  if (Array.isArray(item?.evidences)) {
+    return item.evidences.filter((file) => !file.removed);
+  }
+
+  return item?.evidence?.filePath ? [item.evidence] : [];
 };
 
 export const getEvidenceUrl = (filePath) => {

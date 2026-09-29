@@ -88,6 +88,17 @@ async function runMigrations() {
     } catch (err) {
         console.error("[postgres] Audits unified_flow migration failed:", err.message);
     }
+
+    // Multiple evidence files per CAPA. Additive and nullable: existing CAPAs stay
+    // NULL and their single evidence_* file is shown as the first list item.
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.capas ADD COLUMN IF NOT EXISTS evidence_files jsonb;
+        `);
+        console.log("[postgres] audit_capa.capas schema up to date (evidence_files).");
+    } catch (err) {
+        console.error("[postgres] CAPAs evidence_files migration failed:", err.message);
+    }
 }
 
 module.exports = pool;

@@ -21,15 +21,18 @@ import {
     apiPatch,
     apiDelete
 } from "./client";
+import { withChecklistCompliance } from "../utils/complianceUtils";
 
 export const getAudits = () =>
-    apiGet("/audits");
+    apiGet("/audits").then((audits) =>
+        Array.isArray(audits) ? audits.map(withChecklistCompliance) : audits
+    );
 
 export const getAuditById = (id) =>
-    apiGet(`/audits/${id}`);
+    apiGet(`/audits/${id}`).then(withChecklistCompliance);
 
 export const createAudit = (audit) =>
-    apiPost("/audits", audit);
+    apiPost("/audits", audit).then(withChecklistCompliance);
 
 export const updateAudit = (
     id,
@@ -38,7 +41,7 @@ export const updateAudit = (
     apiPatch(
         `/audits/${id}`,
         changes
-    );
+    ).then(withChecklistCompliance);
 
 export const deleteAudit = (id) =>
     apiDelete(`/audits/${id}`);

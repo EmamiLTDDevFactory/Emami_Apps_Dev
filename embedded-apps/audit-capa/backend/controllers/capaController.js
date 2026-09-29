@@ -191,6 +191,120 @@ const uploadCAPAEvidenceController = async (
   }
 };
 
+/* =====================================================
+   MULTI-EVIDENCE: add files / hide a file
+   ===================================================== */
+
+const { MAX_EVIDENCE_FILES } =
+  require("../middleware/uploadCAPAEvidence");
+
+const toEvidenceMeta = (file, folder, uploadedBy) => ({
+  id: `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
+  fileName: file.originalname,
+  filePath: `/uploads/${folder}/${file.filename}`,
+  mimeType: file.mimetype,
+  size: file.size,
+  uploadedBy,
+  uploadedAt: new Date().toISOString(),
+  removed: false,
+});
+
+const addCAPAEvidenceController = async (req, res) => {
+
+  try {
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        message: "At least one evidence file is required."
+      });
+    }
+
+    const uploadedBy =
+      req.body.uploadedBy || "Depot";
+
+    const updatedCAPA =
+      await capaModel.addCAPAEvidenceFiles(
+        req.params.id,
+        req.files.map((file) =>
+          toEvidenceMeta(file, "capa-evidence", uploadedBy)
+        ),
+        MAX_EVIDENCE_FILES
+      );
+
+    if (!updatedCAPA) {
+      return res.status(404).json({
+        message: "CAPA not found"
+      });
+    }
+
+    res.status(200).json(updatedCAPA);
+
+  } catch (error) {
+
+    console.error("Evidence upload error:", error);
+
+    res.status(error.status || 500).json({
+      message: error.status
+        ? error.message
+        : "Unable to upload evidence."
+    });
+  }
+};
+
+// Soft remove only: the file stays on disk and in evidence_files (removed: true).
+const removeCAPAEvidenceController = async (req, res) => {
+
+  try {
+
+    const updatedCAPA =
+      await capaModel.removeCAPAEvidenceFile(
+        req.params.id,
+        req.params.fileId,
+        req.body?.removedBy || ""
+      );
+
+    if (!updatedCAPA) {
+      return res.status(404).json({
+        message: "CAPA not found"
+      });
+    }
+
+    res.status(200).json(updatedCAPA);
+
+  } catch (error) {
+
+    console.error("Evidence remove error:", error);
+
+    res.status(error.status || 500).json({
+      message: error.status
+        ? error.message
+        : "Unable to remove evidence."
+    });
+  }
+};
+
+// Checklist evidence: files are stored here, and their metadata is returned for
+// the frontend to keep on the question inside the audit's checklist JSON.
+const uploadChecklistEvidenceController = (req, res) => {
+
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({
+      message: "At least one evidence file is required."
+    });
+  }
+
+  const uploadedBy =
+    req.body.uploadedBy || "CQA";
+
+  res.status(200).json(
+    req.files.map((file) => ({
+      ...toEvidenceMeta(file, "checklist-evidence", uploadedBy),
+      auditId: Number(req.params.id),
+      questionId: req.body.questionId ?? null,
+    }))
+  );
+};
+
 const deleteCAPAsForAudit = async (req, res) => {
   try {
 
@@ -221,5 +335,8 @@ module.exports = {
   createCAPAs,
   updateCAPA,
   uploadCAPAEvidenceController,
+  addCAPAEvidenceController,
+  removeCAPAEvidenceController,
+  uploadChecklistEvidenceController,
   deleteCAPAsForAudit
 };

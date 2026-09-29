@@ -291,7 +291,7 @@ export default function AuditList() {
             renderCell: (params) => (
                 <Chip
                     size="small"
-                    label={`${params.value}%`}
+                    label={`${Number(params.value || 0).toFixed(2)}%`}
                     color={
                         params.value >= 90
                             ? "success"

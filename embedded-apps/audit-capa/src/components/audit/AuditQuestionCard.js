@@ -12,6 +12,13 @@ import {
 import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
 import DeleteIcon from "@mui/icons-material/Delete";
+import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import EvidenceList from "../common/EvidenceList";
+import { getChecklistEvidences } from "../../utils/storage";
+
+const EVIDENCE_ACCEPT =
+    ".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx";
 import useMediaQuery from "@mui/material/useMediaQuery";
 
 export default function AuditQuestionCard({
@@ -26,6 +33,9 @@ export default function AuditQuestionCard({
     handleQuestionChange,
     handleDeleteQuestion,
     handleEvidenceUpload,
+    handleEvidenceRemove,
+    canRemoveEvidence = false,
+    uploadingEvidence = false,
 }) {
 
     const currentUser = JSON.parse(
@@ -63,6 +73,9 @@ export default function AuditQuestionCard({
 
     const disableFollowupField =
         isNA || isCompliance;
+
+    const evidences =
+        getChecklistEvidences(item);
 
     // const getCardStyle = () => {
 
@@ -794,118 +807,67 @@ export default function AuditQuestionCard({
 
                 {/* <Grid item xs={12}> */}
                 <Grid item xs={12} sm={6} md={2}>
-                    {/* {!isDepot && ( */}
+                    {/* Multiple evidence files per question (max 10, 10 MB each):
+                        camera capture or any supported file. */}
                     {canEditAnnexure && (
-                        <Button
-                            component="label"
-                            variant="outlined"
-                            fullWidth={isAuditorTablet}
-                            sx={{
-                                minWidth: isAuditorTablet ? 56 : "auto",
-                            }}
-                            disabled={disableFollowupField}
-                        >
-                            Capture Evidence
-
-                            <input
-                                hidden
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                // disabled={isDepot || disableFollowupField}
-                                disabled={!canEditAnnexure || disableFollowupField}
-                                onChange={(e) =>
-                                    handleEvidenceUpload(
-                                        item.id,
-                                        e.target.files?.[0]
-                                    )
-                                }
-                            />
-                        </Button>
-                    )}
-
-                    {/* {item.evidence && (
-                        <Box sx={{ mt: 2 }}> */}
-
-                    {item.evidence && (
                         <Box
                             sx={{
-                                mt: 2,
-                                p: 2,
-                                border: "1px solid #E5E7EB",
-                                borderRadius: 2,
-                                backgroundColor: "#F8FAFC",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 1,
                             }}
                         >
-                            <Typography
-                                variant="subtitle2"
-                                fontWeight={700}
-                                sx={{ mb: 1 }}
+                            <Button
+                                component="label"
+                                variant="outlined"
+                                size={isAuditorTablet ? "large" : "small"}
+                                startIcon={<PhotoCameraIcon />}
+                                disabled={disableFollowupField || uploadingEvidence}
                             >
-                                Evidence Details
-                            </Typography>
+                                Capture Photo
 
-                            {/* <Typography
-                                variant="body2"
-                                color="success.main"
-                                fontWeight={600}
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    multiple
+                                    onChange={(e) => {
+                                        handleEvidenceUpload(
+                                            item.id,
+                                            e.target.files
+                                        );
+                                        e.target.value = "";
+                                    }}
+                                />
+                            </Button>
+
+                            <Button
+                                component="label"
+                                variant="outlined"
+                                size={isAuditorTablet ? "large" : "small"}
+                                startIcon={<UploadFileIcon />}
+                                disabled={disableFollowupField || uploadingEvidence}
                             >
-                                📷 {item.evidence.name}
-                            </Typography> */}
+                                {uploadingEvidence ? "Uploading..." : "Upload File"}
 
-                            <Typography variant="body2">
-                                File: {item.evidence.fileName}
-                            </Typography>
-
-                            <Typography variant="body2">
-                                Uploaded By: {item.evidence.uploadedBy}
-                            </Typography>
-
-                            <Typography variant="body2">
-                                Uploaded On:
-                                {" "}
-                                {new Date(
-                                    item.evidence.uploadedAt
-                                ).toLocaleString()}
-                            </Typography>
-
-                            <Box
-                                component="img"
-                                src={item.evidence.preview}
-                                alt="Evidence"
-                                sx={{
-                                    mt: 1,
-                                    width: 200,
-                                    maxWidth: "100%",
-                                    height: "auto",
-                                    borderRadius: 2,
-                                    border: "1px solid #e0e0e0",
-                                    boxShadow:
-                                        "0px 2px 8px rgba(0,0,0,0.1)",
-                                }}
-                            />
-
-                            {item.evidence.filePath && (
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    sx={{ mt: 1 }}
-                                    onClick={() =>
-                                        window.open(
-                                            item.evidence.filePath,
-                                            "_blank"
-                                        )
-                                    }
-                                >
-                                    View Evidence
-                                </Button>
-                            )}
-
+                                <input
+                                    hidden
+                                    type="file"
+                                    accept={EVIDENCE_ACCEPT}
+                                    multiple
+                                    onChange={(e) => {
+                                        handleEvidenceUpload(
+                                            item.id,
+                                            e.target.files
+                                        );
+                                        e.target.value = "";
+                                    }}
+                                />
+                            </Button>
                         </Box>
                     )}
                 </Grid>
-
-
 
                 {/* <Grid item xs={6} md={2}>
              */}
@@ -985,6 +947,26 @@ export default function AuditQuestionCard({
                         }}
                     />
                 </Grid>
+
+                {evidences.length > 0 && (
+                    <Grid item xs={12}>
+                        <Typography
+                            variant="subtitle2"
+                            fontWeight={700}
+                            sx={{ mb: 1 }}
+                        >
+                            Evidence ({evidences.length})
+                        </Typography>
+
+                        <EvidenceList
+                            files={evidences}
+                            canRemove={() => canRemoveEvidence}
+                            onRemove={(file) =>
+                                handleEvidenceRemove?.(item.id, file)
+                            }
+                        />
+                    </Grid>
+                )}
             </Grid>
         </Card >
     );

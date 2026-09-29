@@ -78,6 +78,32 @@
 
 const pool = require("../config/db");
 
+// Evidence list for a CAPA. evidence_files (jsonb) holds every file ever
+// uploaded; removed files stay in the list with removed: true (never deleted).
+// CAPAs from before multi-evidence only have the single evidence_* columns, so
+// that file is surfaced as the first item of the list.
+const getEvidenceFiles = (row) => {
+
+  if (Array.isArray(row.evidence_files)) {
+    return row.evidence_files;
+  }
+
+  if (row.evidence_file_path) {
+    return [
+      {
+        id: "legacy",
+        fileName: row.evidence_file_name,
+        filePath: row.evidence_file_path,
+        uploadedBy: row.evidence_uploaded_by,
+        uploadedAt: row.evidence_uploaded_at,
+        removed: false,
+      },
+    ];
+  }
+
+  return [];
+};
+
 const mapCAPA = (row) => {
 
   if (!row) {
@@ -129,6 +155,9 @@ const mapCAPA = (row) => {
 
     evidenceUploadedAt:
       row.evidence_uploaded_at,
+
+    evidenceFiles:
+      getEvidenceFiles(row),
 
     cqaRemarks:
       row.reviewer_remarks,
@@ -404,6 +433,121 @@ const updateCAPAEvidence = async (
   );
 };
 
+// Read-modify-write of the evidence list under a row lock, so two uploads
+// landing together can't overwrite each other's files.
+const withLockedEvidence = async (id, mutate) => {
+
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(
+      "SELECT * FROM audit_capa.capas WHERE id = $1 FOR UPDATE",
+      [id]
+    );
+
+    if (!rows[0]) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { files, legacy } =
+      mutate(getEvidenceFiles(rows[0]));
+
+    // Legacy single-evidence columns keep pointing at the latest upload so
+    // anything still reading them keeps working; nothing is ever cleared.
+    const result = legacy
+      ? await client.query(
+        `
+          UPDATE audit_capa.capas
+          SET
+            evidence_files = $1::jsonb,
+            evidence_file_name = $2,
+            evidence_file_path = $3,
+            evidence_uploaded_by = $4,
+            evidence_uploaded_at = $5,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $6
+          RETURNING *
+        `,
+        [
+          JSON.stringify(files),
+          legacy.fileName,
+          legacy.filePath,
+          legacy.uploadedBy,
+          legacy.uploadedAt,
+          id,
+        ]
+      )
+      : await client.query(
+        `
+          UPDATE audit_capa.capas
+          SET
+            evidence_files = $1::jsonb,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+          RETURNING *
+        `,
+        [JSON.stringify(files), id]
+      );
+
+    await client.query("COMMIT");
+
+    return mapCAPA(result.rows[0]);
+
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => { });
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+const addCAPAEvidenceFiles = (id, newFiles, maxActive) =>
+  withLockedEvidence(id, (current) => {
+
+    const activeCount =
+      current.filter((file) => !file.removed).length;
+
+    if (activeCount + newFiles.length > maxActive) {
+      const error = new Error(
+        `A CAPA can have at most ${maxActive} evidence files (${activeCount} already attached).`
+      );
+      error.status = 400;
+      throw error;
+    }
+
+    return {
+      files: [...current, ...newFiles],
+      legacy: newFiles[newFiles.length - 1],
+    };
+  });
+
+const removeCAPAEvidenceFile = (id, fileId, removedBy) =>
+  withLockedEvidence(id, (current) => {
+
+    if (!current.some((file) => String(file.id) === String(fileId))) {
+      const error = new Error("Evidence file not found.");
+      error.status = 404;
+      throw error;
+    }
+
+    return {
+      files: current.map((file) =>
+        String(file.id) === String(fileId)
+          ? {
+            ...file,
+            removed: true,
+            removedBy,
+            removedAt: new Date().toISOString(),
+          }
+          : file
+      ),
+      legacy: null,
+    };
+  });
+
 const deleteCAPAsByAudit = async (auditId) => {
 
   const result = await pool.query(
@@ -424,5 +568,7 @@ module.exports = {
   updateCAPA,
   updateCAPAs,
   updateCAPAEvidence,
+  addCAPAEvidenceFiles,
+  removeCAPAEvidenceFile,
   deleteCAPAsByAudit
 };
