@@ -66,6 +66,8 @@ function toPoRow(raw: Record<string, any>): PoRow {
     addInfo: str(raw.AddInfo),
     initRem: str(raw.InitRem),
     zname: str(raw.Zname),
+    ekgrp: str(raw.Ekgrp),
+    bukrs: str(raw.Bukrs),
     delDate: parseODataDate(raw.DelDate),
     ccenter: str(raw.Ccenter),
     gl: str(raw.Gl),

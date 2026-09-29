@@ -100,6 +100,8 @@ function DetailsContent() {
           <span>Created by: <b className="text-ink">{header.zname || '—'}</b></span>
           <span>Date: <b className="text-ink">{formatDate(header.erdat)}</b></span>
           <span>Vendor: <b className="text-ink">{header.lifnr} · {header.name1}</b></span>
+          <span>Purchase Group: <b className="text-ink">{header.ekgrp || '—'}</b></span>
+          <span>Company Code: <b className="text-ink">{header.bukrs || '—'}</b></span>
         </div>
       </div>
 
