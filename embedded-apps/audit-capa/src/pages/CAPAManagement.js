@@ -198,6 +198,12 @@ export default function CAPAManagement() {
     const getAuditNo = (id) =>
         audits?.find((a) => String(a.id) === String(id))?.auditNo || "";
 
+    const currentAudit =
+        audits?.find((a) => String(a.id) === String(auditId));
+
+    const formatAuditDate = (value) =>
+        value ? dayjs(value).format("DD-MM-YYYY") : "-";
+
     const currentUser = JSON.parse(
         localStorage.getItem(
             "currentUser"
@@ -292,7 +298,14 @@ export default function CAPAManagement() {
         // );
     };
 
+    const hasCqaRemarks = (item) =>
+        Boolean(item?.cqaRemarks?.trim());
+
     const handleCloseCAPA = (id) => {
+        if (!hasCqaRemarks(capaData.find((c) => c.id === id))) {
+            alert("CQA Remarks are mandatory before closing the CAPA.");
+            return;
+        }
         setSelectedCAPA(id);
         setOpenDialog(true);
     };
@@ -486,7 +499,7 @@ export default function CAPAManagement() {
 
         if (!canSubmitCAPA(item)) {
             alert(
-                "Root Cause, Preventive Action and Target Date are mandatory."
+                "Root Cause, Corrective Action and Target Date are mandatory."
             );
             return;
         }
@@ -708,6 +721,11 @@ export default function CAPAManagement() {
         capaId
     ) => {
 
+        if (!hasCqaRemarks(capaData.find((c) => c.id === capaId))) {
+            alert("CQA Remarks are mandatory before sending the CAPA back.");
+            return;
+        }
+
         const updatedCAPA =
             capaData.map((item) =>
                 item.id === capaId
@@ -842,12 +860,61 @@ export default function CAPAManagement() {
                             </Typography>
 
                             <Typography >
-                                Manage corrective and preventive actions
+                                Manage corrective actions
                             </Typography>
                         </Box>
                     </Box>
                 </CardContent>
             </Card>
+
+            {currentAudit && (
+                <Card sx={{ mb: 3, borderRadius: 2 }}>
+                    <CardContent>
+                        <Box
+                            sx={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: 1,
+                                mb: 2,
+                            }}
+                        >
+                            <Typography variant="h6" fontWeight={600}>
+                                Audit No: {currentAudit.auditNo}
+                            </Typography>
+                            <Chip label={currentAudit.status} color="primary" variant="outlined" />
+                        </Box>
+
+                        <Grid container spacing={2}>
+                            {[
+                                ["Audit Type", currentAudit.auditType],
+                                ["Audit Category", currentAudit.auditCategory],
+                                ["Depot", currentAudit.depot],
+                                ["Auditor", currentAudit.auditor],
+                                ["Audit Date", formatAuditDate(currentAudit.auditDate)],
+                                ["Due Date", formatAuditDate(currentAudit.dueDate)],
+                                [
+                                    "Compliance",
+                                    currentAudit.compliance != null
+                                        ? `${Number(currentAudit.compliance).toFixed(2)}%`
+                                        : "-",
+                                ],
+                                ["Total CAPA", capaData.length],
+                            ].map(([label, value]) => (
+                                <Grid item xs={6} sm={4} md={3} key={label}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {label}
+                                    </Typography>
+                                    <Typography fontWeight={500}>
+                                        {value === "" || value == null ? "-" : value}
+                                    </Typography>
+                                </Grid>
+                            ))}
+                        </Grid>
+                    </CardContent>
+                </Card>
+            )}
 
 
 
@@ -1229,7 +1296,7 @@ export default function CAPAManagement() {
                                     xs={12}
                                 >
                                     <TextField
-                                        label="Preventive Action"
+                                        label="Corrective Action"
                                         fullWidth
                                         multiline
                                         rows={3}
@@ -1256,13 +1323,19 @@ export default function CAPAManagement() {
                                         disabled={
                                             isDepot
                                         }
+                                        required={!isDepot}
+                                        error={
+                                            !isDepot &&
+                                            item.status === "In Progress" &&
+                                            !hasCqaRemarks(item)
+                                        }
                                         // InputProps={{
                                         //     readOnly: isDepot,
                                         // }}
                                         helperText={
                                             isDepot
                                                 ? "Remarks provided by CQA Auditor"
-                                                : "Enter review remarks"
+                                                : "CQA Remarks are mandatory to Accept & Close or Send Back"
                                         }
                                         onChange={(e) =>
                                             handleSaveDraft(
@@ -1393,7 +1466,7 @@ export default function CAPAManagement() {
                                                 whiteSpace: "normal",
                                             }}
                                         >
-                                            Root Cause, Preventive Action and Target Date
+                                            Root Cause, Corrective Action and Target Date
                                             are mandatory before submission.
                                         </Typography>
 
@@ -1995,6 +2068,7 @@ export default function CAPAManagement() {
                                             <Button
                                                 variant="contained"
                                                 color="success"
+                                                disabled={!hasCqaRemarks(item)}
                                                 onClick={() =>
                                                     handleCloseCAPA(
                                                         item.id
@@ -2007,6 +2081,7 @@ export default function CAPAManagement() {
                                             <Button
                                                 variant="contained"
                                                 color="error"
+                                                disabled={!hasCqaRemarks(item)}
                                                 onClick={() =>
                                                     handleSendBackCAPA(
                                                         item.id

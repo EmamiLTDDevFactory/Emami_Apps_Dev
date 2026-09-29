@@ -84,7 +84,7 @@ export default function CAPACard({
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="Preventive Action"
+              label="Corrective Action"
               multiline
               rows={3}
             />

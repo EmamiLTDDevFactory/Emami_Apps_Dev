@@ -6,9 +6,9 @@ const checklistData = [
     {
         id: 1,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Is the godown of suitable size, design and construction for the FG to be stored?",
+            "Is the warehouse located in a clean, secure environment?",
         status: "",
         observation: "",
         actionPlan: "",
@@ -23,9 +23,9 @@ const checklistData = [
     {
         id: 2,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Is there adequate security to prevent unauthorized access?",
+            "Structure is weatherproof and rodent",
         status: "",
         observation: "",
         actionPlan: "",
@@ -40,9 +40,9 @@ const checklistData = [
     {
         id: 3,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Are there adequate lighting & ventilation?",
+            "Floors, walls, and ceilings are intact, clean.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -57,9 +57,9 @@ const checklistData = [
     {
         id: 4,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "If open windows are there, are they adequately screened?",
+            "Proper lighting as per SOP, and ventilation available",
         status: "",
         observation: "",
         actionPlan: "",
@@ -74,9 +74,9 @@ const checklistData = [
     {
         id: 5,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Are the godown and surroundings maintained in a clean and orderly manner and in a good state of repair?",
+            "Adequate ventilation available.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -91,9 +91,9 @@ const checklistData = [
     {
         id: 6,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Are pest control activities performed & adequately monitored?",
+            "Walkway is free from any obstical.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -108,9 +108,9 @@ const checklistData = [
     {
         id: 7,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Are temperature and humidity controlled appropriately for materials stored in the godown?",
+            "Loading/unloading area is protected from rain.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -125,9 +125,9 @@ const checklistData = [
     {
         id: 8,
         category: "Building / Premises",
-        section: "Facility",
+        section: "Infrastructure & Facility Conditions",
         parameter:
-            "Are there adequate handwash/toilet facility which is away from storage area?",
+            "Pallets/ Tarpuline are used for storing goods",
         status: "",
         observation: "",
         actionPlan: "",
@@ -146,9 +146,9 @@ const checklistData = [
     {
         id: 9,
         category: "Building / Premises",
-        section: "Loading / unloading",
+        section: "Storage Practices",
         parameter:
-            "Separate gate/port for loading and unloading of goods.",
+            "FIFO/FEFO method implemented",
         status: "",
         observation: "",
         actionPlan: "",
@@ -163,9 +163,9 @@ const checklistData = [
     {
         id: 10,
         category: "Building / Premises",
-        section: "Loading / unloading",
+        section: "Storage Practices",
         parameter:
-            "Loading/unloading area is protected from rain.",
+            "Clear segregation of expired, damaged, returned, and good stock",
         status: "",
         observation: "",
         actionPlan: "",
@@ -184,9 +184,9 @@ const checklistData = [
     {
         id: 11,
         category: "Building / Premises",
-        section: "Material Control",
+        section: "Storage Practices",
         parameter:
-            "Is First In First Out (FIFO) followed?",
+            "Products not stored in saleable area beyond their expiry dates",
         status: "",
         observation: "",
         actionPlan: "",
@@ -201,9 +201,9 @@ const checklistData = [
     {
         id: 12,
         category: "Building / Premises",
-        section: "Material Control",
+        section: "Storage Practices",
         parameter:
-            "Are incoming consignments/carriages checked for pest manifestation or any other exposure to deterioration of product?",
+            "Racking and / 1ft from wall",
         status: "",
         observation: "",
         actionPlan: "",
@@ -218,9 +218,9 @@ const checklistData = [
     {
         id: 13,
         category: "Building / Premises",
-        section: "Material Control",
+        section: "Storage Practices",
         parameter:
-            "Separated/Designated room for the storage of Expired material.",
+            "Stacking safe and stable (Height) as recommended on master cartons",
         status: "",
         observation: "",
         actionPlan: "",
@@ -235,9 +235,9 @@ const checklistData = [
     {
         id: 14,
         category: "Building / Premises",
-        section: "Material Control",
+        section: "Pest Control",
         parameter:
-            "Are there any process for control of short shelf life product, are they monitored regularly?",
+            "Pest control schedule documented and up to date",
         status: "",
         observation: "",
         actionPlan: "",
@@ -256,9 +256,9 @@ const checklistData = [
     {
         id: 15,
         category: "Building / Premises",
-        section: "SOPs",
+        section: "Pest Control",
         parameter:
-            "Standard operating procedures are available at least for basic operations like Product receipt, product storage, product despatch, product recall/rework, product destruction and housekeeping.",
+            "Pest control carried out by a certified vendor",
         status: "",
         observation: "",
         actionPlan: "",
@@ -273,9 +273,9 @@ const checklistData = [
     {
         id: 16,
         category: "Building / Premises",
-        section: "SOPs",
+        section: "Product Management",
         parameter:
-            "Concerned personnel are trained on SOPs and training records available.",
+            "Trained in product handling",
         status: "",
         observation: "",
         actionPlan: "",
@@ -294,9 +294,9 @@ const checklistData = [
     {
         id: 17,
         category: "Building / Premises",
-        section: "Redressal/rework",
+        section: "Product Management",
         parameter:
-            "Redressal/Rework, if any are carried out in separate designated place and documented.",
+            "Dedicated Area for Honey Storage",
         status: "",
         observation: "",
         actionPlan: "",
@@ -315,9 +315,9 @@ const checklistData = [
     {
         id: 18,
         category: "Building / Premises",
-        section: "Destruction",
+        section: "Product Management",
         parameter:
-            "Separated/designated area for destruction and documents for approval of destructions are available.",
+            "Honey covered with special covers",
         status: "",
         observation: "",
         actionPlan: "",
@@ -336,24 +336,7 @@ const checklistData = [
 
     {
         id: 19,
-        category: "Safety assessment",
-        section: "Safety",
-        parameter:
-            "Godown is evaluated and assessed for the safety requirement.",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 20,
-        category: "Safety assessment",
+        category: "Safety",
         section: "Emergency/evacuation plan",
         parameter:
             "Documented Emergency/evacuation plan is available.",
@@ -369,11 +352,28 @@ const checklistData = [
     },
 
     {
-        id: 21,
-        category: "Safety assessment",
-        section: "Emergency/evacuation plan",
+        id: 20,
+        category: "Safety",
+        section: "Emergency Contact ",
         parameter:
-            "All the emergency contact numbers are available and updated.",
+            "All the emergency contact numbers are available and updated",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 21,
+        category: "Safety",
+        section: "Fire Extinguisher",
+        parameter:
+            "List of all Fire extinguishers available.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -387,10 +387,10 @@ const checklistData = [
 
     {
         id: 22,
-        category: "Safety assessment",
-        section: "Fire Extinguisher",
+        category: "Safety",
+        section: "Electrical Safety",
         parameter:
-            "Number of required fire extinguishers are available and are in working condition. Check Physically: Total number of fire extinguishers: 10 Pcs. Last checked on: ______. Next due date: ______.",
+            "Electrical connections are intact without loose wiring/ open boards",
         status: "",
         observation: "",
         actionPlan: "",
@@ -404,10 +404,10 @@ const checklistData = [
 
     {
         id: 23,
-        category: "Safety assessment",
-        section: "First AID",
+        category: "Safety",
+        section: "Safety Awareness Trainng & Certificate.",
         parameter:
-            "First aid box is available and adequate.",
+            "Training on safety Awareness : Training Date",
         status: "",
         observation: "",
         actionPlan: "",
@@ -421,10 +421,10 @@ const checklistData = [
 
     {
         id: 24,
-        category: "Safety assessment",
-        section: "Training",
+        category: "Safety",
+        section: "First AID",
         parameter:
-            "Training on safety awareness. Last done on: ______. Next Due on: ______.",
+            "First aid box is available and adequate",
         status: "",
         observation: "",
         actionPlan: "",
@@ -438,10 +438,10 @@ const checklistData = [
 
     {
         id: 25,
-        category: "Safety assessment",
-        section: "Training",
+        category: "General Hygiene and Store Practices",
+        section: "SOPs",
         parameter:
-            "Training on operation of fire extinguisher. Last done on: ______. Next Due on: ______.",
+            "Standard operating procedures are available at least for basic operations like; Product receipt, product storage, product despatch,  product recall/rework, product destruction and housekeeping, CQA quidelines/SOPs",
         status: "",
         observation: "",
         actionPlan: "",
@@ -460,8 +460,59 @@ const checklistData = [
 
     {
         id: 26,
-        category: "General Hygiene and Go down practices",
-        section: "Housekeeping/Hygiene",
+        category: "General Hygiene and Store Practices",
+        section: "SOPs",
+        parameter:
+            "Concerned personnel are trained on SOPs and training records available",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 27,
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
+        parameter:
+            "Regular cleaning schedule in place and documented",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 28,
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
+        parameter:
+            "Restrooms/toilet and staff areas are clean and hygienic and saperate from product storage area with hand wash area.",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 29,
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
         parameter:
             "Godown is clean, dry and free from dust.",
         status: "",
@@ -476,62 +527,11 @@ const checklistData = [
     },
 
     {
-        id: 27,
-        category: "General Hygiene and Go down practices",
-        section: "Housekeeping/Hygiene",
-        parameter:
-            "Schedule displayed and followed: Check record.",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 28,
-        category: "General Hygiene and Go down practices",
-        section: "Housekeeping/Hygiene",
-        parameter:
-            "Required number of relevant equipments are available.",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 29,
-        category: "General Hygiene and Go down practices",
-        section: "Housekeeping/Hygiene",
-        parameter:
-            "Is there system limiting consumption of foods, beverages, tobacco/smoking in the storage area?",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
         id: 30,
-        category: "General Hygiene and Go down practices",
-        section: "Housekeeping/Hygiene",
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
         parameter:
-            "Walkway is free.",
+            "Schedule displayed and followed: Check record",
         status: "",
         observation: "",
         actionPlan: "",
@@ -549,10 +549,10 @@ const checklistData = [
 
     {
         id: 31,
-        category: "General Hygiene and Go down practices",
-        section: "Product storage",
+        category: "General Hygiene and Store Practices",
+        section: "Personnel & Hygiene",
         parameter:
-            "Clear segregation and demarcation. Stored hygienically as per recommendation.",
+            "Personal hygiene standards followed",
         status: "",
         observation: "",
         actionPlan: "",
@@ -566,10 +566,10 @@ const checklistData = [
 
     {
         id: 32,
-        category: "General Hygiene and Go down practices",
-        section: "Product storage",
+        category: "General Hygiene and Store Practices",
+        section: "Personnel & Hygiene",
         parameter:
-            "Recommended stack height: As mentioned in master cartons. Actual stocking: Check for all products.",
+            "Eating/drinking/smoking/Tobacco prohibited in storage areas",
         status: "",
         observation: "",
         actionPlan: "",
@@ -583,10 +583,10 @@ const checklistData = [
 
     {
         id: 33,
-        category: "General Hygiene and Go down practices",
-        section: "Product storage",
+        category: "General Hygiene and Store Practices",
+        section: "Goods Reciept/Handling",
         parameter:
-            "Recommended distance from wall: 1 ft. Actual distance from wall: ______.",
+            "Container/truck checklist is refered and filled up for every consignment.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -604,24 +604,7 @@ const checklistData = [
 
     {
         id: 34,
-        category: "General Hygiene and Go down practices",
-        section: "Goods Reciept/Handling",
-        parameter:
-            "Container/truck checklist is referred and filled up for every consignment. Random check for 5 consignments.",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 35,
-        category: "General Hygiene and Go down practices",
+        category: "General Hygiene and Store Practices",
         section: "Goods Reciept/Handling",
         parameter:
             "Clear and defined guidelines are available and training given to all loading unloading personnel.",
@@ -637,11 +620,28 @@ const checklistData = [
     },
 
     {
-        id: 36,
-        category: "General Hygiene and Go down practices",
+        id: 35,
+        category: "General Hygiene and Store Practices",
         section: "Goods Reciept/Handling",
         parameter:
-            "Receipt of damaged goods is recorded and highlighted to all the concerned. Damaged quantity is segregated and labelled for redressal.",
+            "Receipt of damaged goods is recorded and highlighted to all the concerned.Damaged qty is seggregated and labelled for redressal",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 36,
+        category: "General Hygiene and Store Practices",
+        section: "Environmental Control",
+        parameter:
+            "Temperature and humidity monitored (manual/loggers)",
         status: "",
         observation: "",
         actionPlan: "",
@@ -655,10 +655,10 @@ const checklistData = [
 
     {
         id: 37,
-        category: "General Hygiene and Go down practices",
-        section: "Goods Reciept/Handling",
+        category: "General Hygiene and Store Practices",
+        section: "Environmental Control",
         parameter:
-            "Shortage receipt is highlighted within 24 hrs to all the concerned.",
+            "Temperature records maintained and reviewed",
         status: "",
         observation: "",
         actionPlan: "",
@@ -672,10 +672,10 @@ const checklistData = [
 
     {
         id: 38,
-        category: "General Hygiene and Go down practices",
-        section: "Goods Reciept/Handling",
+        category: "General Hygiene and Store Practices",
+        section: "Weight Machine Calliberation",
         parameter:
-            "Standard tapes are used for repacking/redressal.",
+            "Periodic weight machine calliberation to be performed and documented.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -693,27 +693,10 @@ const checklistData = [
 
     {
         id: 39,
-        category: "General Hygiene and Go down practices",
-        section: "Environmental control-Inside the Godown",
+        category: "General Hygiene and Store Practices",
+        section: "Weight Machine Calliberation",
         parameter:
-            "Required numbers of digital hygrothermometers are available and located in strategic areas.",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 40,
-        category: "General Hygiene and Go down practices",
-        section: "Environmental control-Inside the Godown",
-        parameter:
-            "Temperature & Humidity is recorded every day. Check the record and status during the visit. Standard Norms: RH ______ Temp ______. Actual temp & Humidity: RH ______ Temp ______.",
+            "stamped weights for caliberation",
         status: "",
         observation: "",
         actionPlan: "",

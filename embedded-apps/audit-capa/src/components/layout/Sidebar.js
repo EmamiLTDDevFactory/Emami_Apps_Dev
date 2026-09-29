@@ -161,6 +161,9 @@ export default function Sidebar() {
         <Box
             sx={{
                 position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                flexShrink: 0,
                 width: collapsed ? 80 : 240,
                 height: "100vh",
                 bgcolor: "#fff",
@@ -232,8 +235,8 @@ export default function Sidebar() {
                     src={emamiAppsLogo}
                     alt="Emami Apps"
                     sx={{
-                        width: collapsed ? 40 : 170,
-                        height: collapsed ? 40 : 170,
+                        width: collapsed ? 40 : 110,
+                        height: collapsed ? 40 : 110,
                         objectFit: "contain",
                         transition: "all 0.3s ease",
                     }}
@@ -257,7 +260,14 @@ export default function Sidebar() {
 
             {/* Menu */}
 
-            <List>
+            <List
+                sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                }}
+            >
                 {menuItems.map((item) => (
                     <Tooltip
                         key={item.text}
@@ -326,6 +336,9 @@ export default function Sidebar() {
                                     primary={
                                         item.text
                                     }
+                                    primaryTypographyProps={{
+                                        noWrap: true,
+                                    }}
                                 />
                             )}
                         </ListItemButton>
@@ -335,11 +348,12 @@ export default function Sidebar() {
 
             <Box
                 sx={{
-                    position: "absolute",
-                    bottom: 20,
-                    left: 0,
+                    flexShrink: 0,
                     width: "100%",
-                    px: 2,
+                    px: collapsed ? 1 : 2,
+                    pt: 1,
+                    pb: 2.5,
+                    borderTop: "1px solid #E5E7EB",
                 }}
             >
                 {/* <Divider
@@ -361,19 +375,25 @@ export default function Sidebar() {
                     sx={{
                         display: "flex",
                         alignItems: "center",
+                        justifyContent: collapsed
+                            ? "center"
+                            : "flex-start",
                         gap: 1.5,
                         mb: 2,
+                        minWidth: 0,
                     }}
                 >
-                    <Avatar>
+                    <Avatar sx={{ flexShrink: 0 }}>
                         {initials}
                     </Avatar>
 
                     {!collapsed && (
-                        <Box>
+                        <Box sx={{ minWidth: 0 }}>
                             <Typography
                                 variant="body2"
                                 fontWeight={600}
+                                noWrap
+                                title={currentUser?.userId || ""}
                                 sx={{ color: "#1E293B" }}
                             >
                                 {(currentUser?.userId || "")
@@ -381,7 +401,9 @@ export default function Sidebar() {
                             </Typography>
                             <Typography
                                 variant="caption"
+                                noWrap
                                 sx={{
+                                    display: "block",
                                     color: "#64748B",
                                 }}
                             >
@@ -410,6 +432,9 @@ export default function Sidebar() {
                     sx={{
                         color: "#1E293B",
                         borderRadius: 1,
+                        justifyContent: collapsed
+                            ? "center"
+                            : "flex-start",
 
                         "&:hover": {
                             backgroundColor: "#F3F0FF",
