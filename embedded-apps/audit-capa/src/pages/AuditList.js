@@ -497,7 +497,7 @@ export default function AuditList() {
             flex: 1,
 
             renderCell: (params) => (
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, height: "100%" }}>
                     <Chip
                         label={params.value}
                         color={
@@ -546,6 +546,8 @@ export default function AuditList() {
             field: "actions",
             headerName: "Actions",
             flex: 1,
+            // Room for View + Edit + Delete (three icon buttons).
+            minWidth: 160,
             sortable: false,
 
             renderCell: (params) => (
@@ -1213,9 +1215,10 @@ export default function AuditList() {
                         />
                     </Box>
 
+                    {/* No fixed height: the auto-height table used to overflow a 500px
+                        box and get clipped by the card (last rows + pager hidden). */}
                     <div
                         style={{
-                            height: 500,
                             width: "100%",
                         }}
                     >
