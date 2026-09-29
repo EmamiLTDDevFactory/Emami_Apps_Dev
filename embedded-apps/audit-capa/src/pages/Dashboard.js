@@ -84,6 +84,18 @@ export default function Dashboard() {
                 ].includes(a.status)
         ).length;
 
+    // Same statuses as the "In Progress" list filter below, so the tiles
+    // Open + In Progress + CAPA Open + Closed add up to Total Audits.
+    const inProgressAudits =
+        audits.filter(
+            a =>
+                [
+                    "In Progress",
+                    "Self Assessment Submitted",
+                    "Under Review"
+                ].includes(a.status)
+        ).length;
+
     const capaOpenAudits =
         audits.filter(
             a =>
@@ -519,6 +531,18 @@ export default function Dashboard() {
                     onClick={() => {
                         setDashboardView("AUDITS");
                         setSelectedFilter("Open");
+                    }}
+                />
+
+                <KpiSegment
+                    label="In Progress"
+                    value={inProgressAudits}
+                    color="#06B6D4"
+                    icon={<AutorenewIcon fontSize="small" />}
+                    active={dashboardView === "AUDITS" && selectedFilter === "In Progress"}
+                    onClick={() => {
+                        setDashboardView("AUDITS");
+                        setSelectedFilter("In Progress");
                     }}
                 />
 
