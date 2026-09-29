@@ -159,6 +159,19 @@ const mapCAPA = (row) => {
     evidenceFiles:
       getEvidenceFiles(row),
 
+    // "Add CAPA" (extra CAPA on an existing finding, by CQA)
+    description:
+      row.capa_description,
+
+    isAdditional:
+      row.is_additional === true,
+
+    cancelledBy:
+      row.cancelled_by,
+
+    cancelledAt:
+      row.cancelled_at,
+
     cqaRemarks:
       row.reviewer_remarks,
 
@@ -239,11 +252,13 @@ const createCAPAs = async (capas) => {
                     action_plan,
                     preventive_action,
                     target_date,
-                    status
+                    status,
+                    capa_description,
+                    is_additional
                 )
                 VALUES
                 (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
                 )
                 RETURNING *
                 `,
@@ -263,7 +278,9 @@ const createCAPAs = async (capas) => {
           normalizeDate(
             capa.targetDate
           ),
-          capa.status || "Open"
+          capa.status || "Open",
+          capa.description || null,
+          capa.isAdditional === true ? true : null
         ]
         // [
         //   capa.auditId,
@@ -433,6 +450,29 @@ const updateCAPAEvidence = async (
   );
 };
 
+// Soft cancel of an added CAPA (never deleted). Only CAPAs created through
+// "Add CAPA" can be cancelled, and not once Closed.
+const cancelCAPA = async (id, cancelledBy) => {
+
+  const { rows } = await pool.query(
+    `
+      UPDATE audit_capa.capas
+      SET
+        status = 'Cancelled',
+        cancelled_by = $1,
+        cancelled_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+        AND is_additional = TRUE
+        AND status NOT IN ('Closed', 'Cancelled')
+      RETURNING *
+    `,
+    [cancelledBy || "", id]
+  );
+
+  return mapCAPA(rows[0]);
+};
+
 // Read-modify-write of the evidence list under a row lock, so two uploads
 // landing together can't overwrite each other's files.
 const withLockedEvidence = async (id, mutate) => {
@@ -570,5 +610,6 @@ module.exports = {
   updateCAPAEvidence,
   addCAPAEvidenceFiles,
   removeCAPAEvidenceFile,
+  cancelCAPA,
   deleteCAPAsByAudit
 };

@@ -75,7 +75,8 @@ export const notifyCapaSet = ({
   notifySap("CapaSet", {
     Flag: flag,
     AuditNo: auditNo || "",
-    FindingNo: findingNo,
+    // SAP's FindingNo field is capped at 25 characters.
+    FindingNo: (findingNo || "").slice(0, 25),
     CapaId: capaId,
     TotalCapa: totalCapa === "" ? "" : String(totalCapa),
     CapaSubm: capaSubm === "" ? "" : String(capaSubm),

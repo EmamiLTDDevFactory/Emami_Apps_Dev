@@ -1,4 +1,4 @@
-import { getCAPAs } from "./storage";
+import { getAudits, getCAPAs } from "./storage";
 import {
   addNotification,
   getNotifications,
@@ -22,13 +22,26 @@ export const generateDueDateReminders = async () => {
   // getAllNotifications always filters by role server-side — passing none
   // returns zero rows, which is why the dedupe check below could never see
   // an existing reminder. These are always created with role "Depot".
-  const [capaRecords, notifications] = await Promise.all([
+  const [capaRecords, notifications, audits] = await Promise.all([
     getCAPAs(),
     getNotifications("Depot"),
+    getAudits(),
   ]);
 
+  // No reminders for CAPAs of deactivated audits.
+  const inactiveAuditIds = new Set(
+    (audits || [])
+      .filter((audit) => audit.isActive === false)
+      .map((audit) => audit.id)
+  );
+
   for (const capa of capaRecords) {
-    if (capa.status === "Closed" || !capa.targetDate) {
+    if (
+      capa.status === "Closed" ||
+      capa.status === "Cancelled" ||
+      inactiveAuditIds.has(capa.auditId) ||
+      !capa.targetDate
+    ) {
       continue;
     }
 

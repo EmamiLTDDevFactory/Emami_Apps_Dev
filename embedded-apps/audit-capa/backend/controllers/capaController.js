@@ -305,6 +305,35 @@ const uploadChecklistEvidenceController = (req, res) => {
   );
 };
 
+// Soft cancel of an added CAPA (status 'Cancelled'; the record is kept).
+const cancelCAPAController = async (req, res) => {
+
+  try {
+
+    const cancelled =
+      await capaModel.cancelCAPA(
+        req.params.id,
+        req.body?.cancelledBy || ""
+      );
+
+    if (!cancelled) {
+      return res.status(400).json({
+        message: "Only an added CAPA that is not yet closed can be cancelled."
+      });
+    }
+
+    res.status(200).json(cancelled);
+
+  } catch (error) {
+
+    console.error("CAPA cancel error:", error);
+
+    res.status(500).json({
+      message: "Unable to cancel CAPA."
+    });
+  }
+};
+
 const deleteCAPAsForAudit = async (req, res) => {
   try {
 
@@ -338,5 +367,6 @@ module.exports = {
   addCAPAEvidenceController,
   removeCAPAEvidenceController,
   uploadChecklistEvidenceController,
+  cancelCAPAController,
   deleteCAPAsForAudit
 };

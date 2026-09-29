@@ -99,6 +99,38 @@ async function runMigrations() {
     } catch (err) {
         console.error("[postgres] CAPAs evidence_files migration failed:", err.message);
     }
+
+    // Additional CAPAs per finding ("Add CAPA", CQA): description, flag, and soft
+    // cancellation. All additive + nullable; existing CAPAs are untouched.
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.capas
+                ADD COLUMN IF NOT EXISTS capa_description text,
+                ADD COLUMN IF NOT EXISTS is_additional boolean,
+                ADD COLUMN IF NOT EXISTS cancelled_by character varying,
+                ADD COLUMN IF NOT EXISTS cancelled_at timestamptz;
+        `);
+        console.log("[postgres] audit_capa.capas schema up to date (additional CAPA columns).");
+    } catch (err) {
+        console.error("[postgres] CAPAs additional-CAPA migration failed:", err.message);
+    }
+
+    // Audit deactivation (CQA): soft on/off switch with an audit trail. Additive and
+    // nullable; NULL is_active means active, so every existing audit stays active.
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.audits
+                ADD COLUMN IF NOT EXISTS is_active boolean,
+                ADD COLUMN IF NOT EXISTS deactivation_reason text,
+                ADD COLUMN IF NOT EXISTS deactivated_by character varying,
+                ADD COLUMN IF NOT EXISTS deactivated_at timestamptz,
+                ADD COLUMN IF NOT EXISTS reactivated_by character varying,
+                ADD COLUMN IF NOT EXISTS reactivated_at timestamptz;
+        `);
+        console.log("[postgres] audit_capa.audits schema up to date (activation columns).");
+    } catch (err) {
+        console.error("[postgres] Audits activation migration failed:", err.message);
+    }
 }
 
 module.exports = pool;

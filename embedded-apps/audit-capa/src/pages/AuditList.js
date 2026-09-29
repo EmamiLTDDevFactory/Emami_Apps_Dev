@@ -10,6 +10,8 @@ import {
     CardContent,
     Grid,
     Chip,
+    FormControlLabel,
+    Switch,
 } from "@mui/material";
 import AssignmentIcon from "@mui/icons-material/Assignment";
 import { KpiSegment, KpiBar } from "../components/common/KpiBar";
@@ -29,7 +31,18 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import IconButton from "@mui/material/IconButton";
 import DeleteIcon from "@mui/icons-material/Delete";
 import Tooltip from "@mui/material/Tooltip";
-import { deleteAudit } from "../utils/storage";
+import {
+    deleteAudit,
+    updateAudit,
+    deactivateAudit,
+    activateAudit,
+} from "../utils/storage";
+import EditIcon from "@mui/icons-material/Edit";
+import { formatDate } from "../utils/dateUtils";
+import {
+    EditAuditDialog,
+    DeactivateAuditDialog,
+} from "../components/audit/AuditAdminDialogs";
 
 
 // import auditsData from "../data/audits";
@@ -61,6 +74,11 @@ export default function AuditList() {
     const { audits, setAudits } =
         useAppContext();
 
+    // Edit / Deactivate (CQA) and the "Show deactivated" switch.
+    const [editingAudit, setEditingAudit] = useState(null);
+    const [deactivatingAudit, setDeactivatingAudit] = useState(null);
+    const [showDeactivated, setShowDeactivated] = useState(true);
+
     const currentUser = JSON.parse(
         localStorage.getItem(
             "currentUser"
@@ -88,29 +106,127 @@ export default function AuditList() {
             )
             : audits;
 
+    const isInactive = (audit) =>
+        audit?.isActive === false;
+
+    // Deactivated audits are shown greyed but not counted.
+    const countedAudits =
+        visibleAudits.filter((audit) => !isInactive(audit));
+
+    const isCQA =
+        currentUser?.role === "CQA";
+
+    // Edit: CQA, active audit, only before CAPA is generated.
+    const canEditAudit = (audit) =>
+        isCQA &&
+        !isInactive(audit) &&
+        ["Open", "In Progress"].includes(audit.status);
+
+    const replaceAudit = (updated) =>
+        setAudits((previous) =>
+            previous.map((audit) =>
+                audit.id === updated.id ? updated : audit
+            )
+        );
+
+    const handleSaveEdit = async (form) => {
+        try {
+            replaceAudit(await updateAudit(editingAudit.id, form));
+            setEditingAudit(null);
+            alert("Audit updated successfully.");
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "Unable to update audit.");
+        }
+    };
+
+    const handleDeactivate = async (reason) => {
+        try {
+            replaceAudit(
+                await deactivateAudit(
+                    deactivatingAudit.id,
+                    reason,
+                    currentUser?.username || currentUser?.name || ""
+                )
+            );
+            setDeactivatingAudit(null);
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "Unable to deactivate audit.");
+        }
+    };
+
+    const handleActivate = async (audit) => {
+        if (!window.confirm(`Activate audit ${audit.auditNo} again?`)) {
+            return;
+        }
+
+        try {
+            replaceAudit(
+                await activateAudit(
+                    audit.id,
+                    currentUser?.username || currentUser?.name || ""
+                )
+            );
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "Unable to activate audit.");
+        }
+    };
+
+    const renderActivationControl = (audit) =>
+        isCQA ? (
+            isInactive(audit) ? (
+                <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    onClick={() => handleActivate(audit)}
+                >
+                    Activate
+                </Button>
+            ) : (
+                <Button
+                    size="small"
+                    variant="outlined"
+                    color="error"
+                    onClick={() => setDeactivatingAudit(audit)}
+                >
+                    Deactivate
+                </Button>
+            )
+        ) : (
+            <Chip
+                size="small"
+                label={isInactive(audit) ? "Deactivated" : "Active"}
+                color={isInactive(audit) ? "default" : "success"}
+                variant="outlined"
+            />
+        );
+
     const openCount =
-        visibleAudits.filter(a => a.status === "Open").length;
+        countedAudits.filter(a => a.status === "Open").length;
 
     const inProgressCount =
-        visibleAudits.filter(a => a.status === "In Progress").length;
+        countedAudits.filter(a => a.status === "In Progress").length;
 
     // Desktop audits now follow the Onsite flow; hides the legacy self-assessment KPI tiles.
     const SHOW_SELF_ASSESSMENT_KPIS = false;
 
     const selfAssessmentCount =
-        visibleAudits.filter(a => a.status === "Self Assessment Submitted").length;
+        countedAudits.filter(a => a.status === "Self Assessment Submitted").length;
 
     const reworkRequiredCount =
-        visibleAudits.filter(a => a.status === "Rework Required").length;
+        countedAudits.filter(a => a.status === "Rework Required").length;
 
     const capaOpenCount =
-        visibleAudits.filter(a => a.status === "CAPA Open").length;
+        countedAudits.filter(a => a.status === "CAPA Open").length;
 
     const completedCount =
-        visibleAudits.filter(a => a.status === "Completed").length;
+        countedAudits.filter(a => a.status === "Completed").length;
 
     const closedCount =
-        visibleAudits.filter(a => a.status === "Closed").length;
+        countedAudits.filter(a => a.status === "Closed").length;
 
     const totalAuditsCount =
         openCount +
@@ -157,11 +273,15 @@ export default function AuditList() {
             //         )
             //         : audits;
 
+            const activeMatch =
+                showDeactivated || !isInactive(audit);
+
             return (
                 searchMatch &&
                 statusMatch &&
                 typeMatch &&
-                kpiMatch
+                kpiMatch &&
+                activeMatch
                 // visibleAudits
             );
         }
@@ -212,11 +332,14 @@ export default function AuditList() {
             field: "createdDate",
             headerName: "Creation Date",
             flex: 1,
+            // Display only; the raw value is kept so sorting stays by real date.
+            renderCell: (params) => formatDate(params.value),
         },
         {
             field: "dueDate",
             headerName: "Due Date",
             flex: 1,
+            renderCell: (params) => formatDate(params.value),
         },
 
         // {
@@ -374,19 +497,27 @@ export default function AuditList() {
             flex: 1,
 
             renderCell: (params) => (
-                <Chip
-                    label={params.value}
-                    color={
-                        params.value === "Open"
-                            ? "warning"
-                            : params.value === "Closed"
-                                ? "success"
-                                : params.value === "Completed"
-                                    ? "primary"
-                                    : "info"
-                    }
-                    size="small"
-                />
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <Chip
+                        label={params.value}
+                        color={
+                            params.value === "Open"
+                                ? "warning"
+                                : params.value === "Closed"
+                                    ? "success"
+                                    : params.value === "Completed"
+                                        ? "primary"
+                                        : "info"
+                        }
+                        size="small"
+                    />
+
+                    {isInactive(params.row) && (
+                        <Tooltip title={params.row.deactivationReason || ""}>
+                            <Chip label="Deactivated" size="small" />
+                        </Tooltip>
+                    )}
+                </Box>
             ),
         },
         // {
@@ -443,6 +574,24 @@ export default function AuditList() {
                         </IconButton>
                     </Tooltip>
 
+                    {canEditAudit(params.row) && (
+                        <Tooltip title="Edit Audit">
+                            <IconButton
+                                size={
+                                    isCQATablet
+                                        ? "large"
+                                        : "medium"
+                                }
+                                color="primary"
+                                onClick={() =>
+                                    setEditingAudit(params.row)
+                                }
+                            >
+                                <EditIcon />
+                            </IconButton>
+                        </Tooltip>
+                    )}
+
                     {/* {!isDepot && (
                         <Tooltip title="Delete Audit">
                             <IconButton
@@ -486,6 +635,15 @@ export default function AuditList() {
                         )}
                 </Box>
             ),
+        },
+
+        {
+            field: "activation",
+            headerName: "Activate / Deactivate",
+            flex: 1.2,
+            minWidth: 170,
+            sortable: false,
+            renderCell: (params) => renderActivationControl(params.row),
         },
 
         // {
@@ -1042,7 +1200,17 @@ export default function AuditList() {
                             </MenuItem>
                         </TextField>
 
-
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={showDeactivated}
+                                    onChange={(e) =>
+                                        setShowDeactivated(e.target.checked)
+                                    }
+                                />
+                            }
+                            label="Show deactivated"
+                        />
                     </Box>
 
                     <div
@@ -1111,6 +1279,13 @@ export default function AuditList() {
                                             borderRadius: 2,
                                             boxShadow:
                                                 "0px 8px 20px rgba(15,23,42,0.06)",
+                                            ...(isInactive(audit) && {
+                                                bgcolor: "#F3F4F6",
+                                                "& .MuiCardContent-root > *:not(.audit-activation)": {
+                                                    opacity: 0.55,
+                                                    filter: "grayscale(1)",
+                                                },
+                                            }),
                                         }}
                                     >
                                         <CardContent>
@@ -1145,7 +1320,7 @@ export default function AuditList() {
 
                                                 <Grid item xs={6}>
                                                     <Typography variant="body2">
-                                                        <b>Due Date:</b> {audit.dueDate}
+                                                        <b>Due Date:</b> {formatDate(audit.dueDate)}
                                                     </Typography>
                                                 </Grid>
 
@@ -1197,6 +1372,17 @@ export default function AuditList() {
                                                         </IconButton>
                                                     )} */}
 
+                                                    {canEditAudit(audit) && (
+                                                        <IconButton
+                                                            color="primary"
+                                                            onClick={() =>
+                                                                setEditingAudit(audit)
+                                                            }
+                                                        >
+                                                            <EditIcon />
+                                                        </IconButton>
+                                                    )}
+
                                                     {currentUser?.role === "CQA" &&
                                                         ["Open", "In Progress"].includes(audit.status) && (
                                                             <IconButton
@@ -1211,6 +1397,17 @@ export default function AuditList() {
                                                             </IconButton>
                                                         )}
                                                 </Box>
+                                            </Box>
+
+                                            <Box
+                                                className="audit-activation"
+                                                sx={{
+                                                    mt: 1.5,
+                                                    display: "flex",
+                                                    justifyContent: "flex-end",
+                                                }}
+                                            >
+                                                {renderActivationControl(audit)}
                                             </Box>
 
                                         </CardContent>
@@ -1234,8 +1431,22 @@ export default function AuditList() {
                                     pageSizeOptions={[5, 10, 20]}
                                     disableRowSelectionOnClick
                                     autoHeight
+                                    getRowClassName={(params) =>
+                                        isInactive(params.row)
+                                            ? "audit-row-inactive"
+                                            : ""
+                                    }
                                     sx={{
                                         border: 0,
+
+                                        // Deactivated: greyed out; the Activate button stays clear.
+                                        "& .audit-row-inactive": {
+                                            bgcolor: "#F3F4F6",
+                                        },
+                                        "& .audit-row-inactive .MuiDataGrid-cell:not([data-field='activation'])": {
+                                            opacity: 0.5,
+                                            filter: "grayscale(1)",
+                                        },
 
                                         "& .MuiDataGrid-columnHeaders": {
                                             backgroundColor: "#f5f5f5",
@@ -1251,6 +1462,18 @@ export default function AuditList() {
                     {/* </Box> */}
                 </CardContent>
             </Card>
+
+            <EditAuditDialog
+                audit={editingAudit}
+                onClose={() => setEditingAudit(null)}
+                onSave={handleSaveEdit}
+            />
+
+            <DeactivateAuditDialog
+                audit={deactivatingAudit}
+                onClose={() => setDeactivatingAudit(null)}
+                onConfirm={handleDeactivate}
+            />
         </Box >
     );
 }

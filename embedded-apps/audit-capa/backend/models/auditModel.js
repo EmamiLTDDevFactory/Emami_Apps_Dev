@@ -1400,6 +1400,25 @@ const mapAudit = (row) => {
     unifiedFlow:
       row.unified_flow === true,
 
+    // Deactivation (NULL / true = active). Deactivated audits are read-only.
+    isActive:
+      row.is_active !== false,
+
+    deactivationReason:
+      row.deactivation_reason || "",
+
+    deactivatedBy:
+      row.deactivated_by || "",
+
+    deactivatedAt:
+      row.deactivated_at || null,
+
+    reactivatedBy:
+      row.reactivated_by || "",
+
+    reactivatedAt:
+      row.reactivated_at || null,
+
     createdAt:
       row.created_at,
 
@@ -1886,10 +1905,49 @@ const deleteAudit = async (id) => {
 // EXPORT
 // =========================================================
 
+// =========================================================
+// ACTIVATE / DEACTIVATE (soft switch, audit data untouched)
+// =========================================================
+
+const setAuditActive = async (id, active, user, reason) => {
+
+  const result = active
+    ? await pool.query(
+      `
+        UPDATE audit_capa.audits
+        SET
+          is_active = TRUE,
+          reactivated_by = $1,
+          reactivated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `,
+      [user || "", id]
+    )
+    : await pool.query(
+      `
+        UPDATE audit_capa.audits
+        SET
+          is_active = FALSE,
+          deactivation_reason = $1,
+          deactivated_by = $2,
+          deactivated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING *
+      `,
+      [reason, user || "", id]
+    );
+
+  return mapAudit(result.rows[0]);
+};
+
 module.exports = {
   getAllAudits,
   getAuditById,
   createAudit,
   updateAudit,
-  deleteAudit
+  deleteAudit,
+  setAuditActive
 };

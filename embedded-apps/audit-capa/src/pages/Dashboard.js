@@ -40,7 +40,14 @@ import { KpiSegment, KpiBar } from "../components/common/KpiBar";
 //     ).length;
 export default function Dashboard() {
 
-    const { audits } = useAppContext();
+    // Deactivated audits (and their CAPAs) are left out of every dashboard count.
+    const { audits: allAudits } = useAppContext();
+    const audits = allAudits.filter((audit) => audit.isActive !== false);
+    const inactiveAuditIds = new Set(
+        allAudits
+            .filter((audit) => audit.isActive === false)
+            .map((audit) => audit.id)
+    );
     const totalAudits =
         audits.length;
 
@@ -148,7 +155,9 @@ export default function Dashboard() {
 
     const safeCapaRecords =
         Array.isArray(capaRecords)
-            ? capaRecords
+            ? capaRecords.filter(
+                (capa) => !inactiveAuditIds.has(capa.auditId)
+            )
             : [];
 
     // const totalCAPA =
@@ -176,8 +185,11 @@ export default function Dashboard() {
             c => c.status === "Closed"
         ).length;
 
+    // Cancelled (added) CAPAs are kept for the record but not counted.
     const totalCAPA =
-        safeCapaRecords.length;
+        safeCapaRecords.filter(
+            c => c.status !== "Cancelled"
+        ).length;
 
     // const inProgressCAPA =
     //     capaRecords.filter(
@@ -344,7 +356,7 @@ export default function Dashboard() {
         safeCapaRecords.filter((capa) => {
 
             if (selectedCAPAFilter === "All") {
-                return true;
+                return capa.status !== "Cancelled";
             }
 
             if (selectedCAPAFilter === "Open") {

@@ -24,6 +24,17 @@ export const updateAudit = (auditId, changes) =>
 export const deleteAudit = (auditId) =>
   apiDelete(`/audits/${auditId}`);
 
+// Soft on/off switch (CQA). Deactivated audits stay visible, greyed and read-only.
+export const deactivateAudit = (auditId, reason, by = "") =>
+  apiPatch(`/audits/${auditId}/deactivate`, { reason, by }).then(
+    withChecklistCompliance
+  );
+
+export const activateAudit = (auditId, by = "") =>
+  apiPatch(`/audits/${auditId}/activate`, { by }).then(
+    withChecklistCompliance
+  );
+
 export const saveAudits = async (audits) => {
   const currentAudits = await getAudits();
   const currentById = new Map(
@@ -62,6 +73,10 @@ export const createCAPAs = (capas) =>
 
 export const updateCAPA = (capaId, changes) =>
   apiPatch(`/capas/${capaId}`, changes);
+
+// Soft cancel of an added CAPA (status "Cancelled"; never deleted).
+export const cancelCAPA = (capaId, cancelledBy = "") =>
+  apiPatch(`/capas/${capaId}/cancel`, { cancelledBy });
 
 // Used when a self-assessment is sent back for rework — the CAPAs auto-
 // generated from that (now-superseded) submission need clearing so the

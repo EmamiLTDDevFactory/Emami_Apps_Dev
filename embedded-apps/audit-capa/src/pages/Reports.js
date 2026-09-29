@@ -38,6 +38,7 @@ import {
 } from "../context/AppContext";
 
 import { getCAPAs } from "../utils/storage";
+import { formatDate } from "../utils/dateUtils";
 
 import {
     getCertification,
@@ -45,8 +46,11 @@ import {
 
 export default function Reports() {
 
-    const { audits } =
+    // Deactivated audits are left out of reports (their CAPAs are matched by
+    // audit, so they drop out too).
+    const { audits: allAudits } =
         useAppContext();
+    const audits = allAudits.filter((audit) => audit.isActive !== false);
 
     const [capaRecords, setCapaRecords] = useState([]);
 
@@ -153,11 +157,13 @@ export default function Reports() {
             )
             .map((audit) => {
 
+                // Cancelled (added) CAPAs don't count as findings.
                 const auditCAPAs =
                     capaRecords.filter(
                         c =>
                             c.auditId ===
-                            audit.id
+                            audit.id &&
+                            c.status !== "Cancelled"
                     );
 
                 const findings =
@@ -943,7 +949,8 @@ export default function Reports() {
                                                 capaRecords.filter(
                                                     capa =>
                                                         capa.auditId ===
-                                                        audit.id
+                                                        audit.id &&
+                                                        capa.status !== "Cancelled"
                                                 );
 
                                             const cert =
@@ -973,7 +980,7 @@ export default function Reports() {
                                                     </TableCell>
 
                                                     <TableCell>
-                                                        {audit.auditDate}
+                                                        {formatDate(audit.auditDate)}
                                                     </TableCell>
 
                                                     <TableCell>

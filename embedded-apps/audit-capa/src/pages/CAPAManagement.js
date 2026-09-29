@@ -35,8 +35,14 @@ import {
     updateCAPA,
     uploadCAPAEvidence,
     removeCAPAEvidence,
+    createCAPAs,
+    cancelCAPA,
 } from "../utils/storage";
 import EvidenceList from "../components/common/EvidenceList";
+import CAPAAuditHeader from "../components/capa/CAPAAuditHeader";
+import { getFindingNo } from "../utils/findingUtils";
+import { buildAdditionalCAPA } from "../utils/capaGenerator";
+import AddIcon from "@mui/icons-material/Add";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 // import tab from "@mui/material/Tab";
 // import { useState } from "react";
@@ -49,6 +55,7 @@ import { useSearchParams, useParams } from "react-router-dom";
 import { LocalizationProvider }
     from "@mui/x-date-pickers";
 import dayjs from "dayjs";
+import { formatDate } from "../utils/dateUtils";
 import {
     Select,
     MenuItem,
@@ -170,6 +177,14 @@ export default function CAPAManagement() {
     // CAPA id whose evidence is currently uploading (files upload as soon as
     // they're picked, so they're saved and viewable before Submit).
     const [uploadingEvidenceFor, setUploadingEvidenceFor] = useState(null);
+
+    // "Add CAPA" dialog (CQA): the finding group it's for + the form.
+    const [addCapaGroup, setAddCapaGroup] = useState(null);
+    const [addCapaForm, setAddCapaForm] = useState({
+        description: "",
+        targetDate: "",
+    });
+    const [savingAddCapa, setSavingAddCapa] = useState(false);
     // const [evidenceCAPAId, setEvidenceCAPAId] = useState(null);
     const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
@@ -205,8 +220,7 @@ export default function CAPAManagement() {
     const currentAudit =
         audits?.find((a) => String(a.id) === String(auditId));
 
-    const formatAuditDate = (value) =>
-        value ? dayjs(value).format("DD-MM-YYYY") : "-";
+    const formatAuditDate = formatDate;
 
     const currentUser = JSON.parse(
         localStorage.getItem(
@@ -407,7 +421,8 @@ export default function CAPAManagement() {
             updatedCAPA.filter(
                 (c) =>
                     c.auditId === auditId &&
-                    c.status !== "Closed"
+                    c.status !== "Closed" &&
+                    c.status !== "Cancelled"
             );
 
         if (
@@ -458,10 +473,10 @@ export default function CAPAManagement() {
         notifyCapaSet({
             flag: SAP_FLAG.CAPA_ACCEPTED_CLOSED,
             auditNo: getAuditNo(auditId),
-            findingNo: closedCAPA?.findingNo,
+            findingNo: getFindingNo(closedCAPA, getAuditNo(auditId)),
             capaId: closedCAPA?.capaNo,
-            totalCapa: updatedCAPA.length,
-            capaSubm: updatedCAPA.length - openAfterClose,
+            totalCapa: countActiveCAPAs(updatedCAPA),
+            capaSubm: countActiveCAPAs(updatedCAPA) - openAfterClose,
             capaOpen: openAfterClose,
             email: currentUser?.email ?? "",
         });
@@ -479,6 +494,114 @@ export default function CAPAManagement() {
 
     const MAX_EVIDENCE_FILES = 10;
     const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+
+    // Cancelled (added) CAPAs are kept for the record but don't count.
+    const countActiveCAPAs = (capas) =>
+        capas.filter((c) => c.status !== "Cancelled").length;
+
+    // Add CAPA / Cancel: CQA only, while the audit's CAPAs are still open.
+    const canAddCAPA =
+        !isDepot &&
+        Boolean(auditId) &&
+        currentAudit?.isActive !== false &&
+        currentAudit?.status === "CAPA Open";
+
+    const isAuditFrozen = (item) =>
+        audits?.find((a) => String(a.id) === String(item.auditId))
+            ?.isActive === false;
+
+    const openAddCapa = (group) => {
+        setAddCapaForm({ description: "", targetDate: "" });
+        setAddCapaGroup(group);
+    };
+
+    const handleAddCAPA = async () => {
+        const description = addCapaForm.description.trim();
+
+        if (!description) {
+            alert("Action required / CAPA description is mandatory.");
+            return;
+        }
+
+        if (!addCapaForm.targetDate) {
+            alert("Target Date is mandatory.");
+            return;
+        }
+
+        try {
+            setSavingAddCapa(true);
+
+            // Re-read so the new serial never collides with a CAPA added meanwhile.
+            const auditCapas = await getCAPAs(auditId);
+
+            const newCAPA = buildAdditionalCAPA({
+                finding: addCapaGroup.items[0],
+                auditCapas: Array.isArray(auditCapas) ? auditCapas : capaData,
+                auditId: Number(auditId),
+                findingNo: addCapaGroup.findingNo,
+                description,
+                targetDate: addCapaForm.targetDate,
+            });
+
+            await createCAPAs([newCAPA]);
+            await refreshCAPAs();
+
+            setAddCapaGroup(null);
+
+            await addNotification({
+                role: "Depot",
+                auditId: Number(auditId),
+                title: "CAPA Assigned",
+                message: `An additional CAPA ${newCAPA.capaNo} has been assigned for Finding ${newCAPA.findingNo}. Please review and submit.`,
+                link: `/capa/${auditId}`,
+            });
+
+            alert(`CAPA ${newCAPA.capaNo} added.`);
+        } catch (error) {
+            console.error("Add CAPA failed:", error);
+            alert(error.message || "Unable to add CAPA.");
+        } finally {
+            setSavingAddCapa(false);
+        }
+    };
+
+    // Soft cancel of an added CAPA; if nothing else is open, the audit closes
+    // exactly as it does after the last Accept & Close.
+    const handleCancelCAPA = async (item) => {
+        if (
+            !window.confirm(
+                `Cancel CAPA ${item.capaNo}? It will be kept for the record but no longer counted.`
+            )
+        ) {
+            return;
+        }
+
+        try {
+            await cancelCAPA(item.id, currentUser?.username || "");
+
+            const fresh = await getCAPAs(item.auditId);
+            setCapaData(fresh);
+
+            const stillOpen = fresh.filter(
+                (c) => c.status !== "Closed" && c.status !== "Cancelled"
+            );
+
+            if (stillOpen.length === 0) {
+                const updatedAudit = await updateAudit(item.auditId, {
+                    status: "Closed",
+                });
+
+                setAudits((previous) =>
+                    previous.map((audit) =>
+                        audit.id === item.auditId ? updatedAudit : audit
+                    )
+                );
+            }
+        } catch (error) {
+            console.error("Cancel CAPA failed:", error);
+            alert(error.message || "Unable to cancel CAPA.");
+        }
+    };
 
     const activeCAPAEvidence = (item) =>
         (item.evidenceFiles || []).filter((file) => !file.removed);
@@ -661,10 +784,10 @@ export default function CAPAManagement() {
             notifyCapaSet({
                 flag: SAP_FLAG.CAPA_SUBMITTED,
                 auditNo: getAuditNo(item.auditId),
-                findingNo: item.findingNo,
+                findingNo: getFindingNo(item, getAuditNo(item.auditId)),
                 capaId: item.capaNo,
-                totalCapa: freshCapas.length,
-                capaSubm: freshCapas.length - openAfterSubmit,
+                totalCapa: countActiveCAPAs(freshCapas),
+                capaSubm: countActiveCAPAs(freshCapas) - openAfterSubmit,
                 capaOpen: openAfterSubmit,
                 // SAP's UsrId is capped at 12 chars — send just the depot name
                 // ("Bangalore" not "Bangalore Depot") so it never needs truncating.
@@ -770,6 +893,9 @@ export default function CAPAManagement() {
             if (tab === 3)
                 return isDelayed(item);
 
+            if (tab === 4)
+                return item.status === "Cancelled";
+
             // if (tab === 3)
             //     return item.status === "Overdue";
 
@@ -796,6 +922,26 @@ export default function CAPAManagement() {
         capaData.filter(
             c => c.status === "Closed"
         ).length;
+
+    const cancelledCount =
+        capaData.filter(
+            c => c.status === "Cancelled"
+        ).length;
+
+    // CAPA cards grouped under their finding (one finding, one or more CAPAs).
+    const capaGroups = Object.values(
+        filteredCAPA.reduce((groups, item) => {
+            const findingNo =
+                getFindingNo(item, getAuditNo(item.auditId)) || item.capaNo;
+
+            if (!groups[findingNo]) {
+                groups[findingNo] = { findingNo, items: [] };
+            }
+
+            groups[findingNo].items.push(item);
+            return groups;
+        }, {})
+    );
 
 
 
@@ -872,10 +1018,10 @@ export default function CAPAManagement() {
         notifyCapaSet({
             flag: SAP_FLAG.CAPA_SENT_BACK,
             auditNo: getAuditNo(selected.auditId),
-            findingNo: selected?.findingNo,
+            findingNo: getFindingNo(selected, getAuditNo(selected.auditId)),
             capaId: selected?.capaNo,
-            totalCapa: updatedCAPA.length,
-            capaSubm: updatedCAPA.length - openAfterSendBack,
+            totalCapa: countActiveCAPAs(updatedCAPA),
+            capaSubm: countActiveCAPAs(updatedCAPA) - openAfterSendBack,
             capaOpen: openAfterSendBack,
             email: currentUser?.email ?? "",
         });
@@ -957,6 +1103,30 @@ export default function CAPAManagement() {
                 </CardContent>
             </Card>
 
+            {/* Same header as the audit checklist (Audit No, Element Compliance,
+                General Information), read-only; the details card below stays. */}
+            {currentAudit?.isActive === false && (
+                <Box
+                    sx={{
+                        mb: 3,
+                        p: 2,
+                        borderRadius: 2,
+                        bgcolor: "#F3F4F6",
+                        border: "1px solid #D1D5DB",
+                        color: "#374151",
+                    }}
+                >
+                    <Typography fontWeight={700}>
+                        This audit is deactivated. Its CAPAs are read-only.
+                    </Typography>
+                    <Typography variant="body2">
+                        Reason: {currentAudit.deactivationReason || "-"}
+                    </Typography>
+                </Box>
+            )}
+
+            <CAPAAuditHeader audit={currentAudit} />
+
             {currentAudit && (
                 <Card sx={{ mb: 3, borderRadius: 2 }}>
                     <CardContent>
@@ -990,7 +1160,7 @@ export default function CAPAManagement() {
                                         ? `${Number(currentAudit.compliance).toFixed(2)}%`
                                         : "-",
                                 ],
-                                ["Total CAPA", capaData.length],
+                                ["Total CAPA", countActiveCAPAs(capaData)],
                             ].map(([label, value]) => (
                                 <Grid item xs={6} sm={4} md={3} key={label}>
                                     <Typography variant="caption" color="text.secondary">
@@ -1264,6 +1434,9 @@ export default function CAPAManagement() {
                         <Tab label={`In Progress (${inProgressCount})`} />
                         <Tab label={`Closed (${closedCount})`} />
                         <Tab label={`Delayed (${delayedCount})`} />
+                        {cancelledCount > 0 && (
+                            <Tab label={`Cancelled (${cancelledCount})`} />
+                        )}
                     </Tabs>
 
                 </CardContent>
@@ -1273,13 +1446,59 @@ export default function CAPAManagement() {
 
 
             {/* {filteredCAPA.map((item) => ( */}
-            {filteredCAPA.map((item) => {
+            {capaGroups.map((group) => (
+                <Box key={group.findingNo} sx={{ mb: 4 }}>
+                    {/* Finding header: one finding, one or more CAPAs */}
+                    <Box
+                        sx={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: 1,
+                            mb: 1.5,
+                            px: 2,
+                            py: 1.5,
+                            borderRadius: 2,
+                            bgcolor: "#EEF2FF",
+                            borderLeft: "5px solid #4F46E5",
+                        }}
+                    >
+                        <Box sx={{ minWidth: 0 }}>
+                            <Typography fontWeight={700}>
+                                Finding No: {group.findingNo}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                {group.items[0].parameter}
+                                {" · "}
+                                {group.items.length} CAPA
+                                {group.items.length > 1 ? "s" : ""}
+                            </Typography>
+                        </Box>
+
+                        {canAddCAPA && (
+                            <Button
+                                variant="contained"
+                                size="small"
+                                startIcon={<AddIcon />}
+                                onClick={() => openAddCapa(group)}
+                            >
+                                Add CAPA
+                            </Button>
+                        )}
+                    </Box>
+
+            {group.items.map((item) => {
 
                 // const canEditCAPA =
                 //     isDepot &&
                 //     item.status === "Open";
+                // Deactivated audit (Audit Management): its CAPAs are read-only.
+                const isFrozen = isAuditFrozen(item);
+
                 const canEditCAPA =
                     isDepot &&
+                    !isFrozen &&
                     (
                         item.status === "Open" ||
                         item.status === "Sent Back"
@@ -1290,6 +1509,7 @@ export default function CAPAManagement() {
                 // is with the Depot (Open / Sent Back) and once it is Closed.
                 const canEditCqaRemarks =
                     !isDepot &&
+                    !isFrozen &&
                     item.status === "In Progress";
 
                 return (
@@ -1317,25 +1537,96 @@ export default function CAPAManagement() {
                                     mb: 2,
                                 }}
                             >
-                                <Typography variant="h6">
-                                    {item.capaNo}
-                                </Typography>
+                                <Box>
+                                    <Typography variant="h6">
+                                        {item.capaNo}
+                                    </Typography>
 
-                                {/* <Chip
-                                label="Open"
-                                color="warning"
-                            /> */}
-                                <Chip
-                                    label={item.status}
-                                    color={
-                                        item.status === "Open"
-                                            ? "warning"
-                                            : item.status === "Closed"
-                                                ? "success"
-                                                : "info"
-                                    }
-                                />
+                                    {getFindingNo(item, getAuditNo(item.auditId)) && (
+                                        <Typography
+                                            variant="body2"
+                                            color="text.secondary"
+                                            fontWeight={600}
+                                        >
+                                            Finding No: {getFindingNo(item, getAuditNo(item.auditId))}
+                                        </Typography>
+                                    )}
+                                </Box>
+
+                                <Box
+                                    sx={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 1,
+                                        flexWrap: "wrap",
+                                    }}
+                                >
+                                    {item.isAdditional && (
+                                        <Chip
+                                            label="Added CAPA"
+                                            variant="outlined"
+                                            color="secondary"
+                                            size="small"
+                                        />
+                                    )}
+
+                                    <Chip
+                                        label={item.status}
+                                        color={
+                                            item.status === "Open"
+                                                ? "warning"
+                                                : item.status === "Closed"
+                                                    ? "success"
+                                                    : item.status === "Cancelled"
+                                                        ? "default"
+                                                        : "info"
+                                        }
+                                    />
+
+                                    {canAddCAPA &&
+                                        item.isAdditional &&
+                                        item.status !== "Closed" &&
+                                        item.status !== "Cancelled" && (
+                                            <Button
+                                                size="small"
+                                                color="error"
+                                                variant="outlined"
+                                                onClick={() => handleCancelCAPA(item)}
+                                            >
+                                                Cancel CAPA
+                                            </Button>
+                                        )}
+                                </Box>
                             </Box>
+
+                            {item.description && (
+                                <Box
+                                    sx={{
+                                        mb: 2,
+                                        p: 1.5,
+                                        borderRadius: 1,
+                                        bgcolor: "#FFF7ED",
+                                        border: "1px solid #FED7AA",
+                                    }}
+                                >
+                                    <Typography variant="caption" fontWeight={700} color="#9A3412">
+                                        Action required (CQA)
+                                    </Typography>
+                                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                                        {item.description}
+                                    </Typography>
+                                </Box>
+                            )}
+
+                            {item.status === "Cancelled" && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    Cancelled
+                                    {item.cancelledBy ? ` by ${item.cancelledBy}` : ""}
+                                    {item.cancelledAt
+                                        ? ` on ${new Date(item.cancelledAt).toLocaleString()}`
+                                        : ""}
+                                </Typography>
+                            )}
 
                             <Typography
                                 sx={{
@@ -1732,7 +2023,9 @@ export default function CAPAManagement() {
                                                 ? "success"
                                                 : item.status === "Sent Back"
                                                     ? "error"
-                                                    : "info"
+                                                    : item.status === "Cancelled"
+                                                        ? "default"
+                                                        : "info"
                                     }
                                 />
 
@@ -1753,7 +2046,7 @@ export default function CAPAManagement() {
                                 }}
                             >
                                 {/* {(!isDepot || canEditCAPA) && ( */}
-                                {(
+                                {!isFrozen && (
                                     !isDepot ||
                                     (
                                         isDepot &&
@@ -1792,11 +2085,7 @@ export default function CAPAManagement() {
                                     )}
                                 {/* {isDepot &&
                                     item.status === "Open" && ( */}
-                                {isDepot &&
-                                    (
-                                        item.status === "Open" ||
-                                        item.status === "Sent Back"
-                                    ) && (
+                                {canEditCAPA && (
                                         //                                 <Button
                                         //                                     variant="contained"
                                         //                                     color="primary"
@@ -1930,6 +2219,7 @@ export default function CAPAManagement() {
                                 </Button>
                             )} */}
                                 {!isDepot &&
+                                    !isFrozen &&
                                     item.status === "In Progress" && (
 
                                         <>
@@ -2024,6 +2314,80 @@ export default function CAPAManagement() {
                     </Card>
                 );
             })}
+                </Box>
+            ))}
+            <Dialog
+                open={Boolean(addCapaGroup)}
+                onClose={() => !savingAddCapa && setAddCapaGroup(null)}
+                fullWidth
+                maxWidth="sm"
+            >
+                <DialogTitle>
+                    Add CAPA
+                    {addCapaGroup ? ` - Finding No: ${addCapaGroup.findingNo}` : ""}
+                </DialogTitle>
+
+                <DialogContent>
+                    {addCapaGroup && (
+                        <DialogContentText sx={{ mb: 2 }}>
+                            {addCapaGroup.items[0].parameter}
+                        </DialogContentText>
+                    )}
+
+                    <TextField
+                        label="Action required / CAPA description"
+                        required
+                        fullWidth
+                        multiline
+                        rows={3}
+                        value={addCapaForm.description}
+                        onChange={(e) =>
+                            setAddCapaForm((previous) => ({
+                                ...previous,
+                                description: e.target.value,
+                            }))
+                        }
+                        sx={{ mb: 2, mt: 1 }}
+                    />
+
+                    <TextField
+                        label="Target Date"
+                        type="date"
+                        required
+                        fullWidth
+                        value={addCapaForm.targetDate}
+                        onChange={(e) =>
+                            setAddCapaForm((previous) => ({
+                                ...previous,
+                                targetDate: e.target.value,
+                            }))
+                        }
+                        slotProps={{
+                            inputLabel: { shrink: true },
+                            htmlInput: {
+                                min: dayjs().format("YYYY-MM-DD"),
+                            },
+                        }}
+                    />
+                </DialogContent>
+
+                <DialogActions>
+                    <Button
+                        onClick={() => setAddCapaGroup(null)}
+                        disabled={savingAddCapa}
+                    >
+                        Cancel
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        onClick={handleAddCAPA}
+                        disabled={savingAddCapa}
+                    >
+                        {savingAddCapa ? "Adding..." : "Add CAPA"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }

@@ -36,6 +36,7 @@ export default function AuditQuestionCard({
     handleEvidenceRemove,
     canRemoveEvidence = false,
     uploadingEvidence = false,
+    findingNo = "",
 }) {
 
     const currentUser = JSON.parse(
@@ -370,6 +371,19 @@ export default function AuditQuestionCard({
                         flexShrink: 0,
                     }}
                 >
+                    {/* Finding No. — shown on non-compliant questions once CAPA is generated */}
+                    {findingNo &&
+                        item.status !== "NA" &&
+                        item.actualScore !== null &&
+                        item.actualScore < 2 && (
+                            <Chip
+                                size={isAuditorTablet ? "medium" : "small"}
+                                variant="outlined"
+                                color="secondary"
+                                label={`Finding No: ${findingNo}`}
+                            />
+                        )}
+
 
                     {/* <Chip
                         size={

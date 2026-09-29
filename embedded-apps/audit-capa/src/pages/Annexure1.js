@@ -77,6 +77,11 @@ import {
     updateAudit
 } from "../api/auditApi";
 import { calculateCompliance } from "../utils/complianceUtils";
+import {
+    buildFindingNo,
+    findingKey,
+    getFindingNo,
+} from "../utils/findingUtils";
 
 // Red asterisk for mandatory signature fields.
 const RequiredMark = () => (
@@ -151,7 +156,8 @@ export default function Annexure1() {
             // if (audit.status === "Open") {
             if (
                 ["Open", "Rework Required"]
-                    .includes(audit.status)
+                    .includes(audit.status) &&
+                audit.isActive !== false
             ) {
 
                 audit.status = "In Progress";
@@ -237,7 +243,11 @@ export default function Annexure1() {
     const isCQA =
         currentUser?.role === "CQA";
 
-    const canEditAnnexure =
+    // Deactivated audits (Audit Management) are read-only for everyone.
+    const isAuditInactive =
+        selectedAudit?.isActive === false;
+
+    const canEditAnnexureBase =
         (
             //     isDesktopAudit &&
             //     isDepot &&
@@ -269,6 +279,9 @@ export default function Annexure1() {
             isOnsiteAudit &&
             !isDepot
         );
+
+    const canEditAnnexure =
+        !isAuditInactive && canEditAnnexureBase;
 
     // const canEditAnnexure =
 
@@ -691,6 +704,7 @@ export default function Annexure1() {
             const capaRecords =
                 findings.map((item, index) => ({
                     capaNo: generateCAPANumber(index + 1),
+                    findingNo: buildFindingNo(selectedAudit?.auditNo, index + 1),
                     auditId: Number(id),
 
                     category: item.category,
@@ -1049,6 +1063,30 @@ export default function Annexure1() {
     const MAX_EVIDENCE_FILES = 10;
     const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
 
+    // CAPAs of this audit — used to show each non-compliant question's
+    // Finding No. once CAPA has been generated.
+    const [auditCapas, setAuditCapas] = useState([]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        getCAPAs(Number(id))
+            .then((capas) => setAuditCapas(Array.isArray(capas) ? capas : []))
+            .catch((error) => console.error(error));
+    }, [id, selectedAudit?.status]);
+
+    const capaFindingNoByKey = Object.fromEntries(
+        auditCapas.map((capa) => [
+            findingKey(capa.observationArea, capa.parameter),
+            getFindingNo(capa, selectedAudit?.auditNo),
+        ])
+    );
+
+    const getQuestionFindingNo = (item) =>
+        item.findingNo ||
+        capaFindingNoByKey[findingKey(item.category, item.parameter)] ||
+        "";
+
     // Full evidence list of a question, removed files included (they're kept,
     // only hidden). Seeds from a pre-multi-evidence `evidence` if it was stored.
     const allEvidences = (item) =>
@@ -1247,6 +1285,11 @@ export default function Annexure1() {
 
     const handleDepotSignatureSubmit = async () => {
 
+        if (isAuditInactive) {
+            alert("This audit is deactivated and read-only.");
+            return;
+        }
+
         if (!selectedAudit?.depotInchargeName?.trim()) {
             alert("Name of Depot Incharge is mandatory.");
             return;
@@ -1292,6 +1335,11 @@ export default function Annexure1() {
     };
 
     const handleAuditorSignatureSubmit = async () => {
+
+        if (isAuditInactive) {
+            alert("This audit is deactivated and read-only.");
+            return;
+        }
 
         if (
             !auditorSigRef.current ||
@@ -1693,6 +1741,32 @@ export default function Annexure1() {
                         : 0,
             }}
         >
+            {isAuditInactive && (
+                <Box
+                    sx={{
+                        mb: 3,
+                        p: 2,
+                        borderRadius: 2,
+                        bgcolor: "#F3F4F6",
+                        border: "1px solid #D1D5DB",
+                        color: "#374151",
+                    }}
+                >
+                    <Typography fontWeight={700}>
+                        This audit is deactivated and read-only.
+                    </Typography>
+                    <Typography variant="body2">
+                        Reason: {selectedAudit?.deactivationReason || "-"}
+                        {selectedAudit?.deactivatedBy
+                            ? ` · by ${selectedAudit.deactivatedBy}`
+                            : ""}
+                        {selectedAudit?.deactivatedAt
+                            ? ` · ${new Date(selectedAudit.deactivatedAt).toLocaleString()}`
+                            : ""}
+                    </Typography>
+                </Box>
+            )}
+
             <Card
                 sx={{
                     mb: 3,
@@ -2645,6 +2719,9 @@ export default function Annexure1() {
                                                     uploadingEvidence={
                                                         uploadingEvidenceFor === item.id
                                                     }
+                                                    findingNo={
+                                                        getQuestionFindingNo(item)
+                                                    }
                                                 />
                                             ))}
                                         </Box>
@@ -2941,6 +3018,7 @@ export default function Annexure1() {
                             }
                             disabled={
                                 !isDepot ||
+                                isAuditInactive ||
                                 selectedAudit?.depotSignatureSubmitted
                             }
                             sx={{ mb: 2 }}
@@ -3167,6 +3245,7 @@ export default function Annexure1() {
                 </CardContent>
             </Card>
 
+            {!isAuditInactive && (
             <Box
                 sx={{
                     position: "sticky",
@@ -3483,7 +3562,22 @@ export default function Annexure1() {
                                 }
 
                                 const capaRecords =
-                                    generateCAPA(auditItems);
+                                    generateCAPA(auditItems, selectedAudit?.auditNo);
+
+                                // Stamp each non-compliant question with its Finding No.
+                                // (saved with the checklist below) so the checklist shows it.
+                                const findingNoByKey = Object.fromEntries(
+                                    capaRecords.map((capa) => [
+                                        findingKey(capa.category, capa.parameter),
+                                        capa.findingNo,
+                                    ])
+                                );
+
+                                const checklistWithFindings = auditItems.map((item) => {
+                                    const findingNo =
+                                        findingNoByKey[findingKey(item.category, item.parameter)];
+                                    return findingNo ? { ...item, findingNo } : item;
+                                });
 
                                 const capaRecordsWithAuditId =
                                     capaRecords.map(
@@ -3533,9 +3627,11 @@ export default function Annexure1() {
                                     const updatedAudit = await updateAudit(Number(id), {
                                         compliance: Number(compliancePercentage),
                                         status: "CAPA Open",
-                                        checklist: auditItems,
+                                        checklist: checklistWithFindings,
                                         generalInfo,
                                     });
+
+                                    setAuditItems(checklistWithFindings);
 
                                     setSelectedAudit(updatedAudit);
 
@@ -3558,6 +3654,7 @@ export default function Annexure1() {
                     )}
                 </Box>
             </Box>
+            )}
         </Box >
     );
 }

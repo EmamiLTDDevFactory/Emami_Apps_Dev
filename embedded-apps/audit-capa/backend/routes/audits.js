@@ -5,6 +5,8 @@ const {
   createAudit,
   updateAudit,
   deleteAudit,
+  deactivateAudit,
+  activateAudit,
 } = require("../controllers/auditController");
 const {
   uploadChecklistEvidenceController,
@@ -23,6 +25,8 @@ router.post(
   checklistEvidenceArray,
   uploadChecklistEvidenceController
 );
+router.patch("/:id/deactivate", deactivateAudit);
+router.patch("/:id/activate", activateAudit);
 router.patch("/:id", updateAudit);
 router.put("/:id", updateAudit);
 router.delete("/:id", deleteAudit);

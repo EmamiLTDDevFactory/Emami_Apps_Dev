@@ -39,3 +39,39 @@ export const withChecklistCompliance = (audit) => {
         compliance: Number(calculateCompliance(audit.checklist)),
     };
 };
+
+// Per-element breakdown, identical to the checklist's "Element Compliance"
+// table (points-based, NA excluded, category order as first seen).
+export const calculateCategoryCompliance = (checklist = []) => {
+    const byCategory = (checklist || []).reduce((acc, item) => {
+        const category = item.category || "Others";
+
+        if (!acc[category]) {
+            acc[category] = { maxPoints: 0, actualPoints: 0 };
+        }
+
+        if (item.status !== "NA") {
+            acc[category].maxPoints += Number(item.maxScore || 0);
+            acc[category].actualPoints += Number(item.actualScore || 0);
+        }
+
+        return acc;
+    }, {});
+
+    const rows = Object.entries(byCategory).map(([category, data]) => ({
+        category,
+        maxPoints: data.maxPoints,
+        actualPoints: data.actualPoints,
+        compliance:
+            data.maxPoints === 0
+                ? "0.00"
+                : ((data.actualPoints / data.maxPoints) * 100).toFixed(2),
+    }));
+
+    return {
+        rows,
+        totalMaxPoints: rows.reduce((sum, row) => sum + row.maxPoints, 0),
+        totalActualPoints: rows.reduce((sum, row) => sum + row.actualPoints, 0),
+        totalCompliance: calculateCompliance(checklist),
+    };
+};

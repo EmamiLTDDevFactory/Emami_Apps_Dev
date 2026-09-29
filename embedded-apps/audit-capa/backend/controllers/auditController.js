@@ -194,10 +194,47 @@ const deleteAudit = async (req, res) => {
   }
 };
 
+// Deactivate (reason mandatory) / Activate an audit — CQA, from Audit Management.
+const setAuditActiveController = (active) => async (req, res) => {
+  try {
+    const reason = (req.body?.reason || "").trim();
+
+    if (!active && !reason) {
+      return res.status(400).json({
+        message: "A reason is required to deactivate an audit."
+      });
+    }
+
+    const audit = await auditModel.setAuditActive(
+      req.params.id,
+      active,
+      req.body?.by || "",
+      reason
+    );
+
+    if (!audit) {
+      return res.status(404).json({
+        message: "Audit not found"
+      });
+    }
+
+    res.json(audit);
+
+  } catch (error) {
+    console.error("Error changing audit activation:", error);
+
+    res.status(500).json({
+      message: "Unable to update the audit."
+    });
+  }
+};
+
 module.exports = {
   getAudits,
   getAudit,
   createAudit,
   updateAudit,
-  deleteAudit
+  deleteAudit,
+  deactivateAudit: setAuditActiveController(false),
+  activateAudit: setAuditActiveController(true),
 };

@@ -6,6 +6,7 @@ const {
   updateCAPA,
   addCAPAEvidenceController,
   removeCAPAEvidenceController,
+  cancelCAPAController,
   deleteCAPAsForAudit
 } = require("../controllers/capaController");
 
@@ -31,6 +32,9 @@ router.patch(
   "/:id/evidence/:fileId/remove",
   removeCAPAEvidenceController
 );
+
+// Soft cancel of an added CAPA (CQA).
+router.patch("/:id/cancel", cancelCAPAController);
 
 router.get("/", getCAPAs);
 router.post("/", createCAPAs);
