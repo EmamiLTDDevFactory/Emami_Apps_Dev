@@ -7,7 +7,7 @@ import {
 
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import DownloadIcon from "@mui/icons-material/Download";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlined";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 
 import {

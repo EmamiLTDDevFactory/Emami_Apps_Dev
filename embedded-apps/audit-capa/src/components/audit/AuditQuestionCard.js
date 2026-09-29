@@ -16,10 +16,10 @@ import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import EvidenceList from "../common/EvidenceList";
 import { getChecklistEvidences } from "../../utils/storage";
+import useMediaQuery from "@mui/material/useMediaQuery";
 
 const EVIDENCE_ACCEPT =
     ".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx";
-import useMediaQuery from "@mui/material/useMediaQuery";
 
 export default function AuditQuestionCard({
     item,
