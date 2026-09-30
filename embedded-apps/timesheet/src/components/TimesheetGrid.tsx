@@ -20,8 +20,6 @@ import { useApp } from '../context/AppContext';
 type AnyRecord = Record<string, any>;
 
 const LEAVE_TYPES = ['Sick Leave', 'Casual Leave', 'Earned Leave', 'Public Holiday'];
-const DEFAULT_IN_TIME = '10:00';
-const DEFAULT_OUT_TIME = '18:00';
 
 interface Line {
   taskId: string;
@@ -46,8 +44,8 @@ function emptyLine(): Line {
 
 function emptyRow(): DayRow {
   return {
-    inTime: DEFAULT_IN_TIME,
-    outTime: DEFAULT_OUT_TIME,
+    inTime: '',
+    outTime: '',
     inLocation: '',
     inLocationAt: '',
     outLocation: '',
@@ -58,19 +56,8 @@ function emptyRow(): DayRow {
   };
 }
 
-// Pre-fills every working day that has no saved entries yet with the default in/out time, so a
-// fresh month starts at the standard 10-18 shift instead of a blank grid. Today is left blank
-// instead - it's clocked in/out live (see `punch` below), so it should start showing the "Clock
-// In" button, not a pre-filled shift nobody actually walked in for.
-function withDefaultTimes(map: DayMap, days: string[], todayIso: string, workingDayOverrides?: Set<string>): DayMap {
-  const next = { ...map };
-  days.forEach((dateIso) => {
-    if (next[dateIso]) return;
-    if (isOffDay(parseISODate(dateIso), workingDayOverrides)) return;
-    next[dateIso] = dateIso === todayIso ? { ...emptyRow(), inTime: '', outTime: '' } : emptyRow();
-  });
-  return next;
-}
+// There is no default shift: a day only ever gets the in/out time actually clocked on it (see
+// `punch` below), so every day without saved entries starts blank.
 
 // Groups flat entries (possibly several per date) back into one row per date, each carrying a
 // line per task worked that day (or a leaveType if the whole day was taken as leave / a public
@@ -274,10 +261,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
 ) {
   const days = useMemo(() => monthDays(monthStartDate).map((d) => toISODate(d)), [monthStartDate]);
   const todayIso = toISODate(new Date());
-  const initDayMap = (entries: AnyRecord[]) => {
-    const map = entriesToDayMap(entries);
-    return readOnly ? map : withDefaultTimes(map, days, todayIso, workingDayOverrides);
-  };
+  const initDayMap = (entries: AnyRecord[]) => entriesToDayMap(entries);
   const [dayMap, setDayMap] = useState<DayMap>(() => initDayMap(initialEntries));
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   // `${date}_in` or `${date}_out` while that punch's geolocation lookup is in flight.
@@ -523,8 +507,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   // mutually exclusive). The day as it was just before is kept here, so picking leave on the wrong
   // date and switching back to "Present" puts its times, locations and tasks back exactly - other
   // dates' times are locked, so they couldn't be re-entered by hand. With nothing kept (e.g. the
-  // leave was saved before a reload) it falls back to the same pre-fill as a fresh day: blank for
-  // today (showing the "Clock In" button), the default 10-18 shift for any other date.
+  // leave was saved before a reload) the day goes back to blank, like any day not clocked yet.
   const beforeLeave = useRef<Record<string, DayRow>>({});
 
   function setLeaveType(date: string, value: string) {
@@ -542,12 +525,11 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     }
     setDayMap((prev) => {
       const current = prev[date] || emptyRow();
-      const fallbackTimes = date === todayIso ? { inTime: '', outTime: '' } : { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME };
       const nextRow: DayRow = value
         ? { ...current, leaveType: value, inTime: '', outTime: '', inLocation: '', inLocationAt: '', outLocation: '', outLocationAt: '', lines: [emptyLine()] }
         : restored
           ? { ...restored, leaveType: '', leaveNote: '' }
-          : { ...current, leaveType: '', leaveNote: '', ...fallbackTimes };
+          : { ...current, leaveType: '', leaveNote: '', inTime: '', outTime: '' };
       const nextMap = { ...prev, [date]: nextRow };
       scheduleAutosave(nextMap);
       return nextMap;
@@ -799,6 +781,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           ) : (
                             <PunchButton label="Clock In" tone="in" locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                           )
+                        ) : locked ? (
+                          row.inTime ? (
+                            <PunchResult time={row.inTime} location={row.inLocation} />
+                          ) : (
+                            <span className="text-ink">-</span>
+                          )
                         ) : (
                           <input
                             type="time"
@@ -830,6 +818,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                               onClick={() => punch(dateIso, 'out')}
                             />
                           )
+                        ) : locked ? (
+                          row.outTime ? (
+                            <PunchResult time={row.outTime} location={row.outLocation} />
+                          ) : (
+                            <span className="text-ink">-</span>
+                          )
                         ) : (
                           <input
                             type="time"
@@ -846,7 +840,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
                             {hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
                           </span>
-                          {!readOnly && zero && <span className="text-[10px] font-medium text-amber">No hours</span>}
+                          {!readOnly && zero && dateIso <= todayIso && <span className="text-[10px] font-medium text-amber">No hours</span>}
                           {over && <span title={`Exceeds ${MAX_HOURS_PER_DAY}h`} className="text-[10px] font-medium text-red">&gt;{MAX_HOURS_PER_DAY}h</span>}
                         </div>
                       </td>
@@ -999,7 +993,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                   <span className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${onLeave ? 'bg-tealBg text-teal' : over ? 'bg-redBg text-red' : 'bg-glassRust text-rust'}`}>
                     {onLeave ? '0' : hours ? hours.toFixed(2).replace(/\.00$/, '') : '0'}h
                   </span>
-                  {!readOnly && working && zero && <div className="mt-1 text-[11px] font-medium text-amber">No hours logged</div>}
+                  {!readOnly && working && zero && dateIso <= todayIso && <div className="mt-1 text-[11px] font-medium text-amber">No hours logged</div>}
                   {over && <div className="mt-1 text-[11px] font-medium text-red">Exceeds {MAX_HOURS_PER_DAY}h</div>}
                 </div>
               </div>
@@ -1046,6 +1040,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         ) : (
                           <PunchButton label="Clock In" tone="in" compact locating={locatingKey === `${dateIso}_in`} onClick={() => punch(dateIso, 'in')} />
                         )
+                      ) : locked ? (
+                        row.inTime ? (
+                          <PunchResult time={row.inTime} location={row.inLocation} compact />
+                        ) : (
+                          <span className="block text-sm text-ink">-</span>
+                        )
                       ) : (
                         <input
                           type="time"
@@ -1077,6 +1077,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             disabledTitle="Clock in first"
                             onClick={() => punch(dateIso, 'out')}
                           />
+                        )
+                      ) : locked ? (
+                        row.outTime ? (
+                          <PunchResult time={row.outTime} location={row.outLocation} compact />
+                        ) : (
+                          <span className="block text-sm text-ink">-</span>
                         )
                       ) : (
                         <input
