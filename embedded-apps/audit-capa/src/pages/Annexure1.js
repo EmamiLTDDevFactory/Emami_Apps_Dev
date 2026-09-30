@@ -3561,6 +3561,24 @@ export default function Annexure1() {
                                     return;
                                 }
 
+                                // Evidence is mandatory for every Non-Compliance question
+                                // (same definition generateCAPA uses); optional otherwise.
+                                const missingEvidence =
+                                    auditItems.filter(
+                                        item =>
+                                            item.actualScore !== null &&
+                                            item.status !== "NA" &&
+                                            item.actualScore < 2 &&
+                                            getChecklistEvidences(item).length === 0
+                                    );
+
+                                if (missingEvidence.length > 0) {
+                                    alert(
+                                        `Evidence is mandatory for Non-Compliance findings. ${missingEvidence.length} question(s) still need at least one evidence file.`
+                                    );
+                                    return;
+                                }
+
                                 const capaRecords =
                                     generateCAPA(auditItems, selectedAudit?.auditNo);
 
@@ -3602,22 +3620,26 @@ export default function Annexure1() {
                                 );
 
                                 await addNotification({
-
                                     role: "Depot",
-
                                     auditId: Number(id),
-
                                     title:
                                         "CAPA Assigned",
-
                                     message:
                                         `${capaRecordsWithAuditId.length}
                                             CAPA(s) have been assigned.
                                             Please review and submit.`,
-
                                     link:
                                         `/capa/${id}`,
+                                    // Backend email to the depot with the CAPA link.
+                                    eventType: "CAPA_ASSIGNED",
+                                    emailPayload: {
+                                        auditNo: selectedAudit?.auditNo,
+                                        totalCAPA: capaRecordsWithAuditId.length,
+                                        openCAPA: capaRecordsWithAuditId.length,
+                                        link: `/capa/${id}`,
+                                    },
                                 });
+
 
                                 // saveCAPAs(capaRecords);
 
@@ -3642,7 +3664,9 @@ export default function Annexure1() {
                                         )
                                     );
 
-                                    navigate(`/capa/${id}`);
+                                    alert("CAPA generated and sent to Depot");
+
+                                    navigate("/audits");
                                 } catch (error) {
                                     console.error(error);
                                     alert("Unable to update audit.");

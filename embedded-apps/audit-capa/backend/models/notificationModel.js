@@ -57,13 +57,14 @@
 
 const pool = require("../config/db");
 
-// Depot notifications must reach only the one Depot user assigned to the
-// audit's depot (a Depot user's `depot` column is 1:1 with a depot name in
-// practice) — CQA notifications stay a shared, role-wide feed by design.
-const resolveDepotRecipient = async (auditId) => {
+// Depot notifications go to EVERY active Depot user of the audit's depot (one
+// row each, so each sees it in their feed and gets the email) — a depot can have
+// several Depot logins. CQA notifications stay a shared, role-wide feed; for the
+// ones that send an email, the audit's auditor is set as the recipient.
+const resolveDepotRecipients = async (auditId) => {
 
   if (!auditId) {
-    return null;
+    return [];
   }
 
   const result = await pool.query(
@@ -75,6 +76,30 @@ const resolveDepotRecipient = async (auditId) => {
         AND u.role = 'Depot'
         AND u.is_active = TRUE
     WHERE a.id = $1
+    ORDER BY u.id
+    `,
+    [auditId]
+  );
+
+  return result.rows.map((row) => row.id);
+};
+
+const resolveAuditorRecipient = async (auditId) => {
+
+  if (!auditId) {
+    return null;
+  }
+
+  const result = await pool.query(
+    `
+    SELECT u.id
+    FROM audit_capa.audits a
+    JOIN audit_capa.users u
+        ON u.name = a.auditor
+        AND u.role = 'CQA'
+        AND u.is_active = TRUE
+    WHERE a.id = $1
+    ORDER BY u.id
     LIMIT 1
     `,
     [auditId]
@@ -83,18 +108,11 @@ const resolveDepotRecipient = async (auditId) => {
   return result.rows[0]?.id ?? null;
 };
 
-const createNotification =
-  async (notification) => {
+const insertNotification = async (notification, recipientUserId) => {
 
-    let recipientUserId = notification.recipientUserId ?? null;
-
-    if (!recipientUserId && notification.role === "Depot") {
-      recipientUserId = await resolveDepotRecipient(notification.auditId);
-    }
-
-    const result =
-      await pool.query(
-        `
+  const result =
+    await pool.query(
+      `
         INSERT INTO audit_capa.notifications
 (
     role,
@@ -115,23 +133,59 @@ VALUES
 )
 RETURNING *
         `,
-        [
-          notification.role,
-          notification.userId,
-          recipientUserId !== null ? String(recipientUserId) : null,
-          notification.auditId,
-          notification.title,
-          notification.message,
-          notification.link,
-          notification.eventType,
-          notification.emailPayload,
-          // JSON.stringify(notification.emailPayload)
-          notification.type ?? null,
-          notification.capaId ?? null,
-        ]
-      );
+      [
+        notification.role,
+        notification.userId,
+        recipientUserId !== null && recipientUserId !== undefined
+          ? String(recipientUserId)
+          : null,
+        notification.auditId,
+        notification.title,
+        notification.message,
+        notification.link,
+        notification.eventType ?? null,
+        notification.emailPayload ?? null,
+        notification.type ?? null,
+        notification.capaId ?? null,
+      ]
+    );
 
-    return result.rows[0];
+  return result.rows[0];
+};
+
+const createNotification =
+  async (notification) => {
+
+    let recipients =
+      notification.recipientUserId !== null &&
+        notification.recipientUserId !== undefined
+        ? [notification.recipientUserId]
+        : [];
+
+    if (recipients.length === 0 && notification.role === "Depot") {
+      recipients = await resolveDepotRecipients(notification.auditId);
+    }
+
+    if (
+      recipients.length === 0 &&
+      notification.role === "CQA" &&
+      notification.eventType
+    ) {
+      const auditor = await resolveAuditorRecipient(notification.auditId);
+      if (auditor !== null) recipients = [auditor];
+    }
+
+    if (recipients.length === 0) {
+      recipients = [null];
+    }
+
+    const created = [];
+
+    for (const recipient of recipients) {
+      created.push(await insertNotification(notification, recipient));
+    }
+
+    return created[0];
   };
 
 const getAllNotifications =
@@ -231,8 +285,10 @@ const getNotificationWithEmail =
           n.*,
           u.email
       FROM audit_capa.notifications n
+      -- recipient_user_id holds users.id (users.user_id no longer exists; it
+      -- was renamed to email), so the old join failed for every notification.
       JOIN audit_capa.users u
-          ON u.user_id = n.recipient_user_id
+          ON u.id::text = n.recipient_user_id
       WHERE n.id = $1
       `,
       [notificationId]
