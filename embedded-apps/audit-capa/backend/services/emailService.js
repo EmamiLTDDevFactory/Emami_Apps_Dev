@@ -23,6 +23,12 @@ const sendEmail = async ({
         return;
     }
 
+    // Nothing to send through until IT provides the SMTP settings in .env.
+    if (!process.env.SMTP_HOST) {
+        console.warn(`SMTP not configured (SMTP_HOST missing) - email to ${to} skipped: ${subject}`);
+        return;
+    }
+
     await transporter.sendMail({
         from: process.env.SMTP_FROM,
         to,

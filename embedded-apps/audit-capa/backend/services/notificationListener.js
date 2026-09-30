@@ -9,7 +9,17 @@ const {
     capaSubmittedTemplate,
     capaAcceptedTemplate,
     capaSentBackTemplate,
+    capaAssignedTemplate,
 } = require("../services/emailTemplates");
+
+// Links in the payload are app-relative ("/capa/12"); emails need a full URL.
+// APP_BASE_URL can override; default is the first CLIENT_URL + the app path.
+const APP_BASE_URL =
+    process.env.APP_BASE_URL ||
+    `${(process.env.CLIENT_URL || "").split(",")[0].trim().replace(/\/$/, "")}/apps/audit-capa`;
+
+const toAbsoluteLink = (link) =>
+    link && link.startsWith("/") ? `${APP_BASE_URL}${link}` : link;
 const client = new Client({
     connectionString: process.env.DATABASE_URL,
 });
@@ -73,8 +83,22 @@ client.on("notification", async (msg) => {
             "Notification received:",
             notification
         );
-        const payloadData =
-            notification.email_payload;
+        // email_payload may come back as parsed JSON or as a JSON string.
+        let payloadData =
+            notification.email_payload || {};
+
+        if (typeof payloadData === "string") {
+            try {
+                payloadData = JSON.parse(payloadData);
+            } catch (_) {
+                payloadData = {};
+            }
+        }
+
+        payloadData = {
+            ...payloadData,
+            link: toAbsoluteLink(payloadData.link),
+        };
 
         let email;
 
@@ -94,6 +118,11 @@ client.on("notification", async (msg) => {
                 email =
                     capaSentBackTemplate(payloadData);
                 break;
+
+            case "CAPA_ASSIGNED":
+                email =
+                    capaAssignedTemplate(payloadData);
+                break;
             default:
                 console.log(
                     `No template found for ${notification.event_type}`
@@ -101,7 +130,8 @@ client.on("notification", async (msg) => {
 
         }
 
-        if (email && notification.email) {
+        // Some logins are shared test accounts without a real address ("delhi").
+        if (email && notification.email && notification.email.includes("@")) {
 
             await sendEmail({
                 to: notification.email,

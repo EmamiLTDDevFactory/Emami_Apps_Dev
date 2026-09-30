@@ -462,7 +462,12 @@ export default function CAPAManagement() {
 
             link:
                 `/capa/${auditId}?tab=closed`,
-            // eventType: "CAPA_ACCEPTED"
+            eventType: "CAPA_ACCEPTED",
+            emailPayload: buildCapaEmailPayload(
+                closedCAPA,
+                updatedCAPA,
+                `/capa/${auditId}`
+            ),
         });
 
         // Notify SAP (NGD) so it can trigger the depot email off the Flag.
@@ -498,6 +503,27 @@ export default function CAPAManagement() {
     // Cancelled (added) CAPAs are kept for the record but don't count.
     const countActiveCAPAs = (capas) =>
         capas.filter((c) => c.status !== "Cancelled").length;
+
+    // Data for the backend CAPA emails (emailTemplates.js). `link` is app-relative;
+    // the backend turns it into a full URL.
+    const buildCapaEmailPayload = (capa, capas, link) => {
+        const total = countActiveCAPAs(capas);
+        const open = capas.filter(
+            (c) => c.status === "Open" || c.status === "Sent Back"
+        ).length;
+
+        return {
+            auditNo: getAuditNo(capa?.auditId),
+            findingNo: getFindingNo(capa, getAuditNo(capa?.auditId)),
+            capaNo: capa?.capaNo,
+            totalCAPA: total,
+            submittedCAPA: total - open,
+            openCAPA: open,
+            userId: currentUser?.name || currentUser?.username || "",
+            link,
+        };
+    };
+
 
     // Add CAPA / Cancel: CQA only, while the audit's CAPAs are still open.
     const canAddCAPA =
@@ -554,6 +580,14 @@ export default function CAPAManagement() {
                 title: "CAPA Assigned",
                 message: `An additional CAPA ${newCAPA.capaNo} has been assigned for Finding ${newCAPA.findingNo}. Please review and submit.`,
                 link: `/capa/${auditId}`,
+                eventType: "CAPA_ASSIGNED",
+                emailPayload: {
+                    auditNo: getAuditNo(auditId),
+                    findingNo: newCAPA.findingNo,
+                    capaNo: newCAPA.capaNo,
+                    totalCAPA: 1,
+                    link: `/capa/${auditId}`,
+                },
             });
 
             alert(`CAPA ${newCAPA.capaNo} added.`);
@@ -758,25 +792,26 @@ export default function CAPAManagement() {
                 "CAPA submitted successfully."
             );
 
-            // 5. Notification to CQA
+            const freshCapas = await getCAPAs(item.auditId);
+
+            // 5. Notification (+ email) to CQA
             await addNotification({
-
                 role: "CQA",
-
                 auditId: item.auditId,
-
                 title: "CAPA Submitted",
-
                 message:
                     `CAPA ${item.capaNo} has been submitted by Depot with evidence.`,
-
                 link:
                     `/capa/${item.auditId}`,
-                // eventType: "CAPA_SUBMITTED",
+                eventType: "CAPA_SUBMITTED",
+                emailPayload: buildCapaEmailPayload(
+                    item,
+                    freshCapas,
+                    `/capa/${item.auditId}`
+                ),
             });
 
             // Notify SAP (NGD) so it can trigger the CQA email off the Flag.
-            const freshCapas = await getCAPAs(item.auditId);
             const openAfterSubmit = freshCapas.filter(
                 (c) => c.status === "Open" || c.status === "Sent Back"
             ).length;
@@ -1007,7 +1042,12 @@ export default function CAPAManagement() {
 
             link:
                 `/capa/${selected.auditId}?tab=open`,
-            // eventType: "CAPA_SENT_BACK"
+            eventType: "CAPA_SENT_BACK",
+            emailPayload: buildCapaEmailPayload(
+                selected,
+                updatedCAPA,
+                `/capa/${selected.auditId}`
+            ),
         });
 
         // Notify SAP (NGD) so it can trigger the depot email off the Flag.
