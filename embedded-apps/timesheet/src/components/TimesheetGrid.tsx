@@ -123,13 +123,11 @@ function LeaveSelect({
   dateIso,
   value,
   onChange,
-  disabled,
   className = 'mt-1 py-1 text-[11px]',
 }: {
   dateIso: string;
   value: string;
   onChange: (dateIso: string, value: string) => void;
-  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -137,7 +135,6 @@ function LeaveSelect({
       aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
       value={value}
       onChange={(e) => onChange(dateIso, e.target.value)}
-      disabled={disabled}
       className={`w-full rounded-md border border-border bg-white px-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${className}`}
     >
       <option value="">Present</option>
@@ -674,7 +671,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               // The one row a daily user actually comes here for - a left accent bar makes it
               // findable at a glance instead of blending into the rest of the month.
               const isToday = dateIso === todayIso;
-              // Only today's row can be filled in - every other date is shown but disabled.
+              // Only today's row takes times and tasks - other dates are shown but disabled, except the
+              // Attendance dropdown and leave reason, so a missed day or planned leave can still be marked.
               const locked = !readOnly && !isToday;
               const todayRowCls = isToday ? 'border-l-4 border-l-rust' : '';
               const todayBadge = isToday && (
@@ -695,7 +693,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                     </td>
                     <td className="px-2 py-2 align-middle">
                       {!readOnly && !isOffDay(date, workingDayOverrides) ? (
-                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} className="py-1.5 text-xs" />
+                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
                       ) : (
                         <span className="inline-block whitespace-nowrap rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
                       )}
@@ -713,7 +711,6 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           type="text"
                           aria-label={`Leave reason on ${formatDayNum(date)}`}
                           value={row.leaveNote}
-                          disabled={locked}
                           onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
                           placeholder="Reason for leave (optional)"
                           className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
@@ -776,7 +773,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         {readOnly ? (
                           <div className="flex h-[30px] items-center text-inkSoft">{row.inTime ? 'Present' : '-'}</div>
                         ) : (
-                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} className="py-1.5 text-xs" />
+                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
@@ -1000,7 +997,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               {!readOnly && working && (
                 <label className="mb-3 block">
                   <span className="mb-1 block text-[11px] font-medium text-inkSoft">Leave</span>
-                  <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} />
+                  <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />
                 </label>
               )}
 
@@ -1014,7 +1011,6 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       type="text"
                       aria-label={`Leave reason on ${formatDayNum(date)}`}
                       value={row.leaveNote}
-                      disabled={locked}
                       onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
                       placeholder="Reason for leave (optional)"
                       className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
