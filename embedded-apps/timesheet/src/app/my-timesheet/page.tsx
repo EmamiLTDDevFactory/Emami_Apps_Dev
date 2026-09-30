@@ -115,6 +115,10 @@ export default function MyTimesheetPage() {
   // Last month keeps showing a (disabled) button once its window closes, so it's clear why it
   // can't be submitted; older months don't show it at all.
   const lastMonth = toISODate(addMonths(parseISODate(thisMonth), -1));
+  // The current month can always be submitted; an earlier month still needs its full expected
+  // hours, assigned tasks and an open submission window.
+  const isCurrentMonth = viewedMonth === thisMonth;
+  const submitDisabled = !isCurrentMonth && (incomplete || noTasks || windowClosed);
   const showSubmit = !statusReadOnly && (rejected || viewedMonth === thisMonth || viewedMonth === lastMonth);
 
   return (
@@ -175,13 +179,13 @@ export default function MyTimesheetPage() {
 
       {showSubmit && (
         <div className="flex flex-col items-start gap-2">
-          <button type="button" onClick={handleSubmit} disabled={incomplete || noTasks || windowClosed} className="btn-primary">
+          <button type="button" onClick={handleSubmit} disabled={submitDisabled} className="btn-primary">
             {rejected ? 'Resubmit for Approval' : 'Submit for Approval'}
           </button>
           {!windowClosed && !rejected && (
             <p className="text-xs text-inkSoft">You can submit this timesheet until {formatDayOrdinal(submitWindow.closesOn)}.</p>
           )}
-          {!windowClosed && !noTasks && incomplete && (
+          {!isCurrentMonth && !windowClosed && !noTasks && incomplete && (
             <p className="text-xs text-amber">
               You&apos;ve logged {liveTotal.toFixed(2).replace(/\.00$/, '')}h of {expected}h expected so far this month. Log the rest before
               submitting.
