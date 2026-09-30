@@ -26,7 +26,7 @@ const plexSerif = IBM_Plex_Serif({
 export const metadata: Metadata = {
   title: 'TimeSheet — Emami Apps',
   description: 'Log hours, track leave, and manage team approvals.',
-  icons: { icon: '/apps/timesheet/favicon.svg' },
+  icons: { icon: '/apps/timesheet/favicon.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
