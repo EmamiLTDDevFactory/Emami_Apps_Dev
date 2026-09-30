@@ -520,9 +520,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   }
 
   // Setting a leave type clears any time/task entries for that day (leave and working hours are
-  // mutually exclusive); clearing it (back to "Present") restores the default in/out time for
-  // re-entry - except for today, which is clocked in/out live and so goes back to blank (showing
-  // the "Clock In" button) instead of a pre-filled shift.
+  // mutually exclusive); clearing it (back to "Present") leaves the in/out time blank rather than
+  // filling in the default 10-18 shift, since nobody actually clocked in for that day - today then
+  // shows the "Clock In" button again.
   function setLeaveType(date: string, value: string) {
     // Only Sick/Casual/Earned draw from the yearly pool - adjust the optimistic balance display
     // the instant one of those is picked or cleared, same tick as the day's own "Present"/leave-
@@ -534,10 +534,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     }
     setDayMap((prev) => {
       const current = prev[date] || emptyRow();
-      const clearedTimes = date === todayIso ? { inTime: '', outTime: '' } : { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME };
       const nextRow: DayRow = value
         ? { ...current, leaveType: value, inTime: '', outTime: '', inLocation: '', inLocationAt: '', outLocation: '', outLocationAt: '', lines: [emptyLine()] }
-        : { ...current, leaveType: '', leaveNote: '', ...clearedTimes };
+        : { ...current, leaveType: '', leaveNote: '', inTime: '', outTime: '' };
       const nextMap = { ...prev, [date]: nextRow };
       scheduleAutosave(nextMap);
       return nextMap;
