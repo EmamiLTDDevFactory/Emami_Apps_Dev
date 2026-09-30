@@ -520,10 +520,18 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
   }
 
   // Setting a leave type clears any time/task entries for that day (leave and working hours are
-  // mutually exclusive); clearing it (back to "Present") leaves the in/out time blank rather than
-  // filling in the default 10-18 shift, since nobody actually clocked in for that day - today then
-  // shows the "Clock In" button again.
+  // mutually exclusive). The day as it was just before is kept here, so picking leave on the wrong
+  // date and switching back to "Present" puts its times, locations and tasks back exactly - other
+  // dates' times are locked, so they couldn't be re-entered by hand. With nothing kept (e.g. the
+  // leave was saved before a reload) it falls back to the same pre-fill as a fresh day: blank for
+  // today (showing the "Clock In" button), the default 10-18 shift for any other date.
+  const beforeLeave = useRef<Record<string, DayRow>>({});
+
   function setLeaveType(date: string, value: string) {
+    const existing = dayMap[date];
+    if (value && existing && !existing.leaveType) beforeLeave.current[date] = existing;
+    const restored = value ? undefined : beforeLeave.current[date];
+    if (!value) delete beforeLeave.current[date];
     // Only Sick/Casual/Earned draw from the yearly pool - adjust the optimistic balance display
     // the instant one of those is picked or cleared, same tick as the day's own "Present"/leave-
     // type badge, well before autosave round-trips to confirm it.
@@ -534,9 +542,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     }
     setDayMap((prev) => {
       const current = prev[date] || emptyRow();
+      const fallbackTimes = date === todayIso ? { inTime: '', outTime: '' } : { inTime: DEFAULT_IN_TIME, outTime: DEFAULT_OUT_TIME };
       const nextRow: DayRow = value
         ? { ...current, leaveType: value, inTime: '', outTime: '', inLocation: '', inLocationAt: '', outLocation: '', outLocationAt: '', lines: [emptyLine()] }
-        : { ...current, leaveType: '', leaveNote: '', inTime: '', outTime: '' };
+        : restored
+          ? { ...restored, leaveType: '', leaveNote: '' }
+          : { ...current, leaveType: '', leaveNote: '', ...fallbackTimes };
       const nextMap = { ...prev, [date]: nextRow };
       scheduleAutosave(nextMap);
       return nextMap;
