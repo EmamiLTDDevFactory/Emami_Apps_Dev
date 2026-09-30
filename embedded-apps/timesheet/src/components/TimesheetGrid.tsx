@@ -123,11 +123,13 @@ function LeaveSelect({
   dateIso,
   value,
   onChange,
+  disabled,
   className = 'mt-1 py-1 text-[11px]',
 }: {
   dateIso: string;
   value: string;
   onChange: (dateIso: string, value: string) => void;
+  disabled?: boolean;
   className?: string;
 }) {
   return (
@@ -135,7 +137,8 @@ function LeaveSelect({
       aria-label={`Leave status on ${formatDayNum(parseISODate(dateIso))}`}
       value={value}
       onChange={(e) => onChange(dateIso, e.target.value)}
-      className={`w-full rounded-md border border-border bg-white px-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust ${className}`}
+      disabled={disabled}
+      className={`w-full rounded-md border border-border bg-white px-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${className}`}
     >
       <option value="">Present</option>
       {LEAVE_TYPES.map((lt) => (
@@ -671,6 +674,8 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               // The one row a daily user actually comes here for - a left accent bar makes it
               // findable at a glance instead of blending into the rest of the month.
               const isToday = dateIso === todayIso;
+              // Only today's row can be filled in - every other date is shown but disabled.
+              const locked = !readOnly && !isToday;
               const todayRowCls = isToday ? 'border-l-4 border-l-rust' : '';
               const todayBadge = isToday && (
                 <span className="inline-block rounded-full bg-rust px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Today</span>
@@ -690,7 +695,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                     </td>
                     <td className="px-2 py-2 align-middle">
                       {!readOnly && !isOffDay(date, workingDayOverrides) ? (
-                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                        <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} className="py-1.5 text-xs" />
                       ) : (
                         <span className="inline-block whitespace-nowrap rounded-full bg-tealBg px-2 py-0.5 text-[10px] font-medium text-teal">{row.leaveType}</span>
                       )}
@@ -708,9 +713,10 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           type="text"
                           aria-label={`Leave reason on ${formatDayNum(date)}`}
                           value={row.leaveNote}
+                          disabled={locked}
                           onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
                           placeholder="Reason for leave (optional)"
-                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                         />
                       )}
                     </td>
@@ -770,7 +776,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         {readOnly ? (
                           <div className="flex h-[30px] items-center text-inkSoft">{row.inTime ? 'Present' : '-'}</div>
                         ) : (
-                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} className="py-1.5 text-xs" />
+                          <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} className="py-1.5 text-xs" />
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
@@ -791,8 +797,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             type="time"
                             aria-label={`In time on ${formatDayNum(date)}`}
                             value={row.inTime}
+                            disabled={locked}
                             onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
-                            className="w-full rounded-md border border-border bg-white px-1.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                            className="w-full rounded-md border border-border bg-white px-1.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                           />
                         )}
                       </td>
@@ -821,8 +828,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             type="time"
                             aria-label={`Out time on ${formatDayNum(date)}`}
                             value={row.outTime}
+                            disabled={locked}
                             onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
-                            className="w-full rounded-md border border-border bg-white px-1.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                            className="w-full rounded-md border border-border bg-white px-1.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                           />
                         )}
                       </td>
@@ -844,8 +852,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <select
                         aria-label={`Task ${lineIndex + 1} on ${formatDayNum(date)}`}
                         value={line.taskId}
+                        disabled={locked}
                         onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
-                        className={`w-full rounded-md border px-1.5 py-1.5 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rust ${
+                        className={`w-full rounded-md border px-1.5 py-1.5 text-center text-xs font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
                           line.taskId ? 'border-rustLight/40 bg-glassRust text-rustDeep' : 'border-border bg-white font-normal text-inkSoft'
                         }`}
                       >
@@ -867,11 +876,12 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           type="text"
                           aria-label={`Task description ${lineIndex + 1} on ${formatDayNum(date)}`}
                           value={line.description}
+                          disabled={locked}
                           onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                           placeholder="What did you work on?"
-                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                         />
-                        {lines.length > 1 && (
+                        {!locked && lines.length > 1 && (
                           <button
                             type="button"
                             onClick={() => removeLine(dateIso, lineIndex)}
@@ -881,7 +891,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             <X size={13} />
                           </button>
                         )}
-                        {lineIndex === lines.length - 1 && (
+                        {!locked && lineIndex === lines.length - 1 && (
                           <button
                             type="button"
                             onClick={() => addLine(dateIso)}
@@ -959,6 +969,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
           const over = hours > MAX_HOURS_PER_DAY;
           const cardTint = onLeave ? 'bg-tealBg' : tone.row || 'bg-white';
           const isToday = dateIso === todayIso;
+          const locked = !readOnly && !isToday;
           return (
             <div key={dateIso} ref={isToday ? todayCardRef : undefined} className={`card p-4 ${cardTint} ${isToday ? 'border-l-4 border-l-rust' : ''}`}>
               <div className="mb-3 flex items-center justify-between">
@@ -989,7 +1000,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
               {!readOnly && working && (
                 <label className="mb-3 block">
                   <span className="mb-1 block text-[11px] font-medium text-inkSoft">Leave</span>
-                  <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} />
+                  <LeaveSelect dateIso={dateIso} value={row.leaveType} onChange={setLeaveType} disabled={locked} />
                 </label>
               )}
 
@@ -1003,9 +1014,10 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       type="text"
                       aria-label={`Leave reason on ${formatDayNum(date)}`}
                       value={row.leaveNote}
+                      disabled={locked}
                       onChange={(e) => updateDayField(dateIso, { leaveNote: e.target.value })}
                       placeholder="Reason for leave (optional)"
-                      className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                      className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                     />
                   )}
                 </label>
@@ -1032,8 +1044,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         <input
                           type="time"
                           value={row.inTime}
+                          disabled={locked}
                           onChange={(e) => updateDayField(dateIso, { inTime: e.target.value })}
-                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                         />
                       )}
                     </label>
@@ -1063,8 +1076,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         <input
                           type="time"
                           value={row.outTime}
+                          disabled={locked}
                           onChange={(e) => updateDayField(dateIso, { outTime: e.target.value })}
-                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                         />
                       )}
                     </label>
@@ -1075,7 +1089,7 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                       <div key={lineIndex} className="space-y-2 rounded-lg border border-border bg-appBg/60 p-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-semibold text-inkSoft">Task {lineIndex + 1}</span>
-                          {!readOnly && lines.length > 1 && (
+                          {!readOnly && !locked && lines.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeLine(dateIso, lineIndex)}
@@ -1093,8 +1107,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                           ) : (
                             <select
                               value={line.taskId}
+                              disabled={locked}
                               onChange={(e) => updateLine(dateIso, lineIndex, { taskId: e.target.value })}
-                              className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rust ${
+                              className={`w-full rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60 ${
                                 line.taskId ? 'border-rustLight/40 bg-glassRust text-rustDeep' : 'border-border bg-white font-normal text-inkSoft'
                               }`}
                             >
@@ -1115,15 +1130,16 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                             <input
                               type="text"
                               value={line.description}
+                              disabled={locked}
                               onChange={(e) => updateLine(dateIso, lineIndex, { description: e.target.value })}
                               placeholder="What did you work on?"
-                              className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                              className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:cursor-not-allowed disabled:bg-appBg disabled:opacity-60"
                             />
                           )}
                         </label>
                       </div>
                     ))}
-                    {!readOnly && (
+                    {!readOnly && !locked && (
                       <button type="button" onClick={() => addLine(dateIso)} className="inline-flex items-center gap-0.5 text-sm font-medium text-rust hover:text-rustDeep focus:outline-none focus-visible:underline">
                         <Plus size={13} /> Add task
                       </button>
