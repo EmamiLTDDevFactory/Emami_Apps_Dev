@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Copy, ArrowDown } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useToast } from '../../context/ToastContext';
 import TimesheetGrid from '../../components/TimesheetGrid';
 import StatusBadge from '../../components/StatusBadge';
 import MonthSelector from '../../components/MonthSelector';
-import { addMonths, currentMonthStartIso, formatDayOrdinal, isOffDay, parseISODate, toISODate } from '../../utils/date';
+import { addMonths, currentMonthStartIso, formatDayOrdinal, parseISODate, toISODate } from '../../utils/date';
 import { expectedHoursToDate, getDisplayStatus, getSubmitWindow, isReadOnly, wasEverRejected } from '../../utils/timesheet';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
 
@@ -22,7 +22,6 @@ export default function MyTimesheetPage() {
   const [viewedMonth, setViewedMonth] = useState(monthParam || thisMonth);
   const [liveEntries, setLiveEntries] = useState<any[]>([]);
   const [liveTotal, setLiveTotal] = useState(0);
-  const gridRef = useRef<{ loadEntries: (entries: any[]) => void }>(null);
 
   useEffect(() => {
     setViewedMonth(monthParam || thisMonth);
@@ -58,35 +57,6 @@ export default function MyTimesheetPage() {
 
   function handleAutosave(entries: any[]) {
     saveDraftEntries(currentUser.id, viewedMonth, entries);
-  }
-
-  function handleCopyLastMonth() {
-    const prevMonth = toISODate(addMonths(parseISODate(viewedMonth), -1));
-    const prevTimesheet = getTimesheet(currentUser.id, prevMonth);
-    if (!prevTimesheet || prevTimesheet.entries.length === 0) {
-      showToast('No entries found on last month to copy.', 'info');
-      return;
-    }
-    // Shifting by day-of-month number (not weekday) means a working day last month can land on
-    // a Saturday/Sunday this month. Off-day rows in TimesheetGrid always show "-" and ignore
-    // whatever's in dayMap for that date, but the hours total has no such check - so an entry
-    // silently landing on an off day would still count towards the total while being invisible
-    // anywhere in the grid. Drop those instead of carrying them over.
-    const shifted = prevTimesheet.entries
-      .map((e: any) => {
-        const day = parseISODate(e.date).getDate();
-        const shiftedDate = parseISODate(viewedMonth);
-        shiftedDate.setDate(Math.min(day, new Date(shiftedDate.getFullYear(), shiftedDate.getMonth() + 1, 0).getDate()));
-        return { ...e, date: toISODate(shiftedDate), shiftedDate };
-      })
-      .filter((e: any) => !isOffDay(e.shiftedDate, workingDayOverridesSet))
-      .map(({ shiftedDate, ...e }: any) => e);
-    if (shifted.length === 0) {
-      showToast('Last month’s entries all fall on non-working days this month.', 'info');
-      return;
-    }
-    gridRef.current?.loadEntries(shifted);
-    showToast('Copied last month’s entries into this month.', 'info');
   }
 
   function handleSubmit() {
@@ -134,12 +104,6 @@ export default function MyTimesheetPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {!readOnly && (
-            <button type="button" onClick={handleCopyLastMonth} className="btn-ghost">
-              <Copy size={16} />
-              Copy from last month
-            </button>
-          )}
           <button type="button" onClick={handleDownloadExcel} className="btn-primary">
             <ArrowDown size={16} />
             Download Excel
@@ -163,7 +127,6 @@ export default function MyTimesheetPage() {
       )}
 
       <TimesheetGrid
-        ref={gridRef}
         userId={currentUser.id}
         tasks={tasks}
         monthStartDate={viewedMonth}
