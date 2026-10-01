@@ -233,6 +233,12 @@ export interface SubmissionRecord {
   submitted: boolean;
   submittedOn: string;
   rateId: string;
+  /** ZmarketRateSet's Freight — the freight value on top of the rate. '' when SAP sends none. */
+  freight: string;
+  /** 'EXW' / 'FOR', '' when the record has none. */
+  freightTerms: string;
+  /** ZmarketRateSet's TotalRate — the landed rate (rate + freight). '' when SAP sends none. */
+  totalRate: string;
 }
 
 /** Admin Submission History's sole data source — every rate status row for a year, for one
@@ -259,6 +265,9 @@ export async function fetchSubmissionRecords(year: string, email: string): Promi
     submitted: li.SubDone === 'X',
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',
+    freight: li.Freight != null ? String(li.Freight) : '',
+    freightTerms: li.FreightTerms || '',
+    totalRate: li.TotalRate != null ? String(li.TotalRate) : '',
   }));
 }
 
@@ -274,8 +283,6 @@ export interface RateEntryRecord extends SubmissionRecord {
   cgst: string;
   /** Zdate as yyyy-mm-dd (the rate's "valid from" date). */
   validFrom: string;
-  /** 'EXW' / 'FOR' as last saved, '' when the record has none. */
-  freightTerms: string;
 }
 
 /** Same read as fetchSubmissionRecords (ZmarketRateSet by Zyear + the signed-in Admin's email,
@@ -303,6 +310,8 @@ export async function fetchRateEntryRecords(year: string, email: string): Promis
     cgst: li.Cgst != null ? String(li.Cgst) : '',
     validFrom: parseODataDate(li.Zdate),
     freightTerms: li.FreightTerms || '',
+    freight: li.Freight != null ? String(li.Freight) : '',
+    totalRate: li.TotalRate != null ? String(li.TotalRate) : '',
     submitted: li.SubDone === 'X',
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',

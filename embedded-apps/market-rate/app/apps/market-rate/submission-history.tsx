@@ -5,6 +5,7 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { fetchSubmissionRecords, type SubmissionRecord } from '../../../src/lib/marketRateApi';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 import { ALL_MONTH_VALUES, CompactSelect, MONTHS, MonthMultiSelect, formatMonthSelection } from '../../../src/components/CompactFilters';
+import { exportSubmissionHistoryToExcel } from '../../../src/lib/exportSubmissionHistory';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => String(CURRENT_YEAR - i));
@@ -185,17 +186,25 @@ function formatQuoteDate(rate: VendorMaterialRate): string {
   return MONTHS.find((m) => m.value === rate.zmonth)?.label ?? '—';
 }
 
-/** The matrix only keeps a submitted/not boolean per month (see buildMatrixRows) — this looks the
- * original SubmissionRecord back up from the full year's records already sitting in state, so
- * tapping a green tick can show the Rate without a second API call. */
-function findSubmissionRecord(submissions: SubmissionRecord[], row: MatrixRow, monthValue: string): SubmissionRecord | undefined {
-  return submissions.find(
-    (s) =>
-      s.email.toLowerCase() === row.email.toLowerCase() &&
-      s.vendorCode === row.vendorCode &&
-      s.materialCode === row.materialCode &&
-      s.zmonth === monthValue
-  );
+/** The matrix only keeps a submitted/not boolean per month (see buildMatrixRows) — this indexes
+ * the full year's SubmissionRecords already in state by row + month, so the Rate / Freight /
+ * Landed Rate columns, the rate popup and the Excel export all read the real record without a
+ * second API call. When a month has more than one record, the submitted one wins. */
+function indexRecordsByRowMonth(submissions: SubmissionRecord[]): Map<string, SubmissionRecord> {
+  const byKey = new Map<string, SubmissionRecord>();
+  for (const s of submissions) {
+    const k = `${s.email.toLowerCase()}|${s.vendorCode}|${s.materialCode}|${s.zmonth}`;
+    const existing = byKey.get(k);
+    if (!existing || (s.submitted && !existing.submitted)) byKey.set(k, s);
+  }
+  return byKey;
+}
+
+/** Shows a numeric SAP value with two decimals, or the raw text if it isn't a number, or a dash. */
+function formatAmount(value: string | undefined): string {
+  if (!value) return '—';
+  const n = Number(value);
+  return Number.isNaN(n) ? value : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function KpiCard({ icon, label, value, accent }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; accent?: string }) {
@@ -289,7 +298,7 @@ function TrendChart({ data }: { data: { label: string; pct: number; highlighted:
 
 /** Opens on tapping a submitted (green tick) month cell — shows the Rate actually submitted for
  * that vendor/material/month, looked up from the already-fetched SubmissionRecord (see
- * findSubmissionRecord above), not a fresh API call. */
+ * indexRecordsByRowMonth above), not a fresh API call. */
 function RateDetailModal({
   row,
   monthLabel,
@@ -327,6 +336,18 @@ function RateDetailModal({
                 <Text style={[styles.rateModalValue, styles.rateModalValueStrong]}>
                   {record.rate}{record.ratePer ? ` / ${record.ratePer}` : ''}
                 </Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Landed Rate</Text>
+                <Text style={[styles.rateModalValue, styles.rateModalValueStrong]}>{formatAmount(record.totalRate)}</Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Freight Value</Text>
+                <Text style={styles.rateModalValue}>{formatAmount(record.freight)}</Text>
+              </View>
+              <View style={styles.rateModalItem}>
+                <Text style={styles.rateModalLabel}>Freight Terms</Text>
+                <Text style={styles.rateModalValue}>{record.freightTerms || '—'}</Text>
               </View>
               <View style={styles.rateModalItem}>
                 <Text style={styles.rateModalLabel}>Material Code</Text>
@@ -511,6 +532,8 @@ export default function SubmissionHistoryScreen() {
   }, [roleLoading, role, email, year]);
 
   const allRows = useMemo(() => buildMatrixRows(submissions), [submissions]);
+  const recordsByRowMonth = useMemo(() => indexRecordsByRowMonth(submissions), [submissions]);
+  const recordFor = (row: MatrixRow, monthValue: string) => recordsByRowMonth.get(`${row.key}|${monthValue}`);
   // Indexes into MONTHS for the selected months, in calendar order — every count below covers all
   // of them, and the detail table shows a column for only these months.
   const monthIdxs = useMemo(() => MONTHS.map((m, i) => (months.includes(m.value) ? i : -1)).filter((i) => i >= 0), [months]);
@@ -556,6 +579,21 @@ export default function SubmissionHistoryScreen() {
   const lastMonthIdx = monthIdxs[monthIdxs.length - 1] ?? 0;
   const ytdAvgCompliancePct = trendData.slice(0, lastMonthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / (lastMonthIdx + 1);
   const matrixTableWidth = MATRIX_FIXED_WIDTH + COL.month * monthIdxs.length + COL.total;
+
+  // The Rate / Freight Value / Freight Terms / Landed Rate columns show one month's record per row:
+  // the latest selected month the vendor actually submitted for. A pending month's record only
+  // carries SAP's zero placeholders, so a row with nothing submitted in the selection shows dashes.
+  const latestFor = (row: MatrixRow): { record: SubmissionRecord; monthLabel: string } | undefined => {
+    for (let j = monthIdxs.length - 1; j >= 0; j--) {
+      const m = MONTHS[monthIdxs[j]];
+      const record = recordFor(row, m.value);
+      if (record?.submitted) return { record, monthLabel: m.label };
+    }
+    return undefined;
+  };
+
+  const downloadExcel = () =>
+    exportSubmissionHistoryToExcel({ rows: filteredRows, monthIdxs, year, monthsLabel, recordFor, latestFor });
 
   // Vendor Rate Comparison — its own Month filter (rateMonths) plus Year and the search box; the
   // compliance Month/Status filters don't apply. Each pair's latest quote within the selected
@@ -668,7 +706,7 @@ export default function SubmissionHistoryScreen() {
               <View style={styles.flex1}>
                 <Text style={styles.cardTitle}>Vendor · material · month detail — {monthsLabel} {year}</Text>
                 <Text style={styles.cardSubtitle}>
-                  {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current filters. Tap a green tick to see that month's submitted rate.
+                  {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current filters.{singleMonth ? '' : ' Rate, freight and landed rate are from the latest submitted month in your selection.'} Tap a green tick for that month's rate details.
                 </Text>
               </View>
               <View style={styles.matrixSearchWrap}>
@@ -687,6 +725,15 @@ export default function SubmissionHistoryScreen() {
                   </Pressable>
                 ) : null}
               </View>
+              <Pressable
+                style={styles.downloadBtn}
+                onPress={downloadExcel}
+                accessibilityRole="button"
+                accessibilityLabel="Download this report as Excel"
+              >
+                <Ionicons name="download-outline" size={15} color={colors.white} />
+                <Text style={styles.downloadBtnText}>Download Excel</Text>
+              </Pressable>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
               <View style={{ width: matrixTableWidth }}>
@@ -696,6 +743,10 @@ export default function SubmissionHistoryScreen() {
                   <Text style={[styles.headerCell, { width: COL.materialCode }]}>Material Code</Text>
                   <Text style={[styles.headerCell, { width: COL.materialDesc }]}>Material Description</Text>
                   <Text style={[styles.headerCell, { width: COL.email }]}>Submitted By</Text>
+                  <Text style={[styles.headerCell, styles.rightCell, { width: COL.rate }]}>Rate</Text>
+                  <Text style={[styles.headerCell, styles.rightCell, { width: COL.freight }]}>Freight Value</Text>
+                  <Text style={[styles.headerCell, styles.centerCell, { width: COL.freightTerms }]}>Freight Terms</Text>
+                  <Text style={[styles.headerCell, styles.rightCell, { width: COL.landed }]}>Landed Rate</Text>
                   {monthIdxs.map((i) => (
                     <Text key={MONTHS[i].value} style={[styles.headerCell, styles.centerCell, { width: COL.month }]}>{MONTHS[i].label}</Text>
                   ))}
@@ -706,6 +757,7 @@ export default function SubmissionHistoryScreen() {
                 <ScrollView style={styles.matrixBody} nestedScrollEnabled showsVerticalScrollIndicator>
                   {filteredRows.map((row) => {
                     const submittedCount = monthIdxs.filter((i) => row.monthStatus[i]).length;
+                    const latest = latestFor(row)?.record;
                     return (
                       <View key={row.key} style={styles.tableRow}>
                         <Text style={[styles.readonlyCell, { width: COL.vendorCode }]} numberOfLines={1}>{row.vendorCode}</Text>
@@ -713,6 +765,18 @@ export default function SubmissionHistoryScreen() {
                         <Text style={[styles.readonlyCell, { width: COL.materialCode }]} numberOfLines={1}>{row.materialCode}</Text>
                         <Text style={[styles.readonlyCell, { width: COL.materialDesc }]} numberOfLines={1}>{row.materialDesc}</Text>
                         <Text style={[styles.readonlyCell, { width: COL.email }]} numberOfLines={1}>{row.email}</Text>
+                        <Text style={[styles.readonlyCell, styles.rightCell, { width: COL.rate }]} numberOfLines={1}>
+                          {formatAmount(latest?.rate)}
+                        </Text>
+                        <Text style={[styles.readonlyCell, styles.rightCell, { width: COL.freight }]} numberOfLines={1}>
+                          {formatAmount(latest?.freight)}
+                        </Text>
+                        <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.freightTerms }]} numberOfLines={1}>
+                          {latest?.freightTerms || '—'}
+                        </Text>
+                        <Text style={[styles.readonlyCell, styles.rightCell, { width: COL.landed, fontWeight: '700', color: colors.ink }]} numberOfLines={1}>
+                          {formatAmount(latest?.totalRate)}
+                        </Text>
                         {monthIdxs.map((i) =>
                           row.monthStatus[i] ? (
                             <Pressable
@@ -784,7 +848,7 @@ export default function SubmissionHistoryScreen() {
           row={rateDetail.row}
           monthLabel={rateDetail.monthLabel}
           year={year}
-          record={findSubmissionRecord(submissions, rateDetail.row, rateDetail.monthValue)}
+          record={recordFor(rateDetail.row, rateDetail.monthValue)}
           onClose={() => setRateDetail(null)}
         />
       )}
@@ -798,11 +862,16 @@ const COL = {
   materialCode: 100,
   materialDesc: 190,
   email: 170,
+  rate: 90,
+  freight: 100,
+  freightTerms: 100,
+  landed: 100,
   month: 38,
   total: 60,
 };
 // Width of the fixed columns; the table adds one COL.month per selected month plus the Total column.
-const MATRIX_FIXED_WIDTH = COL.vendorCode + COL.vendorName + COL.materialCode + COL.materialDesc + COL.email;
+const MATRIX_FIXED_WIDTH =
+  COL.vendorCode + COL.vendorName + COL.materialCode + COL.materialDesc + COL.email + COL.rate + COL.freight + COL.freightTerms + COL.landed;
 
 const styles = StyleSheet.create({
   scroll: {
@@ -1156,6 +1225,23 @@ const styles = StyleSheet.create({
   },
   centerCell: {
     textAlign: 'center',
+  },
+  rightCell: {
+    textAlign: 'right',
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: radii.md,
+    backgroundColor: colors.green,
+  },
+  downloadBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.white,
   },
   tableRow: {
     flexDirection: 'row',
