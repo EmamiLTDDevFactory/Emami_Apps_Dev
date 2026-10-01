@@ -13,6 +13,7 @@ body {
 
 body {
   color: #1F1B33;
+  font-family: var(--font-montserrat), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

@@ -33,21 +33,21 @@ export const gradients = {
   primary: ['#6D5BF5', colors.rust, colors.rustDeep] as const,
 };
 
-// IBD/Supply Chain/CPD/HR/IT are matched to the reference Emami Apps sidebar's own icon
-// accents (sampled from its screenshot) rather than picked independently — CQA, Cross-Function,
-// Packaging, Finance, SD and MSD aren't in that reference, so those keep their own hues.
+// One distinct hue per category, matched to the reference Emami Apps home screen (purple F&A,
+// blue sales/supply chain, rose IBD, orange CPD, indigo HR/IT, green quality, amber CMI-style
+// tiles). Icon chips render these at a light tint (see categoryTint) with the icon at full hue.
 export const categoryColors: Record<string, string> = {
-  CQA: '#0D9488',
-  CPD: '#CC5A70',
-  IT: '#4A5FE0',
-  'Supply Chain': '#4A5FE0',
-  IBD: '#C23A72',
-  HR: '#4A5FE0',
-  'Cross-Function': '#0891B2',
-  Packaging: '#65A30D',
-  Finance: '#4F3FD6',
-  SD: '#EA580C',
-  MSD: '#B45309',
+  Finance: '#7C3AED',
+  SD: '#2563EB',
+  IBD: '#E11D48',
+  'Supply Chain': '#3B82F6',
+  CPD: '#EA580C',
+  HR: '#4F46E5',
+  IT: '#4F46E5',
+  CQA: '#059669',
+  'Cross-Function': '#0D9488',
+  Packaging: '#D97706',
+  MSD: '#C026D3',
 } as const;
 
 // Distinct pastel accent per real app, so the 4 cards read like the
@@ -61,6 +61,12 @@ export const appAccents: Record<string, string> = {
 
 export function catColor(cat: string) {
   return categoryColors[cat] ?? colors.rust;
+}
+
+/** The pale background behind a category/nav icon — the accent at ~9% opacity, so every chip
+ * reads as the same pastel family as the reference home screen. */
+export function categoryTint(accent: string) {
+  return `${accent}17`;
 }
 
 export function appColor(id: string) {
@@ -85,12 +91,12 @@ export function navColor(id: string) {
 }
 
 export const fonts = {
-  sansRegular: 'var(--font-ibm-plex-sans)',
-  sansMedium: 'var(--font-ibm-plex-sans)',
-  sansSemiBold: 'var(--font-ibm-plex-sans)',
-  sansBold: 'var(--font-ibm-plex-sans)',
-  serifMedium: 'var(--font-ibm-plex-serif)',
-  serifSemiBold: 'var(--font-ibm-plex-serif)',
+  sansRegular: 'var(--font-montserrat)',
+  sansMedium: 'var(--font-montserrat)',
+  sansSemiBold: 'var(--font-montserrat)',
+  sansBold: 'var(--font-montserrat)',
+  serifMedium: 'var(--font-montserrat)',
+  serifSemiBold: 'var(--font-montserrat)',
 } as const;
 
 // Font WEIGHTS to pair with the family tokens above — react-native-web had a

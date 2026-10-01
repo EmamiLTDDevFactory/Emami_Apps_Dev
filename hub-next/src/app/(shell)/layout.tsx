@@ -29,14 +29,14 @@ function ShellChrome({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {isWideScreen ? (
-        <div style={{ width: 184, flexShrink: 0, borderRight: `1px solid ${colors.sidebarBorder}` }}>
+        <div style={{ width: 224, flexShrink: 0, borderRight: `1px solid ${colors.sidebarBorder}` }}>
           <Sidebar compact />
         </div>
       ) : (
         drawerOpen && (
           <>
             <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(31,27,51,0.35)', zIndex: 60 }} />
-            <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 218, zIndex: 70, boxShadow: '0 0 30px rgba(21,17,41,0.2)' }}>
+            <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 240, zIndex: 70, boxShadow: '0 0 30px rgba(21,17,41,0.2)' }}>
               <Sidebar />
             </div>
           </>

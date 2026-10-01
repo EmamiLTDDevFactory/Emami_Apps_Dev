@@ -1,19 +1,14 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Sans, IBM_Plex_Serif } from 'next/font/google';
+import { Montserrat } from 'next/font/google';
 import Providers from '../components/Providers';
 import './globals.css';
 
-const ibmPlexSans = IBM_Plex_Sans({
+// Montserrat everywhere (sans and the former serif tokens alike), matching the reference Emami
+// Apps home screen's typeface.
+const montserrat = Montserrat({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  variable: '--font-ibm-plex-sans',
-  display: 'swap',
-});
-
-const ibmPlexSerif = IBM_Plex_Serif({
-  subsets: ['latin'],
-  weight: ['500', '600'],
-  variable: '--font-ibm-plex-serif',
+  variable: '--font-montserrat',
   display: 'swap',
 });
 
@@ -48,7 +43,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${ibmPlexSans.variable} ${ibmPlexSerif.variable}`}>
+    <html lang="en" className={montserrat.variable}>
       <body>
         <Providers>{children}</Providers>
       </body>
