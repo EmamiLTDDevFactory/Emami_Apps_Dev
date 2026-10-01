@@ -134,8 +134,8 @@ function LeaveSelect({
   );
 }
 
-// One-tap "Clock In" / "Clock Out" action - stamps the current time immediately and geotags it
-// in the background (see `punch` below). Green for in, red for out, matching the tone most
+// One-tap "Clock In" / "Clock Out" action - stamps the current time and geotags it (both
+// require a location fix; see `punch` below). Green for in, red for out, matching the tone most
 // attendance apps use for start/stop.
 function PunchButton({
   label,
@@ -462,18 +462,17 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
-  // One-tap Clock In / Clock Out: stamps the time immediately (that's the part that must never
-  // fail or wait on a GPS fix), then geotags it in the background. A denied/unsupported/timed-out
-  // location never blocks the punch itself - it just leaves that punch's location blank.
+  // One-tap Clock In / Clock Out. Both require location: the time (taken at the tap) is only
+  // stamped once a location fix succeeds - with location off/denied/unavailable the employee is
+  // asked to turn it on and nothing is recorded, so they can simply tap again.
   function punch(date: string, which: 'in' | 'out') {
     const timeField = which === 'in' ? 'inTime' : 'outTime';
     const locationField = which === 'in' ? 'inLocation' : 'outLocation';
     const locationAtField = which === 'in' ? 'inLocationAt' : 'outLocationAt';
+    const action = which === 'in' ? 'Clock In' : 'Clock Out';
     const time = nowHHMM();
-    updateDayField(date, { [timeField]: time } as Partial<DayRow>);
-
     if (!navigator.geolocation) {
-      showToast(`Clocked ${which} at ${time}. Location isn't supported on this device/browser.`, 'info');
+      showToast(`Can't clock ${which}: location isn't supported on this device/browser.`, 'error');
       return;
     }
     const key = `${date}_${which}`;
@@ -482,13 +481,19 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
       async (position) => {
         const { latitude, longitude } = position.coords;
         const place = await resolvePlaceName(latitude, longitude);
-        updateDayField(date, { [locationField]: place, [locationAtField]: new Date().toISOString() } as Partial<DayRow>);
+        updateDayField(date, { [timeField]: time, [locationField]: place, [locationAtField]: new Date().toISOString() } as Partial<DayRow>);
         setLocatingKey((k) => (k === key ? null : k));
         showToast(`Clocked ${which} at ${time} · ${place}`, 'success');
       },
       (error) => {
         setLocatingKey((k) => (k === key ? null : k));
-        showToast(`Clocked ${which} at ${time}. ${error.message || 'Could not capture location.'}`, 'info');
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? `Please turn on location and allow location access for this site, then tap ${action} again.`
+            : error.code === error.TIMEOUT
+              ? `Could not get your location in time. Please make sure location is on and tap ${action} again.`
+              : `Location is unavailable. Please turn on location, then tap ${action} again.`;
+        showToast(message, 'error');
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
