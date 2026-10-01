@@ -7,6 +7,7 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { fetchMarketRates, fetchSuppliedMaterials, saveMarketRates, type MarketRateRow } from '../../../src/lib/marketRateApi';
 import { getHubEmail } from '../../../src/lib/hubEmailLogin';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
+import { FreightTermsSelect } from '../../../src/components/FreightTermsSelect';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -30,6 +31,7 @@ function emptyRow(): MarketRateRow {
     sgst: '',
     cgst: '',
     validFrom: todayIso(),
+    freightTerms: '',
     locked: false,
   };
 }
@@ -55,16 +57,18 @@ const LOCKED_FIELDS: TextField[] = ['materialCode', 'materialDesc', 'materialTyp
 const BOLD_FIELDS: TextField[] = ['materialCode', 'materialDesc'];
 
 const VENDOR_COL_WIDTH = 160;
+// Mandatory per row — see FreightTermsSelect.
+const FREIGHT_COL_WIDTH = 130;
 const DATE_COL_WIDTH = 190;
 const REMOVE_COL_WIDTH = 44;
 const TABLE_WIDTH =
-  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
+  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + FREIGHT_COL_WIDTH + VENDOR_COL_WIDTH + DATE_COL_WIDTH + REMOVE_COL_WIDTH;
 
 // Wider than REMOVE_COL_WIDTH — the Submitted Rates table's action column holds a Submit + Cancel
 // button pair while a row is being edited, not just the single trash icon the entry table has.
 const SUBMITTED_ACTION_COL_WIDTH = 160;
 const SUBMITTED_TABLE_WIDTH =
-  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + VENDOR_COL_WIDTH + DATE_COL_WIDTH + SUBMITTED_ACTION_COL_WIDTH;
+  TEXT_COLUMNS.reduce((sum, c) => sum + c.width, 0) + FREIGHT_COL_WIDTH + VENDOR_COL_WIDTH + DATE_COL_WIDTH + SUBMITTED_ACTION_COL_WIDTH;
 
 /** Valid From cell — a real date picker on every platform, not a free-text field: a raw HTML
  * date input on web (same approach non-ctc-expense's claim date field uses, for consistent
@@ -131,6 +135,8 @@ export default function MarketRateScreen() {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>(null);
+  // Set once a save is attempted with a row missing Freight Terms, so those dropdowns turn red.
+  const [showFreightErrors, setShowFreightErrors] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // The batch just saved, held here until the success Modal's OK is pressed — only then is it
@@ -149,7 +155,7 @@ export default function MarketRateScreen() {
   const [editingKeys, setEditingKeys] = useState<Set<string>>(new Set());
   // Snapshot of each editing row's Market Rate at the moment Edit was pressed, so Cancel can
   // revert it without re-fetching from SAP.
-  const [editOriginals, setEditOriginals] = useState<Record<string, { marketRate: string; validFrom: string }>>({});
+  const [editOriginals, setEditOriginals] = useState<Record<string, { marketRate: string; validFrom: string; freightTerms: string }>>({});
   const [savingRowKey, setSavingRowKey] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ key: string; message: string } | null>(null);
 
@@ -219,6 +225,7 @@ export default function MarketRateScreen() {
               sgst: '',
               cgst: '',
               validFrom: today,
+              freightTerms: '',
               supplierRef: supplierRef || undefined,
               locked: true,
             };
@@ -239,7 +246,7 @@ export default function MarketRateScreen() {
 
   const startEditRow = (row: MarketRateRow) => {
     setRowError(null);
-    setEditOriginals((prev) => ({ ...prev, [row.key]: { marketRate: row.marketRate, validFrom: row.validFrom } }));
+    setEditOriginals((prev) => ({ ...prev, [row.key]: { marketRate: row.marketRate, validFrom: row.validFrom, freightTerms: row.freightTerms } }));
     setEditingKeys((prev) => new Set(prev).add(row.key));
     // Valid From defaults to today the moment Edit is pressed — an edited rate is being
     // re-submitted as of now, not backdated to whenever the original batch was saved.
@@ -259,7 +266,7 @@ export default function MarketRateScreen() {
     });
   };
 
-  const updateSubmittedField = (key: string, field: 'marketRate' | 'validFrom', value: string) => {
+  const updateSubmittedField = (key: string, field: 'marketRate' | 'validFrom' | 'freightTerms', value: string) => {
     setRowError(null);
     setSubmittedRows((prev) => prev && prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
@@ -269,10 +276,14 @@ export default function MarketRateScreen() {
       setRowError({ key: row.key, message: 'Market rate must be a number.' });
       return;
     }
+    if (!row.freightTerms) {
+      setRowError({ key: row.key, message: 'Select Freight Terms (EXW or FOR) before submitting.' });
+      return;
+    }
     setRowError(null);
     setSavingRowKey(row.key);
     try {
-      await saveMarketRates([row]);
+      await saveMarketRates([row], getHubEmail() || '');
       setEditingKeys((prev) => {
         const next = new Set(prev);
         next.delete(row.key);
@@ -303,10 +314,17 @@ export default function MarketRateScreen() {
       setStatus({ message: 'Market rate must be a number.' });
       return;
     }
+    const missingFreight = filled.filter((r) => !r.freightTerms).length;
+    if (missingFreight > 0) {
+      setShowFreightErrors(true);
+      setStatus({ message: `Select Freight Terms (EXW or FOR) for ${missingFreight === 1 ? 'the highlighted row' : `all ${missingFreight} highlighted rows`} — it's mandatory.` });
+      return;
+    }
 
     setSaving(true);
     try {
-      await saveMarketRates(filled);
+      await saveMarketRates(filled, getHubEmail() || '');
+      setShowFreightErrors(false);
       setRows(DEFAULT_ROWS());
       setPendingSubmittedRows(filled.map((r) => ({ ...r, locked: true })));
       setShowSuccessModal(true);
@@ -346,6 +364,7 @@ export default function MarketRateScreen() {
                 {TEXT_COLUMNS.map((col) => (
                   <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
                 ))}
+                <Text style={[styles.headerCell, { width: FREIGHT_COL_WIDTH }]}>Freight Terms *</Text>
                 <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
                 <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
                 <Text style={[styles.headerCell, { width: SUBMITTED_ACTION_COL_WIDTH }]}>Action</Text>
@@ -380,6 +399,21 @@ export default function MarketRateScreen() {
                         </View>
                       );
                     })}
+                    {isEditing ? (
+                      <View style={[styles.freightCell, { width: FREIGHT_COL_WIDTH }]}>
+                        <FreightTermsSelect
+                          value={row.freightTerms}
+                          onChange={(v) => updateSubmittedField(row.key, 'freightTerms', v)}
+                          label={`Freight terms, row ${i + 1}`}
+                          width={FREIGHT_COL_WIDTH - 20}
+                          invalid={rowError?.key === row.key && !row.freightTerms}
+                        />
+                      </View>
+                    ) : (
+                      <Text style={[styles.readonlyCell, { width: FREIGHT_COL_WIDTH }]} numberOfLines={1}>
+                        {row.freightTerms || '-'}
+                      </Text>
+                    )}
                     <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
                       {row.supplierRef || '-'}
                     </Text>
@@ -461,6 +495,7 @@ export default function MarketRateScreen() {
                 {TEXT_COLUMNS.map((col) => (
                   <Text key={col.field} style={[styles.headerCell, { width: col.width }]}>{col.label}</Text>
                 ))}
+                <Text style={[styles.headerCell, { width: FREIGHT_COL_WIDTH }]}>Freight Terms *</Text>
                 <Text style={[styles.headerCell, { width: VENDOR_COL_WIDTH }]}>Vendor</Text>
                 <Text style={[styles.headerCell, { width: DATE_COL_WIDTH }]}>Valid From</Text>
                 <View style={{ width: REMOVE_COL_WIDTH }} />
@@ -490,6 +525,15 @@ export default function MarketRateScreen() {
                       </View>
                     );
                   })}
+                  <View style={[styles.freightCell, { width: FREIGHT_COL_WIDTH }]}>
+                    <FreightTermsSelect
+                      value={row.freightTerms}
+                      onChange={(v) => updateCell(row.key, 'freightTerms', v)}
+                      label={`Freight terms, row ${i + 1}`}
+                      width={FREIGHT_COL_WIDTH - 20}
+                      invalid={showFreightErrors && !row.freightTerms}
+                    />
+                  </View>
                   <Text style={[styles.readonlyCell, { width: VENDOR_COL_WIDTH }]} numberOfLines={1}>
                     {row.supplierRef || '-'}
                   </Text>
@@ -719,6 +763,10 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
     color: colors.rust,
+  },
+  freightCell: {
+    paddingHorizontal: 10,
+    justifyContent: 'center',
   },
   readonlyCell: {
     fontSize: 12.5,

@@ -5,6 +5,7 @@ import { colors, radii } from '../../../src/theme/tokens';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 import { fetchRateEntryRecords, saveMarketRates, type MarketRateRow, type RateEntryRecord } from '../../../src/lib/marketRateApi';
 import { CompactSelect } from '../../../src/components/CompactFilters';
+import { FreightTermsSelect } from '../../../src/components/FreightTermsSelect';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => ({ value: String(CURRENT_YEAR - i), label: String(CURRENT_YEAR - i) }));
@@ -30,9 +31,12 @@ interface EntryRow {
   submitted: boolean;
   rate: string;
   date: string;
-  /** Values as loaded — a row is only saved when rate or date differs from these. */
+  /** 'EXW' / 'FOR' — mandatory on every row that gets saved. '' until chosen. */
+  freightTerms: string;
+  /** Values as loaded — a row is only saved when rate, date or freight terms differ from these. */
   originalRate: string;
   originalDate: string;
+  originalFreightTerms: string;
   /** Carried through unchanged into the save payload (see toSaveRow). */
   materialType: string;
   ratePer: string;
@@ -75,6 +79,7 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
     const submitted = !!monthRecord?.submitted;
     const rate = monthRecord?.rate && Number(monthRecord.rate) !== 0 ? monthRecord.rate : '';
     const date = monthRecord?.validFrom || defaultDate;
+    const freightTerms = monthRecord?.freightTerms || '';
     rows.push({
       key: k,
       vendorCode: ref.vendorCode,
@@ -84,8 +89,10 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
       submitted,
       rate,
       date,
+      freightTerms,
       originalRate: rate,
       originalDate: date,
+      originalFreightTerms: freightTerms,
       materialType: ref.materialType,
       ratePer: ref.ratePer,
       marketName: ref.marketName,
@@ -99,7 +106,9 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
   );
 }
 
-const isDirty = (r: EntryRow) => r.rate !== r.originalRate || r.date !== r.originalDate;
+const isRateInvalid = (r: EntryRow) => !r.rate.trim() || Number.isNaN(Number(r.rate)) || Number(r.rate) < 0;
+
+const isDirty = (r: EntryRow) => r.rate !== r.originalRate || r.date !== r.originalDate || r.freightTerms !== r.originalFreightTerms;
 
 function toSaveRow(r: EntryRow): MarketRateRow {
   return {
@@ -115,6 +124,7 @@ function toSaveRow(r: EntryRow): MarketRateRow {
     sgst: r.sgst,
     cgst: r.cgst,
     validFrom: r.date,
+    freightTerms: r.freightTerms,
   };
 }
 
@@ -152,7 +162,7 @@ function DateInput({ value, onChange, label, invalid }: { value: string; onChang
   );
 }
 
-const COLS = { vendor: 100, vendorName: 200, material: 110, desc: 240, status: 130, rate: 130, uom: 70, date: 170 };
+const COLS = { vendor: 100, vendorName: 200, material: 110, desc: 240, status: 130, rate: 130, uom: 70, freight: 130, date: 170 };
 const TABLE_WIDTH = Object.values(COLS).reduce((a, b) => a + b, 0);
 
 export default function RateEntryScreen() {
@@ -198,7 +208,7 @@ export default function RateEntryScreen() {
   const invalidKeys = useMemo(() => {
     const bad = new Set<string>();
     for (const r of dirtyRows) {
-      if (!r.rate.trim() || Number.isNaN(Number(r.rate)) || Number(r.rate) < 0 || !isValidIsoDate(r.date)) bad.add(r.key);
+      if (isRateInvalid(r) || !isValidIsoDate(r.date) || !r.freightTerms) bad.add(r.key);
     }
     return bad;
   }, [dirtyRows]);
@@ -235,7 +245,7 @@ export default function RateEntryScreen() {
     setYear(y);
   };
 
-  const updateRow = (key: string, field: 'rate' | 'date', value: string) => {
+  const updateRow = (key: string, field: 'rate' | 'date' | 'freightTerms', value: string) => {
     setBanner(null);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
@@ -243,20 +253,20 @@ export default function RateEntryScreen() {
   const discard = () => {
     setBanner(null);
     setShowInvalid(false);
-    setRows((prev) => prev.map((r) => ({ ...r, rate: r.originalRate, date: r.originalDate })));
+    setRows((prev) => prev.map((r) => ({ ...r, rate: r.originalRate, date: r.originalDate, freightTerms: r.originalFreightTerms })));
   };
 
   const onSave = async () => {
     if (dirtyRows.length === 0) return;
     if (invalidKeys.size > 0) {
       setShowInvalid(true);
-      setBanner({ type: 'error', message: `Fix ${invalidKeys.size} row${invalidKeys.size === 1 ? '' : 's'} highlighted in red — each changed row needs a numeric rate and a valid date.` });
+      setBanner({ type: 'error', message: `Fix ${invalidKeys.size} row${invalidKeys.size === 1 ? '' : 's'} — the fields outlined in red. Each changed row needs a numeric rate, a valid date and Freight Terms (EXW or FOR).` });
       return;
     }
     setSaving(true);
     setBanner(null);
     try {
-      await saveMarketRates(dirtyRows.map(toSaveRow));
+      await saveMarketRates(dirtyRows.map(toSaveRow), email || '');
       const n = dirtyRows.length;
       await load();
       setBanner({ type: 'success', message: `Saved ${n} rate${n === 1 ? '' : 's'} to SAP.` });
@@ -353,6 +363,7 @@ export default function RateEntryScreen() {
                 <Text style={[styles.th, { width: COLS.status }]}>Status</Text>
                 <Text style={[styles.th, { width: COLS.rate }]}>Rate</Text>
                 <Text style={[styles.th, { width: COLS.uom }]}>UOM</Text>
+                <Text style={[styles.th, { width: COLS.freight }]}>Freight Terms *</Text>
                 <Text style={[styles.th, { width: COLS.date }]}>Date</Text>
               </View>
               {visibleRows.length === 0 ? (
@@ -384,12 +395,21 @@ export default function RateEntryScreen() {
                           placeholderTextColor={colors.inkSoft}
                           keyboardType="decimal-pad"
                           accessibilityLabel={`Rate for ${r.materialDesc || r.materialCode}, vendor ${r.vendorName || r.vendorCode}`}
-                          style={[styles.input, { width: COLS.rate - 16 }, invalid && styles.inputInvalid]}
+                          style={[styles.input, { width: COLS.rate - 16 }, invalid && isRateInvalid(r) && styles.inputInvalid]}
                         />
                       </View>
                       <Text style={[styles.td, { width: COLS.uom }]}>{r.ratePer || '—'}</Text>
+                      <View style={[styles.tdBox, { width: COLS.freight }]}>
+                        <FreightTermsSelect
+                          value={r.freightTerms}
+                          onChange={(v) => updateRow(r.key, 'freightTerms', v)}
+                          label={`Freight terms for ${r.materialDesc || r.materialCode}, vendor ${r.vendorName || r.vendorCode}`}
+                          width={COLS.freight - 16}
+                          invalid={invalid && !r.freightTerms}
+                        />
+                      </View>
                       <View style={[styles.tdBox, { width: COLS.date }]}>
-                        <DateInput value={r.date} onChange={(v) => updateRow(r.key, 'date', v)} label={`Date for ${r.materialDesc || r.materialCode}`} invalid={invalid} />
+                        <DateInput value={r.date} onChange={(v) => updateRow(r.key, 'date', v)} label={`Date for ${r.materialDesc || r.materialCode}`} invalid={invalid && !isValidIsoDate(r.date)} />
                       </View>
                     </View>
                   );
