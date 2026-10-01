@@ -33,21 +33,21 @@ export const gradients = {
   primary: ['#6D5BF5', colors.rust, colors.rustDeep] as const,
 };
 
-// One distinct hue per category, matched to the reference Emami Apps home screen (purple F&A,
-// blue sales/supply chain, rose IBD, orange CPD, indigo HR/IT, green quality, amber CMI-style
-// tiles). Icon chips render these at a light tint (see categoryTint) with the icon at full hue.
+// Each category's icon color, sampled from the matching Emami Analytics hub module (see
+// data/categoryMeta.ts for which module each category borrows). Icon chips render these at a
+// light tint (see categoryTint) with the icon at full hue.
 export const categoryColors: Record<string, string> = {
-  Finance: '#7C3AED',
-  SD: '#2563EB',
-  IBD: '#E11D48',
-  'Supply Chain': '#3B82F6',
-  CPD: '#EA580C',
-  HR: '#4F46E5',
-  IT: '#4F46E5',
-  CQA: '#059669',
-  'Cross-Function': '#0D9488',
-  Packaging: '#D97706',
-  MSD: '#C026D3',
+  Finance: '#8B3DF0', // F & A
+  SD: '#3355E0', // Sales
+  IBD: '#C2336B',
+  'Supply Chain': '#4A9BF0',
+  CPD: '#F0922E',
+  HR: '#4A5AE0',
+  IT: '#4A5AE0',
+  'Cross-Function': '#3A8AAE', // Operations
+  CQA: '#3BA36E', // R&D
+  Packaging: '#3AA389', // Subsidiary & D2C
+  MSD: '#EE9A2E', // CMI
 } as const;
 
 // Distinct pastel accent per real app, so the 4 cards read like the

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Grid3x3, Lock, ArrowRight, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, Grid3x3, Lock, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import { useAuth } from '../../context/AuthContext';
@@ -11,7 +11,8 @@ import { useIsWideScreen } from '../../hooks/useIsWideScreen';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
 import { APPS, CATEGORIES, appById } from '../../data/mockData';
-import { CATEGORY_ICONS, CATEGORY_DESCRIPTIONS } from '../../data/categoryMeta';
+import { CATEGORY_ICONS, CATEGORY_DESCRIPTIONS, SIMPLE_ICON_FIT, categoryIconFit, type IconFit } from '../../data/categoryMeta';
+import type { CategoryIcon } from '../../components/CategoryIcons';
 import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, motion } from '../../theme/tokens';
 import { useTiltHover } from '../../hooks/useTiltHover';
 import type { AppItem, CategoryFilter } from '../../types';
@@ -22,7 +23,7 @@ import type { AppItem, CategoryFilter } from '../../types';
  * shadow on hover (see useTiltHover). Kept as its own component since a tilt hook needs one hook
  * instance per tile. */
 function HoverTile({
-  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, name, subtitle,
+  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, iconFit = SIMPLE_ICON_FIT, name, subtitle,
 }: {
   /** Mobile sizing — smaller padding/chip/type so two cards still fit side by side on a phone. */
   compact: boolean;
@@ -31,7 +32,9 @@ function HoverTile({
   onClick: () => void;
   ariaLabel: string;
   title?: string;
-  icon: LucideIcon;
+  icon: CategoryIcon;
+  /** Size and line weight inside the chip — see categoryIconFit. */
+  iconFit?: IconFit;
   name: string;
   subtitle: string;
 }) {
@@ -70,7 +73,7 @@ function HoverTile({
       title={title}
     >
       <div style={{ width: chip, height: chip, borderRadius: radii.lg, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: categoryTint(accent), flexShrink: 0, marginBottom: compact ? 12 : 18 }}>
-        <Icon size={compact ? 20 : 24} color={accent} strokeWidth={1.7} />
+        <Icon size={Math.round((compact ? 30 : 36) * iconFit.scale)} color={accent} strokeWidth={iconFit.strokeWidth} />
       </div>
       <p
         style={{
@@ -187,6 +190,7 @@ export default function HomePage() {
               locked={locked}
               onClick={() => openCategory(c)}
               icon={Icon}
+              iconFit={categoryIconFit(c)}
               name={c === 'All' ? 'All Apps' : c}
               subtitle={CATEGORY_DESCRIPTIONS[c] || ''}
               title={locked ? `${c} — no access` : undefined}

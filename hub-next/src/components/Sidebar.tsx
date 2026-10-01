@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Grid3x3, Lock } from 'lucide-react';
 import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, navColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
-import { CATEGORY_ICONS } from '../data/categoryMeta';
+import { CATEGORY_ICONS, SIMPLE_ICON_FIT, categoryIconFit, type IconFit } from '../data/categoryMeta';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
@@ -33,6 +33,7 @@ function NavButton({
   onClick,
   accentColor,
   locked,
+  iconFit = SIMPLE_ICON_FIT,
 }: {
   icon: React.ElementType;
   label: string;
@@ -44,6 +45,8 @@ function NavButton({
   /** Shows a small lock at the row's right edge — a category whose apps are all locked for this
    * user, same rule as the Home tile's own lock. */
   locked?: boolean;
+  /** Size and line weight inside the chip — see categoryIconFit. */
+  iconFit?: IconFit;
 }) {
   const accent = accentColor || colors.rust;
   return (
@@ -77,7 +80,7 @@ function NavButton({
           flexShrink: 0,
         }}
       >
-        <Icon size={17} color={accent} strokeWidth={1.8} />
+        <Icon size={Math.round(26 * iconFit.scale)} color={accent} strokeWidth={iconFit.strokeWidth} />
       </span>
       <span
         style={{
@@ -215,6 +218,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
             onClick={() => openCategory(c)}
             accentColor={catColor(c)}
             locked={isCategoryLocked(c)}
+            iconFit={categoryIconFit(c)}
           />
         ))}
 
