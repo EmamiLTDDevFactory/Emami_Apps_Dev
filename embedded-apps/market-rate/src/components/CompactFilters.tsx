@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
 
@@ -74,11 +74,23 @@ export function CompactSelect({ label, value, options, onChange }: { label: stri
   );
 }
 
+const MONTH_PANEL_WIDTH = 224;
+const MONTH_PANEL_HEIGHT = 196;
+const EDGE_GAP = 8;
+
 /** Pick any number of months (at least one): a compact "MONTH Jan, Feb ▾" control that opens a
  * 3×4 grid of month toggles with All / Clear shortcuts. Clearing leaves the earliest selected
- * month on, since an empty month filter would only ever show an empty screen. */
+ * month on, since an empty month filter would only ever show an empty screen.
+ *
+ * The grid opens in a Modal positioned from the button's on-screen spot, not as an absolutely
+ * positioned child: inline, it was clipped by whatever scroll view or header held the button and
+ * ran off the right edge of the screen when the button sat at the end of a right-aligned filter
+ * bar (Vendor Rate Comparison). Here it's clamped inside the window, flips above the button when
+ * there's no room below, and closes on a tap outside. */
 export function MonthMultiSelect({ label = 'Month', selected, onChange }: { label?: string; selected: string[]; onChange: (values: string[]) => void }) {
-  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const buttonRef = useRef<View>(null);
+  const { width: winW, height: winH } = useWindowDimensions();
 
   const toggle = (value: string) => {
     if (selected.includes(value)) {
@@ -89,46 +101,71 @@ export function MonthMultiSelect({ label = 'Month', selected, onChange }: { labe
     }
   };
 
+  const openPanel = () => {
+    if (anchor) {
+      setAnchor(null);
+      return;
+    }
+    buttonRef.current?.measureInWindow((x, y, width, height) => setAnchor({ x, y, width, height }));
+  };
+
+  let panelPos: { left: number; top: number } | null = null;
+  if (anchor) {
+    const left = Math.max(EDGE_GAP, Math.min(anchor.x, winW - MONTH_PANEL_WIDTH - EDGE_GAP));
+    const below = anchor.y + anchor.height + 4;
+    const top = below + MONTH_PANEL_HEIGHT > winH - EDGE_GAP ? Math.max(EDGE_GAP, anchor.y - MONTH_PANEL_HEIGHT - 4) : below;
+    panelPos = { left, top };
+  }
+
   return (
     <View style={styles.anchor}>
-      <Pressable style={styles.control} onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`${label}: ${formatMonthSelection(selected)}`}>
+      <Pressable
+        ref={buttonRef}
+        style={styles.control}
+        onPress={openPanel}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${formatMonthSelection(selected)}`}
+      >
         <Text style={styles.controlLabel}>{label}</Text>
         <Text style={styles.controlValue} numberOfLines={1}>{formatMonthSelection(selected)}</Text>
-        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={13} color={colors.rust} />
+        <Ionicons name={anchor ? 'chevron-up' : 'chevron-down'} size={13} color={colors.rust} />
       </Pressable>
-      {open && (
-        <View style={[styles.popover, styles.monthPopover]}>
-          <View style={styles.monthPopoverHeader}>
-            <Pressable onPress={() => onChange(ALL_MONTH_VALUES)} hitSlop={6} accessibilityRole="button">
-              <Text style={styles.linkText}>All</Text>
-            </Pressable>
-            <Pressable onPress={() => onChange([selected[0] ?? ALL_MONTH_VALUES[0]])} hitSlop={6} accessibilityRole="button">
-              <Text style={styles.linkText}>Clear</Text>
-            </Pressable>
-            <View style={{ flex: 1 }} />
-            <Pressable onPress={() => setOpen(false)} hitSlop={6} accessibilityRole="button">
-              <Text style={[styles.linkText, { color: colors.ink }]}>Done</Text>
-            </Pressable>
+      <Modal visible={!!anchor} transparent animationType="none" onRequestClose={() => setAnchor(null)}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setAnchor(null)} accessibilityRole="button" accessibilityLabel="Close month picker" />
+        {panelPos && (
+          <View style={[styles.monthPanel, { left: panelPos.left, top: panelPos.top }]}>
+            <View style={styles.monthPopoverHeader}>
+              <Pressable onPress={() => onChange(ALL_MONTH_VALUES)} hitSlop={6} accessibilityRole="button">
+                <Text style={styles.linkText}>All</Text>
+              </Pressable>
+              <Pressable onPress={() => onChange([selected[0] ?? ALL_MONTH_VALUES[0]])} hitSlop={6} accessibilityRole="button">
+                <Text style={styles.linkText}>Clear</Text>
+              </Pressable>
+              <View style={{ flex: 1 }} />
+              <Pressable onPress={() => setAnchor(null)} hitSlop={6} accessibilityRole="button">
+                <Text style={[styles.linkText, { color: colors.ink }]}>Done</Text>
+              </Pressable>
+            </View>
+            <View style={styles.monthGrid}>
+              {MONTHS.map((m) => {
+                const on = selected.includes(m.value);
+                return (
+                  <Pressable
+                    key={m.value}
+                    style={[styles.monthChip, on && styles.monthChipOn]}
+                    onPress={() => toggle(m.value)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={m.label}
+                  >
+                    <Text style={[styles.monthChipText, on && styles.monthChipTextOn]}>{m.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-          <View style={styles.monthGrid}>
-            {MONTHS.map((m) => {
-              const on = selected.includes(m.value);
-              return (
-                <Pressable
-                  key={m.value}
-                  style={[styles.monthChip, on && styles.monthChipOn]}
-                  onPress={() => toggle(m.value)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: on }}
-                  accessibilityLabel={m.label}
-                >
-                  <Text style={[styles.monthChipText, on && styles.monthChipTextOn]}>{m.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      )}
+        )}
+      </Modal>
     </View>
   );
 }
@@ -189,10 +226,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.rust,
   },
-  monthPopover: {
-    width: 224,
+  monthPanel: {
+    position: 'absolute',
+    width: MONTH_PANEL_WIDTH,
     padding: 10,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.white,
+    ...Platform.select({
+      web: { boxShadow: '0 8px 24px rgba(31,27,51,0.16)' },
+      default: { shadowColor: colors.plum, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.16, shadowRadius: 12, elevation: 8 },
+    }),
   },
   monthPopoverHeader: {
     flexDirection: 'row',
