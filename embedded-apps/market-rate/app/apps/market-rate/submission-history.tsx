@@ -4,30 +4,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { fetchSubmissionRecords, type SubmissionRecord } from '../../../src/lib/marketRateApi';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
+import { ALL_MONTH_VALUES, CompactSelect, MONTHS, MonthMultiSelect, formatMonthSelection } from '../../../src/components/CompactFilters';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => String(CURRENT_YEAR - i));
 
-const MONTHS = [
-  { value: '01', label: 'Jan' },
-  { value: '02', label: 'Feb' },
-  { value: '03', label: 'Mar' },
-  { value: '04', label: 'Apr' },
-  { value: '05', label: 'May' },
-  { value: '06', label: 'Jun' },
-  { value: '07', label: 'Jul' },
-  { value: '08', label: 'Aug' },
-  { value: '09', label: 'Sep' },
-  { value: '10', label: 'Oct' },
-  { value: '11', label: 'Nov' },
-  { value: '12', label: 'Dec' },
-];
 const CURRENT_MONTH_VALUE = String(new Date().getMonth() + 1).padStart(2, '0');
 
 const STATUS_OPTIONS: { value: 'all' | 'submitted' | 'pending'; label: string }[] = [
   { value: 'all', label: 'All statuses' },
-  { value: 'submitted', label: 'Submitted (selected month)' },
-  { value: 'pending', label: 'Pending (selected month)' },
+  { value: 'submitted', label: 'Submitted (every selected month)' },
+  { value: 'pending', label: 'Pending (any selected month)' },
 ];
 
 interface MatrixRow {
@@ -77,7 +64,9 @@ function buildMatrixRows(submissions: SubmissionRecord[]): MatrixRow[] {
   return Array.from(byKey.values());
 }
 
-function buildVendorSummary(rows: MatrixRow[], monthIdx: number): VendorSummary[] {
+/** Per-vendor counts over every selected month — one vendor/material/month cell is one expected
+ * submission, so `submitted + pending` is materials × months. */
+function buildVendorSummary(rows: MatrixRow[], monthIdxs: number[]): VendorSummary[] {
   const byVendor = new Map<string, VendorSummary>();
   for (const r of rows) {
     const key = r.vendorCode || '(unassigned)';
@@ -90,12 +79,14 @@ function buildVendorSummary(rows: MatrixRow[], monthIdx: number): VendorSummary[
       compliancePct: 0,
     };
     cur.materials += 1;
-    if (r.monthStatus[monthIdx]) cur.submitted += 1;
-    else cur.pending += 1;
+    for (const i of monthIdxs) {
+      if (r.monthStatus[i]) cur.submitted += 1;
+      else cur.pending += 1;
+    }
     byVendor.set(key, cur);
   }
   return Array.from(byVendor.values())
-    .map((v) => ({ ...v, compliancePct: v.materials ? (v.submitted / v.materials) * 100 : 0 }))
+    .map((v) => ({ ...v, compliancePct: v.submitted + v.pending ? (v.submitted / (v.submitted + v.pending)) * 100 : 0 }))
     .sort((a, b) => a.compliancePct - b.compliancePct);
 }
 
@@ -207,73 +198,6 @@ function findSubmissionRecord(submissions: SubmissionRecord[], row: MatrixRow, m
   );
 }
 
-/** Web/native select — same raw-<select>-on-web, popover-on-native split used by Dashboard's
- * YearSelect, generalized here since this screen needs several (Year, Month, Status). */
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const activeLabel = options.find((o) => o.value === value)?.label ?? value;
-
-  return (
-    <View style={styles.filterField}>
-      <Text style={styles.filterLabel}>{label}</Text>
-      {Platform.OS === 'web' ? (
-        // @ts-expect-error — raw DOM element, valid under react-native-web
-        <select
-          value={value}
-          onChange={(e: any) => onChange(e.target.value)}
-          aria-label={label}
-          style={{
-            height: 38,
-            padding: '6px 10px',
-            borderRadius: 10,
-            border: `1px solid ${colors.border}`,
-            backgroundColor: colors.white,
-            color: colors.ink,
-            fontSize: 12.5,
-            fontWeight: 700,
-          }}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      ) : (
-        <View>
-          <Pressable style={styles.filterBtn} onPress={() => setOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={label}>
-            <Text style={styles.filterBtnText} numberOfLines={1}>{activeLabel}</Text>
-            <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={colors.rust} />
-          </Pressable>
-          {open && (
-            <View style={styles.filterOptions}>
-              {options.map((o) => (
-                <Pressable
-                  key={o.value}
-                  style={styles.filterOption}
-                  onPress={() => { onChange(o.value); setOpen(false); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={o.label}
-                >
-                  <Text style={[styles.filterOptionText, o.value === value && styles.filterOptionTextActive]}>{o.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
 function KpiCard({ icon, label, value, accent }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; accent?: string }) {
   return (
     <View style={styles.kpiCard}>
@@ -336,7 +260,7 @@ function ComplianceRing({ pct }: { pct: number }) {
       <View style={styles.ringFallbackTrack}>
         <View style={[styles.ringFallbackFill, { width: `${rounded}%` }]} />
       </View>
-      <Text style={styles.ringFallbackLabel}>submitted this month</Text>
+      <Text style={styles.ringFallbackLabel}>submitted</Text>
     </View>
   );
 }
@@ -441,6 +365,7 @@ function VendorRateComparisonSection({
   query,
   setQuery,
   year,
+  monthsLabel,
 }: {
   groups: VendorRateGroup[];
   totalVendors: number;
@@ -450,12 +375,15 @@ function VendorRateComparisonSection({
   query: string;
   setQuery: (v: string) => void;
   year: string;
+  /** The Month filter's selection, e.g. "All months" or "Jan, Feb" — see formatMonthSelection. */
+  monthsLabel: string;
 }) {
+  const period = monthsLabel === 'All months' ? year : `${monthsLabel} ${year}`;
   if (totalVendors === 0) {
     return (
       <View style={styles.emptyWrap}>
         <Ionicons name="pricetags-outline" size={22} color={colors.inkSoft} />
-        <Text style={styles.emptyText}>No submitted rates found for {year} to compare.</Text>
+        <Text style={styles.emptyText}>No submitted rates found for {period} to compare.</Text>
       </View>
     );
   }
@@ -478,9 +406,9 @@ function VendorRateComparisonSection({
 
       <View style={styles.matrixHeaderRow}>
         <View style={styles.flex1}>
-          <Text style={styles.cardTitle}>Rate comparison by vendor — {year}</Text>
+          <Text style={styles.cardTitle}>Rate comparison by vendor — {period}</Text>
           <Text style={styles.cardSubtitle}>
-            {groups.length} vendor{groups.length === 1 ? '' : 's'}. Every material each vendor last quoted this year, with rate and date.
+            {groups.length} vendor{groups.length === 1 ? '' : 's'}. Every material each vendor last quoted in {period}, with rate and date.
           </Text>
         </View>
         <View style={styles.matrixSearchWrap}>
@@ -549,7 +477,11 @@ export default function SubmissionHistoryScreen() {
   const { email, role, roleLoading } = useMarketRateAuth();
   const [activeView, setActiveView] = useState<'compliance' | 'rates'>('compliance');
   const [year, setYear] = useState(String(CURRENT_YEAR));
-  const [month, setMonth] = useState(CURRENT_MONTH_VALUE);
+  // Compliance view's months (any number, at least one) and Vendor Rate Comparison's own, separate
+  // selection — rate comparison starts on every month so it keeps showing each pair's latest quote
+  // of the year until the Admin narrows it.
+  const [months, setMonths] = useState<string[]>([CURRENT_MONTH_VALUE]);
+  const [rateMonths, setRateMonths] = useState<string[]>(ALL_MONTH_VALUES);
   const [status, setStatus] = useState<'all' | 'submitted' | 'pending'>('all');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -579,29 +511,34 @@ export default function SubmissionHistoryScreen() {
   }, [roleLoading, role, email, year]);
 
   const allRows = useMemo(() => buildMatrixRows(submissions), [submissions]);
-  const monthIdx = MONTHS.findIndex((m) => m.value === month);
+  // Indexes into MONTHS for the selected months, in calendar order — every count below covers all
+  // of them, and the detail table shows a column for only these months.
+  const monthIdxs = useMemo(() => MONTHS.map((m, i) => (months.includes(m.value) ? i : -1)).filter((i) => i >= 0), [months]);
+  const singleMonth = monthIdxs.length === 1;
+  const monthsLabel = formatMonthSelection(months);
+  const periodText = singleMonth ? 'this month' : 'selected months';
 
-  // The status filter used to only narrow the bottom detail table while every KPI, chart, and
-  // summary above it kept computing off search-only rows — so picking "Pending" left every number
-  // on the page still showing "all statuses" totals. `filteredRows` is now the one place status is
-  // applied, and every derived value below reads from it, so the whole page moves together.
+  // `filteredRows` is the one place status is applied, and every derived value below reads from
+  // it, so the whole page moves together. With several months picked, "Submitted" means submitted
+  // in every one of them and "Pending" means missing at least one.
   const searchRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
   const filteredRows = useMemo(
     () =>
       searchRows.filter((r) => {
         if (status === 'all') return true;
-        const isSubmitted = r.monthStatus[monthIdx];
-        return status === 'submitted' ? isSubmitted : !isSubmitted;
+        const allSubmitted = monthIdxs.every((i) => r.monthStatus[i]);
+        return status === 'submitted' ? allSubmitted : !allSubmitted;
       }),
-    [searchRows, status, monthIdx]
+    [searchRows, status, monthIdxs]
   );
 
-  const totalExpected = filteredRows.length;
-  const totalSubmitted = filteredRows.filter((r) => r.monthStatus[monthIdx]).length;
+  // One vendor/material/month cell is one expected submission.
+  const totalExpected = filteredRows.length * monthIdxs.length;
+  const totalSubmitted = filteredRows.reduce((sum, r) => sum + monthIdxs.filter((i) => r.monthStatus[i]).length, 0);
   const totalPending = totalExpected - totalSubmitted;
   const compliancePct = totalExpected ? (totalSubmitted / totalExpected) * 100 : 0;
 
-  const vendorSummary = useMemo(() => buildVendorSummary(filteredRows, monthIdx), [filteredRows, monthIdx]);
+  const vendorSummary = useMemo(() => buildVendorSummary(filteredRows, monthIdxs), [filteredRows, monthIdxs]);
   const vendorsTracked = vendorSummary.length;
   const materialsTracked = new Set(filteredRows.map((r) => r.materialCode)).size;
   const fullyCompliantVendors = vendorSummary.filter((v) => v.materials > 0 && v.pending === 0).length;
@@ -611,17 +548,22 @@ export default function SubmissionHistoryScreen() {
       MONTHS.map((m, i) => {
         const total = filteredRows.length;
         const submitted = filteredRows.filter((r) => r.monthStatus[i]).length;
-        return { label: m.label, pct: total ? (submitted / total) * 100 : 0, highlighted: i === monthIdx };
+        return { label: m.label, pct: total ? (submitted / total) * 100 : 0, highlighted: monthIdxs.includes(i) };
       }),
-    [filteredRows, monthIdx]
+    [filteredRows, monthIdxs]
   );
-  const ytdAvgCompliancePct =
-    trendData.slice(0, monthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / Math.max(1, monthIdx + 1);
+  // Year to date through the latest selected month.
+  const lastMonthIdx = monthIdxs[monthIdxs.length - 1] ?? 0;
+  const ytdAvgCompliancePct = trendData.slice(0, lastMonthIdx + 1).reduce((sum, d) => sum + d.pct, 0) / (lastMonthIdx + 1);
+  const matrixTableWidth = MATRIX_FIXED_WIDTH + COL.month * monthIdxs.length + COL.total;
 
-  // Vendor Rate Comparison — independent of the Month/Status filters above (those are compliance-
-  // specific); only Year and the shared search box apply. Built straight off the same `submissions`
-  // already in state, no second API call.
-  const latestRates = useMemo(() => buildLatestVendorMaterialRates(submissions), [submissions]);
+  // Vendor Rate Comparison — its own Month filter (rateMonths) plus Year and the search box; the
+  // compliance Month/Status filters don't apply. Each pair's latest quote within the selected
+  // months, built straight off the same `submissions` already in state, no second API call.
+  const latestRates = useMemo(
+    () => buildLatestVendorMaterialRates(submissions.filter((s) => rateMonths.includes(s.zmonth))),
+    [submissions, rateMonths]
+  );
   const rateGroups = useMemo(() => groupRatesByVendor(latestRates), [latestRates]);
   const filteredRateGroups = useMemo(() => rateGroups.filter((g) => matchesVendorQuery(g, query)), [rateGroups, query]);
   const materialsQuoted = latestRates.length;
@@ -652,40 +594,44 @@ export default function SubmissionHistoryScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.sectionHeaderRow}>
-        <View style={styles.sectionIconBox}>
-          <Ionicons name="bar-chart-outline" size={14} color={colors.rust} />
-        </View>
-        <View style={styles.flex1}>
+      {/* One compact bar: title, the Compliance / Vendor Rate Comparison switch and that view's
+          filters, wrapping onto a second line only on narrow screens. zIndex keeps the month
+          picker's popover above the content below it. */}
+      <View style={styles.headerBar}>
+        <View style={styles.titleWrap}>
+          <View style={styles.sectionIconBox}>
+            <Ionicons name="bar-chart-outline" size={14} color={colors.rust} />
+          </View>
           <Text style={styles.sectionTitle}>Submission History</Text>
-          <Text style={styles.sectionSubtitle}>Vendor · material submission compliance, month by month</Text>
         </View>
-      </View>
 
-      <View style={styles.tabRow}>
-        {([
-          { key: 'compliance', label: 'Compliance' },
-          { key: 'rates', label: 'Vendor Rate Comparison' },
-        ] as const).map((tab) => (
-          <Pressable
-            key={tab.key}
-            style={[styles.tabBtn, activeView === tab.key && styles.tabBtnActive]}
-            onPress={() => { setActiveView(tab.key); setQuery(''); }}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.tabBtnText, activeView === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.tabRow}>
+          {([
+            { key: 'compliance', label: 'Compliance' },
+            { key: 'rates', label: 'Vendor Rate Comparison' },
+          ] as const).map((tab) => (
+            <Pressable
+              key={tab.key}
+              style={[styles.tabBtn, activeView === tab.key && styles.tabBtnActive]}
+              onPress={() => { setActiveView(tab.key); setQuery(''); }}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.tabBtnText, activeView === tab.key && styles.tabBtnTextActive]}>{tab.label}</Text>
+            </Pressable>
+          ))}
+        </View>
 
-      <View style={styles.filterBar}>
-        <FilterSelect label="Year" value={year} onChange={setYear} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} />
-        {activeView === 'compliance' && (
-          <>
-            <FilterSelect label="Month" value={month} onChange={setMonth} options={MONTHS} />
-            <FilterSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
-          </>
-        )}
+        <View style={styles.filterBar}>
+          <CompactSelect label="Year" value={year} onChange={setYear} options={YEAR_OPTIONS.map((y) => ({ value: y, label: y }))} />
+          {activeView === 'compliance' ? (
+            <>
+              <MonthMultiSelect selected={months} onChange={setMonths} />
+              <CompactSelect label="Status" value={status} onChange={(v) => setStatus(v as typeof status)} options={STATUS_OPTIONS} />
+            </>
+          ) : (
+            <MonthMultiSelect selected={rateMonths} onChange={setRateMonths} />
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -708,8 +654,9 @@ export default function SubmissionHistoryScreen() {
           query={query}
           setQuery={setQuery}
           year={year}
+          monthsLabel={formatMonthSelection(rateMonths)}
         />
-      ) : totalExpected === 0 ? (
+      ) : filteredRows.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Ionicons name="file-tray-outline" size={22} color={colors.inkSoft} />
           <Text style={styles.emptyText}>No submission records found for this search.</Text>
@@ -719,7 +666,7 @@ export default function SubmissionHistoryScreen() {
           <View style={styles.card}>
             <View style={styles.matrixHeaderRow}>
               <View style={styles.flex1}>
-                <Text style={styles.cardTitle}>Vendor · material · month detail — {year}</Text>
+                <Text style={styles.cardTitle}>Vendor · material · month detail — {monthsLabel} {year}</Text>
                 <Text style={styles.cardSubtitle}>
                   {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current filters. Tap a green tick to see that month's submitted rate.
                 </Text>
@@ -742,15 +689,15 @@ export default function SubmissionHistoryScreen() {
               </View>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator style={styles.tableScroll}>
-              <View style={{ width: MATRIX_TABLE_WIDTH }}>
+              <View style={{ width: matrixTableWidth }}>
                 <View style={styles.tableHeaderRow}>
                   <Text style={[styles.headerCell, { width: COL.vendorCode }]}>Vendor Code</Text>
                   <Text style={[styles.headerCell, { width: COL.vendorName }]}>Vendor Name</Text>
                   <Text style={[styles.headerCell, { width: COL.materialCode }]}>Material Code</Text>
                   <Text style={[styles.headerCell, { width: COL.materialDesc }]}>Material Description</Text>
                   <Text style={[styles.headerCell, { width: COL.email }]}>Submitted By</Text>
-                  {MONTHS.map((m) => (
-                    <Text key={m.value} style={[styles.headerCell, styles.centerCell, { width: COL.month }]}>{m.label}</Text>
+                  {monthIdxs.map((i) => (
+                    <Text key={MONTHS[i].value} style={[styles.headerCell, styles.centerCell, { width: COL.month }]}>{MONTHS[i].label}</Text>
                   ))}
                   <Text style={[styles.headerCell, styles.centerCell, { width: COL.total }]}>Total</Text>
                 </View>
@@ -758,7 +705,7 @@ export default function SubmissionHistoryScreen() {
                     above stays put (visually "fixed") instead of scrolling away with the rows. */}
                 <ScrollView style={styles.matrixBody} nestedScrollEnabled showsVerticalScrollIndicator>
                   {filteredRows.map((row) => {
-                    const submittedCount = row.monthStatus.filter(Boolean).length;
+                    const submittedCount = monthIdxs.filter((i) => row.monthStatus[i]).length;
                     return (
                       <View key={row.key} style={styles.tableRow}>
                         <Text style={[styles.readonlyCell, { width: COL.vendorCode }]} numberOfLines={1}>{row.vendorCode}</Text>
@@ -766,8 +713,8 @@ export default function SubmissionHistoryScreen() {
                         <Text style={[styles.readonlyCell, { width: COL.materialCode }]} numberOfLines={1}>{row.materialCode}</Text>
                         <Text style={[styles.readonlyCell, { width: COL.materialDesc }]} numberOfLines={1}>{row.materialDesc}</Text>
                         <Text style={[styles.readonlyCell, { width: COL.email }]} numberOfLines={1}>{row.email}</Text>
-                        {row.monthStatus.map((submitted, i) =>
-                          submitted ? (
+                        {monthIdxs.map((i) =>
+                          row.monthStatus[i] ? (
                             <Pressable
                               key={MONTHS[i].value}
                               style={[styles.monthCell, { width: COL.month }]}
@@ -785,7 +732,7 @@ export default function SubmissionHistoryScreen() {
                           )
                         )}
                         <Text style={[styles.readonlyCell, styles.centerCell, { width: COL.total, fontWeight: '700', color: colors.ink }]}>
-                          {submittedCount}/12
+                          {submittedCount}/{monthIdxs.length}
                         </Text>
                       </View>
                     );
@@ -798,17 +745,17 @@ export default function SubmissionHistoryScreen() {
           <View style={styles.kpiGrid}>
             <KpiCard icon="people-outline" label="Vendors tracked" value={String(vendorsTracked)} />
             <KpiCard icon="cube-outline" label="Materials tracked" value={String(materialsTracked)} />
-            <KpiCard icon="list-outline" label="Expected this month" value={String(totalExpected)} />
-            <KpiCard icon="checkmark-done-outline" label="Submitted this month" value={String(totalSubmitted)} accent={colors.green} />
-            <KpiCard icon="time-outline" label="Pending this month" value={String(totalPending)} accent={colors.red} />
-            <KpiCard icon="speedometer-outline" label="Compliance this month" value={`${Math.round(compliancePct)}%`} />
+            <KpiCard icon="list-outline" label={`Expected ${periodText}`} value={String(totalExpected)} />
+            <KpiCard icon="checkmark-done-outline" label={`Submitted ${periodText}`} value={String(totalSubmitted)} accent={colors.green} />
+            <KpiCard icon="time-outline" label={`Pending ${periodText}`} value={String(totalPending)} accent={colors.red} />
+            <KpiCard icon="speedometer-outline" label={`Compliance ${periodText}`} value={`${Math.round(compliancePct)}%`} />
             <KpiCard icon="ribbon-outline" label="Fully compliant vendors" value={`${fullyCompliantVendors}/${vendorsTracked}`} accent={colors.green} />
             <KpiCard icon="trending-up-outline" label="YTD avg compliance" value={`${Math.round(ytdAvgCompliancePct)}%`} />
           </View>
 
           <View style={styles.chartsRow}>
             <View style={[styles.card, styles.chartCard]}>
-              <Text style={styles.cardTitle}>{MONTHS[monthIdx].label} {year} compliance</Text>
+              <Text style={styles.cardTitle}>{monthsLabel} {year} compliance</Text>
               <View style={styles.ringRow}>
                 <ComplianceRing pct={compliancePct} />
                 <View style={styles.ringLegend}>
@@ -854,8 +801,8 @@ const COL = {
   month: 38,
   total: 60,
 };
-const MATRIX_TABLE_WIDTH =
-  COL.vendorCode + COL.vendorName + COL.materialCode + COL.materialDesc + COL.email + COL.month * MONTHS.length + COL.total;
+// Width of the fixed columns; the table adds one COL.month per selected month plus the Total column.
+const MATRIX_FIXED_WIDTH = COL.vendorCode + COL.vendorName + COL.materialCode + COL.materialDesc + COL.email;
 
 const styles = StyleSheet.create({
   scroll: {
@@ -877,11 +824,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.inkSoft,
   },
-  sectionHeaderRow: {
+  headerBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 4,
+    position: 'relative',
+    zIndex: 20,
+  },
+  titleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginRight: 4,
   },
   sectionIconBox: {
     width: 30,
@@ -896,11 +851,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.ink,
   },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginTop: 1,
-  },
   tabRow: {
     flexDirection: 'row',
     gap: 4,
@@ -909,13 +859,11 @@ const styles = StyleSheet.create({
     padding: 3,
     borderWidth: 1,
     borderColor: colors.border,
-    alignSelf: 'flex-start',
-    marginTop: 10,
   },
   tabBtn: {
     borderRadius: radii.pill,
-    paddingVertical: 7,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   tabBtnActive: {
     backgroundColor: colors.rust,
@@ -969,61 +917,9 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'flex-end',
-    gap: 12,
-    marginTop: 4,
-  },
-  filterField: {
-    gap: 5,
-  },
-  filterLabel: {
-    fontSize: 10.5,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-    color: colors.inkSoft,
-  },
-  filterBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
-    minWidth: 160,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.white,
-  },
-  filterBtnText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.ink,
-  },
-  filterOptions: {
-    position: 'absolute',
-    top: 42,
-    left: 0,
-    right: 0,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    backgroundColor: colors.white,
-    overflow: 'hidden',
-    zIndex: 10,
-  },
-  filterOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  filterOptionText: {
-    fontSize: 12.5,
-    color: colors.ink,
-  },
-  filterOptionTextActive: {
-    fontWeight: '700',
-    color: colors.rust,
+    marginLeft: 'auto',
   },
   loadingWrap: {
     alignItems: 'center',

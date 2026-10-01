@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 import { fetchRateEntryRecords, saveMarketRates, type MarketRateRow, type RateEntryRecord } from '../../../src/lib/marketRateApi';
+import { CompactSelect } from '../../../src/components/CompactFilters';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => ({ value: String(CURRENT_YEAR - i), label: String(CURRENT_YEAR - i) }));
@@ -115,35 +116,6 @@ function toSaveRow(r: EntryRow): MarketRateRow {
     cgst: r.cgst,
     validFrom: r.date,
   };
-}
-
-function Select({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
-  return (
-    <View style={styles.filterField}>
-      <Text style={styles.filterLabel}>{label}</Text>
-      {Platform.OS === 'web' ? (
-        // @ts-expect-error — raw DOM element, valid under react-native-web
-        <select
-          value={value}
-          onChange={(e: any) => onChange(e.target.value)}
-          aria-label={label}
-          style={{ height: 38, padding: '6px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, backgroundColor: colors.white, color: colors.ink, fontSize: 12.5, fontWeight: 700 }}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      ) : (
-        <View style={styles.nativeChips}>
-          {options.map((o) => (
-            <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.chip, o.value === value && styles.chipActive]}>
-              <Text style={[styles.chipText, o.value === value && styles.chipTextActive]}>{o.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
 }
 
 function DateInput({ value, onChange, label, invalid }: { value: string; onChange: (v: string) => void; label: string; invalid: boolean }) {
@@ -317,34 +289,32 @@ export default function RateEntryScreen() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.heading}>Market Rate Entry</Text>
-        <Text style={styles.subheading}>
-          Every vendor&apos;s materials for the selected month. Fill in rates vendors haven&apos;t submitted, or correct any rate or date, then save — only changed rows are sent to SAP.
-        </Text>
-
-        <View style={styles.filters}>
-          <Select label="Year" value={year} options={YEAR_OPTIONS} onChange={changeYear} />
-          <Select label="Month" value={month} options={MONTH_OPTIONS} onChange={changeMonth} />
-          <View style={[styles.filterField, styles.searchField]}>
-            <Text style={styles.filterLabel}>Search</Text>
+        {/* One compact bar: title + counts on the left, Year / Month / search / status on the
+            right, wrapping only on narrow screens. */}
+        <View style={styles.headerBar}>
+          <View style={styles.titleWrap}>
+            <Text style={styles.heading}>Market Rate Entry</Text>
+            <Text style={styles.subheading} numberOfLines={1}>
+              {!loading && !loadError
+                ? `${counts.vendors} vendors · ${counts.pairs} materials · ${counts.pending} not submitted for ${MONTH_LABELS[Number(month) - 1]} ${year} — only changed rows are saved`
+                : 'Fill in or correct vendor rates — only changed rows are saved to SAP'}
+            </Text>
+          </View>
+          <View style={styles.filters}>
+            <CompactSelect label="Year" value={year} options={YEAR_OPTIONS} onChange={changeYear} />
+            <CompactSelect label="Month" value={month} options={MONTH_OPTIONS} onChange={changeMonth} />
             <View style={styles.searchBox}>
-              <Ionicons name="search-outline" size={15} color={colors.inkSoft} />
-              <TextInput value={query} onChangeText={setQuery} placeholder="Vendor or material" placeholderTextColor={colors.inkSoft} style={styles.searchInput} />
+              <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+              <TextInput value={query} onChangeText={setQuery} placeholder="Vendor or material" placeholderTextColor={colors.inkSoft} style={styles.searchInput} accessibilityLabel="Search vendor or material" />
+            </View>
+            <View style={styles.segment}>
+              {STATUS_FILTERS.map((st) => (
+                <Pressable key={st.value} onPress={() => setStatusFilter(st.value)} style={[styles.segmentBtn, statusFilter === st.value && styles.chipActive]} accessibilityRole="button">
+                  <Text style={[styles.chipText, statusFilter === st.value && styles.chipTextActive]}>{st.label}</Text>
+                </Pressable>
+              ))}
             </View>
           </View>
-        </View>
-
-        <View style={styles.statusRow}>
-          {STATUS_FILTERS.map((s) => (
-            <Pressable key={s.value} onPress={() => setStatusFilter(s.value)} style={[styles.chip, statusFilter === s.value && styles.chipActive]}>
-              <Text style={[styles.chipText, statusFilter === s.value && styles.chipTextActive]}>{s.label}</Text>
-            </Pressable>
-          ))}
-          {!loading && !loadError && (
-            <Text style={styles.countText}>
-              {counts.vendors} vendors · {counts.pairs} materials · {counts.pending} not submitted for {MONTH_LABELS[Number(month) - 1]} {year}
-            </Text>
-          )}
         </View>
 
         {banner && (
@@ -455,21 +425,18 @@ const styles = StyleSheet.create({
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.appBg },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },
   mutedText: { fontSize: 13, color: colors.inkSoft, textAlign: 'center' },
-  heading: { fontSize: 18, fontWeight: '800', color: colors.ink },
-  subheading: { fontSize: 12.5, color: colors.inkSoft, marginTop: 4, marginBottom: 14, lineHeight: 18, maxWidth: 760 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
-  filterField: { gap: 5 },
-  filterLabel: { fontSize: 11, fontWeight: '700', color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5 },
-  searchField: { flexGrow: 1, minWidth: 220, maxWidth: 360 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
-  searchInput: { flex: 1, fontSize: 13, color: colors.ink, height: 36 },
-  nativeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  headerBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12, position: 'relative', zIndex: 20 },
+  titleWrap: { flexShrink: 1, minWidth: 220 },
+  heading: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  subheading: { fontSize: 11.5, color: colors.inkSoft, marginTop: 2 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, width: 200, paddingHorizontal: 10, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  searchInput: { flex: 1, fontSize: 12.5, color: colors.ink, height: 32 },
+  segment: { flexDirection: 'row', gap: 2, padding: 2, height: 34, alignItems: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  segmentBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.sm },
   chipActive: { backgroundColor: colors.rust, borderColor: colors.rust },
   chipText: { fontSize: 12, fontWeight: '700', color: colors.ink },
   chipTextActive: { color: colors.white },
-  countText: { fontSize: 12, color: colors.inkSoft, marginLeft: 4 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: radii.md, borderWidth: 1, marginBottom: 12 },
   bannerSuccess: { backgroundColor: '#1F7A4D12', borderColor: '#1F7A4D33' },
   bannerError: { backgroundColor: '#C0392B12', borderColor: '#C0392B33' },
