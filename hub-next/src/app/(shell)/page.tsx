@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { LayoutGrid, Landmark, Grid3x3, Lock, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, Briefcase, type LucideIcon } from 'lucide-react';
+import { LayoutGrid, Grid3x3, Lock, ArrowRight, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import DashboardHero from '../../components/DashboardHero';
 import { useAuth } from '../../context/AuthContext';
@@ -11,79 +11,102 @@ import { useIsWideScreen } from '../../hooks/useIsWideScreen';
 import { setScrollActivity } from '../../hooks/useScrollActivity';
 import { logEvent } from '../../lib/authApi';
 import { APPS, CATEGORIES, appById } from '../../data/mockData';
-import { colors, fonts, fontWeights, radii, appColor, catColor, motion } from '../../theme/tokens';
+import { CATEGORY_ICONS, CATEGORY_DESCRIPTIONS } from '../../data/categoryMeta';
+import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, motion } from '../../theme/tokens';
 import { useTiltHover } from '../../hooks/useTiltHover';
 import type { AppItem, CategoryFilter } from '../../types';
 
-/** One icon per category tile — 'All' isn't a real category (see catColor's fallback-to-rust for
- * it too), so it gets a neutral catalog glyph rather than something that'd imply it's just another
- * segment. IBD/Supply Chain/CPD/HR/IT match the reference Emami Apps sidebar's own icon glyphs. */
-const CATEGORY_ICONS: Record<string, typeof LayoutGrid> = {
-  All: LayoutGrid,
-  CQA: ClipboardCheck,
-  CPD: ShieldCheck,
-  IT: Monitor,
-  'Supply Chain': Box,
-  IBD: Globe,
-  HR: Users,
-  'Cross-Function': Shuffle,
-  Packaging: Package,
-  Finance: Landmark,
-  SD: Handshake,
-  MSD: Briefcase,
-};
-
-/** A square Home tile (category or Recently Used) — tilts toward the cursor and lifts its shadow
- * on hover (see useTiltHover), then eases back flat on mouse-leave. Kept as its own component
- * (not inlined in the .map() below) since a tilt hook needs one hook instance per tile. */
+/** A Home card (category or Recently Used), styled after the reference Emami Apps home screen:
+ * white card, pale accent-tinted icon chip, bold name, one-line description, and a lock (no
+ * access) or arrow (open) in the bottom-right corner. Tilts toward the cursor and lifts its
+ * shadow on hover (see useTiltHover). Kept as its own component since a tilt hook needs one hook
+ * instance per tile. */
 function HoverTile({
-  tileStyle, tileNameStyle, iconBox, iconSize, accent, locked, disabled, onClick, ariaLabel, title, icon: Icon, name, subtitle,
+  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, name, subtitle,
 }: {
-  tileStyle: React.CSSProperties;
-  tileNameStyle: React.CSSProperties;
-  iconBox: number;
-  iconSize: number;
+  /** Mobile sizing — smaller padding/chip/type so two cards still fit side by side on a phone. */
+  compact: boolean;
   accent: string;
   locked?: boolean;
-  disabled?: boolean;
   onClick: () => void;
   ariaLabel: string;
   title?: string;
   icon: LucideIcon;
   name: string;
-  subtitle: React.ReactNode;
+  subtitle: string;
 }) {
   const { ref, hovered, tiltTransform, handlers } = useTiltHover<HTMLButtonElement>();
-  const active = hovered && !disabled;
+  const active = hovered && !locked;
   const scale = active ? motion.hoverScale : 1;
+  const chip = compact ? 40 : 48;
 
   return (
     <button
       ref={ref}
       type="button"
-      disabled={disabled}
+      disabled={locked}
       onClick={onClick}
-      {...(disabled ? {} : handlers)}
+      {...(locked ? {} : handlers)}
       style={{
-        ...tileStyle,
-        backgroundColor: locked ? colors.appBg : colors.white,
-        boxShadow: locked ? 'none' : active ? `0 14px 24px 0 ${accent}26` : `0 3px 8px 0 ${accent}1a`,
-        opacity: locked ? 0.6 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transform: disabled ? undefined : `${tiltTransform} scale(${scale})`,
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        textAlign: 'left',
+        minWidth: 0,
+        padding: compact ? '14px 14px 30px' : '20px 20px 36px',
+        backgroundColor: colors.white,
+        border: `1px solid ${colors.border}`,
+        borderRadius: radii.xxxl,
+        boxShadow: active ? `0 14px 28px 0 ${accent}22` : '0 2px 6px 0 rgba(31,27,51,0.04)',
+        cursor: locked ? 'not-allowed' : 'pointer',
+        transform: locked ? undefined : `${tiltTransform} scale(${scale})`,
         transformStyle: 'preserve-3d',
         transition: `transform ${motion.duration.base}ms ${motion.easeSmooth}, box-shadow ${motion.duration.base}ms ${motion.easeSmooth}`,
         willChange: 'transform',
       }}
-      aria-disabled={disabled}
+      aria-disabled={locked}
       aria-label={ariaLabel}
       title={title}
     >
-      <div style={{ width: iconBox, height: iconBox, borderRadius: radii.sm + 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: `${accent}1f`, flexShrink: 0 }}>
-        {locked ? <Lock size={iconSize - 1} color={accent} strokeWidth={2.1} /> : <Icon size={iconSize} color={accent} strokeWidth={2.1} />}
+      <div style={{ width: chip, height: chip, borderRadius: radii.lg, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: categoryTint(accent), flexShrink: 0, marginBottom: compact ? 12 : 18 }}>
+        <Icon size={compact ? 20 : 24} color={accent} strokeWidth={1.7} />
       </div>
-      <p style={{ ...tileNameStyle, color: locked ? colors.inkSoft : colors.ink }}>{name}</p>
-      {subtitle}
+      <p
+        style={{
+          fontSize: compact ? 14 : 16.5,
+          lineHeight: compact ? '18px' : '22px',
+          fontFamily: fonts.sansBold,
+          fontWeight: fontWeights.sansBold,
+          color: colors.ink,
+          margin: 0,
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {name}
+      </p>
+      <p
+        style={{
+          fontSize: compact ? 11.5 : 13.5,
+          lineHeight: compact ? '15px' : '19px',
+          fontFamily: fonts.sansRegular,
+          fontWeight: fontWeights.sansRegular,
+          color: colors.inkSoft,
+          margin: '6px 0 0',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {subtitle}
+      </p>
+      <span style={{ position: 'absolute', right: compact ? 12 : 18, bottom: compact ? 10 : 14, display: 'flex' }}>
+        {locked ? <Lock size={14} color="#9CA3AF" strokeWidth={1.8} /> : <ArrowRight size={16} color={colors.inkSoft} strokeWidth={1.8} />}
+      </span>
     </button>
   );
 }
@@ -95,46 +118,11 @@ export default function HomePage() {
   const recent = useRecentApps();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Home's tiles get a bit more room on desktop only. useIsWideScreen is >=768px and reports false
-  // until the real window width is measured, so mobile keeps exactly the sizes it had — these
-  // values are only ever larger than the mobile ones, never different on a phone.
+  // Wider cards on desktop only. useIsWideScreen is >=768px and reports false until the real
+  // window width is measured, so a phone gets two compact cards per row.
   const isWide = useIsWideScreen();
-  const tileMin = isWide ? 132 : 96;
-  const tileGap = isWide ? 12 : 10;
-  const tileIconBox = isWide ? 38 : 32;
-  const tileIconSize = isWide ? 19 : 16;
-
-  // Shared by both tile grids so a category tile and a Recently Used tile are always the same
-  // shape. aspectRatio keeps them square; overflow hidden is what makes that binding — without it
-  // a long name (e.g. "Recruitment Consultant Management Portal") sets the box's automatic minimum
-  // height and that one tile grows taller than the rest of the row.
-  const tileStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    aspectRatio: '1',
-    overflow: 'hidden',
-    border: `1px solid ${colors.border}`,
-    borderRadius: radii.lg,
-    padding: 10,
-  };
-
-  // Long names are clamped rather than allowed to wrap indefinitely — same reason as above.
-  const tileNameStyle: React.CSSProperties = {
-    fontSize: 11.5,
-    lineHeight: '14px',
-    fontFamily: fonts.sansSemiBold,
-    fontWeight: fontWeights.sansSemiBold,
-    margin: 0,
-    textAlign: 'center',
-    maxWidth: '100%',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-  };
+  const tileMin = isWide ? 240 : 150;
+  const tileGap = isWide ? 20 : 10;
 
   const openApp = (app: AppItem) => {
     // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
@@ -175,15 +163,17 @@ export default function HomePage() {
     <div onScroll={onScroll} style={{ height: '100%', overflowY: 'auto', padding: 16, paddingBottom: 40 }}>
       <DashboardHero name={profile?.name || userEmail || ''} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-        <div style={{ width: 26, height: 26, borderRadius: radii.md, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <LayoutGrid size={13} color={colors.rust} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ width: 40, height: 40, borderRadius: radii.lg, backgroundColor: categoryTint(colors.rust), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <LayoutGrid size={19} color={colors.rust} strokeWidth={1.8} />
         </div>
-        <p style={{ fontSize: 14, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>My Applications</p>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>My Applications</p>
+          <p style={{ fontSize: 13, fontFamily: fonts.sansRegular, color: colors.inkSoft, margin: '2px 0 0' }}>Quick access to the tools and insights you use most</p>
+        </div>
       </div>
-      <p style={{ fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 0, marginBottom: 10 }}>Choose a category to see its applications</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap, marginBottom: 24 }}>
         {CATEGORIES.map((c) => {
           const Icon = CATEGORY_ICONS[c] || Grid3x3;
           const accent = catColor(c);
@@ -192,24 +182,15 @@ export default function HomePage() {
           return (
             <HoverTile
               key={c}
-              tileStyle={tileStyle}
-              tileNameStyle={tileNameStyle}
-              iconBox={tileIconBox}
-              iconSize={tileIconSize}
+              compact={!isWide}
               accent={accent}
               locked={locked}
-              disabled={locked}
               onClick={() => openCategory(c)}
               icon={Icon}
-              name={c}
-              ariaLabel={locked ? `${c}, locked — no apps in this category yet` : `Open ${c} applications in a new tab`}
-              subtitle={
-                locked ? (
-                  <span style={{ fontSize: 8, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.inkSoft }}>
-                    Locked
-                  </span>
-                ) : null
-              }
+              name={c === 'All' ? 'All Apps' : c}
+              subtitle={CATEGORY_DESCRIPTIONS[c] || ''}
+              title={locked ? `${c} — no access` : undefined}
+              ariaLabel={locked ? `${c}, locked — no access to its apps yet` : `Open ${c} applications`}
             />
           );
         })}
@@ -217,44 +198,22 @@ export default function HomePage() {
 
       {visibleRecent.length > 0 && (
         <>
-          <p style={{ fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 20, marginBottom: 12 }}>Recently Used</p>
+          <p style={{ fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 8, marginBottom: 14 }}>Recently Used</p>
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))`, gap: tileGap }}>
             {visibleRecent.map((r) => {
               const app = appById(r.id);
               if (!app) return null;
-              const Icon = app.icon;
-              const accent = appColor(app.id);
               return (
                 <HoverTile
                   key={r.id}
-                  tileStyle={tileStyle}
-                  tileNameStyle={tileNameStyle}
-                  iconBox={tileIconBox}
-                  iconSize={tileIconSize}
-                  accent={accent}
+                  compact={!isWide}
+                  accent={appColor(app.id)}
                   onClick={() => openApp(app)}
-                  icon={Icon}
+                  icon={app.icon}
                   name={app.name}
+                  subtitle={r.when}
                   ariaLabel={`Open ${app.name}`}
                   title={app.name}
-                  subtitle={
-                    <p
-                      style={{
-                        fontSize: 9.5,
-                        lineHeight: '12px',
-                        color: colors.inkSoft,
-                        fontFamily: fonts.sansRegular,
-                        margin: 0,
-                        textAlign: 'center',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {r.when}
-                    </p>
-                  }
                 />
               );
             })}

@@ -2,33 +2,16 @@
 
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Landmark, ClipboardCheck, Globe, Box, ShieldCheck, Monitor, Users, Shuffle, Package, Handshake, Briefcase, Grid3x3 } from 'lucide-react';
-import { colors, fonts, fontWeights, radii, appColor, catColor, navColor, shadows } from '../theme/tokens';
+import { Grid3x3, Lock } from 'lucide-react';
+import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, navColor, shadows } from '../theme/tokens';
 import { NAV, NAV_ROUTES, APPS, CATEGORIES } from '../data/mockData';
+import { CATEGORY_ICONS } from '../data/categoryMeta';
 import { useFavorites } from '../context/FavoritesContext';
 import { useAuth } from '../context/AuthContext';
 import { useUnlockedAppIds } from '../hooks/useAppAccess';
 import { logEvent } from '../lib/authApi';
 import EmpAppMark from './EmpAppMark';
 import type { CategoryFilter } from '../types';
-
-// Same per-category glyphs as the Home page's own tiles (see (shell)/page.tsx's CATEGORY_ICONS) —
-// duplicated locally rather than shared, matching how FilterBar.tsx already keeps its own copy
-// too. 'All' is deliberately left out: "My Applications" above already covers it.
-// IBD/Supply Chain/CPD/HR/IT match the reference Emami Apps sidebar's own icon glyphs.
-const CATEGORY_ICONS: Record<string, typeof Grid3x3> = {
-  CQA: ClipboardCheck,
-  CPD: ShieldCheck,
-  IT: Monitor,
-  'Supply Chain': Box,
-  IBD: Globe,
-  HR: Users,
-  'Cross-Function': Shuffle,
-  Packaging: Package,
-  Finance: Landmark,
-  SD: Handshake,
-  MSD: Briefcase,
-};
 
 /** Strips a trailing slash (except on root `/`) so the active-route check below can't be fooled
  * by it either way — this site's static export uses `trailingSlash: true`, so the real browser
@@ -40,14 +23,16 @@ function normalizePath(path: string): string {
 }
 
 /** One nav-row look, shared by the top-level items, the category section, and the bottom-level
- * items below — pulled out so those three groups (previously one flat NAV.map) render identically
- * without repeating this markup three times. */
+ * items below — pulled out so those three groups render identically. Styled after the reference
+ * Emami Apps home screen: every row carries its icon in a pale accent-tinted chip, and the active
+ * row is a soft accent-tinted pill with the label in the accent color. */
 function NavButton({
   icon: Icon,
   label,
   active,
   onClick,
   accentColor,
+  locked,
 }: {
   icon: React.ElementType;
   label: string;
@@ -56,8 +41,11 @@ function NavButton({
   /** Per-item accent — category rows use catColor, every other row uses navColor (see
    * theme/tokens.ts) — so every icon in the sidebar is color-coded, not just Categories. */
   accentColor?: string;
+  /** Shows a small lock at the row's right edge — a category whose apps are all locked for this
+   * user, same rule as the Home tile's own lock. */
+  locked?: boolean;
 }) {
-  const activeColor = accentColor || colors.rust;
+  const accent = accentColor || colors.rust;
   return (
     <button
       type="button"
@@ -66,15 +54,12 @@ function NavButton({
         width: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        padding: '8px 7px',
+        gap: 10,
+        padding: '6px 8px',
         marginBottom: 4,
-        borderRadius: radii.lg,
-        backgroundColor: active ? colors.sidebarActive : 'transparent',
+        borderRadius: radii.xl,
+        backgroundColor: active ? categoryTint(accent) : 'transparent',
         border: 'none',
-        borderLeftWidth: 3,
-        borderLeftStyle: 'solid',
-        borderLeftColor: active ? activeColor : 'transparent',
         cursor: 'pointer',
         textAlign: 'left',
       }}
@@ -82,21 +67,34 @@ function NavButton({
     >
       <span
         style={{
-          width: 27,
-          height: 27,
-          borderRadius: radii.sm + 1,
+          width: 32,
+          height: 32,
+          borderRadius: radii.md,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: active ? activeColor : accentColor ? `${accentColor}1f` : 'transparent',
+          backgroundColor: active ? colors.white : categoryTint(accent),
           flexShrink: 0,
         }}
       >
-        <Icon size={15} color={active ? colors.white : accentColor || colors.sidebarTextSoft} strokeWidth={2.2} />
+        <Icon size={17} color={accent} strokeWidth={1.8} />
       </span>
-      <span style={{ fontSize: 13, flex: 1, color: active ? activeColor : colors.sidebarTextSoft, fontFamily: active ? fonts.sansBold : fonts.sansMedium, fontWeight: active ? fontWeights.sansBold : fontWeights.sansMedium }}>
+      <span
+        style={{
+          fontSize: 13.5,
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: active ? accent : colors.ink,
+          fontFamily: active ? fonts.sansSemiBold : fonts.sansMedium,
+          fontWeight: active ? fontWeights.sansSemiBold : fontWeights.sansMedium,
+        }}
+      >
         {label}
       </span>
+      {locked && <Lock size={13} color="#9CA3AF" strokeWidth={1.8} style={{ flexShrink: 0 }} />}
     </button>
   );
 }
@@ -140,6 +138,11 @@ export default function Sidebar({ compact = false }: SidebarProps) {
   const bottomNavItems = navItems.filter((item) => !TOP_NAV_IDS.has(item.id));
   const activeCategory = normalizePath(pathname) === normalizePath(NAV_ROUTES.MyApplications) ? searchParams.get('category') : null;
   const openCategory = (c: CategoryFilter) => router.push(`/my-applications?category=${encodeURIComponent(c)}`);
+  // Same rule as the Home tiles: a category is locked when it has apps and every one is locked.
+  const isCategoryLocked = (c: CategoryFilter) => {
+    const categoryApps = APPS.filter((a) => a.cat === c);
+    return categoryApps.length > 0 && categoryApps.every((a) => !unlockedAppIds.has(a.id));
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: colors.sidebar, paddingTop: 16 }}>
@@ -211,6 +214,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
             active={activeCategory === c}
             onClick={() => openCategory(c)}
             accentColor={catColor(c)}
+            locked={isCategoryLocked(c)}
           />
         ))}
 
