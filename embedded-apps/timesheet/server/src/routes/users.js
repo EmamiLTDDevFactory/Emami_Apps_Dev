@@ -92,7 +92,7 @@ router.post('/', async (req, res, next) => {
     if (!email) return res.status(400).json({ error: 'email is required' })
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' })
 
-    const hubRole = await fetchHubRoleForTimesheet(email)
+    const hubRole = await fetchHubRoleForTimesheet(email, req)
     if (!hubRole) {
       return res.status(400).json({
         error: 'This email has not been granted Timesheet access yet. Ask a hub admin to add it in Manage Access first.',
@@ -144,7 +144,7 @@ router.get('/unassigned', async (_req, res, next) => {
 router.get('/candidates', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can see this' })
-    const grantedEmails = await fetchAllTimesheetGrantedEmails()
+    const grantedEmails = await fetchAllTimesheetGrantedEmails(req)
     const existing = await pool.query('SELECT email FROM users')
     const existingEmails = new Set(existing.rows.map((r) => r.email))
     const brandNew = grantedEmails

@@ -16,27 +16,42 @@ const HUB_AUTH_JWT_SECRET = process.env.HUB_AUTH_JWT_SECRET || ''
 // even by someone calling these two routes directly instead of through the UI.
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true'
 
-// This app is currently only deployed on the Emami_Apps_Dev environment, so this defaults to the
-// dev-pointed hub backend (proxied under /dev-api/) rather than prod - otherwise every Manage
-// Access grant made on Emami_Apps_Dev (e.g. Admin for 'timesheet') would be invisible here, since
-// prod and dev keep entirely separate Manage Access data. A plain server-side env var, not a Vite
-// build-time one, so - unlike the frontend's now-hardcoded API_BASE (see src/context/AppContext.jsx)
-// - there's no Amplify-console-global-env-var collision risk here; update HUB_ACCESS_API_BASE in
-// this backend's own .env whenever this moves to the prod hub instead of editing code.
-const HUB_ACCESS_API_BASE = process.env.HUB_ACCESS_API_BASE || 'https://audit-capa-api.emamiapps.in/dev-api/api'
+// Which hub Manage Access this backend checks a person's 'timesheet' role against. Prod and dev
+// keep entirely separate Manage Access data (prod at /api/api, dev proxied under /dev-api/api), so
+// this has to follow whichever hub the caller actually came from - same hostname.includes('dev')
+// rule the frontend uses to pick its own API_BASE (see src/context/AppContext.tsx). A single fixed
+// HUB_ACCESS_API_BASE (it used to default to dev) meant production read every role from DEV
+// Manage Access: someone granted only 'User' on prod still came out as a manager here because dev
+// had them as Admin. HUB_ACCESS_API_BASE_PROD / _DEV override either side; the legacy
+// HUB_ACCESS_API_BASE is only a fallback for callers with no Origin at all (curl, server-to-server).
+const HUB_ACCESS_API_BASE_PROD = process.env.HUB_ACCESS_API_BASE_PROD || 'https://audit-capa-api.emamiapps.in/api'
+const HUB_ACCESS_API_BASE_DEV = process.env.HUB_ACCESS_API_BASE_DEV || 'https://audit-capa-api.emamiapps.in/dev-api/api'
+const HUB_ACCESS_API_BASE_FALLBACK = process.env.HUB_ACCESS_API_BASE || HUB_ACCESS_API_BASE_PROD
+
+export function hubAccessApiBaseFor(req) {
+  const origin = req?.headers?.origin || req?.headers?.referer || ''
+  let hostname = ''
+  try {
+    hostname = new URL(origin).hostname
+  } catch {
+    return HUB_ACCESS_API_BASE_FALLBACK
+  }
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return HUB_ACCESS_API_BASE_FALLBACK
+  return hostname.includes('dev') ? HUB_ACCESS_API_BASE_DEV : HUB_ACCESS_API_BASE_PROD
+}
 const APP_ID = 'timesheet'
 
 /** Everyone the hub's Manage Access currently grants Timesheet to (Admin or User), active only -
  * the searchable pool for Manage Team's "Add employee" live search (see routes/users.js's
  * GET /candidates), so a manager picks a real, already-authorized person instead of free-typing
- * an email that might be wrong. Keeps HUB_ACCESS_API_BASE/APP_ID knowledge in this one file rather
+ * an email that might be wrong. Keeps hub-base/APP_ID knowledge in this one file rather
  * than leaking those constants into users.js too. */
-export async function fetchAllTimesheetGrantedEmails() {
+export async function fetchAllTimesheetGrantedEmails(req) {
   try {
     // The hub only lists users to a signed-in Manage Access admin or to a server holding the shared
     // HUB_INTERNAL_API_SECRET (backend/server.js requireAccessManagerOrInternal) - this server has
     // no user session here, so it sends the secret.
-    const res = await fetch(`${HUB_ACCESS_API_BASE}/access/users`, {
+    const res = await fetch(`${hubAccessApiBaseFor(req)}/access/users`, {
       headers: process.env.HUB_INTERNAL_API_SECRET ? { 'X-Internal-Secret': process.env.HUB_INTERNAL_API_SECRET } : {},
     })
     const data = await res.json().catch(() => null)
@@ -54,9 +69,9 @@ export async function fetchAllTimesheetGrantedEmails() {
  * looks up the hub's Manage Access grant for 'timesheet' itself once it already knows who's
  * really asking (see POST /hub-login below). Exported for routes/users.js's "Add employee" form
  * to reuse the exact same check, rather than duplicating this call. */
-export async function fetchHubRoleForTimesheet(email) {
+export async function fetchHubRoleForTimesheet(email, req) {
   try {
-    const res = await fetch(`${HUB_ACCESS_API_BASE}/access/me?email=${encodeURIComponent(email)}`)
+    const res = await fetch(`${hubAccessApiBaseFor(req)}/access/me?email=${encodeURIComponent(email)}`)
     const data = await res.json().catch(() => null)
     if (!res.ok || !data) return null
     const apps = Array.isArray(data.apps) ? data.apps : []
@@ -100,7 +115,7 @@ router.post('/hub-login', async (req, res, next) => {
     const email = String(hubPayload?.email || '').trim().toLowerCase()
     if (!email) return res.status(401).json({ error: 'Invalid Emami Apps session.' })
 
-    const hubRole = await fetchHubRoleForTimesheet(email)
+    const hubRole = await fetchHubRoleForTimesheet(email, req)
     const role = hubRole === 'Admin' ? 'manager' : 'employee'
     const user = await upsertHubUser(email, role)
     const token = issueSessionToken(user)

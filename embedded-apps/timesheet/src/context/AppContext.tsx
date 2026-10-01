@@ -165,24 +165,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   // Establishes this tab's session token before anything else can load. Three cases, checked in
-  // this order so Timesheet's OWN session (up to SESSION_EXPIRES_IN, 30d by default) is what
-  // keeps it usable, not the hub's separate, shorter-lived session:
-  //  1. We already have a working session/token from earlier (hub or demo login) - trust it and
-  //     go straight to refresh(), without re-depending on the hub session still being alive too.
-  //     A dead hub session no longer takes Timesheet down with it; only this app's own token
-  //     dying does (surfaced as the ordinary loadError 401 -> retryHubBootstrap recovery below).
-  //     Trade-off: a Manage Access role change now takes effect the next time a fresh token is
-  //     actually needed (this one expiring, or a real sign-out/sign-in), not on every open.
-  //  2. No working session yet, but a hub session token is present (see src/lib/hubAccess.ts) -
-  //     verify it against this app's own backend (POST /auth/hub-login) to get one.
+  // this order:
+  //  1. We already have a working session/token from earlier AND there's no live hub session to
+  //     re-check against (none at all, e.g. a demo login, or the hub's own 12h token has expired) -
+  //     trust it and go straight to refresh(). A dead hub session doesn't take Timesheet down with
+  //     it; only this app's own token dying does (the ordinary loadError 401 -> retryHubBootstrap
+  //     recovery below).
+  //  2. A live hub session token is present (see src/lib/hubAccess.ts) - always verify it against
+  //     this app's own backend (POST /auth/hub-login), even if we already have a session. That
+  //     call re-reads the person's Manage Access role every time the app is opened, so a change
+  //     there (e.g. Admin -> User) applies right away instead of after this app's 30-day token
+  //     expires, and it ties the session to whoever the hub says is signed in now rather than
+  //     whoever last used this browser.
   //  3. No hub token and no session at all - genuinely standalone (e.g. `npm run dev`). Fetch the
   //     demo user list (unauthenticated) so Login has someone to pick from; demoLogin (below) is
   //     what actually gets a token once someone's picked.
   const bootstrapFromHub = useCallback(() => {
     const hubToken = getHubSessionToken();
+    const hubTokenLive = !!hubToken && !isHubSessionTokenExpired();
     let cancelled = false;
 
-    if (session.isLoggedIn && loadToken()) {
+    if (session.isLoggedIn && loadToken() && !hubTokenLive) {
       setHubEmailDetected(!!hubToken);
       setHubBootstrapped(true);
       refresh();
@@ -199,8 +202,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .then(async ({ user, token }: AnyRecord) => {
           if (cancelled) return;
           saveToken(token);
-          await refresh();
+          // Point the session at the verified user BEFORE data lands, so there's never a render
+          // where fresh data is paired with whoever this browser's old session belonged to.
           login(user.id);
+          await refresh();
         })
         .catch((err: Error) => {
           if (cancelled) return;
@@ -218,6 +223,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
               .catch((e: Error) => console.error('[auth] Could not load demo users:', e.message));
             return;
           }
+          // Drop any older session too - otherwise it would quietly carry on with a role (or even
+          // a person) the hub could no longer vouch for, and the error block below (which only
+          // shows while logged out) would never appear.
+          saveToken(null);
+          setSession({ currentUserId: null, isLoggedIn: false });
           setHubError(err.message || 'Could not verify your access.');
         })
         .finally(() => {
@@ -280,7 +290,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const currentUser = useMemo(
-    () => data?.users.find((u) => u.id === session.currentUserId) || data?.users[0] || null,
+    // No fallback to some other user (this used to fall back to data.users[0]) - showing whoever
+    // happened to sort first, often a manager, is exactly the wrong-role screen it looked like.
+    // A session whose user can't be found gets its own error screen below instead.
+    () => data?.users.find((u) => u.id === session.currentUserId) || null,
     [data, session.currentUserId]
   );
 
@@ -652,6 +665,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-rust border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Signed in, data loaded, but this session's user isn't in it (deleted, or a stale session from
+  // an older database) - don't render the app for nobody, and never for someone else. Retrying
+  // clears this app's own session and signs in through the hub again.
+  if (session.isLoggedIn && data && !currentUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="glass-panel max-w-sm p-6 text-center">
+          <p className="text-sm font-semibold text-red">Couldn&apos;t find your TimeSheet account</p>
+          <p className="mt-1 text-sm text-ink">Your session no longer matches an account here. Please sign in again.</p>
+          <button type="button" onClick={retryHubBootstrap} className="btn-danger mt-4 w-full">
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
