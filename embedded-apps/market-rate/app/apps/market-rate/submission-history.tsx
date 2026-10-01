@@ -14,7 +14,7 @@ const CURRENT_MONTH_VALUE = String(new Date().getMonth() + 1).padStart(2, '0');
 
 const STATUS_OPTIONS: { value: 'all' | 'submitted' | 'pending'; label: string }[] = [
   { value: 'all', label: 'All statuses' },
-  { value: 'submitted', label: 'Submitted (every selected month)' },
+  { value: 'submitted', label: 'Submitted (any selected month)' },
   { value: 'pending', label: 'Pending (any selected month)' },
 ];
 
@@ -542,15 +542,18 @@ export default function SubmissionHistoryScreen() {
   const periodText = singleMonth ? 'this month' : 'selected months';
 
   // `filteredRows` is the one place status is applied, and every derived value below reads from
-  // it, so the whole page moves together. With several months picked, "Submitted" means submitted
-  // in every one of them and "Pending" means missing at least one.
+  // it, so the whole page moves together. With several months picked, "Submitted" keeps a row
+  // submitted in at least one of them and "Pending" keeps a row missing at least one. ("Submitted"
+  // used to require every picked month, so picking several months almost always emptied the
+  // table — most vendor/material pairs miss at least one month.)
   const searchRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
   const filteredRows = useMemo(
     () =>
       searchRows.filter((r) => {
         if (status === 'all') return true;
-        const allSubmitted = monthIdxs.every((i) => r.monthStatus[i]);
-        return status === 'submitted' ? allSubmitted : !allSubmitted;
+        return status === 'submitted'
+          ? monthIdxs.some((i) => r.monthStatus[i])
+          : monthIdxs.some((i) => !r.monthStatus[i]);
       }),
     [searchRows, status, monthIdxs]
   );
