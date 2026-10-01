@@ -70,6 +70,9 @@ export interface MarketRateRow {
   /** Set only on rows loaded back from SAP — the email the batch was originally submitted under.
    * Preserved on save so an Admin editing another user's row doesn't reassign it to themselves. */
   email?: string;
+  /** 'EXW' or 'FOR' — mandatory on every row a vendor or Admin saves (FreightTerms in the save
+   * payload). '' only on a row nobody has chosen one for yet. */
+  freightTerms: string;
 }
 
 export interface SuppliedMaterial {
@@ -169,6 +172,7 @@ export async function fetchMarketRates(year: string, opts: { email?: string } = 
     sgst: li.Sgst != null ? String(li.Sgst) : '',
     cgst: li.Cgst != null ? String(li.Cgst) : '',
     validFrom: parseODataDate(li.Zdate),
+    freightTerms: li.FreightTerms || '',
     // Material identity is SAP reference data here too, same as the Home form's pre-filled
     // rows — only the rate/tax/date fields make sense to hand-edit.
     locked: true,
@@ -229,6 +233,12 @@ export interface SubmissionRecord {
   submitted: boolean;
   submittedOn: string;
   rateId: string;
+  /** ZmarketRateSet's Freight — the freight value on top of the rate. '' when SAP sends none. */
+  freight: string;
+  /** 'EXW' / 'FOR', '' when the record has none. */
+  freightTerms: string;
+  /** ZmarketRateSet's TotalRate — the landed rate (rate + freight). '' when SAP sends none. */
+  totalRate: string;
 }
 
 /** Admin Submission History's sole data source — every rate status row for a year, for one
@@ -255,6 +265,9 @@ export async function fetchSubmissionRecords(year: string, email: string): Promi
     submitted: li.SubDone === 'X',
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',
+    freight: li.Freight != null ? String(li.Freight) : '',
+    freightTerms: li.FreightTerms || '',
+    totalRate: li.TotalRate != null ? String(li.TotalRate) : '',
   }));
 }
 
@@ -296,6 +309,9 @@ export async function fetchRateEntryRecords(year: string, email: string): Promis
     sgst: li.Sgst != null ? String(li.Sgst) : '',
     cgst: li.Cgst != null ? String(li.Cgst) : '',
     validFrom: parseODataDate(li.Zdate),
+    freightTerms: li.FreightTerms || '',
+    freight: li.Freight != null ? String(li.Freight) : '',
+    totalRate: li.TotalRate != null ? String(li.TotalRate) : '',
     submitted: li.SubDone === 'X',
     submittedOn: parseODataDate(li.CrDate),
     rateId: li.RateId || '',
@@ -317,7 +333,7 @@ function splitDate(validFrom: string): { zyear: string; zmonth: string; zdate: s
   return { zyear: y, zmonth: m, zdate: `${validFrom}T00:00:00` };
 }
 
-function toSapLineItem(row: MarketRateRow, rateId: string) {
+function toSapLineItem(row: MarketRateRow, rateId: string, createdBy: string) {
   const { zyear, zmonth, zdate } = splitDate(row.validFrom);
   return {
     RateId: rateId,
@@ -336,10 +352,18 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
     Sgst: row.sgst || '0.00',
     Cgst: row.cgst || '0.00',
     ActiveInd: 'X',
+    // Per instruction: who saved this row (the signed-in vendor's or Admin's login email) and the
+    // Freight Terms they picked. Sent per line item, not on the header — ZMarketRateHeaderSet
+    // rejects properties it doesn't define (see saveMarketRates' note on Email).
+    CreatedBy: createdBy,
+    FreightTerms: row.freightTerms,
   };
 }
 
-/** Used identically by both Home's create flow and Change History's edit-save — every call mints
+/** Used identically by Home's create flow, its Submitted Rates edit-save and Admin's Market Rate
+ * Entry. `createdBy` is the signed-in user's login email, sent as each line item's CreatedBy.
+ *
+ * Originally used by both Home's create flow and Change History's edit-save — every call mints
  * a fresh RateId batch, so editing existing rows in Change History re-submits them as a new batch
  * rather than updating the original header/RateId in place.
  *
@@ -347,11 +371,11 @@ function toSapLineItem(row: MarketRateRow, rateId: string) {
  * ZMarketRateHeaderSet rejects it with a 400: "Property 'Email' is invalid". Per-user row
  * ownership for the Dashboard's fetch filter must come from wherever FLAT_RATE_ENTITY_SET's own
  * Email actually gets populated server-side, since it can't be this header entity's write path. */
-export async function saveMarketRates(rows: MarketRateRow[]): Promise<void> {
+export async function saveMarketRates(rows: MarketRateRow[], createdBy: string): Promise<void> {
   const rateId = randomRateId();
   const payload: Record<string, unknown> = {
     RateId: rateId,
-    ToMarketRates: rows.map((row) => toSapLineItem(row, rateId)),
+    ToMarketRates: rows.map((row) => toSapLineItem(row, rateId, createdBy)),
   };
   try {
     const result = await sapClient.post(`/${ENTITY_SET}`, payload);

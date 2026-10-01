@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../../../src/theme/tokens';
 import { useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
 import { fetchRateEntryRecords, saveMarketRates, type MarketRateRow, type RateEntryRecord } from '../../../src/lib/marketRateApi';
+import { CompactSelect } from '../../../src/components/CompactFilters';
+import { FreightTermsSelect } from '../../../src/components/FreightTermsSelect';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => ({ value: String(CURRENT_YEAR - i), label: String(CURRENT_YEAR - i) }));
@@ -29,9 +31,12 @@ interface EntryRow {
   submitted: boolean;
   rate: string;
   date: string;
-  /** Values as loaded — a row is only saved when rate or date differs from these. */
+  /** 'EXW' / 'FOR' — mandatory on every row that gets saved. '' until chosen. */
+  freightTerms: string;
+  /** Values as loaded — a row is only saved when rate, date or freight terms differ from these. */
   originalRate: string;
   originalDate: string;
+  originalFreightTerms: string;
   /** Carried through unchanged into the save payload (see toSaveRow). */
   materialType: string;
   ratePer: string;
@@ -74,6 +79,7 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
     const submitted = !!monthRecord?.submitted;
     const rate = monthRecord?.rate && Number(monthRecord.rate) !== 0 ? monthRecord.rate : '';
     const date = monthRecord?.validFrom || defaultDate;
+    const freightTerms = monthRecord?.freightTerms || '';
     rows.push({
       key: k,
       vendorCode: ref.vendorCode,
@@ -83,8 +89,10 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
       submitted,
       rate,
       date,
+      freightTerms,
       originalRate: rate,
       originalDate: date,
+      originalFreightTerms: freightTerms,
       materialType: ref.materialType,
       ratePer: ref.ratePer,
       marketName: ref.marketName,
@@ -98,7 +106,9 @@ function buildRows(records: RateEntryRecord[], year: string, month: string): Ent
   );
 }
 
-const isDirty = (r: EntryRow) => r.rate !== r.originalRate || r.date !== r.originalDate;
+const isRateInvalid = (r: EntryRow) => !r.rate.trim() || Number.isNaN(Number(r.rate)) || Number(r.rate) < 0;
+
+const isDirty = (r: EntryRow) => r.rate !== r.originalRate || r.date !== r.originalDate || r.freightTerms !== r.originalFreightTerms;
 
 function toSaveRow(r: EntryRow): MarketRateRow {
   return {
@@ -114,36 +124,8 @@ function toSaveRow(r: EntryRow): MarketRateRow {
     sgst: r.sgst,
     cgst: r.cgst,
     validFrom: r.date,
+    freightTerms: r.freightTerms,
   };
-}
-
-function Select({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
-  return (
-    <View style={styles.filterField}>
-      <Text style={styles.filterLabel}>{label}</Text>
-      {Platform.OS === 'web' ? (
-        // @ts-expect-error — raw DOM element, valid under react-native-web
-        <select
-          value={value}
-          onChange={(e: any) => onChange(e.target.value)}
-          aria-label={label}
-          style={{ height: 38, padding: '6px 10px', borderRadius: 10, border: `1px solid ${colors.border}`, backgroundColor: colors.white, color: colors.ink, fontSize: 12.5, fontWeight: 700 }}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-      ) : (
-        <View style={styles.nativeChips}>
-          {options.map((o) => (
-            <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.chip, o.value === value && styles.chipActive]}>
-              <Text style={[styles.chipText, o.value === value && styles.chipTextActive]}>{o.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </View>
-  );
 }
 
 function DateInput({ value, onChange, label, invalid }: { value: string; onChange: (v: string) => void; label: string; invalid: boolean }) {
@@ -180,7 +162,7 @@ function DateInput({ value, onChange, label, invalid }: { value: string; onChang
   );
 }
 
-const COLS = { vendor: 100, vendorName: 200, material: 110, desc: 240, status: 130, rate: 130, uom: 70, date: 170 };
+const COLS = { vendor: 100, vendorName: 200, material: 110, desc: 240, status: 130, rate: 130, uom: 70, freight: 130, date: 170 };
 const TABLE_WIDTH = Object.values(COLS).reduce((a, b) => a + b, 0);
 
 export default function RateEntryScreen() {
@@ -226,7 +208,7 @@ export default function RateEntryScreen() {
   const invalidKeys = useMemo(() => {
     const bad = new Set<string>();
     for (const r of dirtyRows) {
-      if (!r.rate.trim() || Number.isNaN(Number(r.rate)) || Number(r.rate) < 0 || !isValidIsoDate(r.date)) bad.add(r.key);
+      if (isRateInvalid(r) || !isValidIsoDate(r.date) || !r.freightTerms) bad.add(r.key);
     }
     return bad;
   }, [dirtyRows]);
@@ -263,7 +245,7 @@ export default function RateEntryScreen() {
     setYear(y);
   };
 
-  const updateRow = (key: string, field: 'rate' | 'date', value: string) => {
+  const updateRow = (key: string, field: 'rate' | 'date' | 'freightTerms', value: string) => {
     setBanner(null);
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value } : r)));
   };
@@ -271,20 +253,20 @@ export default function RateEntryScreen() {
   const discard = () => {
     setBanner(null);
     setShowInvalid(false);
-    setRows((prev) => prev.map((r) => ({ ...r, rate: r.originalRate, date: r.originalDate })));
+    setRows((prev) => prev.map((r) => ({ ...r, rate: r.originalRate, date: r.originalDate, freightTerms: r.originalFreightTerms })));
   };
 
   const onSave = async () => {
     if (dirtyRows.length === 0) return;
     if (invalidKeys.size > 0) {
       setShowInvalid(true);
-      setBanner({ type: 'error', message: `Fix ${invalidKeys.size} row${invalidKeys.size === 1 ? '' : 's'} highlighted in red — each changed row needs a numeric rate and a valid date.` });
+      setBanner({ type: 'error', message: `Fix ${invalidKeys.size} row${invalidKeys.size === 1 ? '' : 's'} — the fields outlined in red. Each changed row needs a numeric rate, a valid date and Freight Terms (EXW or FOR).` });
       return;
     }
     setSaving(true);
     setBanner(null);
     try {
-      await saveMarketRates(dirtyRows.map(toSaveRow));
+      await saveMarketRates(dirtyRows.map(toSaveRow), email || '');
       const n = dirtyRows.length;
       await load();
       setBanner({ type: 'success', message: `Saved ${n} rate${n === 1 ? '' : 's'} to SAP.` });
@@ -317,34 +299,32 @@ export default function RateEntryScreen() {
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.heading}>Market Rate Entry</Text>
-        <Text style={styles.subheading}>
-          Every vendor&apos;s materials for the selected month. Fill in rates vendors haven&apos;t submitted, or correct any rate or date, then save — only changed rows are sent to SAP.
-        </Text>
-
-        <View style={styles.filters}>
-          <Select label="Year" value={year} options={YEAR_OPTIONS} onChange={changeYear} />
-          <Select label="Month" value={month} options={MONTH_OPTIONS} onChange={changeMonth} />
-          <View style={[styles.filterField, styles.searchField]}>
-            <Text style={styles.filterLabel}>Search</Text>
+        {/* One compact bar: title + counts on the left, Year / Month / search / status on the
+            right, wrapping only on narrow screens. */}
+        <View style={styles.headerBar}>
+          <View style={styles.titleWrap}>
+            <Text style={styles.heading}>Market Rate Entry</Text>
+            <Text style={styles.subheading} numberOfLines={1}>
+              {!loading && !loadError
+                ? `${counts.vendors} vendors · ${counts.pairs} materials · ${counts.pending} not submitted for ${MONTH_LABELS[Number(month) - 1]} ${year} — only changed rows are saved`
+                : 'Fill in or correct vendor rates — only changed rows are saved to SAP'}
+            </Text>
+          </View>
+          <View style={styles.filters}>
+            <CompactSelect label="Year" value={year} options={YEAR_OPTIONS} onChange={changeYear} />
+            <CompactSelect label="Month" value={month} options={MONTH_OPTIONS} onChange={changeMonth} />
             <View style={styles.searchBox}>
-              <Ionicons name="search-outline" size={15} color={colors.inkSoft} />
-              <TextInput value={query} onChangeText={setQuery} placeholder="Vendor or material" placeholderTextColor={colors.inkSoft} style={styles.searchInput} />
+              <Ionicons name="search-outline" size={14} color={colors.inkSoft} />
+              <TextInput value={query} onChangeText={setQuery} placeholder="Vendor or material" placeholderTextColor={colors.inkSoft} style={styles.searchInput} accessibilityLabel="Search vendor or material" />
+            </View>
+            <View style={styles.segment}>
+              {STATUS_FILTERS.map((st) => (
+                <Pressable key={st.value} onPress={() => setStatusFilter(st.value)} style={[styles.segmentBtn, statusFilter === st.value && styles.chipActive]} accessibilityRole="button">
+                  <Text style={[styles.chipText, statusFilter === st.value && styles.chipTextActive]}>{st.label}</Text>
+                </Pressable>
+              ))}
             </View>
           </View>
-        </View>
-
-        <View style={styles.statusRow}>
-          {STATUS_FILTERS.map((s) => (
-            <Pressable key={s.value} onPress={() => setStatusFilter(s.value)} style={[styles.chip, statusFilter === s.value && styles.chipActive]}>
-              <Text style={[styles.chipText, statusFilter === s.value && styles.chipTextActive]}>{s.label}</Text>
-            </Pressable>
-          ))}
-          {!loading && !loadError && (
-            <Text style={styles.countText}>
-              {counts.vendors} vendors · {counts.pairs} materials · {counts.pending} not submitted for {MONTH_LABELS[Number(month) - 1]} {year}
-            </Text>
-          )}
         </View>
 
         {banner && (
@@ -383,6 +363,7 @@ export default function RateEntryScreen() {
                 <Text style={[styles.th, { width: COLS.status }]}>Status</Text>
                 <Text style={[styles.th, { width: COLS.rate }]}>Rate</Text>
                 <Text style={[styles.th, { width: COLS.uom }]}>UOM</Text>
+                <Text style={[styles.th, { width: COLS.freight }]}>Freight Terms *</Text>
                 <Text style={[styles.th, { width: COLS.date }]}>Date</Text>
               </View>
               {visibleRows.length === 0 ? (
@@ -414,12 +395,21 @@ export default function RateEntryScreen() {
                           placeholderTextColor={colors.inkSoft}
                           keyboardType="decimal-pad"
                           accessibilityLabel={`Rate for ${r.materialDesc || r.materialCode}, vendor ${r.vendorName || r.vendorCode}`}
-                          style={[styles.input, { width: COLS.rate - 16 }, invalid && styles.inputInvalid]}
+                          style={[styles.input, { width: COLS.rate - 16 }, invalid && isRateInvalid(r) && styles.inputInvalid]}
                         />
                       </View>
                       <Text style={[styles.td, { width: COLS.uom }]}>{r.ratePer || '—'}</Text>
+                      <View style={[styles.tdBox, { width: COLS.freight }]}>
+                        <FreightTermsSelect
+                          value={r.freightTerms}
+                          onChange={(v) => updateRow(r.key, 'freightTerms', v)}
+                          label={`Freight terms for ${r.materialDesc || r.materialCode}, vendor ${r.vendorName || r.vendorCode}`}
+                          width={COLS.freight - 16}
+                          invalid={invalid && !r.freightTerms}
+                        />
+                      </View>
                       <View style={[styles.tdBox, { width: COLS.date }]}>
-                        <DateInput value={r.date} onChange={(v) => updateRow(r.key, 'date', v)} label={`Date for ${r.materialDesc || r.materialCode}`} invalid={invalid} />
+                        <DateInput value={r.date} onChange={(v) => updateRow(r.key, 'date', v)} label={`Date for ${r.materialDesc || r.materialCode}`} invalid={invalid && !isValidIsoDate(r.date)} />
                       </View>
                     </View>
                   );
@@ -455,21 +445,18 @@ const styles = StyleSheet.create({
   centerWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.appBg },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },
   mutedText: { fontSize: 13, color: colors.inkSoft, textAlign: 'center' },
-  heading: { fontSize: 18, fontWeight: '800', color: colors.ink },
-  subheading: { fontSize: 12.5, color: colors.inkSoft, marginTop: 4, marginBottom: 14, lineHeight: 18, maxWidth: 760 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
-  filterField: { gap: 5 },
-  filterLabel: { fontSize: 11, fontWeight: '700', color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5 },
-  searchField: { flexGrow: 1, minWidth: 220, maxWidth: 360 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 38, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
-  searchInput: { flex: 1, fontSize: 13, color: colors.ink, height: 36 },
-  nativeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  headerBar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12, position: 'relative', zIndex: 20 },
+  titleWrap: { flexShrink: 1, minWidth: 220 },
+  heading: { fontSize: 16, fontWeight: '800', color: colors.ink },
+  subheading: { fontSize: 11.5, color: colors.inkSoft, marginTop: 2 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, width: 200, paddingHorizontal: 10, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  searchInput: { flex: 1, fontSize: 12.5, color: colors.ink, height: 32 },
+  segment: { flexDirection: 'row', gap: 2, padding: 2, height: 34, alignItems: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
+  segmentBtn: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: radii.sm },
   chipActive: { backgroundColor: colors.rust, borderColor: colors.rust },
   chipText: { fontSize: 12, fontWeight: '700', color: colors.ink },
   chipTextActive: { color: colors.white },
-  countText: { fontSize: 12, color: colors.inkSoft, marginLeft: 4 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: radii.md, borderWidth: 1, marginBottom: 12 },
   bannerSuccess: { backgroundColor: '#1F7A4D12', borderColor: '#1F7A4D33' },
   bannerError: { backgroundColor: '#C0392B12', borderColor: '#C0392B33' },
