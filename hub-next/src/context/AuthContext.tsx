@@ -41,6 +41,13 @@ const AUTH_METHOD_STORAGE_KEY = 'emami_apps_login_method';
  * effect below. Stored (not just kept in memory) so a 12-hour-idle browser tab that's still open,
  * or one reopened after being closed, is caught too, not only a tab that stayed active the whole
  * time. */
+/** The last email that signed in on this browser. Deliberately NOT cleared by logout (unlike
+ * AUTH_EMAIL_STORAGE_KEY above), so the Login page can pre-fill it next time - see
+ * getLastLoginEmail. Holds only the address, never a session. */
+const LAST_LOGIN_EMAIL_STORAGE_KEY = 'emami_apps_last_login_email';
+export function getLastLoginEmail(): string {
+  return storage.getItem(LAST_LOGIN_EMAIL_STORAGE_KEY) || '';
+}
 const LAST_ACTIVITY_STORAGE_KEY = 'emami_apps_last_activity_at';
 const INACTIVITY_LIMIT_MS = 12 * 60 * 60 * 1000;
 /** How often a fresh activity timestamp is actually written to storage — every mousemove/scroll
@@ -132,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (email) {
       setUserEmail(email);
       storage.setItem(AUTH_EMAIL_STORAGE_KEY, email);
+      storage.setItem(LAST_LOGIN_EMAIL_STORAGE_KEY, email);
       // Covers both login paths — direct email (Login page) and SSO/magic-link (the startup
       // effect below) — since both call this function with the authenticated email. See
       // recordLogin's comment in authApi.ts for why this is needed on top of the Lambda's own

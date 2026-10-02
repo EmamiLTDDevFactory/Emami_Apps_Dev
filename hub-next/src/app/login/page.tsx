@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Mail, CheckCircle2, MailCheck } from 'lucide-react';
 import { colors, fonts, fontWeights, radii } from '../../theme/tokens';
 import { getMicrosoftSignInUrl, requestMagicLink, checkStillAuthorized } from '../../lib/authApi';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, getLastLoginEmail } from '../../context/AuthContext';
 
 /**
  * One email field, one action button that redraws itself as the user types — mirrors how
@@ -73,6 +73,16 @@ export default function LoginPage() {
   useEffect(() => {
     if (isLoggedIn) router.replace('/');
   }, [isLoggedIn, router]);
+
+  // Pre-fill the email: a ?email= link (e.g. sent to a vendor) wins, otherwise the last email that
+  // signed in on this browser. Read after mount - localStorage/the URL don't exist during the static
+  // export's prerender. Only fills an empty field, never overwrites what the user has typed; the
+  // live access check below then runs on it as if it had been typed.
+  useEffect(() => {
+    const fromLink = new URLSearchParams(window.location.search).get('email') || '';
+    const prefill = (fromLink || getLastLoginEmail()).trim();
+    if (prefill) setEmail((cur) => cur || prefill);
+  }, []);
 
   const trimmedEmail = email.trim().toLowerCase();
   const looksLikeEmail = /^\S+@\S+\.\S+$/.test(trimmedEmail);
