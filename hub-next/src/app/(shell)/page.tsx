@@ -128,12 +128,9 @@ export default function HomePage() {
   const tileGap = isWide ? 20 : 10;
 
   const openApp = (app: AppItem) => {
-    // Every app now always renders as a tile (locked ones just look locked, see AppCard) — tapping
-    // a locked one routes to /apps/[id]'s own "you don't have access" message instead of opening it.
-    if (!unlockedAppIds.has(app.id)) {
-      router.push(`/apps/${app.id}`);
-      return;
-    }
+    // Every app always renders as a tile, but a locked one isn't clickable (see AppCard) — nothing
+    // happens for it here either. /apps/[id] still shows its own "no access" message if reached by URL.
+    if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
       window.open(app.url, '_blank', 'noopener,noreferrer');

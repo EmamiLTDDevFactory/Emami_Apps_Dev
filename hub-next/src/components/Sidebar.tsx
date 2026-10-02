@@ -42,8 +42,8 @@ function NavButton({
   /** Per-item accent — category rows use catColor, every other row uses navColor (see
    * theme/tokens.ts) — so every icon in the sidebar is color-coded, not just Categories. */
   accentColor?: string;
-  /** Shows a small lock at the row's right edge — a category whose apps are all locked for this
-   * user, same rule as the Home tile's own lock. */
+  /** A category whose apps are all locked for this user, same rule as the Home tile's own lock:
+   * shows a small lock at the row's right edge and the row can't be clicked. */
   locked?: boolean;
   /** Size and line weight inside the chip — see categoryIconFit. */
   iconFit?: IconFit;
@@ -52,7 +52,10 @@ function NavButton({
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={locked ? undefined : onClick}
+      disabled={locked}
+      aria-disabled={locked || undefined}
+      title={locked ? `${label} — no access` : undefined}
       style={{
         width: '100%',
         display: 'flex',
@@ -63,7 +66,8 @@ function NavButton({
         borderRadius: radii.xl,
         backgroundColor: active ? categoryTint(accent) : 'transparent',
         border: 'none',
-        cursor: 'pointer',
+        cursor: locked ? 'not-allowed' : 'pointer',
+        opacity: locked ? 0.55 : 1,
         textAlign: 'left',
       }}
       aria-current={active ? 'page' : undefined}

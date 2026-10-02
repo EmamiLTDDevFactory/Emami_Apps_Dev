@@ -40,16 +40,18 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
   return (
     <a
       ref={ref}
-      href="#"
+      href={locked ? undefined : '#'}
       onClick={(e) => {
         e.preventDefault();
-        onPress(app);
+        if (!locked) onPress(app);
       }}
-      {...handlers}
+      {...(locked ? {} : handlers)}
+      tabIndex={locked ? -1 : undefined}
+      aria-disabled={locked || undefined}
       onFocus={() => setFocused(true)}
       onBlur={() => {
         setFocused(false);
-        handlers.onBlur();
+        if (!locked) handlers.onBlur();
       }}
       style={{
         display: 'flex',
@@ -69,7 +71,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         transformStyle: 'preserve-3d',
         transition: `transform ${motion.duration.base}ms ${motion.easeSmooth}, box-shadow ${motion.duration.base}ms ${motion.easeSmooth}`,
         willChange: 'transform',
-        cursor: 'pointer',
+        cursor: locked ? 'not-allowed' : 'pointer',
         ...(focused ? focusRing : null),
       }}
       aria-label={locked ? `${app.name}, locked — you don't have access` : `Open ${app.name}`}
@@ -88,6 +90,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         >
           {locked ? <Lock size={isMobile ? 14 : 17} color={accent} strokeWidth={2.1} /> : <Icon size={isMobile ? 16 : 19} color={accent} strokeWidth={2.1} />}
         </div>
+        {!locked && (
         <button
           type="button"
           onClick={(e) => {
@@ -100,6 +103,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         >
           <Star size={16} color={isFavorite ? colors.amber : colors.border} fill={isFavorite ? colors.amber : 'transparent'} strokeWidth={1.8} />
         </button>
+        )}
       </div>
 
       {/* Mobile shows the full app name (no truncation) — desktop/tablet keeps the
