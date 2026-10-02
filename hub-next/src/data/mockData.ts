@@ -1,7 +1,7 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch,
+  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -41,6 +41,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'credit-risk-advisory': '/apps/credit-risk-advisory', // Credit Risk Advisory
   salescode: '/apps/salescode', // Salescode
   'audit-tool': '/apps/audit-tool', // Audit Tool (MSD internal audit)
+  'rate-auction': '/apps/rate-auction', // Rate Auction
 };
 
 const RAW_APPS: AppItem[] = [
@@ -62,6 +63,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'credit-risk-advisory', name: 'Credit Risk Advisory', desc: 'Credit risk advisory command center — executive KPIs, worklist, Customer 360, portfolio analytics and governed approval workflow with SAP OData integration.', cat: 'Finance', icon: ShieldAlert, uses: 0 },
   { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0 },
   { id: 'audit-tool', name: 'Audit Tool', desc: 'MSD internal audit — masters, checklist, audit scheduling and kickoff, observations workflow and MIS reporting on SAP.', cat: 'MSD', icon: FileSearch, uses: 0 },
+  { id: 'rate-auction', name: 'Rate Auction', desc: 'Live reverse auction for material and freight rates — vendors bid anonymously, Central Purchase awards and creates the SAP info record or contract.', cat: 'CPD', icon: Gavel, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

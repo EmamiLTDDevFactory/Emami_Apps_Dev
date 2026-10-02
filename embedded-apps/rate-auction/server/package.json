@@ -1,0 +1,23 @@
+{
+  "name": "rate-auction-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test:ecc": "node tools/test-ecc.mjs",
+    "test:sap": "node tools/test-sap.mjs",
+    "fake-sap": "node tools/fake-sap-run.mjs",
+    "dev:fake-ecc": "SAP_MODE=rfc STORE_MODE=ecc SAP_RFC_DRIVER=fake node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "optionalDependencies": {
+    "node-rfc": "^3.3.0"
+  }
+}
