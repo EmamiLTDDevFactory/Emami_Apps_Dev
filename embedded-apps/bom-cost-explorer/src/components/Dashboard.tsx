@@ -76,7 +76,7 @@ export default function Dashboard({
                   {base.coverRisk.slice(0, 200).map((c) => (
                     <tr key={c.i} className="cursor-pointer border-t border-line/60 hover:bg-accent/[0.04]" onClick={() => onOpenRow(c.i)}>
                       <td className="px-3 py-1"><span className="font-mono">{c.row.Idnrk}</span> <span className="text-muted">{c.row.Maktx}</span></td>
-                      <td className="font-mono">{c.row.Werks}</td>
+                      <td className="font-mono">{c.row.Hwerks}</td>
                       <td className="num text-right text-muted">{[c.row.CovH1, c.row.CovH2, c.row.CovH3].map((v) => (Number(v) === 999 ? '∞' : v)).join(' / ')}</td>
                       <td className="num text-right font-semibold text-bad">{c.cover}</td>
                       <td className="num px-3 text-right">{fmtNum(c.value, 2)}</td>

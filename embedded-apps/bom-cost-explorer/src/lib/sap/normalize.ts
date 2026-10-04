@@ -52,7 +52,8 @@ export function normValue(kind: FieldKind, v: unknown): unknown {
   switch (kind) {
     case 'd': return normDecimal(v);
     case 'i': return normInt(v);
-    case 'b': return normBool(v);
+    case 'b':
+    case 'f': return normBool(v);
     case 't': return normDate(v);
     default: return v === null || v === undefined ? '' : String(v);
   }

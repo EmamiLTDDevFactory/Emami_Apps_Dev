@@ -76,7 +76,7 @@ export default function RowDrawer({
             {sim.changed && <SimTag />}
           </div>
           <div className="mt-0.5 text-2xs text-muted">
-            {r.Headmat} {r.Headtxt} · plant {r.Werks}{r.Hwerks !== r.Werks ? ` (BOM ${r.Hwerks})` : ''} · level {r.Level} · {r.Mtart} · {r.Matkl}
+            {r.Headmat} {r.Headtxt} · plant {r.Hwerks}{r.Werks && r.Werks !== r.Hwerks ? ` (component plant ${r.Werks})` : ''} · level {r.Level} · {r.Mtart} · {r.Matkl}
           </div>
         </div>
       }

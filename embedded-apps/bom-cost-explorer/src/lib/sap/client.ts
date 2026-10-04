@@ -9,6 +9,8 @@ export class SapError extends Error {
     public kind: SapErrorKind,
     public status = 502,
     public details: SapMessage[] = [],
+    /** SAP's own HTTP status (status above is what the BFF answers with). */
+    public sapStatus = 0,
   ) {
     super(message);
     this.name = 'SapError';
@@ -129,7 +131,7 @@ async function once(url: string, label: string, opts: SapGetOptions): Promise<Sa
           : `SAP returned HTTP ${res.status}.`;
     const xmlMsg = /<message[^>]*>([^<]+)<\/message>/i.exec(text)?.[1];
     const { message, details } = body ? parseODataError(body, fallback) : { message: xmlMsg || fallback, details: [] };
-    throw new SapError(message, 'http', res.status >= 500 ? 502 : res.status === 401 || res.status === 403 ? 502 : 400, [...details, ...messages]);
+    throw new SapError(message, 'http', res.status >= 500 ? 502 : res.status === 401 || res.status === 403 ? 502 : 400, [...details, ...messages], res.status);
   }
   if (body === undefined) throw new SapError('SAP sent a response that is not JSON.', 'parse', 502);
   return { body, messages, ms, status: res.status };
@@ -143,7 +145,8 @@ export async function sapGet(path: string, params: Record<string, string | undef
     return await once(url, label, opts);
   } catch (e) {
     const err = e as SapError;
-    const retryable = err.kind === 'timeout' || err.kind === 'network' || (err.kind === 'http' && err.status === 502);
+    // 501 = "method not implemented" in the data provider class: retrying can't help.
+    const retryable = err.kind === 'timeout' || err.kind === 'network' || (err.kind === 'http' && err.sapStatus >= 500 && err.sapStatus !== 501);
     if (!retryable || opts.signal?.aborted) throw err;
     console.info(`[sap] ${label} retrying once after ${err.kind}`);
     return once(url, `${label} (retry)`, opts);
@@ -156,12 +159,26 @@ export async function sapGetCollection(path: string, params: Record<string, stri
   return { results, count, messages: r.messages, ms: r.ms };
 }
 
-/** Fetches $metadata as text (used by the check:metadata script through the same auth). */
+/** Fetches $metadata as text (check:metadata), through the same auth / sap-client as the BFF.
+ * A wrong service name comes back from Gateway as /IWFND/MED/170 "No service found" - that is
+ * turned into an explicit SapError so the script can say so plainly. */
 export async function sapGetMetadata(): Promise<string> {
   const doFetch = await transport();
   const client = process.env.SAP_CLIENT;
   const url = `${baseUrl()}/$metadata${client && !isMockSap() ? `?sap-client=${encodeURIComponent(client)}` : ''}`;
   const res = await doFetch(url, { headers: { Accept: 'application/xml', ...authHeader() } });
-  if (!res.ok) throw new SapError(`$metadata returned HTTP ${res.status}`, 'http', res.status);
-  return res.text();
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = `$metadata returned HTTP ${res.status}`;
+    try {
+      const { message } = parseODataError(JSON.parse(text), msg);
+      msg = message;
+    } catch {
+      const x = /<message[^>]*>([^<]+)<\/message>/i.exec(text)?.[1];
+      if (x) msg = x;
+    }
+    const code = /\/IWFND\/MED\/170|No service found/i.test(text) ? 'NO_SERVICE' : 'http';
+    throw Object.assign(new SapError(msg, 'http', res.status), { code, url });
+  }
+  return text;
 }

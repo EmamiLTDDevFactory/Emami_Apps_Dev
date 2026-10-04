@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalizeEntity, normDate, normDecimal, normBool, unwrapCollection } from '@/lib/sap/normalize';
 import { parseODataError, parseSapMessageHeader } from '@/lib/sap/messages';
-import { COST_LINE, NAV_RATE_OPTIONS, RATE_OPTION, RATE_ROW, type CostLine, type RateRow } from '@/lib/sap/fields';
+import { COST_LINE, RATE_OPTION, RATE_ROW, type CostLine, type RateRow } from '@/lib/sap/fields';
+import { NAV_RATE_OPTIONS } from '@/lib/sap/entities';
 
 const fixture = (n: string) => JSON.parse(readFileSync(join(__dirname, '../../mock/fixtures', `${n}.json`), 'utf8'));
 
@@ -33,7 +34,7 @@ describe('scalar normalisers', () => {
 
 describe('entity normalisation', () => {
   it('strips __metadata, expands RateOptions and types every field', () => {
-    const f = fixture('costlines-B');
+    const f = fixture('CostLineSet-B');
     const { results } = unwrapCollection(f.body);
     const rows = results.map((r) => normalizeEntity<CostLine>(r, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }));
     const r = rows.find((x) => x.HasChild === '' && x.RateOptions.length > 1)!;
@@ -50,7 +51,7 @@ describe('entity normalisation', () => {
     expect(normalizeEntity<CostLine>(raw, COST_LINE, { RateOptions: RATE_OPTION }).RateOptions).toEqual([]);
   });
   it('reads $inlinecount', () => {
-    const f = fixture('rates-R');
+    const f = fixture('RateRowSet-R');
     const { results, count } = unwrapCollection(f.body);
     expect(count).toBeGreaterThanOrEqual(results.length);
     const row = normalizeEntity<RateRow>(results[0], RATE_ROW);
@@ -60,7 +61,7 @@ describe('entity normalisation', () => {
 
 describe('SAP messages', () => {
   it('parses the sap-message header with details', () => {
-    const f = fixture('costlines-B');
+    const f = fixture('CostLineSet-B');
     const m = parseSapMessageHeader(f.sapMessage);
     expect(m.length).toBeGreaterThanOrEqual(2);
     expect(m.some((x) => x.severity === 'warning' && /NOPE/.test(x.message))).toBe(true);
@@ -70,7 +71,7 @@ describe('SAP messages', () => {
     expect(parseSapMessageHeader(null)).toEqual([]);
   });
   it('maps the OData error body to message.value', () => {
-    const f = fixture('error-400');
+    const f = fixture('CostLineSet-error-400');
     expect(parseODataError(f.body, 'x').message).toMatch(/FAIL01/);
     expect(parseODataError({}, 'fallback').message).toBe('fallback');
   });

@@ -6,9 +6,9 @@
    "results": [
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('1000')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('1000')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('1000')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('1000')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "1000",
      "Name1": "Kolkata Plant",
@@ -17,9 +17,9 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('1100')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('1100')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('1100')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('1100')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "1100",
      "Name1": "Pantnagar Plant",
@@ -28,9 +28,9 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('1200')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('1200')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('1200')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('1200')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "1200",
      "Name1": "Guwahati Plant",
@@ -39,9 +39,9 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('1300')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('1300')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('1300')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('1300')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "1300",
      "Name1": "Vapi Plant",
@@ -50,9 +50,9 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('BD10')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('BD10')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('BD10')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('BD10')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "BD10",
      "Name1": "Dhaka Plant",
@@ -61,9 +61,9 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/PlantSet('AE10')",
-      "uri": "ZMM_BOM_COST_SRV/PlantSet('AE10')",
-      "type": "ZMM_BOM_COST_SRV.Plant"
+      "id": "ZMM_BOM_COST_SRV/PlantVHSet('AE10')",
+      "uri": "ZMM_BOM_COST_SRV/PlantVHSet('AE10')",
+      "type": "ZMM_BOM_COST_SRV.PlantVH"
      },
      "Werks": "AE10",
      "Name1": "Dubai Plant",

@@ -34,6 +34,8 @@ test('hub sign-in, BOM costing tree, drawer, dashboard, simulator', async ({ pag
   const tree = page.getByRole('treegrid', { name: 'BOM cost tree' });
   await expect(tree).toBeVisible();
   await expect(page.getByText(/Material NOPE skipped/)).toBeVisible(); // sap-message header -> warnings panel
+  await expect(page.getByText(/exchange rates taken from TCURR/)).toBeVisible(); // the two mocked sample warnings
+  await expect(page.getByText(/rates older than 365 days were ignored/)).toBeVisible();
   await expect(page.getByText(/^Total/).first()).toBeVisible();
   await expect(tree.getByText('FG1001').first()).toBeVisible();
 

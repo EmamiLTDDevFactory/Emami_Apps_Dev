@@ -35,24 +35,53 @@ for other plants are stripped from SAP's answer.
 ### BFF routes
 
 - `POST /api/cost` `{ query, page? }`: the zod-validated query. The mode picks the entity set
-  (B/C -> `CostLines?$expand=RateOptions`, R -> `Rates`, F -> `FreightSet`, M -> `RmPmSet`).
-  - B / C: every row (CostLines does not page) -> `{ rows, messages, ms }`
+  (`MODE_TO_ENTITY`: B -> `CostLineSet?$expand=RateOptions`, C -> `CostLineSet`, R -> `RateRowSet`,
+  F -> `FreightRowSet`, M -> `RmPmRowSet`). Matnr and Werks are mandatory and checked before SAP is called.
+  - B / C: every row (CostLineSet does not page) -> `{ rows, messages, ms }`
   - R / F / M: fetched from SAP once with `$top/$skip/$inlinecount` and cached 10 min per
     user + query. Search, sort, per-column filters, per-currency totals and paging are served from
     that cache (SAP isn't asked for `$orderby`).
-- `GET /api/plants`, `GET /api/materials?q=` (SAP `search=`, max 100) / `?numbers=`,
-  `GET /api/config` (ConfigSet). All cached 10 min.
+- `GET /api/plants` (PlantVHSet), `GET /api/materials?q=` (MaterialVHSet `?search=`, min 2
+  characters, max 100), `GET /api/config` (ConfigItemSet -> `{ GROUP_CURR, DEFAULT_PRIO, MAX_HEADS }`).
+  All cached 10 min.
 - `POST /api/session`, `GET /api/session` (whether demo sign-in is enabled).
 - Rate limit per user (`RATE_LIMIT_COST_PER_MIN`, `RATE_LIMIT_LOOKUP_PER_MIN`), 120 s SAP timeout
   (`SAP_TIMEOUT_MS`), one retry on 5xx/timeout, cancel propagates to SAP (AbortController).
   `sap-message` is parsed into the warnings panel; OData errors show `error.message.value`.
 
-### SAP property names
+### SAP names: two files only
 
-Every SAP name is in **`src/lib/sap/fields.ts`**, and only there (internal key -> [SAP name, kind]).
-`npm run check:metadata` fetches `$metadata` with the BFF's credentials. It fails if any entity
-set, type, navigation or property used by the app is missing, and suggests the closest SAP names.
-Fix the SAP name in `fields.ts` and nothing else changes.
+- **`src/lib/sap/entities.ts`**: entity set names (`CostLineSet`, `RateRowSet`, `FreightRowSet`,
+  `RmPmRowSet`, `PlantVHSet`, `MaterialVHSet`, `ConfigItemSet`), `NAV_RATE_OPTIONS`, and
+  `MODE_TO_ENTITY`. `RateOptions` is never called as a set of its own, only `$expand`ed on
+  CostLineSet, and only for mode B.
+- **`src/lib/sap/fields.ts`**: every property name (internal key -> [SAP name, kind]), the
+  per-set types of the selection properties (`SELECTION_KIND_BY_SET`), and `OPTIONAL_PROPS`.
+
+Checked against the live service on NGD (2026-10-04):
+
+| What | Live service | Where handled |
+|---|---|---|
+| `HasChild` | spelled `Haschild` | fields.ts |
+| RateRowSet `RowId` | `Rowid`, Edm.Int | fields.ts |
+| Flags (`UseAsof`, `InclFrt`, `StdFrt`, `LatestOnly`, `InclBudget`, `InclCover`) | Edm.Boolean on CostLineSet; ABAP char `'X'`/`''` on Rate/Freight/RmPm row sets (`eq false` -> "Invalid parametertype") | fields.ts `SELECTION_KIND_BY_SET` |
+| `BudgetYr` | NUMC 4, sent as `'2026'` | fields.ts |
+| Coverage (`StockQty` … `CovH3`) | not in the service | fields.ts `OPTIONAL_PROPS` (show as 0 / not requested) |
+| `$expand=RateOptions` | 501 `RATEOPTIONSET_GET_ENTITYSET not implemented` | BFF retries without `$expand` and shows a warning. **ABAP to do:** redefine `/IWBEP/IF_MGW_APPL_SRV_RUNTIME~GET_EXPANDED_ENTITYSET` (or implement `RATEOPTIONSET_GET_ENTITYSET`) in the DPC_EXT |
+| `MaterialVHSet` `$top` | ignored by SAP | BFF caps at 100 |
+
+`npm run check:metadata` fetches `<SAP_BASE_URL>/$metadata` with the BFF's credentials. It fails
+with a table if an entity set, the RateOptions navigation, or any property from fields.ts
+(result fields plus the selection list) is missing, and suggests the closest name (ignoring case and
+underscores). It also reports `sap:filterable` for every filter property. Exit codes: 0 OK,
+1 names missing, 2 unreachable or wrong service name (Gateway `/IWFND/MED/170`).
+Note: the Azure NGD proxy cannot serve `$metadata` (it appends `$format=json`), so run the
+check against the Gateway itself over VPN:
+
+```bash
+SAP_BASE_URL=https://<gateway-host>:<port>/sap/opu/odata/sap/ZMM_BOM_COST_SRV \
+SAP_CLIENT=<client> SAP_USER=<user> SAP_PASSWORD=<pw> npm run check:metadata   # add --all to list every property
+```
 
 ### Calculation rules (enforced in `src/lib/cost`)
 
@@ -77,8 +106,8 @@ cp .env.example .env.local     # or just use mock mode:
 npm run dev:mock               # http://localhost:3210  (MOCK_SAP=true, demo sign-in)
 ```
 
-Mock mode uses the in-process mock SAP (`mock/sap.ts`): string decimals, `/Date()/`, `__metadata`,
-`sap-message` warnings, OData errors (any material starting `FAIL`), and paging. Header `FG9000` is
+Mock mode uses the in-process mock SAP (`mock/sap.ts`), with the live entity set and property names:
+string decimals, `/Date()/`, `__metadata`, two sample `sap-message` warnings on every response, OData errors (any material starting `FAIL`), and paging. Header `FG9000` is
 a large kit (~2,100 lines per plant) for 10k-row testing. `npm run mock:sap` serves the same mock
 over HTTP on :4599 (Basic auth when `MOCK_SAP_USER` is set). `mock/fixtures/` holds sample raw
 responses (`npx tsx mock/dump-fixtures.ts` regenerates them).

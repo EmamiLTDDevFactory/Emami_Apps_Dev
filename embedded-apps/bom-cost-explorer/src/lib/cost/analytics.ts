@@ -54,7 +54,7 @@ export function analyse(rows: CostLine[], vals: SimRow[], opts: { coverDays: num
     add(bySource, v.source || 'NO RATE', v.total);
     add(byComp, r.Idnrk, v.total);
     compText.set(r.Idnrk, r.Maktx);
-    add(byPlant, r.Werks, v.total);
+    add(byPlant, r.Hwerks, v.total);
     add(byGroup, r.Matkl || '(none)', v.total);
     const cov = minCover(r);
     if (cov !== null && cov < opts.coverDays) {
@@ -70,8 +70,8 @@ export function analyse(rows: CostLine[], vals: SimRow[], opts: { coverDays: num
       const variance = perPc.times(v.qty);
       k.budgetVariance = k.budgetVariance.plus(variance);
       k.budgetBase = k.budgetBase.plus(bud.times(v.qty));
-      const key = `${r.Werks}|${r.Idnrk}`;
-      const b = budget.get(key) ?? { label: `${r.Idnrk} ${r.Maktx}`, plant: r.Werks, variance: ZERO, perPc, qty: ZERO };
+      const key = `${r.Hwerks}|${r.Idnrk}`;
+      const b = budget.get(key) ?? { label: `${r.Idnrk} ${r.Maktx}`, plant: r.Hwerks, variance: ZERO, perPc, qty: ZERO };
       b.variance = b.variance.plus(variance);
       b.qty = b.qty.plus(v.qty);
       budget.set(key, b);
@@ -138,8 +138,8 @@ function aggregate({ rows, vals }: DiffInput) {
   rows.forEach((r, i) => {
     if (!isLeafRow(r)) return;
     const v = vals[i];
-    const key = `${r.Werks}|${r.Headmat}|${r.Idnrk}`;
-    const a = m.get(key) ?? { label: `${r.Idnrk} ${r.Maktx}`, head: r.Headmat, plant: r.Werks, qty: ZERO, rateCost: ZERO, frtCost: ZERO, total: ZERO, srcCost: ZERO, curr: undefined };
+    const key = `${r.Hwerks}|${r.Headmat}|${r.Idnrk}`;
+    const a = m.get(key) ?? { label: `${r.Idnrk} ${r.Maktx}`, head: r.Headmat, plant: r.Hwerks, qty: ZERO, rateCost: ZERO, frtCost: ZERO, total: ZERO, srcCost: ZERO, curr: undefined };
     a.qty = a.qty.plus(v.qty);
     a.rateCost = a.rateCost.plus(v.ratePcInr.times(v.qty));
     a.frtCost = a.frtCost.plus(v.frtPcInr.times(v.qty));

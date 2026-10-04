@@ -1,14 +1,16 @@
 /**
  * npm run check:metadata
  *
- * Fetches ZMM_BOM_COST_SRV/$metadata (same Basic auth / sap-client as the BFF) and FAILS if any
- * entity set, entity type, navigation or property named in src/lib/sap/fields.ts is missing -
- * the names in the service spec may differ slightly from what SAP really exposes. When one is
- * missing it prints the closest names SAP does have, so fixing fields.ts is a one-line change.
- * Type mismatches (e.g. Lookback is Edm.String, not an Int) are failures for selection fields,
- * because they change the $filter literal, and warnings elsewhere.
+ *  a) fetches <SAP_BASE_URL>/$metadata with the BFF's own Basic auth / sap-client,
+ *  b) parses EntityType / EntitySet / NavigationProperty / Property names,
+ *  c) FAILS (exit 1) with a readable table when an entity set from entities.ts (ENTITY_SET), the
+ *     navigation NAV_RATE_OPTIONS, or any property from fields.ts (result fields + the selection /
+ *     filter list) is missing - with the closest existing name as a suggestion (case- and
+ *     underscore-insensitive),
+ *  d) reports whether every filter property is sap:filterable="true".
  *
- * Reads .env.local / .env. MOCK_SAP=true checks against the built-in mock.
+ * Exit codes: 0 all good · 1 names missing · 2 could not fetch / wrong service name.
+ * Reads .env.local / .env. MOCK_SAP=true checks the built-in mock.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,88 +24,131 @@ for (const f of ['.env.local', '.env']) {
   }
 }
 
-type Kind = 's' | 'd' | 'i' | 'b' | 't';
+type Kind = 's' | 'd' | 'i' | 'b' | 't' | 'f';
 const EDM_OK: Record<Kind, string[]> = {
   s: ['Edm.String'],
   d: ['Edm.Decimal', 'Edm.Double', 'Edm.Single'],
   i: ['Edm.Int16', 'Edm.Int32', 'Edm.Byte', 'Edm.SByte'],
   b: ['Edm.Boolean'],
   t: ['Edm.DateTime', 'Edm.DateTimeOffset'],
+  f: ['Edm.String'],
 };
 
+const norm = (s: string) => s.toLowerCase().replace(/_/g, '');
 function lev(a: string, b: string) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
-  for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1].toLowerCase() === b[j - 1].toLowerCase() ? 0 : 1));
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
   return d[a.length][b.length];
 }
-const closest = (name: string, pool: string[]) => pool.map((p) => [p, lev(name, p)] as const).sort((x, y) => x[1] - y[1]).slice(0, 3).filter(([, s]) => s <= Math.max(3, name.length / 2)).map(([p]) => p);
+/** Exact match ignoring case/underscores first, else the nearest by edit distance. */
+function closest(name: string, pool: string[]): string {
+  const n = norm(name);
+  const exact = pool.find((p) => norm(p) === n);
+  if (exact) return exact;
+  const best = pool.map((p) => [p, lev(n, norm(p))] as const).sort((a, b) => a[1] - b[1])[0];
+  return best && best[1] <= Math.max(2, Math.floor(n.length / 3)) ? best[0] : '-';
+}
+
+interface Row { area: string; name: string; status: 'OK' | 'MISSING' | 'TYPE' | 'WARN'; detail: string }
+
+function table(rows: Row[]) {
+  const head = ['Area', 'Name in code', 'Status', 'Suggestion / detail'];
+  const cells = rows.map((r) => [r.area, r.name, r.status, r.detail]);
+  const w = head.map((h, i) => Math.max(h.length, ...cells.map((c) => c[i].length)));
+  const line = (c: string[]) => `  ${c.map((x, i) => x.padEnd(w[i])).join('  │  ')}`;
+  console.log(line(head));
+  console.log(`  ${w.map((n) => '─'.repeat(n)).join('──┼──')}`);
+  for (const c of cells) console.log(line(c));
+}
 
 async function main() {
   const { sapGetMetadata } = await import('../src/lib/sap/client');
   const F = await import('../src/lib/sap/fields');
-  const xml = await sapGetMetadata();
+  const E = await import('../src/lib/sap/entities');
+  const target = process.env.MOCK_SAP === 'true' ? 'MOCK SAP' : process.env.SAP_BASE_URL;
+  console.log(`check:metadata → ${target}/$metadata`);
 
-  const types = new Map<string, { props: Map<string, string>; navs: Set<string> }>();
+  let xml: string;
+  try {
+    xml = await sapGetMetadata();
+  } catch (e) {
+    const err = e as Error & { code?: string; status?: number };
+    if (err.code === 'NO_SERVICE') {
+      console.error(`\n  ✗ SERVICE NOT FOUND: SAP Gateway says "${err.message}".`);
+      console.error(`    SAP_BASE_URL must end in /${E.SERVICE} and the service must be registered (and its system alias set)`);
+      console.error('    in /IWFND/MAINT_SERVICE on this Gateway. Check the name/version with Basis.\n');
+    } else console.error(`\n  ✗ Could not fetch $metadata: ${err.message}\n`);
+    process.exit(2);
+  }
+
+  const types = new Map<string, { props: Map<string, { type: string; filterable: boolean }>; navs: Set<string> }>();
   for (const m of xml.matchAll(/<EntityType\b[^>]*\bName="([^"]+)"[^>]*>([\s\S]*?)<\/EntityType>/g)) {
-    const props = new Map<string, string>();
+    const props = new Map<string, { type: string; filterable: boolean }>();
     for (const p of m[2].matchAll(/<Property\b([^>]*)\/?>/g)) {
       const name = /\bName="([^"]+)"/.exec(p[1])?.[1];
-      const type = /\bType="([^"]+)"/.exec(p[1])?.[1];
-      if (name) props.set(name, type ?? '');
+      if (!name) continue;
+      props.set(name, { type: /\bType="([^"]+)"/.exec(p[1])?.[1] ?? '', filterable: !/sap:filterable="false"/.test(p[1]) });
     }
-    const navs = new Set(Array.from(m[2].matchAll(/<NavigationProperty\b[^>]*\bName="([^"]+)"/g), (x) => x[1]));
-    types.set(m[1], { props, navs });
+    types.set(m[1], { props, navs: new Set(Array.from(m[2].matchAll(/<NavigationProperty\b[^>]*\bName="([^"]+)"/g), (x) => x[1])) });
   }
   const sets = new Map(Array.from(xml.matchAll(/<EntitySet\b[^>]*\bName="([^"]+)"[^>]*\bEntityType="([^"]+)"/g), (m) => [m[1], m[2].split('.').pop()!]));
 
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  let checked = 0;
-
-  const checkFields = (label: string, typeName: string, map: Record<string, readonly [string, Kind]>, strictTypes: boolean) => {
-    const t = types.get(typeName);
-    if (!t) return errors.push(`${label}: entity type ${typeName} not found in $metadata`);
-    for (const [key, [sap, kind]] of Object.entries(map)) {
-      checked++;
-      const edm = t.props.get(sap);
-      if (edm === undefined) {
-        const hint = closest(sap, Array.from(t.props.keys()));
-        errors.push(`${label}.${key}: property "${sap}" missing on ${typeName}${hint.length ? ` - did you mean ${hint.join(' / ')}?` : ''}`);
-      } else if (!EDM_OK[kind].includes(edm)) {
-        (strictTypes ? errors : warnings).push(`${label}.${key}: "${sap}" is ${edm}, fields.ts says kind '${kind}' (${EDM_OK[kind].join('/')})`);
-      }
+  const rows: Row[] = [];
+  const optional: ReadonlySet<string> = F.OPTIONAL_PROPS;
+  const checkProps = (area: string, typeName: string, map: Record<string, readonly [string, Kind]>, isFilter: boolean) => {
+    const t = types.get(typeName)!;
+    const pool = Array.from(t.props.keys());
+    for (const [sap, kind] of Object.values(map)) {
+      const p = t.props.get(sap);
+      if (!p && optional.has(sap)) rows.push({ area, name: sap, status: 'WARN', detail: 'optional (fields.ts OPTIONAL_PROPS) - not in the service; app shows it as 0 / not requested' });
+      else if (!p) rows.push({ area, name: sap, status: 'MISSING', detail: `closest: ${closest(sap, pool)}` });
+      else if (!EDM_OK[kind].includes(p.type)) rows.push({ area, name: sap, status: isFilter ? 'TYPE' : 'WARN', detail: `${p.type}, fields.ts kind '${kind}' expects ${EDM_OK[kind].join('/')}` });
+      else if (isFilter) rows.push({ area, name: sap, status: p.filterable ? 'OK' : 'WARN', detail: p.filterable ? 'sap:filterable=true' : 'sap:filterable="false" - SAP may reject it in $filter' });
     }
   };
 
-  for (const [k, setName] of Object.entries(F.ENTITY_SETS) as [keyof typeof F.ENTITY_SETS, string][]) {
+  for (const [key, setName] of Object.entries(E.ENTITY_SET) as [keyof typeof E.ENTITY_SET, string][]) {
     const typeName = sets.get(setName);
-    if (!typeName) {
-      errors.push(`Entity set ${setName} not found (sets in $metadata: ${Array.from(sets.keys()).join(', ')})`);
+    if (!typeName || !types.has(typeName)) {
+      rows.push({ area: 'EntitySet', name: setName, status: 'MISSING', detail: `closest: ${closest(setName, Array.from(sets.keys()))}` });
       continue;
     }
-    if (typeName !== F.ENTITY_TYPES[k]) warnings.push(`${setName} uses type ${typeName} (fields.ts ENTITY_TYPES says ${F.ENTITY_TYPES[k]}) - checked against ${typeName}`);
-    checkFields(setName, typeName, F.ENTITY_FIELDS[k] as Record<string, readonly [string, Kind]>, false);
-    if ((F.SELECTION_SETS as readonly string[]).includes(k)) checkFields(`${setName}[selection]`, typeName, F.SELECTION as Record<string, readonly [string, Kind]>, true);
+    rows.push({ area: 'EntitySet', name: setName, status: 'OK', detail: `type ${typeName}` });
+    checkProps(setName, typeName, F.FIELDS_BY_SET[key] as Record<string, readonly [string, Kind]>, false);
+    if ((E.SELECTION_SETS as readonly string[]).includes(key)) {
+      const sel = Object.fromEntries(Object.keys(F.SELECTION).map((k) => [k, F.selectionField(key, k as keyof typeof F.SELECTION)]));
+      checkProps(`${setName} $filter`, typeName, sel as Record<string, readonly [string, Kind]>, true);
+    }
+    if (key === 'COST_LINES') {
+      const navs = types.get(typeName)!.navs;
+      rows.push(navs.has(E.NAV_RATE_OPTIONS)
+        ? { area: 'Navigation', name: E.NAV_RATE_OPTIONS, status: 'OK', detail: `on ${typeName}` }
+        : { area: 'Navigation', name: E.NAV_RATE_OPTIONS, status: 'MISSING', detail: `closest: ${closest(E.NAV_RATE_OPTIONS, Array.from(navs))}` });
+    }
   }
-  const clType = sets.get(F.ENTITY_SETS.CostLines);
-  if (clType && !types.get(clType)?.navs.has(F.NAV_RATE_OPTIONS)) errors.push(`CostLines: navigation ${F.NAV_RATE_OPTIONS} missing (navs: ${Array.from(types.get(clType)?.navs ?? []).join(', ') || 'none'})`);
-  const optType = types.has(F.ENTITY_TYPE_RATE_OPTION) ? F.ENTITY_TYPE_RATE_OPTION : undefined;
-  if (!optType) errors.push(`Entity type ${F.ENTITY_TYPE_RATE_OPTION} not found (types: ${Array.from(types.keys()).join(', ')})`);
-  else checkFields('RateOption', optType, F.RATE_OPTION as Record<string, readonly [string, Kind]>, false);
+  // Rate option properties: resolve the target type through the association end if possible,
+  // else by the configured name.
+  const optType = types.has(F.ENTITY_TYPE_RATE_OPTION) ? F.ENTITY_TYPE_RATE_OPTION : Array.from(types.keys()).find((t) => norm(t).includes('rateoption'));
+  if (optType) checkProps(`RateOptions (${optType})`, optType, F.RATE_OPTION as Record<string, readonly [string, Kind]>, false);
+  else rows.push({ area: 'EntityType', name: F.ENTITY_TYPE_RATE_OPTION, status: 'MISSING', detail: `types: ${Array.from(types.keys()).join(', ')}` });
 
-  console.log(`check:metadata - ${process.env.MOCK_SAP === 'true' ? 'MOCK SAP' : process.env.SAP_BASE_URL} - ${checked} property references checked`);
-  for (const w of warnings) console.warn(`  WARN  ${w}`);
-  for (const e of errors) console.error(`  FAIL  ${e}`);
-  if (errors.length) {
-    console.error(`\n${errors.length} problem(s). Fix the SAP names in src/lib/sap/fields.ts (only that file).`);
+  const bad = rows.filter((r) => r.status === 'MISSING' || r.status === 'TYPE');
+  const warn = rows.filter((r) => r.status === 'WARN');
+  const ok = rows.length - bad.length - warn.length;
+  const verbose = process.argv.includes('--all');
+  console.log('');
+  table(verbose ? rows : rows.filter((r) => r.status !== 'OK' || r.area === 'EntitySet' || r.area === 'Navigation'));
+  const filterRows = rows.filter((r) => r.area.endsWith('$filter'));
+  console.log(`\n  ${ok} OK · ${warn.length} warning(s) · ${bad.length} problem(s) · filter properties filterable: ${filterRows.filter((r) => r.status === 'OK').length}/${filterRows.length}${verbose ? '' : ' (use --all to list every property)'}`);
+  if (bad.length) {
+    console.error(`\n  ✗ FAIL - fix the names in src/lib/sap/fields.ts (properties) or src/lib/sap/entities.ts (sets / navigation) only.\n`);
     process.exit(1);
   }
-  console.log('OK - every property used by the app exists in $metadata.');
+  console.log('\n  ✓ OK - every entity set, the RateOptions navigation and every property the app uses exist in $metadata.\n');
 }
 
 main().catch((e) => {
-  console.error(`check:metadata could not run: ${e.message}`);
+  console.error(`check:metadata could not run: ${(e as Error).message}`);
   process.exit(2);
 });

@@ -71,7 +71,8 @@ export function buildPivot(rows: CostLine[], plantOrder?: string[]): Pivot {
   const compOrder = new Map<string, string[]>();
 
   for (const r of rows) {
-    if (!plants.includes(r.Werks)) plants.push(r.Werks);
+    // Hwerks = the comparison (cost) plant; Werks is the component plant.
+    if (!plants.includes(r.Hwerks)) plants.push(r.Hwerks);
     if (!isLeafRow(r)) continue;
     if (!totals.has(r.Headmat)) {
       headOrder.push(r.Headmat);
@@ -88,7 +89,7 @@ export function buildPivot(rows: CostLine[], plantOrder?: string[]): Pivot {
     const qty = D(r.ProdQty);
     const hasRate = !!r.SelSource;
     for (const target of [pr, totals.get(r.Headmat)!]) {
-      const c = (target.cells[r.Werks] ??= emptyCell());
+      const c = (target.cells[r.Hwerks] ??= emptyCell());
       c.qty = target.kind === 'component' ? c.qty.plus(qty) : ZERO;
       c.rateCost = c.rateCost.plus(D(r.SelRatePcInr).times(qty));
       c.frtCost = c.frtCost.plus(D(r.FrtPcInr).times(qty));

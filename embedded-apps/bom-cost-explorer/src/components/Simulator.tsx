@@ -50,8 +50,8 @@ export default function Simulator({
       after = after.plus(a);
       if (sim[i].repicked) repicked++;
       if (sim[i].changed) changed++;
-      const k = `${r.Werks}|${r.Headmat}`;
-      const h = heads.get(k) ?? { label: `${r.Headmat} ${r.Headtxt}`, plant: r.Werks, base: ZERO, after: ZERO };
+      const k = `${r.Hwerks}|${r.Headmat}`;
+      const h = heads.get(k) ?? { label: `${r.Headmat} ${r.Headtxt}`, plant: r.Hwerks, base: ZERO, after: ZERO };
       h.base = h.base.plus(b);
       h.after = h.after.plus(a);
       heads.set(k, h);
@@ -123,7 +123,7 @@ export default function Simulator({
                 return (
                   <li key={k} className="flex items-center gap-2">
                     <button type="button" className="min-w-0 flex-1 truncate text-left hover:underline" onClick={() => i !== undefined && onOpenRow(i)}>
-                      {r ? <><span className="font-mono">{r.Werks} {r.Idnrk}</span> <span className="text-muted">{r.Maktx}</span></> : <span className="text-faint">{k} (not in this result)</span>}
+                      {r ? <><span className="font-mono">{r.Hwerks} {r.Idnrk}</span> <span className="text-muted">{r.Maktx}</span></> : <span className="text-faint">{k} (not in this result)</span>}
                     </button>
                     {r && <span className="num text-faint line-through">{fmtRate(r.SelRatePcInr)}</span>}
                     <span className="num sim-val">{fmtRate(v)}</span>

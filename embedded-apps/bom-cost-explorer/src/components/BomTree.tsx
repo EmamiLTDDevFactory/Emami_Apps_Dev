@@ -307,7 +307,7 @@ export default function BomTree({
                   template={template}
                   open={expanded.has(tree.nodes[ni].id)}
                   focused={vi.index === focus}
-                  locCurr={plantCurr[tree.rows[tree.nodes[ni].start]?.Werks] ?? ''}
+                  locCurr={plantCurr[tree.rows[tree.nodes[ni].start]?.Hwerks] ?? ''}
                   onToggle={toggle}
                   onOpen={onOpen}
                   onFocus={setFocus}

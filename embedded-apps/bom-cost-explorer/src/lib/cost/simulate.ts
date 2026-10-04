@@ -240,8 +240,8 @@ export function quantityBreaks(rows: CostLine[], sim: SimRow[], explQty: string,
   const heads = new Map<string, { head: string; text: string; plant: string; total: Decimal }>();
   rows.forEach((r, i) => {
     if (!isLeafRow(r)) return;
-    const k = `${r.Werks}|${r.Headmat}`;
-    const h = heads.get(k) ?? { head: r.Headmat, text: r.Headtxt, plant: r.Werks, total: ZERO };
+    const k = `${r.Hwerks}|${r.Headmat}`;
+    const h = heads.get(k) ?? { head: r.Headmat, text: r.Headtxt, plant: r.Hwerks, total: ZERO };
     h.total = h.total.plus(sim[i].total);
     heads.set(k, h);
   });

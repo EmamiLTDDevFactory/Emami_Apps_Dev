@@ -1,0 +1,39 @@
+name: bom-cost-explorer
+
+on:
+  push:
+    paths: ['embedded-apps/bom-cost-explorer/**', '.github/workflows/bom-cost-explorer.yml']
+  pull_request:
+    paths: ['embedded-apps/bom-cost-explorer/**']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: embedded-apps/bom-cost-explorer
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      HAS_SAP: ${{ secrets.BOM_COST_SAP_BASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --legacy-peer-deps
+      - run: npx tsc --noEmit
+      - run: npm test
+      # Mapping consistency: fields.ts / entities.ts against the mock's $metadata.
+      - run: MOCK_SAP=true npm run check:metadata
+      # Live service: only when the repo has SAP secrets AND the runner can reach the Gateway
+      # (GitHub-hosted runners cannot reach 10.17.x - use a self-hosted runner on the VPN).
+      # The Azure NGD proxy cannot serve $metadata (it appends $format=json), so point
+      # SAP_BASE_URL at the Gateway itself: https://<host>:<port>/sap/opu/odata/sap/ZMM_BOM_COST_SRV
+      - name: check:metadata (live SAP)
+        if: env.HAS_SAP == 'true'
+        env:
+          SAP_BASE_URL: ${{ secrets.BOM_COST_SAP_BASE_URL }}
+          SAP_CLIENT: ${{ secrets.BOM_COST_SAP_CLIENT }}
+          SAP_USER: ${{ secrets.BOM_COST_SAP_USER }}
+          SAP_PASSWORD: ${{ secrets.BOM_COST_SAP_PASSWORD }}
+        run: npm run check:metadata

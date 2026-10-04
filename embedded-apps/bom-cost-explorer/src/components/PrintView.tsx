@@ -31,7 +31,7 @@ export default function PrintView({ query, tree, pivot, sim, simOn, total, messa
           <tbody>
             {tree.rows.slice(0, MAX).map((r, i) => (
               <tr key={i} style={{ fontStyle: tree.isLeaf[i] ? 'normal' : 'italic' }}>
-                <td>{r.Werks}</td><td>{r.Headmat}</td><td>{r.Level}</td>
+                <td>{r.Hwerks}</td><td>{r.Headmat}</td><td>{r.Level}</td>
                 <td style={{ paddingLeft: (r.Level - 1) * 8 }}>{r.Idnrk}</td><td>{r.Maktx}</td>
                 <td style={{ textAlign: 'right' }}>{fmtQty(r.ProdQty)} {r.Meins}</td>
                 <td>{tree.isLeaf[i] ? r.SelSource || 'NO RATE' : ''}</td>

@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
-import { SELECTION, sel, type FieldKind } from './fields';
+import { SELECTION, sel, selectionField, type FieldKind } from './fields';
+import { MODE_TO_SET_KEY, type EntitySetKey } from './entities';
 import { usesField, type CostQuery } from '../query/schema';
 
 /** OData V2 string literal: single-quoted, embedded quotes doubled. */
@@ -31,15 +32,17 @@ export function literal(kind: FieldKind, v: unknown): string {
       return String(n);
     }
     case 'b': return v ? 'true' : 'false';
+    case 'f': return v ? "'X'" : "''";
     case 't': return odataDate(String(v));
   }
 }
 
 type SelKey = keyof typeof SELECTION;
 
-/** `field eq v` for one value, `(field eq a or field eq b)` for several. */
-export function eqClause(key: SelKey, values: unknown | unknown[]): string | null {
-  const [name, kind] = SELECTION[key];
+/** `field eq v` for one value, `(field eq a or field eq b)` for several. The literal follows the
+ * property's type on that entity set (fields.ts SELECTION_KIND_BY_SET). */
+export function eqClause(key: SelKey, values: unknown | unknown[], set: EntitySetKey = 'COST_LINES'): string | null {
+  const [name, kind] = selectionField(set, key);
   const list = (Array.isArray(values) ? values : [values]).filter((v) => v !== undefined && v !== null && v !== '');
   const uniq = Array.from(new Set(list.map((v) => literal(kind, v))));
   if (uniq.length === 0) return null;
@@ -47,40 +50,45 @@ export function eqClause(key: SelKey, values: unknown | unknown[]): string | nul
   return parts.length === 1 ? parts[0] : `(${parts.join(' or ')})`;
 }
 
-/** Builds the $filter for a selection-driven entity set from a validated query. Only the
- * parameters the mode uses are sent (same as the SAP selection screen). */
+export class FilterError extends Error {}
+
+/** Builds the $filter for a selection-driven entity set (CostLineSet, RateRowSet, FreightRowSet,
+ * RmPmRowSet) from a validated query. Only the parameters the mode uses are sent (same as the SAP
+ * selection screen). Matnr and Werks are mandatory on every one of these sets: a query without
+ * them throws before anything is sent to SAP. */
 export function buildSelectionFilter(q: CostQuery): string {
   const u = (f: Parameters<typeof usesField>[1]) => usesField(q.mode, f);
-  const c: (string | null)[] = [eqClause('Mode', q.mode), eqClause('Matnr', q.materials)];
-
-  if (q.mode === 'C') {
-    c.push(eqClause('Werks', q.bomPlant), eqClause('Cplnt', q.compPlants));
-  } else {
-    c.push(eqClause('Werks', q.plants));
-  }
-  if (u('explQty')) c.push(eqClause('ExplQty', q.explQty));
-  if (u('maxLevel') && q.maxLevel > 0) c.push(eqClause('MaxLevel', q.maxLevel));
-  if (u('lookback')) c.push(eqClause('Lookback', q.lookback));
-  if (u('freightDays')) c.push(eqClause('FreightDays', q.freightDays));
-  if (u('prio')) c.push(eqClause('Prio', q.prio.join(',')));
-  if (u('donorPlant') && q.donorPlant) c.push(eqClause('DonorPlant', q.donorPlant));
-  if (u('inclFrt')) c.push(eqClause('InclFrt', q.inclFrt));
-  if (u('stdFrt')) c.push(eqClause('StdFrt', q.stdFrt));
-  if (u('latestOnly')) c.push(eqClause('LatestOnly', q.latestOnly));
+  const set = MODE_TO_SET_KEY[q.mode];
+  const eq = (k: SelKey, v: unknown) => eqClause(k, v, set);
+  const matnr = eq('Matnr', q.materials);
+  const werks = eq('Werks', q.mode === 'C' ? q.bomPlant : q.plants);
+  if (!matnr) throw new FilterError('At least one material (Matnr) is required.');
+  if (!werks) throw new FilterError(q.mode === 'C' ? 'The BOM plant (Werks) is required.' : 'At least one plant (Werks) is required.');
+  const c: (string | null)[] = [eq('Mode', q.mode), matnr, werks];
+  if (q.mode === 'C') c.push(eq('Cplnt', q.compPlants));
+  if (u('explQty')) c.push(eq('ExplQty', q.explQty));
+  if (u('maxLevel') && q.maxLevel > 0) c.push(eq('MaxLevel', q.maxLevel));
+  if (u('lookback')) c.push(eq('Lookback', q.lookback));
+  if (u('freightDays')) c.push(eq('FreightDays', q.freightDays));
+  if (u('prio')) c.push(eq('Prio', q.prio.join(',')));
+  if (u('donorPlant') && q.donorPlant) c.push(eq('DonorPlant', q.donorPlant));
+  if (u('inclFrt')) c.push(eq('InclFrt', q.inclFrt));
+  if (u('stdFrt')) c.push(eq('StdFrt', q.stdFrt));
+  if (u('latestOnly')) c.push(eq('LatestOnly', q.latestOnly));
   if (u('inclBudget')) {
-    c.push(eqClause('InclBudget', q.inclBudget));
-    if (q.inclBudget && q.budgetYr) c.push(eqClause('BudgetYr', q.budgetYr));
+    c.push(eq('InclBudget', q.inclBudget));
+    if (q.inclBudget && q.budgetYr) c.push(eq('BudgetYr', String(q.budgetYr)));
   }
   if (u('inclCover')) {
-    c.push(eqClause('InclCover', q.inclCover));
-    if (q.inclCover) c.push(eqClause('Hor1', q.hor1), eqClause('Hor2', q.hor2), eqClause('Hor3', q.hor3));
+    c.push(eq('InclCover', q.inclCover));
+    if (q.inclCover) c.push(eq('Hor1', q.hor1), eq('Hor2', q.hor2), eq('Hor3', q.hor3));
   }
   if (u('budatWindow')) {
-    if (q.budatFrom) c.push(eqClause('BudatFrom', q.budatFrom));
-    if (q.budatTo) c.push(eqClause('BudatTo', q.budatTo));
+    if (q.budatFrom) c.push(eq('BudatFrom', q.budatFrom));
+    if (q.budatTo) c.push(eq('BudatTo', q.budatTo));
   }
-  if (u('asof') && q.useAsof && q.asofDate) c.push(eqClause('UseAsof', true), eqClause('AsofDate', q.asofDate));
-  if (u('capid') && q.capid) c.push(eqClause('Capid', q.capid));
+  if (u('asof') && q.useAsof && q.asofDate) c.push(eq('UseAsof', true), eq('AsofDate', q.asofDate));
+  if (u('capid') && q.capid) c.push(eq('Capid', q.capid));
 
   return c.filter(Boolean).join(' and ');
 }

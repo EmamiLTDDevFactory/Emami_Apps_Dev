@@ -3,6 +3,7 @@ import { costRequestSchema, pageSchema, plantsOf } from '@/lib/query/schema';
 import { fetchCostLines, fetchPagedSet } from '@/lib/sap/service';
 import { forbiddenPlants, hasAll, plantAllowed } from '@/lib/auth/plants';
 import { errorResponse, HttpError, rateLimit, requireUser } from '@/lib/server/guard';
+import { FilterError } from '@/lib/sap/filter';
 import { hashKey, namedCache } from '@/lib/server/cache';
 import { queryTable } from '@/lib/server/table';
 import { VIEW_COLUMNS, PLANT_FIELD } from '@/lib/views';
@@ -16,7 +17,7 @@ const resultCache = namedCache<Cached>('paged-results', 10 * 60_000, 40);
 
 /**
  * POST /api/cost  { query, page? }
- *  B / C -> every CostLine (with RateOptions) for the tree / pivot: { rows, messages, ms }
+ *  B / C -> every CostLineSet row for the tree / pivot (RateOptions expanded for B only)
  *  R / F / M -> one page of the full result (fetched from SAP once, cached 10 min per user+query):
  *           { rows, total, totals, messages, ms, cached }
  */
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
     const t = queryTable(entry.rows, VIEW_COLUMNS[query.mode], page);
     return NextResponse.json({ ...t, messages: entry.messages, ms: entry.ms, cached, fetchedAt: entry.at, serverMs: Date.now() - started });
   } catch (e) {
+    if (e instanceof FilterError) return errorResponse(new HttpError(400, e.message));
     return errorResponse(e);
   }
 }

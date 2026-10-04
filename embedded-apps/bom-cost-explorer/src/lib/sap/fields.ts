@@ -13,40 +13,21 @@
  *   i = Edm.Int16/32/Byte       -> number
  *   b = Edm.Boolean             -> boolean
  *   t = Edm.DateTime            -> ISO date string (YYYY-MM-DD) or null
+ *   f = ABAP flag (Edm.String)  -> boolean; in $filter true -> 'X', false -> ''
  */
-export type FieldKind = 's' | 'd' | 'i' | 'b' | 't';
+import type { EntitySetKey } from './entities';
+
+export type FieldKind = 's' | 'd' | 'i' | 'b' | 't' | 'f';
 type FieldMap = Record<string, readonly [sapName: string, kind: FieldKind]>;
 
 const def = <T extends FieldMap>(m: T) => m;
 
-export const SERVICE = 'ZMM_BOM_COST_SRV';
-
-export const ENTITY_SETS = {
-  CostLines: 'CostLines',
-  Rates: 'Rates',
-  Freight: 'FreightSet',
-  RmPm: 'RmPmSet',
-  Plants: 'PlantSet',
-  Materials: 'MaterialSet',
-  Config: 'ConfigSet',
-} as const;
-
-/** Entity TYPE names as they appear in $metadata (used only by check:metadata). Adjust if SAP's
- * type names differ from the set names; the script lists what it finds when one is missing. */
-export const ENTITY_TYPES: Record<keyof typeof ENTITY_SETS, string> = {
-  CostLines: 'CostLine',
-  Rates: 'RateRow',
-  Freight: 'FreightRow',
-  RmPm: 'RmPmRow',
-  Plants: 'Plant',
-  Materials: 'Material',
-  Config: 'Config',
-};
-
-export const NAV_RATE_OPTIONS = 'RateOptions';
+/** RateOption entity type name in $metadata (informational: the set itself is not addressable,
+ * rows arrive only via $expand=RateOptions on CostLineSet - see entities.ts). */
 export const ENTITY_TYPE_RATE_OPTION = 'RateOption';
 
-/** Selection ("filter-only") properties, present on CostLines, Rates, FreightSet and RmPmSet. */
+/** Selection ("filter-only") properties, the same on CostLineSet, RateRowSet, FreightRowSet and
+ * RmPmRowSet. Matnr and Werks are mandatory on all four. */
 export const SELECTION = def({
   Mode: ['Mode', 's'],
   Matnr: ['Matnr', 's'],
@@ -66,7 +47,7 @@ export const SELECTION = def({
   LatestOnly: ['LatestOnly', 'b'],
   InclBudget: ['InclBudget', 'b'],
   InclCover: ['InclCover', 'b'],
-  BudgetYr: ['BudgetYr', 'i'],
+  BudgetYr: ['BudgetYr', 's'], // NUMC 4 on the live service: sent quoted ('2026')
   Hor1: ['Hor1', 'i'],
   Hor2: ['Hor2', 'i'],
   Hor3: ['Hor3', 'i'],
@@ -74,6 +55,9 @@ export const SELECTION = def({
   BudatTo: ['BudatTo', 't'],
 });
 
+/** CostLineSet. Hwerks = BOM plant (mode B) / comparison (cost) plant (mode C); Werks = component
+ * plant; Headmat = header material; Idnrk = component; HasChild 'X' = parent row (leaf = blank);
+ * SelSource blank = no rate; LocCurr = currency of the *Loc totals (the *Inr ones are INR). */
 export const COST_LINE = def({
   Seqnr: ['Seqnr', 'i'],
   Land1: ['Land1', 's'],
@@ -87,7 +71,7 @@ export const COST_LINE = def({
   Maktx: ['Maktx', 's'],
   Mtart: ['Mtart', 's'],
   Meins: ['Meins', 's'],
-  HasChild: ['HasChild', 's'],
+  HasChild: ['Haschild', 's'], // live service spells it Haschild
   Donor: ['Donor', 's'],
   Sobsl: ['Sobsl', 's'],
   CompGrp: ['CompGrp', 's'],
@@ -181,8 +165,9 @@ export const RATE_OPTION = def({
   CostInr: ['CostInr', 'd'],
 });
 
+/** RateRowSet: Material / Plant (not Matnr / Werks), Recordsource = rate source. */
 export const RATE_ROW = def({
-  RowId: ['RowId', 's'],
+  RowId: ['Rowid', 'i'], // live: Rowid, Edm.Int
   Recordsource: ['Recordsource', 's'],
   Material: ['Material', 's'],
   Matdesc: ['Matdesc', 's'],
@@ -211,6 +196,7 @@ export const RATE_ROW = def({
   RatePcInr: ['RatePcInr', 'd'],
 });
 
+/** FreightRowSet: one row per PO line (Material, Plant, Podate, Conditiontype). */
 export const FREIGHT_ROW = def({
   RowId: ['RowId', 's'],
   Material: ['Material', 's'],
@@ -239,6 +225,7 @@ export const FREIGHT_ROW = def({
   UsedPcInr: ['UsedPcInr', 'd'],
 });
 
+/** RmPmRowSet: key Material + Plant. */
 export const RMPM_ROW = def({
   Material: ['Material', 's'],
   Matdesc: ['Matdesc', 's'],
@@ -269,6 +256,7 @@ export const RMPM_ROW = def({
   TotCostInr: ['TotCostInr', 'd'],
 });
 
+/** PlantVHSet (value help). */
 export const PLANT = def({
   Werks: ['Werks', 's'],
   Name1: ['Name1', 's'],
@@ -276,6 +264,7 @@ export const PLANT = def({
   Waers: ['Waers', 's'],
 });
 
+/** MaterialVHSet (value help, type-ahead via ?search=). */
 export const MATERIAL = def({
   Matnr: ['Matnr', 's'],
   Maktx: ['Maktx', 's'],
@@ -283,6 +272,7 @@ export const MATERIAL = def({
   Meins: ['Meins', 's'],
 });
 
+/** ConfigItemSet: CfgKey / CfgVal pairs. */
 export const CONFIG = def({
   CfgKey: ['CfgKey', 's'],
   CfgVal: ['CfgVal', 's'],
@@ -290,25 +280,49 @@ export const CONFIG = def({
 
 export const CONFIG_KEYS = { GROUP_CURR: 'GROUP_CURR', DEFAULT_PRIO: 'DEFAULT_PRIO', MAX_HEADS: 'MAX_HEADS' } as const;
 
-/** Which field map describes each entity set (and its type in $metadata). */
-export const ENTITY_FIELDS = {
-  CostLines: COST_LINE,
-  Rates: RATE_ROW,
-  Freight: FREIGHT_ROW,
-  RmPm: RMPM_ROW,
-  Plants: PLANT,
-  Materials: MATERIAL,
-  Config: CONFIG,
+/** Result field map of each entity set (keys = ENTITY_SET keys in entities.ts). */
+export const FIELDS_BY_SET = {
+  COST_LINES: COST_LINE,
+  RATES: RATE_ROW,
+  FREIGHT: FREIGHT_ROW,
+  RMPM: RMPM_ROW,
+  PLANTS: PLANT,
+  MATERIALS: MATERIAL,
+  CONFIG: CONFIG,
 } as const;
 
-/** Sets that are driven by the selection properties above. */
-export const SELECTION_SETS = ['CostLines', 'Rates', 'Freight', 'RmPm'] as const;
+/**
+ * Selection properties whose Edm type differs per entity set on the live service (checked against
+ * NGD 2026-10-04): the flags are Edm.Boolean on CostLineSet but ABAP char flags ('X' / '') on the
+ * row sets - sending `StdFrt eq false` there fails with "Invalid parametertype used at function 'eq'".
+ */
+const FLAGS_AS_CHAR = { UseAsof: 'f', InclFrt: 'f', StdFrt: 'f', LatestOnly: 'f', InclBudget: 'f', InclCover: 'f' } as const;
+export const SELECTION_KIND_BY_SET: Partial<Record<EntitySetKey, Partial<Record<keyof typeof SELECTION, FieldKind>>>> = {
+  RATES: FLAGS_AS_CHAR,
+  FREIGHT: FLAGS_AS_CHAR,
+  RMPM: FLAGS_AS_CHAR,
+};
+
+/** [SAP name, kind] of a selection field on a given entity set. */
+export function selectionField(set: EntitySetKey, k: keyof typeof SELECTION): readonly [string, FieldKind] {
+  const [name, kind] = SELECTION[k];
+  return [name, SELECTION_KIND_BY_SET[set]?.[k] ?? kind];
+}
+
+/**
+ * Properties the app can live without: absent on the live service today (coverage is not
+ * implemented in ZMM_BOM_COST_SRV yet). They normalise to 0, coverage KPIs then show "not
+ * requested", and check:metadata reports them as a warning instead of failing.
+ */
+export const OPTIONAL_PROPS: ReadonlySet<string> = new Set([
+  'StockQty', 'Eisbe', 'OpenpoQty', 'OpenprQty', 'TotalAvail', 'ReqH1', 'ReqH2', 'ReqH3', 'CovH1', 'CovH2', 'CovH3',
+]);
 
 /** SAP name of a selection field. */
 export const sel = (k: keyof typeof SELECTION) => SELECTION[k][0];
 
 // ---- derived row types (decimals are strings, dates ISO strings) -------------------------------
-type KindType<K extends FieldKind> = K extends 'd' ? string : K extends 'i' ? number : K extends 'b' ? boolean : K extends 't' ? string | null : string;
+type KindType<K extends FieldKind> = K extends 'd' ? string : K extends 'i' ? number : K extends 'b' | 'f' ? boolean : K extends 't' ? string | null : string;
 export type RowOf<M extends FieldMap> = { [P in keyof M]: KindType<M[P][1]> };
 
 export type RateOption = RowOf<typeof RATE_OPTION>;

@@ -1,13 +1,13 @@
 {
  "status": 200,
- "sapMessage": null,
+ "sapMessage": "{\"code\":\"ZBOM/030\",\"message\":\"Mock SAP: exchange rates taken from TCURR (type M) as of 01.10.2026\",\"severity\":\"warning\",\"target\":\"\",\"details\":[{\"code\":\"ZBOM/031\",\"message\":\"Mock SAP: rates older than 365 days were ignored\",\"severity\":\"warning\",\"target\":\"\"}]}",
  "body": {
   "d": {
    "results": [
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-2')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-2')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-2')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-2')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-1000-2",
@@ -38,8 +38,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-1')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-1')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-1')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-1')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-1000-1",
@@ -70,8 +70,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-3')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-3')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-3')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-3')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-1000-3",
@@ -102,8 +102,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-1000-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-1000-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-1000-0",
@@ -134,8 +134,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-BD10-1')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-BD10-1')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-BD10-1')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-BD10-1')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-BD10-1",
@@ -166,8 +166,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0001-BD10-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0001-BD10-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-BD10-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0001-BD10-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0001-BD10-0",
@@ -198,8 +198,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-2')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-2')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-2')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-2')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-1000-2",
@@ -230,8 +230,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-3')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-3')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-3')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-3')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-1000-3",
@@ -262,8 +262,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-1000-0",
@@ -294,8 +294,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-4')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-1000-4')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-4')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-1000-4')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-1000-4",
@@ -326,8 +326,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-4')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-4')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-4')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-4')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-BD10-4",
@@ -358,8 +358,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-3')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-3')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-3')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-3')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-BD10-3",
@@ -390,8 +390,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0004-BD10-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0004-BD10-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0004-BD10-0",
@@ -422,8 +422,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-2')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-2')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-2')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-2')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-1000-2",
@@ -454,8 +454,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-1000-0",
@@ -486,8 +486,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-1')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-1000-1')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-1')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-1000-1')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-1000-1",
@@ -518,8 +518,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-0')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-0')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-0')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-0')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-BD10-0",
@@ -550,8 +550,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-3')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-3')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-3')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-3')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-BD10-3",
@@ -582,8 +582,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-4')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-4')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-4')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-4')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-BD10-4",
@@ -614,8 +614,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-1')",
-      "uri": "ZMM_BOM_COST_SRV/FreightSet('PM0005-BD10-1')",
+      "id": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-1')",
+      "uri": "ZMM_BOM_COST_SRV/FreightRowSet('PM0005-BD10-1')",
       "type": "ZMM_BOM_COST_SRV.FreightRow"
      },
      "RowId": "PM0005-BD10-1",

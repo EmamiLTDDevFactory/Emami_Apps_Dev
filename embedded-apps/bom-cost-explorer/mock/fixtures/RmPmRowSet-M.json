@@ -1,13 +1,13 @@
 {
  "status": 200,
- "sapMessage": null,
+ "sapMessage": "{\"code\":\"ZBOM/030\",\"message\":\"Mock SAP: exchange rates taken from TCURR (type M) as of 01.10.2026\",\"severity\":\"warning\",\"target\":\"\",\"details\":[{\"code\":\"ZBOM/031\",\"message\":\"Mock SAP: rates older than 365 days were ignored\",\"severity\":\"warning\",\"target\":\"\"}]}",
  "body": {
   "d": {
    "results": [
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0001',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0001',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0001',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0001',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "RM0001",
@@ -40,8 +40,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0002',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0002',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0002',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0002',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "RM0002",
@@ -74,8 +74,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0005',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0005',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0005',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0005',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "RM0005",
@@ -108,8 +108,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0012',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='RM0012',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0012',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='RM0012',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "RM0012",
@@ -142,8 +142,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0001',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0001',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0001',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0001',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "PM0001",
@@ -176,8 +176,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0004',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0004',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0004',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0004',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "PM0004",
@@ -210,8 +210,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0005',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0005',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0005',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0005',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "PM0005",
@@ -244,8 +244,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0006',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0006',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0006',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0006',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "PM0006",
@@ -278,8 +278,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0007',Plant='1000')",
-      "uri": "ZMM_BOM_COST_SRV/RmPmSet(Material='PM0007',Plant='1000')",
+      "id": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0007',Plant='1000')",
+      "uri": "ZMM_BOM_COST_SRV/RmPmRowSet(Material='PM0007',Plant='1000')",
       "type": "ZMM_BOM_COST_SRV.RmPmRow"
      },
      "Material": "PM0007",

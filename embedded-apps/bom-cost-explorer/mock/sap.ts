@@ -8,9 +8,16 @@
  * standalone HTTP server for Playwright (mock/server.ts).
  */
 import {
-  COST_LINE, ENTITY_SETS, ENTITY_TYPES, ENTITY_TYPE_RATE_OPTION, ENTITY_FIELDS, FREIGHT_ROW, MATERIAL, NAV_RATE_OPTIONS,
-  PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW, SELECTION, SELECTION_SETS, SERVICE, CONFIG, type FieldKind,
+  COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
+  SELECTION, CONFIG, selectionField, type FieldKind,
 } from '../src/lib/sap/fields';
+import { ENTITY_SET, NAV_RATE_OPTIONS, SELECTION_SETS, SERVICE, type EntitySetKey } from '../src/lib/sap/entities';
+
+/** Entity TYPE names the mock's $metadata declares (SAP's real type names may differ - the app only
+ * relies on the SET names, check:metadata resolves the type through the EntitySet). */
+const MOCK_TYPES: Record<EntitySetKey, string> = {
+  COST_LINES: 'CostLine', RATES: 'RateRow', FREIGHT: 'FreightRow', RMPM: 'RmPmRow', PLANTS: 'PlantVH', MATERIALS: 'MaterialVH', CONFIG: 'ConfigItem',
+};
 import { BOMS, FX_INR, MAT, MATERIALS, NO_BOM, PLANTS, hash, optionsFor, rnd, SOURCES, type MockOption } from './data';
 
 type Raw = Record<string, unknown>;
@@ -48,7 +55,8 @@ interface Params {
 function params(f: Map<string, string[]>): Params {
   const s = (k: keyof typeof SELECTION) => f.get(SELECTION[k][0]) ?? [];
   const one = (k: keyof typeof SELECTION, def = '') => s(k)[0] ?? def;
-  const b = (k: keyof typeof SELECTION, def: boolean) => (s(k)[0] === undefined ? def : s(k)[0] === 'true');
+  // Edm.Boolean on CostLineSet (true/false), ABAP char flags on the row sets ('X' / '').
+  const b = (k: keyof typeof SELECTION, def: boolean) => (s(k)[0] === undefined ? def : s(k)[0] === 'true' || s(k)[0] === 'X');
   return {
     mode: one('Mode', 'B'),
     mats: s('Matnr').map((x) => x.toUpperCase()),
@@ -120,7 +128,7 @@ function costLine(
   const loc = pl.Waers;
   const fxLocInr = FX_INR[loc];
   const base: Raw = {
-    ...meta('CostLine', `CostLines(Seqnr=${seq},Hwerks='${hwerks}',Werks='${costPlant}')`),
+    ...meta('CostLine', `${ENTITY_SET.COST_LINES}(Seqnr=${seq},Hwerks='${hwerks}',Werks='${costPlant}')`),
     Seqnr: seq, Land1: pl.Land1, Landx: pl.Landx, Hwerks: hwerks, Headmat: head, Headtxt: hm.Maktx, Level: level,
     Parent: parent, Idnrk: comp, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins, HasChild: hasChild ? 'X' : '',
     Donor: '', Sobsl: hasChild ? '50' : '', CompGrp: m.Mtart === 'VERP' ? 'PM' : m.Mtart === 'ROH' ? 'RM' : 'SF',
@@ -256,7 +264,7 @@ function explode(head: string, hwerks: string, costPlant: string, p: Params, seq
 function costLines(p: Params, expand: boolean, msgs: Msg[]): Raw[] {
   const mats = validateMats(p, msgs);
   const rows: Raw[] = [];
-  const pairs: [string, string][] = []; // [hwerks, costPlant]
+  const pairs: [string, string][] = []; // [BOM plant, plant being costed]
   if (p.mode === 'C') {
     const [bp] = validatePlants(p, p.werks.slice(0, 1), msgs);
     if (bp) for (const cp of validatePlants(p, p.cplnt, msgs)) pairs.push([bp, cp]);
@@ -270,12 +278,13 @@ function costLines(p: Params, expand: boolean, msgs: Msg[]): Raw[] {
       msgs.push({ code: 'ZBOM/006', message: `Material ${head} skipped: not a finished good with a BOM`, severity: 'warning' });
       continue;
     }
-    for (const [hw, cp] of pairs) {
-      if (NO_BOM[head]?.includes(hw)) {
-        msgs.push({ code: 'ZBOM/007', message: `No BOM for ${head} in plant ${hw} (usage 1)`, severity: 'warning' });
+    for (const [bomPlant, cp] of pairs) {
+      if (NO_BOM[head]?.includes(bomPlant)) {
+        msgs.push({ code: 'ZBOM/007', message: `No BOM for ${head} in plant ${bomPlant} (usage 1)`, severity: 'warning' });
         continue;
       }
-      const lines = explode(head, hw, cp, p, seq);
+      // Hwerks = the plant being costed (BOM plant in B, comparison plant in C); Werks = component plant.
+      const lines = explode(head, cp, cp, p, seq);
       seq += lines.length;
       rows.push(...lines);
     }
@@ -286,7 +295,7 @@ function costLines(p: Params, expand: boolean, msgs: Msg[]): Raw[] {
   if (donor) msgs.push({ code: 'ZBOM/021', message: `${donor} component line(s) costed from donor plant ${p.donor}`, severity: 'info' });
   return rows.map((r) => {
     const opts = r[NAV_RATE_OPTIONS] as Raw[];
-    return { ...r, [NAV_RATE_OPTIONS]: expand ? { results: opts } : { __deferred: { uri: `${SERVICE}/CostLines(${r.Seqnr})/RateOptions` } } };
+    return { ...r, [NAV_RATE_OPTIONS]: expand ? { results: opts } : { __deferred: { uri: `${SERVICE}/${ENTITY_SET.COST_LINES}(${r.Seqnr})/${NAV_RATE_OPTIONS}` } } };
   });
 }
 
@@ -318,9 +327,9 @@ function rates(p: Params, msgs: Msg[]): Raw[] {
           const to = v === 0 ? '9999-12-31' : new Date(Date.parse(o.ValidFrom) - (v - 1) * 95 * 86400000 - 86400000).toISOString().slice(0, 10);
           const ratePc = o.ratePc * drift;
           const fx = FX_INR[o.Curr] / FX_INR[loc];
-          const id = `${mat}-${w}-${o.Source}-${v}`;
+          const id = rows.length + 1;
           rows.push({
-            ...meta('RateRow', `Rates('${id}')`),
+            ...meta('RateRow', `${ENTITY_SET.RATES}(${id})`),
             RowId: id, Recordsource: o.Source, Material: mat, Matdesc: m.Maktx, Plant: w, Vendor: o.vendor, Vendorname: o.vname,
             Inforecord: o.Source === 'INFOREC' ? `53${String(hash(mat + w) % 1e8).padStart(8, '0')}` : '',
             Purchasedocument: o.Source === 'CONTRACT' ? `46${String(hash(w + mat) % 1e8).padStart(8, '0')}` : '',
@@ -358,7 +367,7 @@ function freight(p: Params, msgs: Msg[]): Raw[] {
         const usedRate = used === 'ACTUAL' ? actRate : stdRate;
         const id = `${mat}-${w}-${i}`;
         rows.push({
-          ...meta('FreightRow', `FreightSet('${id}')`),
+          ...meta('FreightRow', `${ENTITY_SET.FREIGHT}('${id}')`),
           RowId: id, Material: mat, Matdesc: m.Maktx, Plant: w, Conditiontype: 'ZFR1',
           Purchasedocument: `45${String(hash(id) % 1e8).padStart(8, '0')}`, Purchaseline: String((i + 1) * 10).padStart(5, '0'),
           Podate: d(new Date(Date.parse('2026-10-01') - days * 86400000).toISOString().slice(0, 10)), Baseunit: m.Meins, Matuom: m.Meins,
@@ -396,7 +405,7 @@ function rmpm(p: Params, msgs: Msg[]): Raw[] {
     const ratePcLoc = Number(l.SelRatePcLoc);
     const frtPcLoc = Number(l.FrtPcLoc);
     return {
-      ...meta('RmPmRow', `RmPmSet(Material='${l.Idnrk}',Plant='${l.Werks}')`),
+      ...meta('RmPmRow', `${ENTITY_SET.RMPM}(Material='${l.Idnrk}',Plant='${l.Werks}')`),
       Material: l.Idnrk, Matdesc: l.Maktx, Mtart: l.Mtart, Plant: l.Werks, Baseuom: l.Meins, Qty: n(qty, 3),
       RateSrc: l.SelSource, Vendor: l.SelVendor, Vendname: l.SelVname, RateCurr: l.SelCurr, RatePcOrg: l.SelRatePc,
       LocCurr: l.LocCurr, FxLoc: l.SelFx, RatePcLoc: n(ratePcLoc, 6), FrtSrc: l.FrtSrc, FrtPcLoc: n(frtPcLoc, 6),
@@ -409,28 +418,37 @@ function rmpm(p: Params, msgs: Msg[]): Raw[] {
 }
 
 // ---- $metadata --------------------------------------------------------------------------------
-const EDM: Record<FieldKind, string> = { s: 'Edm.String', d: 'Edm.Decimal', i: 'Edm.Int32', b: 'Edm.Boolean', t: 'Edm.DateTime' };
+const EDM: Record<FieldKind, string> = { s: 'Edm.String', d: 'Edm.Decimal', i: 'Edm.Int32', b: 'Edm.Boolean', t: 'Edm.DateTime', f: 'Edm.String' };
+
+/** Internal keys -> the SAP property names in fields.ts (e.g. HasChild -> Haschild), the way the
+ * live service spells them. */
+function toSap(raw: Raw, map: FieldMap, nav?: FieldMap): Raw {
+  const out: Raw = {};
+  for (const [k, v] of Object.entries(raw)) out[map[k]?.[0] ?? k] = v;
+  const n = out[NAV_RATE_OPTIONS] as { results?: Raw[] } | undefined;
+  if (nav && n?.results) out[NAV_RATE_OPTIONS] = { results: n.results.map((o) => toSap(o, nav)) };
+  return out;
+}
 
 export function metadataXml(drop: string[] = []): string {
-  const props = (m: FieldMap) =>
-    Object.values(m)
-      .filter(([name]) => !drop.includes(name))
-      .map(([name, k]) => `<Property Name="${name}" Type="${EDM[k]}" Nullable="false"${k === 'd' ? ' Precision="23" Scale="6"' : ''}/>`)
-      .join('');
-  const type = (name: string, m: FieldMap, keys: string[], extra = '') =>
-    `<EntityType Name="${name}"><Key>${keys.map((k) => `<PropertyRef Name="${k}"/>`).join('')}</Key>${props(m)}${extra}</EntityType>`;
-  const sets = Object.entries(ENTITY_SETS) as [keyof typeof ENTITY_SETS, string][];
+  const prop = (name: string, k: FieldKind, filterable: boolean) =>
+    `<Property Name="${name}" Type="${EDM[k]}" Nullable="false"${k === 'd' ? ' Precision="23" Scale="6"' : ''} sap:filterable="${filterable}"/>`;
+  const props = (m: FieldMap, filterable: boolean) => Object.values(m).filter(([name]) => !drop.includes(name)).map(([name, k]) => prop(name, k, filterable)).join('');
+  const sets = Object.entries(ENTITY_SET) as [EntitySetKey, string][];
   const types = sets.map(([k]) => {
-    const fields = ENTITY_FIELDS[k] as FieldMap;
-    const withSel = (SELECTION_SETS as readonly string[]).includes(k)
-      ? { ...Object.fromEntries(Object.entries(SELECTION).filter(([sk]) => !(sk in fields))), ...fields }
-      : fields;
-    const nav = k === 'CostLines' ? `<NavigationProperty Name="${NAV_RATE_OPTIONS}" Relationship="${SERVICE}.CostLineRateOptions" FromRole="FromRole" ToRole="ToRole"/>` : '';
-    return type(ENTITY_TYPES[k], withSel as FieldMap, [Object.values(fields)[0][0]], nav);
+    const fields = FIELDS_BY_SET[k] as FieldMap;
+    const isSel = (SELECTION_SETS as readonly string[]).includes(k);
+    const sel = isSel
+      ? Object.fromEntries(Object.keys(SELECTION).map((sk) => [sk, selectionField(k, sk as keyof typeof SELECTION)]).filter(([, [n]]) => !Object.values(fields).some(([f]) => f === n)))
+      : {};
+    const selFieldNames = new Set(Object.values(SELECTION).map(([n]) => n));
+    const resultProps = Object.values(fields).filter(([name]) => !drop.includes(name)).map(([name, kind]) => prop(name, kind, isSel && selFieldNames.has(name))).join('');
+    const nav = k === 'COST_LINES' ? `<NavigationProperty Name="${NAV_RATE_OPTIONS}" Relationship="${SERVICE}.CostLineRateOptions" FromRole="FromRole" ToRole="ToRole"/>` : '';
+    return `<EntityType Name="${MOCK_TYPES[k]}"><Key><PropertyRef Name="${Object.values(fields)[0][0]}"/></Key>${resultProps}${props(sel as FieldMap, true)}${nav}</EntityType>`;
   });
-  types.push(type(ENTITY_TYPE_RATE_OPTION, RATE_OPTION, ['Seqnr']));
-  const container = sets.map(([k, s]) => `<EntitySet Name="${s}" EntityType="${SERVICE}.${ENTITY_TYPES[k]}"/>`).join('');
-  return `<?xml version="1.0" encoding="utf-8"?><edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx"><edmx:DataServices m:DataServiceVersion="2.0" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata"><Schema Namespace="${SERVICE}" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">${types.join('')}<EntityContainer Name="${SERVICE}_Entities" m:IsDefaultEntityContainer="true">${container}<EntitySet Name="RateOptionSet" EntityType="${SERVICE}.${ENTITY_TYPE_RATE_OPTION}"/></EntityContainer></Schema></edmx:DataServices></edmx:Edmx>`;
+  types.push(`<EntityType Name="${ENTITY_TYPE_RATE_OPTION}"><Key><PropertyRef Name="Seqnr"/></Key>${props(RATE_OPTION, false)}</EntityType>`);
+  const container = sets.map(([k, s]) => `<EntitySet Name="${s}" EntityType="${SERVICE}.${MOCK_TYPES[k]}" sap:content-version="1"/>`).join('');
+  return `<?xml version="1.0" encoding="utf-8"?><edmx:Edmx Version="1.0" xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns:sap="http://www.sap.com/Protocols/SAPData"><edmx:DataServices m:DataServiceVersion="2.0"><Schema Namespace="${SERVICE}" xmlns="http://schemas.microsoft.com/ado/2008/09/edm">${types.join('')}<EntityContainer Name="${SERVICE}_Entities" m:IsDefaultEntityContainer="true">${container}</EntityContainer></Schema></edmx:DataServices></edmx:Edmx>`;
 }
 
 // ---- request handling -------------------------------------------------------------------------
@@ -479,15 +497,15 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     const drop = (process.env.MOCK_SAP_METADATA_DROP || '').split(',').filter(Boolean);
     return new Response(metadataXml(drop), { headers: { 'Content-Type': 'application/xml' } });
   }
-  if (set === ENTITY_SETS.Plants) {
+  if (set === ENTITY_SET.PLANTS) {
     await sleep(60, signal);
-    return json({ d: { results: PLANTS.map((p) => ({ ...meta('Plant', `PlantSet('${p.Werks}')`), [PLANT.Werks[0]]: p.Werks, [PLANT.Name1[0]]: p.Name1, [PLANT.Land1[0]]: p.Land1, [PLANT.Waers[0]]: p.Waers })) } });
+    return json({ d: { results: PLANTS.map((p) => ({ ...meta('PlantVH', `${ENTITY_SET.PLANTS}('${p.Werks}')`), [PLANT.Werks[0]]: p.Werks, [PLANT.Name1[0]]: p.Name1, [PLANT.Land1[0]]: p.Land1, [PLANT.Waers[0]]: p.Waers })) } });
   }
-  if (set === ENTITY_SETS.Config) {
+  if (set === ENTITY_SET.CONFIG) {
     const cfg = { GROUP_CURR: 'INR', DEFAULT_PRIO: 'CONTRACT,INFOREC,MARKT,CONSUMP,MBEW', MAX_HEADS: '50' };
-    return json({ d: { results: Object.entries(cfg).map(([k, v]) => ({ ...meta('Config', `ConfigSet('${k}')`), [CONFIG.CfgKey[0]]: k, [CONFIG.CfgVal[0]]: v })) } });
+    return json({ d: { results: Object.entries(cfg).map(([k, v]) => ({ ...meta('ConfigItem', `${ENTITY_SET.CONFIG}('${k}')`), [CONFIG.CfgKey[0]]: k, [CONFIG.CfgVal[0]]: v })) } });
   }
-  if (set === ENTITY_SETS.Materials) {
+  if (set === ENTITY_SET.MATERIALS) {
     await sleep(80, signal);
     const term = (sp.get('search') ?? sp.get('$search') ?? '').toLowerCase();
     const exact = parseFilter(sp.get('$filter') ?? '').get(MATERIAL.Matnr[0]) ?? [];
@@ -495,30 +513,35 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     if (exact.length) list = list.filter((m) => exact.map((e) => e.toUpperCase()).includes(m.Matnr));
     else if (term) list = list.filter((m) => m.Matnr.toLowerCase().includes(term) || m.Maktx.toLowerCase().includes(term));
     const top = Number(sp.get('$top') ?? 100);
-    return json({ d: { results: list.slice(0, top).map((m) => ({ ...meta('Material', `MaterialSet('${m.Matnr}')`), Matnr: m.Matnr, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins })) } });
+    return json({ d: { results: list.slice(0, top).map((m) => ({ ...meta('MaterialVH', `${ENTITY_SET.MATERIALS}('${m.Matnr}')`), Matnr: m.Matnr, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins })) } });
   }
 
-  const known = [ENTITY_SETS.CostLines, ENTITY_SETS.Rates, ENTITY_SETS.Freight, ENTITY_SETS.RmPm] as string[];
-  if (!known.includes(set)) return odataError(404, '/IWBEP/CM_MGW_RT/020', `Resource not found for segment '${set}'`);
+  const known = [ENTITY_SET.COST_LINES, ENTITY_SET.RATES, ENTITY_SET.FREIGHT, ENTITY_SET.RMPM] as string[];
+  if (!known.includes(set)) return odataError(404, '/IWBEP/CM_MGW_RT/020', `Resource not found for segment '${set}'`); // incl. RateOptions on its own
 
   const f = parseFilter(sp.get('$filter') ?? '');
   const p = params(f);
   if (p.mats.length === 0) return odataError(400, 'ZBOM/001', 'Enter at least one material in the filter (Matnr)');
+  if (p.werks.length === 0) return odataError(400, 'ZBOM/003', 'Enter at least one plant in the filter (Werks)');
   if (p.mats.length > 50) return odataError(400, 'ZBOM/002', `At most 50 header materials per request (${p.mats.length} sent)`);
   const fail = p.mats.find((m) => m.startsWith('FAIL'));
   if (fail) return odataError(400, 'ZBOM/099', `Costing for ${fail} failed: BOM explosion error in plant ${p.werks[0] ?? '?'} (mock error)`);
 
-  const msgs: Msg[] = [];
+  // Two sample warnings on every selection-set response, so the warnings panel always has content.
+  const msgs: Msg[] = [
+    { code: 'ZBOM/030', message: 'Mock SAP: exchange rates taken from TCURR (type M) as of 01.10.2026', severity: 'warning' },
+    { code: 'ZBOM/031', message: `Mock SAP: rates older than ${p.lookback} days were ignored`, severity: 'warning' },
+  ];
   try {
-    if (set === ENTITY_SETS.CostLines) {
+    if (set === ENTITY_SET.COST_LINES) {
       await sleep(delay() + 40 * p.mats.length * Math.max(1, p.werks.length + p.cplnt.length), signal);
       const rows = costLines(p, (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS), msgs);
       msgs.unshift({ code: 'ZBOM/000', message: `Costing finished: ${rows.length} line(s)`, severity: 'info' });
-      return json({ d: { results: rows } }, 200, msgs);
+      return json({ d: { results: rows.map((r) => toSap(r, COST_LINE, RATE_OPTION)) } }, 200, msgs);
     }
     await sleep(delay(), signal);
-    const all = set === ENTITY_SETS.Rates ? rates(p, msgs) : set === ENTITY_SETS.Freight ? freight(p, msgs) : rmpm(p, msgs);
-    return json(page(all, sp), 200, msgs);
+    const [all, map] = set === ENTITY_SET.RATES ? [rates(p, msgs), RATE_ROW] : set === ENTITY_SET.FREIGHT ? [freight(p, msgs), FREIGHT_ROW] : [rmpm(p, msgs), RMPM_ROW];
+    return json(page(all.map((r) => toSap(r, map as FieldMap)), sp), 200, msgs);
   } catch (e) {
     if ((e as DOMException)?.name === 'AbortError') throw e;
     return odataError(500, 'ZBOM/500', `Mock SAP internal error: ${(e as Error).message}`);

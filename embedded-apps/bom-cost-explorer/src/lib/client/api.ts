@@ -55,6 +55,5 @@ export const api = {
   paged: (query: CostQuery, page: Partial<PageRequest>, signal?: AbortSignal) => call<PagedResult>('/api/cost', { method: 'POST', body: JSON.stringify({ query, page }), signal }),
   plants: () => call<{ plants: PlantRow[] }>('/api/plants'),
   materials: (q: string, signal?: AbortSignal) => call<{ materials: MaterialRow[] }>(`/api/materials?q=${encodeURIComponent(q)}`, { signal }),
-  materialsByNumber: (numbers: string[]) => call<{ materials: MaterialRow[] }>(`/api/materials?numbers=${encodeURIComponent(numbers.join(','))}`),
   config: () => call<Record<string, string> & { user: { email: string; plants: string[]; role: string }; mock: boolean }>('/api/config'),
 };

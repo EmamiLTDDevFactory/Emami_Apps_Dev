@@ -87,7 +87,7 @@ export function buildTree(input: CostLine[], plantNames: Record<string, string> 
     }
     if (r.Headmat !== header) {
       header = r.Headmat;
-      push({ id: `h:${r.Hwerks}|${r.Werks}|${r.Headmat}`, kind: 'header', depth: 2, label: r.Headmat, sub: r.Headtxt, start: i, row: -1 }, i);
+      push({ id: `h:${r.Hwerks}|${r.Headmat}`, kind: 'header', depth: 2, label: r.Headmat, sub: r.Headtxt, start: i, row: -1 }, i);
     }
     // Level 1 sits directly under the header (depth 3); deeper levels nest under the last row
     // one level up. A level jump (missing parent) is attached to the nearest open ancestor.

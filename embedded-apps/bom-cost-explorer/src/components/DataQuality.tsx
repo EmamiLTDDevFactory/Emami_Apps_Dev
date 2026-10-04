@@ -44,7 +44,7 @@ export default function DataQuality({ rows, onOpenRow }: { rows: CostLine[]; onO
               return (
                 <tr key={`${d.key}|${d.kind}|${n}`} className="cursor-pointer border-t border-line/60 hover:bg-accent/[0.04]" onClick={() => onOpenRow(d.i)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpenRow(d.i)}>
                   <td className="px-3 py-1"><Pill tone={TONE[d.kind]}>{DQ_LABEL[d.kind]}</Pill></td>
-                  <td className="font-mono text-xs">{r.Werks}</td>
+                  <td className="font-mono text-xs">{r.Hwerks}</td>
                   <td className="text-xs"><span className="font-mono">{r.Headmat}</span></td>
                   <td className="text-xs"><span className="font-mono">{r.Idnrk}</span> <span className="text-muted">{r.Maktx}</span></td>
                   <td className="text-xs text-muted">{d.detail}</td>

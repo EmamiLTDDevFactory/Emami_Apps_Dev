@@ -1,13 +1,13 @@
 {
  "status": 200,
- "sapMessage": "{\"code\":\"ZBOM/000\",\"message\":\"Costing finished: 38 line(s)\",\"severity\":\"info\",\"target\":\"\",\"details\":[{\"code\":\"ZBOM/004\",\"message\":\"Material NOPE skipped: material does not exist\",\"severity\":\"warning\",\"target\":\"\"},{\"code\":\"ZBOM/021\",\"message\":\"1 component line(s) costed from donor plant 1000\",\"severity\":\"info\",\"target\":\"\"}]}",
+ "sapMessage": "{\"code\":\"ZBOM/000\",\"message\":\"Costing finished: 38 line(s)\",\"severity\":\"info\",\"target\":\"\",\"details\":[{\"code\":\"ZBOM/030\",\"message\":\"Mock SAP: exchange rates taken from TCURR (type M) as of 01.10.2026\",\"severity\":\"warning\",\"target\":\"\"},{\"code\":\"ZBOM/031\",\"message\":\"Mock SAP: rates older than 365 days were ignored\",\"severity\":\"warning\",\"target\":\"\"},{\"code\":\"ZBOM/004\",\"message\":\"Material NOPE skipped: material does not exist\",\"severity\":\"warning\",\"target\":\"\"},{\"code\":\"ZBOM/021\",\"message\":\"1 component line(s) costed from donor plant 1000\",\"severity\":\"info\",\"target\":\"\"}]}",
  "body": {
   "d": {
    "results": [
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=1,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=1,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=1,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=1,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 1,
@@ -22,7 +22,7 @@
      "Maktx": "Hair Oil Bulk",
      "Mtart": "HALB",
      "Meins": "KG",
-     "HasChild": "X",
+     "Haschild": "X",
      "Donor": "",
      "Sobsl": "50",
      "CompGrp": "SF",
@@ -58,8 +58,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=2,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=2,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=2,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=2,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 2,
@@ -74,7 +74,7 @@
      "Maktx": "Light Liquid Paraffin",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -229,8 +229,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=3,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=3,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=3,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=3,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 3,
@@ -245,7 +245,7 @@
      "Maktx": "Refined Sesame Oil",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -400,8 +400,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=4,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=4,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=4,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=4,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 4,
@@ -416,7 +416,7 @@
      "Maktx": "Perfume Compound A",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -571,8 +571,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=5,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=5,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=5,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=5,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 5,
@@ -587,7 +587,7 @@
      "Maktx": "Preservative Blend",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -716,8 +716,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=6,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=6,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=6,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=6,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 6,
@@ -732,7 +732,7 @@
      "Maktx": "PET Bottle 100 ml",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -861,8 +861,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=7,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=7,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=7,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=7,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 7,
@@ -877,7 +877,7 @@
      "Maktx": "Flip-top Cap 24 mm",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -1032,8 +1032,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=8,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=8,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=8,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=8,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 8,
@@ -1048,7 +1048,7 @@
      "Maktx": "Front Label",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -1177,8 +1177,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=9,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=9,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=9,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=9,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 9,
@@ -1193,7 +1193,7 @@
      "Maktx": "Mono Carton",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -1374,8 +1374,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=10,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=10,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=10,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=10,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 10,
@@ -1390,7 +1390,7 @@
      "Maktx": "Shipper Box 5-ply",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -1545,8 +1545,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=11,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=11,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=11,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=11,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 11,
@@ -1561,7 +1561,7 @@
      "Maktx": "Hair Oil Bulk",
      "Mtart": "HALB",
      "Meins": "KG",
-     "HasChild": "X",
+     "Haschild": "X",
      "Donor": "",
      "Sobsl": "50",
      "CompGrp": "SF",
@@ -1597,8 +1597,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=12,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=12,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=12,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=12,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 12,
@@ -1613,7 +1613,7 @@
      "Maktx": "Light Liquid Paraffin",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -1768,8 +1768,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=13,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=13,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=13,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=13,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 13,
@@ -1784,7 +1784,7 @@
      "Maktx": "Refined Sesame Oil",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -1965,8 +1965,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=14,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=14,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=14,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=14,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 14,
@@ -1981,7 +1981,7 @@
      "Maktx": "Perfume Compound A",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -2136,8 +2136,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=15,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=15,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=15,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=15,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 15,
@@ -2152,7 +2152,7 @@
      "Maktx": "Preservative Blend",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -2255,8 +2255,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=16,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=16,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=16,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=16,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 16,
@@ -2271,7 +2271,7 @@
      "Maktx": "PET Bottle 100 ml",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -2400,8 +2400,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=17,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=17,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=17,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=17,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 17,
@@ -2416,7 +2416,7 @@
      "Maktx": "Flip-top Cap 24 mm",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -2597,8 +2597,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=18,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=18,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=18,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=18,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 18,
@@ -2613,7 +2613,7 @@
      "Maktx": "Front Label",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -2742,8 +2742,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=19,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=19,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=19,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=19,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 19,
@@ -2758,7 +2758,7 @@
      "Maktx": "Mono Carton",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -2939,8 +2939,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=20,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=20,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=20,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=20,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 20,
@@ -2955,7 +2955,7 @@
      "Maktx": "Shipper Box 5-ply",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -3110,8 +3110,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=21,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=21,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=21,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=21,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 21,
@@ -3126,7 +3126,7 @@
      "Maktx": "Balm Bulk",
      "Mtart": "HALB",
      "Meins": "KG",
-     "HasChild": "X",
+     "Haschild": "X",
      "Donor": "",
      "Sobsl": "50",
      "CompGrp": "SF",
@@ -3162,8 +3162,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=22,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=22,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=22,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=22,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 22,
@@ -3178,7 +3178,7 @@
      "Maktx": "Menthol Crystals",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -3333,8 +3333,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=23,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=23,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=23,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=23,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 23,
@@ -3349,7 +3349,7 @@
      "Maktx": "Camphor Powder",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -3504,8 +3504,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=24,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=24,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=24,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=24,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 24,
@@ -3520,7 +3520,7 @@
      "Maktx": "Wintergreen Oil",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -3675,8 +3675,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=25,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=25,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=25,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=25,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 25,
@@ -3691,7 +3691,7 @@
      "Maktx": "Light Liquid Paraffin",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -3846,8 +3846,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=26,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=26,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=26,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=26,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 26,
@@ -3862,7 +3862,7 @@
      "Maktx": "Glass Jar 10 ml",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -4043,8 +4043,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=27,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=27,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=27,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=27,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 27,
@@ -4059,7 +4059,7 @@
      "Maktx": "Front Label",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -4188,8 +4188,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=28,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=28,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=28,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=28,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 28,
@@ -4204,7 +4204,7 @@
      "Maktx": "Mono Carton",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -4385,8 +4385,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=29,Hwerks='1000',Werks='1000')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=29,Hwerks='1000',Werks='1000')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=29,Hwerks='1000',Werks='1000')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=29,Hwerks='1000',Werks='1000')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 29,
@@ -4401,7 +4401,7 @@
      "Maktx": "Shipper Box 5-ply",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -4556,8 +4556,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=30,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=30,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=30,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=30,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 30,
@@ -4572,7 +4572,7 @@
      "Maktx": "Balm Bulk",
      "Mtart": "HALB",
      "Meins": "KG",
-     "HasChild": "X",
+     "Haschild": "X",
      "Donor": "",
      "Sobsl": "50",
      "CompGrp": "SF",
@@ -4608,8 +4608,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=31,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=31,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=31,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=31,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 31,
@@ -4624,7 +4624,7 @@
      "Maktx": "Menthol Crystals",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -4805,8 +4805,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=32,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=32,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=32,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=32,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 32,
@@ -4821,7 +4821,7 @@
      "Maktx": "Camphor Powder",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -4950,8 +4950,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=33,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=33,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=33,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=33,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 33,
@@ -4966,7 +4966,7 @@
      "Maktx": "Wintergreen Oil",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "1000",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -5121,8 +5121,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=34,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=34,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=34,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=34,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 34,
@@ -5137,7 +5137,7 @@
      "Maktx": "Light Liquid Paraffin",
      "Mtart": "ROH",
      "Meins": "KG",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "RM",
@@ -5292,8 +5292,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=35,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=35,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=35,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=35,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 35,
@@ -5308,7 +5308,7 @@
      "Maktx": "Glass Jar 10 ml",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -5489,8 +5489,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=36,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=36,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=36,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=36,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 36,
@@ -5505,7 +5505,7 @@
      "Maktx": "Front Label",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -5634,8 +5634,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=37,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=37,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=37,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=37,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 37,
@@ -5650,7 +5650,7 @@
      "Maktx": "Mono Carton",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",
@@ -5831,8 +5831,8 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/CostLines(Seqnr=38,Hwerks='1300',Werks='1300')",
-      "uri": "ZMM_BOM_COST_SRV/CostLines(Seqnr=38,Hwerks='1300',Werks='1300')",
+      "id": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=38,Hwerks='1300',Werks='1300')",
+      "uri": "ZMM_BOM_COST_SRV/CostLineSet(Seqnr=38,Hwerks='1300',Werks='1300')",
       "type": "ZMM_BOM_COST_SRV.CostLine"
      },
      "Seqnr": 38,
@@ -5847,7 +5847,7 @@
      "Maktx": "Shipper Box 5-ply",
      "Mtart": "VERP",
      "Meins": "PC",
-     "HasChild": "",
+     "Haschild": "",
      "Donor": "",
      "Sobsl": "",
      "CompGrp": "PM",

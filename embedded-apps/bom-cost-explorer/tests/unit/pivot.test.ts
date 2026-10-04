@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildPivot, compare } from '@/lib/cost/pivot';
 import { leaf, parent } from './helpers';
 
-const at = (plant: string, curr = 'INR') => ({ Werks: plant, LocCurr: curr, Hwerks: '1000' });
+// Mode C rows: Hwerks = comparison (cost) plant, Werks = component plant.
+const at = (plant: string, curr = 'INR') => ({ Hwerks: plant, Werks: plant, LocCurr: curr });
 
 describe('buildPivot (mode C)', () => {
   const rows = [

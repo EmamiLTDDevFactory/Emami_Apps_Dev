@@ -1,16 +1,16 @@
 {
  "status": 200,
- "sapMessage": null,
+ "sapMessage": "{\"code\":\"ZBOM/030\",\"message\":\"Mock SAP: exchange rates taken from TCURR (type M) as of 01.10.2026\",\"severity\":\"warning\",\"target\":\"\",\"details\":[{\"code\":\"ZBOM/031\",\"message\":\"Mock SAP: rates older than 365 days were ignored\",\"severity\":\"warning\",\"target\":\"\"}]}",
  "body": {
   "d": {
    "results": [
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(1)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(1)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-CONTRACT-0",
+     "Rowid": 1,
      "Recordsource": "CONTRACT",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -40,11 +40,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(2)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(2)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-CONTRACT-1",
+     "Rowid": 2,
      "Recordsource": "CONTRACT",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -74,11 +74,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-2')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-CONTRACT-2')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(3)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(3)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-CONTRACT-2",
+     "Rowid": 3,
      "Recordsource": "CONTRACT",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -108,11 +108,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(4)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(4)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-INFOREC-0",
+     "Rowid": 4,
      "Recordsource": "INFOREC",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -142,11 +142,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(5)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(5)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-INFOREC-1",
+     "Rowid": 5,
      "Recordsource": "INFOREC",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -176,11 +176,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-2')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-INFOREC-2')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(6)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(6)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-INFOREC-2",
+     "Rowid": 6,
      "Recordsource": "INFOREC",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -210,11 +210,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-MBEW-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-MBEW-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(7)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(7)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-MBEW-0",
+     "Rowid": 7,
      "Recordsource": "MBEW",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -244,11 +244,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-MBEW-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0001-1000-MBEW-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(8)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(8)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0001-1000-MBEW-1",
+     "Rowid": 8,
      "Recordsource": "MBEW",
      "Material": "RM0001",
      "Matdesc": "Light Liquid Paraffin",
@@ -278,11 +278,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-CONTRACT-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-CONTRACT-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(9)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(9)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-CONTRACT-0",
+     "Rowid": 9,
      "Recordsource": "CONTRACT",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -312,11 +312,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-CONTRACT-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-CONTRACT-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(10)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(10)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-CONTRACT-1",
+     "Rowid": 10,
      "Recordsource": "CONTRACT",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -346,11 +346,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(11)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(11)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-INFOREC-0",
+     "Rowid": 11,
      "Recordsource": "INFOREC",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -380,11 +380,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(12)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(12)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-INFOREC-1",
+     "Rowid": 12,
      "Recordsource": "INFOREC",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -414,11 +414,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-2')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-INFOREC-2')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(13)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(13)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-INFOREC-2",
+     "Rowid": 13,
      "Recordsource": "INFOREC",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -448,11 +448,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-MBEW-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-MBEW-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(14)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(14)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-MBEW-0",
+     "Rowid": 14,
      "Recordsource": "MBEW",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -482,11 +482,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-MBEW-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0002-1000-MBEW-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(15)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(15)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0002-1000-MBEW-1",
+     "Rowid": 15,
      "Recordsource": "MBEW",
      "Material": "RM0002",
      "Matdesc": "Refined Sesame Oil",
@@ -516,11 +516,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-INFOREC-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-INFOREC-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(16)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(16)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0005-1000-INFOREC-0",
+     "Rowid": 16,
      "Recordsource": "INFOREC",
      "Material": "RM0005",
      "Matdesc": "Perfume Compound A",
@@ -550,11 +550,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-INFOREC-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-INFOREC-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(17)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(17)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0005-1000-INFOREC-1",
+     "Rowid": 17,
      "Recordsource": "INFOREC",
      "Material": "RM0005",
      "Matdesc": "Perfume Compound A",
@@ -584,11 +584,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-CONSUMP-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-CONSUMP-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(18)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(18)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0005-1000-CONSUMP-0",
+     "Rowid": 18,
      "Recordsource": "CONSUMP",
      "Material": "RM0005",
      "Matdesc": "Perfume Compound A",
@@ -618,11 +618,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-MBEW-0')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-MBEW-0')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(19)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(19)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0005-1000-MBEW-0",
+     "Rowid": 19,
      "Recordsource": "MBEW",
      "Material": "RM0005",
      "Matdesc": "Perfume Compound A",
@@ -652,11 +652,11 @@
     },
     {
      "__metadata": {
-      "id": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-MBEW-1')",
-      "uri": "ZMM_BOM_COST_SRV/Rates('RM0005-1000-MBEW-1')",
+      "id": "ZMM_BOM_COST_SRV/RateRowSet(20)",
+      "uri": "ZMM_BOM_COST_SRV/RateRowSet(20)",
       "type": "ZMM_BOM_COST_SRV.RateRow"
      },
-     "RowId": "RM0005-1000-MBEW-1",
+     "Rowid": 20,
      "Recordsource": "MBEW",
      "Material": "RM0005",
      "Matdesc": "Perfume Compound A",

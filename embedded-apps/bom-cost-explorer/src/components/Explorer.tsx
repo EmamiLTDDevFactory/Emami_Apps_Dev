@@ -121,7 +121,7 @@ export default function Explorer() {
   const simTotal = useMemo(() => (tree && simOn ? grandTotal(leafPrefix(tree, (i) => simRows[i].total)) : null), [tree, simRows, simOn]);
   const plantCurr = useMemo(() => {
     const m: Record<string, string> = Object.fromEntries(plants.map((p) => [p.Werks, p.Waers]));
-    for (const r of rows) m[r.Werks] ??= r.LocCurr;
+    for (const r of rows) m[r.Hwerks] ??= r.LocCurr;
     return m;
   }, [plants, rows]);
   const dqCount = useMemo(() => (rows.length ? dataQuality(rows).length : 0), [rows]);
