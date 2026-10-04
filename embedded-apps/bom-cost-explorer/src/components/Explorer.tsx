@@ -16,7 +16,9 @@ import { dataQuality } from '@/lib/cost/analytics';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { exportCostLines, exportPivot } from '@/lib/client/export';
 import type { SapMessage } from '@/lib/sap/messages';
-import FilterPanel, { ModeSelector } from './FilterPanel';
+import { Download, FileSpreadsheet, Link2, Printer, Check } from 'lucide-react';
+import FilterPanel, { type PlantsState } from './FilterPanel';
+import Shell from './Shell';
 import BomTree, { type NodeAgg } from './BomTree';
 import RowDrawer from './RowDrawer';
 import ComparisonView from './ComparisonView';
@@ -38,9 +40,9 @@ export default function Explorer() {
   const { session, signOut } = useAppSession();
   const user = session?.user?.email ?? '';
   const [plants, setPlants] = useState<PlantRow[]>([]);
+  const [plantsLoading, setPlantsLoading] = useState(false);
+  const [plantsErr, setPlantsErr] = useState('');
   const [groupCurr, setGroupCurr] = useState('INR');
-  const [mock, setMock] = useState(false);
-  const [bootErr, setBootErr] = useState('');
   const [query, setQuery] = useState<CostQuery>(defaultQuery('B'));
   const [ranQuery, setRanQuery] = useState<CostQuery | null>(null);
   const [tab, setTab] = useState<Tab>('tree');
@@ -52,8 +54,7 @@ export default function Explorer() {
   const [pagedRun, setPagedRun] = useState(0);
   const [pagedMsgs, setPagedMsgs] = useState<{ messages: SapMessage[]; ms: number } | null>(null);
   const [pagedBusy, setPagedBusy] = useState<{ on: boolean; cancel?: () => void; started?: number }>({ on: false });
-  const [sidebar, setSidebar] = useState(true);
-  const [dark, setDark] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [resultAt, setResultAt] = useState<number>(0);
@@ -63,14 +64,20 @@ export default function Explorer() {
   const runner = useRun((signal: AbortSignal, q: CostQuery) => api.cost(q, signal));
 
   // ---- boot: config, plants, initial query (URL > last per user > default) -----------------
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'));
-    setCoverDays(ls.get('bce:cover-days', 30));
+  useEffect(() => setCoverDays(ls.get('bce:cover-days', 30)), []);
+  const loadPlants = useCallback(() => {
+    setPlantsLoading(true);
+    setPlantsErr('');
+    api.plants()
+      .then((r) => setPlants(r.plants))
+      .catch((e) => setPlantsErr(e.message))
+      .finally(() => setPlantsLoading(false));
   }, []);
+  const plantsState: PlantsState = useMemo(() => ({ plants, loading: plantsLoading, error: plantsErr, reload: loadPlants }), [plants, plantsLoading, plantsErr, loadPlants]);
   useEffect(() => {
     if (!user) return;
-    api.config().then((c) => { setGroupCurr(c.GROUP_CURR || 'INR'); setMock(!!c.mock); }).catch(() => undefined);
-    api.plants().then((r) => setPlants(r.plants)).catch((e) => setBootErr(e.message));
+    api.config().then((c) => setGroupCurr(c.GROUP_CURR || 'INR')).catch(() => undefined);
+    loadPlants();
     const fromUrl = decodeQuery(new URLSearchParams(window.location.search).get('q'));
     const q = fromUrl ?? ls.get<CostQuery | null>(lastQueryKey(user), null);
     if (q) setQuery({ ...defaultQuery(q.mode), ...q });
@@ -84,6 +91,7 @@ export default function Explorer() {
       url.searchParams.set('q', encodeQuery(q));
       window.history.replaceState(null, '', url);
       if (q.mode === 'R' || q.mode === 'F' || q.mode === 'M') {
+        setCollapsed(true);
         setPagedMsgs(null);
         setTab('table');
         setPagedRun((n) => n + 1);
@@ -92,6 +100,7 @@ export default function Explorer() {
       setDrawer(null);
       const r = await runner.run(q);
       if (r) {
+        setCollapsed(true);
         ls.set(lastMsKey(q.mode), r.ms);
         setResultAt(Date.now());
         setTab((t) => (q.mode === 'C' ? (t === 'tree' || t === 'table' || t === 'sim' ? 'compare' : t) : t === 'compare' || t === 'table' ? 'tree' : t));
@@ -101,11 +110,12 @@ export default function Explorer() {
   );
 
   // ---- derived results ---------------------------------------------------------------------
-  const result: CostResult | null = runner.data && ranQuery && (ranQuery.mode === 'B' || ranQuery.mode === 'C') ? runner.data : null;
-  const mode = ranQuery?.mode ?? query.mode;
+  // The side-pane mode drives the screen; a result is shown only for the mode it was run in.
+  const mode = query.mode;
+  const result: CostResult | null = runner.data && ranQuery && ranQuery.mode === mode && (mode === 'B' || mode === 'C') ? runner.data : null;
   const plantNames = useMemo(() => Object.fromEntries(plants.map((p) => [p.Werks, p.Name1])), [plants]);
-  const tree = useMemo(() => (result && ranQuery?.mode === 'B' ? buildTree(result.rows, plantNames) : null), [result, ranQuery, plantNames]);
-  const pivot = useMemo(() => (result && ranQuery?.mode === 'C' ? buildPivot(result.rows, ranQuery.compPlants) : null), [result, ranQuery]);
+  const tree = useMemo(() => (result && mode === 'B' ? buildTree(result.rows, plantNames) : null), [result, mode, plantNames]);
+  const pivot = useMemo(() => (result && mode === 'C' && ranQuery ? buildPivot(result.rows, ranQuery.compPlants) : null), [result, mode, ranQuery]);
   const rows = tree ? tree.rows : result?.rows ?? [];
   const simOn = !isIdentity(simDeferred) && ranQuery?.mode === 'B';
   const simRows = useMemo(() => simulate(rows, ranQuery?.mode === 'B' ? simDeferred : EMPTY_SIM), [rows, simDeferred, ranQuery]);
@@ -163,14 +173,6 @@ export default function Explorer() {
     setTab('scen');
   };
 
-  const toggleTheme = () => {
-    const d = !dark;
-    setDark(d);
-    document.documentElement.classList.toggle('dark', d);
-    ls.set('bce-theme', d ? 'dark' : 'light');
-    try { localStorage.setItem('bce-theme', d ? 'dark' : 'light'); } catch { /* ignore */ }
-  };
-
   const share = async () => {
     const url = new URL(window.location.href);
     url.searchParams.set('q', encodeQuery(query));
@@ -226,152 +228,135 @@ export default function Explorer() {
         : [{ id: 'table', label: MODE_LABEL[mode] }];
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
-  if (!session) return <div className="grid h-screen place-items-center text-sm text-muted" role="status">Checking your Emami Apps session…</div>;
+  if (!session) {
+    return (
+      <div className="grid h-screen place-items-center bg-bg" role="status" aria-label="Checking your Emami Apps session">
+        <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" />
+      </div>
+    );
+  }
+
+  const headerActions = (
+    <>
+      {result && (
+        <>
+          <Button size="sm" onClick={() => doExport('xlsx')} title="Excel (all columns + Parameters sheet)"><FileSpreadsheet size={14} /><span className="hidden lg:inline">Excel</span></Button>
+          <Button size="sm" onClick={() => doExport('csv')} title="CSV"><Download size={14} /><span className="hidden lg:inline">CSV</span></Button>
+          <Button size="sm" onClick={doPrint} title="Print"><Printer size={14} /><span className="hidden lg:inline">Print</span></Button>
+        </>
+      )}
+      <Button size="sm" onClick={share} title="Copy a link with this selection">{copied ? <><Check size={14} /> Copied</> : <><Link2 size={14} /><span className="hidden lg:inline">Share</span></>}</Button>
+      <Button size="sm" variant="ghost" onClick={signOut} title="Sign out of BOM Cost Explorer">Sign out</Button>
+    </>
+  );
+  const isPaged = mode === 'R' || mode === 'F' || mode === 'M';
+  const hasResult = !!result || (isPaged && ranQuery?.mode === mode);
 
   return (
-    <div className="flex h-screen flex-col overflow-clip">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 no-print">
-        <Button variant="ghost" size="sm" onClick={() => setSidebar(!sidebar)} aria-label={sidebar ? 'Hide selection' : 'Show selection'} aria-expanded={sidebar}>☰</Button>
-        <div className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-accent text-xs font-bold text-accent-ink" aria-hidden>BC</span>
-          <h1 className="text-sm font-semibold">BOM Cost Explorer <span className="font-normal text-muted">&amp; Simulator</span></h1>
-          {mock && <Pill tone="warn" title="MOCK_SAP=true - sample data, not SAP">MOCK SAP</Pill>}
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          {result && (
-            <>
-              <Button size="sm" onClick={() => doExport('xlsx')}>Excel</Button>
-              <Button size="sm" onClick={() => doExport('csv')}>CSV</Button>
-              <Button size="sm" onClick={doPrint}>Print</Button>
-            </>
-          )}
-          <Button size="sm" onClick={share} title="Copy a link with this query">{copied ? 'Link copied ✓' : 'Share link'}</Button>
-          <Button size="sm" variant="ghost" onClick={toggleTheme} aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}>{dark ? '☀' : '☾'}</Button>
-          <div className="hidden text-right text-2xs leading-tight text-muted md:block">
-            <div className="font-medium text-ink">{user}</div>
-            <div title={(session?.user?.plants ?? []).join(', ')}>plants: {(session?.user?.plants ?? []).includes('*') ? 'all' : (session?.user?.plants ?? []).length}</div>
-          </div>
-          <Button size="sm" variant="ghost" onClick={signOut}>Sign out</Button>
-        </div>
-      </header>
+    <Shell mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions}>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4">
+        <FilterPanel
+          query={query}
+          onChange={setQuery}
+          plants={plantsState}
+          running={running}
+          onRun={() => run()}
+          onCancel={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}
+          collapsed={collapsed}
+          onToggle={() => setCollapsed(!collapsed)}
+        />
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {sidebar && (
-          <aside className="scroll-thin max-h-[55vh] shrink-0 overflow-auto border-b border-line bg-panel px-3 pt-3 no-print lg:max-h-none lg:w-[330px] lg:border-b-0 lg:border-r">
-            {bootErr && <p className="mb-2 rounded bg-bad/10 p-2 text-xs text-bad" role="alert">Plants could not be loaded: {bootErr}</p>}
-            <FilterPanel
-              query={query}
-              onChange={setQuery}
-              plants={plants}
-              running={running}
-              onRun={() => run()}
-              onCancel={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}
-            />
-          </aside>
+        {running && (
+          <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-card no-print" role="status" aria-live="polite">
+            <div className="flex items-center gap-3 text-sm">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden />
+              <span className="font-bold">SAP is costing…</span>
+              <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at 120 s</span>
+              <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sunken">
+              {typical ? <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-deep transition-all" style={{ width: `${Math.min(95, (elapsed / typical) * 90)}%` }} /> : <div className="indeterminate h-full w-1/3 rounded-full bg-accent" />}
+            </div>
+          </div>
         )}
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-clip">
-          {!sidebar && (
-            <div className="border-b border-line bg-panel p-2 no-print">
-              <ModeSelector mode={query.mode} onChange={(m) => setQuery({ ...query, mode: m })} />
+        {runner.status === 'cancelled' && !result && <p className="text-sm text-muted">Run cancelled.</p>}
+        {runner.status === 'error' && runner.error && ranQuery?.mode === mode && (
+          <div className="rounded-2xl border border-bad/30 bg-bad/[0.05] px-4 py-3 text-sm" role="alert">
+            <div className="flex items-start gap-2">
+              <span className="font-bold text-bad">SAP error:</span>
+              <span className="flex-1">{runner.error.message}</span>
+              <Button size="sm" onClick={() => ranQuery && run(ranQuery)}>Retry</Button>
             </div>
-          )}
+            {runner.error.details.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs text-muted">{runner.error.details.map((d, i) => <li key={i}>{d.message}</li>)}</ul>}
+            {runner.error.issues.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs text-muted">{runner.error.issues.map((d, i) => <li key={i}>{d.path}: {d.message}</li>)}</ul>}
+          </div>
+        )}
 
-          {running && (
-            <div className="border-b border-line bg-panel px-3 py-2 no-print" role="status" aria-live="polite">
-              <div className="flex items-center gap-3 text-sm">
-                <span className="font-medium">SAP is costing…</span>
-                <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at 120 s</span>
-                <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
-              </div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded bg-sunken">
-                {typical ? <div className="h-full bg-accent transition-all" style={{ width: `${Math.min(95, (elapsed / typical) * 90)}%` }} /> : <div className="indeterminate h-full w-1/3 bg-accent" />}
-              </div>
-            </div>
-          )}
+        <Warnings messages={messages} />
 
-          {runner.status === 'cancelled' && !result && <p className="mx-3 mt-2 text-sm text-muted">Run cancelled.</p>}
-          {runner.status === 'error' && runner.error && (
-            <div className="mx-3 mt-2 rounded-md border border-bad/40 bg-bad/[0.06] px-3 py-2 text-sm" role="alert">
-              <div className="flex items-start gap-2">
-                <span className="font-semibold text-bad">SAP error:</span>
-                <span className="flex-1">{runner.error.message}</span>
-                <Button size="sm" onClick={() => ranQuery && run(ranQuery)}>Retry</Button>
-              </div>
-              {runner.error.details.length > 0 && (
-                <ul className="mt-1 list-disc pl-5 text-xs text-muted">{runner.error.details.map((d, i) => <li key={i}>{d.message}</li>)}</ul>
-              )}
-              {runner.error.issues.length > 0 && (
-                <ul className="mt-1 list-disc pl-5 text-xs text-muted">{runner.error.issues.map((d, i) => <li key={i}>{d.path}: {d.message}</li>)}</ul>
-              )}
-            </div>
-          )}
-
-          <Warnings messages={messages} />
-
-          {(result || mode === 'R' || mode === 'F' || mode === 'M') && ranQuery && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 pt-2 text-xs text-muted no-print">
-              <span><strong className="text-ink">{MODE_LABEL[mode]}</strong> · {ranQuery.materials.length} material(s) · {(ranQuery.mode === 'C' ? [ranQuery.bomPlant, '→', ...ranQuery.compPlants] : ranQuery.plants).join(' ')}</span>
-              {result && <span>{result.rows.length.toLocaleString('en-IN')} lines · SAP {fmtMs(result.ms)}</span>}
-              {pagedMsgs && <span>SAP {fmtMs(pagedMsgs.ms)}</span>}
-              {total && mode === 'B' && (
-                <span className="ml-auto text-sm">
-                  Total <strong className="num text-ink">{fmtNum(total, 2)}</strong> {groupCurr}
-                  {simTotal && <> · <SimTag /> <strong className="num sim-val">{fmtNum(simTotal, 2)}</strong></>}
-                </span>
-              )}
-              {JSON.stringify(query) !== JSON.stringify(ranQuery) && <Pill tone="warn" title="The selection was changed after this run">selection changed – press Run</Pill>}
-            </div>
-          )}
-
-          <div className="px-3 pt-1 no-print">
+        {hasResult && ranQuery && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 no-print">
             <Tabs label="Views" tabs={tabs} value={activeTab} onChange={setTab} />
+            <span className="text-xs text-muted">
+              {result && <>{result.rows.length.toLocaleString('en-IN')} lines · SAP {fmtMs(result.ms)}</>}
+              {pagedMsgs && isPaged && <>SAP {fmtMs(pagedMsgs.ms)}</>}
+            </span>
+            {JSON.stringify(query) !== JSON.stringify(ranQuery) && <Pill tone="warn" title="The selection was changed after this run">selection changed – run again</Pill>}
+            {total && mode === 'B' && (
+              <div className="ml-auto flex items-baseline gap-3 rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Total</span>
+                <strong className="num text-lg font-extrabold">{fmtNum(total, 2)}</strong>
+                <span className="text-xs font-semibold text-muted">{groupCurr}</span>
+                {simTotal && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(simTotal, 2)}</strong></>}
+              </div>
+            )}
           </div>
+        )}
 
-          <div className="min-h-0 flex-1 overflow-clip">
-            {mode === 'R' || mode === 'F' || mode === 'M' ? (
-              ranQuery && ranQuery.mode === mode ? (
-                <PagedTable
-                  key={mode}
-                  query={ranQuery}
-                  runKey={pagedRun}
-                  onMessages={(m, ms) => setPagedMsgs({ messages: m, ms })}
-                  onRunning={(on, cancel) => setPagedBusy(on ? { on, cancel, started: Date.now() } : { on: false })}
-                />
-              ) : (
-                <Empty title={`${MODE_LABEL[mode]}`}>Pick materials and plants, then <strong>Run in SAP</strong>. Results are paged on the server.</Empty>
-              )
-            ) : activeTab === 'scen' ? (
-              <Scenarios store={scen} workspace={{ query: ranQuery ?? query, sim, result: workspaceResult }} onLoad={loadScenario} plants={plants} groupCurr={groupCurr} autoRun={autoRun} onAutoRunDone={() => setAutoRun([])} />
-            ) : runner.status === 'running' && !result ? (
-              <Skeleton rows={16} />
-            ) : !result ? (
-              <Empty title="Nothing costed yet" icon="▦">
-                Choose a mode, up to 50 header materials and plants, then press <strong>Run in SAP</strong>. SAP does all costing; this app presents, compares and simulates.
-              </Empty>
-            ) : activeTab === 'tree' && tree && agg ? (
-              rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} /> : <Empty title="SAP returned no lines">Check the warnings above.</Empty>
-            ) : activeTab === 'compare' && pivot ? (
-              pivot.rows.length ? <ComparisonView pivot={pivot} plantNames={plantNames} /> : <Empty title="SAP returned no lines">Check the warnings above.</Empty>
-            ) : activeTab === 'dash' ? (
-              <Dashboard rows={rows} vals={simRows} simOn={simOn} plantNames={plantNames} onOpenRow={openRow} coverDays={coverDays} setCoverDays={(n) => { setCoverDays(n); ls.set('bce:cover-days', n); }} groupCurr={groupCurr} compare={mode === 'C'} />
-            ) : activeTab === 'sim' ? (
-              <Simulator
-                rows={rows}
-                sim={simRows}
-                settings={sim}
-                onChange={setSim}
-                explQty={ranQuery?.explQty ?? '1'}
-                groupCurr={groupCurr}
-                onOpenRow={openRow}
-                pending={sim !== simDeferred}
-                onSapQtyScenarios={qtyScenarios}
+        <div className={cx('shrink-0 overflow-clip rounded-2xl border border-line bg-panel shadow-card', hasResult || runner.status === 'running' ? 'h-[calc(100vh-150px)] min-h-[420px]' : '')}>
+          {isPaged ? (
+            ranQuery && ranQuery.mode === mode ? (
+              <PagedTable
+                key={mode}
+                query={ranQuery}
+                runKey={pagedRun}
+                onMessages={(m, ms) => setPagedMsgs({ messages: m, ms })}
+                onRunning={(on, cancel) => setPagedBusy(on ? { on, cancel, started: Date.now() } : { on: false })}
               />
-            ) : activeTab === 'dq' ? (
-              <DataQuality rows={rows} onOpenRow={openRow} />
-            ) : null}
-          </div>
-        </main>
+            ) : (
+              <Empty title={MODE_LABEL[mode]} icon="▦">Choose materials and plants above, then press <strong>Run in SAP</strong>. Results are paged on the server.</Empty>
+            )
+          ) : activeTab === 'scen' ? (
+            <Scenarios store={scen} workspace={{ query: ranQuery ?? query, sim, result: workspaceResult }} onLoad={loadScenario} plants={plants} groupCurr={groupCurr} autoRun={autoRun} onAutoRunDone={() => setAutoRun([])} />
+          ) : runner.status === 'running' && !result ? (
+            <Skeleton rows={16} />
+          ) : !result ? (
+            <Empty title="Nothing costed yet" icon="▦">
+              Pick up to 50 header materials and the plants above, then press <strong>Run in SAP</strong>. SAP does all the costing; this app presents, compares and simulates.
+            </Empty>
+          ) : activeTab === 'tree' && tree && agg ? (
+            rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} /> : <Empty title="SAP returned no lines">Check the SAP messages above, or try other plants.</Empty>
+          ) : activeTab === 'compare' && pivot ? (
+            pivot.rows.length ? <ComparisonView pivot={pivot} plantNames={plantNames} /> : <Empty title="SAP returned no lines">Check the SAP messages above.</Empty>
+          ) : activeTab === 'dash' ? (
+            <Dashboard rows={rows} vals={simRows} simOn={simOn} plantNames={plantNames} onOpenRow={openRow} coverDays={coverDays} setCoverDays={(n) => { setCoverDays(n); ls.set('bce:cover-days', n); }} groupCurr={groupCurr} compare={mode === 'C'} />
+          ) : activeTab === 'sim' ? (
+            <Simulator
+              rows={rows}
+              sim={simRows}
+              settings={sim}
+              onChange={setSim}
+              explQty={ranQuery?.explQty ?? '1'}
+              groupCurr={groupCurr}
+              onOpenRow={openRow}
+              pending={sim !== simDeferred}
+              onSapQtyScenarios={qtyScenarios}
+            />
+          ) : activeTab === 'dq' ? (
+            <DataQuality rows={rows} onOpenRow={openRow} />
+          ) : null}
+        </div>
       </div>
 
       {drawer !== null && rows[drawer] && (
@@ -390,6 +375,6 @@ export default function Explorer() {
       )}
 
       {printing && ranQuery && result && <PrintView query={ranQuery} tree={tree} pivot={pivot} sim={simRows} simOn={simOn} total={total} messages={result.messages} />}
-    </div>
+    </Shell>
   );
 }

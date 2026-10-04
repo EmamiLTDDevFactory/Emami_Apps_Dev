@@ -128,13 +128,6 @@ export type PageRequest = z.infer<typeof pageSchema>;
 
 export const costRequestSchema = z.object({ query: costQuerySchema, page: pageSchema.optional() });
 
-/** Every plant a query touches (for authorisation). */
-export function plantsOf(q: CostQuery): string[] {
-  const out = q.mode === 'C' ? [q.bomPlant, ...q.compPlants] : [...q.plants];
-  if (q.donorPlant && usesField(q.mode, 'donorPlant')) out.push(q.donorPlant);
-  return out.filter(Boolean);
-}
-
 /** Human-readable parameter list (Excel "Parameters" sheet, scenario cards). */
 export function describeQuery(q: CostQuery): [string, string][] {
   const yes = (b: boolean) => (b ? 'Yes' : 'No');

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { MaterialRow, PlantRow } from '@/lib/sap/fields';
+import type { MaterialRow } from '@/lib/sap/fields';
+import type { PlantsState } from './FilterPanel';
 import { api } from '@/lib/client/api';
 import { cx, inputCls } from './ui';
 
@@ -11,10 +12,14 @@ interface Option { value: string; label: string; sub?: string }
 
 /** Multi-select chips with type-ahead (combobox pattern), paste a list to add many. */
 function ChipInput({
-  id, values, onChange, options, loading, onQuery, placeholder, max, single, invalid, describe,
+  id, values, onChange, options, loading, onQuery, placeholder, max, single, invalid, describe, emptyText, onOpen, footer,
 }: {
   id: string; values: string[]; onChange: (v: string[]) => void; options: Option[]; loading?: boolean; onQuery?: (q: string) => void;
   placeholder?: string; max?: number; single?: boolean; invalid?: boolean; describe?: (v: string) => string | undefined;
+  /** shown in the open list when there is nothing to pick (and not loading) */
+  emptyText?: string;
+  onOpen?: () => void;
+  footer?: string;
 }) {
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
@@ -33,19 +38,20 @@ function ChipInput({
   };
 
   return (
-    <div className={cx('relative rounded-md border bg-panel px-1 py-0.5', invalid ? 'border-bad' : 'border-line focus-within:border-accent')}>
+    <div className={cx('relative rounded-xl border bg-panel px-1.5 py-1 transition', invalid ? 'border-bad' : 'border-line focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/15')}>
       <div className="flex flex-wrap items-center gap-1">
         {values.map((v) => (
-          <span key={v} className="inline-flex items-center gap-1 rounded bg-sunken px-1.5 py-0.5 text-xs" title={describe?.(v)}>
+          <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-accent/10 px-2 py-0.5 text-xs font-semibold text-accent" title={describe?.(v)}>
             <span className="font-mono">{v}</span>
-            <button type="button" className="text-faint hover:text-bad" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>✕</button>
+            {describe?.(v) && <span className="max-w-[140px] truncate font-normal text-ink/70">{describe(v)}</span>}
+            <button type="button" className="text-accent/60 hover:text-bad" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>✕</button>
           </span>
         ))}
         <input
           ref={inputRef}
           id={id}
           role="combobox"
-          aria-expanded={open && shown.length > 0}
+          aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={open && shown[active] ? `${listId}-${active}` : undefined}
@@ -58,7 +64,7 @@ function ChipInput({
             setOpen(true);
             setActive(0);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => { setOpen(true); onOpen?.(); }}
           onClick={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           onPaste={(e) => {
@@ -79,9 +85,10 @@ function ChipInput({
           }}
         />
       </div>
-      {open && (shown.length > 0 || loading) && (
-        <ul id={listId} role="listbox" className="scroll-thin absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-md border border-line bg-panel py-1 shadow-lg">
-          {loading && <li className="px-3 py-1.5 text-xs text-muted">Searching…</li>}
+      {open && (shown.length > 0 || loading || emptyText) && (
+        <ul id={listId} role="listbox" className="scroll-thin absolute left-0 right-0 top-full z-30 mt-1.5 max-h-72 animate-slideUp overflow-auto rounded-xl border border-line bg-panel py-1 shadow-cardHover">
+          {loading && <li className="px-3 py-2 text-xs font-semibold text-muted">Loading from SAP…</li>}
+          {!loading && shown.length === 0 && emptyText && <li className="px-3 py-2 text-xs text-muted">{emptyText}</li>}
           {shown.map((o, i) => (
             <li
               key={o.value}
@@ -90,13 +97,14 @@ function ChipInput({
               aria-selected={i === active}
               onMouseDown={(e) => { e.preventDefault(); add([o.value]); inputRef.current?.focus(); }}
               onMouseEnter={() => setActive(i)}
-              className={cx('flex cursor-pointer items-baseline gap-2 px-3 py-1 text-sm', i === active && 'bg-sunken')}
+              className={cx('mx-1 flex cursor-pointer items-baseline gap-2 rounded-lg px-2.5 py-1.5 text-sm', i === active && 'bg-accent/10')}
             >
-              <span className="font-mono text-xs">{o.value}</span>
+              <span className="font-mono text-xs font-bold text-accent">{o.value}</span>
               <span className="truncate">{o.label}</span>
               {o.sub && <span className="ml-auto shrink-0 text-2xs text-faint">{o.sub}</span>}
             </li>
           ))}
+          {footer && !loading && shown.length > 0 && <li className="px-3 pb-1 pt-1.5 text-[11px] text-faint">{footer}</li>}
         </ul>
       )}
     </div>
@@ -132,16 +140,18 @@ export function MaterialPicker({ id, values, onChange, max, invalid }: { id: str
       loading={loading}
       max={max}
       invalid={invalid}
-      placeholder="Type to search, or paste a list"
+      placeholder="Search material number or description…"
+      emptyText={q.trim().length < 2 ? 'Type at least 2 characters to search SAP' : 'No material found in SAP'}
       options={opts.map((m) => ({ value: m.Matnr, label: m.Maktx, sub: `${m.Mtart} · ${m.Meins}` }))}
       describe={(v) => known.current.get(v)?.Maktx}
     />
   );
 }
 
-export function PlantPicker({ id, values, onChange, plants, single, invalid, placeholder }: { id: string; values: string[]; onChange: (v: string[]) => void; plants: PlantRow[]; single?: boolean; invalid?: boolean; placeholder?: string }) {
+export function PlantPicker({ id, values, onChange, state, single, invalid, placeholder }: { id: string; values: string[]; onChange: (v: string[]) => void; state: PlantsState; single?: boolean; invalid?: boolean; placeholder?: string }) {
   const [q, setQ] = useState('');
   const t = q.trim().toLowerCase();
+  const { plants } = state;
   const opts = plants
     .filter((p) => !t || p.Werks.toLowerCase().includes(t) || p.Name1.toLowerCase().includes(t))
     .map((p) => ({ value: p.Werks, label: p.Name1, sub: `${p.Land1} · ${p.Waers}` }));
@@ -150,12 +160,17 @@ export function PlantPicker({ id, values, onChange, plants, single, invalid, pla
     <ChipInput
       id={id}
       values={values}
-      onChange={(v) => onChange(v.filter((x) => byId.size === 0 || byId.has(x)))}
+      onChange={(v) => onChange(v.map((x) => x.toUpperCase()))}
       onQuery={setQ}
       options={opts}
+      loading={state.loading}
+      // Opening the value help with nothing loaded (first load failed) asks SAP again.
+      onOpen={() => { if (!plants.length && !state.loading) state.reload(); }}
+      emptyText={state.error ? `Could not load plants: ${state.error}` : plants.length ? 'No plant matches' : 'No plants returned by SAP'}
+      footer={opts.length > 100 ? `Showing 100 of ${opts.length} - type to narrow` : undefined}
       single={single}
       invalid={invalid}
-      placeholder={placeholder ?? (single ? 'One plant' : 'Plants')}
+      placeholder={placeholder ?? (single ? 'Pick one plant…' : 'Search plant code or name…')}
       describe={(v) => byId.get(v)?.Name1}
     />
   );
@@ -188,10 +203,10 @@ export function PriorityList({ value, onChange, all }: { value: string[]; onChan
             }}
             tabIndex={0}
             aria-label={`${i + 1}. ${s}. Alt+Up or Alt+Down to move`}
-            className={cx('flex cursor-grab items-center gap-2 rounded border border-line bg-panel px-2 py-1 text-xs', drag === i && 'opacity-50')}
+            className={cx('flex cursor-grab items-center gap-2 rounded-xl border border-line bg-panel px-2.5 py-1.5 text-xs shadow-card transition hover:border-accent/40', drag === i && 'opacity-50')}
           >
             <span className="w-4 text-faint" aria-hidden>⋮⋮</span>
-            <span className="w-4 text-right text-faint">{i + 1}</span>
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-accent/10 text-[10px] font-extrabold text-accent">{i + 1}</span>
             <span className="h-2 w-2 rounded-sm" style={{ background: `var(--src-${s.toLowerCase().replace('inforec', 'inforec')})` }} aria-hidden />
             <span className="font-semibold">{s}</span>
             <span className="ml-auto flex gap-0.5">
@@ -205,7 +220,7 @@ export function PriorityList({ value, onChange, all }: { value: string[]; onChan
       {missing.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {missing.map((s) => (
-            <button key={s} type="button" onClick={() => onChange([...value, s])} className="rounded border border-dashed border-line px-1.5 py-0.5 text-2xs text-muted hover:text-ink">+ {s}</button>
+            <button key={s} type="button" onClick={() => onChange([...value, s])} className="rounded-full border border-dashed border-accent/40 px-2 py-0.5 text-2xs font-semibold text-accent hover:bg-accent/10">+ {s}</button>
           ))}
         </div>
       )}

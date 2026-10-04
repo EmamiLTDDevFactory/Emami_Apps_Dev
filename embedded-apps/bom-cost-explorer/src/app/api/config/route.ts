@@ -16,8 +16,8 @@ export async function GET(req: Request) {
       cache.set('cfg', cfg);
     }
     return NextResponse.json(
-      { ...cfg, user: { email: user.email, plants: user.plants, role: user.role }, mock: String(process.env.MOCK_SAP) === 'true' },
-      { headers: { 'Cache-Control': 'private, max-age=600' } },
+      { ...cfg, user: { email: user.email, role: user.role } },
+      { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {
     return errorResponse(e);

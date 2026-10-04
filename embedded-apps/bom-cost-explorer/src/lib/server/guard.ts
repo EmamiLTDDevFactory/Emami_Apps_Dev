@@ -4,7 +4,6 @@ import { SapError } from '../sap/client';
 
 export interface ApiUser {
   email: string;
-  plants: string[];
   role: string;
 }
 
@@ -21,7 +20,7 @@ export async function requireUser(req: Request): Promise<ApiUser> {
     return null;
   });
   if (!u) throw new HttpError(401, 'Not signed in or session expired.');
-  return { email: u.email, plants: u.plants, role: u.role };
+  return { email: u.email, role: u.role };
 }
 
 // ---- per-user rate limit (sliding window, in memory: one PM2 fork process per environment) ----

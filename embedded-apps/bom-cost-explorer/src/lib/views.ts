@@ -86,7 +86,6 @@ const M: ColDef<RmPmRow>[] = [
 ];
 
 export const VIEW_COLUMNS = { R, F, M } as unknown as Record<'R' | 'F' | 'M', ColDef[]>;
-export const PLANT_FIELD: Record<'R' | 'F' | 'M', string> = { R: 'Plant', F: 'Plant', M: 'Plant' };
 
 export function currencyOf(col: ColDef, row: Record<string, unknown>): string | undefined {
   if (!col.curr) return undefined;

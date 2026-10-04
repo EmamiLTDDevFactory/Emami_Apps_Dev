@@ -37,7 +37,6 @@ export default defineConfig({
         NEXTAUTH_SECRET: 'e2e-nextauth-secret',
         HUB_AUTH_JWT_SECRET: HUB_SECRET,
         HUB_ACCESS_API_BASE: '',
-        PLANT_ACCESS: JSON.stringify({ '*': ['1000', '1100', '1200', 'BD10'] }),
         RATE_LIMIT_COST_PER_MIN: '100',
       },
     },

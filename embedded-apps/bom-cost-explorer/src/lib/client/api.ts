@@ -17,6 +17,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const token = readSession()?.token;
     res = await fetch(`${bffBase()}${path}`, {
+      cache: 'no-store',
       ...init,
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
     });
@@ -55,5 +56,5 @@ export const api = {
   paged: (query: CostQuery, page: Partial<PageRequest>, signal?: AbortSignal) => call<PagedResult>('/api/cost', { method: 'POST', body: JSON.stringify({ query, page }), signal }),
   plants: () => call<{ plants: PlantRow[] }>('/api/plants'),
   materials: (q: string, signal?: AbortSignal) => call<{ materials: MaterialRow[] }>(`/api/materials?q=${encodeURIComponent(q)}`, { signal }),
-  config: () => call<Record<string, string> & { user: { email: string; plants: string[]; role: string }; mock: boolean }>('/api/config'),
+  config: () => call<Record<string, string> & { user: { email: string; role: string } }>('/api/config'),
 };

@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { encode, getToken } from 'next-auth/jwt';
 import type { NextRequest } from 'next/server';
-import { plantsForEmail } from './plants';
 
 /**
  * Sessions are NextAuth JWTs (next-auth/jwt encode/getToken, NEXTAUTH_SECRET). The UI is a static
@@ -16,7 +15,6 @@ export const demoLoginAllowed = () => String(process.env.MOCK_SAP).toLowerCase()
 export interface AppUser {
   email: string;
   name: string;
-  plants: string[];
   role: string;
 }
 
@@ -32,9 +30,6 @@ const secret = () => {
   return s;
 };
 
-const toList = (v: unknown) =>
-  (Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(/[,\s]+/) : []).map((s) => s.trim().toUpperCase()).filter(Boolean);
-
 /** Manage Access role on this app (null = not granted, 'skip' = check disabled). */
 async function hubRole(email: string): Promise<string | null | 'skip'> {
   const base = process.env.HUB_ACCESS_API_BASE;
@@ -47,12 +42,13 @@ async function hubRole(email: string): Promise<string | null | 'skip'> {
 }
 
 /** The hub already authenticated the person: verify its token (same secret as the hub's
- * backend/sessionAuth.js), check Manage Access, resolve the plants they may cost. */
+ * backend/sessionAuth.js) and check Manage Access. No plant-level restriction: every plant SAP
+ * returns in PlantVHSet can be costed. */
 export async function userFromHubToken(hubToken: string): Promise<AppUser> {
   const hubSecret = process.env.HUB_AUTH_JWT_SECRET;
   if (!hubSecret) throw new AuthError(503, 'Sign-in is not configured (HUB_AUTH_JWT_SECRET).');
   if (!hubToken) throw new AuthError(401, 'No Emami Apps session found. Sign in to Emami Apps first.');
-  let p: { email?: string; name?: string; plants?: unknown };
+  let p: { email?: string; name?: string };
   try {
     p = jwt.verify(hubToken, hubSecret) as typeof p;
   } catch (e) {
@@ -67,21 +63,18 @@ export async function userFromHubToken(hubToken: string): Promise<AppUser> {
     throw new AuthError(502, 'Could not check your access in Manage Access. Please try again.');
   }
   if (role === null) throw new AuthError(403, "You don't have access to BOM Cost Explorer. Ask your Emami Apps admin to grant it in Manage Access.");
-  // A plants claim on the hub token wins; otherwise the server's PLANT_ACCESS mapping.
-  const plants = toList(p.plants).length ? toList(p.plants) : plantsForEmail(email);
-  if (!plants.length) throw new AuthError(403, 'No plants are assigned to you for costing. Ask IT to add you to PLANT_ACCESS.');
-  return { email, name: p.name || email, plants, role: role === 'skip' ? 'User' : role };
+  return { email, name: p.name || email, role: role === 'skip' ? 'User' : role };
 }
 
-export function demoUser(email: string, plants: unknown): AppUser {
+/** Local development only (MOCK_SAP=true or ALLOW_DEMO_LOGIN=true); never on in a deployed env. */
+export function demoUser(email: string): AppUser {
   if (!demoLoginAllowed()) throw new AuthError(404, 'Demo sign-in is disabled.');
   const e = String(email || 'demo.user@example.com').trim().toLowerCase();
-  const list = toList(plants);
-  return { email: e, name: e, plants: list.length ? list : plantsForEmail(e), role: 'Admin' };
+  return { email: e, name: e, role: 'Admin' };
 }
 
 export async function issueSession(u: AppUser): Promise<{ token: string; expiresAt: number }> {
-  const token = await encode({ token: { sub: u.email, email: u.email, name: u.name, plants: u.plants, role: u.role }, secret: secret(), maxAge: SESSION_MAX_AGE });
+  const token = await encode({ token: { sub: u.email, email: u.email, name: u.name, role: u.role }, secret: secret(), maxAge: SESSION_MAX_AGE });
   return { token, expiresAt: Date.now() + SESSION_MAX_AGE * 1000 };
 }
 
@@ -89,5 +82,5 @@ export async function issueSession(u: AppUser): Promise<{ token: string; expires
 export async function userFromRequest(req: Request): Promise<AppUser | null> {
   const t = await getToken({ req: req as unknown as NextRequest, secret: secret() });
   if (!t?.email) return null;
-  return { email: String(t.email), name: String(t.name ?? t.email), plants: (t.plants as string[]) ?? [], role: (t.role as string) ?? 'User' };
+  return { email: String(t.email), name: String(t.name ?? t.email), role: (t.role as string) ?? 'User' };
 }

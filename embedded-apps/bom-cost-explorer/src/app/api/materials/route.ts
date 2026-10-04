@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const k = `q:${q.toLowerCase()}`;
     let r = cache.get(k);
     if (!r) cache.set(k, (r = await fetchMaterials(q, { user: user.email, timeoutMs: 30_000, signal: req.signal })));
-    return NextResponse.json({ materials: r.slice(0, 100) }, { headers: { 'Cache-Control': 'private, max-age=600' } });
+    return NextResponse.json({ materials: r.slice(0, 100) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     return errorResponse(e);
   }

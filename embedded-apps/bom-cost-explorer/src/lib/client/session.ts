@@ -23,7 +23,7 @@ export function bffBase(): string {
 export interface AppSession {
   token: string;
   expiresAt: number;
-  user: { email: string; name: string; plants: string[]; role: string };
+  user: { email: string; name: string; role: string };
 }
 
 const KEY = 'bce:session';
@@ -56,7 +56,7 @@ export function hubToken(): string | null {
 
 export const signinUrl = () => `${BASE_PATH}/signin/?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
 
-export async function exchange(body: { hubToken: string } | { demo: { email: string; plants: string } }): Promise<AppSession> {
+export async function exchange(body: { hubToken: string } | { demo: { email: string } }): Promise<AppSession> {
   const res = await fetch(`${bffBase()}/api/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Sign-in failed (${res.status})`);

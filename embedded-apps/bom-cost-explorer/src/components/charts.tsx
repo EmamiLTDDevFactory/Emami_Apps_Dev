@@ -1,5 +1,4 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fmtCompactInr, fmtNum } from '@/lib/format';
 
@@ -8,20 +7,11 @@ import { fmtCompactInr, fmtNum } from '@/lib/format';
  * rate-source identity colours (CONTRACT green, INFOREC yellow, MARKT cyan, CONSUMP orange,
  * MBEW red, no rate grey). */
 export function useChartTheme() {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    const el = document.documentElement;
-    const upd = () => setDark(el.classList.contains('dark'));
-    upd();
-    const mo = new MutationObserver(upd);
-    mo.observe(el, { attributes: true, attributeFilter: ['class'] });
-    return () => mo.disconnect();
-  }, []);
-  return dark
-    ? { series: '#3987e5', up: '#e66767', down: '#3987e5', grid: '#343a46', axis: '#a7aebb', text: '#eceef2', surface: '#181b21', sim: '#a78bfa', neutral: '#6b6a66',
-        src: { CONTRACT: '#2ea043', INFOREC: '#c98500', MARKT: '#22b5cc', CONSUMP: '#d95926', MBEW: '#e66767', 'NO RATE': '#6b6a66' } as Record<string, string> }
-    : { series: '#2a78d6', up: '#e34948', down: '#2a78d6', grid: '#e6e8ec', axis: '#5b6472', text: '#111827', surface: '#ffffff', sim: '#5b21b6', neutral: '#8a8984',
-        src: { CONTRACT: '#008300', INFOREC: '#eda100', MARKT: '#0e9fb5', CONSUMP: '#eb6834', MBEW: '#e34948', 'NO RATE': '#8a8984' } as Record<string, string> };
+  // Light only, like the hub. Single series = the hub's indigo; diverging = red (up) / blue (down).
+  return {
+    series: '#4F3FD6', up: '#C0392B', down: '#2a78d6', grid: '#ECEAF6', axis: '#6B7280', text: '#1F1B33', surface: '#ffffff', sim: '#C2185B', neutral: '#8B8FA3',
+    src: { CONTRACT: '#008300', INFOREC: '#eda100', MARKT: '#0e9fb5', CONSUMP: '#eb6834', MBEW: '#e34948', 'NO RATE': '#8a8984' } as Record<string, string>,
+  };
 }
 
 const tooltipStyle = (t: ReturnType<typeof useChartTheme>) => ({

@@ -5,12 +5,12 @@ export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Bool
 
 // Explicit class map: Tailwind purges dynamically built class names.
 const BTN: Record<string, string> = {
-  primary: 'bg-accent text-accent-ink hover:opacity-90 border-transparent',
+  primary: 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink border-transparent shadow-sm hover:shadow-md',
   secondary: 'bg-panel text-ink border-line hover:bg-sunken',
   ghost: 'bg-transparent text-ink border-transparent hover:bg-sunken',
-  danger: 'bg-bad text-white border-transparent hover:opacity-90',
+  danger: 'bg-panel text-bad border-bad/60 hover:bg-bad/10',
 };
-const SIZE: Record<string, string> = { sm: 'h-7 px-2 text-xs gap-1', md: 'h-8 px-3 text-sm gap-1.5' };
+const SIZE: Record<string, string> = { sm: 'h-8 px-2.5 text-xs gap-1.5 rounded-lg', md: 'h-9 px-3.5 text-sm gap-1.5 rounded-xl' };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof BTN; size?: 'sm' | 'md' }>(
   function Button({ variant = 'secondary', size = 'md', className, ...p }, ref) {
@@ -19,7 +19,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
         ref={ref}
         type="button"
         {...p}
-        className={cx('inline-flex items-center justify-center rounded-md border font-medium whitespace-nowrap transition disabled:opacity-50 disabled:pointer-events-none', BTN[variant], SIZE[size], className)}
+        className={cx('inline-flex items-center justify-center border font-semibold whitespace-nowrap transition-all active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none', BTN[variant], SIZE[size], className)}
       />
     );
   },
@@ -27,10 +27,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
 
 export function Card({ title, actions, children, className, bodyClass }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClass?: string }) {
   return (
-    <section className={cx('rounded-lg border border-line bg-panel', className)}>
+    <section className={cx('rounded-2xl border border-line bg-panel shadow-card', className)}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-          <h3 className="text-sm font-semibold">{title}</h3>
+        <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
+          <h3 className="text-sm font-bold">{title}</h3>
           <div className="flex items-center gap-1.5">{actions}</div>
         </header>
       )}
@@ -70,7 +70,7 @@ export function Field({ label, hint, error, children, className }: { label: stri
   const id = useId();
   return (
     <div className={cx('flex flex-col gap-1', className)}>
-      <label htmlFor={id} className="text-xs font-medium text-muted">{label}</label>
+      <label htmlFor={id} className="text-xs font-bold text-muted">{label}</label>
       {children(id)}
       {error ? <p className="text-2xs text-bad" role="alert">{error}</p> : hint ? <p className="text-2xs text-faint">{hint}</p> : null}
     </div>
@@ -79,8 +79,8 @@ export function Field({ label, hint, error, children, className }: { label: stri
 
 /** Size-free input styling; inputCls adds the default size. Pass inputBase + your own h-/w- to
  * avoid two conflicting width classes. */
-export const inputBase = 'rounded-md border border-line bg-panel px-2 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none';
-export const inputCls = `h-8 w-full ${inputBase}`;
+export const inputBase = 'rounded-xl border border-line bg-panel px-3 text-sm text-ink placeholder:text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+export const inputCls = `h-9 w-full ${inputBase}`;
 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
@@ -91,7 +91,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={cx('relative h-5 w-9 shrink-0 rounded-full border transition', checked ? 'border-accent bg-accent' : 'border-line bg-sunken')}
+        className={cx('relative h-5 w-9 shrink-0 rounded-full border transition', checked ? 'border-accent bg-accent' : 'border-line bg-line')}
       >
         <span className={cx('absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition', checked ? 'left-[18px]' : 'left-0.5')} />
       </button>
@@ -103,7 +103,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
 export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: ReactNode; badge?: ReactNode }[]; value: T; onChange: (t: T) => void; label: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   return (
-    <div role="tablist" aria-label={label} className="flex gap-0.5 overflow-x-auto border-b border-line">
+    <div role="tablist" aria-label={label} className="inline-flex max-w-full gap-1 overflow-x-auto rounded-2xl border border-line bg-panel p-1 shadow-card">
       {tabs.map((t, i) => (
         <button
           key={t.id}
@@ -122,7 +122,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
             onChange(tabs[n].id);
             refs.current[n]?.focus();
           }}
-          className={cx('-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium', value === t.id ? 'border-accent text-ink' : 'border-transparent text-muted hover:text-ink')}
+          className={cx('flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-sm font-semibold transition', value === t.id ? 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink shadow-sm' : 'text-muted hover:bg-sunken hover:text-ink')}
         >
           {t.label}
           {t.badge}
@@ -173,7 +173,7 @@ export function Drawer({ open, onClose, title, children, width = 720 }: { open: 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end no-print" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute inset-0 bg-plum-deep/40 backdrop-blur-[2px]" onClick={onClose} />
       <div ref={ref} tabIndex={-1} className="relative flex h-full w-full flex-col border-l border-line bg-panel shadow-2xl outline-none" style={{ maxWidth: width }}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0">{title}</div>
@@ -201,9 +201,9 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 no-print" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div ref={ref} tabIndex={-1} className="relative w-full max-w-lg rounded-lg border border-line bg-panel shadow-2xl outline-none">
-        <div className="border-b border-line px-4 py-3 text-sm font-semibold">{title}</div>
+      <div className="absolute inset-0 bg-plum-deep/50 backdrop-blur-sm" onClick={onClose} />
+      <div ref={ref} tabIndex={-1} className="relative w-full max-w-lg animate-slideUp rounded-2xl border border-line bg-panel shadow-pop outline-none">
+        <div className="border-b border-line px-4 py-3 text-sm font-bold">{title}</div>
         <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
       </div>
@@ -213,13 +213,38 @@ export function Modal({ open, onClose, title, children, footer }: { open: boolea
 
 export function Stat({ label, value, sub, tone, sim, title }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'good' | 'warn' | 'bad'; sim?: boolean; title?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-panel px-3 py-2.5" title={title}>
-      <div className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wide text-muted">
+    <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-card" title={title}>
+      <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted">
         {label}
         {sim && <SimTag />}
       </div>
-      <div className={cx('num mt-1 text-xl font-semibold', tone === 'good' && 'text-good', tone === 'warn' && 'text-warn', tone === 'bad' && 'text-bad', sim && 'sim-val')}>{value}</div>
+      <div className={cx('num mt-1 text-2xl font-extrabold tracking-tight', tone === 'good' && 'text-good', tone === 'warn' && 'text-warn', tone === 'bad' && 'text-bad', sim && 'sim-val')}>{value}</div>
       {sub && <div className="num mt-0.5 text-2xs text-muted">{sub}</div>}
+    </div>
+  );
+}
+
+/** Segmented choice (radio group) - the selection card's stylised toggle. */
+export function Segmented<T extends string | number | boolean>({ value, onChange, options, label, size = 'md' }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode; hint?: string }[]; label: string; size?: 'sm' | 'md' }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex w-full rounded-xl bg-sunken p-1 ring-1 ring-inset ring-line">
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          title={o.hint}
+          onClick={() => onChange(o.value)}
+          className={cx(
+            'flex-1 whitespace-nowrap rounded-lg font-semibold transition',
+            size === 'sm' ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-[13px]',
+            value === o.value ? 'bg-panel text-accent shadow-card ring-1 ring-line' : 'text-muted hover:text-ink',
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
