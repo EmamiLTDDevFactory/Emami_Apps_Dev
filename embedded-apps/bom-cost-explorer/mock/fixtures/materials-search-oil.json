@@ -1,0 +1,87 @@
+{
+ "status": 200,
+ "sapMessage": null,
+ "body": {
+  "d": {
+   "results": [
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('FG1001')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('FG1001')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "FG1001",
+     "Maktx": "Herbal Hair Oil 100 ml",
+     "Mtart": "FERT",
+     "Meins": "PC"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('FG1002')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('FG1002')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "FG1002",
+     "Maktx": "Herbal Hair Oil 200 ml",
+     "Mtart": "FERT",
+     "Meins": "PC"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('FG1003')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('FG1003')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "FG1003",
+     "Maktx": "Cooling Hair Oil 300 ml",
+     "Mtart": "FERT",
+     "Meins": "PC"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('SF1001')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('SF1001')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "SF1001",
+     "Maktx": "Hair Oil Bulk",
+     "Mtart": "HALB",
+     "Meins": "KG"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('SF1002')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('SF1002')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "SF1002",
+     "Maktx": "Cooling Oil Bulk",
+     "Mtart": "HALB",
+     "Meins": "KG"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('RM0002')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('RM0002')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "RM0002",
+     "Maktx": "Refined Sesame Oil",
+     "Mtart": "ROH",
+     "Meins": "KG"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/MaterialSet('RM0009')",
+      "uri": "ZMM_BOM_COST_SRV/MaterialSet('RM0009')",
+      "type": "ZMM_BOM_COST_SRV.Material"
+     },
+     "Matnr": "RM0009",
+     "Maktx": "Wintergreen Oil",
+     "Mtart": "ROH",
+     "Meins": "KG"
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,37 @@
+{
+ "status": 200,
+ "sapMessage": null,
+ "body": {
+  "d": {
+   "results": [
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/ConfigSet('GROUP_CURR')",
+      "uri": "ZMM_BOM_COST_SRV/ConfigSet('GROUP_CURR')",
+      "type": "ZMM_BOM_COST_SRV.Config"
+     },
+     "CfgKey": "GROUP_CURR",
+     "CfgVal": "INR"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/ConfigSet('DEFAULT_PRIO')",
+      "uri": "ZMM_BOM_COST_SRV/ConfigSet('DEFAULT_PRIO')",
+      "type": "ZMM_BOM_COST_SRV.Config"
+     },
+     "CfgKey": "DEFAULT_PRIO",
+     "CfgVal": "CONTRACT,INFOREC,MARKT,CONSUMP,MBEW"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/ConfigSet('MAX_HEADS')",
+      "uri": "ZMM_BOM_COST_SRV/ConfigSet('MAX_HEADS')",
+      "type": "ZMM_BOM_COST_SRV.Config"
+     },
+     "CfgKey": "MAX_HEADS",
+     "CfgVal": "50"
+    }
+   ]
+  }
+ }
+}

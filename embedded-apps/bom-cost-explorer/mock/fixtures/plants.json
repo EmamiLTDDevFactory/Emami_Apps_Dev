@@ -1,0 +1,76 @@
+{
+ "status": 200,
+ "sapMessage": null,
+ "body": {
+  "d": {
+   "results": [
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('1000')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('1000')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "1000",
+     "Name1": "Kolkata Plant",
+     "Land1": "IN",
+     "Waers": "INR"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('1100')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('1100')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "1100",
+     "Name1": "Pantnagar Plant",
+     "Land1": "IN",
+     "Waers": "INR"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('1200')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('1200')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "1200",
+     "Name1": "Guwahati Plant",
+     "Land1": "IN",
+     "Waers": "INR"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('1300')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('1300')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "1300",
+     "Name1": "Vapi Plant",
+     "Land1": "IN",
+     "Waers": "INR"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('BD10')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('BD10')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "BD10",
+     "Name1": "Dhaka Plant",
+     "Land1": "BD",
+     "Waers": "BDT"
+    },
+    {
+     "__metadata": {
+      "id": "ZMM_BOM_COST_SRV/PlantSet('AE10')",
+      "uri": "ZMM_BOM_COST_SRV/PlantSet('AE10')",
+      "type": "ZMM_BOM_COST_SRV.Plant"
+     },
+     "Werks": "AE10",
+     "Name1": "Dubai Plant",
+     "Land1": "AE",
+     "Waers": "AED"
+    }
+   ]
+  }
+ }
+}

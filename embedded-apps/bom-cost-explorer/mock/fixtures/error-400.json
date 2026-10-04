@@ -1,0 +1,22 @@
+{
+ "status": 400,
+ "sapMessage": null,
+ "body": {
+  "error": {
+   "code": "ZBOM/099",
+   "message": {
+    "lang": "en",
+    "value": "Costing for FAIL01 failed: BOM explosion error in plant 1000 (mock error)"
+   },
+   "innererror": {
+    "errordetails": [
+     {
+      "code": "ZBOM/099",
+      "message": "Costing for FAIL01 failed: BOM explosion error in plant 1000 (mock error)",
+      "severity": "error"
+     }
+    ]
+   }
+  }
+ }
+}

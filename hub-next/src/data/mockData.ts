@@ -1,7 +1,7 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
-  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel,
+  CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -42,6 +42,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   salescode: '/apps/salescode', // Salescode
   'audit-tool': '/apps/audit-tool', // Audit Tool (MSD internal audit)
   'rate-auction': '/apps/rate-auction', // Rate Auction
+  'bom-cost-explorer': '/apps/bom-cost-explorer', // BOM Cost Explorer & Simulator
 };
 
 const RAW_APPS: AppItem[] = [
@@ -64,6 +65,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0 },
   { id: 'audit-tool', name: 'Audit Tool', desc: 'MSD internal audit — masters, checklist, audit scheduling and kickoff, observations workflow and MIS reporting on SAP.', cat: 'MSD', icon: FileSearch, uses: 0 },
   { id: 'rate-auction', name: 'Rate Auction', desc: 'Live reverse auction for material and freight rates — vendors bid anonymously, Central Purchase awards and creates the SAP info record or contract.', cat: 'CPD', icon: Gavel, uses: 0 },
+  { id: 'bom-cost-explorer', name: 'BOM Cost Explorer', desc: 'Multi-level BOM costing from SAP by plant — rate sources, freight, budget and coverage, plant comparison, and what-if scenario simulation.', cat: 'CPD', icon: Calculator, uses: 0 },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

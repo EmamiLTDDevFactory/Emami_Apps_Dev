@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour tokens as RGB triplets (tailwind.config.ts maps them). Light is the default; .dark on
+   <html> flips them. Contrast of ink/muted on bg/panel meets WCAG AA in both themes. */
+:root {
+  color-scheme: light;
+  --bg: 245 246 248;
+  --panel: 255 255 255;
+  --sunken: 238 240 243;
+  --line: 222 225 230;
+  --ink: 17 24 39;
+  --muted: 75 85 99;
+  --faint: 107 114 128;
+  --accent: 29 78 216;
+  --accent-ink: 255 255 255;
+  --good: 21 128 61;
+  --warn: 161 98 7;
+  --bad: 185 28 28;
+  --sim: 91 33 182;
+  --src-contract: #008300;
+  --src-inforec: #eda100;
+  --src-markt: #0e9fb5;
+  --src-consump: #eb6834;
+  --src-mbew: #e34948;
+  --src-none: #8a8984;
+}
+.dark {
+  color-scheme: dark;
+  --bg: 15 17 21;
+  --panel: 24 27 33;
+  --sunken: 32 36 44;
+  --line: 52 58 70;
+  --ink: 236 238 242;
+  --muted: 176 183 195;
+  --faint: 140 148 160;
+  --accent: 96 145 255;
+  --accent-ink: 10 14 22;
+  --good: 74 197 120;
+  --warn: 234 179 8;
+  --bad: 248 113 113;
+  --sim: 167 139 250;
+  --src-contract: #2ea043;
+  --src-inforec: #c98500;
+  --src-markt: #22b5cc;
+  --src-consump: #d95926;
+  --src-mbew: #e66767;
+  --src-none: #6b6a66;
+}
+
+html, body { height: 100%; }
+body { @apply bg-bg text-ink antialiased; font-feature-settings: 'tnum' 1, 'cv11' 1; }
+.num { font-variant-numeric: tabular-nums; }
+
+*:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
+
+.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: rgb(var(--line)); border-radius: 6px; border: 2px solid rgb(var(--panel)); }
+
+/* Tree group rows: OPAQUE colours, because the sticky structure cell inherits the row colour
+   and a translucent one would be painted twice there. */
+.row-country { background-color: rgb(var(--sunken)); }
+.row-plant { background-color: color-mix(in srgb, rgb(var(--sunken)) 55%, rgb(var(--panel))); }
+.row-header { background-color: color-mix(in srgb, rgb(var(--accent)) 7%, rgb(var(--panel))); }
+.row-line { background-color: rgb(var(--panel)); }
+.row-line:hover, .row-line:hover > .sticky { background-color: color-mix(in srgb, rgb(var(--accent)) 4%, rgb(var(--panel))); }
+.row-sim { background-color: color-mix(in srgb, rgb(var(--sim)) 5%, rgb(var(--panel))); }
+
+/* Simulated figures are always marked: violet text with a dotted underline. */
+.sim-val { color: rgb(var(--sim)); text-decoration: underline dotted; text-underline-offset: 3px; }
+
+@keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+.indeterminate { animation: indet 1.4s ease-in-out infinite; }
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.skeleton { background: linear-gradient(90deg, rgb(var(--sunken)) 0%, rgb(var(--line)) 50%, rgb(var(--sunken)) 100%); background-size: 800px 100%; animation: shimmer 1.3s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .indeterminate, .skeleton { animation: none; } }
+
+/* Print: only the report. */
+.print-only { display: none; }
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .print-table { font-size: 8.5pt; border-collapse: collapse; width: 100%; }
+  .print-table th, .print-table td { border: 1px solid #bbb; padding: 2px 4px; }
+  .print-table thead { display: table-header-group; }
+  .print-table tr { break-inside: avoid; }
+}
