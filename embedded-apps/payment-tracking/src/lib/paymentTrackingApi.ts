@@ -495,9 +495,9 @@ export async function submitProvisionApprovalBatch(
 // with Zaction overridden instead of echoing the row's original Zaction — that field is already how
 // this entity carries a row's state, so an Admin decision is just a different Zaction value on the
 // same write. Approving a row already in the 'SA' (Approval for SES) bucket writes Zaction 'AS'
-// (SES Created) — the domain's own next-state code — rather than a bare 'A'; every other approval
-// (e.g. an 'RD' Revised Delivery Date row) still writes 'A'/'R' as before, since only the SES case
-// was called out. 'S' is a third decision value — Save, used when Admin just wants the edited
+// (SES Created) — the domain's own next-state code — rather than a bare 'A', and approving an 'RD'
+// (Revised Delivery Date) row writes 'RD', per instruction (2026-10-04). Any other approval still
+// writes 'A', and a rejection still writes 'R'. 'S' is a third decision value — Save, used when Admin just wants the edited
 // invoice fields/attachment persisted without deciding the row at all (see submitApprovalDecision's
 // callers in pending-approval.tsx, which never set `decided` for an 'S' call). Every other field is
 // echoed back from what the GET already returned for that row, same posture as toProvItem above —
@@ -525,10 +525,12 @@ function toApprovalItem(row: VendorPOFollowupRow, decision: ApprovalDecision, ov
   const invoiceDate = overrides?.invoiceDate ?? row.invoiceDate;
   const invoiceAmount = overrides?.invoiceAmount ?? row.invoiceAmount;
   const hasAttachment = !!overrides?.attachmentBase64;
-  // Approving (decision 'A') a row already in the 'SA' bucket (Approval for SES) is the point the
-  // SES actually gets created, so it writes 'AS' — every other decision (approving an 'RD' row,
-  // rejecting, or a plain 'S' save) writes the decision value itself unchanged.
-  const zaction = decision === 'A' && row.zaction === 'SA' ? 'AS' : decision;
+  // Approving (decision 'A') writes the row's own approval code where SAP has one: an 'SA' row
+  // (Approval for SES) is the point the SES gets created, so 'AS'; an 'RD' row (Revised Delivery
+  // Date) writes 'RD'. Any other approval, a rejection ('R') or a plain save ('S') writes the
+  // decision value itself unchanged.
+  const APPROVE_ZACTION: Record<string, string> = { SA: 'AS', RD: 'RD' };
+  const zaction = decision === 'A' ? APPROVE_ZACTION[(row.zaction || '').trim()] || 'A' : decision;
   return {
     Lifnr: row.lifnr,
     Ebeln: row.poNumber,
