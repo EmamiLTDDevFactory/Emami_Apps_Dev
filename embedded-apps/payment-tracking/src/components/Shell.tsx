@@ -1,0 +1,190 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  ArrowLeft, Menu, X, User, CalendarDays, LayoutGrid, Layers, CalendarRange, Wrench, CalendarClock,
+  CheckCheck, History, AlertCircle, type LucideIcon,
+} from 'lucide-react';
+import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
+import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../context/PaymentTrackingAuthContext';
+import { MonthYearProvider, useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS, fiscalYearLabel } from '../context/MonthYearContext';
+import { Select, Spinner, cx } from './ui';
+
+const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
+// next/link prepends next.config.js's basePath; plain <img> doesn't.
+const BASE_PATH = '/apps/payment-tracking';
+
+type NavItem = { href: string; label: string; icon: LucideIcon };
+
+// Three roles, three distinct tab sets — same lists, same order as the Expo version's _layout.tsx:
+//   Admin   — Dashboard, Provision Details, Calendar
+//   Finance — Purchase Order Creation and Details, Upcoming Provision (All Vendors),
+//             Pending Approval, Submission History
+//   User    — Upcoming Provision, Missed Provision, Submission History
+const ADMIN_NAV: NavItem[] = [
+  { href: '/dashboard/', label: 'Dashboard', icon: LayoutGrid },
+  { href: '/provision-details/', label: 'Provision Details', icon: Layers },
+  { href: '/calendar/', label: 'Calendar', icon: CalendarRange },
+];
+const FINANCE_NAV: NavItem[] = [
+  { href: '/po-creation/', label: 'Purchase Order Creation and Details', icon: Wrench },
+  { href: '/admin-upcoming/', label: 'Upcoming Provision (All Vendors)', icon: CalendarClock },
+  { href: '/pending-approval/', label: 'Pending Approval', icon: CheckCheck },
+  { href: '/history/', label: 'Submission History', icon: History },
+];
+const USER_NAV: NavItem[] = [
+  { href: '/upcoming/', label: 'Upcoming Provision', icon: CalendarClock },
+  { href: '/missed-delivery/', label: 'Missed Provision', icon: AlertCircle },
+  { href: '/history/', label: 'Submission History', icon: History },
+];
+
+function useIsWideScreen() {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const check = () => setWide(window.innerWidth >= WIDE_BREAKPOINT);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return wide;
+}
+
+const norm = (p: string | null) => (p || '/').replace(/\/?$/, '/');
+
+function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => void; isWide: boolean }) {
+  const pathname = norm(usePathname());
+  const { role, roleLoading } = usePaymentTrackingAuth();
+  // While the role lookup is still resolving, show no items rather than flashing the wrong set.
+  const items = roleLoading ? [] : role === 'Admin' ? ADMIN_NAV : role === 'Finance' ? FINANCE_NAV : USER_NAV;
+
+  const pane = (
+    <aside className={cx(
+      'flex h-full w-60 shrink-0 flex-col border-r border-border bg-white',
+      !isWide && 'fixed inset-y-0 left-0 z-40 shadow-pop animate-slideIn',
+    )}>
+      <div className="border-b border-line px-4 pb-3 pt-4">
+        <div className="flex items-start justify-between">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={112} height={92} className="h-auto w-[112px]" />
+          {!isWide && (
+            <button type="button" onClick={onClose} aria-label="Close menu" className="p-1 text-inkSoft hover:text-ink"><X size={18} /></button>
+          )}
+        </div>
+        <p className="mt-2 text-sm font-extrabold text-ink">Provision Tracking</p>
+        <p className="text-xs text-inkSoft">Command Center — track every open service PO</p>
+      </div>
+      <nav className="flex flex-col gap-0.5 p-2">
+        {roleLoading && <div className="flex justify-center py-6"><Spinner /></div>}
+        {items.map((item) => {
+          const active = pathname === item.href;
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href} replace onClick={() => { if (!isWide) onClose(); }}
+              className={cx(
+                'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-sm font-semibold leading-tight transition-colors',
+                active ? 'bg-rust/[0.08] text-rust' : 'text-inkSoft hover:bg-appBg hover:text-ink',
+              )}
+              aria-current={active ? 'page' : undefined}>
+              {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-gradient-to-b from-rust to-ledger" />}
+              <Icon size={15} className="shrink-0" />
+              <span className="min-w-0">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+      {!roleLoading && (
+        <div className="mt-auto border-t border-line px-4 py-2.5">
+          <p className="text-2xs font-bold uppercase tracking-[0.1em] text-inkFaint">Signed in as</p>
+          <p className="text-xs font-bold text-ink">{role}</p>
+        </div>
+      )}
+    </aside>
+  );
+
+  if (isWide) return pane;
+  if (!isOpen) return null;
+  return (
+    <>
+      <div className="fixed inset-0 z-30 bg-plumDeep/50 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
+      {pane}
+    </>
+  );
+}
+
+/** Persistent Period bar on every page — Year is the financial year sent to SAP as Gjahr, Month
+ * narrows rows client-side by delivery date. Each screen reads both via useMonthYear(). */
+function PeriodBar() {
+  const { month, year, setMonth, setYear } = useMonthYear();
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-white/70 px-4 py-1.5 backdrop-blur">
+      <CalendarDays size={13} className="text-rust" />
+      <span className="text-2xs font-bold uppercase tracking-[0.1em] text-inkSoft">Period</span>
+      <Select aria-label="Month" value={month} onChange={setMonth} options={MONTH_OPTIONS} className="!h-[26px] !w-auto !py-0 text-xs font-semibold" />
+      <Select aria-label="Financial Year" value={year} onChange={setYear} options={YEAR_OPTIONS} className="!h-[26px] !w-auto !py-0 text-xs font-semibold" />
+      <span className="chip bg-ledgerBg text-ledger">{fiscalYearLabel(Number(year))}</span>
+    </div>
+  );
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
+  const isWide = useIsWideScreen();
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hubEmail, setHubEmail] = useState<string | null>(null);
+  const [today] = useState(() => new Date().toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }));
+
+  // No login screen of its own: reaching this app is only valid with a real hub session (token +
+  // email). Anyone else goes back to the hub to sign in — same guard as the Expo version.
+  useEffect(() => {
+    setHubEmail(getHubEmail());
+    if (hasHubSession()) setAuthorized(true);
+    else window.location.href = '/';
+  }, []);
+
+  if (authorized !== true) {
+    return <div className="flex h-screen items-center justify-center bg-appBg"><Spinner size={28} /></div>;
+  }
+
+  return (
+    <div className="flex h-screen bg-plum">
+      <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isWide={isWide} />
+      <div className="flex min-w-0 flex-1 flex-col bg-appBg">
+        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2 text-xs font-semibold text-white hover:bg-plumDeep">
+          <ArrowLeft size={13} /> Back to Emami Apps
+        </a>
+        <header className="flex items-center gap-2 border-b border-border bg-white px-4 py-2">
+          {!isWide && (
+            <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="-ml-1 p-1 text-ink"><Menu size={20} /></button>
+          )}
+          <h1 className="truncate text-[14.5px] font-extrabold text-ink">IBD Provision Tracking</h1>
+          <span className="hidden rounded-full bg-gradient-to-r from-rust/10 to-ledger/10 px-2 py-[2px] text-2xs font-extrabold uppercase tracking-wide text-rust sm:inline-flex">Command Center</span>
+          <div className="flex-1" />
+          <span className="hidden items-center gap-1.5 rounded-full border border-border bg-appBg px-2 py-[3px] sm:flex">
+            <User size={12} className="text-rust" />
+            <span className="max-w-[150px] truncate text-xs font-bold text-ink">{hubEmail ? nameFromEmail(hubEmail) : 'Guest'}</span>
+          </span>
+          <span className="hidden items-center gap-1.5 rounded-full border border-border bg-appBg px-2 py-[3px] md:flex">
+            <CalendarDays size={12} className="text-rust" />
+            <span className="text-xs font-bold text-ink">{today}</span>
+          </span>
+        </header>
+        <PeriodBar />
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1500px] p-3 sm:p-4">{children}</div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <PaymentTrackingAuthProvider>
+      <MonthYearProvider>
+        <ShellInner>{children}</ShellInner>
+      </MonthYearProvider>
+    </PaymentTrackingAuthProvider>
+  );
+}

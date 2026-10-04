@@ -1,3 +1,5 @@
+'use client';
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getHubEmail } from '../lib/hubEmailLogin';
 import { fetchPaymentTrackingRole, type PaymentTrackingRole } from '../lib/hubAccessApi';

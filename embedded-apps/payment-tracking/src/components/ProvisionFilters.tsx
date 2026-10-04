@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, radii } from '../theme/tokens';
+'use client';
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, Search, SlidersHorizontal, X, XCircle } from 'lucide-react';
 import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
+import { cx } from './ui';
 
 type DimensionKey = 'status' | 'costCenter' | 'vendor' | 'glAccount' | 'poCreator' | 'country';
 
@@ -89,6 +90,8 @@ const FILTER_DIMENSIONS: { key: DimensionKey; title: string; keyOf: (r: PaymentT
   { key: 'country', title: 'Country', keyOf: (r) => r.country, labelOf: (r) => r.country },
 ];
 
+/** One dimension's option list (multi-select, with per-value row counts) — the body of that
+ * dimension's dropdown in the toolbar. */
 function FilterSection({
   title,
   options,
@@ -104,48 +107,55 @@ function FilterSection({
   const filtered = query.trim() ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase())) : options;
 
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {selected.length > 0 ? <Text style={styles.sectionCount}>{selected.length} selected</Text> : null}
-      </View>
+    <div className="flex min-h-0 flex-col">
+      <div className="flex items-center justify-between px-2.5 pb-1.5 pt-2">
+        <span className="text-2xs font-bold uppercase tracking-[0.06em] text-inkSoft">{title}</span>
+        {selected.length > 0 ? <span className="text-2xs font-bold text-rust">{selected.length} selected</span> : null}
+      </div>
 
       {options.length === 0 ? (
-        <Text style={styles.noOptions}>No values in the current data.</Text>
+        <p className="px-2.5 pb-2.5 text-xs text-inkSoft">No values in the current data.</p>
       ) : (
         <>
           {options.length > 8 ? (
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={`Search ${title.toLowerCase()}…`}
-              placeholderTextColor={colors.inkSoft}
-              style={styles.sectionSearch}
-            />
+            <div className="px-2 pb-1.5">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search ${title.toLowerCase()}…`}
+                className="input h-[26px] text-xs"
+              />
+            </div>
           ) : null}
-          <View style={styles.chipWrap}>
+          <div className="max-h-[280px] overflow-y-auto px-1 pb-1">
             {filtered.map((o) => {
               const active = selected.includes(o.value);
               return (
-                <Pressable
+                <button
                   key={o.value}
-                  onPress={() => onToggle(o.value)}
-                  style={[styles.chip, active && styles.chipActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel={o.label}
-                  accessibilityState={{ selected: active }}
+                  type="button"
+                  onClick={() => onToggle(o.value)}
+                  aria-label={o.label}
+                  aria-pressed={active}
+                  className={cx(
+                    'flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors',
+                    active ? 'bg-rust/10 font-bold text-rust' : 'text-ink hover:bg-cream'
+                  )}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {o.label} ({o.count})
-                  </Text>
-                </Pressable>
+                  <span className={cx('flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border', active ? 'border-rust bg-rust text-white' : 'border-border bg-white')}>
+                    {active ? <Check size={10} strokeWidth={3} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 break-words">{o.label}</span>
+                  <span className={cx('num shrink-0 rounded-full px-1.5 text-2xs font-bold', active ? 'bg-rust/15' : 'bg-appBg text-inkSoft')}>{o.count}</span>
+                </button>
               );
             })}
-            {filtered.length === 0 ? <Text style={styles.noOptions}>No matches for "{query}".</Text> : null}
-          </View>
+            {filtered.length === 0 ? <p className="px-1.5 py-1 text-xs text-inkSoft">No matches for &quot;{query}&quot;.</p> : null}
+          </div>
         </>
       )}
-    </View>
+    </div>
   );
 }
 
@@ -160,18 +170,36 @@ interface ProvisionFilterBarProps {
   resultCount: number;
 }
 
-/** Filter bar shared by Dashboard and Provision Details ("the report") — free-text search plus a
- * "Filters" sheet covering every standard KPI dimension (Status, Cost Center, Vendor, GL Code, PO
- * Creator) as multi-select chips. Active filters also render as a removable chip row right under
- * the bar so what's narrowing the view is always visible, not hidden inside a closed sheet. */
+/** Filter toolbar shared by Dashboard and Provision Details ("the report") — free-text search plus
+ * one dropdown per standard KPI dimension (Status, Cost Center, Vendor, GL Code, PO Creator,
+ * Country) as multi-select lists with counts. Active filters also render as a removable chip row
+ * right under the bar so what's narrowing the view is always visible, not hidden inside a closed
+ * dropdown. */
 export function ProvisionFilterBar({ rows, value, onChange, resultCount }: ProvisionFilterBarProps) {
-  const [open, setOpen] = useState(false);
+  // Which dimension's dropdown is open (null = none). Replaces the original's single open/closed
+  // "Filters" sheet; the same toggle/clear handlers drive it.
+  const [open, setOpen] = useState<DimensionKey | null>(null);
   const activeCount = countActiveProvisionFilters(value);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const dimensionOptions = useMemo(
     () => FILTER_DIMENSIONS.map((d) => ({ ...d, options: optionsFor(rows, d.keyOf, d.labelOf) })),
     [rows]
   );
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null); };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   const toggle = (dimKey: DimensionKey, optValue: string) => {
     const current = value[dimKey];
@@ -196,307 +224,98 @@ export function ProvisionFilterBar({ rows, value, onChange, resultCount }: Provi
   }
 
   return (
-    <View style={styles.bar}>
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={15} color={colors.inkSoft} />
-          <TextInput
+    <div ref={rootRef} className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <div className="relative min-w-[180px] flex-1 basis-[240px]">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-inkFaint" />
+          <input
             value={value.search}
-            onChangeText={(text) => onChange({ ...value, search: text })}
+            onChange={(e) => onChange({ ...value, search: e.target.value })}
             placeholder="Search PO number, vendor, service text, cost center…"
-            placeholderTextColor={colors.inkSoft}
-            style={styles.searchInput}
+            className="input pl-7 pr-7"
           />
           {value.search ? (
-            <Pressable onPress={() => onChange({ ...value, search: '' })} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={16} color={colors.inkSoft} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <Pressable style={styles.filtersBtn} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Open filters">
-          <Ionicons name="options-outline" size={15} color={colors.rust} />
-          <Text style={styles.filtersBtnText}>Filters</Text>
-          {activeCount > 0 ? (
-            <View style={styles.filtersBadge}>
-              <Text style={styles.filtersBadgeText}>{activeCount}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-
-      <Text style={styles.resultText}>
-        Showing {resultCount} of {rows.length} line item{rows.length === 1 ? '' : 's'}
-        {activeCount > 0 ? ` · ${activeCount} filter${activeCount === 1 ? '' : 's'} applied` : ''}
-      </Text>
-
-      {activeChips.length > 0 ? (
-        <View style={styles.activeChipRow}>
-          {activeChips.map((c) => (
-            <Pressable
-              key={`${c.dimKey}-${c.value}`}
-              style={styles.activeChip}
-              onPress={() => removeChip(c.dimKey, c.value)}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove filter ${c.label}`}
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, search: '' })}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-inkFaint hover:text-ink"
             >
-              <Text style={styles.activeChipText}>{c.label}</Text>
-              <Ionicons name="close" size={12} color={colors.rust} />
-            </Pressable>
-          ))}
-          <Pressable onPress={clearAllDimensions} accessibilityRole="button" accessibilityLabel="Clear all filters">
-            <Text style={styles.clearAllInlineText}>Clear all</Text>
-          </Pressable>
-        </View>
-      ) : null}
+              <XCircle size={14} />
+            </button>
+          ) : null}
+        </div>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Close filters" />
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <View style={styles.flex1}>
-                <Text style={styles.modalTitle}>Filters</Text>
-                <Text style={styles.modalSubtitle}>Narrow this view by any combination of the standard provision KPIs below.</Text>
-              </View>
-              <Pressable onPress={() => setOpen(false)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
-                <Ionicons name="close" size={20} color={colors.ink} />
-              </Pressable>
-            </View>
+        <span className="hidden items-center gap-1 pl-1 text-inkFaint sm:inline-flex" aria-hidden>
+          <SlidersHorizontal size={13} />
+        </span>
 
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              {dimensionOptions.map((dim) => (
-                <FilterSection
-                  key={dim.key}
-                  title={dim.title}
-                  options={dim.options}
-                  selected={value[dim.key]}
-                  onToggle={(v) => toggle(dim.key, v)}
-                />
-              ))}
-            </ScrollView>
+        {dimensionOptions.map((dim) => {
+          const n = value[dim.key].length;
+          const isOpen = open === dim.key;
+          return (
+            <div key={dim.key} className="relative">
+              <button
+                type="button"
+                onClick={() => setOpen(isOpen ? null : dim.key)}
+                aria-expanded={isOpen}
+                aria-label={`Filter by ${dim.title}`}
+                className={cx(
+                  'inline-flex h-[30px] items-center gap-1 whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold transition-colors',
+                  n > 0 ? 'border-rust/40 bg-rust/10 text-rust' : 'border-border bg-white text-ink hover:border-rust/40 hover:bg-cream',
+                  isOpen && 'ring-2 ring-rust/15'
+                )}
+              >
+                {dim.title}
+                {n > 0 ? <span className="num rounded-full bg-rust px-1.5 text-2xs font-bold text-white">{n}</span> : null}
+                <ChevronDown size={12} className={cx('transition-transform', isOpen && 'rotate-180')} />
+              </button>
+              {isOpen ? (
+                <div className="absolute left-0 top-[34px] z-30 w-[min(300px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-white shadow-pop animate-slideUp">
+                  <FilterSection
+                    title={dim.title}
+                    options={dim.options}
+                    selected={value[dim.key]}
+                    onToggle={(v) => toggle(dim.key, v)}
+                  />
+                  <div className="flex items-center justify-between border-t border-line bg-cream/50 px-2.5 py-1.5">
+                    <button type="button" onClick={clearAllDimensions} aria-label="Clear all filters" className="text-xs font-semibold text-inkSoft underline hover:text-ink">
+                      Clear all
+                    </button>
+                    <button type="button" onClick={() => setOpen(null)} aria-label="Done" className="btn-primary btn-sm">Done</button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
 
-            <View style={styles.modalFooterRow}>
-              <Pressable onPress={clearAllDimensions} accessibilityRole="button" accessibilityLabel="Clear all filters">
-                <Text style={styles.clearAllText}>Clear all</Text>
-              </Pressable>
-              <Pressable style={styles.doneBtn} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Done">
-                <Text style={styles.doneBtnText}>Done</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-inkSoft">
+          Showing <span className="num font-bold text-ink">{resultCount}</span> of <span className="num">{rows.length}</span> line item{rows.length === 1 ? '' : 's'}
+          {activeCount > 0 ? ` · ${activeCount} filter${activeCount === 1 ? '' : 's'} applied` : ''}
+        </span>
+        {activeChips.length > 0 ? (
+          <>
+            {activeChips.map((c) => (
+              <button
+                key={`${c.dimKey}-${c.value}`}
+                type="button"
+                onClick={() => removeChip(c.dimKey, c.value)}
+                aria-label={`Remove filter ${c.label}`}
+                className="inline-flex max-w-[240px] items-center gap-1 rounded-full bg-rust/10 px-2 py-[2px] text-2xs font-bold text-rust transition-colors hover:bg-rust/20"
+              >
+                <span className="truncate">{c.label}</span>
+                <X size={10} className="shrink-0" />
+              </button>
+            ))}
+            <button type="button" onClick={clearAllDimensions} aria-label="Clear all filters" className="text-2xs font-bold text-inkSoft underline hover:text-ink">
+              Clear all
+            </button>
+          </>
+        ) : null}
+      </div>
+    </div>
   );
 }
-
-const styles = StyleSheet.create({
-  flex1: { flex: 1 },
-  bar: {
-    gap: 10,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minWidth: 160,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.pill,
-    backgroundColor: colors.white,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 12.5,
-    color: colors.ink,
-  },
-  filtersBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.pill,
-    backgroundColor: colors.white,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  filtersBtnText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.rust,
-  },
-  filtersBadge: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: radii.pill,
-    backgroundColor: colors.rust,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filtersBadgeText: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: colors.white,
-  },
-  resultText: {
-    fontSize: 12,
-    color: colors.inkSoft,
-  },
-  activeChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-  },
-  activeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: radii.pill,
-    backgroundColor: `${colors.rust}14`,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  activeChipText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: colors.rust,
-  },
-  clearAllInlineText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: colors.inkSoft,
-    textDecorationLine: 'underline',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(31,27,51,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 640,
-    maxHeight: '85%',
-    backgroundColor: colors.white,
-    borderRadius: radii.xl,
-    padding: 20,
-    gap: 14,
-  },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  modalSubtitle: {
-    fontSize: 12.5,
-    color: colors.inkSoft,
-    marginTop: 3,
-    lineHeight: 18,
-  },
-  modalScroll: {
-    flexGrow: 0,
-  },
-  modalFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  clearAllText: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.inkSoft,
-    textDecorationLine: 'underline',
-  },
-  doneBtn: {
-    borderRadius: radii.pill,
-    backgroundColor: colors.rust,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
-  },
-  doneBtnText: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: colors.white,
-  },
-  section: {
-    marginBottom: 18,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  sectionCount: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.rust,
-  },
-  sectionSearch: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 12,
-    color: colors.ink,
-    marginBottom: 8,
-  },
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: colors.appBg,
-  },
-  chipActive: {
-    borderColor: colors.rust,
-    backgroundColor: `${colors.rust}18`,
-  },
-  chipText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: colors.ink,
-  },
-  chipTextActive: {
-    color: colors.rust,
-    fontWeight: '800',
-  },
-  noOptions: {
-    fontSize: 12,
-    color: colors.inkSoft,
-  },
-});
