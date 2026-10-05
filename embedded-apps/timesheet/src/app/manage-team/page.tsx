@@ -49,8 +49,9 @@ export default function ManageTeamPage() {
   const { showToast } = useToast();
   const router = useRouter();
 
-  // Each manager only sees and manages their own projects and the tasks under them.
-  const myProjects = useMemo(() => projects.filter((p: any) => p.managerId === currentUser.id), [projects, currentUser.id]);
+  // Each manager only sees and manages their own projects and the tasks under them. (`manager_id`:
+  // an API server that predates project ownership sends the raw column.)
+  const myProjects = useMemo(() => projects.filter((p: any) => (p.managerId ?? p.manager_id) === currentUser.id), [projects, currentUser.id]);
   const myTasks = useMemo(() => {
     const ids = new Set(myProjects.map((p: any) => p.id));
     return tasks.filter((t: any) => ids.has(t.projectId));
