@@ -248,7 +248,7 @@ const ZReport = forwardRef<ZReportHandle>(function ZReport(_props, ref) {
   ];
 
   return (
-    <div className="view">
+    <div className="view fill">
       <div className="vbox">
         <h2 className="title title-h2">Shelf-Life Deviation Report</h2>
 
@@ -323,8 +323,15 @@ const ZReport = forwardRef<ZReportHandle>(function ZReport(_props, ref) {
         </div>
       </div>
 
-      <div className="vbox">
-        <GridTable id="zreportTable" columns={columns} rows={filteredRows} visibleRowCount={5} selectionMode="None" />
+      <div className="vbox grow">
+        <GridTable
+          id="zreportTable"
+          columns={columns}
+          rows={filteredRows}
+          visibleRowCount={5}
+          selectionMode="None"
+          fill
+        />
       </div>
 
       <BusyOverlay busy={busy} />

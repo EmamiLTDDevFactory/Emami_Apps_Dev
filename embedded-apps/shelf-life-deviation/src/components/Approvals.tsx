@@ -316,8 +316,8 @@ export default function Approvals() {
   ];
 
   return (
-    <div className="view">
-      <div className="vbox sapUiSmallMargin">
+    <div className="view fill">
+      <div className="vbox grow sapUiSmallMargin">
         <MessageStrip
           text="Inspection Lots awaiting approval."
           type="Information"
@@ -346,6 +346,7 @@ export default function Approvals() {
           rows={rows}
           visibleRowCount={5}
           selectionMode="MultiToggle"
+          fill
         />
       </div>
 

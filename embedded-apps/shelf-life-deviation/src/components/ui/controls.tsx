@@ -99,6 +99,8 @@ export function BusyOverlay({ busy, delay = 1000 }: { busy: boolean; delay?: num
  * Replacement for sap.ui.table.Table with
  *   visibleRowCountMode="Fixed" visibleRowCount="5" columnHeaderHeight="36"
  * Fixed column widths (rem), horizontal + vertical scrolling inside the table.
+ * `fill`: the table grows to the free height of its flex parent (like visibleRowCountMode="Auto"),
+ * never showing fewer than visibleRowCount rows.
  */
 export interface GridColumn<T> {
   key: string;
@@ -116,6 +118,7 @@ export function GridTable<T>({
   selectionMode = "None",
   noDataText = "No data",
   getRowKey,
+  fill = false,
 }: {
   id?: string;
   columns: GridColumn<T>[];
@@ -125,6 +128,7 @@ export function GridTable<T>({
   selectionMode?: "None" | "MultiToggle";
   noDataText?: string;
   getRowKey?: (row: T, index: number) => string;
+  fill?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const prevRows = useRef(rows);
@@ -148,7 +152,7 @@ export function GridTable<T>({
   return (
     <div
       id={id}
-      className="grid-table"
+      className={"grid-table" + (fill ? " fill" : "")}
       style={{ ["--visible-rows" as any]: visibleRowCount }}
       role="grid"
       aria-rowcount={data.length + 1}

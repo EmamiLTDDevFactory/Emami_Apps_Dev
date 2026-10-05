@@ -5,7 +5,7 @@ import { APP_DESCRIPTION } from "@/lib/config";
 export const metadata: Metadata = {
   title: "Shelf Life Deviation — Emami Apps",
   description: APP_DESCRIPTION,
-  icons: { icon: "/apps/shelf-life-deviation/emami-apps-logo.png" },
+  icons: { icon: "/apps/shelf-life-deviation/favicon.png" },
 };
 
 export const viewport: Viewport = {
