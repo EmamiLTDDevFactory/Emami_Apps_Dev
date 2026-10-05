@@ -1,19 +1,22 @@
 import { expect, test, type Page } from '@playwright/test';
-import jwt from 'jsonwebtoken';
 
-const HUB_SECRET = 'e2e-hub-secret';
+/** Every URL the browser requested (to prove where SAP data comes from). */
+const seen: string[] = [];
 
-/** Simulates arriving from the Emami Apps hub: its session token is in localStorage. */
+/** Simulates arriving from the Emami Apps hub: its email + session token are in localStorage.
+ * The Manage Access role lookup (roles only, no SAP data) is stubbed as Admin. */
 async function asHubUser(page: Page, email = 'cost.analyst@emamigroup.com', name = 'Cost Analyst') {
-  const hubToken = jwt.sign({ email }, HUB_SECRET, { expiresIn: '1h' });
-  await page.addInitScript((t) => {
+  page.on('request', (r) => seen.push(r.url()));
+  await page.route('**/access/me**', (route) => route.fulfill({ json: { success: true, apps: [{ appId: 'bom-cost-explorer', role: 'Admin' }] } }));
+  await page.addInitScript((e) => {
     if (!sessionStorage.getItem('e2e-init')) {
       localStorage.clear();
       sessionStorage.setItem('e2e-init', '1');
     }
-    localStorage.setItem('emami_apps_session_token', t);
-  }, hubToken);
-  await page.goto('/');
+    localStorage.setItem('emami_apps_user_email', e);
+    localStorage.setItem('emami_apps_session_token', 'hub-session-token');
+  }, email);
+  await page.goto('./');
   await expect(page.getByText(name, { exact: true })).toBeVisible();
   await expect(page.getByRole('img', { name: 'Emami Apps' })).toBeVisible();
 }
@@ -109,13 +112,26 @@ test('rates are server-paged; SAP error and cancel are surfaced', async ({ page 
   await expect(page.getByText('Run cancelled.')).toBeVisible();
 });
 
-test('API rejects unauthenticated calls and requires Matnr / Werks', async ({ request }) => {
-  const anon = await request.post('/api/cost', { data: { query: { mode: 'B', materials: ['FG1001'], plants: ['1000'] } } });
-  expect(anon.status()).toBe(401);
-  const s = await request.post('/api/session', { data: { hubToken: jwt.sign({ email: 'x@emamigroup.com' }, HUB_SECRET) } });
-  const { token } = await s.json();
-  const noPlant = await request.post('/api/cost', { headers: { Authorization: `Bearer ${token}` }, data: { query: { mode: 'R', materials: ['FG1001'], plants: [] } } });
-  expect(noPlant.status()).toBe(400);
-  const plants = await request.get('/api/plants', { headers: { Authorization: `Bearer ${token}` } });
-  expect(plants.headers()['cache-control']).toBe('no-store');
+test('SAP is called straight from the browser; environment badge; admin diagnostics', async ({ page }) => {
+  seen.length = 0;
+  await asHubUser(page);
+  await expect(page.getByText('SAP NGD · development')).toBeVisible();
+  await pick(page, /^Materials/, 'FG1001');
+  await pick(page, /^Plants/, '1000');
+  await page.getByRole('button', { name: 'Run in SAP' }).click();
+  await expect(page.getByRole('treegrid', { name: 'BOM cost tree' })).toBeVisible();
+  const sap = seen.filter((u) => u.includes('/ZMM_BOM_COST_SRV/'));
+  expect(sap.length).toBeGreaterThan(0);
+  expect(sap.every((u) => u.startsWith('http://localhost:4599/api/NGD/ZMM_BOM_COST_SRV/'))).toBe(true);
+  expect(seen.filter((u) => u.includes('audit-capa-api') || u.includes('/dev-api/bom-cost'))).toEqual([]);
+  expect(sap.some((u) => /RateOptionSet|\)\/RateOptions/.test(u))).toBe(false);
+
+  await page.getByRole('link', { name: /Connection/ }).click();
+  await expect(page.getByRole('heading', { name: 'SAP connection diagnostics' })).toBeVisible();
+  await page.getByLabel('Material (d)').fill('FG1001');
+  await page.getByLabel('Plant (d)').fill('1000');
+  await page.getByRole('button', { name: 'Run checks' }).click();
+  await expect(page.getByText('First 10 CostLine properties:')).toBeVisible();
+  await expect(page.getByText(/Every entity set, the navigation and every property used by the code exists/)).toBeVisible();
+  await expect(page.getByText('Received on at least one response.')).toBeVisible();
 });

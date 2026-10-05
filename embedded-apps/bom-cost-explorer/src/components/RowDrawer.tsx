@@ -105,9 +105,8 @@ export default function RowDrawer({
       {!rateOptions ? (
         <Section title="Rate options">
           <div className="rounded-xl border border-warn/30 bg-warn/[0.07] px-3 py-2.5 text-sm text-ink" role="note">
-            Rate options are not available from SAP for this run (the RateOptions expand is not implemented in
-            ZMM_BOM_COST_SRV yet). SAP&apos;s selected rate is shown above; the comparison of all sources will appear here once
-            SAP supports it.
+            Rate options are not available from SAP for this system. SAP&apos;s selected rate is shown above; the
+            comparison of all sources appears here once SAP supports the RateOptions expand.
           </div>
         </Section>
       ) : (

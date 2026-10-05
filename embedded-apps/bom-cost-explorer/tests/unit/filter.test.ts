@@ -109,11 +109,11 @@ describe('request builders (entity set names)', () => {
     expect(r.params).toMatchObject({ $top: '5000', $skip: '10000', $inlinecount: 'allpages' });
     expect(r.params.$filter).toContain("StdFrt eq ''");
   });
-  it('type-ahead on MaterialVHSet uses ?search=, never $filter, min 2 chars, max 100', () => {
+  it('type-ahead on MaterialVHSet uses ?search=, never $filter, min 2 chars, $top=50', () => {
     expect(materialSearchRequest('o')).toBeNull();
     const m = materialSearchRequest('  navratna ')!;
     expect(m.entitySet).toBe('MaterialVHSet');
-    expect(m.params).toEqual({ search: 'navratna', $top: '100' });
+    expect(m.params).toEqual({ search: 'navratna', $top: '50' });
   });
   it('value helps and config', () => {
     expect(plantsRequest().entitySet).toBe('PlantVHSet');

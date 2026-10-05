@@ -11,12 +11,13 @@ export interface SapRequest {
   params: Record<string, string | undefined>;
 }
 
-/** Mode -> entity set + $filter. $expand=RateOptions ONLY for mode B (the plant comparison needs
- * no rate options); RateOptions is never requested as a set of its own. */
-export function costRequest(q: CostQuery): SapRequest {
+/** Mode -> entity set + $filter. $expand=RateOptions only for mode B and only when `expand` is
+ * true (the capability check decides); the plant comparison never expands. RateOptionSet is
+ * never requested as a set of its own. */
+export function costRequest(q: CostQuery, expand = true): SapRequest {
   return {
     entitySet: MODE_TO_ENTITY[q.mode],
-    params: { $filter: buildSelectionFilter(q), $expand: q.mode === 'B' ? NAV_RATE_OPTIONS : undefined },
+    params: { $filter: buildSelectionFilter(q), $expand: q.mode === 'B' && expand ? NAV_RATE_OPTIONS : undefined },
   };
 }
 
@@ -29,7 +30,7 @@ export function pagedRequest(q: CostQuery, top: number, skip: number): SapReques
 }
 
 export const MATERIAL_SEARCH_MIN = 2;
-export const MATERIAL_SEARCH_MAX_ROWS = 100;
+export const MATERIAL_SEARCH_MAX_ROWS = 50;
 
 /** Type-ahead on MaterialVHSet: the term goes as the `search` custom query option (never $filter).
  * null when the term is shorter than 2 characters (no SAP call). */

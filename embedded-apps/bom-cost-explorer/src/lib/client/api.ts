@@ -1,10 +1,19 @@
 'use client';
+/**
+ * Data layer of the UI. The browser calls the Azure SAP gateway directly (lib/sap/*) - there is no
+ * server in between. Value helps and config are cached 10 min in memory; the R / F / M result
+ * sets are fetched from SAP once per selection (paged with $top/$skip/$inlinecount) and then
+ * searched, sorted, totalled and paged here, so paging never calls SAP again.
+ */
 import type { CostLine, MaterialRow, PlantRow } from '../sap/fields';
 import type { SapMessage } from '../sap/messages';
-import type { CostQuery, PageRequest } from '../query/schema';
-import type { TableTotals } from '../server/table';
-
-import { bffBase, readSession, signinUrl, writeSession } from './session';
+import { costQuerySchema, pageSchema, type CostQuery, type PageRequest } from '../query/schema';
+import { fetchConfig, fetchCostLines, fetchMaterials, fetchPagedSet, fetchPlants } from '../sap/service';
+import { SapError } from '../sap/client';
+import { FilterError } from '../sap/filter';
+import type { ExpandCapability } from '../sap/capability';
+import { queryTable, type TableTotals } from '../cost/table';
+import { VIEW_COLUMNS } from '../views';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public details: SapMessage[] = [], public issues: { path: string; message: string }[] = []) {
@@ -12,37 +21,14 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    const token = readSession()?.token;
-    res = await fetch(`${bffBase()}${path}`, {
-      cache: 'no-store',
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init?.headers ?? {}) },
-    });
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e;
-    throw new ApiError('Network error - could not reach the server.', 0);
-  }
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 401 && typeof window !== 'undefined') {
-      writeSession(null);
-      window.location.href = signinUrl();
-    }
-    throw new ApiError(body.error || `Request failed (${res.status})`, res.status, body.details ?? [], body.issues ?? []);
-  }
-  return body as T;
-}
-
 export interface CostResult {
   rows: CostLine[];
   messages: SapMessage[];
   ms: number;
   total: number;
-  /** false when SAP could not $expand RateOptions (or mode C, which never expands) */
+  /** false when SAP could not / did not $expand RateOptions (mode C never expands) */
   rateOptions?: boolean;
+  capability?: ExpandCapability;
 }
 export interface PagedResult<T = Record<string, unknown>> {
   rows: T[];
@@ -53,10 +39,86 @@ export interface PagedResult<T = Record<string, unknown>> {
   cached: boolean;
 }
 
+const TEN_MIN = 10 * 60_000;
+const cache = new Map<string, { at: number; v: unknown }>();
+async function cached<T>(key: string, ttl: number, load: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.v as T;
+  const v = await load();
+  cache.set(key, { at: Date.now(), v });
+  if (cache.size > 60) cache.delete(cache.keys().next().value as string);
+  return v;
+}
+
+/** SapError / validation -> ApiError the screens already know how to show. */
+function wrap(e: unknown): never {
+  if (e instanceof ApiError) throw e;
+  if (e instanceof SapError) {
+    if (e.kind === 'aborted') throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    throw new ApiError(e.message, e.status, e.details);
+  }
+  if (e instanceof FilterError) throw new ApiError(e.message, 400);
+  if ((e as Error)?.name === 'AbortError') throw e;
+  throw new ApiError((e as Error)?.message || 'Unexpected error', 0);
+}
+
+function validQuery(query: CostQuery): CostQuery {
+  const r = costQuerySchema.safeParse(query);
+  if (!r.success) {
+    const issues = r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message }));
+    throw new ApiError(issues[0]?.message ?? 'Invalid selection.', 400, [], issues);
+  }
+  return r.data;
+}
+
 export const api = {
-  cost: (query: CostQuery, signal?: AbortSignal) => call<CostResult>('/api/cost', { method: 'POST', body: JSON.stringify({ query }), signal }),
-  paged: (query: CostQuery, page: Partial<PageRequest>, signal?: AbortSignal) => call<PagedResult>('/api/cost', { method: 'POST', body: JSON.stringify({ query, page }), signal }),
-  plants: () => call<{ plants: PlantRow[] }>('/api/plants'),
-  materials: (q: string, signal?: AbortSignal) => call<{ materials: MaterialRow[] }>(`/api/materials?q=${encodeURIComponent(q)}`, { signal }),
-  config: () => call<Record<string, string> & { user: { email: string; role: string } }>('/api/config'),
+  async cost(query: CostQuery, signal?: AbortSignal): Promise<CostResult> {
+    try {
+      const r = await fetchCostLines(validQuery(query), { signal });
+      return { rows: r.rows, messages: r.messages, ms: r.ms, total: r.rows.length, rateOptions: r.rateOptions, capability: r.capability };
+    } catch (e) {
+      return wrap(e);
+    }
+  },
+
+  async paged(query: CostQuery, page: Partial<PageRequest>, signal?: AbortSignal): Promise<PagedResult> {
+    try {
+      const q = validQuery(query);
+      const key = `paged:${JSON.stringify(q)}`;
+      const was = cache.has(key) && Date.now() - cache.get(key)!.at < TEN_MIN;
+      const full = await cached(key, TEN_MIN, () => fetchPagedSet<Record<string, unknown>>(q, { signal }));
+      const t = queryTable(full.rows, VIEW_COLUMNS[q.mode as 'R' | 'F' | 'M'], pageSchema.parse(page));
+      const messages = full.truncated ? [...full.messages, { code: 'BFF/002', severity: 'warning' as const, message: 'Result truncated at 200,000 rows - narrow the selection.' }] : full.messages;
+      return { ...t, messages, ms: full.ms, cached: was };
+    } catch (e) {
+      return wrap(e);
+    }
+  },
+
+  async plants(): Promise<{ plants: PlantRow[] }> {
+    try {
+      return { plants: await cached('plants', TEN_MIN, () => fetchPlants({ timeoutMs: 60_000 })) };
+    } catch (e) {
+      cache.delete('plants');
+      return wrap(e);
+    }
+  },
+
+  async materials(q: string, signal?: AbortSignal): Promise<{ materials: MaterialRow[] }> {
+    try {
+      const t = q.trim();
+      if (t.length < 2) return { materials: [] };
+      return { materials: await cached(`mat:${t.toLowerCase()}`, TEN_MIN, () => fetchMaterials(t, { signal, timeoutMs: 30_000 })) };
+    } catch (e) {
+      return wrap(e);
+    }
+  },
+
+  async config(): Promise<Record<string, string>> {
+    try {
+      return await cached('config', TEN_MIN, () => fetchConfig({ timeoutMs: 30_000 }));
+    } catch (e) {
+      return wrap(e);
+    }
+  },
 };

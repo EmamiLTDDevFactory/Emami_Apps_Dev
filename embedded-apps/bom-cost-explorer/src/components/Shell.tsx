@@ -89,7 +89,20 @@ function NavItem({ m, active, onClick }: { m: Mode; active: boolean; onClick: ()
   );
 }
 
-export default function Shell({ mode, onMode, email, actions, children }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode }) {
+/** SAP system + app environment, always visible; red for production SAP (NWP). */
+export function EnvBadge({ system, appEnv }: { system: string; appEnv: string }) {
+  const prod = system === 'NWP';
+  return (
+    <span
+      className={cx('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide ring-1', prod ? 'bg-bad text-white ring-bad' : 'bg-good/10 text-good ring-good/30')}
+      title={`SAP system ${system} · ${appEnv}`}
+    >
+      SAP {system} · {appEnv}
+    </span>
+  );
+}
+
+export default function Shell({ mode, onMode, email, actions, children, env }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string } }) {
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -110,6 +123,7 @@ export default function Shell({ mode, onMode, email, actions, children }: { mode
           <span className="hidden items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-accent sm:inline-flex">
             <Icon size={11} /> {MODE_LABEL[mode]}
           </span>
+          <EnvBadge {...env} />
           <div className="flex-1" />
           <div className="flex items-center gap-1.5">{actions}</div>
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 sm:flex" title={email}>

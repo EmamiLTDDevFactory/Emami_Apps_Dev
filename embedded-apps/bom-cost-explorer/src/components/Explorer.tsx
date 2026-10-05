@@ -1,6 +1,9 @@
 'use client';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { useAppSession } from '@/lib/client/session';
+import { useHubSession, BASE_PATH } from '@/lib/client/session';
+import { fetchIsAdmin } from '@/lib/client/hubAccess';
+import { loadSapConfig } from '@/lib/sap/config';
+import { resetCapability } from '@/lib/sap/capability';
 import type { PlantRow } from '@/lib/sap/fields';
 import { defaultQuery, MODE_LABEL, type CostQuery, type Mode } from '@/lib/query/schema';
 import { decodeQuery, encodeQuery } from '@/lib/query/url';
@@ -16,7 +19,7 @@ import { dataQuality } from '@/lib/cost/analytics';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { exportCostLines, exportPivot } from '@/lib/client/export';
 import type { SapMessage } from '@/lib/sap/messages';
-import { Download, FileSpreadsheet, Link2, Printer, Check } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer, RefreshCw } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
 import Shell from './Shell';
 import BomTree, { type NodeAgg } from './BomTree';
@@ -37,8 +40,15 @@ const lastQueryKey = (u: string) => `bce:last-query:${u}`;
 const lastMsKey = (m: Mode) => `bce:last-ms:${m}`;
 
 export default function Explorer() {
-  const { session, signOut } = useAppSession();
-  const user = session?.user?.email ?? '';
+  const hub = useHubSession();
+  const session = hub === 'checking' ? null : hub;
+  const user = session?.email ?? '';
+  const cfg = useMemo(() => (typeof window === 'undefined' ? null : loadSapConfig()), []);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [capNote, setCapNote] = useState('');
+  useEffect(() => {
+    if (user) void fetchIsAdmin(user).then(setIsAdmin);
+  }, [user]);
   const [plants, setPlants] = useState<PlantRow[]>([]);
   const [plantsLoading, setPlantsLoading] = useState(false);
   const [plantsErr, setPlantsErr] = useState('');
@@ -235,13 +245,36 @@ export default function Explorer() {
         : [{ id: 'table', label: MODE_LABEL[mode] }];
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id;
 
-  if (!session) {
+  if (hub === 'checking' || !cfg) {
     return (
-      <div className="grid h-screen place-items-center bg-bg" role="status" aria-label="Checking your Emami Apps session">
+      <div className="grid h-screen place-items-center bg-bg" role="status" aria-label="Loading">
         <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" />
       </div>
     );
   }
+  if (!cfg.ok || !session) {
+    return (
+      <div className="flex min-h-screen flex-col bg-bg">
+        <a href="/" className="bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep">← Back to Emami Apps</a>
+        <div className="grid flex-1 place-items-center p-4">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
+            <AlertTriangle size={26} className="mx-auto mt-4 text-warn" />
+            <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "BOM Cost Explorer can't start" : 'Please open this app from Emami Apps'}</h1>
+            <p className="mt-1 text-sm text-muted">{!cfg.ok ? cfg.error : 'Sign in to the Emami Apps hub first; your session comes from there.'}</p>
+            <a href="/" className="mt-5 inline-flex rounded-xl bg-gradient-to-br from-accent to-accent-deep px-5 py-2 text-sm font-bold text-white">Go to Emami Apps</a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const sap = cfg.config;
+  const retestExpand = () => {
+    resetCapability(sap.system);
+    setCapNote('Rate options will be re-tested on the next BOM costing run.');
+    setTimeout(() => setCapNote(''), 6000);
+  };
 
   const headerActions = (
     <>
@@ -253,14 +286,18 @@ export default function Explorer() {
         </>
       )}
       <Button size="sm" onClick={share} title="Copy a link with this selection">{copied ? <><Check size={14} /> Copied</> : <><Link2 size={14} /><span className="hidden lg:inline">Share</span></>}</Button>
-      <Button size="sm" variant="ghost" onClick={signOut} title="Sign out of BOM Cost Explorer">Sign out</Button>
+      {isAdmin && (
+        <a href={`${BASE_PATH}/admin/connection/`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 text-xs font-semibold hover:bg-sunken" title="SAP connection diagnostics (admin)">
+          <FlaskConical size={14} /><span className="hidden lg:inline">Connection</span>
+        </a>
+      )}
     </>
   );
   const isPaged = mode === 'R' || mode === 'F' || mode === 'M';
   const hasResult = !!result || (isPaged && ranQuery?.mode === mode);
 
   return (
-    <Shell mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions}>
+    <Shell env={{ system: sap.system, appEnv: sap.appEnv }} mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4">
         <FilterPanel
           query={query}
@@ -310,6 +347,17 @@ export default function Explorer() {
               {pagedMsgs && isPaged && <>SAP {fmtMs(pagedMsgs.ms)}</>}
             </span>
             {JSON.stringify(query) !== JSON.stringify(ranQuery) && <Pill tone="warn" title="The selection was changed after this run">selection changed – run again</Pill>}
+            {mode === 'B' && result && !rateOptions && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
+                Rate options are not available from SAP for this system
+                {isAdmin && sap.expand === 'auto' && (
+                  <button type="button" onClick={retestExpand} className="inline-flex items-center gap-1 font-bold text-accent hover:underline" title="Admin: forget the 'unsupported' verdict and send $expand on the next run">
+                    <RefreshCw size={12} /> Re-test
+                  </button>
+                )}
+              </span>
+            )}
+            {capNote && <span className="text-xs font-semibold text-good">{capNote}</span>}
             {total && mode === 'B' && (
               <div className="ml-auto flex items-baseline gap-3 rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
                 <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Total</span>

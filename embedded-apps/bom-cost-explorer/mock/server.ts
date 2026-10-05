@@ -3,7 +3,7 @@
  * port so the app can be exercised through its REAL SAP client path (Basic auth, sap-client,
  * timeouts, header parsing). Used by Playwright; also handy for check:metadata.
  *
- *   npm run mock:sap            -> http://localhost:4599/sap/opu/odata/sap/ZMM_BOM_COST_SRV
+ *   npm run mock:sap            -> http://localhost:4599/api/NGD/ZMM_BOM_COST_SRV  (gateway-style path)
  *   MOCK_SAP_USER=u MOCK_SAP_PASSWORD=p npm run mock:sap   (then Basic auth is enforced)
  */
 import http from 'node:http';
@@ -13,8 +13,23 @@ const port = Number(process.env.MOCK_SAP_PORT || 4599);
 const user = process.env.MOCK_SAP_USER;
 const pass = process.env.MOCK_SAP_PASSWORD ?? '';
 
+// The UI calls the gateway straight from the browser, so the mock answers CORS like the Azure
+// gateway does - and also exposes sap-message, so its warnings are visible in tests.
+const cors = (origin: string | undefined): Record<string, string> => ({
+  'Access-Control-Allow-Origin': origin || '*',
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Methods': 'GET,OPTIONS',
+  'Access-Control-Allow-Headers': 'Accept,Authorization,Content-Type',
+  'Access-Control-Expose-Headers': 'sap-message',
+  Vary: 'Origin',
+});
+
 http
   .createServer(async (req, res) => {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(req.headers.origin));
+      return res.end();
+    }
     if (user) {
       const expected = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
       if (req.headers.authorization !== expected) {
@@ -26,7 +41,7 @@ http
     req.on('close', () => !res.writableEnded && ctl.abort());
     try {
       const r = await mockSapFetch(`http://localhost:${port}${req.url}`, { signal: ctl.signal });
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = cors(req.headers.origin);
       r.headers.forEach((v, k) => (headers[k] = v));
       res.writeHead(r.status, headers);
       res.end(Buffer.from(await r.arrayBuffer()));
@@ -35,4 +50,4 @@ http
       res.end();
     }
   })
-  .listen(port, () => console.log(`[mock-sap] listening on http://localhost:${port}/sap/opu/odata/sap/ZMM_BOM_COST_SRV`));
+  .listen(port, () => console.log(`[mock-sap] listening on http://localhost:${port}/api/<NGD|NGQ|NWP>/ZMM_BOM_COST_SRV`));

@@ -115,7 +115,7 @@ export default function Simulator({
           </div>
           {!rateOptions && (
             <p className="mt-2 rounded-lg bg-warn/[0.08] px-2.5 py-2 text-2xs text-ink" role="note">
-              Re-picking the rate source needs the rate options, which SAP does not return yet. The % changes, FX, quantity and manual overrides below still work.
+              Rate options are not available from SAP for this system, so re-picking the source is off. Component rates, % changes, FX, quantity and manual overrides still work.
             </p>
           )}
           {rateOptions && settings.pick === 'priority' && (

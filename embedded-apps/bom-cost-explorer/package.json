@@ -4,26 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3210",
-    "dev:mock": "MOCK_SAP=true next dev -p 3210",
-    "build": "BUILD_TARGET=static next build && node scripts/rename-export.js",
-    "start": "next start -p 3210",
+    "dev:mock": "NEXT_PUBLIC_MOCK_SAP=true next dev -p 3210",
+    "build": "next build && node scripts/rename-export.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "mock:sap": "tsx mock/server.ts",
-    "check:metadata": "tsx scripts/check-metadata.ts",
-    "build:server": "next build"
+    "check:metadata": "tsx scripts/check-metadata.ts"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.13",
     "decimal.js": "^10.6.0",
     "exceljs": "^4.4.0",
-    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.469.0",
     "next": "14.2.35",
-    "next-auth": "^4.24.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-is": "^18.3.1",
@@ -32,7 +28,6 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.17.9",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

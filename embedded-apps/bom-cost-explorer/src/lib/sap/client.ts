@@ -1,5 +1,11 @@
+/**
+ * Read-only OData V2 client for the SAP gateway (GET only - nothing is ever written to SAP).
+ * Runs in the browser (direct to the Azure gateway) and in node (check:metadata, tests).
+ */
 import { parseODataError, parseSapMessageHeader, type SapMessage } from './messages';
 import { unwrapCollection } from './normalize';
+import { sapConfig, type SapConfig } from './config';
+import { authHeaders } from './auth';
 
 export type SapErrorKind = 'config' | 'timeout' | 'aborted' | 'http' | 'network' | 'parse';
 
@@ -9,7 +15,7 @@ export class SapError extends Error {
     public kind: SapErrorKind,
     public status = 502,
     public details: SapMessage[] = [],
-    /** SAP's own HTTP status (status above is what the BFF answers with). */
+    /** SAP's / the gateway's own HTTP status (0 = no response) */
     public sapStatus = 0,
   ) {
     super(message);
@@ -17,170 +23,168 @@ export class SapError extends Error {
   }
 }
 
-export const isMockSap = () => String(process.env.MOCK_SAP).toLowerCase() === 'true';
-const timeoutMs = () => Number(process.env.SAP_TIMEOUT_MS) || 120_000;
+const AZURE_LIMIT_HINT = 'The Azure gateway stops waiting after about 230 s. Try fewer materials or plants per run.';
 
-function baseUrl(): string {
-  if (isMockSap()) return 'http://mock-sap.local/sap/opu/odata/sap/ZMM_BOM_COST_SRV';
-  const u = (process.env.SAP_BASE_URL || '').replace(/\/+$/, '');
-  if (!u || u.includes('SAP_BASE_URL')) throw new SapError('SAP_BASE_URL is not configured on the server.', 'config', 500);
-  return u;
-}
-
-function authHeader(): Record<string, string> {
-  const user = process.env.SAP_USER;
-  if (!user || isMockSap()) return {};
-  return { Authorization: `Basic ${Buffer.from(`${user}:${process.env.SAP_PASSWORD ?? ''}`).toString('base64')}` };
-}
-
-/** Query string with OData `$` options kept literal and values %-encoded (spaces as %20, never
- * "+", which some Gateway releases read literally inside $filter). */
-export function buildUrl(path: string, params: Record<string, string | undefined>): string {
-  const all: Record<string, string | undefined> = { ...params, $format: 'json' };
-  const client = process.env.SAP_CLIENT;
-  if (client && !isMockSap()) all['sap-client'] = client;
+/** Query string with OData `$` options kept literal and every value encoded with
+ * encodeURIComponent (spaces as %20, never "+"). sap-client only when SAP_CLIENT is set. */
+export function buildUrl(path: string, params: Record<string, string | undefined>, c: SapConfig = sapConfig()): string {
+  const all: Record<string, string | undefined> = { ...params, $format: path === '$metadata' ? undefined : 'json' };
+  if (c.client) all['sap-client'] = c.client;
   const qs = Object.entries(all)
     .filter(([, v]) => v !== undefined && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`)
     .join('&');
-  return `${baseUrl()}/${path}${qs ? `?${qs}` : ''}`;
+  return `${c.baseUrl}/${path}${qs ? `?${qs}` : ''}`;
 }
 
-/** Which fetch to use: the in-process mock SAP (MOCK_SAP=true) or the real network. The mock is
- * imported lazily so it never ships in a production bundle path that isn't using it. */
-async function transport(): Promise<typeof fetch> {
-  if (isMockSap()) {
+/** Real network, or the built-in mock when MOCK_SAP is on (local development and tests only;
+ * the mock chunk is never loaded unless the build was made with NEXT_PUBLIC_MOCK_SAP=true). */
+async function transport(c: SapConfig): Promise<typeof fetch> {
+  if (c.mock && (process.env.NEXT_PUBLIC_MOCK_SAP === 'true' || typeof window === 'undefined')) {
     const { mockSapFetch } = await import('../../../mock/sap');
     return mockSapFetch as typeof fetch;
   }
   return fetch;
 }
 
+/** HTML error page from the proxy -> first 300 characters of its text. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+}
+
 export interface SapRawResponse {
   body: unknown;
   messages: SapMessage[];
+  /** whether a sap-message header reached us (cross-origin it is only visible if exposed) */
+  sapMessageHeader: boolean;
   ms: number;
   status: number;
-}
-
-/** Combines the caller's AbortSignal (browser pressed Cancel) with our own timeout. */
-function linkedSignal(outer: AbortSignal | undefined, ms: number) {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(new DOMException('timeout', 'TimeoutError')), ms);
-  const onAbort = () => ctl.abort(outer?.reason ?? new DOMException('aborted', 'AbortError'));
-  if (outer) {
-    if (outer.aborted) onAbort();
-    else outer.addEventListener('abort', onAbort, { once: true });
-  }
-  return {
-    signal: ctl.signal,
-    timedOut: () => ctl.signal.aborted && (ctl.signal.reason as DOMException)?.name === 'TimeoutError',
-    done: () => {
-      clearTimeout(timer);
-      outer?.removeEventListener('abort', onAbort);
-    },
-  };
 }
 
 export interface SapGetOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** Who asked (logged, for tracing slow runs). Never log credentials. */
-  user?: string;
+  /** costing runs are never retried on timeout (they would just run twice) */
+  costing?: boolean;
 }
 
-async function once(url: string, label: string, opts: SapGetOptions): Promise<SapRawResponse> {
-  const doFetch = await transport();
+function linkedSignal(outer: AbortSignal | undefined, ms: number) {
+  const ctl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctl.abort();
+  }, ms);
+  const onAbort = () => ctl.abort();
+  if (outer) {
+    if (outer.aborted) onAbort();
+    else outer.addEventListener('abort', onAbort, { once: true });
+  }
+  return { signal: ctl.signal, timedOut: () => timedOut, done: () => { clearTimeout(timer); outer?.removeEventListener('abort', onAbort); } };
+}
+
+function logLine(c: SapConfig, set: string, params: Record<string, string | undefined>, ms: number, status: number | string, rows?: number) {
+  // System, entity set, sizes and timing only: never values, never credentials or headers.
+  console.info(`[sap] system=${c.system} set=${set} filterLen=${params.$filter?.length ?? 0}${params.$expand ? ` expand=${params.$expand}` : ''} status=${status} ms=${ms}${rows !== undefined ? ` rows=${rows}` : ''}`);
+}
+
+async function once(c: SapConfig, path: string, params: Record<string, string | undefined>, opts: SapGetOptions): Promise<SapRawResponse> {
+  const doFetch = await transport(c);
+  const url = buildUrl(path, params, c);
   const started = Date.now();
-  const link = linkedSignal(opts.signal, opts.timeoutMs ?? timeoutMs());
+  const timeout = opts.timeoutMs ?? c.timeoutMs;
+  const link = linkedSignal(opts.signal, timeout);
   let res: Response;
   try {
-    res = await doFetch(url, { method: 'GET', headers: { Accept: 'application/json', ...authHeader() }, signal: link.signal, cache: 'no-store' });
-  } catch (e) {
+    res = await doFetch(url, { method: 'GET', headers: { Accept: path === '$metadata' ? 'application/xml' : 'application/json', ...authHeaders(c) }, signal: link.signal, cache: 'no-store' });
+  } catch {
     const ms = Date.now() - started;
     if (opts.signal?.aborted) {
-      console.info(`[sap] ${label} cancelled by user after ${ms}ms user=${opts.user ?? '-'}`);
+      logLine(c, path, params, ms, 'cancelled');
       throw new SapError('Request cancelled.', 'aborted', 499);
     }
     if (link.timedOut()) {
-      console.warn(`[sap] ${label} TIMEOUT after ${ms}ms user=${opts.user ?? '-'}`);
-      throw new SapError(`SAP did not answer within ${Math.round((opts.timeoutMs ?? timeoutMs()) / 1000)} s. Try fewer materials or plants.`, 'timeout', 504);
+      logLine(c, path, params, ms, 'timeout');
+      throw new SapError(`SAP did not answer within ${Math.round(timeout / 1000)} s. ${AZURE_LIMIT_HINT}`, 'timeout', 504);
     }
-    console.warn(`[sap] ${label} network error after ${ms}ms: ${(e as Error).message}`);
-    throw new SapError('Could not reach SAP. Check the connection and try again.', 'network', 502);
+    logLine(c, path, params, ms, 'network-error');
+    throw new SapError('Could not reach the SAP gateway. Check your network / VPN and try again.', 'network', 502);
   } finally {
     link.done();
   }
   const ms = Date.now() - started;
-  const messages = parseSapMessageHeader(res.headers.get('sap-message'));
+  const header = res.headers.get('sap-message');
+  const messages = parseSapMessageHeader(header);
   const text = await res.text();
-  let body: unknown = undefined;
+  let body: unknown;
   try {
-    body = text ? JSON.parse(text) : undefined;
+    body = text && path !== '$metadata' ? JSON.parse(text) : text;
   } catch {
-    /* non-JSON (HTML login page, XML error) handled below */
+    body = undefined;
   }
-  console.info(`[sap] ${label} ${res.status} ${ms}ms bytes=${text.length} user=${opts.user ?? '-'}`);
 
   if (!res.ok) {
-    const fallback =
-      res.status === 401 || res.status === 403
-        ? 'SAP rejected the service credentials.'
-        : res.status === 404
-          ? 'SAP service or entity set not found.'
-          : `SAP returned HTTP ${res.status}.`;
-    const xmlMsg = /<message[^>]*>([^<]+)<\/message>/i.exec(text)?.[1];
-    const { message, details } = body ? parseODataError(body, fallback) : { message: xmlMsg || fallback, details: [] };
-    throw new SapError(message, 'http', res.status >= 500 ? 502 : res.status === 401 || res.status === 403 ? 502 : 400, [...details, ...messages], res.status);
+    logLine(c, path, params, ms, res.status);
+    if (res.status === 504 || res.status === 502) {
+      const extra = body && typeof body === 'object' ? parseODataError(body, '').message : htmlToText(text);
+      throw new SapError(`The SAP gateway gave up (HTTP ${res.status}). ${AZURE_LIMIT_HINT}${extra ? ` (${extra})` : ''}`, 'http', res.status, messages, res.status);
+    }
+    const fallback = res.status === 401 || res.status === 403 ? 'The SAP gateway rejected the request (not authorised).' : res.status === 404 ? 'SAP service or entity set not found.' : `SAP returned HTTP ${res.status}.`;
+    let message = fallback;
+    let details: SapMessage[] = [];
+    if (body && typeof body === 'object') ({ message, details } = parseODataError(body, fallback));
+    else if (text) message = /<error|<message/i.test(text) ? /<message[^>]*>([^<]+)<\/message>/i.exec(text)?.[1] ?? htmlToText(text) : htmlToText(text) || fallback;
+    throw new SapError(message, 'http', res.status >= 500 ? 502 : 400, [...details, ...messages], res.status);
   }
-  if (body === undefined) throw new SapError('SAP sent a response that is not JSON.', 'parse', 502);
-  return { body, messages, ms, status: res.status };
+  if (body === undefined) {
+    logLine(c, path, params, ms, `${res.status}-not-json`);
+    throw new SapError(`The SAP gateway sent a response that is not JSON: ${htmlToText(text)}`, 'parse', 502, [], res.status);
+  }
+  const rows = path === '$metadata' ? undefined : unwrapCollection(body).results.length;
+  logLine(c, path, params, ms, res.status, rows);
+  return { body, messages, sapMessageHeader: header !== null, ms, status: res.status };
 }
 
-/** GET with one retry on 5xx / timeout / network failure (never on a user cancel or a 4xx). */
+/** GET with at most ONE retry, and only for network errors or 502/503. A timeout is never
+ * retried (a costing run would just run twice); neither are 4xx or other 5xx. */
 export async function sapGet(path: string, params: Record<string, string | undefined>, opts: SapGetOptions = {}): Promise<SapRawResponse> {
-  const url = buildUrl(path, params);
-  const label = `GET ${path.split('?')[0]}`;
+  const c = sapConfig();
   try {
-    return await once(url, label, opts);
+    return await once(c, path, params, opts);
   } catch (e) {
     const err = e as SapError;
-    // 501 = "method not implemented" in the data provider class: retrying can't help.
-    const retryable = err.kind === 'timeout' || err.kind === 'network' || (err.kind === 'http' && err.sapStatus >= 500 && err.sapStatus !== 501);
+    const retryable = err.kind === 'network' || (err.kind === 'http' && (err.sapStatus === 502 || err.sapStatus === 503));
     if (!retryable || opts.signal?.aborted) throw err;
-    console.info(`[sap] ${label} retrying once after ${err.kind}`);
-    return once(url, `${label} (retry)`, opts);
+    console.info(`[sap] system=${c.system} set=${path} retrying once after ${err.kind} ${err.sapStatus || ''}`);
+    return once(c, path, params, opts);
   }
 }
 
 /** GET an entity set: `{ rows, count, messages, ms }` - rows still raw (normalise per entity),
- * messages parsed from the sap-message header, count from $inlinecount. */
+ * messages from the sap-message header, count from $inlinecount. */
 export async function sapGetCollection(path: string, params: Record<string, string | undefined>, opts: SapGetOptions = {}) {
   const r = await sapGet(path, params, opts);
   const { results, count } = unwrapCollection(r.body);
-  return { rows: results, count, messages: r.messages, ms: r.ms };
+  return { rows: results, count, messages: r.messages, ms: r.ms, sapMessageHeader: r.sapMessageHeader, status: r.status };
 }
 
-/** Fetches $metadata as text (check:metadata), through the same auth / sap-client as the BFF.
- * A wrong service name comes back from Gateway as /IWFND/MED/170 "No service found" - that is
- * turned into an explicit SapError so the script can say so plainly. */
-export async function sapGetMetadata(): Promise<string> {
-  const doFetch = await transport();
-  const client = process.env.SAP_CLIENT;
-  const url = `${baseUrl()}/$metadata${client && !isMockSap() ? `?sap-client=${encodeURIComponent(client)}` : ''}`;
-  const res = await doFetch(url, { headers: { Accept: 'application/xml', ...authHeader() } });
-  const text = await res.text();
-  if (!res.ok) {
-    let msg = `$metadata returned HTTP ${res.status}`;
-    try {
-      const { message } = parseODataError(JSON.parse(text), msg);
-      msg = message;
-    } catch {
-      const x = /<message[^>]*>([^<]+)<\/message>/i.exec(text)?.[1];
-      if (x) msg = x;
-    }
-    const code = /\/IWFND\/MED\/170|No service found/i.test(text) ? 'NO_SERVICE' : 'http';
-    throw Object.assign(new SapError(msg, 'http', res.status), { code, url });
+/** $metadata as XML text. Gateway answers /IWFND/MED/170 when the service name is wrong. */
+export async function sapGetMetadata(opts: SapGetOptions = {}): Promise<string> {
+  try {
+    const r = await sapGet('$metadata', {}, { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 });
+    return String(r.body);
+  } catch (e) {
+    const err = e as SapError & { code?: string };
+    if (/\/IWFND\/MED\/170|No service found/i.test(`${err.message}`)) err.code = 'NO_SERVICE';
+    throw err;
   }
-  return text;
 }

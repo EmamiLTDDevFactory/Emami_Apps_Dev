@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyse, dataQuality, diffScenarios, minCover } from '@/lib/cost/analytics';
 import { EMPTY_SIM, simulate } from '@/lib/cost/simulate';
-import { queryTable } from '@/lib/server/table';
+import { queryTable } from '@/lib/cost/table';
 import { VIEW_COLUMNS } from '@/lib/views';
 import { leaf, parent, opt } from './helpers';
 

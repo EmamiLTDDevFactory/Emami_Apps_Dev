@@ -6,7 +6,7 @@ import { currencyOf, type ColDef } from '../views';
 import type { SimRow, SimSettings } from '../cost/simulate';
 import { isIdentity } from '../cost/simulate';
 import type { Pivot } from '../cost/pivot';
-import type { TableTotals } from '../server/table';
+import type { TableTotals } from '../cost/table';
 import type { SapMessage } from '../sap/messages';
 
 /** Excel number formats. INR gets Indian grouping (lakh/crore) via conditional sections. */

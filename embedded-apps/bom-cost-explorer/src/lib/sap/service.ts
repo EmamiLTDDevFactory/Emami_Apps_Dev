@@ -3,6 +3,8 @@ import {
   type ConfigRow, type CostLine, type MaterialRow, type PlantRow,
 } from './fields';
 import { NAV_RATE_OPTIONS } from './entities';
+import { sapConfig } from './config';
+import { getCapability, markSupported, markUnsupported, shouldExpand, type ExpandCapability } from './capability';
 import { SapError, sapGetCollection, type SapGetOptions } from './client';
 import { configRequest, costRequest, materialSearchRequest, pagedRequest, plantsRequest } from './requests';
 import { normalizeEntity } from './normalize';
@@ -21,35 +23,52 @@ export interface SapResult<T> {
 /** A failed $expand=RateOptions: the navigation isn't implemented on the SAP side yet. */
 export const EXPAND_UNSUPPORTED = /RATEOPTIONSET|not implemented|501|navigation/i;
 export function isExpandUnsupported(e: unknown): boolean {
-  if (!(e instanceof SapError) || e.kind === 'aborted' || e.kind === 'timeout' || e.kind === 'config') return false;
+  if (!(e instanceof SapError) || e.kind === 'aborted' || e.kind === 'timeout' || e.kind === 'config' || e.kind === 'network') return false;
   return e.sapStatus === 501 || EXPAND_UNSUPPORTED.test(`${e.message} ${e.details.map((d) => d.message).join(' ')}`);
+}
+
+export interface CostLinesResult extends SapResult<CostLine> {
+  /** RateOptions came back expanded on every line */
+  rateOptions: boolean;
+  /** expand capability of this SAP system after the run */
+  capability: ExpandCapability;
+  sapMessageHeader: boolean;
 }
 
 /**
  * Mode B / C on CostLineSet. Does not page: the tree needs every row in one go.
- * Rate options only ever arrive through $expand=RateOptions (mode B) - RateOptionSet and the
- * per-line navigation URLs are never called. `rateOptions` says whether they came back.
+ * Rate options only ever arrive through $expand=RateOptions (mode B) - RateOptionSet and per-line
+ * navigation URLs are never called. SAP_EXPAND_RATE_OPTIONS:
+ *   off  -> never expand
+ *   on   -> always expand; a failure is shown as is (no silent retry)
+ *   auto -> expand unless this system is known not to support it (verdict kept 15 min); if the
+ *           expanded call fails with RATEOPTIONSET|not implemented|501|navigation, retry ONCE
+ *           without $expand and remember "unsupported" so later runs are not doubled.
  */
-export async function fetchCostLines(q: CostQuery, opts: SapGetOptions): Promise<SapResult<CostLine> & { rateOptions: boolean }> {
-  const { entitySet, params } = costRequest(q);
+export async function fetchCostLines(q: CostQuery, opts: SapGetOptions = {}): Promise<CostLinesResult> {
+  const cfg = sapConfig();
+  const wantExpand = q.mode === 'B' && shouldExpand(cfg.expand, cfg.system);
+  const { entitySet, params } = costRequest(q, wantExpand);
   let r: Awaited<ReturnType<typeof sapGetCollection>>;
   let rateOptions = !!params.$expand;
   try {
-    r = await sapGetCollection(entitySet, params, opts);
+    r = await sapGetCollection(entitySet, params, { ...opts, costing: true });
+    if (params.$expand && cfg.expand === 'auto') markSupported(cfg.system);
   } catch (e) {
-    // The live service (NGD, 2026-10-04) answers $expand=RateOptions with 501 "RATEOPTIONSET_GET_ENTITYSET
-    // not implemented" until the ABAP side implements the navigation. Cost the lines without
-    // rate options rather than failing the whole run, and say so in the warnings panel.
-    if (!params.$expand || !isExpandUnsupported(e)) throw e;
-    console.warn(`[sap] ${entitySet} $expand=${NAV_RATE_OPTIONS} unsupported (${(e as Error).message}) - retrying without $expand`);
-    r = await sapGetCollection(entitySet, { ...params, $expand: undefined }, opts);
+    if (!params.$expand || cfg.expand !== 'auto' || !isExpandUnsupported(e)) throw e;
+    markUnsupported(cfg.system, (e as Error).message);
+    console.warn(`[sap] system=${cfg.system} set=${entitySet} $expand=${NAV_RATE_OPTIONS} unsupported - retrying once without $expand; not expanding again for 15 min`);
+    r = await sapGetCollection(entitySet, { ...params, $expand: undefined }, { ...opts, costing: true });
     rateOptions = false;
-    r.messages.push({ code: 'BFF/003', severity: 'warning', message: `Rate options are not available from SAP yet (${(e as Error).message}). Lines are costed; the rate-option comparison and the re-pick / cheapest-source what-ifs are switched off.` });
+    r.messages.push({ code: 'BFF/003', severity: 'warning', message: `Rate options are not available from SAP for this system (${(e as Error).message}). Lines are costed; the rate-option comparison and the re-pick / cheapest-source what-ifs are off.` });
+  }
+  if (q.mode === 'B' && !params.$expand && rateOptions === false && !r.messages.some((m) => m.code === 'BFF/003')) {
+    r.messages.push({ code: 'BFF/004', severity: 'info', message: cfg.expand === 'off' ? 'Rate options are switched off for this system (SAP_EXPAND_RATE_OPTIONS=off).' : 'Rate options are not available from SAP for this system; not requested (re-tested every 15 minutes).' });
   }
   const rows = r.rows.map((raw) => normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }));
   // SAP returns depth-first order; Seqnr makes it explicit, so never trust transport order.
   rows.sort((a, b) => a.Seqnr - b.Seqnr);
-  return { rows, messages: r.messages, ms: r.ms, rateOptions };
+  return { rows, messages: r.messages, ms: r.ms, rateOptions, capability: getCapability(cfg.system).state, sapMessageHeader: r.sapMessageHeader };
 }
 
 const PAGE = 5000;
@@ -57,7 +76,7 @@ const MAX_ROWS = 200_000;
 
 /** Mode R / F / M: pages through SAP with $top/$skip/$inlinecount until it has everything, so the
  * BFF can sort, search and total across the whole result (SAP doesn't promise $orderby here). */
-export async function fetchPagedSet<T>(q: CostQuery, opts: SapGetOptions): Promise<SapResult<T> & { truncated: boolean }> {
+export async function fetchPagedSet<T>(q: CostQuery, opts: SapGetOptions = {}): Promise<SapResult<T> & { truncated: boolean }> {
   const fields = MODE_FIELDS[q.mode];
   const rows: T[] = [];
   const messages: SapMessage[] = [];
@@ -81,12 +100,12 @@ export async function fetchPlants(opts: SapGetOptions = {}): Promise<PlantRow[]>
   return r.rows.map((raw) => normalizeEntity<PlantRow>(raw, PLANT)).sort((a, b) => a.Werks.localeCompare(b.Werks));
 }
 
-/** Type-ahead on MaterialVHSet (?search=, min 2 characters, max 100 rows). */
+/** Type-ahead on MaterialVHSet (?search=<text>&$top=50, min 2 characters). */
 export async function fetchMaterials(term: string, opts: SapGetOptions = {}): Promise<MaterialRow[]> {
   const req = materialSearchRequest(term);
   if (!req) return [];
   const r = await sapGetCollection(req.entitySet, req.params, opts);
-  return r.rows.map((raw) => normalizeEntity<MaterialRow>(raw, MATERIAL)).slice(0, 100);
+  return r.rows.map((raw) => normalizeEntity<MaterialRow>(raw, MATERIAL)).slice(0, 50);
 }
 
 /** ConfigItemSet -> { GROUP_CURR, DEFAULT_PRIO, MAX_HEADS } (+ any other keys SAP sends). */

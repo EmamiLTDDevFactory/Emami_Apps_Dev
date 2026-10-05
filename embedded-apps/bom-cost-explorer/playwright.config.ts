@@ -1,43 +1,39 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Smoke test against a mocked SAP: mock/server.ts speaks the ZMM_BOM_COST_SRV contract over HTTP
- * (Basic auth enforced), and the app talks to it through its REAL SAP client (MOCK_SAP=false).
+ * Smoke test: the app (static app, served by `next dev` under its real basePath) calls a mock SAP
+ * gateway DIRECTLY from the browser - mock/server.ts speaks the ZMM_BOM_COST_SRV contract on the
+ * gateway-style path /api/NGD/ZMM_BOM_COST_SRV with CORS, exactly like the Azure gateway.
  */
 const MOCK_PORT = 4599;
 const APP_PORT = 3212;
-export const HUB_SECRET = 'e2e-hub-secret';
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  testIgnore: /zz-/,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
-  use: { baseURL: `http://localhost:${APP_PORT}`, trace: 'retain-on-failure', ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+  use: { baseURL: `http://localhost:${APP_PORT}/apps/bom-cost-explorer/`, trace: 'retain-on-failure', ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
   webServer: [
     {
       command: 'npx tsx mock/server.ts',
       port: MOCK_PORT,
-      env: { MOCK_SAP_PORT: String(MOCK_PORT), MOCK_SAP_USER: 'E2E', MOCK_SAP_PASSWORD: 'secret', MOCK_SAP_DELAY_MS: '600' },
+      env: { MOCK_SAP_PORT: String(MOCK_PORT), MOCK_SAP_DELAY_MS: '600' },
       reuseExistingServer: false,
     },
     {
       command: `npx next dev -p ${APP_PORT}`,
-      port: APP_PORT,
+      url: `http://localhost:${APP_PORT}/apps/bom-cost-explorer/`,
       timeout: 180_000,
       reuseExistingServer: false,
       env: {
-        MOCK_SAP: 'false',
-        SAP_BASE_URL: `http://localhost:${MOCK_PORT}/sap/opu/odata/sap/ZMM_BOM_COST_SRV`,
-        SAP_USER: 'E2E',
-        SAP_PASSWORD: 'secret',
-        SAP_CLIENT: '100',
-        NEXTAUTH_SECRET: 'e2e-nextauth-secret',
-        HUB_AUTH_JWT_SECRET: HUB_SECRET,
-        HUB_ACCESS_API_BASE: '',
-        RATE_LIMIT_COST_PER_MIN: '100',
+        NEXT_PUBLIC_SAP_GATEWAY_HOST: `http://localhost:${MOCK_PORT}`,
+        NEXT_PUBLIC_SAP_SYSTEM: 'NGD',
+        NEXT_PUBLIC_APP_ENV: 'development',
+        NEXT_PUBLIC_ACCESS_API_URL: 'http://access.test/api',
       },
     },
   ],
