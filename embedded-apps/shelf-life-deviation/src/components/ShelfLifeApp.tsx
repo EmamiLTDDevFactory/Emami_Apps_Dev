@@ -9,7 +9,7 @@
  * report reloads it).
  *
  * Backend calls (user = Emami Apps hub email):
- *   GET UserSet('<email>')?$expand=NAV_UserToAction      (_loadUser -> tab visibility, "user" model;
+ *   GET UserSet(Email='<email>')?$expand=NAV_UserToAction (_loadUser -> tab visibility, "user" model;
  *                                                         Approvals takes its first rows from it)
  *   GET ActionSet                                        (_loadData -> KPI model)
  */

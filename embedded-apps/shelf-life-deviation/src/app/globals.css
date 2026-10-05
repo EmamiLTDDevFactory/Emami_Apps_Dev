@@ -541,15 +541,16 @@ textarea {
   max-height: calc(36px + var(--visible-rows) * var(--row-height) + 1px);
   height: calc(36px + var(--visible-rows) * var(--row-height) + 1px);
 }
+/* The scroll area is pinned to the table box, so the rows never stretch the page: the table
+   itself scrolls and its sticky header stays in view. */
 .grid-table.fill {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  position: relative;
   min-height: calc(36px + var(--visible-rows) * var(--row-height) + 3px);
 }
 .grid-table.fill .grid-scroll {
-  flex: 1;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   height: auto;
   max-height: none;
 }

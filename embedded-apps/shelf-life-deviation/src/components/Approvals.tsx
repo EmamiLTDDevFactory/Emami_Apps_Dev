@@ -3,7 +3,7 @@
  * Port of view/Approvals.view.xml + controller/Approvals.controller.js
  *
  * Backend calls (user = Emami Apps hub email):
- *   GET  UserSet('<email>')?$expand=NAV_UserToAction  (after a decision — the first rows come
+ *   GET  UserSet(Email='<email>')?$expand=NAV_UserToAction  (after a decision — the first rows come
  *                                                      from ShelfLifeApp's own read of it)
  *   POST ActionSet                                     (approve / reject)
  */
