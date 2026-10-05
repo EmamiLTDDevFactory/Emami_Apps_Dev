@@ -18,8 +18,8 @@ admin tools), the same as po-followup / mediclaim / term-policy.
 browser (hub origin) --GET--> ${SAP_GATEWAY_HOST}/api/${SAP_SYSTEM}/ZMM_BOM_COST_SRV/<EntitySet>
 ```
 
-- **Deployed SAP system:** `.env.production` (read by `npm run build`) pins the deployed app to
-  **NWP / production**. Local `npm run dev` / tests stay on NGD or the mock.
+- **Deployed SAP system:** `next.config.mjs` (`DEPLOYED_SAP_SYSTEM`, applied to `next build` only)
+  pins the deployed app to **NWP / production**. Local `npm run dev` / tests stay on NGD or the mock.
 - **Connection config** (`src/lib/sap/config.ts`, zod-validated, readable error screen when wrong):
   gateway host, system (NGD / NGQ / NWP), service, APP_ENV, auth mode (`lib/sap/auth.ts`; browser:
   `none` only), optional sap-client, timeout, `SAP_EXPAND_RATE_OPTIONS`. See `.env.example`.
