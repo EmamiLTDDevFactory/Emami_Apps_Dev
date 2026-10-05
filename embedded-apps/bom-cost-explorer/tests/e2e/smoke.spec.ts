@@ -56,6 +56,12 @@ test('hub sign-in, BOM costing tree, drawer, dashboard, simulator', async ({ pag
   await expect(page.getByText('Cost by rate source')).toBeVisible();
 
   await page.getByRole('tab', { name: /Simulator/ }).click();
+  // Component-rate simulation: +10% on one component -> impact per 1 PC and the breakup.
+  await page.getByLabel('PM0001 in 1000 percent').fill('10');
+  await expect(page.getByText(/Impact on cost per 1 PC/)).toBeVisible();
+  await expect(page.getByText(/Material cost breakup per 1 PC/)).toBeVisible();
+  await expect(page.getByText(/1 changed/)).toBeVisible();
+  await page.getByRole('button', { name: /More what-ifs/ }).click();
   await page.getByRole('radio', { name: 'Cheapest option' }).click();
   await expect(page.getByText(/lines re-picked/)).toBeVisible();
   await expect(page.getByText('Simulated INR', { exact: false }).first()).toBeVisible();

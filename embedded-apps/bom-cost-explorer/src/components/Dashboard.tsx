@@ -6,17 +6,24 @@ import { baseSimRow, type SimRow } from '@/lib/cost/simulate';
 import { fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { Card, cx, inputBase, inputCls, SimTag, Stat } from './ui';
 import { DivergingBars, HBars, SourceDonut } from './charts';
+import { perPiece } from '@/lib/cost/perPiece';
+import { BreakupTable } from './Breakup';
 
 export default function Dashboard({
-  rows, vals, simOn, plantNames, onOpenRow, coverDays, setCoverDays, groupCurr, compare,
+  rows, vals, simOn, plantNames, onOpenRow, coverDays, setCoverDays, groupCurr, compare, explQty = '1', qtyMult = 1,
 }: {
   rows: CostLine[]; vals: SimRow[]; simOn: boolean; plantNames: Record<string, string>; onOpenRow: (i: number) => void;
   coverDays: number; setCoverDays: (n: number) => void; groupCurr: string; compare?: boolean;
+  explQty?: string; qtyMult?: number;
 }) {
   const [useSim, setUseSim] = useState(true);
   const sim = simOn && useSim;
   const base = useMemo(() => analyse(rows, sim ? vals : vals.map((v, i) => (v.changed ? baseSimRow(rows[i]) : v)), { coverDays }), [rows, vals, sim, coverDays]);
   const k = base.kpis;
+  const pieces = useMemo(
+    () => perPiece(rows, sim ? vals : vals.map((v, i) => (v.changed ? baseSimRow(rows[i]) : v)), explQty, sim ? qtyMult : 1),
+    [rows, vals, sim, explQty, qtyMult],
+  );
   const n = (d: { toString(): string }) => Number(d.toString());
 
   return (
@@ -49,6 +56,10 @@ export default function Dashboard({
           sub={k.budgetRows ? `${fmtPct(k.budgetBase.isZero() ? null : k.budgetVariance.div(k.budgetBase).times(100))} vs budget · ${k.budgetRows} lines` : 'run with "Include budget"'}
         />
       </div>
+
+      <Card className="mt-3" title={<>Material cost breakup per 1 PC · RM / Perfume / PM ({groupCurr}) {sim && <SimTag />}</>} bodyClass="px-0 pb-1 pt-3">
+        <BreakupTable items={pieces} plantNames={plantNames} simOn={sim} />
+      </Card>
 
       <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
         <Card title={<>Cost by rate source {sim && <SimTag />}</>}>

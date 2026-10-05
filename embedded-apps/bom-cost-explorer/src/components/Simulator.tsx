@@ -1,5 +1,9 @@
 'use client';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, RotateCcw, Search } from 'lucide-react';
+import { componentRates, perPiece, type ComponentRate } from '@/lib/cost/perPiece';
+import { CATEGORIES, CATEGORY_LABEL, type CostCategory } from '@/lib/cost/categories';
+import { AcrossPlants, BreakupTable, CategoryBadge, PerPieceImpact } from './Breakup';
 import type { CostLine } from '@/lib/sap/fields';
 import { RATE_SOURCES } from '@/lib/query/schema';
 import { EMPTY_SIM, isIdentity, QTY_BREAKS, quantityBreaks, tornado, type PickMode, type SimRow, type SimSettings } from '@/lib/cost/simulate';
@@ -24,13 +28,15 @@ function Pct({ label, value, onChange, id }: { label: string; value: number; onC
 }
 
 export default function Simulator({
-  rows, sim, settings, onChange, explQty, groupCurr, onOpenRow, onSapQtyScenarios, pending, rateOptions = true,
+  rows, sim, settings, onChange, explQty, groupCurr, onOpenRow, onSapQtyScenarios, pending, rateOptions = true, plantNames = {},
 }: {
   rows: CostLine[]; sim: SimRow[]; settings: SimSettings; onChange: (s: SimSettings) => void; explQty: string; groupCurr: string;
   onOpenRow: (i: number) => void; onSapQtyScenarios: (mults: number[]) => void; pending: boolean;
   /** false when SAP could not $expand RateOptions: re-pick / cheapest / latest need them */
   rateOptions?: boolean;
+  plantNames?: Record<string, string>;
 }) {
+  const [more, setMore] = useState(false);
   const set = (patch: Partial<SimSettings>) => onChange({ ...settings, ...patch });
   const currencies = useMemo(() => {
     const s = new Set<string>();
@@ -61,6 +67,8 @@ export default function Simulator({
     return { base, after, repicked, changed, heads: Array.from(heads.values()) };
   }, [rows, sim]);
 
+  const pieces = useMemo(() => perPiece(rows, sim, explQty, settings.qtyMult || 1), [rows, sim, explQty, settings.qtyMult]);
+
   const torn = useMemo(() => tornado(rows, sim, { pct: 10, topN: 8, groupCurr }), [rows, sim, groupCurr]);
   const breaks = useMemo(() => quantityBreaks(rows, sim, explQty), [rows, sim, explQty]);
   const overrides = Object.entries(settings.overrides);
@@ -69,13 +77,21 @@ export default function Simulator({
   const delta = summary.after.minus(summary.base);
 
   return (
-    <div className="scroll-thin grid h-full grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[360px_1fr]">
+    <div className="scroll-thin grid h-full grid-cols-1 gap-3 overflow-auto bg-bg/60 p-3 xl:grid-cols-[480px_1fr]">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted">Instant what-ifs on SAP's returned figures — no SAP call. Every simulated number is marked <SimTag />.</p>
-          <Button size="sm" disabled={!active} onClick={() => onChange({ ...EMPTY_SIM, prio: settings.prio })}>Reset</Button>
+          <Button size="sm" disabled={!active} onClick={() => onChange({ ...EMPTY_SIM, prio: settings.prio })}><RotateCcw size={13} /> Reset all</Button>
         </div>
 
+        <ComponentRates rows={rows} settings={settings} onChange={onChange} plantNames={plantNames} />
+
+        <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="flex w-full items-center justify-between rounded-2xl border border-line bg-panel px-4 py-3 text-sm font-bold shadow-card hover:bg-sunken">
+          More what-ifs: rate source, % by source, freight, FX, quantity, overrides
+          <ChevronDown size={16} className={cx('transition-transform', more && 'rotate-180')} />
+        </button>
+        {more && (
+        <>
         <Card title="Rate source pick">
           <div role="radiogroup" aria-label="Rate pick" className="grid grid-cols-2 gap-1">
             {([['sap', 'SAP selection'], ['priority', 'Priority order'], ['cheapest', 'Cheapest option'], ['latest', 'Latest valid-from']] as [PickMode, string][]).map(([m, l]) => {
@@ -154,6 +170,8 @@ export default function Simulator({
             </ul>
           )}
         </Card>
+        </>
+        )}
       </div>
 
       <div className={cx('space-y-3', pending && 'opacity-70 transition-opacity')}>
@@ -164,28 +182,16 @@ export default function Simulator({
           <Stat label={delta.lt(0) ? 'Saving' : 'Extra cost'} sim value={fmtNum(delta.abs(), 2)} sub="vs current SAP selection" />
         </div>
 
-        <Card title={<>Before / after by header {active && <SimTag />}</>} bodyClass="p-0">
-          <div className="scroll-thin max-h-72 overflow-auto">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-panel text-faint">
-                <tr><th className="px-3 py-1.5 text-left font-medium">Plant</th><th className="text-left font-medium">Header</th><th className="text-right font-medium">SAP INR</th><th className="text-right font-medium">Simulated INR</th><th className="px-3 text-right font-medium">Δ</th></tr>
-              </thead>
-              <tbody>
-                {summary.heads.map((h) => {
-                  const d = h.after.minus(h.base);
-                  return (
-                    <tr key={h.plant + h.label} className="border-t border-line/60">
-                      <td className="px-3 py-1 font-mono">{h.plant}</td>
-                      <td className="truncate">{h.label}</td>
-                      <td className="num text-right">{fmtNum(h.base, 2)}</td>
-                      <td className="num text-right"><span className={cx(!d.isZero() && 'sim-val')}>{fmtNum(h.after, 2)}</span></td>
-                      <td className={cx('num px-3 text-right', d.gt(0) ? 'text-bad' : d.lt(0) ? 'text-good' : 'text-faint')}>{d.isZero() ? '—' : `${fmtSigned(d)} (${fmtPct(pctChange(h.base, h.after))})`}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        <Card title={<>Impact on cost per 1 PC {active && <SimTag />}</>} bodyClass="p-0">
+          <div className="scroll-thin max-h-80 overflow-auto"><PerPieceImpact items={pieces} plantNames={plantNames} simOn={active} /></div>
+        </Card>
+
+        <Card title={<>Cost per 1 PC across plants · {groupCurr} {active && <SimTag />}</>} bodyClass="p-0">
+          <AcrossPlants items={pieces} plantNames={plantNames} simOn={active} />
+        </Card>
+
+        <Card title={<>Material cost breakup per 1 PC · RM / Perfume / PM {active && <SimTag />}</>} bodyClass="pt-3 px-0 pb-1">
+          <BreakupTable items={pieces} plantNames={plantNames} simOn={active} />
         </Card>
 
         <Card title={<>Sensitivity: ±10% on each driver {active && <SimTag />}</>}>
@@ -222,5 +228,148 @@ export default function Simulator({
         </Card>
       </div>
     </div>
+  );
+}
+
+/**
+ * Component-rate simulation: one line per plant x component (rates differ by plant). Change the
+ * rate with the slider, a % or a new rate per piece in INR (converted to the same %). Applies to
+ * the component's material rate everywhere it is used in that plant; freight is not changed.
+ */
+function ComponentRates({ rows, settings, onChange, plantNames }: { rows: CostLine[]; settings: SimSettings; onChange: (s: SimSettings) => void; plantNames: Record<string, string> }) {
+  const all = useMemo(() => componentRates(rows), [rows]);
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState<CostCategory | 'ALL'>('ALL');
+  const [plant, setPlant] = useState('ALL');
+  const [limit, setLimit] = useState(40);
+  const [bulk, setBulk] = useState('');
+  const plants = useMemo(() => Array.from(new Set(all.map((c) => c.plant))), [all]);
+  const counts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of all) m[c.category] = (m[c.category] ?? 0) + 1;
+    return m;
+  }, [all]);
+  const t = q.trim().toLowerCase();
+  const shown = all.filter((c) => (cat === 'ALL' || c.category === cat) && (plant === 'ALL' || c.plant === plant) && (!t || c.comp.toLowerCase().includes(t) || c.text.toLowerCase().includes(t)));
+  const pct = settings.compPct ?? {};
+  const changed = Object.values(pct).filter((v) => v).length;
+  const setPct = (keys: string[], v: number) => {
+    const next = { ...pct };
+    for (const k of keys) {
+      if (!v) delete next[k];
+      else next[k] = Math.round(v * 100) / 100;
+    }
+    onChange({ ...settings, compPct: next });
+  };
+
+  return (
+    <Card
+      title={<>Component rates {changed > 0 && <span className="ml-1 rounded-full bg-sim/10 px-2 py-0.5 text-[11px] font-bold text-sim">{changed} changed</span>}</>}
+      actions={changed > 0 && <Button size="sm" onClick={() => onChange({ ...settings, compPct: {} })}><RotateCcw size={12} /> Reset</Button>}
+      bodyClass="p-0"
+    >
+      <div className="space-y-2 border-b border-line px-4 py-3">
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <input className={cx(inputCls, 'pl-8')} placeholder="Find component…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Find component" />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['ALL', ...CATEGORIES] as const).map((c) => (
+            <button key={c} type="button" aria-pressed={cat === c} onClick={() => setCat(c)} className={cx('rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition', cat === c ? 'border-accent bg-accent text-white' : 'border-line bg-panel text-muted hover:text-ink')}>
+              {c === 'ALL' ? `All ${all.length}` : `${CATEGORY_LABEL[c]} ${counts[c] ?? 0}`}
+            </button>
+          ))}
+          {plants.length > 1 && (
+            <select className={cx(inputBase, 'ml-auto h-7 text-xs')} value={plant} onChange={(e) => setPlant(e.target.value)} aria-label="Plant">
+              <option value="ALL">All plants</option>
+              {plants.map((p) => <option key={p} value={p}>{p} {plantNames[p] ?? ''}</option>)}
+            </select>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-semibold text-muted">Apply to the {shown.length} listed:</span>
+          <input className={cx(inputBase, 'h-7 w-20 text-right text-xs')} inputMode="decimal" placeholder="±%" value={bulk} onChange={(e) => setBulk(e.target.value)} aria-label="Percent for all listed components" />
+          <span className="text-faint">%</span>
+          <Button size="sm" disabled={bulk === '' || isNaN(Number(bulk))} onClick={() => setPct(shown.map((c) => c.key), Number(bulk))}>Apply</Button>
+        </div>
+      </div>
+      <ul className="scroll-thin max-h-[560px] divide-y divide-line/70 overflow-auto">
+        {shown.slice(0, limit).map((c) => <CompRow key={c.key} c={c} value={pct[c.key] ?? 0} onPct={(v) => setPct([c.key], v)} plantName={plantNames[c.plant]} />)}
+        {shown.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">No component matches.</li>}
+      </ul>
+      {shown.length > limit && (
+        <div className="border-t border-line px-4 py-2 text-center">
+          <Button size="sm" variant="ghost" onClick={() => setLimit(limit + 60)}>Show more ({shown.length - limit} more, sorted by cost)</Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CompRow({ c, value, onPct, plantName }: { c: ComponentRate; value: number; onPct: (v: number) => void; plantName?: string }) {
+  const base = c.ratePcInr;
+  const newRate = base.times(1 + value / 100);
+  const [rateText, setRateText] = useState<string | null>(null);
+  const clamp = (v: number) => Math.max(-100, Math.min(1000, v));
+  return (
+    <li className={cx('px-4 py-2.5', value !== 0 && 'bg-sim/[0.04]')}>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-xs font-bold">{c.comp}</span>
+            <CategoryBadge c={c.category} />
+            <span className="rounded bg-sunken px-1.5 text-[10px] font-bold text-muted" title={plantName}>{c.plant}</span>
+          </div>
+          <p className="truncate text-xs text-muted" title={c.text}>{c.text}</p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="num text-xs text-muted">SAP {c.noRate ? <span className="font-bold text-bad">no rate</span> : <>{fmtRate(base)} <span className="text-faint">INR/{c.uom}</span></>}</p>
+          {value !== 0 && <p className="num text-xs font-bold text-sim">→ {fmtRate(newRate)}</p>}
+        </div>
+      </div>
+      <div className="mt-1.5 grid grid-cols-[1fr_auto_auto] items-center gap-2">
+        <input
+          type="range"
+          min={-50}
+          max={50}
+          step={0.5}
+          value={Math.max(-50, Math.min(50, value))}
+          disabled={c.noRate}
+          onChange={(e) => onPct(Number(e.target.value))}
+          aria-label={`${c.comp} in ${c.plant} rate change percent`}
+          aria-valuetext={`${value}%`}
+          className="accent-[rgb(var(--sim))] disabled:opacity-40"
+        />
+        <div className="flex items-center gap-0.5">
+          <input
+            type="number"
+            step={0.5}
+            disabled={c.noRate}
+            className={cx(inputBase, 'h-7 w-[68px] px-1.5 text-right text-xs', value !== 0 && 'text-sim')}
+            value={value}
+            onChange={(e) => onPct(clamp(Number(e.target.value) || 0))}
+            aria-label={`${c.comp} in ${c.plant} percent`}
+          />
+          <span className="text-xs text-faint">%</span>
+        </div>
+        <input
+          inputMode="decimal"
+          disabled={c.noRate || base.isZero()}
+          className={cx(inputBase, 'h-7 w-[92px] px-1.5 text-right text-xs')}
+          placeholder="new rate"
+          title="New rate per piece in INR"
+          value={rateText ?? (value !== 0 ? newRate.toFixed(4) : '')}
+          onFocus={() => setRateText(value !== 0 ? newRate.toFixed(4) : '')}
+          onChange={(e) => {
+            const t = e.target.value.replace(',', '.');
+            setRateText(t);
+            const n = Number(t);
+            if (t !== '' && Number.isFinite(n) && n >= 0 && !base.isZero()) onPct(clamp(Number(D(n).div(base).minus(1).times(100).toFixed(4))));
+          }}
+          onBlur={() => setRateText(null)}
+          aria-label={`${c.comp} in ${c.plant} new rate per piece INR`}
+        />
+      </div>
+    </li>
   );
 }

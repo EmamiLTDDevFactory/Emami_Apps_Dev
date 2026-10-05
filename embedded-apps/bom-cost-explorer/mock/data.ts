@@ -18,7 +18,7 @@ export const PLANTS: MockPlant[] = [
 export const FX_INR: Record<string, number> = { INR: 1, USD: 83.42, EUR: 90.15, BDT: 0.7012, AED: 22.71 };
 
 export interface MockMaterial {
-  Matnr: string; Maktx: string; Mtart: 'FERT' | 'HALB' | 'ROH' | 'VERP'; Meins: string;
+  Matnr: string; Maktx: string; Mtart: 'FERT' | 'HALB' | 'ROH' | 'VERP' | 'PKGN'; Meins: string;
   Matkl: string; base: number; importCurr?: string; Ntgew?: number;
 }
 
@@ -43,7 +43,7 @@ export const MATERIALS: MockMaterial[] = [
   { Matnr: 'RM0002', Maktx: 'Refined Sesame Oil', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-OIL', base: 210 },
   { Matnr: 'RM0003', Maktx: 'Menthol Crystals', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-AROMA', base: 1450, importCurr: 'USD' },
   { Matnr: 'RM0004', Maktx: 'Camphor Powder', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-AROMA', base: 780 },
-  { Matnr: 'RM0005', Maktx: 'Perfume Compound A', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-PERF', base: 3200, importCurr: 'EUR' },
+  { Matnr: 'RM0005', Maktx: 'Perfume Compound A', Mtart: 'ROH', Meins: 'KG', Matkl: '106', base: 3200, importCurr: 'EUR' },
   { Matnr: 'RM0006', Maktx: 'Stearic Acid', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-CHEM', base: 142 },
   { Matnr: 'RM0007', Maktx: 'Glycerin IP', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-CHEM', base: 96 },
   { Matnr: 'RM0008', Maktx: 'Purified Water', Mtart: 'ROH', Meins: 'KG', Matkl: 'RM-UTIL', base: 0.8 },
@@ -63,7 +63,7 @@ export const MATERIALS: MockMaterial[] = [
   { Matnr: 'PM0010', Maktx: 'Glass Jar 10 ml', Mtart: 'VERP', Meins: 'PC', Matkl: 'PM-JAR', base: 2.6 },
   { Matnr: 'PM0011', Maktx: 'Glass Jar 30 ml', Mtart: 'VERP', Meins: 'PC', Matkl: 'PM-JAR', base: 4.4 },
   { Matnr: 'PM0012', Maktx: 'PET Jar 250 g', Mtart: 'VERP', Meins: 'PC', Matkl: 'PM-JAR', base: 6.8 },
-  { Matnr: 'PM0013', Maktx: 'Shrink Film', Mtart: 'VERP', Meins: 'KG', Matkl: 'PM-FILM', base: 165 },
+  { Matnr: 'PM0013', Maktx: 'Shrink Film', Mtart: 'PKGN', Meins: 'KG', Matkl: 'PM-FILM', base: 165 },
 ];
 export const MAT = new Map(MATERIALS.map((m) => [m.Matnr, m]));
 

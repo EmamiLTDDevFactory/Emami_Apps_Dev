@@ -103,7 +103,7 @@ export default function Explorer() {
         setCollapsed(true);
         ls.set(lastMsKey(q.mode), r.ms);
         setResultAt(Date.now());
-        setTab((t) => (q.mode === 'C' ? (t === 'tree' || t === 'table' || t === 'sim' ? 'compare' : t) : t === 'compare' || t === 'table' ? 'tree' : t));
+        setTab((t) => (q.mode === 'C' ? (t === 'tree' || t === 'table' ? 'compare' : t) : t === 'compare' || t === 'table' ? 'tree' : t));
       }
     },
     [query, runner, user],
@@ -121,8 +121,10 @@ export default function Explorer() {
   const rateOptions = mode === 'B' && result?.rateOptions !== false;
   // Without rate options the re-pick what-ifs can't run: simulate with SAP's own pick.
   const effectiveSim = useMemo(() => (rateOptions || simDeferred.pick === 'sap' ? simDeferred : { ...simDeferred, pick: 'sap' as const }), [rateOptions, simDeferred]);
-  const simOn = !isIdentity(effectiveSim) && mode === 'B';
-  const simRows = useMemo(() => simulate(rows, mode === 'B' ? effectiveSim : EMPTY_SIM), [rows, effectiveSim, mode]);
+  // Component-rate / % what-ifs work on CostLineSet results: BOM costing and plant comparison.
+  const simMode = mode === 'B' || mode === 'C';
+  const simOn = !isIdentity(effectiveSim) && simMode;
+  const simRows = useMemo(() => simulate(rows, simMode ? effectiveSim : EMPTY_SIM), [rows, effectiveSim, simMode]);
   const agg: NodeAgg | null = useMemo(() => {
     if (!tree) return null;
     return {
@@ -225,6 +227,7 @@ export default function Explorer() {
       : mode === 'C'
         ? [
             { id: 'compare', label: 'Plant comparison' },
+            { id: 'sim', label: 'Simulator', badge: simOn ? <SimTag /> : undefined },
             { id: 'dash', label: 'Dashboard' },
             { id: 'dq', label: 'Data quality', badge: dqCount ? <Pill tone="warn">{dqCount}</Pill> : undefined },
             { id: 'scen', label: 'Scenarios' },
@@ -344,7 +347,7 @@ export default function Explorer() {
           ) : activeTab === 'compare' && pivot ? (
             pivot.rows.length ? <ComparisonView pivot={pivot} plantNames={plantNames} /> : <Empty title="SAP returned no lines">Check the SAP messages above.</Empty>
           ) : activeTab === 'dash' ? (
-            <Dashboard rows={rows} vals={simRows} simOn={simOn} plantNames={plantNames} onOpenRow={openRow} coverDays={coverDays} setCoverDays={(n) => { setCoverDays(n); ls.set('bce:cover-days', n); }} groupCurr={groupCurr} compare={mode === 'C'} />
+            <Dashboard rows={rows} vals={simRows} simOn={simOn} plantNames={plantNames} onOpenRow={openRow} coverDays={coverDays} setCoverDays={(n) => { setCoverDays(n); ls.set('bce:cover-days', n); }} groupCurr={groupCurr} compare={mode === 'C'} explQty={ranQuery?.explQty ?? '1'} qtyMult={effectiveSim.qtyMult || 1} />
           ) : activeTab === 'sim' ? (
             <Simulator
               rows={rows}
@@ -357,6 +360,7 @@ export default function Explorer() {
               pending={sim !== simDeferred}
               onSapQtyScenarios={qtyScenarios}
               rateOptions={rateOptions}
+              plantNames={plantNames}
             />
           ) : activeTab === 'dq' ? (
             <DataQuality rows={rows} onOpenRow={openRow} />

@@ -6,7 +6,7 @@
  *
  *   simulated total (leaf) = (rate/pc INR' + freight/pc INR') x ProdQty x qty multiplier
  *   rate/pc INR'  = override                                            (if overridden), else
- *                   picked option RatePcInr x (1 + source %) x (1 + FX % of the rate currency)
+ *                   picked option RatePcInr x (1 + source %) x (1 + component %) x (1 + FX %)
  *   freight/pc'   = FrtPcInr x (1 + freight %) x (1 + FX % of the freight currency)
  *
  * FX shocks apply to the currency an amount is DENOMINATED in (SelCurr / option Curr for the
@@ -31,6 +31,8 @@ export interface SimSettings {
   qtyMult: number;
   /** rowKey -> manual rate per piece in INR */
   overrides: Record<string, string>;
+  /** component rate change in %, keyed "<plant>|<component>" (Hwerks|Idnrk) */
+  compPct: Record<string, number>;
 }
 
 export const EMPTY_SIM: SimSettings = {
@@ -41,6 +43,7 @@ export const EMPTY_SIM: SimSettings = {
   fxPct: {},
   qtyMult: 1,
   overrides: {},
+  compPct: {},
 };
 
 export function isIdentity(s: SimSettings): boolean {
@@ -50,7 +53,8 @@ export function isIdentity(s: SimSettings): boolean {
     !s.freightPct &&
     Object.values(s.fxPct).every((v) => !v) &&
     (s.qtyMult === 1 || !s.qtyMult) &&
-    Object.keys(s.overrides).length === 0
+    Object.keys(s.overrides).length === 0 &&
+    Object.values(s.compPct ?? {}).every((v) => !v)
   );
 }
 
@@ -155,9 +159,12 @@ export function simulateRow(r: CostLine, s: SimSettings): SimRow {
     }
     const fs = factor(s.ratePct[source]);
     const fx = factor(s.fxPct[rateCurr]);
-    if (fs) {
-      ratePcInr = ratePcInr.times(fs);
-      if (ratePcSrc) ratePcSrc = ratePcSrc.times(fs);
+    // Component rate change (the component-rate simulator): plant + component specific.
+    const fc = factor(s.compPct?.[`${r.Hwerks}|${r.Idnrk}`]);
+    for (const f of [fs, fc]) {
+      if (!f) continue;
+      ratePcInr = ratePcInr.times(f);
+      if (ratePcSrc) ratePcSrc = ratePcSrc.times(f);
     }
     if (fx) ratePcInr = ratePcInr.times(fx);
   }
