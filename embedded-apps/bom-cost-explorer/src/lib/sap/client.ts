@@ -153,10 +153,12 @@ export async function sapGet(path: string, params: Record<string, string | undef
   }
 }
 
+/** GET an entity set: `{ rows, count, messages, ms }` - rows still raw (normalise per entity),
+ * messages parsed from the sap-message header, count from $inlinecount. */
 export async function sapGetCollection(path: string, params: Record<string, string | undefined>, opts: SapGetOptions = {}) {
   const r = await sapGet(path, params, opts);
   const { results, count } = unwrapCollection(r.body);
-  return { results, count, messages: r.messages, ms: r.ms };
+  return { rows: results, count, messages: r.messages, ms: r.ms };
 }
 
 /** Fetches $metadata as text (check:metadata), through the same auth / sap-client as the BFF.

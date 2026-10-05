@@ -1,7 +1,7 @@
 'use client';
 import type { CostQuery } from '../query/schema';
 import { describeQuery } from '../query/schema';
-import { COST_LINE, type CostLine } from '../sap/fields';
+import { COST_LINE, type CostLine, type RateOption } from '../sap/fields';
 import { currencyOf, type ColDef } from '../views';
 import type { SimRow, SimSettings } from '../cost/simulate';
 import { isIdentity } from '../cost/simulate';
@@ -144,7 +144,7 @@ export async function exportCostLines({ fmt, query, rows, sim, settings, message
   const extra: [string, string][] = [['Rows', String(rows.length)], ['Totals', 'Sum TotCostInr over rows with HasChild blank (leaf rows)']];
   if (simOn) extra.push(['Simulation (client-side, not SAP)', JSON.stringify(settings)]);
   // Rate options as their own sheet (one row per option).
-  const flat: { r: CostLine; o: CostLine['RateOptions'][number] }[] = [];
+  const flat: { r: CostLine; o: RateOption }[] = [];
   for (const r of rows) for (const o of r.RateOptions ?? []) flat.push({ r, o });
   const optCols: XCol[] = [
     { header: 'Plant', get: (i) => flat[i].r.Werks },

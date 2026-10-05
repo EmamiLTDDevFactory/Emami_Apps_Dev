@@ -67,7 +67,7 @@ Checked against the live service on NGD (2026-10-04):
 | Flags (`UseAsof`, `InclFrt`, `StdFrt`, `LatestOnly`, `InclBudget`, `InclCover`) | Edm.Boolean on CostLineSet; ABAP char `'X'`/`''` on Rate/Freight/RmPm row sets (`eq false` -> "Invalid parametertype") | fields.ts `SELECTION_KIND_BY_SET` |
 | `BudgetYr` | NUMC 4, sent as `'2026'` | fields.ts |
 | Coverage (`StockQty` … `CovH3`) | not in the service | fields.ts `OPTIONAL_PROPS` (show as 0 / not requested) |
-| `$expand=RateOptions` | 501 `RATEOPTIONSET_GET_ENTITYSET not implemented` | BFF retries without `$expand` and shows a warning. **ABAP to do:** redefine `/IWBEP/IF_MGW_APPL_SRV_RUNTIME~GET_EXPANDED_ENTITYSET` (or implement `RATEOPTIONSET_GET_ENTITYSET`) in the DPC_EXT |
+| `$expand=RateOptions` | 501 `RATEOPTIONSET_GET_ENTITYSET not implemented` | Rate options are only ever read via `CostLineSet?$expand=RateOptions` (mode B), never via RateOptionSet or per-line navigation URLs. On an error matching `RATEOPTIONSET\|not implemented\|501\|navigation` the BFF retries without `$expand`, returns `rateOptions: false` plus a warning, and the UI hides the rate-option comparison and disables the re-pick / cheapest-source what-ifs. Local repro: `MOCK_SAP_EXPAND_501=true`. **ABAP to do:** redefine `/IWBEP/IF_MGW_APPL_SRV_RUNTIME~GET_EXPANDED_ENTITYSET` (or implement `RATEOPTIONSET_GET_ENTITYSET`) in the DPC_EXT |
 | `MaterialVHSet` `$top` | ignored by SAP | BFF caps at 100 |
 
 `npm run check:metadata` fetches `<SAP_BASE_URL>/$metadata` with the BFF's credentials. It fails

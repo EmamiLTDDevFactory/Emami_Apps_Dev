@@ -59,18 +59,24 @@ export function normValue(kind: FieldKind, v: unknown): unknown {
   }
 }
 
-/** One OData V2 entity -> a plain row keyed by our internal keys. __metadata, __deferred
- * navigation stubs and properties we don't know are dropped. Missing properties get the kind's
- * empty value so the UI never sees undefined. */
+/** One OData V2 entity -> a plain row keyed by our internal keys. __metadata and properties we
+ * don't know are dropped; missing properties get the kind's empty value. Navigation properties:
+ * an expanded V2 collection ({ results: [...] }, or a bare array) becomes an array of normalised
+ * rows; a { __deferred } stub (not expanded) is dropped - the key is left out entirely. */
 export function normalizeEntity<T>(raw: Record<string, unknown>, map: FieldMap, nav?: Record<string, FieldMap>): T {
   const out: Record<string, unknown> = {};
   for (const [key, [sapName, kind]] of Object.entries(map)) out[key] = normValue(kind, raw?.[sapName]);
   if (nav) {
     for (const [navName, navMap] of Object.entries(nav)) {
-      out[navName] = unwrapResults(raw?.[navName]).map((r) => normalizeEntity(r, navMap));
+      if (isExpanded(raw?.[navName])) out[navName] = unwrapResults(raw?.[navName]).map((r) => normalizeEntity(r, navMap));
     }
   }
   return out as T;
+}
+
+/** True for an expanded navigation collection; false for a { __deferred } stub or nothing. */
+export function isExpanded(v: unknown): boolean {
+  return Array.isArray(v) || (!!v && typeof v === 'object' && Array.isArray((v as { results?: unknown }).results));
 }
 
 /** Collections in V2 JSON are `{ results: [...] }`; deferred navs are `{ __deferred: {...} }`. */

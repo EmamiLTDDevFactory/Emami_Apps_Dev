@@ -24,10 +24,12 @@ function Pct({ label, value, onChange, id }: { label: string; value: number; onC
 }
 
 export default function Simulator({
-  rows, sim, settings, onChange, explQty, groupCurr, onOpenRow, onSapQtyScenarios, pending,
+  rows, sim, settings, onChange, explQty, groupCurr, onOpenRow, onSapQtyScenarios, pending, rateOptions = true,
 }: {
   rows: CostLine[]; sim: SimRow[]; settings: SimSettings; onChange: (s: SimSettings) => void; explQty: string; groupCurr: string;
   onOpenRow: (i: number) => void; onSapQtyScenarios: (mults: number[]) => void; pending: boolean;
+  /** false when SAP could not $expand RateOptions: re-pick / cheapest / latest need them */
+  rateOptions?: boolean;
 }) {
   const set = (patch: Partial<SimSettings>) => onChange({ ...settings, ...patch });
   const currencies = useMemo(() => {
@@ -76,18 +78,36 @@ export default function Simulator({
 
         <Card title="Rate source pick">
           <div role="radiogroup" aria-label="Rate pick" className="grid grid-cols-2 gap-1">
-            {([['sap', 'SAP selection'], ['priority', 'Priority order'], ['cheapest', 'Cheapest option'], ['latest', 'Latest valid-from']] as [PickMode, string][]).map(([m, l]) => (
-              <button key={m} type="button" role="radio" aria-checked={settings.pick === m} onClick={() => set({ pick: m })} className={cx('rounded-md border px-2 py-1.5 text-xs', settings.pick === m ? 'border-sim bg-sim/10 font-semibold text-sim' : 'border-line text-muted hover:text-ink')}>
-                {l}
-              </button>
-            ))}
+            {([['sap', 'SAP selection'], ['priority', 'Priority order'], ['cheapest', 'Cheapest option'], ['latest', 'Latest valid-from']] as [PickMode, string][]).map(([m, l]) => {
+              const off = !rateOptions && m !== 'sap';
+              const on = (rateOptions ? settings.pick : 'sap') === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={off}
+                  title={off ? 'Needs rate options from SAP' : undefined}
+                  onClick={() => set({ pick: m })}
+                  className={cx('rounded-lg border px-2 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40', on ? 'border-sim bg-sim/10 font-semibold text-sim' : 'border-line text-muted hover:text-ink')}
+                >
+                  {l}
+                </button>
+              );
+            })}
           </div>
-          {settings.pick === 'priority' && (
+          {!rateOptions && (
+            <p className="mt-2 rounded-lg bg-warn/[0.08] px-2.5 py-2 text-2xs text-ink" role="note">
+              Re-picking the rate source needs the rate options, which SAP does not return yet. The % changes, FX, quantity and manual overrides below still work.
+            </p>
+          )}
+          {rateOptions && settings.pick === 'priority' && (
             <div className="mt-2">
               <PriorityList value={settings.prio} onChange={(v) => set({ prio: v as SimSettings['prio'] })} all={RATE_SOURCES} />
             </div>
           )}
-          {settings.pick !== 'sap' && <p className="mt-2 text-2xs text-muted">{summary.repicked.toLocaleString('en-IN')} lines re-picked from their RateOptions.</p>}
+          {rateOptions && settings.pick !== 'sap' && <p className="mt-2 text-2xs text-muted">{summary.repicked.toLocaleString('en-IN')} lines re-picked from their RateOptions.</p>}
         </Card>
 
         <Card title="Rate change by source">

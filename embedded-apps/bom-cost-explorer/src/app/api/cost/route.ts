@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     if (query.mode === 'B' || query.mode === 'C') {
       rateLimit(user.email, 'cost');
       const r = await fetchCostLines(query, { signal: req.signal, user: user.email });
-      return NextResponse.json({ rows: r.rows, messages: r.messages, ms: r.ms, total: r.rows.length, serverMs: Date.now() - started });
+      return NextResponse.json({ rows: r.rows, messages: r.messages, ms: r.ms, rateOptions: r.rateOptions, total: r.rows.length, serverMs: Date.now() - started });
     }
 
     const page = pageSchema.parse(parsed.data.page ?? {});

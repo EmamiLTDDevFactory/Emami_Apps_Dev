@@ -117,8 +117,12 @@ export default function Explorer() {
   const tree = useMemo(() => (result && mode === 'B' ? buildTree(result.rows, plantNames) : null), [result, mode, plantNames]);
   const pivot = useMemo(() => (result && mode === 'C' && ranQuery ? buildPivot(result.rows, ranQuery.compPlants) : null), [result, mode, ranQuery]);
   const rows = tree ? tree.rows : result?.rows ?? [];
-  const simOn = !isIdentity(simDeferred) && ranQuery?.mode === 'B';
-  const simRows = useMemo(() => simulate(rows, ranQuery?.mode === 'B' ? simDeferred : EMPTY_SIM), [rows, simDeferred, ranQuery]);
+  /** Rate options came back from CostLineSet?$expand=RateOptions (mode B, SAP supports the expand). */
+  const rateOptions = mode === 'B' && result?.rateOptions !== false;
+  // Without rate options the re-pick what-ifs can't run: simulate with SAP's own pick.
+  const effectiveSim = useMemo(() => (rateOptions || simDeferred.pick === 'sap' ? simDeferred : { ...simDeferred, pick: 'sap' as const }), [rateOptions, simDeferred]);
+  const simOn = !isIdentity(effectiveSim) && mode === 'B';
+  const simRows = useMemo(() => simulate(rows, mode === 'B' ? effectiveSim : EMPTY_SIM), [rows, effectiveSim, mode]);
   const agg: NodeAgg | null = useMemo(() => {
     if (!tree) return null;
     return {
@@ -187,7 +191,7 @@ export default function Explorer() {
 
   const doExport = async (fmt: 'xlsx' | 'csv') => {
     if (!ranQuery || !result) return;
-    if (ranQuery.mode === 'B') await exportCostLines({ fmt, query: ranQuery, rows, sim: simRows, settings: simDeferred, messages: result.messages });
+    if (ranQuery.mode === 'B') await exportCostLines({ fmt, query: ranQuery, rows, sim: simRows, settings: effectiveSim, messages: result.messages });
     else if (pivot) await exportPivot({ fmt, query: ranQuery, pivot, messages: result.messages });
   };
 
@@ -352,6 +356,7 @@ export default function Explorer() {
               onOpenRow={openRow}
               pending={sim !== simDeferred}
               onSapQtyScenarios={qtyScenarios}
+              rateOptions={rateOptions}
             />
           ) : activeTab === 'dq' ? (
             <DataQuality rows={rows} onOpenRow={openRow} />
@@ -364,6 +369,7 @@ export default function Explorer() {
           row={rows[drawer]}
           sim={simRows[drawer]}
           onClose={() => setDrawer(null)}
+          rateOptions={rateOptions}
           override={sim.overrides[rowKey(rows[drawer])]}
           onOverride={(k, v) => {
             const o = { ...sim.overrides };

@@ -486,9 +486,14 @@ function page(rows: Raw[], sp: URLSearchParams) {
   return { d };
 }
 
+/** Every URL the mock was asked for (tests assert RateOptionSet / per-line navigations never are). */
+export const mockRequestLog: string[] = [];
+
 /** fetch-compatible entry point. */
 export async function mockSapFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  mockRequestLog.push(url.pathname + url.search);
+  if (mockRequestLog.length > 500) mockRequestLog.shift();
   const signal = init?.signal ?? undefined;
   const set = decodeURIComponent(url.pathname.split('/').pop() || '');
   const sp = url.searchParams;
@@ -534,6 +539,10 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   ];
   try {
     if (set === ENTITY_SET.COST_LINES) {
+      // MOCK_SAP_EXPAND_501=true reproduces the live NGD service: $expand=RateOptions -> 501.
+      if (process.env.MOCK_SAP_EXPAND_501 === 'true' && (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS)) {
+        return odataError(501, '/IWBEP/CM_MGW_RT/021', "Method 'RATEOPTIONSET_GET_ENTITYSET' not implemented in data provider class.");
+      }
       await sleep(delay() + 40 * p.mats.length * Math.max(1, p.werks.length + p.cplnt.length), signal);
       const rows = costLines(p, (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS), msgs);
       msgs.unshift({ code: 'ZBOM/000', message: `Costing finished: ${rows.length} line(s)`, severity: 'info' });

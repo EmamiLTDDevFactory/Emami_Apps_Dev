@@ -30,9 +30,11 @@ function KV({ items }: { items: [string, React.ReactNode][] }) {
 }
 
 export default function RowDrawer({
-  row, sim, onClose, override, onOverride,
+  row, sim, onClose, override, onOverride, rateOptions = true,
 }: {
   row: CostLine | null; sim: SimRow | null; onClose: () => void; override?: string; onOverride: (key: string, v: string | null) => void;
+  /** false when SAP could not $expand RateOptions for this run */
+  rateOptions?: boolean;
 }) {
   const [ov, setOv] = useState(override ?? '');
   useEffect(() => setOv(override ?? ''), [override, row]);
@@ -100,6 +102,15 @@ export default function RowDrawer({
         )}
       </Section>
 
+      {!rateOptions ? (
+        <Section title="Rate options">
+          <div className="rounded-xl border border-warn/30 bg-warn/[0.07] px-3 py-2.5 text-sm text-ink" role="note">
+            Rate options are not available from SAP for this run (the RateOptions expand is not implemented in
+            ZMM_BOM_COST_SRV yet). SAP&apos;s selected rate is shown above; the comparison of all sources will appear here once
+            SAP supports it.
+          </div>
+        </Section>
+      ) : (
       <Section title={`Rate options (${opts.length})`}>
         {opts.length === 0 ? (
           <p className="text-sm text-muted">SAP found no rate option for this component{r.Donor ? '' : ' in this plant'}. {r.SelSource ? '' : 'The line is costed with freight only.'}</p>
@@ -147,6 +158,7 @@ export default function RowDrawer({
           </>
         )}
       </Section>
+      )}
 
       <Section title="Manual override (simulation)">
         <div className="flex flex-wrap items-end gap-2">

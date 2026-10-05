@@ -86,7 +86,7 @@ const validFromTs = (o: RateOption) => (o.ValidFrom ? Date.parse(o.ValidFrom) : 
 export function repick(r: CostLine, mode: PickMode, prio: readonly string[]): number {
   const opts = (r.RateOptions ?? []).filter((o) => D(o.RatePcInr).gt(0));
   if (mode === 'sap' || opts.length === 0) return -1;
-  const all = r.RateOptions;
+  const all = r.RateOptions ?? [];
   const idx = (o: RateOption) => all.indexOf(o);
   if (mode === 'cheapest') {
     return idx(opts.reduce((best, o) => (D(o.RatePcInr).lt(D(best.RatePcInr)) ? o : best)));
@@ -145,7 +145,7 @@ export function simulateRow(r: CostLine, s: SimSettings): SimRow {
   } else {
     const oi = repick(r, s.pick, s.prio);
     if (oi >= 0 && oi !== selectedOptionIndex(r)) {
-      const o = r.RateOptions[oi];
+      const o = (r.RateOptions ?? [])[oi];
       ratePcInr = D(o.RatePcInr);
       ratePcSrc = D(o.RatePc);
       source = o.Source;

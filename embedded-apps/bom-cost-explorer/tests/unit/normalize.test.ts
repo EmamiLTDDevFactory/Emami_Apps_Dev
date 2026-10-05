@@ -37,18 +37,36 @@ describe('entity normalisation', () => {
     const f = fixture('CostLineSet-B');
     const { results } = unwrapCollection(f.body);
     const rows = results.map((r) => normalizeEntity<CostLine>(r, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }));
-    const r = rows.find((x) => x.HasChild === '' && x.RateOptions.length > 1)!;
+    const r = rows.find((x) => x.HasChild === '' && (x.RateOptions?.length ?? 0) > 1)!;
     expect((r as unknown as Record<string, unknown>).__metadata).toBeUndefined();
     expect(typeof r.Seqnr).toBe('number');
     expect(typeof r.TotCostInr).toBe('string');
     expect(r.TotCostInr).toMatch(/^-?\d+(\.\d+)?$/);
     expect(r.DelvAsof).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(r.RateOptions[0].ValidFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect((r.RateOptions[0] as unknown as Record<string, unknown>).__metadata).toBeUndefined();
+    expect(r.RateOptions![0].ValidFrom).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((r.RateOptions![0] as unknown as Record<string, unknown>).__metadata).toBeUndefined();
   });
-  it('treats a __deferred navigation as no options', () => {
+  it('drops a __deferred navigation stub (key left out)', () => {
     const raw = { Seqnr: 1, RateOptions: { __deferred: { uri: 'x' } } };
-    expect(normalizeEntity<CostLine>(raw, COST_LINE, { RateOptions: RATE_OPTION }).RateOptions).toEqual([]);
+    const row = normalizeEntity<CostLine>(raw, COST_LINE, { RateOptions: RATE_OPTION });
+    expect('RateOptions' in row).toBe(false);
+  });
+  it('unwraps an expanded V2 collection { results: [...] } with /Date()/ and decimals converted', () => {
+    const raw = {
+      __metadata: { type: 'X.CostLine' },
+      Seqnr: 3,
+      TotCostInr: '12.5000',
+      RateOptions: { results: [{ __metadata: { type: 'X.RateOption' }, Source: 'INFOREC', RatePcInr: '1.230000', ValidFrom: '/Date(1774915200000)/' }] },
+    };
+    const row = normalizeEntity<CostLine>(raw, COST_LINE, { RateOptions: RATE_OPTION });
+    expect(row.TotCostInr).toBe('12.5');
+    expect(row.RateOptions).toHaveLength(1);
+    expect(row.RateOptions![0]).toMatchObject({ Source: 'INFOREC', RatePcInr: '1.23', ValidFrom: '2026-03-31' });
+    expect((row.RateOptions![0] as unknown as Record<string, unknown>).__metadata).toBeUndefined();
+  });
+  it('accepts a bare-array expansion and an empty expansion', () => {
+    expect(normalizeEntity<CostLine>({ RateOptions: [] }, COST_LINE, { RateOptions: RATE_OPTION }).RateOptions).toEqual([]);
+    expect(normalizeEntity<CostLine>({ RateOptions: { results: [] } }, COST_LINE, { RateOptions: RATE_OPTION }).RateOptions).toEqual([]);
   });
   it('reads $inlinecount', () => {
     const f = fixture('RateRowSet-R');

@@ -41,6 +41,8 @@ export interface CostResult {
   messages: SapMessage[];
   ms: number;
   total: number;
+  /** false when SAP could not $expand RateOptions (or mode C, which never expands) */
+  rateOptions?: boolean;
 }
 export interface PagedResult<T = Record<string, unknown>> {
   rows: T[];

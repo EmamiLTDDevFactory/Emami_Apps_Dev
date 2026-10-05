@@ -326,7 +326,8 @@ type KindType<K extends FieldKind> = K extends 'd' ? string : K extends 'i' ? nu
 export type RowOf<M extends FieldMap> = { [P in keyof M]: KindType<M[P][1]> };
 
 export type RateOption = RowOf<typeof RATE_OPTION>;
-export type CostLine = RowOf<typeof COST_LINE> & { RateOptions: RateOption[] };
+/** RateOptions is present only when the line came from CostLineSet?$expand=RateOptions (mode B). */
+export type CostLine = RowOf<typeof COST_LINE> & { RateOptions?: RateOption[] };
 export type RateRow = RowOf<typeof RATE_ROW>;
 export type FreightRow = RowOf<typeof FREIGHT_ROW>;
 export type RmPmRow = RowOf<typeof RMPM_ROW>;
