@@ -247,6 +247,106 @@ router.post('/submit', async (req, res, next) => {
   }
 })
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
+// Mirrors src/utils/date.js's hoursBetween.
+function hoursBetween(inTime, outTime) {
+  if (!inTime || !outTime) return 0
+  const [inH, inM] = inTime.split(':').map(Number)
+  const [outH, outM] = outTime.split(':').map(Number)
+  const minutes = outH * 60 + outM - (inH * 60 + inM)
+  if (!Number.isFinite(minutes) || minutes <= 0) return 0
+  return Math.round((minutes / 60) * 100) / 100
+}
+
+// Once an employee has submitted, their manager can correct Clock In / Clock Out times (and only
+// those - tasks, descriptions and leave stay exactly as the employee entered them) before
+// approving. Body: { times: { 'YYYY-MM-DD': { inTime: 'HH:MM' | '', outTime: 'HH:MM' | '' } } }.
+// A day's hours are recomputed from the new times, split evenly across its task lines like the
+// grid does; a working day the employee never punched gets a single task-less entry.
+router.post('/:id/manager-times', async (req, res, next) => {
+  if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can edit clock times.' })
+  const { times } = req.body
+  if (!times || typeof times !== 'object' || Array.isArray(times)) {
+    return res.status(400).json({ error: 'times is required' })
+  }
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query(
+      `SELECT ts.*, u.manager_id FROM timesheets ts JOIN users u ON u.id = ts.user_id WHERE ts.id = $1 FOR UPDATE OF ts`,
+      [req.params.id],
+    )
+    const ts = rows[0]
+    if (!ts) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ error: 'Timesheet not found.' })
+    }
+    if (ts.manager_id !== req.user.userId) {
+      await client.query('ROLLBACK')
+      return res.status(403).json({ error: "You can only edit your own team's timesheets." })
+    }
+    if (ts.status !== 'Submitted' && ts.status !== 'Resubmitted') {
+      await client.query('ROLLBACK')
+      return res.status(400).json({ error: 'Clock times can only be edited while the timesheet is waiting for approval.' })
+    }
+
+    const monthPrefix = (ts.month_start_date instanceof Date ? ts.month_start_date.toISOString() : String(ts.month_start_date)).slice(0, 7)
+    const { rows: entryRows } = await client.query('SELECT * FROM timesheet_entries WHERE timesheet_id = $1', [ts.id])
+    const entries = entryRows.map(mapEntry)
+
+    let changedDays = 0
+    for (const [date, value] of Object.entries(times)) {
+      const inTime = value?.inTime || ''
+      const outTime = value?.outTime || ''
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.slice(0, 7) !== monthPrefix) {
+        throw Object.assign(new Error(`${date} is not in this timesheet's month.`), { status: 400 })
+      }
+      if ((inTime && !TIME_RE.test(inTime)) || (outTime && !TIME_RE.test(outTime))) {
+        throw Object.assign(new Error(`Invalid time on ${date}.`), { status: 400 })
+      }
+      if (inTime && outTime && hoursBetween(inTime, outTime) === 0) {
+        throw Object.assign(new Error(`Out time must be after In time on ${date}.`), { status: 400 })
+      }
+      const dayEntries = entries.filter((e) => e.date === date)
+      if (dayEntries.some((e) => e.leaveType)) {
+        throw Object.assign(new Error(`${date} is marked as leave - its times can't be edited.`), { status: 400 })
+      }
+      if (dayEntries.length) {
+        if (dayEntries.every((e) => e.inTime === inTime && e.outTime === outTime)) continue
+        const perLine = Math.round((hoursBetween(inTime, outTime) / dayEntries.length) * 100) / 100
+        await client.query(
+          'UPDATE timesheet_entries SET in_time = $1, out_time = $2, hours = $3 WHERE timesheet_id = $4 AND entry_date = $5',
+          [inTime || null, outTime || null, perLine, ts.id, date],
+        )
+        changedDays += 1
+      } else if (inTime || outTime) {
+        await client.query(
+          `INSERT INTO timesheet_entries (id, timesheet_id, user_id, entry_date, in_time, out_time, hours)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [`${ts.user_id}_${date}_0`, ts.id, ts.user_id, date, inTime || null, outTime || null, hoursBetween(inTime, outTime)],
+        )
+        changedDays += 1
+      }
+    }
+
+    if (changedDays > 0) {
+      await client.query(
+        'INSERT INTO timesheet_history (timesheet_id, status, occurred_at, comment, action) VALUES ($1, $2, now(), $3, $4)',
+        [ts.id, 'Edited', `Manager edited Clock In / Clock Out on ${changedDays} day${changedDays === 1 ? '' : 's'}`, 'Times Edited'],
+      )
+    }
+    await client.query('COMMIT')
+    res.json(await loadTimesheet(pool, ts.id))
+  } catch (err) {
+    await client.query('ROLLBACK')
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  } finally {
+    client.release()
+  }
+})
+
 router.post('/:id/approve', async (req, res, next) => {
   const comment = (req.body.comment || '').trim()
   const client = await pool.connect()

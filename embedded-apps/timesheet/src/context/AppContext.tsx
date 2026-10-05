@@ -417,6 +417,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Manager-only: correct Clock In / Clock Out on a submitted timesheet before approving it.
+  // `times` maps each changed date to its new { inTime, outTime }. Throws the server's message so
+  // the review screen can show it.
+  async function saveManagerTimes(timesheetId: string, times: Record<string, { inTime: string; outTime: string }>) {
+    upsertTimesheet(await api(`/timesheets/${timesheetId}/manager-times`, { method: 'POST', body: JSON.stringify({ times }) }));
+  }
+
   async function rejectTimesheet(timesheetId: string, comment: string, actionLabel = 'Rejected') {
     const trimmed = comment.trim();
     if (!trimmed) throw new Error('A comment is required to reject a timesheet.');
@@ -751,6 +758,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveDraftEntries,
     submitForApproval,
     approveTimesheet,
+    saveManagerTimes,
     rejectTimesheet,
     bulkApprove,
     addProject,
