@@ -30,6 +30,7 @@ const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
 const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
 const FM_PO_DEVIATION_APP_ID = 'fm-po-deviation';
 const AUDIT_TOOL_APP_ID = 'audit-tool';
+const SHELF_LIFE_DEVIATION_APP_ID = 'shelf-life-deviation';
 /** Apps shown here alphabetically by name — insertion order in mockData.ts reflects when each
  * app was added to the hub, not a meaningful display order. */
 const SORTED_APPS = [...APPS].sort((a, b) => a.name.localeCompare(b.name));
@@ -42,6 +43,9 @@ function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
   // Audit Tool's own screen roles (Audit Head, Performer/Reviewer, Masters, Scheduling...) come
   // from SAP (ZST_AUTH_USERSet / CheckAuditHeadSet), so the hub only grants access, not a role.
   if (appId === AUDIT_TOOL_APP_ID) return [null, 'User'];
+  // Shelf Life Deviation: who may approve comes from SAP (UserSet Flag = 'X' shows the Approval
+  // Worklist), so the hub only grants access, same as Audit Tool.
+  if (appId === SHELF_LIFE_DEVIATION_APP_ID) return [null, 'User'];
   return [null, 'User', 'Admin'];
 }
 
@@ -408,8 +412,8 @@ export default function ManageAccessPage() {
       setUsers((prev) => prev.map((u) => (okEmails.has(u.email) ? { ...u, accessLevel: level } : u)));
       setBulkNote(
         `Set ${okEmails.size} of ${eligible.length} selected user(s) to ${level}.` +
-          (skipped ? ` ${skipped} skipped (not eligible).` : '') +
-          (failed ? ` ${failed} failed.` : '')
+        (skipped ? ` ${skipped} skipped (not eligible).` : '') +
+        (failed ? ` ${failed} failed.` : '')
       );
       clearSelection();
     } finally {

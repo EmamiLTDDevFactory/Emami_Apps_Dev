@@ -1,0 +1,22 @@
+{
+  "name": "shelf-life-deviation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shelf Life Deviation Workflow — CPD Category Head approval worklist + CADE Z-Report (Next.js port of the SAPUI5 freestyle app com.emami.shelflifedeviation)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/rename-export.js",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.2"
+  }
+}
