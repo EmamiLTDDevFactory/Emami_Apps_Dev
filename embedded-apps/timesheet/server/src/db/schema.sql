@@ -137,14 +137,3 @@ DROP TRIGGER IF EXISTS trg_touch_timesheet ON timesheet.timesheet_entries;
 CREATE TRIGGER trg_touch_timesheet
 AFTER INSERT OR UPDATE OR DELETE ON timesheet.timesheet_entries
 FOR EACH ROW EXECUTE FUNCTION timesheet.touch_timesheet_updated_at();
-
--- Projects (and, through them, their tasks) belong to the manager who created them: each
--- manager's Manage Team page only lists and edits their own. All projects stay readable to
--- everyone so task names on old timesheets and reports still resolve.
-ALTER TABLE timesheet.projects ADD COLUMN IF NOT EXISTS manager_id TEXT REFERENCES timesheet.users(id) ON DELETE SET NULL;
--- One-time backfill: projects created before ownership existed go to Jeevan Thapa. Guarded so
--- it only ever runs while no project has an owner yet.
-UPDATE timesheet.projects
-SET manager_id = (SELECT id FROM timesheet.users WHERE lower(email) = 'jeevan.thapa@emamigroup.com' LIMIT 1)
-WHERE manager_id IS NULL
-  AND NOT EXISTS (SELECT 1 FROM timesheet.projects WHERE manager_id IS NOT NULL);
