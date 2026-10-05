@@ -49,6 +49,13 @@ export default function ManageTeamPage() {
   const { showToast } = useToast();
   const router = useRouter();
 
+  // Each manager only sees and manages their own projects and the tasks under them.
+  const myProjects = useMemo(() => projects.filter((p: any) => p.managerId === currentUser.id), [projects, currentUser.id]);
+  const myTasks = useMemo(() => {
+    const ids = new Set(myProjects.map((p: any) => p.id));
+    return tasks.filter((t: any) => ids.has(t.projectId));
+  }, [tasks, myProjects]);
+
   // Defense in depth - the nav already hides this route from a non-manager, but the URL is
   // still reachable directly.
   useEffect(() => {
@@ -57,7 +64,7 @@ export default function ManageTeamPage() {
 
   const [newProjectName, setNewProjectName] = useState('');
   const [newTaskName, setNewTaskName] = useState('');
-  const [newTaskProject, setNewTaskProject] = useState(projects[0]?.id || '');
+  const [newTaskProject, setNewTaskProject] = useState(myProjects[0]?.id || '');
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -116,11 +123,11 @@ export default function ManageTeamPage() {
   }, [satMonth, workingDayOverrides]);
 
   useEffect(() => {
-    if (!projects.some((p: any) => p.id === newTaskProject)) {
-      setNewTaskProject(projects[0]?.id || '');
+    if (!myProjects.some((p: any) => p.id === newTaskProject)) {
+      setNewTaskProject(myProjects[0]?.id || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects]);
+  }, [myProjects]);
 
   useEffect(() => {
     fetchAddEmployeeCandidates()
@@ -503,7 +510,7 @@ export default function ManageTeamPage() {
               <fieldset>
                 <legend className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-inkSoft">Assigned tasks</legend>
                 <div className="flex flex-wrap gap-2">
-                  {tasks.map((task: any) => {
+                  {myTasks.map((task: any) => {
                     const project = projects.find((p: any) => p.id === task.projectId);
                     const checked = (assignments[user.id] || []).includes(task.id);
                     return (
@@ -518,6 +525,7 @@ export default function ManageTeamPage() {
                       </label>
                     );
                   })}
+                  {myTasks.length === 0 && <p className="text-xs italic text-inkSoft">No tasks yet - add a project and its tasks below to assign them.</p>}
                 </div>
               </fieldset>
 
@@ -606,7 +614,7 @@ export default function ManageTeamPage() {
         </ul>
       </section>
 
-      {/* 9. Projects CRUD, 10. Tasks CRUD (team-wide, not per-manager) */}
+      {/* 9. Projects CRUD, 10. Tasks CRUD (each manager's own) */}
       <div className="grid gap-6 md:grid-cols-2">
         <section className="glass-card p-6">
           <h2 className="mb-3 flex items-center gap-2 font-semibold text-ink">
@@ -614,7 +622,7 @@ export default function ManageTeamPage() {
             Projects
           </h2>
           <ul className="mb-4 space-y-2">
-            {projects.map((project: any) => (
+            {myProjects.map((project: any) => (
               <li key={project.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0">
                 {editingProjectId === project.id ? (
                   <input
@@ -673,7 +681,7 @@ export default function ManageTeamPage() {
             Tasks
           </h2>
           <ul className="mb-4 max-h-64 space-y-2 overflow-y-auto">
-            {tasks.map((task: any) => {
+            {myTasks.map((task: any) => {
               const project = projects.find((p: any) => p.id === task.projectId);
               return (
                 <li key={task.id} className="flex items-center justify-between gap-2 border-b border-border pb-2 text-sm last:border-0">
@@ -723,7 +731,7 @@ export default function ManageTeamPage() {
               onChange={(e) => setNewTaskProject(e.target.value)}
               className="rounded-lg border border-border bg-white px-2 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
             >
-              {projects.map((p: any) => (
+              {myProjects.map((p: any) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
