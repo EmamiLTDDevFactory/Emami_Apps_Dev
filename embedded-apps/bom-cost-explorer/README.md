@@ -1,6 +1,7 @@
-# BOM Cost Explorer & Simulator
+# BOM Simulator
 
-Embedded app (hub tile **BOM Cost Explorer**, category CPD, `/apps/bom-cost-explorer`) on top of the
+Embedded app (hub tile **BOM Simulator**, category CPD; folder, URL `/apps/bom-cost-explorer` and
+Manage Access app id `bom-cost-explorer` kept unchanged) on top of the
 SAP ECC OData V2 service `ZMM_BOM_COST_SRV`. **SAP does all costing** (BOM explosion, rate
 resolution, UoM and currency conversion). This app presents, compares, analyses and simulates.
 
@@ -17,6 +18,8 @@ admin tools), the same as po-followup / mediclaim / term-policy.
 browser (hub origin) --GET--> ${SAP_GATEWAY_HOST}/api/${SAP_SYSTEM}/ZMM_BOM_COST_SRV/<EntitySet>
 ```
 
+- **Deployed SAP system:** `.env.production` (read by `npm run build`) pins the deployed app to
+  **NWP / production**. Local `npm run dev` / tests stay on NGD or the mock.
 - **Connection config** (`src/lib/sap/config.ts`, zod-validated, readable error screen when wrong):
   gateway host, system (NGD / NGQ / NWP), service, APP_ENV, auth mode (`lib/sap/auth.ts`; browser:
   `none` only), optional sap-client, timeout, `SAP_EXPAND_RATE_OPTIONS`. See `.env.example`.

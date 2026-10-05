@@ -119,7 +119,7 @@ export default function Shell({ mode, onMode, email, actions, children, env }: {
           {!wide && (
             <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="p-1 text-ink"><Menu size={22} /></button>
           )}
-          <h1 className="truncate text-[15px] font-extrabold text-ink">BOM Cost Explorer</h1>
+          <h1 className="truncate text-[15px] font-extrabold text-ink">BOM Simulator</h1>
           <span className="hidden items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-accent sm:inline-flex">
             <Icon size={11} /> {MODE_LABEL[mode]}
           </span>

@@ -60,7 +60,7 @@ export interface ExportSpec {
 }
 
 export async function exportTable(spec: ExportSpec) {
-  const file = `bom-cost-${spec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${stamp()}`;
+  const file = `bom-simulator-${spec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${stamp()}`;
   if (spec.fmt === 'csv') {
     const lines = [spec.cols.map((c) => csvCell(c.header)).join(',')];
     for (let i = 0; i < spec.count; i++) lines.push(spec.cols.map((c) => csvCell(c.get(i))).join(','));
@@ -69,7 +69,7 @@ export async function exportTable(spec: ExportSpec) {
   }
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'BOM Cost Explorer';
+  wb.creator = 'BOM Simulator';
   wb.created = new Date();
 
   const addSheet = (name: string, cols: XCol[], count: number) => {

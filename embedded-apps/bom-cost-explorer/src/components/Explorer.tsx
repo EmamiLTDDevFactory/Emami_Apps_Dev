@@ -265,7 +265,7 @@ export default function Explorer() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
             <AlertTriangle size={26} className="mx-auto mt-4 text-warn" />
-            <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "BOM Cost Explorer can't start" : 'Please open this app from Emami Apps'}</h1>
+            <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "BOM Simulator can't start" : 'Please open this app from Emami Apps'}</h1>
             <p className="mt-1 text-sm text-muted">{!cfg.ok ? cfg.error : 'Sign in to the Emami Apps hub first; your session comes from there.'}</p>
             <a href="/" className="mt-5 inline-flex rounded-xl bg-gradient-to-br from-accent to-accent-deep px-5 py-2 text-sm font-bold text-white">Go to Emami Apps</a>
           </div>
