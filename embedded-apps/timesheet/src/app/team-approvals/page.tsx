@@ -10,7 +10,7 @@ import TimesheetGrid from '../../components/TimesheetGrid';
 import ApprovalQueueTable from '../../components/ApprovalQueueTable';
 import BackButton from '../../components/BackButton';
 import MonthSelector from '../../components/MonthSelector';
-import { addMonths, currentMonthStartIso, formatMonthLabel, parseISODate, toISODate } from '../../utils/date';
+import { addMonths, currentMonthStartIso, formatDayNum, formatMonthLabel, hoursBetween, parseISODate, toISODate } from '../../utils/date';
 import { computeTotals, expectedMonthlyHours, getDisplayStatus, isOverdue, MAX_HOURS_PER_DAY } from '../../utils/timesheet';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
 
@@ -103,7 +103,7 @@ function ApprovalList() {
 
 function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
   const router = useRouter();
-  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet, workingDayOverridesSet } = useApp();
+  const { getUserById, getTimesheet, getAssignedTasks, projects, approveTimesheet, rejectTimesheet, saveManagerTimes, workingDayOverridesSet } = useApp();
   const { showToast } = useToast();
   const [comment, setComment] = useState('');
   const [error, setError] = useState('');
@@ -123,17 +123,67 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
     [userId, projects]
   );
 
-  function handleApprove() {
+  // The manager can correct Clock In / Clock Out (nothing else) while the timesheet waits for
+  // approval. `gridEntries` is the grid's live state; diffing it against what was submitted gives
+  // the days whose times changed.
+  const [gridEntries, setGridEntries] = useState<any[] | null>(null);
+  const [savingTimes, setSavingTimes] = useState(false);
+
+  const changedTimes = useMemo(() => {
+    if (!timesheet || !gridEntries) return {};
+    const timesByDate = (entries: any[]) => {
+      const map: Record<string, { inTime: string; outTime: string }> = {};
+      entries.forEach((e) => {
+        if (!e.leaveType && !map[e.date]) map[e.date] = { inTime: e.inTime || '', outTime: e.outTime || '' };
+      });
+      return map;
+    };
+    const before = timesByDate(timesheet.entries);
+    const after = timesByDate(gridEntries);
+    const changed: Record<string, { inTime: string; outTime: string }> = {};
+    new Set([...Object.keys(before), ...Object.keys(after)]).forEach((date) => {
+      const b = before[date] || { inTime: '', outTime: '' };
+      const a = after[date] || { inTime: '', outTime: '' };
+      if (a.inTime !== b.inTime || a.outTime !== b.outTime) changed[date] = a;
+    });
+    return changed;
+  }, [timesheet, gridEntries]);
+  const changedCount = Object.keys(changedTimes).length;
+
+  // Saves pending time edits; returns false (with the reason shown) if they couldn't be saved.
+  async function saveTimes() {
+    if (changedCount === 0) return true;
+    const invalid = Object.entries(changedTimes).find(([, t]) => t.inTime && t.outTime && hoursBetween(t.inTime, t.outTime) === 0);
+    if (invalid) {
+      showToast(`Out time must be after In time on ${formatDayNum(parseISODate(invalid[0]))}.`, 'error');
+      return false;
+    }
+    setSavingTimes(true);
+    try {
+      await saveManagerTimes(timesheet.id, changedTimes);
+      showToast(`Saved time changes for ${changedCount} day${changedCount === 1 ? '' : 's'}.`, 'success');
+      return true;
+    } catch (err: any) {
+      showToast(err.message || 'Failed to save time changes.', 'error');
+      return false;
+    } finally {
+      setSavingTimes(false);
+    }
+  }
+
+  async function handleApprove() {
+    if (!(await saveTimes())) return;
     approveTimesheet(timesheet.id, comment);
     showToast(`Approved ${user.name}'s timesheet.`, 'success');
     router.push('/team-approvals/');
   }
 
-  function handleReject(actionLabel: string) {
+  async function handleReject(actionLabel: string) {
     if (!comment.trim()) {
       setError('A comment is required to reject or request changes.');
       return;
     }
+    if (!(await saveTimes())) return;
     rejectTimesheet(timesheet.id, comment, actionLabel);
     showToast(`${actionLabel === 'Rejected' ? 'Rejected' : 'Requested changes to'} ${user.name}'s timesheet.`, 'success');
     router.push('/team-approvals/');
@@ -181,7 +231,32 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
 
       {timesheet && (
         <>
-          <TimesheetGrid userId={userId} tasks={tasks} monthStartDate={month} initialEntries={timesheet.entries} readOnly workingDayOverrides={workingDayOverridesSet} />
+          {actionable && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber/40 bg-amberBg px-4 py-3">
+              <p className="text-sm text-ink">
+                You can correct <span className="font-semibold">Clock In</span> and <span className="font-semibold">Clock Out</span> times before approving. Hours update automatically.
+                {changedCount > 0 && (
+                  <span className="ml-1 font-semibold text-amber">
+                    {changedCount} day{changedCount === 1 ? '' : 's'} changed - not saved yet.
+                  </span>
+                )}
+              </p>
+              <button type="button" onClick={saveTimes} disabled={changedCount === 0 || savingTimes} className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50">
+                {savingTimes ? 'Saving…' : 'Save time changes'}
+              </button>
+            </div>
+          )}
+
+          <TimesheetGrid
+            userId={userId}
+            tasks={tasks}
+            monthStartDate={month}
+            initialEntries={timesheet.entries}
+            readOnly
+            timesEditable={!!actionable}
+            onEntriesChange={(entries) => setGridEntries(entries)}
+            workingDayOverrides={workingDayOverridesSet}
+          />
 
           {actionable && (
             <div className="glass-card space-y-3 p-5">
@@ -201,7 +276,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
               />
               {error && <p className="text-sm text-red">{error}</p>}
               <div className="flex flex-wrap gap-3 pt-1">
-                <button type="button" onClick={handleApprove} className="btn-success">
+                <button type="button" onClick={handleApprove} disabled={savingTimes} className="btn-success disabled:opacity-50">
                   Approve
                 </button>
                 <button

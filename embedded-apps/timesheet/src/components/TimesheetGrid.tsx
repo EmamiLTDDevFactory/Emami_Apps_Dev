@@ -249,6 +249,9 @@ interface TimesheetGridProps {
   monthStartDate: string;
   initialEntries: AnyRecord[];
   readOnly?: boolean;
+  // With readOnly: everything stays read-only except In / Out time, which become plain time
+  // inputs - a manager correcting a submitted timesheet. Changes surface via onEntriesChange.
+  timesEditable?: boolean;
   workingDayOverrides?: Set<string>;
   onEntriesChange?: (entries: AnyRecord[], totals: AnyRecord) => void;
   onAutosave?: (entries: AnyRecord[]) => void;
@@ -256,7 +259,7 @@ interface TimesheetGridProps {
 }
 
 const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }, TimesheetGridProps>(function TimesheetGrid(
-  { userId, tasks, monthStartDate, initialEntries, readOnly, workingDayOverrides, onEntriesChange, onAutosave, autosaveDelay = 700 },
+  { userId, tasks, monthStartDate, initialEntries, readOnly, timesEditable, workingDayOverrides, onEntriesChange, onAutosave, autosaveDelay = 700 },
   ref
 ) {
   const days = useMemo(() => monthDays(monthStartDate).map((d) => toISODate(d)), [monthStartDate]);
@@ -581,6 +584,37 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
     []
   );
 
+  // What the employee submitted, so a manager's changed times can be flagged as edited.
+  const submittedMap = useMemo(() => entriesToDayMap(initialEntries), [initialEntries]);
+
+  function managerTimeInput(dateIso: string, row: DayRow, which: 'in' | 'out', compact?: boolean) {
+    const field = which === 'in' ? 'inTime' : 'outTime';
+    const location = which === 'in' ? row.inLocation : row.outLocation;
+    const edited = (submittedMap[dateIso]?.[field] || '') !== row[field];
+    return (
+      <div className="flex w-full flex-col items-stretch gap-0.5 text-left">
+        <input
+          type="time"
+          aria-label={`${which === 'in' ? 'In' : 'Out'} time on ${formatDayNum(parseISODate(dateIso))}`}
+          value={row[field]}
+          onChange={(e) => updateDayField(dateIso, { [field]: e.target.value } as Partial<DayRow>)}
+          className={`w-full rounded-md border px-1.5 py-1.5 text-ink focus:outline-none focus:ring-2 focus:ring-rust ${compact ? 'text-sm' : 'text-xs'} ${
+            edited ? 'border-amber bg-amberBg' : 'border-border bg-white'
+          }`}
+        />
+        {edited ? (
+          <span className="text-[10px] font-medium leading-tight text-amber">
+            Edited{submittedMap[dateIso]?.[field] ? ` (was ${submittedMap[dateIso][field]})` : ''}
+          </span>
+        ) : location ? (
+          <span title={location} className="truncate text-[10px] leading-tight text-green">
+            {location}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   if (tasks.length === 0) {
     return (
       <div className="glass-card border-dashed p-8 text-center text-sm text-inkSoft">
@@ -774,7 +808,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
-                        {readOnly ? (
+                        {timesEditable ? (
+                          managerTimeInput(dateIso, row, 'in')
+                        ) : readOnly ? (
                           row.inTime ? (
                             <PunchResult time={row.inTime} location={row.inLocation} />
                           ) : (
@@ -804,7 +840,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                         )}
                       </td>
                       <td rowSpan={rowSpan} className="px-2 py-2 text-center align-top">
-                        {readOnly ? (
+                        {timesEditable ? (
+                          managerTimeInput(dateIso, row, 'out')
+                        ) : readOnly ? (
                           row.outTime ? (
                             <PunchResult time={row.outTime} location={row.outLocation} />
                           ) : (
@@ -1033,7 +1071,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">In Time</span>
-                      {readOnly ? (
+                      {timesEditable ? (
+                        managerTimeInput(dateIso, row, 'in', true)
+                      ) : readOnly ? (
                         row.inTime ? (
                           <PunchResult time={row.inTime} location={row.inLocation} compact />
                         ) : (
@@ -1063,7 +1103,9 @@ const TimesheetGrid = forwardRef<{ loadEntries: (entries: AnyRecord[]) => void }
                     </label>
                     <label className="block">
                       <span className="mb-1 block text-[11px] font-medium text-inkSoft">Out Time</span>
-                      {readOnly ? (
+                      {timesEditable ? (
+                        managerTimeInput(dateIso, row, 'out', true)
+                      ) : readOnly ? (
                         row.outTime ? (
                           <PunchResult time={row.outTime} location={row.outLocation} compact />
                         ) : (
