@@ -5,7 +5,7 @@ import { dataQuality, DQ_LABEL, type DqKind } from '@/lib/cost/analytics';
 import { fmtNum } from '@/lib/format';
 import { cx, Empty, Pill } from './ui';
 
-const TONE: Record<DqKind, 'bad' | 'warn' | 'neutral' | 'accent'> = { NO_RATE: 'bad', UOM: 'warn', ZERO_FX: 'bad', DONOR: 'accent' };
+const TONE: Record<DqKind, 'bad' | 'warn' | 'neutral' | 'accent'> = { NO_RATE: 'bad', UOM: 'warn', ZERO_FX: 'bad', DONOR: 'accent', OPTIONS: 'warn' };
 
 export default function DataQuality({ rows, onOpenRow }: { rows: CostLine[]; onOpenRow: (i: number) => void }) {
   const issues = useMemo(() => dataQuality(rows), [rows]);
@@ -20,7 +20,7 @@ export default function DataQuality({ rows, onOpenRow }: { rows: CostLine[]; onO
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2" role="group" aria-label="Filter findings">
-        {(['ALL', 'NO_RATE', 'UOM', 'ZERO_FX', 'DONOR'] as const).map((k) => (
+        {(['ALL', 'NO_RATE', 'UOM', 'ZERO_FX', 'DONOR', 'OPTIONS'] as const).map((k) => (
           <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} className={cx('rounded-full border px-2.5 py-0.5 text-xs', kind === k ? 'border-accent bg-accent/10 text-ink' : 'border-line text-muted hover:text-ink')}>
             {k === 'ALL' ? 'All' : DQ_LABEL[k]} <span className="num font-semibold">{k === 'ALL' ? issues.length : counts[k] ?? 0}</span>
           </button>

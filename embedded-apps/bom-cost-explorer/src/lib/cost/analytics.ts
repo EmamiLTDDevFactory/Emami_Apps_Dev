@@ -95,7 +95,7 @@ export type Analysis = ReturnType<typeof analyse>;
 
 // ---- data quality -----------------------------------------------------------------------------
 
-export type DqKind = 'NO_RATE' | 'UOM' | 'ZERO_FX' | 'DONOR';
+export type DqKind = 'NO_RATE' | 'UOM' | 'ZERO_FX' | 'DONOR' | 'OPTIONS';
 export interface DqIssue { kind: DqKind; i: number; key: string; detail: string }
 
 export const DQ_LABEL: Record<DqKind, string> = {
@@ -103,6 +103,7 @@ export const DQ_LABEL: Record<DqKind, string> = {
   UOM: 'UoM conversion hint',
   ZERO_FX: 'Zero FX',
   DONOR: 'Donor plant',
+  OPTIONS: 'Rate options ≠ SrcCount',
 };
 
 export function dataQuality(rows: CostLine[]): DqIssue[] {
@@ -123,6 +124,10 @@ export function dataQuality(rows: CostLine[]): DqIssue[] {
       out.push({ kind: 'ZERO_FX', i, key, detail: `${r.SelCurr}→${r.LocCurr}: ${r.SelFx}, →INR: ${r.SelFxInr}` });
     if (r.FrtSrc && D(r.FrtPcLoc).gt(0) && D(r.FrtFx).isZero()) out.push({ kind: 'ZERO_FX', i, key, detail: `Freight FX ${r.FrtCurr} is 0` });
     if (r.Donor) out.push({ kind: 'DONOR', i, key, detail: `Rate taken from plant ${r.Donor}` });
+    // Only when the options were actually expanded (RateOptions present): SAP counted SrcCount
+    // sources but sent a different number of options.
+    if (r.RateOptions && r.RateOptions.length !== r.SrcCount)
+      out.push({ kind: 'OPTIONS', i, key, detail: `${r.RateOptions.length} rate option(s) returned, SrcCount says ${r.SrcCount}` });
   });
   return out;
 }

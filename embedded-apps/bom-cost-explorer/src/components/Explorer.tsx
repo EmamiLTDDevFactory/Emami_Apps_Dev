@@ -49,6 +49,10 @@ export default function Explorer() {
   useEffect(() => {
     if (user) void fetchIsAdmin(user).then(setIsAdmin);
   }, [user]);
+  // Every app start re-tests the RateOptions expand (no stale "unsupported" from an earlier visit).
+  useEffect(() => {
+    if (cfg?.ok) resetCapability(cfg.config.system);
+  }, [cfg]);
   const [plants, setPlants] = useState<PlantRow[]>([]);
   const [plantsLoading, setPlantsLoading] = useState(false);
   const [plantsErr, setPlantsErr] = useState('');
@@ -350,8 +354,8 @@ export default function Explorer() {
             {mode === 'B' && result && !rateOptions && (
               <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
                 Rate options are not available from SAP for this system
-                {isAdmin && sap.expand === 'auto' && (
-                  <button type="button" onClick={retestExpand} className="inline-flex items-center gap-1 font-bold text-accent hover:underline" title="Admin: forget the 'unsupported' verdict and send $expand on the next run">
+                {sap.expand === 'auto' && (
+                  <button type="button" onClick={retestExpand} className="inline-flex items-center gap-1 font-bold text-accent hover:underline" title="Forget the 'unsupported' verdict and send $expand=RateOptions on the next run">
                     <RefreshCw size={12} /> Re-test
                   </button>
                 )}

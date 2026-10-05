@@ -546,7 +546,18 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
       await sleep(delay() + 40 * p.mats.length * Math.max(1, p.werks.length + p.cplnt.length), signal);
       const rows = costLines(p, (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS), msgs);
       msgs.unshift({ code: 'ZBOM/000', message: `Costing finished: ${rows.length} line(s)`, severity: 'info' });
-      return json({ d: { results: rows.map((r) => toSap(r, COST_LINE, RATE_OPTION)) } }, 200, msgs);
+      let out = rows.map((r) => toSap(r, COST_LINE, RATE_OPTION));
+      // $select like SAP: only the listed properties; an expanded navigation only if selected;
+      // an unknown property is a 400.
+      const select = (sp.get('$select') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+      if (select.length) {
+        const known = new Set([...Object.values(COST_LINE).map(([n]) => n), ...Object.values(SELECTION).map(([n]) => n), NAV_RATE_OPTIONS]);
+        const bad = select.find((x) => !known.has(x));
+        if (bad) return odataError(400, '/IWBEP/CM_MGW_RT/022', `Property '${bad}' is invalid`);
+        const keep = new Set(select);
+        out = out.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k === '__metadata' || keep.has(k))));
+      }
+      return json({ d: { results: out } }, 200, msgs);
     }
     await sleep(delay(), signal);
     const [all, map] = set === ENTITY_SET.RATES ? [rates(p, msgs), RATE_ROW] : set === ENTITY_SET.FREIGHT ? [freight(p, msgs), FREIGHT_ROW] : [rmpm(p, msgs), RMPM_ROW];

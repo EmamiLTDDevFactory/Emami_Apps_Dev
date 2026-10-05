@@ -49,19 +49,6 @@ export default function RowDrawer({
   const key = rowKey(r);
   const cov = minCover(r);
 
-  const optRows: [string, (i: number) => React.ReactNode][] = [
-    ['Plant', (i) => <span className="font-mono">{opts[i].Plant}{r.Donor && opts[i].Plant === r.Donor && <Pill tone="warn">donor</Pill>}</span>],
-    ['Condition', (i) => opts[i].Cond],
-    ['Valid from', (i) => fmtDate(opts[i].ValidFrom)],
-    ['Rate', (i) => `${fmtRate(opts[i].Rate, opts[i].Curr)} ${opts[i].Curr}`],
-    ['UoM', (i) => opts[i].Uom],
-    ['Rate / pc', (i) => `${fmtRate(opts[i].RatePc, opts[i].Curr)} ${opts[i].Curr}`],
-    ['FX → local', (i) => fmtNum(opts[i].Fx, 5, 'X')],
-    ['Rate / pc local', (i) => `${fmtRate(opts[i].RatePcLoc, opts[i].LocCurr)} ${opts[i].LocCurr}`],
-    ['FX → INR', (i) => fmtNum(opts[i].FxInr, 5, 'X')],
-    ['Rate / pc INR', (i) => <strong>{fmtRate(opts[i].RatePcInr)} INR</strong>],
-    ['Cost INR (qty)', (i) => `${fmtNum(opts[i].CostInr, 2)} INR`],
-  ];
 
   return (
     <Drawer
@@ -115,33 +102,51 @@ export default function RowDrawer({
           <p className="text-sm text-muted">SAP found no rate option for this component{r.Donor ? '' : ' in this plant'}. {r.SelSource ? '' : 'The line is costed with freight only.'}</p>
         ) : (
           <>
-            <div className="scroll-thin overflow-x-auto">
+            <div className="scroll-thin overflow-x-auto rounded-xl border border-line">
               <table className="w-full border-collapse text-xs">
-                <thead>
+                <thead className="bg-sunken text-[11px] font-bold uppercase tracking-wide text-faint">
                   <tr>
-                    <th className="sticky left-0 bg-panel p-1.5 text-left font-medium text-faint" />
-                    {opts.map((o, i) => (
-                      <th key={i} className={cx('min-w-[120px] border-b-2 p-1.5 text-left', i === sel ? 'border-accent bg-accent/[0.07]' : 'border-line', sim.optionIdx === i && 'bg-sim/[0.08]')}>
-                        <SourceBadge source={o.Source} />
-                        <div className="mt-1 flex gap-1">
-                          {i === sel && <Pill tone="accent">SAP selected</Pill>}
-                          {i === bestIdx && <Pill tone="good">cheapest</Pill>}
-                          {sim.optionIdx === i && <Pill tone="sim">simulated</Pill>}
-                        </div>
-                      </th>
-                    ))}
+                    <th className="px-2.5 py-2 text-left">Source</th>
+                    <th className="px-2 py-2 text-left">Cond</th>
+                    <th className="px-2 py-2 text-left">Curr</th>
+                    <th className="px-2 py-2 text-right">Rate / pc</th>
+                    <th className="px-2 py-2 text-right">Rate / pc INR</th>
+                    <th className="px-2 py-2 text-left">Valid from</th>
+                    <th className="px-2.5 py-2 text-left">Plant</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {optRows.map(([label, f]) => (
-                    <tr key={label} className="border-b border-line/60">
-                      <th scope="row" className="sticky left-0 whitespace-nowrap bg-panel p-1.5 text-left font-normal text-faint">{label}</th>
-                      {opts.map((_, i) => <td key={i} className={cx('num whitespace-nowrap p-1.5', i === sel && 'bg-accent/[0.07]')}>{f(i)}</td>)}
+                  {opts.map((o, i) => (
+                    <tr
+                      key={i}
+                      aria-current={i === sel ? 'true' : undefined}
+                      className={cx('border-t border-line/70', i === sel && 'bg-accent/[0.08] font-semibold', sim.optionIdx === i && 'bg-sim/[0.08]')}
+                    >
+                      <td className={cx('px-2.5 py-1.5', i === sel && 'border-l-[3px] border-accent')}>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <SourceBadge source={o.Source} />
+                          {i === sel && <Pill tone="accent">selected</Pill>}
+                          {i === bestIdx && <Pill tone="good">cheapest</Pill>}
+                          {sim.optionIdx === i && <Pill tone="sim">simulated</Pill>}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5 font-mono">{o.Cond}</td>
+                      <td className="px-2 py-1.5">{o.Curr}</td>
+                      <td className="num px-2 py-1.5 text-right">{fmtRate(o.RatePc, o.Curr)} <span className="text-faint">{o.Curr}</span></td>
+                      <td className="num px-2 py-1.5 text-right">{fmtRate(o.RatePcInr)} <span className="text-faint">INR</span></td>
+                      <td className="px-2 py-1.5">{fmtDate(o.ValidFrom)}</td>
+                      <td className="px-2.5 py-1.5 font-mono">
+                        {o.Plant}
+                        {r.Donor && o.Plant === r.Donor && <Pill tone="warn">donor</Pill>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {opts.length !== r.SrcCount && (
+              <p className="mt-2 text-xs text-warn" role="note">SAP reports {r.SrcCount} rate source(s) for this line but returned {opts.length} option(s) - listed under Data quality.</p>
+            )}
             {saving && (
               <p className="mt-2 text-sm">
                 {saving.isZero() ? (

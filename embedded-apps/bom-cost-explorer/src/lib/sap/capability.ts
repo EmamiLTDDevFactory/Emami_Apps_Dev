@@ -6,7 +6,8 @@
  *   supported   -> keep sending it
  *   unsupported -> do not send it until `retryAt` (15 min), then test again
  *
- * Kept per SAP system, in memory and (best effort) in localStorage so a page reload keeps it.
+ * Kept per SAP system in memory (and localStorage); cleared on every app start and by "Re-test",
+ * so a fresh page always tries the expand first.
  */
 export type ExpandCapability = 'unknown' | 'supported' | 'unsupported';
 export const RETEST_AFTER_MS = 15 * 60_000;
@@ -62,11 +63,13 @@ export function markUnsupported(system: string, reason: string, now = Date.now()
   write(system, { state: 'unsupported', at: now, retryAt: now + RETEST_AFTER_MS, reason });
 }
 
-/** Admin "re-test": forget the verdict so the next Mode B run sends $expand again. */
+/** "Re-test" and app start: forget the verdict (memory, localStorage, sessionStorage) so the next
+ * Mode B run sends $expand=RateOptions again. */
 export function resetCapability(system: string) {
   mem.delete(system);
   try {
     if (typeof localStorage !== 'undefined') localStorage.removeItem(key(system));
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(key(system));
   } catch {
     /* ignore */
   }

@@ -146,3 +146,26 @@ describe('connection config', () => {
     expect(htmlToText(`<p>${'x'.repeat(500)}</p>`).length).toBe(300);
   });
 });
+
+describe('$select on CostLineSet', () => {
+  const ECHO = ['Mode', 'Matnr', 'Cplnt', 'Lookback', 'FreightDays', 'ExplQty', 'MaxLevel', 'Capid', 'Prio', 'DonorPlant', 'AsofDate', 'UseAsof', 'InclFrt', 'StdFrt', 'LatestOnly', 'InclBudget', 'BudgetYr', 'InclCover', 'Hor1', 'Hor2', 'Hor3', 'BudatFrom', 'BudatTo'];
+  it('drops the filter-echo columns, keeps every UI field, selects RateOptions only when expanding', async () => {
+    const { costRequest, costLineSelect } = await import('@/lib/sap/requests');
+    const b = costRequest(q({ mode: 'B' })).params.$select!.split(',');
+    for (const e of ECHO) expect(b).not.toContain(e);
+    expect(b).toEqual(expect.arrayContaining(['Seqnr', 'Haschild', 'Werks', 'Hwerks', 'Idnrk', 'SelSource', 'SrcCount', 'TotCostInr', 'RateOptions']));
+    expect(b).not.toContain('CovH1'); // absent from the live service: a $select of it would fail
+    const c = costRequest(q({ mode: 'C', bomPlant: '1000', compPlants: ['1100'], plants: [] })).params.$select!.split(',');
+    expect(c).not.toContain('RateOptions');
+    expect(costLineSelect(true).endsWith(',RateOptions')).toBe(true);
+  });
+  it('the mock (like SAP) returns only selected properties and still expands RateOptions', async () => {
+    const r = await fetchCostLines(q({ mode: 'B' }));
+    expect(r.rateOptions).toBe(true);
+    expect(r.rows.every((x) => Array.isArray(x.RateOptions))).toBe(true);
+    const sent = decodeURIComponent(costCalls()[0]);
+    expect(sent).toMatch(/\$select=Seqnr,/);
+    expect(sent).toContain('$expand=RateOptions');
+    expect(costCalls()[0]).not.toContain('+');
+  });
+});

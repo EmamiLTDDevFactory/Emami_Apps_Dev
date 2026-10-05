@@ -51,7 +51,8 @@ test('hub sign-in, BOM costing tree, drawer, dashboard, simulator', async ({ pag
   await tree.getByText('PM0001').first().click();
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByText(/Rate options \(\d+\)/)).toBeVisible();
-  await expect(drawer.getByText('SAP selected')).toBeVisible();
+  await expect(drawer.getByRole('columnheader', { name: 'Rate / pc INR' })).toBeVisible();
+  await expect(drawer.locator('tr[aria-current="true"]')).toHaveCount(1);
   await page.keyboard.press('Escape');
 
   await page.getByRole('tab', { name: 'Dashboard' }).click();

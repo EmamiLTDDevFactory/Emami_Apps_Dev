@@ -90,3 +90,15 @@ describe('server-side table (R/F/M paging)', () => {
     expect(queryTable(rows, VIEW_COLUMNS.F, { ...page, search: 'bd10' }).total).toBe(1);
   });
 });
+
+describe('data quality: RateOptions vs SrcCount', () => {
+  it('flags a line whose expanded options do not match SrcCount (only when expanded)', () => {
+    const rows = [
+      leaf(1, 1, 'A', '5', '0', '1', { SrcCount: 3, RateOptions: [opt(), opt()], SelFx: '1', SelFxInr: '1' }),
+      leaf(2, 1, 'B', '5', '0', '1', { SrcCount: 2, RateOptions: [opt(), opt()], SelFx: '1', SelFxInr: '1' }),
+      leaf(3, 1, 'C', '5', '0', '1', { SrcCount: 4, RateOptions: undefined, SelFx: '1', SelFxInr: '1' }),
+    ];
+    const f = dataQuality(rows).filter((d) => d.kind === 'OPTIONS').map((d) => rows[d.i].Idnrk);
+    expect(f).toEqual(['A']);
+  });
+});
