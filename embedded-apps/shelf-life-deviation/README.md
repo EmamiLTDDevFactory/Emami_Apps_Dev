@@ -22,7 +22,7 @@ It follows the same conventions as `fm-po-deviation` and `audit-tool`.
 | Start-up | `GET UserSet(Email='<email>')?$expand=NAV_UserToAction` (approval tab visibility and the worklist rows; the UI5 app read it twice) |
 | Start-up | `GET ActionSet` (KPI counts) |
 | Start-up, and each time Deviation Report is opened | `GET ActionSet` |
-| Approve / Reject | `POST ActionSet` (same payload as UI5), then `GET UserSet(Email='<email>')?$expand=NAV_UserToAction` |
+| Approve / Reject | `POST ActionSet` (UI5 payload plus `Email` = login email), then `GET UserSet(Email='<email>')?$expand=NAV_UserToAction` |
 
 ## Local development
 
@@ -53,6 +53,7 @@ localStorage.setItem('emami_apps_session_token', 'dev');
 ## Changed from the UI5 app
 
 1. `UserSet` is keyed by `Email` (the Emami Apps login email) instead of the SAP UserId.
+   The `POST ActionSet` payload (approve and reject) also carries `Email`.
 2. The Approval Worklist only appears once SAP has confirmed `Flag = 'X'`. If the `UserSet` read fails, an error is shown and only the Deviation Report is available.
 3. `UserSet` is read once at start-up and shared with the worklist.
 4. The worklist search text is re-applied after a decision reloads the list.

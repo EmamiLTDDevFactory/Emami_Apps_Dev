@@ -134,6 +134,8 @@ export default function Approvals() {
 
       Status: sStatus,
       RejRes: reasonRef.current,
+      // Emami Apps login email of whoever takes the decision (approve and reject)
+      Email: getLoggedInUser(),
     };
 
     if (sStatus === "A") {
