@@ -108,7 +108,7 @@ def test_runner_round_trip_without_sicf():
     from sap_agent.sapx import runner_test_source, parse_runner_result, SapxError
     payload = json.dumps({"task": "ping", "args": {"q": "it`s " + "x" * 250}})
     src = runner_test_source(payload)
-    assert "zcl_src_agent_run=>run" in src and "it``s" in src
+    assert "FOR TESTING" in src and "zcl_src_agent_tasks=>handle" in src and "it``s" in src
     assert all(len(line) < 255 for line in src.splitlines())
     answer = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS", "t": "é" * 80}}).encode()).decode()
     parts = [answer[i:i + 100] for i in range(0, len(answer), 100)]
