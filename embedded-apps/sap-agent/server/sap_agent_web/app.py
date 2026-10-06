@@ -244,6 +244,7 @@ class RunRequest(BaseModel):
     keepGoing: bool = False
     repair: bool = False
     agent: bool = False
+    transport: str = Field(default="", pattern="^([A-Za-z0-9]{3}[Kk][0-9]{6})?$")
 
 
 def _engine_cfg() -> Config:
@@ -289,6 +290,8 @@ def _bootstrap(cfg: Config, m, guard, adt, sapx, audit, run: Run, body: "RunRequ
     guard.check_system(sid or "?")
     run.emit("log", text=f"system {sid} (from /sap/public/info) client {cfg.client or 'default'} - bootstrap does not need the task handler")
     dep = Deployer(m, guard, adt, sapx, audit, None, log=lambda t: run.emit("log", text=t))
+    if body.transport:
+        dep.ctx["request"] = body.transport.upper()
     results = []
     for step in m.data["steps"]:
         if run.cancel_requested:
@@ -370,7 +373,10 @@ def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
             if body.repair:
                 repair = lambda step, err: ag.run(f"Deployment step '{step}' failed with: {err}\nFind the cause in the ABAP source or setup and fix it with the tools. Do not release anything.", _say(run)).stopped == "end_turn"  # noqa: E731
             runner = lambda prompt: ag.run(prompt, _say(run)).stopped == "end_turn"  # noqa: E731
-        res = Deployer(m, guard, adt, sapx, audit, repair, log=log, agent_runner=runner).run(body.only or None, body.dryRun, body.keepGoing)
+        dep = Deployer(m, guard, adt, sapx, audit, repair, log=log, agent_runner=runner)
+        if body.transport:
+            dep.ctx["request"] = body.transport.upper()
+        res = dep.run(body.only or None, body.dryRun, body.keepGoing)
         steps = [{"id": x.id, "type": x.type, "ok": x.ok, "skipped": x.skipped, "manual": x.manual, "detail": x.detail if isinstance(x.detail, (dict, list, str)) else str(x.detail)} for x in res]
         todo = Deployer.todo_markdown(res) if any(x.manual for x in res) else ""
         bad = [x for x in res if not x.ok]

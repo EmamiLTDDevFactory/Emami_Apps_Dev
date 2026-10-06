@@ -137,7 +137,7 @@ class Deployer:
         if self.ctx["request"]:
             return {"request": self.ctx["request"], "reused": True}
         self.g.check_write("transport")
-        self.ctx["request"] = self.adt.create_transport(s.get("description", self.m.data.get("project", "agent")))
+        self.ctx["request"] = self.adt.create_transport(s.get("description", self.m.data.get("project", "agent")), package=self._pkg())
         return {"request": self.ctx["request"]}
 
     def _task(self, task: str, args: dict):

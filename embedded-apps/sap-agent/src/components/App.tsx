@@ -237,7 +237,7 @@ function AgentView({ cfg, ready, onStarted }: { cfg: AppConfig; ready: boolean; 
 function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: string) => void }) {
   const [list, setList] = useState<ManifestInfo[]>([]);
   const [sel, setSel] = useState('');
-  const [opts, setOpts] = useState({ dryRun: true, keepGoing: false, repair: false, agent: false, only: '' });
+  const [opts, setOpts] = useState({ dryRun: true, keepGoing: false, repair: false, agent: false, only: '', transport: '' });
   const [err, setErr] = useState('');
   const { busy, err: startErr, start } = useStart(onStarted);
   useEffect(() => {
@@ -285,7 +285,10 @@ function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: stri
               {m?.steps.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>
           </label>
-          <Button variant="primary" disabled={busy || !sel || (!ready && !opts.dryRun)} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
+          <label className="text-xs font-bold text-muted">Existing transport (optional)
+            <input className={cx(inputCls, 'mt-1 font-mono uppercase')} placeholder="e.g. EDSK900123 - blank creates one" value={opts.transport} onChange={(e) => setOpts({ ...opts, transport: e.target.value })} />
+          </label>
+          <Button variant="primary" disabled={busy || !sel || (!ready && !opts.dryRun) || !/^([A-Za-z0-9]{3}K\d{6})?$/i.test(opts.transport.trim())} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts, transport: opts.transport.trim().toUpperCase() })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
           {!opts.dryRun && <p className="text-xs text-warn">This creates and activates objects on the SAP development system.</p>}
           {startErr && <p className="text-sm text-bad" role="alert">{startErr}</p>}
         </div>
@@ -298,6 +301,8 @@ function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: stri
  * ZCL_SRC_AGENT_HTTP in the allowed package, on a new transport) through ADT. */
 function BootstrapCard({ start, busy }: { start: (b: Record<string, unknown>) => Promise<void>; busy: boolean }) {
   const [dry, setDry] = useState(true);
+  const [tr, setTr] = useState('');
+  const trOk = /^([A-Za-z0-9]{3}K\d{6})?$/i.test(tr.trim());
   return (
     <section className="rounded-2xl border border-accent/30 bg-accent/[0.04] p-4 shadow-card lg:col-span-2">
       <div className="flex flex-wrap items-center gap-3">
@@ -309,8 +314,9 @@ function BootstrapCard({ start, busy }: { start: (b: Record<string, unknown>) =>
             human creates the SICF node /sap/zsrc_agent/tasks and the STVARV entries (listed at the end).
           </p>
         </div>
+        <input className={cx(inputBase, 'w-44 font-mono uppercase')} placeholder="Transport (optional)" value={tr} onChange={(e) => setTr(e.target.value)} aria-label="Existing transport request" title="Use an existing workbench request (e.g. EDSK900123) instead of creating a new one" />
         <Toggle label="Dry run" checked={dry} onChange={setDry} />
-        <Button variant="primary" disabled={busy} onClick={() => start({ kind: 'bootstrap', dryRun: dry })}><Play size={14} /> {dry ? 'Show bootstrap plan' : 'Run bootstrap on SAP'}</Button>
+        <Button variant="primary" disabled={busy || !trOk} onClick={() => start({ kind: 'bootstrap', dryRun: dry, transport: tr.trim().toUpperCase() })}><Play size={14} /> {dry ? 'Show bootstrap plan' : 'Run bootstrap on SAP'}</Button>
       </div>
     </section>
   );

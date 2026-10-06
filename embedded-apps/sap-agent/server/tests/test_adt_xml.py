@@ -71,3 +71,33 @@ def test_package_of_parsing():
     assert adt.parse_package(x) == "ZSRC"
     assert adt.parse_package("<x/>") is None
     assert adt.parse_package("not xml") is None
+
+
+def test_transport_falls_back_to_the_750_cts_resource():
+    from sap_agent.adt import AdtClient, AdtError
+
+    class R:
+        def __init__(self, code, text):
+            self.status_code, self.text, self.headers = code, text, {}
+
+    class S:
+        headers = {}
+        def __init__(self):
+            self.calls = []
+        def request(self, method, url, data=None, headers=None):
+            self.calls.append((url, headers.get("Content-Type", ""), data))
+            if "/cts/transportrequests" in url:
+                return R(400, "<exc:exception>user action is not supported</exc:exception>")
+            return R(200, "/com.sap.cts/object_record/EDSK900123")
+
+    s = S()
+    c = AdtClient("https://sap", "", "IT_FCOMMON", "", session=s)
+    assert c.create_transport("SAP agent bootstrap", package="zemami") == "EDSK900123"
+    url, ctype, body = s.calls[-1]
+    assert "/sap/bc/adt/cts/transports?" in url and "CreateCorrectionRequest" in ctype
+    assert b"<DEVCLASS>ZEMAMI</DEVCLASS>" in body and b"SAP agent bootstrap" in body
+    try:
+        AdtClient("https://sap", "", "U", "", session=S()).create_transport("x")
+        assert False, "without a package there is no fallback"
+    except AdtError as e:
+        assert e.status == 400

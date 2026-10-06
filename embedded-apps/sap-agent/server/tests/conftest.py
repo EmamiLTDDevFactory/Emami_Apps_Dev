@@ -50,7 +50,7 @@ class FakeAdt:
     def run_unit_tests(self, objs):
         return {"ok": True, "tests": 3, "failures": []}
 
-    def create_transport(self, description, target=""):
+    def create_transport(self, description, target="", package=""):
         self.calls.append(("transport", description))
         return "DEVK900001"
 

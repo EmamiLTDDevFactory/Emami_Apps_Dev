@@ -86,6 +86,15 @@ def transport_xml(description: str, user: str, target: str = "") -> str:
             f'<tm:task tm:owner={quoteattr(user.upper())}/></tm:request></tm:root>')
 
 
+def legacy_transport_xml(description: str, package: str) -> str:
+    """Body for POST /sap/bc/adt/cts/transports (pre-7.51 releases); the response is text/plain ending in the request number."""
+    from xml.sax.saxutils import escape
+    pkg = package.upper()
+    return ('<?xml version="1.0" encoding="ASCII"?><asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0"><asx:values><DATA>'
+            f'<OPERATION>I</OPERATION><DEVCLASS>{escape(pkg)}</DEVCLASS><REQUEST_TEXT>{escape(description[:60])}</REQUEST_TEXT>'
+            f'<REF>/sap/bc/adt/packages/{escape(pkg.lower())}</REF></DATA></asx:values></asx:abap>')
+
+
 def unit_xml(uris: list[str]) -> str:
     refs = "".join(f'<adtcore:objectReference adtcore:uri={quoteattr(u)}/>' for u in uris)
     return ('<?xml version="1.0" encoding="UTF-8"?><aunit:runConfiguration xmlns:aunit="http://www.sap.com/adt/aunit" xmlns:adtcore="http://www.sap.com/adt/core">'
@@ -335,9 +344,17 @@ class AdtClient:
         return parse_unit(r.text)
 
     # --- transports ---
-    def create_transport(self, description: str, target: str = "") -> str:
-        r = self._req("POST", "/sap/bc/adt/cts/transportrequests", data=transport_xml(description, self.user, target),
-                      headers={"Content-Type": "application/vnd.sap.adt.transportorganizer.v1+xml", "Accept": "application/vnd.sap.adt.transportorganizer.v1+xml"})
+    def create_transport(self, description: str, target: str = "", package: str = "") -> str:
+        try:
+            r = self._req("POST", "/sap/bc/adt/cts/transportrequests", data=transport_xml(description, self.user, target),
+                          headers={"Content-Type": "application/vnd.sap.adt.transportorganizer.v1+xml", "Accept": "application/vnd.sap.adt.transportorganizer.v1+xml"})
+            return parse_request_number(r.text)
+        except AdtError as e:
+            # 7.50 answers 400 "user action is not supported" (no tm:useraction); its Eclipse uses the older CTS resource.
+            if e.status not in (400, 404, 405, 415) or not package:
+                raise
+        r = self._req("POST", "/sap/bc/adt/cts/transports", data=legacy_transport_xml(description, package),
+                      headers={"Content-Type": "application/vnd.sap.as+xml; charset=UTF-8; dataname=com.sap.adt.CreateCorrectionRequest", "Accept": "text/plain"})
         return parse_request_number(r.text)
 
     def release_transport(self, request: str):
