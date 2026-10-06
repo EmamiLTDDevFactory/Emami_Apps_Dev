@@ -119,3 +119,37 @@ def test_runner_round_trip_without_sicf():
         parse_runner_result(body.replace(f"<title>ZSRC 1 ", "<title>ZSRC 9 ", 1))
     with pytest.raises(SapxError, match="Runtime error"):
         parse_runner_result('<r><alert kind="exception"><title>Runtime error CX_SY_NO_HANDLER</title></alert></r>')
+
+
+def test_runner_client_writes_the_main_source_and_reads_the_answer():
+    import base64, json
+    from sap_agent.sapx import AdtRunnerClient
+
+    class R:
+        def __init__(self, code=200, text=""):
+            self.status_code, self.text = code, text
+
+    class FakeAdt:
+        def __init__(self):
+            self.calls = []
+        def _req(self, method, path, data=None, headers=None, ok=(200,)):
+            self.calls.append((method, path.split("?")[0], data))
+            if "_action=LOCK" in path:
+                return R(200, "<LOCK_HANDLE>H1</LOCK_HANDLE><CORRNR>EDSK9B0DQN</CORRNR>")
+            if method == "GET" and path.endswith("/includes/testclasses"):
+                return R(200, "old")
+            if path.startswith("/sap/bc/adt/abapunit/testruns"):
+                ans = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS"}}).encode()).decode()
+                return R(200, f"<r><alert kind='failedAssertion'><title>ZSRC 1 1 {ans}</title></alert></r>")
+            return R(200, "<r/>")
+        def unlock(self, kind, name, handle):
+            self.calls.append(("UNLOCK", name, handle))
+
+    adt = FakeAdt()
+    c = AdtRunnerClient(adt)
+    assert c.call("ping") == {"sid": "EDS"}
+    puts = [(p, d) for m, p, d in adt.calls if m == "PUT"]
+    assert puts[0][0].endswith("/includes/testclasses") and "not used" in puts[0][1]
+    assert puts[1][0].endswith("/zcl_src_agent_run/source/main") and "FOR TESTING" in puts[1][1]
+    c.call("ping")   # the old include is emptied only once
+    assert sum(1 for m, p, d in adt.calls if m == "PUT" and p.endswith("/includes/testclasses")) == 1
