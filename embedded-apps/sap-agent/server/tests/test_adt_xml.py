@@ -224,3 +224,44 @@ def test_write_source_creates_a_request_only_when_sap_asks_for_one():
         return 200, ""
     c = AdtClient("https://sap", "", "U", "", session=_fake_session(resp))
     assert c.write_source("program", "ZNEW", "REPORT x.", package="ZEMAMI") == "EDSK9B0DQZ"
+
+
+def test_new_object_kinds_have_uris_and_create_bodies():
+    from sap_agent.adt import object_uri, collection_uri, create_xml, KIND_TYPE
+    assert object_uri("function", "zemami_fg:z_get_vendor") == "/sap/bc/adt/functions/groups/zemami_fg/fmodules/z_get_vendor"
+    assert collection_uri("function", "ZEMAMI_FG:Z_GET_VENDOR") == "/sap/bc/adt/functions/groups/zemami_fg/fmodules"
+    assert object_uri("include", "ZEMAMI_TOP") == "/sap/bc/adt/programs/includes/zemami_top"
+    assert object_uri("ddl", "ZEMAMI_I_VENDOR") == "/sap/bc/adt/ddic/ddl/sources/zemami_i_vendor"
+    fm = create_xml("function", "ZEMAMI_FG:Z_GET_VENDOR", "Vendor", "ZEMAMI", "U")
+    assert 'adtcore:name="Z_GET_VENDOR"' in fm and 'adtcore:type="FUGR/FF"' in fm and 'containerRef adtcore:name="ZEMAMI_FG"' in fm
+    for k in ("include", "function_group", "ddl"):
+        x = create_xml(k, "ZEMAMI_X", "d", "ZEMAMI", "U")
+        assert f'adtcore:type="{KIND_TYPE[k]}"' in x and 'packageRef adtcore:name="ZEMAMI"' in x
+    ET.fromstring(fm)
+
+
+def test_function_module_needs_its_group_and_tools_compose_it():
+    from sap_agent.guard import Guard, PolicyError
+    from sap_agent.config import Config
+    from sap_agent.tools import ToolBox
+    g = Guard(Config(allowed_packages=["ZEMAMI"]))
+    g.check_source("function", "ZEMAMI_FG:Z_GET_VENDOR", "ZEMAMI")
+    with pytest.raises(PolicyError, match="function group"):
+        g.check_source("function", "Z_GET_VENDOR", "ZEMAMI")
+    a = ToolBox._with_group({"kind": "function", "name": "z_get_vendor", "group": "zemami_fg"})
+    assert a["name"] == "ZEMAMI_FG:Z_GET_VENDOR"
+    b = ToolBox._with_group({"objects": [{"kind": "function", "name": "Z_A", "group": "ZFG"}, {"kind": "class", "name": "ZCL_A"}]})
+    assert [o["name"] for o in b["objects"]] == ["ZFG:Z_A", "ZCL_A"]
+
+
+def test_batch_input_outside_the_list_asks_a_human():
+    from sap_agent.guard import Guard, PolicyError
+    from sap_agent.config import Config
+    asked = []
+    g = Guard(Config(allowed_packages=["ZEMAMI"], approval="prompt"), lambda action, detail: asked.append(detail) or False)
+    g.check_bdc("SE11")                       # on the list: no question
+    assert asked == []
+    with pytest.raises(PolicyError, match="approval"):
+        g.check_bdc("MM01")
+    assert "MM01" in asked[0]
+    Guard(Config(approval="prompt"), lambda a, d: True).check_bdc("MM01")   # approved

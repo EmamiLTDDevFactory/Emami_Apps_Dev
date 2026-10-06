@@ -88,7 +88,8 @@ class FakeSapx:
 
 @pytest.fixture
 def cfg(tmp_path):
-    return Config(host="https://x", user="AGENT", allowed_sids=["DEV"], allowed_packages=["ZSRC"], approval="deny", audit_file=str(tmp_path / "audit.jsonl"))
+    return Config(host="https://x", user="AGENT", allowed_sids=["DEV"], allowed_packages=["ZSRC"], approval="deny", audit_file=str(tmp_path / "audit.jsonl"),
+                  bdc_tcodes=["ME41", "SE11"], index_tables=["EKKO", "EKPO"])   # configured lists; anything else asks a human (denied here)
 
 
 @pytest.fixture

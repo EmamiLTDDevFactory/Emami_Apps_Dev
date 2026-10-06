@@ -17,7 +17,7 @@ COMMON = """Rules for this task:
 def gateway(spec: dict) -> str:
     return f"""Register and activate this OData service on the system.
 Model provider class {spec['mpc']}, data provider class {spec['dpc']}.
-Technical model name {spec['model']} version {spec.get('version', 1)}, technical service name {spec['service']} version {spec.get('version', 1)}, package {spec.get('package', 'ZSRC')}.
+Technical model name {spec['model']} version {spec.get('version', 1)}, technical service name {spec['service']} version {spec.get('version', 1)}, package {spec.get('package', 'ZEMAMI')}.
 Steps: /IWBEP/REG_MODEL, then /IWBEP/REG_SERVICE, then /IWFND/MAINT_SERVICE (Add Service, system alias {spec.get('alias', 'LOCAL')}, this service).
 Read-back: sap_odata_get /sap/opu/odata/sap/{spec['service']}/$metadata must answer 200 and contain the entity sets {spec.get('expect', [])}.
 {COMMON}"""
@@ -39,7 +39,7 @@ Read-back: sap_read_table T16FS where frggr = '{spec.get('group', '01')}' return
 
 
 def rfc(spec: dict) -> str:
-    return f"""Create the ABAP-connection RFC destination {spec['name']} to this same system for the technical user {spec.get('user', 'ZSRC_TECH')} in SM59 (batch input).
+    return f"""Create the ABAP-connection RFC destination {spec['name']} to this same system for the technical user {spec.get('user', 'ZEMAMI_TECH')} in SM59 (batch input).
 Never write a password into the audit trail or into your messages: take it from the task arguments only if given; otherwise stop and ask for a human to store the logon.
 {COMMON}"""
 

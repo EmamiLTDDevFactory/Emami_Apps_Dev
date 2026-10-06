@@ -23,15 +23,26 @@ KIND_URI = {
     "class": "/sap/bc/adt/oo/classes",
     "interface": "/sap/bc/adt/oo/interfaces",
     "program": "/sap/bc/adt/programs/programs",
+    "include": "/sap/bc/adt/programs/includes",
+    "function_group": "/sap/bc/adt/functions/groups",
+    "function": "/sap/bc/adt/functions/groups",          # .../groups/<group>/fmodules/<name>; name is "GROUP:MODULE"
+    "ddl": "/sap/bc/adt/ddic/ddl/sources",                # CDS views (DDL sources)
     "package": "/sap/bc/adt/packages",
 }
-KIND_TYPE = {"class": "CLAS/OC", "interface": "INTF/OI", "program": "PROG/P", "package": "DEVC/K"}
+KIND_TYPE = {"class": "CLAS/OC", "interface": "INTF/OI", "program": "PROG/P", "include": "PROG/I", "function_group": "FUGR/F",
+             "function": "FUGR/FF", "ddl": "DDLS/DF", "package": "DEVC/K"}
+# where to find each kind's create media type in the discovery document (collection hrefs can be templates)
+KIND_DISCOVERY = {"include": "programs/includes", "function_group": "functions/groups", "function": "fmodules", "ddl": "ddl/sources"}
 
 DEFAULT_CTYPE = {
     "class": "application/vnd.sap.adt.oo.classes.v2+xml",
     "interface": "application/vnd.sap.adt.oo.interfaces.v2+xml",
     "program": "application/vnd.sap.adt.programs.programs.v2+xml",
     "package": "application/vnd.sap.adt.packages.v1+xml",
+    "include": "application/vnd.sap.adt.programs.includes.v2+xml",
+    "function_group": "application/vnd.sap.adt.functions.groups.v2+xml",
+    "function": "application/vnd.sap.adt.functions.fmodules.v2+xml",
+    "ddl": "application/vnd.sap.adt.ddlsource+xml",
 }
 
 
@@ -41,13 +52,40 @@ class AdtError(Exception):
         self.status, self.body = status, body
 
 
+def _seg(name: str) -> str:
+    return name.lower().replace("/", "%2f")
+
+
+def split_function(name: str) -> tuple[str, str]:
+    """Function modules are addressed as GROUP:MODULE (ADT keeps them under their function group)."""
+    if ":" not in name:
+        raise AdtError(f"function module '{name}' needs its function group: use GROUP:MODULE")
+    g, f = name.split(":", 1)
+    return g.upper(), f.upper()
+
+
 def object_uri(kind: str, name: str) -> str:
-    return f"{KIND_URI[kind]}/{name.lower().replace('/', '%2f')}"
+    if kind == "function":
+        g, f = split_function(name)
+        return f"{KIND_URI['function']}/{_seg(g)}/fmodules/{_seg(f)}"
+    return f"{KIND_URI[kind]}/{_seg(name)}"
+
+
+def collection_uri(kind: str, name: str) -> str:
+    """Where a new object of this kind is POSTed."""
+    if kind == "function":
+        g, _ = split_function(name)
+        return f"{KIND_URI['function']}/{_seg(g)}/fmodules"
+    return KIND_URI[kind]
+
+
+def short_name(kind: str, name: str) -> str:
+    return split_function(name)[1] if kind == "function" else name.upper()
 
 
 # ------------------------------------------------------------------------------------------ XML builders
 def create_xml(kind: str, name: str, description: str, package: str, user: str, extra: Optional[dict] = None) -> str:
-    n, d, p, u = quoteattr(name.upper()), quoteattr(description[:60]), quoteattr(package.upper()), quoteattr(user.upper())
+    n, d, p, u = quoteattr(short_name(kind, name)), quoteattr(description[:60]), quoteattr(package.upper()), quoteattr(user.upper())
     head = f'<?xml version="1.0" encoding="UTF-8"?>\n'
     common = f'adtcore:description={d} adtcore:language="EN" adtcore:name={n} adtcore:type="{KIND_TYPE[kind]}" adtcore:masterLanguage="EN" adtcore:responsible={u}'
     pkgref = f'<adtcore:packageRef adtcore:name={p}/>'
@@ -59,6 +97,17 @@ def create_xml(kind: str, name: str, description: str, package: str, user: str, 
     if kind == "program":
         return head + (f'<program:abapProgram xmlns:program="http://www.sap.com/adt/programs/programs" xmlns:adtcore="{NS["adtcore"]}" {common} '
                        f'program:programType="executableProgram">{pkgref}</program:abapProgram>')
+    if kind == "include":
+        return head + (f'<include:abapInclude xmlns:include="http://www.sap.com/adt/programs/includes" xmlns:adtcore="{NS["adtcore"]}" {common}>{pkgref}</include:abapInclude>')
+    if kind == "function_group":
+        return head + (f'<group:abapFunctionGroup xmlns:group="http://www.sap.com/adt/functions/groups" xmlns:adtcore="{NS["adtcore"]}" {common}>{pkgref}</group:abapFunctionGroup>')
+    if kind == "function":
+        g, _ = split_function(name)
+        return head + (f'<fmodule:abapFunctionModule xmlns:fmodule="http://www.sap.com/adt/functions/fmodules" xmlns:adtcore="{NS["adtcore"]}" {common}>'
+                       f'<adtcore:containerRef adtcore:name={quoteattr(g)} adtcore:type="FUGR/F" adtcore:uri={quoteattr(KIND_URI["function"] + "/" + _seg(g))}/>'
+                       f'</fmodule:abapFunctionModule>')
+    if kind == "ddl":
+        return head + (f'<ddl:ddlSource xmlns:ddl="http://www.sap.com/adt/ddic/ddlsources" xmlns:adtcore="{NS["adtcore"]}" {common}>{pkgref}</ddl:ddlSource>')
     if kind == "package":
         e = extra or {}
         sc, tl = quoteattr(e.get("software_component", "HOME")), quoteattr(e.get("transport_layer", ""))
@@ -243,7 +292,9 @@ class AdtClient:
 
     def ctype(self, kind: str) -> str:
         """Media type the system accepts for creating this kind (from discovery), with a safe default."""
-        accepts = self.discovery().get(KIND_URI[kind], [])
+        disc = self.discovery()
+        marker = KIND_DISCOVERY.get(kind)
+        accepts = disc.get(KIND_URI[kind], []) if not marker else next((v for k, v in disc.items() if marker in k and v), [])
         preferred = [a for a in accepts if a.endswith("+xml") and "vnd.sap.adt" in a]
         return (preferred or [DEFAULT_CTYPE[kind]])[-1]
 
@@ -263,7 +314,20 @@ class AdtClient:
             raise
 
     def package_of(self, kind: str, name: str) -> Optional[str]:
-        """Package of an existing object, or None when it does not exist. This is the ownership check that replaces name prefixes."""
+        """Package of an existing object, or None when it does not exist. This is the ownership check that replaces name prefixes.
+        A function module belongs to its function group's package (and does not exist when the group does not)."""
+        if kind == "function":
+            g, _ = split_function(name)
+            group_pkg = self.package_of("function_group", g)
+            if group_pkg is None:
+                return None
+            try:
+                self._req("GET", object_uri(kind, name), headers={"Accept": "application/xml"})
+            except AdtError as e:
+                if e.status == 404:
+                    return None
+                raise
+            return group_pkg
         try:
             r = self._req("GET", object_uri(kind, name), headers={"Accept": "application/xml"})
         except AdtError as e:
@@ -292,13 +356,13 @@ class AdtClient:
         body = create_xml(kind, name, description, package, self.user, extra)
         try:
             q = f"?corrNr={transport}" if transport else ""
-            self._req("POST", KIND_URI[kind] + q, data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
+            self._req("POST", collection_uri(kind, name) + q, data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
             return transport
         except AdtError as e:
             if not (auto_transport and not transport and _needs_request(e)):
                 raise
         transport = self.create_transport(f"{name.upper()} ({package.upper()})", package=package)
-        self._req("POST", KIND_URI[kind] + f"?corrNr={transport}", data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
+        self._req("POST", collection_uri(kind, name) + f"?corrNr={transport}", data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
         return transport
 
     def lock(self, kind: str, name: str) -> str:
@@ -365,7 +429,7 @@ class AdtClient:
 
     def activate(self, objects: list[tuple[str, str]]) -> list[dict]:
         """Mass activation: dependencies between the listed objects are resolved by SAP."""
-        refs = [(object_uri(k, n), n) for k, n in objects]
+        refs = [(object_uri(k, n), short_name(k, n)) for k, n in objects]
         r = self._req("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=true", data=object_refs_xml(refs),
                       headers={"Content-Type": "application/xml", "Accept": "application/xml"})
         return parse_messages(r.text)

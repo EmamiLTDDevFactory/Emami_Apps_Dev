@@ -440,9 +440,11 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD t_bdc_run.
-    CONSTANTS c_allowed TYPE string VALUE ' ME41 ME42 ME43 ME47 /IWBEP/REG_MODEL /IWBEP/REG_SERVICE /IWFND/MAINT_SERVICE SNRO '.
-    IF NOT c_allowed CS | { to_upper( is-tcode ) } |.
-      rv = fail( |transaction { is-tcode } is not allowed| ).
+    " Any transaction: which ones run without a human's approval is decided (and asked) by the agent's guard.
+    " Basis and user administration are never driven by batch input.
+    CONSTANTS c_denied TYPE string VALUE ' SU01 SU10 SU02 SCC4 SE06 STMS RZ10 RZ11 SM49 SM69 SE16N SM30 SM31 '.
+    IF c_denied CS | { to_upper( is-tcode ) } |.
+      rv = fail( |transaction { is-tcode } is never driven by batch input (basis / user administration)| ).
       RETURN.
     ENDIF.
     DATA: lt_bdc TYPE STANDARD TABLE OF bdcdata, lt_msg TYPE STANDARD TABLE OF bdcmsgcoll.
@@ -485,21 +487,11 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD t_read_table.
-    CONSTANTS c_allowed TYPE string VALUE ' TVARVC T001 T001W T024 T024E T134 T023 TTXID TTXOB EKKO EKPO EKET EBAN LFA1 ADR6 AGR_USERS CVERS TADIR ZSRC_AUC ZSRC_EVT DD02L DD03L TRDIR AGR_DEFINE T16FG T16FS TBTCO USR21 ICFSERVICE '.
+    " Any table except the ones that hold secrets.
     CONSTANTS c_denied TYPE string VALUE ' USR02 USH02 USH04 USRPWDHISTORY RFCDES SECSTORE USR40 '.
     DATA(lv_tab) = to_upper( is-table ).
     IF c_denied CS | { lv_tab } |.
       rv = fail( |table { is-table } holds secrets and is never readable| ).
-      RETURN.
-    ENDIF.
-    DATA(lv_ok) = xsdbool( c_allowed CS | { lv_tab } | ).
-    IF lv_ok = abap_false.        " tables of the agent's own packages are readable too, whatever their names
-      DATA(lv_tn) = CONV sobj_name( lv_tab ).
-      SELECT SINGLE devclass FROM tadir WHERE pgmid = 'R3TR' AND object = 'TABL' AND obj_name = @lv_tn INTO @DATA(lv_tdev).
-      lv_ok = xsdbool( sy-subrc = 0 AND package_allowed( lv_tdev ) = abap_true ).
-    ENDIF.
-    IF lv_ok = abap_false.
-      rv = fail( |table { is-table } is not readable| ).
       RETURN.
     ENDIF.
     IF is-where IS NOT INITIAL AND NOT matches( val = is-where regex = `[A-Za-z0-9_ =<>'.,()\-]+` ).
@@ -519,7 +511,7 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( <lt> ).
   ENDMETHOD.
   METHOD t_ddic_objects.
-    " Domains, data elements, table types and indexes. Indexes on standard tables are allowed only for the tables the agent config lists.
+    " Domains, data elements, table types and customer indexes (on any table; the agent's guard asks a human for tables outside its list).
     TYPES: BEGIN OF ty_res, name TYPE string, status TYPE string, END OF ty_res.
     DATA: lt_res TYPE STANDARD TABLE OF ty_res WITH DEFAULT KEY, lv_rc TYPE sy-subrc.
     LOOP AT is-items INTO DATA(ls).
@@ -530,9 +522,6 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
           APPEND VALUE #( name = ls-name status = |refused: { lv_oerr }| ) TO lt_res.
           CONTINUE.
         ENDIF.
-      ELSEIF NOT ( ' EKKO EKPO ' CS | { to_upper( ls-table ) } | ).
-        APPEND VALUE #( name = ls-name status = 'refused: customer indexes only on EKKO and EKPO' ) TO lt_res.
-        CONTINUE.
       ENDIF.
       CASE ls-kind.
         WHEN 'DOMA'.
@@ -736,7 +725,7 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD t_testdata_requisition.
-    " Test purchase requisition: gives the RFQ flow something to start from. Creates a new document, changes no master data.
+    " Test purchase requisition (test data). Creates a new document, changes no master data.
     DATA: lt_items TYPE STANDARD TABLE OF bapimereqitemimp, lt_ret TYPE STANDARD TABLE OF bapiret2, lv_no TYPE banfn.
     lt_items = VALUE #( ( preq_item = '00010' material = to_upper( is-material ) plant = is-plant quantity = CONV #( is-quantity ) unit = is-unit pur_group = is-pur_group
                           deliv_date = sy-datum + COND i( WHEN is-deliv_days > 0 THEN is-deliv_days ELSE 30 ) ) ).

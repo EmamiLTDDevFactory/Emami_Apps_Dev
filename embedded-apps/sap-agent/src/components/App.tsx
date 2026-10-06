@@ -17,9 +17,10 @@ const NAV: { id: View; label: string; hint: string; icon: LucideIcon }[] = [
 ];
 
 const EXAMPLES = [
-  'Add a method get_open_rfq_count to ZCL_SRC_RFQ_SRV that counts RFQs with status open, with an ABAP Unit test',
-  'Create report ZSRC_RFQ_AGING that lists open RFQs older than 30 days, with a selection screen for plant and text elements',
-  'ST22 shows a dump in ZCL_SRC_AUC_SRV->place_bid when two vendors bid in the same millisecond. Find and fix it',
+  'Create report ZEMAMI_MAT_STOCK in ZEMAMI that lists material stock by plant from MARD, with a selection screen for plant and material, ALV output and text elements',
+  'Create class ZCL_EMAMI_DATE_UTIL in ZEMAMI with a static method that returns the number of working days between two dates for a factory calendar, with ABAP Unit tests',
+  'Create function group ZEMAMI_FG and an RFC-enabled function module Z_EMAMI_GET_VENDOR that returns vendor name and city for a vendor number',
+  'Create table ZEMAMI_LOG (client, id, created on/by, message) with a data element for the message, a lock object and a number range for the id',
 ];
 
 const nameFromEmail = (e: string) => (e.split('@')[0] || e).split(/[._-]+/).filter(Boolean).map((p) => p[0].toUpperCase() + p.slice(1)).join(' ');
@@ -206,7 +207,7 @@ function AgentView({ cfg, ready, onStarted }: { cfg: AppConfig; ready: boolean; 
       <Card title="What should the agent build or fix?">
         <textarea
           className={cx(inputBase, 'h-36 w-full resize-y py-2 leading-relaxed')}
-          placeholder="e.g. Create class ZCL_SRC_PRICE_UTIL in package ZSRC with a method that converts a price per 1000 to a price per piece, and an ABAP Unit test"
+          placeholder="Describe any SAP development object: report, class, interface, function module, include, CDS view, table, structure, data element, domain, lock object, number range, message class... e.g. Create class ZCL_EMAMI_PRICE_UTIL in ZEMAMI with a method that converts a price per 1000 to a price per piece, with ABAP Unit tests"
           value={task}
           onChange={(ev) => setTask(ev.target.value)}
           aria-label="Task"

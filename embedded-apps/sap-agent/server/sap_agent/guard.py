@@ -7,7 +7,7 @@ from .config import Config
 VALID_NAME = re.compile(r"^(?:/[A-Z0-9_]{1,10}/)?[A-Z0-9_][A-Z0-9_]{0,29}$")        # any ABAP object name, optionally in a namespace
 READ_TASKS = {"ping", "ddic_read", "dynpro_inspect", "read_table", "search", "read_source", "syntax_check", "odata_get", "bdc_validate", "capabilities", "checklist", "node_check"}
 DESTRUCTIVE = {"release_transport", "delete_object"}
-KINDS = {"class", "interface", "program", "package"}
+KINDS = {"class", "interface", "program", "include", "function_group", "function", "ddl", "package"}
 
 
 class PolicyError(Exception):
@@ -56,14 +56,21 @@ class Guard:
 
     def check_source(self, kind: str, name: str, package: str | None = None):
         if kind not in KINDS:
-            raise PolicyError(f"unsupported object kind '{kind}'")
-        self.check_name(name)
+            raise PolicyError(f"unsupported object kind '{kind}' (supported: {', '.join(sorted(KINDS - {'package'}))})")
+        if kind == "function":
+            if ":" not in (name or ""):
+                raise PolicyError(f"function module '{name}' needs its function group (argument 'group')")
+            for part in name.split(":", 1):
+                self.check_name(part)
+        else:
+            self.check_name(name)
         if package:
             self.check_package(package)
 
     def check_bdc(self, tcode: str):
-        if tcode.upper() not in self.cfg.bdc_tcodes:
-            raise PolicyError(f"transaction '{tcode}' is not allowed for batch input. Allowed: {self.cfg.bdc_tcodes}")
+        """Transactions on the configured list run directly; any other one needs a human's approval."""
+        if tcode.upper() not in [t.upper() for t in self.cfg.bdc_tcodes]:
+            self.require_approval("bdc_run", f"batch input on transaction {tcode.upper()} (not on the configured list {self.cfg.bdc_tcodes})")
 
     def check_table_read(self, table: str):
         """Secrets are never readable. Everything else is decided by the handler: tables on its allow-list, or tables that
@@ -86,9 +93,8 @@ class Guard:
         if task == "ddic_objects":
             for it in args.get("items", []) or []:
                 self.check_name(it["name"])
-                if it.get("kind") == "INDX":
-                    if (it.get("table") or "").upper() not in self.cfg.index_tables:
-                        raise PolicyError(f"customer indexes only on {self.cfg.index_tables}, not '{it.get('table')}'")
+                if it.get("kind") == "INDX" and (it.get("table") or "").upper() not in [t.upper() for t in self.cfg.index_tables]:
+                    self.require_approval("ddic_objects", f"customer index {it.get('name')} on table {it.get('table')} (not on the configured list {self.cfg.index_tables})")
             if args.get("package"):
                 self.check_package(args["package"])
         elif task == "message_class":

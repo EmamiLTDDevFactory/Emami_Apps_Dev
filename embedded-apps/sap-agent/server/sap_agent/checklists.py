@@ -25,7 +25,7 @@ def release_strategy_checklist(spec: dict) -> str:
     return "\n".join([
         f"### Purchase order release strategy {spec.get('strategy', 'Z1')} (group {g})",
         "1. SPRO, Materials Management, Purchasing, Purchase Order, Release Procedure for Purchase Orders.",
-        f"2. Release groups (OMGQ step 1): create group `{g}`, class `{spec.get('class', 'ZSRC_PO_REL')}`, class type 032.",
+        f"2. Release groups (OMGQ step 1): create group `{g}`, class `{spec.get('class', 'ZEMAMI_PO_REL')}`, class type 032.",
         "3. Release codes: " + ", ".join(f"`{c['code']}` ({c.get('text', '')})" for c in spec.get("codes", [])) + ".",
         "4. Release indicators and status (OMGSCK) as per your approval policy.",
         f"5. Release strategy `{spec.get('strategy', 'Z1')}`: prerequisites codes in order, status, and classification (CL24N) with characteristic CEKKO-GNETW from {spec.get('from_value', '5,000,000')} (the award value above which a manager must approve).",
@@ -46,13 +46,13 @@ def icf_checklist(spec: dict) -> str:
 
 
 def rfc_checklist(spec: dict) -> str:
-    d = spec.get("name", "ZSRC_TECH")
+    d = spec.get("name", "ZEMAMI_TECH")
     return "\n".join([
         f"### RFC destination {d} (type 3, same system)",
         f"1. SM59, create ABAP connection `{d}`, target host this application server, system number as in SMMS.",
-        f"2. Logon: the technical user `{spec.get('user', 'ZSRC_TECH')}`, stored password or trusted-system logon.",
+        f"2. Logon: the technical user `{spec.get('user', 'ZEMAMI_TECH')}`, stored password or trusted-system logon.",
         "3. Connection Test and Remote Logon must both succeed.",
-        "4. Proof: the agent calls the writer function through the destination (the Emami RFQ writer) and gets a result."])
+        "4. Proof: the agent calls the writer function through the destination (for example a remote-enabled Z function module) and gets a result."])
 
 
 def segw_alternatives(spec: dict) -> str:
@@ -66,11 +66,11 @@ def segw_alternatives(spec: dict) -> str:
 
 def gateway_checklist(spec: dict) -> str:
     return "\n".join([
-        f"### OData service {spec.get('service', 'ZSRC_SRV')}",
-        f"1. /IWBEP/REG_MODEL: technical model name `{spec.get('model', 'ZSRC_MDL')}`, version {spec.get('version', 1)}, model provider class `{spec.get('mpc', 'ZCL_SRC_MPC')}`.",
-        f"2. /IWBEP/REG_SERVICE: technical service name `{spec.get('service', 'ZSRC_SRV')}`, version {spec.get('version', 1)}, data provider class `{spec.get('dpc', 'ZCL_SRC_DPC')}`, model `{spec.get('model', 'ZSRC_MDL')}`.",
-        f"3. /IWFND/MAINT_SERVICE: Add Service, system alias `{spec.get('alias', 'LOCAL')}`, select `{spec.get('service', 'ZSRC_SRV')}`, assign the package, Add.",
-        f"4. Proof: GET /sap/opu/odata/sap/{spec.get('service', 'ZSRC_SRV')}/$metadata answers 200."])
+        f"### OData service {spec.get('service', 'ZEMAMI_SRV')}",
+        f"1. /IWBEP/REG_MODEL: technical model name `{spec.get('model', 'ZEMAMI_MDL')}`, version {spec.get('version', 1)}, model provider class `{spec.get('mpc', 'ZCL_EMAMI_MPC')}`.",
+        f"2. /IWBEP/REG_SERVICE: technical service name `{spec.get('service', 'ZEMAMI_SRV')}`, version {spec.get('version', 1)}, data provider class `{spec.get('dpc', 'ZCL_EMAMI_DPC')}`, model `{spec.get('model', 'ZEMAMI_MDL')}`.",
+        f"3. /IWFND/MAINT_SERVICE: Add Service, system alias `{spec.get('alias', 'LOCAL')}`, select `{spec.get('service', 'ZEMAMI_SRV')}`, assign the package, Add.",
+        f"4. Proof: GET /sap/opu/odata/sap/{spec.get('service', 'ZEMAMI_SRV')}/$metadata answers 200."])
 
 
 CHECKLISTS = {"gateway": gateway_checklist, "role": role_checklist, "release_strategy": release_strategy_checklist, "icf": icf_checklist,

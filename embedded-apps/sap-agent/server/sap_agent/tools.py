@@ -11,19 +11,21 @@ from .audit import Audit
 from .guard import Guard, PolicyError
 from .sapx import SapxClient, SapxError
 
-KIND = {"type": "string", "enum": ["class", "interface", "program", "package"]}
+KIND = {"type": "string", "enum": ["class", "interface", "program", "include", "function_group", "function", "ddl"],
+        "description": "function = a function module (also give 'group'); ddl = a CDS view's DDL source"}
+GROUP = {"type": "string", "description": "function group of a function module (kind function only)"}
 
 TOOLS: list[dict] = [
     {"name": "sap_ping", "description": "System id, client, release and the user the agent runs as. Call first.", "input_schema": {"type": "object", "properties": {}}},
-    {"name": "sap_search", "description": "Search repository objects by name pattern, for example ZCL_SRC*.", "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-    {"name": "sap_read_source", "description": "Read the source of a class, interface or program.", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}},
+    {"name": "sap_search", "description": "Search repository objects by name pattern, for example ZCL_*_UTIL*.", "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+    {"name": "sap_read_source", "description": "Read the source of a class, interface, program, include, function group, function module or CDS view (ddl).", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "group": GROUP}, "required": ["kind", "name"]}},
     {"name": "sap_write_source", "description": "Create the object if missing, then replace its full source. Does not activate. The transport request is handled for you: an object already in a request is saved there, otherwise the given one is used, otherwise one is created - so do not call sap_transport_create first; the result says which request was used. Any name is allowed, but an existing object outside the allowed packages is never changed.",
-     "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "source": {"type": "string"}, "package": {"type": "string"},
+     "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "group": GROUP, "source": {"type": "string"}, "package": {"type": "string"},
                                                       "description": {"type": "string"}, "transport": {"type": "string"}}, "required": ["kind", "name", "source", "package"]}},
-    {"name": "sap_syntax_check", "description": "Syntax check the inactive version of an object. Returns messages with line numbers.", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}},
+    {"name": "sap_syntax_check", "description": "Syntax check the inactive version of an object. Returns messages with line numbers.", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "group": GROUP}, "required": ["kind", "name"]}},
     {"name": "sap_activate", "description": "Mass-activate objects together so mutual dependencies resolve. Returns messages; errors mean not active.",
-     "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
-    {"name": "sap_run_unit_tests", "description": "Run ABAP Unit tests of the given classes or programs.", "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
+     "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "group": GROUP}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
+    {"name": "sap_run_unit_tests", "description": "Run ABAP Unit tests of the given classes or programs.", "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "group": GROUP}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
     {"name": "sap_transport_create", "description": "Create a workbench transport request and return its number.", "input_schema": {"type": "object", "properties": {"description": {"type": "string"}, "package": {"type": "string", "description": "package the request is for (default: the first allowed package)"}}, "required": ["description"]}},
     {"name": "sap_ddic_tables", "description": "Create and activate transparent tables or structures from a field list. Field: {n: name, t: CHAR|DEC|INT4|INT2|DATS|STRG|R:<data element>, l: length, d: decimals, k: 'X' for key}.",
      "input_schema": {"type": "object", "properties": {"package": {"type": "string"}, "request": {"type": "string"}, "tables": {"type": "array", "items": {"type": "object", "properties": {
@@ -31,19 +33,19 @@ TOOLS: list[dict] = [
     {"name": "sap_ddic_read", "description": "Read a table or structure definition.", "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
     {"name": "sap_lock_object", "description": "Create an enqueue (lock) object on a table with the given key fields.", "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "table": {"type": "string"}, "fields": {"type": "array", "items": {"type": "string"}}, "package": {"type": "string"}, "request": {"type": "string"}}, "required": ["name", "table", "fields", "package"]}},
     {"name": "sap_number_range", "description": "Create a number range object with one internal interval.", "input_schema": {"type": "object", "properties": {"name": {"type": "string"}, "length": {"type": "integer"}, "package": {"type": "string"}, "request": {"type": "string"}, "from_no": {"type": "string"}, "to_no": {"type": "string"}}, "required": ["name", "package"]}},
-    {"name": "sap_text_ids", "description": "Create text IDs (SE75) for a text object, for example EKKO or EKPO.", "input_schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {"object": {"type": "string"}, "id": {"type": "string"}, "text": {"type": "string"}}, "required": ["object", "id"]}}, "request": {"type": "string"}}, "required": ["items"]}},
+    {"name": "sap_text_ids", "description": "Create text IDs (SE75) for a text object (for example a document header or item text object).", "input_schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {"object": {"type": "string"}, "id": {"type": "string"}, "text": {"type": "string"}}, "required": ["object", "id"]}}, "request": {"type": "string"}}, "required": ["items"]}},
     {"name": "sap_stvarv", "description": "Set STVARV parameters (table TVARVC, type P).", "input_schema": {"type": "object", "properties": {"items": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "value": {"type": "string"}}, "required": ["name", "value"]}}}, "required": ["items"]}},
     {"name": "sap_dynpro_inspect", "description": "Read the screen definition of a dynpro (field names, types, positions, flow logic) so a batch input can be built without recording.", "input_schema": {"type": "object", "properties": {"program": {"type": "string"}, "dynpro": {"type": "string"}}, "required": ["program", "dynpro"]}},
-    {"name": "sap_bdc_run", "description": "Run a batch input for an allowed transaction. steps: [{program, dynpro, fields: {NAME: value}, okcode}]. Returns the system messages.",
+    {"name": "sap_bdc_run", "description": "Run a batch input on a transaction (ones outside the configured list need a human's approval; basis and user administration are refused). steps: [{program, dynpro, fields: {NAME: value}, okcode}]. Returns the system messages.",
      "input_schema": {"type": "object", "properties": {"tcode": {"type": "string"}, "mode": {"type": "string", "enum": ["N", "E", "A"]}, "steps": {"type": "array", "items": {"type": "object"}}}, "required": ["tcode", "steps"]}},
-    {"name": "sap_run_report", "description": "Run a Z report in the foreground and return its list output.", "input_schema": {"type": "object", "properties": {"report": {"type": "string"}, "params": {"type": "object"}}, "required": ["report"]}},
-    {"name": "sap_read_table", "description": "Read up to 200 rows of an allowed table with a simple WHERE clause.", "input_schema": {"type": "object", "properties": {"table": {"type": "string"}, "where": {"type": "string"}, "max": {"type": "integer"}}, "required": ["table"]}},
-    {"name": "sap_odata_get", "description": "GET an OData path under /sap/opu/odata/ to test a service, for example /sap/opu/odata/sap/ZSRC_SRV/$metadata.", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
+    {"name": "sap_run_report", "description": "Run a report of the agent's own packages in the foreground and return its list output.", "input_schema": {"type": "object", "properties": {"report": {"type": "string"}, "params": {"type": "object"}}, "required": ["report"]}},
+    {"name": "sap_read_table", "description": "Read up to 200 rows of any table (except ones holding secrets) with a simple WHERE clause. Read only what the task needs.", "input_schema": {"type": "object", "properties": {"table": {"type": "string"}, "where": {"type": "string"}, "max": {"type": "integer"}}, "required": ["table"]}},
+    {"name": "sap_odata_get", "description": "GET an OData path under /sap/opu/odata/ to test a service, for example /sap/opu/odata/sap/ZMY_SRV/$metadata.", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
     {"name": "sap_capabilities", "description": "What the agent can create and how (automated, assisted by batch input, or manual). Read this before attempting roles, release strategies, SICF nodes, RFC destinations or SEGW.", "input_schema": {"type": "object", "properties": {}}},
-    {"name": "sap_ddic_objects", "description": "Create and activate domains (DOMA), data elements (DTEL), table types (TTYP) or customer indexes (INDX) on EKKO or EKPO. item: {kind, name, text, datatype, len, dec, domain, rowtype, table, fields}.",
+    {"name": "sap_ddic_objects", "description": "Create and activate domains (DOMA), data elements (DTEL), table types (TTYP) or customer indexes (INDX; tables outside the configured list need a human's approval). item: {kind, name, text, datatype, len, dec, domain, rowtype, table, fields}.",
      "input_schema": {"type": "object", "properties": {"package": {"type": "string"}, "request": {"type": "string"}, "items": {"type": "array", "items": {"type": "object"}}}, "required": ["package", "items"]}},
     {"name": "sap_message_class", "description": "Create message classes with texts. class: {arbgb, text, texts: [{nr, text}]}.", "input_schema": {"type": "object", "properties": {"package": {"type": "string"}, "request": {"type": "string"}, "classes": {"type": "array", "items": {"type": "object"}}}, "required": ["package", "classes"]}},
-    {"name": "sap_text_pool", "description": "Set text symbols (id I), selection texts (id S) and title (id R) of a Z program. texts: [{id, key, entry, length}]. Activate the program afterwards.", "input_schema": {"type": "object", "properties": {"program": {"type": "string"}, "texts": {"type": "array", "items": {"type": "object"}}}, "required": ["program", "texts"]}},
+    {"name": "sap_text_pool", "description": "Set text symbols (id I), selection texts (id S) and title (id R) of a program in the agent's packages. texts: [{id, key, entry, length}]. Activate the program afterwards.", "input_schema": {"type": "object", "properties": {"program": {"type": "string"}, "texts": {"type": "array", "items": {"type": "object"}}}, "required": ["program", "texts"]}},
     {"name": "sap_write_test_include", "description": "Write the ABAP Unit local test classes of a global class (include testclasses). Activate the class afterwards, then run sap_run_unit_tests.", "input_schema": {"type": "object", "properties": {"class_name": {"type": "string"}, "source": {"type": "string"}, "transport": {"type": "string"}}, "required": ["class_name", "source"]}},
     {"name": "sap_job_schedule", "description": "Schedule a Z report as a periodic background job (every period_min minutes).", "input_schema": {"type": "object", "properties": {"job": {"type": "string"}, "report": {"type": "string"}, "variant": {"type": "string"}, "period_min": {"type": "integer"}}, "required": ["job", "report"]}},
     {"name": "sap_user_create", "description": "Create a SAP user (any name except protected ones like DDIC or SAP*) with roles. Standard roles (SAP_*, S_A.*) are never assigned. Never put a real person's password here; prefer SSO.", "input_schema": {"type": "object", "properties": {"user": {"type": "string"}, "password": {"type": "string"}, "user_type": {"type": "string"}, "first_name": {"type": "string"}, "last_name": {"type": "string"}, "email": {"type": "string"}, "roles": {"type": "array", "items": {"type": "string"}}}, "required": ["user", "roles"]}},
@@ -69,9 +71,21 @@ class ToolBox:
                 st["fields"] = [{"n": k, "v": str(v)} for k, v in f.items()]
 
     # ------------------------------------------------------------------------------------------
+    @staticmethod
+    def _with_group(a: dict) -> dict:
+        """Function modules travel as GROUP:MODULE inside the tools (ADT keeps them under their group)."""
+        def one(o: dict) -> dict:
+            if isinstance(o, dict) and o.get("kind") == "function" and o.get("group") and ":" not in str(o.get("name", "")):
+                o = {**o, "name": f"{str(o['group']).upper()}:{str(o['name']).upper()}"}
+            return o
+        a = one(a)
+        if isinstance(a.get("objects"), list):
+            a = {**a, "objects": [one(o) for o in a["objects"]]}
+        return a
+
     def call(self, name: str, args: dict) -> str:
         try:
-            result = self._dispatch(name, args or {})
+            result = self._dispatch(name, self._with_group(args or {}))
             self.audit.log("tool", tool=name, args=args, ok=True)
             return json.dumps(result, ensure_ascii=False)[:12000]
         except PolicyError as e:
