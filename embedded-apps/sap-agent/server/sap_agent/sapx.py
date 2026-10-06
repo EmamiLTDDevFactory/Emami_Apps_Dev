@@ -109,10 +109,11 @@ def parse_runner_result(body: str, size: int = _CHUNK) -> dict:
         if el.tag.split("}")[-1] != "alert":
             continue
         title = "".join(t.text or "" for t in el.iter() if t.tag.split("}")[-1] == "title").strip()
-        m = re.match(r"^ZSRC (\d+) (\d+) ([A-Za-z0-9+/=]*)$", title)
+        # 7.50 wraps the message: "Critical Assertion Error: 'ZSRC 1 2 eyJ...'"
+        m = re.search(r"ZSRC (\d+) (\d+) ([A-Za-z0-9+/=]*)", title)
         if m:
             chunks[int(m.group(1))], total = m.group(3), int(m.group(2))
-        elif title:
+        elif title and "is not abstract" not in title:   # 7.50 warns about every non-abstract global test class
             other.append(title)
     if not chunks:
         raise SapxError("handler run gave no answer" + (f": {'; '.join(other)[:500]}" if other else " (no ABAP Unit result - is ZCL_SRC_AGENT_RUN active?)"))

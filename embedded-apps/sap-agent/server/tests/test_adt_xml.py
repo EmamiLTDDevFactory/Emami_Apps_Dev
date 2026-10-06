@@ -153,3 +153,11 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
     assert puts[1][0].endswith("/zcl_src_agent_run/source/main") and "FOR TESTING" in puts[1][1]
     c.call("ping")   # the old include is emptied only once
     assert sum(1 for m, p, d in adt.calls if m == "PUT" and p.endswith("/includes/testclasses")) == 1
+
+
+def test_runner_result_as_eds_750_sends_it():
+    from sap_agent.sapx import parse_runner_result
+    body = ("<r><alert kind='warning'><title>The global test class [ZCL_SRC_AGENT_RUN] is not abstract</title></alert>"
+            "<alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC 1 2 eyJvayI6dHJ1ZSwicmVzdWx0Ijp7InNpZCI6IkVEUyIsImNsaWVudCI6IjkwMCIsInJlbGVhc2UiOiI3NTAiLCJ1c2VyIjoiSVRf'</title></alert>"
+            "<alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC 2 2 RkNPTU1PTiIsImFiYXAiOiI3NTAifX0='</title></alert></r>")
+    assert parse_runner_result(body) == {"ok": True, "result": {"sid": "EDS", "client": "900", "release": "750", "user": "IT_FCOMMON", "abap": "750"}}
