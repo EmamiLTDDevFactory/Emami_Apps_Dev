@@ -101,3 +101,21 @@ def test_transport_falls_back_to_the_750_cts_resource():
         assert False, "without a package there is no fallback"
     except AdtError as e:
         assert e.status == 400
+
+
+def test_runner_round_trip_without_sicf():
+    import base64, json
+    from sap_agent.sapx import runner_test_source, parse_runner_result, SapxError
+    payload = json.dumps({"task": "ping", "args": {"q": "it`s " + "x" * 250}})
+    src = runner_test_source(payload)
+    assert "zcl_src_agent_run=>run" in src and "it``s" in src
+    assert all(len(line) < 255 for line in src.splitlines())
+    answer = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS", "t": "é" * 80}}).encode()).decode()
+    parts = [answer[i:i + 100] for i in range(0, len(answer), 100)]
+    alerts = "".join(f'<alert kind="failedAssertion" severity="critical"><title>ZSRC {i} {len(parts)} {p}</title></alert>' for i, p in enumerate(parts, 1))
+    body = f'<aunit:runResult xmlns:aunit="http://www.sap.com/adt/aunit"><program><testClasses><testClass><testMethods><testMethod><alerts>{alerts}</alerts></testMethod></testMethods></testClass></testClasses></program></aunit:runResult>'
+    assert parse_runner_result(body)["result"]["sid"] == "EDS"
+    with pytest.raises(SapxError, match="incomplete"):
+        parse_runner_result(body.replace(f"<title>ZSRC 1 ", "<title>ZSRC 9 ", 1))
+    with pytest.raises(SapxError, match="Runtime error"):
+        parse_runner_result('<r><alert kind="exception"><title>Runtime error CX_SY_NO_HANDLER</title></alert></r>')

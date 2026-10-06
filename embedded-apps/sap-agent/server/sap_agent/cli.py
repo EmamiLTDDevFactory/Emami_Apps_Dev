@@ -9,7 +9,7 @@ from .audit import Audit
 from .config import Config
 from .deploy import Deployer, Manifest
 from .guard import Guard
-from .sapx import SapxClient
+from .sapx import SapxClient, make_sapx
 from .tools import ToolBox
 
 
@@ -22,7 +22,7 @@ def build(cfg: Config):
     audit = Audit(cfg.audit_file, actor=cfg.user or "agent")
     guard = Guard(cfg, _approve)
     adt = AdtClient(cfg.host, cfg.client, cfg.user, cfg.password, cfg.verify_ssl)
-    sapx = SapxClient(cfg.host, cfg.client, cfg.user, cfg.password, cfg.handler_path, cfg.verify_ssl)
+    sapx = make_sapx(cfg, adt=adt)
     return audit, guard, adt, sapx
 
 

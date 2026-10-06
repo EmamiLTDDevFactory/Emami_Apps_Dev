@@ -1,4 +1,4 @@
-# Installs the agent's own SAP-side handler through ADT. After this, only the ICF node is manual (once per system).
+# Installs the agent's own SAP-side handler through ADT. After this, only STVARV and the role are manual (once per system).
 project: sap_agent_bootstrap
 package:
   name: ZEMAMI
@@ -14,7 +14,8 @@ steps:
     files:
       - {kind: class, name: ZCL_SRC_AGENT_TASKS, file: zcl_src_agent_tasks.clas.abap, description: "SAP agent task runner"}
       - {kind: class, name: ZCL_SRC_AGENT_HTTP, file: zcl_src_agent_http.clas.abap, description: "SAP agent ICF handler"}
+      - {kind: class, name: ZCL_SRC_AGENT_RUN, file: zcl_src_agent_run.clas.abap, description: "SAP agent runner (no SICF)"}
   - {id: act, type: activate, group: src}
   - id: icf
     type: note
-    text: "Manual, once: SICF, create /sap/zsrc_agent/tasks with handler ZCL_SRC_AGENT_HTTP. PFCG: the agent role (default Z_SRC_AGENT). STVARV: select-option ZSRC_AGENT_SIDS = this system id, select-option ZSRC_AGENT_PACKAGES = the package(s) the agent may work in (ZEMAMI)."
+    text: "Manual, once: PFCG, the agent role (default Z_SRC_AGENT) for the SAP users who run the agent. STVARV: select-option ZSRC_AGENT_SIDS = this system id, select-option ZSRC_AGENT_PACKAGES = the package(s) the agent may work in (ZEMAMI). No SICF node is needed: the agent reaches the handler through ADT (ZCL_SRC_AGENT_RUN). Only with SAP_HANDLER_MODE=http: SICF /sap/zsrc_agent/tasks with handler ZCL_SRC_AGENT_HTTP."

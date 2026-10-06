@@ -1,7 +1,16 @@
-"""Client for the SAP-side task handler (ZCL_SRC_AGENT_HTTP at /sap/zsrc_agent/tasks).
-Anything ADT cannot do on ECC (DDIC tables, lock objects, number ranges, text IDs, batch input, running reports) goes here."""
+"""Client for the SAP-side task handler (ZCL_SRC_AGENT_TASKS).
+Anything ADT cannot do on ECC (DDIC tables, lock objects, number ranges, text IDs, batch input, running reports) goes here.
+
+Two ways to reach it:
+  - SapxClient: HTTP POST to the ICF node (ZCL_SRC_AGENT_HTTP at /sap/zsrc_agent/tasks) - needs SICF;
+  - AdtRunnerClient: through ADT only (no SICF) - each request is written into the local test class of
+    ZCL_SRC_AGENT_RUN, which is run with ABAP Unit; the answer comes back as numbered test messages.
+make_sapx() picks one from SAP_HANDLER_MODE (adt | http)."""
 from __future__ import annotations
+import base64
 import json
+import re
+import xml.etree.ElementTree as ET
 
 
 class SapxError(Exception):
@@ -46,3 +55,121 @@ class SapxClient:
             return r.status_code == 200 and '"ok"' in r.text
         except Exception:
             return False
+
+
+RUNNER_CLASS = "ZCL_SRC_AGENT_RUN"
+_CHUNK = 100
+
+
+def _abap_literal(text: str, width: int = 100) -> str:
+    """A string expression for any text: backquote literals of <= width chars (doubled backquotes) joined with &&."""
+    parts = [text[i:i + width] for i in range(0, len(text), width)] or [""]
+    return "\n        && ".join("`" + p.replace("`", "``") + "`" for p in parts)
+
+
+def runner_test_source(payload: str, size: int = _CHUNK) -> str:
+    return (
+        "CLASS ltc_run DEFINITION FINAL FOR TESTING DURATION LONG RISK LEVEL HARMLESS.\n"
+        "  PRIVATE SECTION.\n"
+        "    METHODS go FOR TESTING.\n"
+        "ENDCLASS.\n\n"
+        "CLASS ltc_run IMPLEMENTATION.\n"
+        "  METHOD go.\n"
+        f"    DATA(lv_json) = {_abap_literal(payload)}.\n"
+        f"    DATA(lt_chunks) = zcl_src_agent_run=>run( iv_json = lv_json iv_size = {size} ).\n"
+        "    DATA(lv_count) = lines( lt_chunks ).\n"
+        "    LOOP AT lt_chunks INTO DATA(lv_chunk).\n"
+        "      DATA(lv_msg) = |ZSRC { sy-tabix } { lv_count } { lv_chunk }|.\n"
+        "      cl_abap_unit_assert=>fail( msg = lv_msg quit = if_aunit_constants=>no ).\n"
+        "    ENDLOOP.\n"
+        "  ENDMETHOD.\n"
+        "ENDCLASS.\n")
+
+
+def parse_runner_result(body: str, size: int = _CHUNK) -> dict:
+    """Reassembles the handler's JSON answer from the ABAP Unit alerts; anything else in the run becomes the error."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        raise SapxError(f"ABAP Unit returned no XML: {body[:300]}")
+    chunks: dict[int, str] = {}
+    total, other = 0, []
+    for el in root.iter():
+        if el.tag.split("}")[-1] != "alert":
+            continue
+        title = "".join(t.text or "" for t in el.iter() if t.tag.split("}")[-1] == "title").strip()
+        m = re.match(r"^ZSRC (\d+) (\d+) ([A-Za-z0-9+/=]*)$", title)
+        if m:
+            chunks[int(m.group(1))], total = m.group(3), int(m.group(2))
+        elif title:
+            other.append(title)
+    if not chunks:
+        raise SapxError("handler run gave no answer" + (f": {'; '.join(other)[:500]}" if other else " (no ABAP Unit result - is ZCL_SRC_AGENT_RUN active?)"))
+    if set(chunks) != set(range(1, total + 1)) or any(len(chunks[i]) != size for i in range(1, total)):
+        raise SapxError(f"handler answer arrived incomplete ({len(chunks)}/{total} parts) - the test messages are being cut")
+    raw = base64.b64decode("".join(chunks[i] for i in range(1, total + 1))).decode("utf-8")
+    try:
+        return json.loads(raw)
+    except ValueError:
+        raise SapxError(f"handler returned non-JSON: {raw[:300]}")
+
+
+class AdtRunnerClient:
+    """Task handler over ADT (no ICF node): write the request into ZCL_SRC_AGENT_RUN's test include, activate, run ABAP Unit."""
+
+    def __init__(self, adt, runner: str = RUNNER_CLASS):
+        self.adt, self.runner = adt, runner.upper()
+        self.path = f"ADT / ABAP Unit of {self.runner}"
+
+    def _write(self, source: str):
+        from .adt import object_uri, parse_lock_handle, NS
+        uri = object_uri("class", self.runner)
+        r = self.adt._req("POST", uri + "?_action=LOCK&accessMode=MODIFY",
+                          headers={"Accept": "application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result"})
+        handle = parse_lock_handle(r.text)
+        m = re.search(r"<CORRNR>([^<]*)</CORRNR>", r.text)
+        corr = f"&corrNr={m.group(1)}" if m and m.group(1) else ""
+        try:
+            body = ('<?xml version="1.0" encoding="UTF-8"?><class:abapClassInclude xmlns:class="http://www.sap.com/adt/oo/classes" '
+                    f'xmlns:adtcore="{NS["adtcore"]}" adtcore:name="{self.runner}" class:includeType="testclasses"/>')
+            self.adt._req("POST", f"{uri}/includes?lockHandle={handle}{corr}", data=body,
+                          headers={"Content-Type": "application/vnd.sap.adt.oo.classes.include.v1+xml", "Accept": "*/*"}, ok=(200, 201, 204, 400, 409))
+            self.adt._req("PUT", f"{uri}/includes/testclasses?lockHandle={handle}{corr}", data=source,
+                          headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
+        finally:
+            self.adt.unlock("class", self.runner, handle)
+
+    def call(self, task: str, args: dict | None = None) -> dict:
+        from .adt import object_uri, unit_xml, has_errors, AdtError
+        payload = json.dumps({"task": task, "args": args or {}}, ensure_ascii=False)
+        try:
+            self._write(runner_test_source(payload))
+            msgs = self.adt.activate([("class", self.runner)])
+            if has_errors(msgs):
+                raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
+            r = self.adt._req("POST", "/sap/bc/adt/abapunit/testruns", data=unit_xml([object_uri("class", self.runner)]),
+                              headers={"Content-Type": "application/*", "Accept": "application/*"})
+        except AdtError as e:
+            raise SapxError(f"{e} {e.body[:300]}")
+        j = parse_runner_result(r.text)
+        if not j.get("ok"):
+            raise SapxError(j.get("error", "unknown handler error"))
+        return j.get("result", {})
+
+    def node_alive(self) -> bool:
+        """True when the runner class exists (the bootstrap installed it)."""
+        try:
+            return self.adt.package_of("class", self.runner) is not None
+        except Exception:
+            return False
+
+
+def make_sapx(cfg, user: str = "", password: str = "", client: str = "", adt=None):
+    """The task-handler client for this config: ADT runner (default, no SICF) or the ICF node (SAP_HANDLER_MODE=http)."""
+    user, password, client = user or cfg.user, password or cfg.password, client or cfg.client
+    if getattr(cfg, "handler_mode", "adt") == "http":
+        return SapxClient(cfg.host, client, user, password, cfg.handler_path, cfg.verify_ssl)
+    if adt is None:
+        from .adt import AdtClient
+        adt = AdtClient(cfg.host, client, user, password, cfg.verify_ssl)
+    return AdtRunnerClient(adt)

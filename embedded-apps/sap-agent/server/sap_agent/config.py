@@ -31,6 +31,7 @@ class Config:
     max_steps: int = 60
     audit_file: str = "./audit.jsonl"
     handler_path: str = "/sap/zsrc_agent/tasks"
+    handler_mode: str = "adt"         # adt: through ABAP Unit of ZCL_SRC_AGENT_RUN (no SICF) | http: the ICF node handler_path
     bdc_require_validation: bool = True       # batch input must pass bdc_validate first
     index_tables: list[str] = field(default_factory=lambda: ["EKKO", "EKPO"])   # customer indexes on these standard tables only
     # --- naming: NO prefix rules by default. Any valid ABAP name is allowed. What protects SAP standard objects is ownership:
@@ -59,7 +60,7 @@ class Config:
             allowed_sids=_list(e.get("SAP_ALLOWED_SIDS", "")), allowed_packages=_list(e.get("SAP_ALLOWED_PACKAGES", "ZSRC")),
             read_only=_bool(e.get("SAP_READ_ONLY")), allow_release=_bool(e.get("SAP_ALLOW_RELEASE")),
             approval=e.get("SAP_APPROVAL", "prompt"), model=e.get("AGENT_MODEL", "claude-sonnet-5-5"),
-            max_steps=int(e.get("AGENT_MAX_STEPS", "60")), audit_file=e.get("AUDIT_FILE", "./audit.jsonl"),
+            max_steps=int(e.get("AGENT_MAX_STEPS", "60")), handler_mode=(e.get("SAP_HANDLER_MODE") or "adt").lower(), audit_file=e.get("AUDIT_FILE", "./audit.jsonl"),
             name_patterns=_regexes(e.get("SAP_NAME_PATTERNS", "")), user_patterns=_regexes(e.get("SAP_USER_PATTERNS", "")),
             role_patterns=_regexes(e.get("SAP_ROLE_PATTERNS", "")),
             **({"role_denylist": _regexes(e["SAP_ROLE_DENYLIST"])} if e.get("SAP_ROLE_DENYLIST") else {}))

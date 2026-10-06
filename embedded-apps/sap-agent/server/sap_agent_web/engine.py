@@ -9,7 +9,7 @@ from sap_agent.adt import AdtClient
 from sap_agent.audit import Audit
 from sap_agent.config import Config
 from sap_agent.guard import Guard
-from sap_agent.sapx import SapxClient
+from sap_agent.sapx import SapxClient, make_sapx
 from sap_agent.tools import TOOLS, ToolBox
 from sap_agent.audit import _mask  # same masking the audit log uses
 
@@ -34,7 +34,7 @@ def build(cfg: Config, actor: str, approve: Callable[[str, str], bool]):
     audit = Audit(cfg.audit_file, actor=actor)
     guard = Guard(cfg, approve)
     adt = AdtClient(cfg.host, cfg.client, cfg.user, cfg.password, cfg.verify_ssl)
-    sapx = SapxClient(cfg.host, cfg.client, cfg.user, cfg.password, cfg.handler_path, cfg.verify_ssl)
+    sapx = make_sapx(cfg, adt=adt)
     return audit, guard, adt, sapx
 
 
@@ -79,5 +79,5 @@ def doctor(cfg: Config, adt: AdtClient, sapx: SapxClient, guard: Guard) -> dict:
         guard.check_system(info.get("sid", ""))
         checks.append({"name": "Task handler", "ok": True, "detail": f"system {info.get('sid')}, release {info.get('release')}, user {info.get('user')}, ABAP {info.get('abap', '?')}"})
     except Exception as e:  # noqa: BLE001
-        checks.append({"name": "Task handler", "ok": False, "detail": f"{e} - run the bootstrap, then create the SICF node {cfg.handler_path} (handler ZCL_SRC_AGENT_HTTP)"})
+        checks.append({"name": "Task handler", "ok": False, "detail": (f"{e} - run the bootstrap, then create the SICF node {cfg.handler_path} (handler ZCL_SRC_AGENT_HTTP)" if cfg.handler_mode == "http" else f"{e} - run the bootstrap (installs ZCL_SRC_AGENT_RUN), then check STVARV ZSRC_AGENT_SIDS and role Z_SRC_AGENT")})
     return {"ready": all(c["ok"] for c in checks), "checks": checks}

@@ -57,8 +57,9 @@ def web(tmp_path, monkeypatch):
 
     monkeypatch.setattr(adtmod.AdtClient, "discovery", discovery)
     from sap_agent import sapx as sapxmod
-    monkeypatch.setattr(sapxmod.SapxClient, "node_alive", lambda self: fakes["sapx"].alive)
-    monkeypatch.setattr(sapxmod.SapxClient, "call", lambda self, task, args=None: fakes["sapx"].call(task, args))
+    for cls in (sapxmod.SapxClient, sapxmod.AdtRunnerClient):
+        monkeypatch.setattr(cls, "node_alive", lambda self: fakes["sapx"].alive)
+        monkeypatch.setattr(cls, "call", lambda self, task, args=None: fakes["sapx"].call(task, args))
     import anthropic
 
     class FakeAnthropic:
@@ -242,7 +243,7 @@ def test_bootstrap_runs_without_the_handler_and_into_zemami(web):
     ids = [s["id"] for s in r["result"]["steps"]]
     assert ids == ["pkg", "tr", "src", "act", "icf"]
     assert ("create", "class", "ZCL_SRC_AGENT_TASKS", "ZEMAMI", "DEVK900001") in fakes["adt"].calls
-    assert ("activate", ["ZCL_SRC_AGENT_TASKS", "ZCL_SRC_AGENT_HTTP"]) in fakes["adt"].calls
+    assert ("activate", ["ZCL_SRC_AGENT_TASKS", "ZCL_SRC_AGENT_HTTP", "ZCL_SRC_AGENT_RUN"]) in fakes["adt"].calls
     assert "SICF" in r["result"]["todo"]
     assert any(e["type"] == "log" and "from /sap/public/info" in e["text"] for e in r["eventList"])
 
@@ -262,7 +263,7 @@ def test_tasks_wait_for_the_handler_but_bootstrap_does_not(web):
     h = login(client)
     fakes["sapx"].alive = False
     st = client.get("/api/sap/handler", headers=h).json()
-    assert st["alive"] is False and st["path"] == "/sap/zsrc_agent/tasks"
+    assert st["alive"] is False and st["mode"] == "adt" and "ZCL_SRC_AGENT_RUN" in st["path"]
     r = client.post("/api/runs", headers=h, json={"kind": "task", "task": "Create report ZTEST in ZEMAMI"})
     assert r.status_code == 409 and "Bootstrap" in r.json()["detail"]
     rid = client.post("/api/runs", headers=h, json={"kind": "bootstrap", "dryRun": True}).json()["id"]

@@ -158,8 +158,8 @@ def sap_handler(user: auth.SessionUser = Depends(admin)):
     if not c:
         raise HTTPException(428, "Sign in to SAP with your user ID and password first.")
     cfg = Config.from_env()
-    from sap_agent.sapx import SapxClient
-    x = SapxClient(cfg.host, c.client or cfg.client, c.sap_user, c.sap_password, cfg.handler_path, cfg.verify_ssl)
+    from sap_agent.sapx import make_sapx
+    x = make_sapx(cfg, c.sap_user, c.sap_password, c.client or cfg.client)
     alive = x.node_alive()
     info: dict = {}
     if alive:
@@ -167,7 +167,7 @@ def sap_handler(user: auth.SessionUser = Depends(admin)):
             info = x.call("ping")
         except Exception as e:  # noqa: BLE001  (node answers but refuses: role / STVARV)
             info = {"error": str(e)[:300]}
-    return {"alive": alive, "path": cfg.handler_path, "sid": c.sid, "user": c.sap_user, "ping": info}
+    return {"alive": alive, "mode": cfg.handler_mode, "path": x.path, "sid": c.sid, "user": c.sap_user, "ping": info}
 
 
 @app.post("/api/sap/logout")
@@ -327,10 +327,12 @@ def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
     if body.kind in ("task", "deploy") and not body.dryRun:
         # Tasks and manifest deploys need the agent's task handler on SAP; without it the agent
         # stops at sap_ping. Refuse early instead of spending model calls. The bootstrap installs it.
-        from sap_agent.sapx import SapxClient
+        from sap_agent.sapx import make_sapx
         ecfg = Config.from_env()
-        if not SapxClient(ecfg.host, creds.client or ecfg.client, creds.sap_user, creds.sap_password, ecfg.handler_path, ecfg.verify_ssl).node_alive():
-            raise HTTPException(409, f"The agent's SAP handler {ecfg.handler_path} is not answering on {creds.sid} yet. Finish the one-time setup first (Deploy -> Bootstrap with dry run off, then the SICF node, STVARV and role).")
+        hx = make_sapx(ecfg, creds.sap_user, creds.sap_password, creds.client or ecfg.client)
+        if not hx.node_alive():
+            setup = "then the SICF node, STVARV and role" if ecfg.handler_mode == "http" else "then STVARV and the role"
+            raise HTTPException(409, f"The agent's SAP handler ({hx.path}) is not installed on {creds.sid} yet. Finish the one-time setup first (Deploy -> Bootstrap with dry run off, {setup}).")
     manifest = _resolve_manifest(body.manifest, body.kind == "bootstrap") if body.kind in ("deploy", "bootstrap") else ""
     params = {k: v for k, v in body.model_dump().items() if v not in ("", False)}
 

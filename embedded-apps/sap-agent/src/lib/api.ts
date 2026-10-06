@@ -131,7 +131,7 @@ export interface ManifestInfo { path: string; name: string; package?: string; st
 export interface AuditEntry { ts: string; actor: string; event: string; [k: string]: unknown }
 
 /** Whether the agent's SAP-side task handler (SICF node) answers for this person's SAP login. */
-export interface HandlerStatus { alive: boolean; path: string; sid: string; user: string; ping: Record<string, unknown> }
+export interface HandlerStatus { alive: boolean; mode: 'adt' | 'http'; path: string; sid: string; user: string; ping: Record<string, unknown> }
 
 export const ACTIVE: RunStatus[] = ['queued', 'running', 'waiting_approval'];
 
