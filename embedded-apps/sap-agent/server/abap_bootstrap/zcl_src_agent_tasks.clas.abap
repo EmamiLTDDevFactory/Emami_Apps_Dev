@@ -1,16 +1,16 @@
-"! Task runner behind the SAP agent. Everything ADT cannot do on ECC: DDIC objects, lock objects, number ranges,
-"! text IDs, STVARV, dynpro inspection, batch input, running Z reports, reading allowed tables.
-"!
-"! Safety, enforced here as well as in the Python agent:
-"!  - the caller needs the agent role (AGR_USERS); its name is STVARV parameter ZSRC_AGENT_ROLE, default Z_SRC_AGENT
-"!  - the system id must be listed in STVARV select-option ZSRC_AGENT_SIDS; empty list = deny
-"!  - NO NAME PREFIX RULES. Objects may have any name. What protects SAP standard objects is ownership: the agent only creates
-"!    objects in the packages listed in STVARV select-option ZSRC_AGENT_PACKAGES, and refuses to change any object that already
-"!    exists in another package. Reports, jobs and text pools only for programs that live in those packages.
-"!  - batch input only for an allowed transaction list, table reads only from an allowed list or from tables in those packages
-"! Function module parameters were written from memory of ECC 6.0: confirm each in SE37 on first use.
 CLASS zcl_src_agent_tasks DEFINITION PUBLIC CREATE PRIVATE.
   PUBLIC SECTION.
+    " Task runner behind the SAP agent. Everything ADT cannot do on ECC: DDIC objects, lock objects, number ranges,
+    " text IDs, STVARV, dynpro inspection, batch input, running Z reports, reading allowed tables.
+    "
+    " Safety, enforced here as well as in the Python agent:
+    "  - the caller needs the agent role (AGR_USERS); its name is STVARV parameter ZSRC_AGENT_ROLE, default Z_SRC_AGENT
+    "  - the system id must be listed in STVARV select-option ZSRC_AGENT_SIDS; empty list = deny
+    "  - NO NAME PREFIX RULES. Objects may have any name. What protects SAP standard objects is ownership: the agent only creates
+    "    objects in the packages listed in STVARV select-option ZSRC_AGENT_PACKAGES, and refuses to change any object that already
+    "    exists in another package. Reports, jobs and text pools only for programs that live in those packages.
+    "  - batch input only for an allowed transaction list, table reads only from an allowed list or from tables in those packages
+    " Function module parameters were written from memory of ECC 6.0: confirm each in SE37 on first use.
     CLASS-METHODS handle IMPORTING iv_json TYPE string RETURNING VALUE(rv_json) TYPE string.
 
   PRIVATE SECTION.
@@ -222,9 +222,9 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = xsdbool( line_exists( lt[ low = lv_p ] ) ).
   ENDMETHOD.
 
-  "! Ownership instead of name prefixes: an object may be created or changed only if it is new, or already lives in an allowed
-  "! package. Anything that exists elsewhere (SAP standard objects, other teams' objects) is refused whatever its name.
   METHOD check_object.
+    " Ownership instead of name prefixes: an object may be created or changed only if it is new, or already lives in an allowed
+    " package. Anything that exists elsewhere (SAP standard objects, other teams' objects) is refused whatever its name.
     IF package_allowed( iv_pkg ) = abap_false.
       rv_err = |package { iv_pkg } is not in the agent's allowed packages|.
       RETURN.
@@ -514,8 +514,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     SELECT * FROM (lv_tab) INTO CORRESPONDING FIELDS OF TABLE <lt> UP TO lv_max ROWS WHERE (is-where).
     rv = ok( <lt> ).
   ENDMETHOD.
-  "! Domains, data elements, table types and indexes. Indexes on standard tables are allowed only for the tables the agent config lists.
   METHOD t_ddic_objects.
+    " Domains, data elements, table types and indexes. Indexes on standard tables are allowed only for the tables the agent config lists.
     TYPES: BEGIN OF ty_res, name TYPE string, status TYPE string, END OF ty_res.
     DATA: lt_res TYPE STANDARD TABLE OF ty_res WITH DEFAULT KEY, lv_rc TYPE sy-subrc.
     LOOP AT is-items INTO DATA(ls).
@@ -600,8 +600,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( lt_res ).
   ENDMETHOD.
 
-  "! Message classes (SE91): T100A header and T100 texts.
   METHOD t_message_class.
+    " Message classes (SE91): T100A header and T100 texts.
     LOOP AT is-classes INTO DATA(ls_c).
       DATA(lv_merr) = check_object( iv_obj = 'MSAG' iv_name = ls_c-arbgb iv_pkg = is-package ).
       IF lv_merr IS NOT INITIAL.
@@ -621,8 +621,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( |{ lines( is-classes ) } message class(es) saved| ) ) ).
   ENDMETHOD.
 
-  "! Text symbols (I), selection texts (S) and the program title (R) of a program in an allowed package.
   METHOD t_text_pool.
+    " Text symbols (I), selection texts (S) and the program title (R) of a program in an allowed package.
     IF program_allowed( is-program ) = abap_false.
       rv = fail( 'only programs that live in the agent''s allowed packages may be changed' ).
       RETURN.
@@ -638,8 +638,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( |{ lines( is-texts ) } text(s) saved for { lv_prog }. Activate the program afterwards.| ) ) ).
   ENDMETHOD.
 
-  "! Periodic background job (SM36). Skips when the job is already scheduled.
   METHOD t_job_schedule.
+    " Periodic background job (SM36). Skips when the job is already scheduled.
     IF program_allowed( is-report ) = abap_false.
       rv = fail( 'the report must live in the agent''s allowed packages' ).
       RETURN.
@@ -667,8 +667,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( COND #( WHEN sy-subrc = 0 THEN |{ lv_job } scheduled every { COND i( WHEN is-period_min > 0 THEN is-period_min ELSE 1 ) } min| ELSE |JOB_CLOSE failed { sy-subrc }| ) ) ) ).
   ENDMETHOD.
 
-  "! SAP user with roles. The password is never returned and is masked in the agent's audit log. Prefer SSO for real users.
   METHOD t_user_create.
+    " SAP user with roles. The password is never returned and is masked in the agent's audit log. Prefer SSO for real users.
     " any user name is allowed, but never a protected one, and never an existing one (BAPI_USER_CREATE1 refuses to overwrite)
     CONSTANTS c_protected TYPE string VALUE ' DDIC SAPSYS TMSADM EARLYWATCH SAPCPIC '.
     IF c_protected CS | { to_upper( is-user ) } | OR to_upper( is-user ) CP 'SAP*'.
@@ -701,8 +701,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( |user { lv_user } created with { lines( lt_agr ) } role(s)| ) ) ).
   ENDMETHOD.
 
-  "! New test material through BAPI_MATERIAL_SAVEDATA (any name). Refuses when the material already exists, so real master data is never changed.
   METHOD t_testdata_material.
+    " New test material through BAPI_MATERIAL_SAVEDATA (any name). Refuses when the material already exists, so real master data is never changed.
     DATA(lv_mat) = CONV matnr( to_upper( is-material ) ).
     SELECT SINGLE matnr FROM mara WHERE matnr = @lv_mat INTO @DATA(lv_exist_mat).
     IF sy-subrc = 0.
@@ -729,8 +729,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( |material { is-material } created in plant { is-plant }| ) ) ).
   ENDMETHOD.
 
-  "! Test purchase requisition: gives the RFQ flow something to start from. Creates a new document, changes no master data.
   METHOD t_testdata_requisition.
+    " Test purchase requisition: gives the RFQ flow something to start from. Creates a new document, changes no master data.
     DATA: lt_items TYPE STANDARD TABLE OF bapimereqitemimp, lt_ret TYPE STANDARD TABLE OF bapiret2, lv_no TYPE banfn.
     lt_items = VALUE #( ( preq_item = '00010' material = to_upper( is-material ) plant = is-plant quantity = CONV #( is-quantity ) unit = is-unit pur_group = is-pur_group
                           deliv_date = sy-datum + COND i( WHEN is-deliv_days > 0 THEN is-deliv_days ELSE 30 ) ) ).
@@ -745,8 +745,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     rv = ok( VALUE string_table( ( |requisition { lv_no } created| ) ) ).
   ENDMETHOD.
 
-  "! Names of the input fields of a screen, without table-control indexes.
   METHOD dyn_field_names.
+    " Names of the input fields of a screen, without table-control indexes.
     DATA: lt_fields TYPE STANDARD TABLE OF rpy_dyfatc, lt_flow TYPE STANDARD TABLE OF rpy_dyflow, lt_par TYPE STANDARD TABLE OF rpy_dypara.
     CALL FUNCTION 'RPY_DYNPRO_READ' EXPORTING progname = iv_prog dynnr = iv_dyn
       TABLES fieldlist = lt_fields flowlogic = lt_flow params = lt_par EXCEPTIONS OTHERS = 1.
@@ -765,8 +765,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
-  "! Checks every field of every batch input step against the real screen BEFORE running it.
   METHOD t_bdc_validate.
+    " Checks every field of every batch input step against the real screen BEFORE running it.
     TYPES: BEGIN OF ty_bad, program TYPE string, dynpro TYPE string, field TYPE string, END OF ty_bad.
     DATA lt_bad TYPE STANDARD TABLE OF ty_bad WITH DEFAULT KEY.
     LOOP AT is-steps INTO DATA(ls_s).

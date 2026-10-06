@@ -1,7 +1,7 @@
-"! ICF handler for the SAP agent. POST {"task": "...", "args": {...}} to /sap/zsrc_agent/tasks, answer {"ok": true, "result": ...}.
-"! SICF: create node /sap/zsrc_agent/tasks, handler list = ZCL_SRC_AGENT_HTTP, logon = standard (user and password or SSO).
 CLASS zcl_src_agent_http DEFINITION PUBLIC CREATE PUBLIC.
   PUBLIC SECTION.
+    " ICF handler for the SAP agent. POST {"task": "...", "args": {...}} to /sap/zsrc_agent/tasks, answer {"ok": true, "result": ...}.
+    " SICF: create node /sap/zsrc_agent/tasks, handler list = ZCL_SRC_AGENT_HTTP, logon = standard (user and password or SSO).
     INTERFACES if_http_extension.
 ENDCLASS.
 
