@@ -3,8 +3,9 @@ Anything ADT cannot do on ECC (DDIC tables, lock objects, number ranges, text ID
 
 Two ways to reach it:
   - SapxClient: HTTP POST to the ICF node (ZCL_SRC_AGENT_HTTP at /sap/zsrc_agent/tasks) - needs SICF;
-  - AdtRunnerClient: through ADT only (no SICF) - each request is written into ZCL_SRC_AGENT_RUN, a global
-    test class, which is run with ABAP Unit; the answer comes back as numbered test messages.
+  - AdtRunnerClient: through ADT only (no SICF) - each request is saved, inactive, into program ZSRC_AGENT_REQ
+    and the fixed global test class ZCL_SRC_AGENT_RUN is run with ABAP Unit; it reads the request and answers
+    in numbered test messages.
 make_sapx() picks one from SAP_HANDLER_MODE (adt | http)."""
 from __future__ import annotations
 import base64
@@ -58,29 +59,41 @@ class SapxClient:
 
 
 RUNNER_CLASS = "ZCL_SRC_AGENT_RUN"
+REQUEST_PROGRAM = "ZSRC_AGENT_REQ"
 _CHUNK = 100
+_LINE = 200
 
 
-def _abap_literal(text: str, width: int = 100) -> str:
-    """A string expression for any text: backquote literals of <= width chars (doubled backquotes) joined with &&."""
-    parts = [text[i:i + width] for i in range(0, len(text), width)] or [""]
-    return "\n        && ".join("`" + p.replace("`", "``") + "`" for p in parts)
-
-
-def runner_test_source(payload: str, size: int = _CHUNK, nonce: str = "boot") -> str:
-    """The whole source of ZCL_SRC_AGENT_RUN for one request: a global test class (no local test include, which 7.50
-    only runs when the class is flagged for it) whose test method calls the handler and returns the answer as messages."""
+def runner_class_source(size: int = _CHUNK) -> str:
+    """ZCL_SRC_AGENT_RUN: a global test class, installed and activated once by the bootstrap and never changed.
+    Its test reads the request from the INACTIVE source of ZSRC_AGENT_REQ (READ REPORT ... STATE 'I'), so a call
+    needs no activation (EDS 7.50 ignores activations sent for this class), and answers in numbered test messages."""
     return (
         "CLASS zcl_src_agent_run DEFINITION PUBLIC FINAL CREATE PUBLIC FOR TESTING DURATION LONG RISK LEVEL HARMLESS.\n"
         "  PRIVATE SECTION.\n"
-        "    \" Rewritten by the SAP agent for every handler call (no SICF node needed): the test method calls\n"
-        "    \" ZCL_SRC_AGENT_TASKS=>HANDLE and returns its answer base64 in numbered test messages.\n"
+        "    \" The SAP agent's runner (no SICF node): the agent saves each request, base64, into the inactive source of\n"
+        "    \" program ZSRC_AGENT_REQ and runs this test; the answer of ZCL_SRC_AGENT_TASKS=>HANDLE comes back base64\n"
+        "    \" in numbered test messages tagged with the request id. Do not change; ZSRC_AGENT_REQ is never activated.\n"
         "    METHODS go FOR TESTING.\n"
         "ENDCLASS.\n\n"
         "CLASS zcl_src_agent_run IMPLEMENTATION.\n"
         "  METHOD go.\n"
-        f"    DATA(lv_json) = {_abap_literal(payload)}.\n"
-        "    DATA(lv_out) = cl_http_utility=>encode_base64( zcl_src_agent_tasks=>handle( lv_json ) ).\n"
+        "    DATA lt_src TYPE string_table.\n"
+        "    DATA(lv_prog) = CONV syrepid( 'ZSRC_AGENT_REQ' ).\n"
+        "    READ REPORT lv_prog INTO lt_src STATE 'I'.\n"
+        "    IF sy-subrc <> 0.\n"
+        "      READ REPORT lv_prog INTO lt_src.\n"
+        "    ENDIF.\n"
+        "    DATA(lv_id) = `none`.\n"
+        "    DATA(lv_req) = ``.\n"
+        "    LOOP AT lt_src INTO DATA(lv_line).\n"
+        "      IF strlen( lv_line ) > 3 AND substring( val = lv_line len = 3 ) = '*I:'.\n"
+        "        lv_id = condense( substring( val = lv_line off = 3 ) ).\n"
+        "      ELSEIF strlen( lv_line ) > 3 AND substring( val = lv_line len = 3 ) = '*J:'.\n"
+        "        lv_req = lv_req && condense( substring( val = lv_line off = 3 ) ).\n"
+        "      ENDIF.\n"
+        "    ENDLOOP.\n"
+        "    DATA(lv_out) = cl_http_utility=>encode_base64( zcl_src_agent_tasks=>handle( cl_http_utility=>decode_base64( lv_req ) ) ).\n"
         "    COMMIT WORK.\n"
         "    DATA(lv_len) = strlen( lv_out ).\n"
         f"    DATA(lv_count) = ( lv_len + {size - 1} ) DIV {size}.\n"
@@ -89,12 +102,22 @@ def runner_test_source(payload: str, size: int = _CHUNK, nonce: str = "boot") ->
         "    WHILE lv_off < lv_len.\n"
         f"      DATA(lv_n) = nmin( val1 = {size} val2 = lv_len - lv_off ).\n"
         "      lv_no = lv_no + 1.\n"
-        f"      DATA(lv_msg) = |ZSRC {nonce} {{ lv_no }} {{ lv_count }} {{ substring( val = lv_out off = lv_off len = lv_n ) }}|.\n"
+        "      DATA(lv_msg) = |ZSRC { lv_id } { lv_no } { lv_count } { substring( val = lv_out off = lv_off len = lv_n ) }|.\n"
         "      cl_abap_unit_assert=>fail( msg = lv_msg quit = if_aunit_constants=>no ).\n"
         "      lv_off = lv_off + lv_n.\n"
         "    ENDWHILE.\n"
         "  ENDMETHOD.\n"
         "ENDCLASS.\n")
+
+
+def request_source(payload: str, nonce: str = "boot") -> str:
+    """ZSRC_AGENT_REQ for one request: comment lines only (request id, then the request base64 in slices)."""
+    b64 = base64.b64encode(payload.encode("utf-8")).decode("ascii")
+    lines = ["REPORT zsrc_agent_req.",
+             "* Request for the SAP agent, read by ZCL_SRC_AGENT_RUN from this INACTIVE version. Do not activate or edit.",
+             f"*I:{nonce}"]
+    lines += [f"*J:{b64[i:i + _LINE]}" for i in range(0, len(b64), _LINE)]
+    return "\n".join(lines) + "\n"
 
 
 def parse_runner_result(body: str, size: int = _CHUNK, nonce: str = "") -> dict:
@@ -112,13 +135,13 @@ def parse_runner_result(body: str, size: int = _CHUNK, nonce: str = "") -> dict:
         # 7.50 wraps the message: "Critical Assertion Error: 'ZSRC 1 2 eyJ...'"
         m = re.search(r"ZSRC (?:([A-Za-z0-9]+) )?(\d+) (\d+) ([A-Za-z0-9+/=]*)", title)
         if m and nonce and m.group(1) != nonce:
-            stale.add(m.group(1) or "-")       # an older version of the class ran: this is not our request's answer
+            stale.add(m.group(1) or "-")       # not this request's answer (the request was not saved, or another call's ran)
         elif m:
             chunks[int(m.group(2))], total = m.group(4), int(m.group(3))
         elif title and "is not abstract" not in title:   # 7.50 warns about every non-abstract global test class
             other.append(title)
     if not chunks and stale:
-        raise SapxError(f"SAP ran an older version of the runner (request {', '.join(sorted(stale))}, not {nonce}): the rewritten class was not activated")
+        raise SapxError(f"the runner answered another request ({', '.join(sorted(stale))}, not {nonce}): this request was not saved into ZSRC_AGENT_REQ, or the runner is still the old version - run the bootstrap once")
     if not chunks:
         raise SapxError("handler run gave no answer" + (f": {'; '.join(other)[:500]}" if other else " (no ABAP Unit result - is ZCL_SRC_AGENT_RUN active?)"))
     if set(chunks) != set(range(1, total + 1)) or any(len(chunks[i]) != size for i in range(1, total)):
@@ -131,16 +154,17 @@ def parse_runner_result(body: str, size: int = _CHUNK, nonce: str = "") -> dict:
 
 
 class AdtRunnerClient:
-    """Task handler over ADT (no ICF node): write the request into ZCL_SRC_AGENT_RUN (a global test class), activate, run ABAP Unit."""
+    """Task handler over ADT (no ICF node): save the request into ZSRC_AGENT_REQ (inactive, never activated) and run
+    the ABAP Unit test of ZCL_SRC_AGENT_RUN, which reads it, calls ZCL_SRC_AGENT_TASKS=>HANDLE and answers."""
 
-    def __init__(self, adt, runner: str = RUNNER_CLASS):
-        self.adt, self.runner = adt, runner.upper()
+    def __init__(self, adt, runner: str = RUNNER_CLASS, program: str = REQUEST_PROGRAM):
+        self.adt, self.runner, self.program = adt, runner.upper(), program.upper()
         self.path = f"ADT / ABAP Unit of {self.runner}"
         self.trace: list[str] = []
 
     def _write(self, source: str):
         from .adt import object_uri, parse_lock_handle
-        uri = object_uri("class", self.runner)
+        uri = object_uri("program", self.program)
         r = self.adt._req("POST", uri + "?_action=LOCK&accessMode=MODIFY",
                           headers={"Accept": "application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result"})
         handle = parse_lock_handle(r.text)
@@ -149,34 +173,32 @@ class AdtRunnerClient:
         try:
             r = self.adt._req("PUT", f"{uri}/source/main?lockHandle={handle}{corr}", data=source,
                               headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
-            self.trace.append(f"write {r.status_code} corr={corr[8:] or '-'}")
+            self.trace.append(f"request saved {r.status_code} corr={corr[8:] or '-'}")
         finally:
-            self.adt.unlock("class", self.runner, handle)
+            self.adt.unlock("program", self.program, handle)
+
+    def _has(self, nonce: str, version: str = "inactive"):
+        """Whether that version of the request program carries this request's id (None when it cannot be read)."""
+        from .adt import object_uri
+        try:
+            r = self.adt._req("GET", f"{object_uri('program', self.program)}/source/main?version={version}", headers={"Accept": "text/plain"}, ok=(200, 404))
+        except Exception as e:  # noqa: BLE001
+            return f"? {str(e)[:80]}"
+        return None if r.status_code == 404 else (f"*I:{nonce}" in r.text)
 
     def call(self, task: str, args: dict | None = None) -> dict:
-        from .adt import object_uri, unit_xml, has_errors, AdtError
+        from .adt import object_uri, unit_xml, AdtError
         import uuid
         payload = json.dumps({"task": task, "args": args or {}}, ensure_ascii=False)
         nonce = uuid.uuid4().hex[:10]
+        self.trace = []
         try:
-            self.trace = []
-            self._write(runner_test_source(payload, nonce=nonce))
-            self.trace.append(f"saved has id: {self._has(nonce, 'inactive')}")
-            msgs = self._activate()
-            if not has_errors(msgs):
-                waited = self._wait_active(nonce)
-                if waited is None:
-                    # same call the bootstrap uses, then wait again
-                    msgs = self.adt.activate([("class", self.runner)])
-                    self.trace.append(f"activate#2 {len(msgs)} msg" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3]))
-                    if not has_errors(msgs):
-                        self._wait_active(nonce)
-            if has_errors(msgs):
-                raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
+            self._write(request_source(payload, nonce))
+            self.trace.append(f"saved has id: {self._has(nonce)}")
             r = self.adt._req("POST", "/sap/bc/adt/abapunit/testruns", data=unit_xml([object_uri("class", self.runner)]),
                               headers={"Content-Type": "application/*", "Accept": "application/*"})
         except AdtError as e:
-            raise SapxError(f"{e} {e.body[:300]}")
+            raise SapxError(f"{e} {e.body[:300]} [{'; '.join(self.trace)}]")
         try:
             j = parse_runner_result(r.text, nonce=nonce)
         except SapxError as e:
@@ -185,45 +207,10 @@ class AdtRunnerClient:
             raise SapxError(j.get("error", "unknown handler error"))
         return j.get("result", {})
 
-    def _activate(self) -> list[dict]:
-        """Activates the rewritten class. No pre-audit: with it 7.50 can answer 200 with a list of inactive objects and activate nothing."""
-        from .adt import object_uri, object_refs_xml, parse_messages
-        uri = object_uri("class", self.runner)
-        refs = [(uri, self.runner)]
-        r = self.adt._req("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=false", data=object_refs_xml(refs),
-                          headers={"Content-Type": "application/xml", "Accept": "application/xml"})
-        msgs = parse_messages(r.text)
-        self.trace.append(f"activate {r.status_code}" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3])
-                          + (f" body={r.text[:400]}" if r.text.strip() and not msgs else ""))
-        return msgs
-
-    def _wait_active(self, nonce: str, timeout: float = 30.0, step: float = 1.5):
-        """EDS (7.50) answers the activation at once and switches the active version a little later: wait for it."""
-        import time
-        t0 = time.monotonic()
-        while True:
-            if self._has(nonce, "active") is True:
-                took = time.monotonic() - t0
-                self.trace.append(f"active after {took:.1f}s")
-                return took
-            if time.monotonic() - t0 >= timeout:
-                self.trace.append(f"still not active after {timeout:.0f}s")
-                return None
-            time.sleep(step)
-
-    def _has(self, nonce: str, version: str):
-        """Whether that version of the class source carries this request's id (None when it cannot be read)."""
-        from .adt import object_uri
-        try:
-            r = self.adt._req("GET", f"{object_uri('class', self.runner)}/source/main?version={version}", headers={"Accept": "text/plain"}, ok=(200, 404))
-        except Exception as e:  # noqa: BLE001
-            return f"? {str(e)[:80]}"
-        return None if r.status_code == 404 else (nonce in r.text)
-
     def node_alive(self) -> bool:
-        """True when the runner class exists (the bootstrap installed it)."""
+        """True when the bootstrap installed both the runner class and the request program."""
         try:
-            return self.adt.package_of("class", self.runner) is not None
+            return self.adt.package_of("class", self.runner) is not None and self.adt.package_of("program", self.program) is not None
         except Exception:
             return False
 

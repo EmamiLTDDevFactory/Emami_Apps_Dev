@@ -105,18 +105,23 @@ def test_transport_falls_back_to_the_750_cts_resource():
 
 def test_runner_round_trip_without_sicf():
     import base64, json
-    from sap_agent.sapx import runner_test_source, parse_runner_result, SapxError
-    payload = json.dumps({"task": "ping", "args": {"q": "it`s " + "x" * 250}})
-    src = runner_test_source(payload)
-    assert "FOR TESTING" in src and "zcl_src_agent_tasks=>handle" in src and "it``s" in src
+    from sap_agent.sapx import request_source, runner_class_source, parse_runner_result, SapxError
+    payload = json.dumps({"task": "ping", "args": {"q": "it`s " + "x" * 600 + " é"}})
+    src = request_source(payload, "n1")
+    assert src.startswith("REPORT zsrc_agent_req.") and "*I:n1" in src
     assert all(len(line) < 255 for line in src.splitlines())
+    b64 = "".join(l[3:] for l in src.splitlines() if l.startswith("*J:"))
+    assert json.loads(base64.b64decode(b64).decode("utf-8")) == json.loads(payload)
+    cls = runner_class_source()
+    assert "FOR TESTING" in cls and "STATE 'I'" in cls and "zcl_src_agent_tasks=>handle" in cls
+    assert all(len(line) < 255 for line in cls.splitlines())
     answer = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS", "t": "é" * 80}}).encode()).decode()
     parts = [answer[i:i + 100] for i in range(0, len(answer), 100)]
-    alerts = "".join(f'<alert kind="failedAssertion" severity="critical"><title>ZSRC {i} {len(parts)} {p}</title></alert>' for i, p in enumerate(parts, 1))
-    body = f'<aunit:runResult xmlns:aunit="http://www.sap.com/adt/aunit"><program><testClasses><testClass><testMethods><testMethod><alerts>{alerts}</alerts></testMethod></testMethods></testClass></testClasses></program></aunit:runResult>'
+    alerts = "".join(f'<alert kind="failedAssertion" severity="critical"><title>ZSRC 1 {i} {len(parts)} {p}</title></alert>' for i, p in enumerate(parts, 1))
+    body = f'<aunit:runResult xmlns:aunit="http://www.sap.com/adt/aunit">{alerts}</aunit:runResult>'
     assert parse_runner_result(body)["result"]["sid"] == "EDS"
     with pytest.raises(SapxError, match="incomplete"):
-        parse_runner_result(body.replace(f"<title>ZSRC 1 ", "<title>ZSRC 9 ", 1))
+        parse_runner_result(body.replace("<title>ZSRC 1 1 ", "<title>ZSRC 1 9 ", 1))
     with pytest.raises(SapxError, match="Runtime error"):
         parse_runner_result('<r><alert kind="exception"><title>Runtime error CX_SY_NO_HANDLER</title></alert></r>')
 
@@ -144,7 +149,7 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
             if path.startswith("/sap/bc/adt/abapunit/testruns"):
                 import re as _re
                 src = [d for m, p, d in self.calls if m == "PUT" and p.endswith("/source/main")][-1]
-                nonce = _re.search(r"\|ZSRC (\w+) ", src).group(1)
+                nonce = _re.search(r"\*I:(\w+)", src).group(1)
                 ans = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS"}}).encode()).decode()
                 return R(200, f"<r><alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC {nonce} 1 1 {ans}'</title></alert></r>")
             return R(200, "<r/>")
@@ -155,46 +160,9 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
     c = AdtRunnerClient(adt)
     assert c.call("ping") == {"sid": "EDS"}
     puts = [(p, d) for m, p, d in adt.calls if m == "PUT"]
-    assert len(puts) == 1 and puts[0][0].endswith("/zcl_src_agent_run/source/main") and "FOR TESTING" in puts[0][1]
-    assert any(t.startswith("active after") for t in c.trace)
-
-
-def test_runner_waits_for_a_late_activation(monkeypatch):
-    """EDS switches the active version a moment after the activation call returns."""
-    import base64, json, re as _re, time
-    from sap_agent.sapx import AdtRunnerClient
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-
-    class R:
-        def __init__(self, code=200, text=""):
-            self.status_code, self.text = code, text
-
-    class LateAdt:
-        def __init__(self):
-            self.saved, self.active, self.reads = "", "boot", 0
-        def _req(self, method, path, data=None, headers=None, ok=(200,)):
-            if "_action=LOCK" in path:
-                return R(200, "<LOCK_HANDLE>H</LOCK_HANDLE><CORRNR>EDSK9B0DQN</CORRNR>")
-            if method == "PUT":
-                self.saved = data
-                return R(200)
-            if method == "GET" and "version=active" in path:
-                self.reads += 1
-                if self.reads >= 3:          # becomes active on the third look
-                    self.active = self.saved
-                return R(200, self.active)
-            if method == "GET":
-                return R(200, self.saved)
-            if path.startswith("/sap/bc/adt/abapunit"):
-                nonce = _re.search(r"\|ZSRC (\w+) ", self.active).group(1)
-                ans = base64.b64encode(json.dumps({"ok": True, "result": {"n": nonce}}).encode()).decode()
-                return R(200, f"<r><alert><title>Critical Assertion Error: 'ZSRC {nonce} 1 1 {ans}'</title></alert></r>")
-            return R(200, "")
-        def unlock(self, *a):
-            pass
-
-    c = AdtRunnerClient(LateAdt())
-    assert c.call("ddic_read", {"name": "EKKO"})["n"] != "boot"
+    assert len(puts) == 1 and puts[0][0].endswith("/programs/programs/zsrc_agent_req/source/main") and "*J:" in puts[0][1]
+    assert not any(m == "POST" and "activation" in p for m, p, d in adt.calls)   # no activation per call
+    assert "saved has id: True" in c.trace
 
 
 def test_runner_result_as_eds_750_sends_it():
@@ -208,5 +176,5 @@ def test_runner_result_as_eds_750_sends_it():
 def test_runner_reports_a_stale_class_instead_of_its_answer():
     from sap_agent.sapx import parse_runner_result, SapxError
     body = "<r><alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC boot 1 1 eyJvayI6dHJ1ZX0='</title></alert></r>"
-    with pytest.raises(SapxError, match="older version"):
+    with pytest.raises(SapxError, match="answered another request"):
         parse_runner_result(body, nonce="abc123")

@@ -243,7 +243,7 @@ def test_bootstrap_runs_without_the_handler_and_into_zemami(web):
     ids = [s["id"] for s in r["result"]["steps"]]
     assert ids == ["pkg", "tr", "src", "act", "icf"]
     assert ("create", "class", "ZCL_SRC_AGENT_TASKS", "ZEMAMI", "DEVK900001") in fakes["adt"].calls
-    assert ("activate", ["ZCL_SRC_AGENT_TASKS", "ZCL_SRC_AGENT_HTTP", "ZCL_SRC_AGENT_RUN"]) in fakes["adt"].calls
+    assert ("activate", ["ZCL_SRC_AGENT_TASKS", "ZCL_SRC_AGENT_HTTP", "ZSRC_AGENT_REQ", "ZCL_SRC_AGENT_RUN"]) in fakes["adt"].calls
     assert "SICF" in r["result"]["todo"]
     assert any(e["type"] == "log" and "from /sap/public/info" in e["text"] for e in r["eventList"])
 

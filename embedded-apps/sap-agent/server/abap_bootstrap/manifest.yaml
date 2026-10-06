@@ -14,6 +14,7 @@ steps:
     files:
       - {kind: class, name: ZCL_SRC_AGENT_TASKS, file: zcl_src_agent_tasks.clas.abap, description: "SAP agent task runner"}
       - {kind: class, name: ZCL_SRC_AGENT_HTTP, file: zcl_src_agent_http.clas.abap, description: "SAP agent ICF handler"}
+      - {kind: program, name: ZSRC_AGENT_REQ, file: zsrc_agent_req.prog.abap, description: "SAP agent request (inactive, never run)"}
       - {kind: class, name: ZCL_SRC_AGENT_RUN, file: zcl_src_agent_run.clas.abap, description: "SAP agent runner (no SICF)"}
   - {id: act, type: activate, group: src}
   - id: icf
