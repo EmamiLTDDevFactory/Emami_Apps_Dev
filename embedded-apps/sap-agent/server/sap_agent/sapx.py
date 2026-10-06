@@ -120,6 +120,7 @@ class AdtRunnerClient:
     def __init__(self, adt, runner: str = RUNNER_CLASS):
         self.adt, self.runner = adt, runner.upper()
         self.path = f"ADT / ABAP Unit of {self.runner}"
+        self.trace: list[str] = []
 
     def _write(self, source: str):
         from .adt import object_uri, parse_lock_handle, NS
@@ -132,10 +133,12 @@ class AdtRunnerClient:
         try:
             body = ('<?xml version="1.0" encoding="UTF-8"?><class:abapClassInclude xmlns:class="http://www.sap.com/adt/oo/classes" '
                     f'xmlns:adtcore="{NS["adtcore"]}" adtcore:name="{self.runner}" class:includeType="testclasses"/>')
-            self.adt._req("POST", f"{uri}/includes?lockHandle={handle}{corr}", data=body,
-                          headers={"Content-Type": "application/vnd.sap.adt.oo.classes.include.v1+xml", "Accept": "*/*"}, ok=(200, 201, 204, 400, 409))
-            self.adt._req("PUT", f"{uri}/includes/testclasses?lockHandle={handle}{corr}", data=source,
-                          headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
+            r = self.adt._req("POST", f"{uri}/includes?lockHandle={handle}{corr}", data=body,
+                              headers={"Content-Type": "application/vnd.sap.adt.oo.classes.include.v1+xml", "Accept": "*/*"}, ok=(200, 201, 204, 400, 409))
+            self.trace.append(f"include create {r.status_code}" + (f" {r.text[:200]}" if r.status_code >= 400 else ""))
+            r = self.adt._req("PUT", f"{uri}/includes/testclasses?lockHandle={handle}{corr}", data=source,
+                              headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
+            self.trace.append(f"write {r.status_code} corr={corr[8:] or '-'}")
         finally:
             self.adt.unlock("class", self.runner, handle)
 
@@ -143,18 +146,33 @@ class AdtRunnerClient:
         from .adt import object_uri, unit_xml, has_errors, AdtError
         payload = json.dumps({"task": task, "args": args or {}}, ensure_ascii=False)
         try:
+            self.trace = []
             self._write(runner_test_source(payload))
-            msgs = self.adt.activate([("class", self.runner)])
+            msgs = self._activate()
             if has_errors(msgs):
                 raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
             r = self.adt._req("POST", "/sap/bc/adt/abapunit/testruns", data=unit_xml([object_uri("class", self.runner)]),
                               headers={"Content-Type": "application/*", "Accept": "application/*"})
         except AdtError as e:
             raise SapxError(f"{e} {e.body[:300]}")
-        j = parse_runner_result(r.text)
+        try:
+            j = parse_runner_result(r.text)
+        except SapxError as e:
+            raise SapxError(f"{e} [{'; '.join(self.trace)}]")
         if not j.get("ok"):
             raise SapxError(j.get("error", "unknown handler error"))
         return j.get("result", {})
+
+    def _activate(self) -> list[dict]:
+        """Activates the class AND its test include by name: 7.50 can leave a changed include inactive when only the class is named."""
+        from .adt import object_uri, object_refs_xml, parse_messages
+        uri = object_uri("class", self.runner)
+        refs = [(uri, self.runner), (uri + "/includes/testclasses", self.runner)]
+        r = self.adt._req("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=true", data=object_refs_xml(refs),
+                          headers={"Content-Type": "application/xml", "Accept": "application/xml"})
+        msgs = parse_messages(r.text)
+        self.trace.append(f"activate {r.status_code} {len(msgs)} msg" + (f" {r.text[:300]}" if "inactive" in r.text.lower() and not msgs else ""))
+        return msgs
 
     def node_alive(self) -> bool:
         """True when the runner class exists (the bootstrap installed it)."""
