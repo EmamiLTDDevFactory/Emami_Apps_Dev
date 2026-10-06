@@ -56,6 +56,9 @@ def web(tmp_path, monkeypatch):
         return {}
 
     monkeypatch.setattr(adtmod.AdtClient, "discovery", discovery)
+    from sap_agent import sapx as sapxmod
+    monkeypatch.setattr(sapxmod.SapxClient, "node_alive", lambda self: fakes["sapx"].alive)
+    monkeypatch.setattr(sapxmod.SapxClient, "call", lambda self, task, args=None: fakes["sapx"].call(task, args))
     import anthropic
 
     class FakeAnthropic:
@@ -252,3 +255,18 @@ def test_bootstrap_refuses_a_non_development_system(web):
     r = wait(client, h, rid)
     assert r["status"] == "failed"
     assert not [c for c in fakes["adt"].calls if c[0] in ("create", "write", "activate", "transport")]
+
+
+def test_tasks_wait_for_the_handler_but_bootstrap_does_not(web):
+    client, appmod, fakes = web
+    h = login(client)
+    fakes["sapx"].alive = False
+    st = client.get("/api/sap/handler", headers=h).json()
+    assert st["alive"] is False and st["path"] == "/sap/zsrc_agent/tasks"
+    r = client.post("/api/runs", headers=h, json={"kind": "task", "task": "Create report ZTEST in ZEMAMI"})
+    assert r.status_code == 409 and "Bootstrap" in r.json()["detail"]
+    rid = client.post("/api/runs", headers=h, json={"kind": "bootstrap", "dryRun": True}).json()["id"]
+    wait(client, h, rid)
+    fakes["sapx"].alive = True
+    st = client.get("/api/sap/handler", headers=h).json()
+    assert st["alive"] is True and st["ping"]["sid"] == "EDS"

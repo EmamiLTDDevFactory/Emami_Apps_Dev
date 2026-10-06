@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Activity, AlertTriangle, ArrowLeft, Bot, Calendar, History, KeyRound, LogIn, LogOut, Menu, Play, Rocket, ScrollText, ShieldCheck, Stethoscope, User, X, type LucideIcon,
 } from 'lucide-react';
-import { ACTIVE, api, ApiError, BASE_PATH, signIn, type AppConfig, type AuditEntry, type Capability, type ManifestInfo, type RunSummary } from '@/lib/api';
+import { ACTIVE, api, ApiError, BASE_PATH, signIn, type AppConfig, type AuditEntry, type HandlerStatus, type Capability, type ManifestInfo, type RunSummary } from '@/lib/api';
 import RunView, { StatusPill } from './RunView';
 import { Button, Card, cx, Empty, inputBase, inputCls, Pill, Toggle } from './ui';
 
@@ -35,6 +35,15 @@ export default function App() {
   const [today, setToday] = useState('');
 
   const loadCfg = useCallback(() => api.config().then((c) => setCfg(c)).catch(() => undefined), []);
+  const [handler, setHandler] = useState<HandlerStatus | null>(null);
+  const sapKey = cfg?.sap ? `${cfg.sap.user}@${cfg.sap.sid}` : '';
+  const loadHandler = useCallback(() => {
+    if (!sapKey) return setHandler(null);
+    api.handler().then(setHandler).catch(() => setHandler(null));
+  }, [sapKey]);
+  useEffect(() => {
+    if (view === 'agent' || view === 'deploy') loadHandler();
+  }, [view, loadHandler]);
   useEffect(() => {
     setToday(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }));
     signIn()
@@ -132,8 +141,9 @@ export default function App() {
         <main className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3 lg:p-5">
           <div className="mx-auto max-w-6xl">
             {(view === 'agent' || view === 'deploy') && cfg && (!cfg.sap || (view === 'agent' && !cfg.anthropicKeySet)) && <SapLogin cfg={cfg} needKey={view === 'agent'} onDone={loadCfg} />}
-            {view === 'agent' && cfg?.sap && cfg.anthropicKeySet && <AgentView cfg={cfg} onStarted={openRun} />}
-            {view === 'deploy' && cfg?.sap && <DeployView onStarted={openRun} />}
+            {(view === 'agent' || view === 'deploy') && cfg?.sap && handler && !handler.alive && <HandlerSetup h={handler} pkg={cfg.engine.allowedPackages.join(', ')} onRecheck={loadHandler} onBootstrap={view === 'agent' ? () => setView('deploy') : undefined} />}
+            {view === 'agent' && cfg?.sap && cfg.anthropicKeySet && <AgentView cfg={cfg} ready={handler?.alive !== false} onStarted={openRun} />}
+            {view === 'deploy' && cfg?.sap && <DeployView ready={handler?.alive !== false} onStarted={openRun} />}
             {view === 'runs' && (runId ? <RunPage runId={runId} onBack={() => setRunId(null)} onFinished={loadCfg} /> : <RunsList onOpen={openRun} />)}
             {view === 'health' && <HealthView cfg={cfg} onStarted={openRun} onSignedIn={loadCfg} />}
             {view === 'audit' && <AuditView />}
@@ -162,7 +172,32 @@ function useStart(onStarted: (id: string) => void) {
   return { busy, err, start };
 }
 
-function AgentView({ cfg, onStarted }: { cfg: AppConfig; onStarted: (id: string) => void }) {
+/** Shown while the agent's SICF handler does not answer: tasks and real deploys would stop at sap_ping (404). */
+function HandlerSetup({ h, pkg, onRecheck, onBootstrap }: { h: HandlerStatus; pkg: string; onRecheck: () => void; onBootstrap?: () => void }) {
+  return (
+    <section className="mb-3 rounded-2xl border border-warn/40 bg-warn/[0.06] p-4 shadow-card" role="alert">
+      <div className="flex flex-wrap items-start gap-3">
+        <AlertTriangle size={18} className="mt-0.5 text-warn" />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-extrabold">The agent&apos;s SAP handler is not set up on {h.sid} yet</h3>
+          <p className="text-xs text-muted"><span className="font-mono">{h.path}</span> does not answer for {h.user}. Agent runs and real deploys stay blocked until it does. One-time setup:</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs">
+            <li>Deploy → <strong>Bootstrap</strong> with <strong>Dry run off</strong> - creates ZCL_SRC_AGENT_TASKS / ZCL_SRC_AGENT_HTTP in {pkg} on a new transport.</li>
+            <li>SICF: create service <span className="font-mono">{h.path}</span>, handler class ZCL_SRC_AGENT_HTTP, and activate it.</li>
+            <li>STVARV select-options: <span className="font-mono">ZSRC_AGENT_SIDS</span> = {h.sid}, <span className="font-mono">ZSRC_AGENT_PACKAGES</span> = {pkg}.</li>
+            <li>Assign role <span className="font-mono">Z_SRC_AGENT</span> to {h.user} (or name another role in STVARV parameter <span className="font-mono">ZSRC_AGENT_ROLE</span>).</li>
+          </ol>
+        </div>
+        <div className="flex gap-2">
+          {onBootstrap && <Button onClick={onBootstrap}><Rocket size={14} /> Go to Bootstrap</Button>}
+          <Button onClick={onRecheck}><Activity size={14} /> Check again</Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AgentView({ cfg, ready, onStarted }: { cfg: AppConfig; ready: boolean; onStarted: (id: string) => void }) {
   const [task, setTask] = useState('');
   const [context, setContext] = useState('');
   const [showCtx, setShowCtx] = useState(false);
@@ -186,7 +221,7 @@ function AgentView({ cfg, onStarted }: { cfg: AppConfig; onStarted: (id: string)
         <button type="button" className="mt-3 text-xs font-bold text-accent hover:underline" onClick={() => setShowCtx(!showCtx)}>{showCtx ? 'Hide' : 'Add'} project context (optional)</button>
         {showCtx && <textarea className={cx(inputBase, 'mt-2 h-28 w-full resize-y py-2 text-xs')} placeholder="Background the agent should know: design notes, naming, the tables involved…" value={context} onChange={(ev) => setContext(ev.target.value)} aria-label="Project context" />}
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
-          <Button variant="primary" className="px-5" disabled={busy || task.trim().length < 10} onClick={() => start({ kind: 'task', task, context })}><Play size={14} /> Run agent</Button>
+          <Button variant="primary" className="px-5" disabled={busy || !ready || task.trim().length < 10} onClick={() => start({ kind: 'task', task, context })}><Play size={14} /> Run agent</Button>
           {e && <span className="text-xs text-muted">On SAP {cfg.sap?.sid} (<span className="font-mono">{e.host}</span>, client {e.client}) as <strong>{cfg.sap?.user}</strong> · package {e.allowedPackages.join(', ')} · max {e.maxSteps} steps · approvals: {e.approval}</span>}
           {err && <span className="text-sm text-bad" role="alert">{err}</span>}
         </div>
@@ -199,7 +234,7 @@ function AgentView({ cfg, onStarted }: { cfg: AppConfig; onStarted: (id: string)
   );
 }
 
-function DeployView({ onStarted }: { onStarted: (id: string) => void }) {
+function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: string) => void }) {
   const [list, setList] = useState<ManifestInfo[]>([]);
   const [sel, setSel] = useState('');
   const [opts, setOpts] = useState({ dryRun: true, keepGoing: false, repair: false, agent: false, only: '' });
@@ -250,7 +285,7 @@ function DeployView({ onStarted }: { onStarted: (id: string) => void }) {
               {m?.steps.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>
           </label>
-          <Button variant="primary" disabled={busy || !sel} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
+          <Button variant="primary" disabled={busy || !sel || (!ready && !opts.dryRun)} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
           {!opts.dryRun && <p className="text-xs text-warn">This creates and activates objects on the SAP development system.</p>}
           {startErr && <p className="text-sm text-bad" role="alert">{startErr}</p>}
         </div>

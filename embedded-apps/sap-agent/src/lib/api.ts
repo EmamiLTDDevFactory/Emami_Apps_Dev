@@ -130,6 +130,9 @@ export interface Capability { key: string; tier: string; maturity: string; how: 
 export interface ManifestInfo { path: string; name: string; package?: string; steps: { id: string; type: string; title: string }[]; error?: string }
 export interface AuditEntry { ts: string; actor: string; event: string; [k: string]: unknown }
 
+/** Whether the agent's SAP-side task handler (SICF node) answers for this person's SAP login. */
+export interface HandlerStatus { alive: boolean; path: string; sid: string; user: string; ping: Record<string, unknown> }
+
 export const ACTIVE: RunStatus[] = ['queued', 'running', 'waiting_approval'];
 
 export interface AppConfig {
@@ -145,6 +148,7 @@ export const api = {
   config: () => call<AppConfig>('/api/config'),
   sapLogin: (sapUser: string, sapPassword: string, anthropicKey: string, sapClient: string) =>
     call<{ sapUser: string; sid: string; client: string; anthropicKeySet: boolean }>('/api/sap/login', { method: 'POST', body: JSON.stringify({ sapUser, sapPassword, anthropicKey, sapClient }) }),
+  handler: () => call<HandlerStatus>('/api/sap/handler'),
   sapLogout: () => call<{ ok: boolean }>('/api/sap/logout', { method: 'POST' }),
   capabilities: () => call<{ capabilities: Capability[] }>('/api/capabilities'),
   manifests: () => call<{ manifests: ManifestInfo[]; bootstrap: string }>('/api/manifests'),

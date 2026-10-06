@@ -150,6 +150,26 @@ def sap_login(body: SapLogin, user: auth.SessionUser = Depends(admin)):
     return {"sapUser": sap_user, "sid": sid, "client": cfg.client, "anthropicKeySet": bool(key)}
 
 
+@app.get("/api/sap/handler")
+def sap_handler(user: auth.SessionUser = Depends(admin)):
+    """Is the agent's SAP-side task handler (the SICF node) answering for this person? Without it
+    sap_ping fails and the agent stops before doing anything; only the bootstrap can run."""
+    c = creds_of(user)
+    if not c:
+        raise HTTPException(428, "Sign in to SAP with your user ID and password first.")
+    cfg = Config.from_env()
+    from sap_agent.sapx import SapxClient
+    x = SapxClient(cfg.host, c.client or cfg.client, c.sap_user, c.sap_password, cfg.handler_path, cfg.verify_ssl)
+    alive = x.node_alive()
+    info: dict = {}
+    if alive:
+        try:
+            info = x.call("ping")
+        except Exception as e:  # noqa: BLE001  (node answers but refuses: role / STVARV)
+            info = {"error": str(e)[:300]}
+    return {"alive": alive, "path": cfg.handler_path, "sid": c.sid, "user": c.sap_user, "ping": info}
+
+
 @app.post("/api/sap/logout")
 def sap_logout(user: auth.SessionUser = Depends(admin)):
     VAULT.drop(user.session_id)
@@ -301,6 +321,13 @@ def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
     needs_model = body.kind == "task" or body.repair or body.agent
     if needs_model and not creds.anthropic_key:
         raise HTTPException(428, "Enter your Anthropic API key to run the agent.")
+    if body.kind in ("task", "deploy") and not body.dryRun:
+        # Tasks and manifest deploys need the agent's task handler on SAP; without it the agent
+        # stops at sap_ping. Refuse early instead of spending model calls. The bootstrap installs it.
+        from sap_agent.sapx import SapxClient
+        ecfg = Config.from_env()
+        if not SapxClient(ecfg.host, creds.client or ecfg.client, creds.sap_user, creds.sap_password, ecfg.handler_path, ecfg.verify_ssl).node_alive():
+            raise HTTPException(409, f"The agent's SAP handler {ecfg.handler_path} is not answering on {creds.sid} yet. Finish the one-time setup first (Deploy -> Bootstrap with dry run off, then the SICF node, STVARV and role).")
     manifest = _resolve_manifest(body.manifest, body.kind == "bootstrap") if body.kind in ("deploy", "bootstrap") else ""
     params = {k: v for k, v in body.model_dump().items() if v not in ("", False)}
 
