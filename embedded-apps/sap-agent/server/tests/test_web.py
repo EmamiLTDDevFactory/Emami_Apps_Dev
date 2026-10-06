@@ -20,9 +20,9 @@ HUB_SECRET, SESSION_SECRET = "hub-secret", "session-secret"
 def web(tmp_path, monkeypatch):
     env = {
         "HUB_AUTH_JWT_SECRET": HUB_SECRET, "SESSION_SECRET": SESSION_SECRET, "HUB_ACCESS_API_BASE": "http://access.test/api",
-        "RUNS_DIR": str(tmp_path / "runs"), "SAP_HOST": "https://sap.test", "SAP_USER": "ZSRC_AGENT", "SAP_PASSWORD": "pw",
-        "SAP_ALLOWED_SIDS": "DEV", "SAP_ALLOWED_PACKAGES": "ZSRC", "SAP_APPROVAL": "prompt", "AUDIT_FILE": str(tmp_path / "audit.jsonl"),
-        "ANTHROPIC_API_KEY": "test", "APPROVAL_TIMEOUT_S": "20",
+        "RUNS_DIR": str(tmp_path / "runs"), "SAP_HOST": "https://sap.test", "SAP_USER": "", "SAP_PASSWORD": "",
+        "SAP_ALLOWED_SIDS": "EDS", "SAP_ALLOWED_PACKAGES": "ZEMAMI", "SAP_APPROVAL": "prompt", "AUDIT_FILE": str(tmp_path / "audit.jsonl"),
+        "APPROVAL_TIMEOUT_S": "20",
     }
     for k, v in env.items():
         monkeypatch.setenv(k, v)
@@ -32,17 +32,45 @@ def web(tmp_path, monkeypatch):
 
     from sap_agent.audit import Audit
     from sap_agent.guard import Guard
-    fakes = {"adt": FakeAdt(), "sapx": FakeSapx(), "script": []}
+    fakes = {"adt": FakeAdt(), "sapx": FakeSapx(sid="EDS"), "script": []}
 
     def fake_build(cfg, actor, approve):
         return Audit(cfg.audit_file, actor=actor), Guard(cfg, approve), fakes["adt"], fakes["sapx"]
 
-    def fake_agent(cfg, run, tb, audit, ctx=""):
+    def fake_agent(cfg, run, tb, audit, ctx="", api_key=""):
         from sap_agent.agent import Agent
+        assert api_key == "sk-ant-good"
+        fakes["sap_user_seen"] = cfg.user
         return Agent(FakeLLM(fakes["script"]), "m", tb, audit, 10, ctx)
 
     monkeypatch.setattr(appmod, "build", fake_build)
     monkeypatch.setattr(appmod, "_agent", fake_agent)
+    # SAP login check: the system id page and ADT discovery; the Anthropic key check.
+    fakes["sid"] = "EDS"
+    monkeypatch.setattr(appmod, "_sap_system_id", lambda cfg: fakes["sid"])
+    from sap_agent import adt as adtmod
+
+    def discovery(self):
+        if self.s.auth[1] == "bad":
+            raise adtmod.AdtError("unauthorized", 401, "")
+        return {}
+
+    monkeypatch.setattr(adtmod.AdtClient, "discovery", discovery)
+    import anthropic
+
+    class FakeAnthropic:
+        def __init__(self, api_key=None, **kw):
+            self.key = api_key
+            self.models = self
+
+        def list(self, limit=1):
+            if self.key != "sk-ant-good":
+                e = Exception("unauthorized")
+                e.status_code = 401
+                raise e
+            return []
+
+    monkeypatch.setattr(anthropic, "Anthropic", FakeAnthropic)
 
     roles = {"admin@emamigroup.com": "Admin", "user@emamigroup.com": "User"}
 
@@ -62,10 +90,14 @@ def hub(email, **extra):
     return jwt.encode({"email": email, "exp": int(time.time()) + 600, **extra}, HUB_SECRET, algorithm="HS256")
 
 
-def login(client, email="admin@emamigroup.com"):
+def login(client, email="admin@emamigroup.com", sap=True, key="sk-ant-good"):
     r = client.post("/api/session", json={"hubToken": hub(email)})
     assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    if sap:
+        s = client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "secret-pw", "anthropicKey": key})
+        assert s.status_code == 200, s.text
+    return h
 
 
 def wait(client, h, rid, until=("done", "failed", "stopped", "cancelled"), timeout=10):
@@ -88,17 +120,18 @@ def test_only_admins_get_a_session(web):
     h = login(client)
     cfg = client.get("/api/config", headers=h).json()
     assert cfg["user"] == "admin@emamigroup.com"
-    assert cfg["engine"]["passwordSet"] is True and "password" not in cfg["engine"]
+    assert cfg["sap"] == {"user": "JDOE", "sid": "EDS", "client": ""} and cfg["anthropicKeySet"] is True
+    assert "secret-pw" not in str(cfg) and "sk-ant-good" not in str(cfg)
 
 
 def test_task_run_streams_model_text_and_tool_calls(web):
     client, _, fakes = web
     fakes["script"] = [
         resp([{"type": "text", "text": "plan"}, tool("1", "sap_ping")], "tool_use"),
-        resp([tool("2", "sap_write_source", kind="class", name="ZCL_X", source="CLASS zcl_x.", package="ZSRC")], "tool_use"),
+        resp([tool("2", "sap_write_source", kind="class", name="ZCL_X", source="CLASS zcl_x.", package="ZEMAMI")], "tool_use"),
         resp([{"type": "text", "text": "done: created ZCL_X"}], "end_turn")]
     h = login(client)
-    rid = client.post("/api/runs", headers=h, json={"kind": "task", "task": "Create class ZCL_X in ZSRC"}).json()["id"]
+    rid = client.post("/api/runs", headers=h, json={"kind": "task", "task": "Create class ZCL_X in ZEMAMI"}).json()["id"]
     r = wait(client, h, rid)
     assert r["status"] == "done", r
     types = [e["type"] for e in r["eventList"]]
@@ -108,7 +141,9 @@ def test_task_run_streams_model_text_and_tool_calls(web):
     assert ("write", "class", "ZCL_X") in fakes["adt"].calls
     # the audit log names the person behind the run
     audit = open(os.environ["AUDIT_FILE"], encoding="utf-8").read()
-    assert "admin@emamigroup.com (as ZSRC_AGENT)" in audit
+    assert "admin@emamigroup.com (as JDOE)" in audit
+    assert fakes["sap_user_seen"] == "JDOE"
+    assert "secret-pw" not in audit and "sk-ant-good" not in audit
 
 
 def test_approval_waits_for_a_typed_yes(web):
@@ -159,11 +194,32 @@ def test_deploy_only_bundled_manifests_and_dry_run(web):
     assert any(e["type"] == "log" and "[dry-run]" in e["text"] for e in r["eventList"])
 
 
-def test_doctor_reports_missing_credentials(web, monkeypatch):
-    client, _, _ = web
-    monkeypatch.setenv("SAP_PASSWORD", "")
-    h = login(client)
+def test_sap_login_is_required_and_checked(web):
+    client, appmod, fakes = web
+    h = login(client, sap=False)
+    assert client.post("/api/runs", headers=h, json={"kind": "doctor"}).status_code == 428
+    bad = client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "bad"})
+    assert bad.status_code == 401 and "rejected" in bad.json()["detail"]
+    badkey = client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "pw", "anthropicKey": "sk-wrong"})
+    assert badkey.status_code == 401 and "Anthropic" in badkey.json()["detail"]
+    fakes["sid"] = "NWP"
+    wrong = client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "pw"})
+    assert wrong.status_code == 403 and "not an allowed development system" in wrong.json()["detail"]
+    fakes["sid"] = "EDS"
+    assert client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "pw", "sapClient": "1x"}).status_code == 422
+    ok = client.post("/api/sap/login", headers=h, json={"sapUser": "jdoe", "sapPassword": "pw", "sapClient": "200"})
+    assert ok.status_code == 200 and ok.json() == {"sapUser": "JDOE", "sid": "EDS", "client": "200", "anthropicKeySet": False}
+    # SAP only (no key): deploy works, the agent does not
+    assert client.post("/api/runs", headers=h, json={"kind": "task", "task": "Create class ZCL_X in ZEMAMI"}).status_code == 428
     rid = client.post("/api/runs", headers=h, json={"kind": "doctor"}).json()["id"]
-    r = wait(client, h, rid)
-    assert r["status"] == "failed"
-    assert any(e["type"] == "check" and not e["ok"] for e in r["eventList"])
+    wait(client, h, rid)
+    # sign out of SAP drops the credentials
+    assert client.post("/api/sap/logout", headers=h).status_code == 200
+    assert client.get("/api/config", headers=h).json()["sap"] is None
+    assert client.post("/api/runs", headers=h, json={"kind": "doctor"}).status_code == 428
+
+
+def test_credentials_never_show_in_repr():
+    from sap_agent_web.vault import Creds
+    c = Creds("JDOE", "secret-pw", "sk-ant-good", "EDS", 0)
+    assert "secret-pw" not in repr(c) and "sk-ant-good" not in repr(c)

@@ -44,9 +44,11 @@ from sap_agent.tools import ToolBox  # noqa: E402
 from . import auth  # noqa: E402
 from .engine import TOOL_NAMES, RunCancelled, WatchedToolBox, build, doctor, public_config  # noqa: E402
 from .runs import Run, RunManager  # noqa: E402
+from .vault import Creds, Vault  # noqa: E402
 
 S = WebSettings.from_env()
 RUNS = RunManager(S.runs_dir, S.approval_timeout_s)
+VAULT = Vault()
 STEP_LINE = re.compile(r"^(OK  |FAIL|TODO) (\S+) \(([\w]+)\)$")
 
 app = FastAPI(title="sap-agent", docs_url=None, redoc_url=None, openapi_url=None)
@@ -58,9 +60,13 @@ async def _auth_error(_: Request, e: auth.AuthError):
     return JSONResponse({"error": str(e)}, status_code=e.status)
 
 
-def admin(authorization: str = Header(default=""), token: str = Query(default="")) -> str:
+def admin(authorization: str = Header(default=""), token: str = Query(default="")) -> auth.SessionUser:
     m = re.match(r"^Bearer\s+(.+)$", authorization or "", re.I)
-    return auth.verify(S, m.group(1) if m else token)
+    return auth.verify_session(S, m.group(1) if m else token)
+
+
+def creds_of(user: auth.SessionUser) -> Optional[Creds]:
+    return VAULT.get(user.session_id) if user.session_id else None
 
 
 # ---- session ---------------------------------------------------------------------------------------
@@ -87,11 +93,82 @@ def session_dev(body: DevLogin):
     return auth.dev_login(S, body.email)
 
 
+# ---- SAP + Anthropic sign-in (typed in by the person, kept in memory only) ------------------------------
+class SapLogin(BaseModel):
+    sapUser: str = Field(min_length=1, max_length=40)
+    sapPassword: str = Field(min_length=1, max_length=200)
+    anthropicKey: str = Field(default="", max_length=300)
+    sapClient: str = Field(default="", pattern=r"^(\d{3})?$")
+
+
+def _sap_system_id(cfg: Config) -> str:
+    """System id from the unauthenticated /sap/public/info page (RFCSYSID)."""
+    import requests
+    try:
+        r = requests.get(f"{cfg.host}/sap/public/info", verify=cfg.verify_ssl, timeout=20)
+        m = re.search(r"<RFCSYSID>\s*([A-Z0-9]{3})\s*</RFCSYSID>", r.text)
+        return m.group(1) if m else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+@app.post("/api/sap/login")
+def sap_login(body: SapLogin, user: auth.SessionUser = Depends(admin)):
+    from sap_agent.adt import AdtClient, AdtError
+    from sap_agent.guard import Guard, PolicyError
+    cfg = Config.from_env()
+    if not cfg.host:
+        raise HTTPException(503, "SAP_HOST is not configured on the server.")
+    sap_user = body.sapUser.strip().upper()
+    if body.sapClient:
+        cfg.client = body.sapClient
+    sid = _sap_system_id(cfg)
+    try:
+        Guard(cfg).check_system(sid or "?")
+    except PolicyError:
+        raise HTTPException(403, f"{cfg.host} is system {sid or 'unknown'}, not an allowed development system ({', '.join(cfg.allowed_sids)}).")
+    try:
+        AdtClient(cfg.host, cfg.client, sap_user, body.sapPassword, cfg.verify_ssl).discovery()
+    except AdtError as e:
+        if getattr(e, "status", None) in (401, 403):
+            raise HTTPException(401, f"SAP {sid} rejected user {sap_user} or the password (HTTP {e.status}).")
+        raise HTTPException(502, f"SAP {sid} answered with an error: {str(e)[:200]}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Could not reach SAP at {cfg.host}: {e.__class__.__name__}")
+    key = body.anthropicKey.strip()
+    if key:
+        try:
+            import anthropic
+            anthropic.Anthropic(api_key=key).models.list(limit=1)
+        except Exception as e:  # noqa: BLE001
+            status = getattr(e, "status_code", None)
+            raise HTTPException(401 if status in (401, 403) else 502, "Anthropic rejected the API key." if status in (401, 403) else f"Could not check the Anthropic key ({e.__class__.__name__}).")
+    VAULT.put(user.session_id, Creds(sap_user, body.sapPassword, key, sid, user.expires, cfg.client))
+    run_audit = _engine_cfg()
+    from sap_agent.audit import Audit
+    Audit(run_audit.audit_file, actor=f"{user} (as {sap_user})").log("sap_login", sid=sid, anthropic=bool(key))
+    return {"sapUser": sap_user, "sid": sid, "client": cfg.client, "anthropicKeySet": bool(key)}
+
+
+@app.post("/api/sap/logout")
+def sap_logout(user: auth.SessionUser = Depends(admin)):
+    VAULT.drop(user.session_id)
+    return {"ok": True}
+
+
 # ---- configuration, health, capabilities -----------------------------------------------------------
 @app.get("/api/config")
-def config(email: str = Depends(admin)):
+def config(user: auth.SessionUser = Depends(admin)):
     cfg = Config.from_env()
-    return {"user": email, "engine": public_config(cfg), "anthropicKeySet": bool(os.environ.get("ANTHROPIC_API_KEY")), "active": (a.summary() if (a := RUNS.active()) else None)}
+    c = creds_of(user)
+    if c:
+        cfg.user, cfg.password = c.sap_user, "set"
+    return {
+        "user": str(user), "engine": public_config(cfg),
+        "sap": {"user": c.sap_user, "sid": c.sid, "client": c.client} if c else None,
+        "anthropicKeySet": bool(c and c.anthropic_key),
+        "active": (a.summary() if (a := RUNS.active()) else None),
+    }
 
 
 @app.get("/api/capabilities")
@@ -156,12 +233,12 @@ def _engine_cfg() -> Config:
     return cfg
 
 
-def _agent(cfg: Config, run: Run, tb: WatchedToolBox, audit, ctx: str = ""):
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise RuntimeError("ANTHROPIC_API_KEY is not set on the server.")
+def _agent(cfg: Config, run: Run, tb: WatchedToolBox, audit, ctx: str = "", api_key: str = ""):
+    if not api_key:
+        raise RuntimeError("Enter your Anthropic API key (SAP sign-in) to run the agent.")
     import anthropic
     from sap_agent.agent import Agent
-    return Agent(anthropic.Anthropic(), cfg.model, tb, audit, cfg.max_steps, ctx)
+    return Agent(anthropic.Anthropic(api_key=api_key), cfg.model, tb, audit, cfg.max_steps, ctx)
 
 
 def _say(run: Run):
@@ -184,15 +261,25 @@ def _resolve_manifest(rel: str, bootstrap: bool) -> str:
 
 
 @app.post("/api/runs")
-def start_run(body: RunRequest, email: str = Depends(admin)):
+def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
+    email = str(user)
     if body.kind == "task" and len(body.task.strip()) < 10:
         raise HTTPException(400, "Describe the task in a sentence or more.")
+    creds = creds_of(user)
+    if not creds:
+        raise HTTPException(428, "Sign in to SAP with your user ID and password first.")
+    needs_model = body.kind == "task" or body.repair or body.agent
+    if needs_model and not creds.anthropic_key:
+        raise HTTPException(428, "Enter your Anthropic API key to run the agent.")
     manifest = _resolve_manifest(body.manifest, body.kind == "bootstrap") if body.kind in ("deploy", "bootstrap") else ""
     params = {k: v for k, v in body.model_dump().items() if v not in ("", False)}
 
     def work(run: Run, approve) -> dict:
         cfg = _engine_cfg()
-        actor = f"{email} (as {cfg.user or 'agent'})"
+        cfg.user, cfg.password = creds.sap_user, creds.sap_password  # this person's own SAP login
+        if creds.client:
+            cfg.client = creds.client
+        actor = f"{email} (as {creds.sap_user})"
         audit, guard, adt, sapx = build(cfg, actor, approve)
         cancelled = lambda: run.cancel_requested  # noqa: E731
         audit.log("web_run", run=run.id, kind=body.kind, by=email)
@@ -204,7 +291,7 @@ def start_run(body: RunRequest, email: str = Depends(admin)):
 
         tb = WatchedToolBox(ToolBox(guard, adt, sapx, audit, approve), run.emit, cancelled)
         if body.kind == "task":
-            out = _agent(cfg, run, tb, audit, body.context).run(body.task, _say(run))
+            out = _agent(cfg, run, tb, audit, body.context, creds.anthropic_key).run(body.task, _say(run))
             return {"finalText": out.final_text, "steps": out.steps, "stopped": out.stopped, "_status": "done" if out.stopped == "end_turn" else "stopped"}
 
         m = Manifest.load(manifest)
@@ -220,7 +307,7 @@ def start_run(body: RunRequest, email: str = Depends(admin)):
 
         repair = runner = None
         if body.repair or body.agent:
-            ag = _agent(cfg, run, tb, audit)
+            ag = _agent(cfg, run, tb, audit, api_key=creds.anthropic_key)
             if body.repair:
                 repair = lambda step, err: ag.run(f"Deployment step '{step}' failed with: {err}\nFind the cause in the ABAP source or setup and fix it with the tools. Do not release anything.", _say(run)).stopped == "end_turn"  # noqa: E731
             runner = lambda prompt: ag.run(prompt, _say(run)).stopped == "end_turn"  # noqa: E731
@@ -261,23 +348,23 @@ class Decision(BaseModel):
 
 
 @app.post("/api/runs/{rid}/approvals/{aid}")
-def decide(rid: str, aid: str, body: Decision, email: str = Depends(admin)):
+def decide(rid: str, aid: str, body: Decision, email: auth.SessionUser = Depends(admin)):
     if body.approve and body.confirm.strip().lower() != "yes":
         raise HTTPException(400, "Type yes to approve.")
     r = _run(rid)
     try:
-        RUNS.decide(r, aid, body.approve, email)
+        RUNS.decide(r, aid, body.approve, str(email))
     except KeyError as e:
         raise HTTPException(409, str(e))
     return {"ok": True}
 
 
 @app.post("/api/runs/{rid}/cancel")
-def cancel(rid: str, email: str = Depends(admin)):
+def cancel(rid: str, email: auth.SessionUser = Depends(admin)):
     r = _run(rid)
     if r.status not in ("queued", "running", "waiting_approval"):
         raise HTTPException(409, "The run is not active.")
-    RUNS.cancel(r, email)
+    RUNS.cancel(r, str(email))
     return {"ok": True}
 
 

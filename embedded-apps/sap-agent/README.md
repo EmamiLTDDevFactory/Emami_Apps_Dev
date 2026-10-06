@@ -7,7 +7,7 @@ system (see [server/README.md](server/README.md) for what it can build and its s
 ```
 browser (hub origin, /apps/sap-agent)  --Bearer / SSE-->  sap-agent.emamiapps.in/dev  (nginx)
                                                               -> PM2 sap-agent-dev 127.0.0.1:4130  (server/, Python)
-                                                                   |-- ADT REST  https://10.17.10.12:4440/sap/bc/adt/...
+                                                                   |-- ADT REST  EDS https://10.17.10.13:4440/sap/bc/adt/...
                                                                    |-- task handler /sap/zsrc_agent/tasks
                                                                    +-- Anthropic API (model)
 ```
@@ -25,7 +25,16 @@ browser (hub origin, /apps/sap-agent)  --Bearer / SSE-->  sap-agent.emamiapps.in
   - the audit log names the person: actor `<email> (as ZSRC_AGENT)`;
   - deploy only runs manifests under `server/projects/` (no uploads); transports are never released from the web.
 
-Secrets (SAP password, Anthropic key, session secret) exist only in `server/.env` on the box - never in the browser.
+**Target system: EDS** (`emamidev.emami.local`, 10.17.10.13, instance 00, HTTPS 4440 - the box cannot resolve the
+name, so `SAP_HOST` uses the IP). Package **ZEMAMI** (`SAP_ALLOWED_PACKAGES`), `SAP_ALLOWED_SIDS=EDS`.
+
+**Per-person sign-in.** After the hub sign-in (Admin role), each person enters **their own SAP user ID and password**
+(optional client) and **their Anthropic API key**. The server checks them - the system id from `/sap/public/info` must
+be an allowed one, ADT discovery must accept the login, Anthropic must accept the key - and keeps them **only in memory
+for that session** (`sap_agent_web/vault.py`): never written to disk, never logged, never sent back to the browser,
+dropped on SAP sign-out, session expiry or a server restart. Every run uses the credentials of the person who started
+it, so SAP's own authorisations apply, and the audit actor is `<email> (as <SAP user>)`. The server `.env` holds no SAP
+user, password or Anthropic key.
 
 ## Server: run, test, deploy
 
@@ -40,9 +49,9 @@ On 172.17.2.21: `~/apps/sap-agent-dev/server`, PM2 process `sap-agent-dev`
 (`pm2 start .venv/bin/python --name sap-agent-dev -- -m uvicorn sap_agent_web.app:app --host 127.0.0.1 --port 4130`),
 bound to localhost; nginx template: `server/deploy/nginx-sap-agent.emamiapps.in.conf`.
 
-`.env` (server/.env.example has every key): `SAP_HOST`, `SAP_CLIENT`, `SAP_USER` / `SAP_PASSWORD` (technical user
-`ZSRC_AGENT`), `SAP_ALLOWED_SIDS`, `SAP_ALLOWED_PACKAGES`, `ANTHROPIC_API_KEY`, `HUB_AUTH_JWT_SECRET` (the matching hub's),
-`SESSION_SECRET`, `HUB_ACCESS_API_BASE`, `ALLOWED_ORIGINS`.
+`.env` (server/.env.example has every key): `SAP_HOST`, optional `SAP_CLIENT` (default shown in the sign-in form),
+`SAP_ALLOWED_SIDS=EDS`, `SAP_ALLOWED_PACKAGES=ZEMAMI`, `HUB_AUTH_JWT_SECRET` (the matching hub's), `SESSION_SECRET`,
+`HUB_ACCESS_API_BASE`, `ALLOWED_ORIGINS`. Leave `SAP_USER`, `SAP_PASSWORD` and `ANTHROPIC_API_KEY` empty (CLI only).
 
 ## UI
 
@@ -52,7 +61,7 @@ or a local server started with `ALLOW_DEV_LOGIN=true` (never on a server). Overr
 ## Before the first real run
 
 1. DNS: `sap-agent.emamiapps.in` -> same IP as `audit-capa-api.emamiapps.in`; then install the nginx site and certbot.
-2. SAP: user `ZSRC_AGENT` with role `Z_SRC_AGENT`; `sap-agent bootstrap` (Deploy -> bootstrap) and the SICF node
-   `/sap/zsrc_agent/tasks` (currently 404 on NGD), STVARV `ZSRC_AGENT_SIDS` / `ZSRC_AGENT_PACKAGES` (server/README.md).
-3. Server `.env`: `SAP_PASSWORD`, `SAP_CLIENT`, `ANTHROPIC_API_KEY`.
-4. Manage Access: give the Admin role on **SAP Agent** to the people who may use it.
+2. SAP EDS: the bootstrap (installs the handler classes in ZEMAMI) and the SICF node `/sap/zsrc_agent/tasks` (currently
+   404 on EDS), STVARV `ZSRC_AGENT_SIDS` = EDS and `ZSRC_AGENT_PACKAGES` = ZEMAMI (server/README.md). The people using the
+   agent need developer authorisations for ZEMAMI (S_DEVELOP, S_ADT_RES, transports) - or role Z_SRC_AGENT.
+3. Manage Access: give the Admin role on **SAP Agent** to the people who may use it.

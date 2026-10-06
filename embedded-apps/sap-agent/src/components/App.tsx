@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
-  Activity, AlertTriangle, ArrowLeft, Bot, Calendar, History, Menu, Play, Rocket, ScrollText, ShieldCheck, Stethoscope, User, X, type LucideIcon,
+  Activity, AlertTriangle, ArrowLeft, Bot, Calendar, History, KeyRound, LogIn, LogOut, Menu, Play, Rocket, ScrollText, ShieldCheck, Stethoscope, User, X, type LucideIcon,
 } from 'lucide-react';
-import { ACTIVE, api, ApiError, BASE_PATH, signIn, type AuditEntry, type Capability, type EngineConfig, type ManifestInfo, type RunSummary } from '@/lib/api';
+import { ACTIVE, api, ApiError, BASE_PATH, signIn, type AppConfig, type AuditEntry, type Capability, type ManifestInfo, type RunSummary } from '@/lib/api';
 import RunView, { StatusPill } from './RunView';
 import { Button, Card, cx, Empty, inputBase, inputCls, Pill, Toggle } from './ui';
 
@@ -30,7 +30,7 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [view, setView] = useState<View>('agent');
   const [runId, setRunId] = useState<string | null>(null);
-  const [cfg, setCfg] = useState<{ engine: EngineConfig; anthropicKeySet: boolean; active: RunSummary | null } | null>(null);
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
 
@@ -118,25 +118,30 @@ export default function App() {
             </button>
           )}
           <div className="flex-1" />
+          {cfg?.sap ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-good/30 bg-good/10 px-2.5 py-1 text-[11.5px] font-bold text-good" title={`Signed in to SAP ${cfg.sap.sid} as ${cfg.sap.user}${cfg.anthropicKeySet ? ' · Anthropic key set' : ''}`}>
+              <KeyRound size={13} /> {cfg.sap.user} @ {cfg.sap.sid}{cfg.sap.client ? `/${cfg.sap.client}` : ''}
+              <button type="button" className="ml-1 text-good/70 hover:text-bad" onClick={() => api.sapLogout().then(loadCfg)} aria-label="Sign out of SAP" title="Sign out of SAP"><LogOut size={13} /></button>
+            </span>
+          ) : cfg && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11.5px] font-bold text-warn"><KeyRound size={13} /> Not signed in to SAP</span>
+          )}
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 sm:flex" title={email}><User size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{nameFromEmail(email)}</span></div>
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 md:flex"><Calendar size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{today}</span></div>
         </header>
         <main className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3 lg:p-5">
           <div className="mx-auto max-w-6xl">
-            {view === 'agent' && <AgentView cfg={cfg} onStarted={openRun} />}
-            {view === 'deploy' && <DeployView onStarted={openRun} />}
+            {(view === 'agent' || view === 'deploy') && cfg && (!cfg.sap || (view === 'agent' && !cfg.anthropicKeySet)) && <SapLogin cfg={cfg} needKey={view === 'agent'} onDone={loadCfg} />}
+            {view === 'agent' && cfg?.sap && cfg.anthropicKeySet && <AgentView cfg={cfg} onStarted={openRun} />}
+            {view === 'deploy' && cfg?.sap && <DeployView onStarted={openRun} />}
             {view === 'runs' && (runId ? <RunPage runId={runId} onBack={() => setRunId(null)} onFinished={loadCfg} /> : <RunsList onOpen={openRun} />)}
-            {view === 'health' && <HealthView cfg={cfg} onStarted={openRun} />}
+            {view === 'health' && <HealthView cfg={cfg} onStarted={openRun} onSignedIn={loadCfg} />}
             {view === 'audit' && <AuditView />}
           </div>
         </main>
       </div>
     </div>
   );
-}
-
-function Banner({ children, tone = 'warn' }: { children: ReactNode; tone?: 'warn' | 'bad' }) {
-  return <div className={cx('mb-3 flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm', tone === 'bad' ? 'border-bad/30 bg-bad/[0.05] text-bad' : 'border-warn/30 bg-warn/[0.06]')}><AlertTriangle size={16} className="mt-0.5 shrink-0 text-warn" /><div>{children}</div></div>;
 }
 
 function useStart(onStarted: (id: string) => void) {
@@ -157,7 +162,7 @@ function useStart(onStarted: (id: string) => void) {
   return { busy, err, start };
 }
 
-function AgentView({ cfg, onStarted }: { cfg: { engine: EngineConfig; anthropicKeySet: boolean; active: RunSummary | null } | null; onStarted: (id: string) => void }) {
+function AgentView({ cfg, onStarted }: { cfg: AppConfig; onStarted: (id: string) => void }) {
   const [task, setTask] = useState('');
   const [context, setContext] = useState('');
   const [showCtx, setShowCtx] = useState(false);
@@ -165,8 +170,6 @@ function AgentView({ cfg, onStarted }: { cfg: { engine: EngineConfig; anthropicK
   const e = cfg?.engine;
   return (
     <>
-      {cfg && !cfg.anthropicKeySet && <Banner tone="bad">The server has no ANTHROPIC_API_KEY, so agent tasks cannot run yet. Deploy (without repair) and Health still work.</Banner>}
-      {e && !e.passwordSet && <Banner tone="bad">The server has no SAP password for {e.user || 'the agent user'}; nothing can reach SAP yet.</Banner>}
       <Card title="What should the agent build or fix?">
         <textarea
           className={cx(inputBase, 'h-36 w-full resize-y py-2 leading-relaxed')}
@@ -184,7 +187,7 @@ function AgentView({ cfg, onStarted }: { cfg: { engine: EngineConfig; anthropicK
         {showCtx && <textarea className={cx(inputBase, 'mt-2 h-28 w-full resize-y py-2 text-xs')} placeholder="Background the agent should know: design notes, naming, the tables involved…" value={context} onChange={(ev) => setContext(ev.target.value)} aria-label="Project context" />}
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-3">
           <Button variant="primary" className="px-5" disabled={busy || task.trim().length < 10} onClick={() => start({ kind: 'task', task, context })}><Play size={14} /> Run agent</Button>
-          {e && <span className="text-xs text-muted">On <span className="font-mono">{e.host}</span> client {e.client} as {e.user} · packages {e.allowedPackages.join(', ')} · max {e.maxSteps} steps · approvals: {e.approval}</span>}
+          {e && <span className="text-xs text-muted">On SAP {cfg.sap?.sid} (<span className="font-mono">{e.host}</span>, client {e.client}) as <strong>{cfg.sap?.user}</strong> · package {e.allowedPackages.join(', ')} · max {e.maxSteps} steps · approvals: {e.approval}</span>}
           {err && <span className="text-sm text-bad" role="alert">{err}</span>}
         </div>
       </Card>
@@ -296,7 +299,7 @@ function RunPage({ runId, onBack, onFinished }: { runId: string; onBack: () => v
   );
 }
 
-function HealthView({ cfg, onStarted }: { cfg: { engine: EngineConfig; anthropicKeySet: boolean; active: RunSummary | null } | null; onStarted: (id: string) => void }) {
+function HealthView({ cfg, onStarted, onSignedIn }: { cfg: AppConfig | null; onStarted: (id: string) => void; onSignedIn: () => void }) {
   const [caps, setCaps] = useState<Capability[]>([]);
   const { busy, err, start } = useStart(onStarted);
   useEffect(() => {
@@ -308,14 +311,15 @@ function HealthView({ cfg, onStarted }: { cfg: { engine: EngineConfig; anthropic
   );
   return (
     <div className="grid gap-3">
-      <Card title="Connection" actions={<Button variant="primary" disabled={busy} onClick={() => start({ kind: 'doctor' })}><Stethoscope size={14} /> Run doctor</Button>}>
+      {cfg && !cfg.sap && <SapLogin cfg={cfg} needKey={false} onDone={onSignedIn} />}
+      <Card title="Connection" actions={<Button variant="primary" disabled={busy || !cfg?.sap} onClick={() => start({ kind: 'doctor' })}><Stethoscope size={14} /> Run doctor</Button>}>
         {err && <p className="mb-2 text-sm text-bad">{err}</p>}
         {e ? (
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 md:grid-cols-4">
             {row('SAP host', <span className="break-all font-mono text-xs">{e.host || '—'}</span>)}
-            {row('Client / user', `${e.client} / ${e.user || '—'}`)}
-            {row('Password on server', e.passwordSet ? <Pill tone="good">set</Pill> : <Pill tone="bad">missing</Pill>)}
-            {row('Anthropic key', cfg?.anthropicKeySet ? <Pill tone="good">set</Pill> : <Pill tone="bad">missing</Pill>)}
+            {row('Client', e.client || '—')}
+            {row('Your SAP login', cfg?.sap ? <Pill tone="good">{cfg.sap.user} @ {cfg.sap.sid}</Pill> : <Pill tone="warn">not signed in</Pill>)}
+            {row('Your Anthropic key', cfg?.anthropicKeySet ? <Pill tone="good">set for this session</Pill> : <Pill tone="warn">not set</Pill>)}
             {row('Allowed systems', e.allowedSids.join(', ') || <span className="text-bad">none set</span>)}
             {row('Allowed packages', e.allowedPackages.join(', '))}
             {row('Mode', e.readOnly ? 'read-only' : 'read and write')}
@@ -376,6 +380,67 @@ function AuditView() {
         </table>
       </div>
     </Card>
+  );
+}
+
+/** SAP user ID + password for the development system, and the Anthropic API key. Sent once to the
+ * SAP Agent server, which checks them against SAP and Anthropic and keeps them in memory for this
+ * session only (never stored, never sent back). */
+function SapLogin({ cfg, needKey, onDone }: { cfg: AppConfig; needKey: boolean; onDone: () => void }) {
+  const [user, setUser] = useState(cfg.sap?.user ?? '');
+  const [pw, setPw] = useState('');
+  const [key, setKey] = useState('');
+  const [client, setClient] = useState(cfg.sap?.client || cfg.engine.client || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const sid = cfg.engine.allowedSids.join('/') || 'development';
+  const submit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setBusy(true);
+    setErr('');
+    try {
+      await api.sapLogin(user.trim(), pw, key.trim(), client.trim());
+      setPw('');
+      setKey('');
+      onDone();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="mx-auto mb-4 max-w-xl rounded-2xl border border-line bg-panel p-6 shadow-card">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-deep text-white"><KeyRound size={18} /></span>
+        <div>
+          <h2 className="text-[15px] font-extrabold">Sign in to SAP {sid}</h2>
+          <p className="text-xs text-muted">{cfg.sap && needKey ? 'Add your Anthropic API key to run the agent (sign in again with your SAP password).' : 'The agent works on SAP with your own user and authorisations.'}</p>
+        </div>
+      </div>
+      <form className="grid gap-3" onSubmit={submit}>
+        <div className="grid grid-cols-[1fr_110px] gap-3">
+          <label className="text-xs font-bold text-muted">SAP user ID
+            <input className={cx(inputCls, 'mt-1 uppercase')} autoComplete="username" value={user} onChange={(e) => setUser(e.target.value)} required maxLength={40} />
+          </label>
+          <label className="text-xs font-bold text-muted">Client
+            <input className={cx(inputCls, 'mt-1 font-mono')} inputMode="numeric" placeholder="default" pattern="\d{3}" maxLength={3} value={client} onChange={(e) => setClient(e.target.value.replace(/\D/g, ''))} />
+          </label>
+        </div>
+        <label className="text-xs font-bold text-muted">SAP password
+          <input className={cx(inputCls, 'mt-1')} type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required />
+        </label>
+        <label className="text-xs font-bold text-muted">Anthropic API key {needKey ? '' : '(needed for agent tasks and repair)'}
+          <input className={cx(inputCls, 'mt-1 font-mono')} type="password" autoComplete="off" placeholder="sk-ant-…" value={key} onChange={(e) => setKey(e.target.value)} required={needKey} />
+        </label>
+        <Button type="submit" variant="primary" disabled={busy || !user || !pw || (needKey && !key)}><LogIn size={14} /> {busy ? 'Checking with SAP…' : 'Sign in'}</Button>
+        {err && <p className="text-sm text-bad" role="alert">{err}</p>}
+        <p className="text-[11px] leading-snug text-faint">
+          Checked against SAP {sid} and Anthropic, then kept only in the SAP Agent server&apos;s memory for this session - never stored on disk, never shown again, cleared when you
+          sign out of SAP or the session ends. Every change is audited as {cfg.user} (as your SAP user).
+        </p>
+      </form>
+    </section>
   );
 }
 

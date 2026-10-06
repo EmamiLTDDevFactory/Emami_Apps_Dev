@@ -131,8 +131,20 @@ export interface AuditEntry { ts: string; actor: string; event: string; [k: stri
 
 export const ACTIVE: RunStatus[] = ['queued', 'running', 'waiting_approval'];
 
+export interface AppConfig {
+  user: string;
+  engine: EngineConfig;
+  /** this person's SAP login for the session (credentials stay on the server, in memory) */
+  sap: { user: string; sid: string; client: string } | null;
+  anthropicKeySet: boolean;
+  active: RunSummary | null;
+}
+
 export const api = {
-  config: () => call<{ user: string; engine: EngineConfig; anthropicKeySet: boolean; active: RunSummary | null }>('/api/config'),
+  config: () => call<AppConfig>('/api/config'),
+  sapLogin: (sapUser: string, sapPassword: string, anthropicKey: string, sapClient: string) =>
+    call<{ sapUser: string; sid: string; client: string; anthropicKeySet: boolean }>('/api/sap/login', { method: 'POST', body: JSON.stringify({ sapUser, sapPassword, anthropicKey, sapClient }) }),
+  sapLogout: () => call<{ ok: boolean }>('/api/sap/logout', { method: 'POST' }),
   capabilities: () => call<{ capabilities: Capability[] }>('/api/capabilities'),
   manifests: () => call<{ manifests: ManifestInfo[]; bootstrap: string }>('/api/manifests'),
   runs: () => call<{ runs: RunSummary[] }>('/api/runs'),

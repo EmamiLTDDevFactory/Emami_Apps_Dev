@@ -60,9 +60,32 @@ def dev_login(s: WebSettings, email: str) -> dict:
 
 
 def issue(s: WebSettings, email: str) -> dict:
+    import uuid
     exp = int(time.time()) + s.session_hours * 3600
-    token = jwt.encode({"sub": email, "email": email, "role": "Admin", "exp": exp}, s.session_secret, algorithm="HS256")
+    sid = uuid.uuid4().hex  # session id: the key of this person's typed-in SAP / Anthropic credentials
+    token = jwt.encode({"sub": email, "email": email, "role": "Admin", "sid": sid, "exp": exp}, s.session_secret, algorithm="HS256")
     return {"token": token, "email": email, "expiresAt": exp * 1000}
+
+
+class SessionUser(str):
+    """The signed-in email, carrying the session id and expiry."""
+    session_id: str = ""
+    expires: float = 0.0
+
+
+def verify_session(s: WebSettings, token: str) -> SessionUser:
+    if not token:
+        raise AuthError(401, "Not signed in.")
+    try:
+        p = jwt.decode(token, s.session_secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise AuthError(401, "Your session has expired. Reload the page.")
+    if p.get("role") != "Admin":
+        raise AuthError(403, "Admins only.")
+    u = SessionUser(str(p["email"]))
+    u.session_id = str(p.get("sid") or "")
+    u.expires = float(p.get("exp") or 0)
+    return u
 
 
 def verify(s: WebSettings, token: str) -> str:

@@ -66,7 +66,7 @@ def doctor(cfg: Config, adt: AdtClient, sapx: SapxClient, guard: Guard) -> dict:
             "packages": "/sap/bc/adt/packages", "activation": "/sap/bc/adt/activation", "check runs": "/sap/bc/adt/checkruns",
             "transports": "/sap/bc/adt/cts/transportrequests", "ABAP Unit": "/sap/bc/adt/abapunit/testruns"}
     if not cfg.host or not cfg.user or not cfg.password:
-        return {"ready": False, "checks": [{"name": "SAP connection settings", "ok": False, "detail": "SAP_HOST, SAP_USER and SAP_PASSWORD must be set on the server."}]}
+        return {"ready": False, "checks": [{"name": "SAP connection settings", "ok": False, "detail": "SAP_HOST must be set on the server and you must be signed in to SAP."}]}
     try:
         disc = adt.discovery()
         for label, href in need.items():
