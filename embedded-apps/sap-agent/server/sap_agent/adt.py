@@ -164,7 +164,7 @@ def parse_unit(body: str) -> dict:
 
 
 def parse_request_number(body: str) -> str:
-    m = re.search(r'tm:number="([A-Z0-9]{3}K\d{6})"', body) or re.search(r"/([A-Z0-9]{3}K\d{6})", body)
+    m = re.search(r'tm:number="([A-Z0-9]{3}K[A-Z0-9]{6})"', body) or re.search(r"/([A-Z0-9]{3}K[A-Z0-9]{6})", body)
     if not m:
         raise AdtError("no transport number in response", body=body[:500])
     return m.group(1)

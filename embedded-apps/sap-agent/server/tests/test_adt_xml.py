@@ -88,11 +88,11 @@ def test_transport_falls_back_to_the_750_cts_resource():
             self.calls.append((url, headers.get("Content-Type", ""), data))
             if "/cts/transportrequests" in url:
                 return R(400, "<exc:exception>user action is not supported</exc:exception>")
-            return R(200, "/com.sap.cts/object_record/EDSK900123")
+            return R(200, "/com.sap.cts/object_record/EDSK9B0DQL")
 
     s = S()
     c = AdtClient("https://sap", "", "IT_FCOMMON", "", session=s)
-    assert c.create_transport("SAP agent bootstrap", package="zemami") == "EDSK900123"
+    assert c.create_transport("SAP agent bootstrap", package="zemami") == "EDSK9B0DQL"
     url, ctype, body = s.calls[-1]
     assert "/sap/bc/adt/cts/transports?" in url and "CreateCorrectionRequest" in ctype
     assert b"<DEVCLASS>ZEMAMI</DEVCLASS>" in body and b"SAP agent bootstrap" in body

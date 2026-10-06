@@ -244,7 +244,7 @@ class RunRequest(BaseModel):
     keepGoing: bool = False
     repair: bool = False
     agent: bool = False
-    transport: str = Field(default="", pattern="^([A-Za-z0-9]{3}[Kk][0-9]{6})?$")
+    transport: str = Field(default="", pattern="^([A-Za-z0-9]{3}[Kk][A-Za-z0-9]{6})?$")
 
 
 def _engine_cfg() -> Config:

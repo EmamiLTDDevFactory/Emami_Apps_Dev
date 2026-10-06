@@ -288,7 +288,7 @@ function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: stri
           <label className="text-xs font-bold text-muted">Existing transport (optional)
             <input className={cx(inputCls, 'mt-1 font-mono uppercase')} placeholder="e.g. EDSK900123 - blank creates one" value={opts.transport} onChange={(e) => setOpts({ ...opts, transport: e.target.value })} />
           </label>
-          <Button variant="primary" disabled={busy || !sel || (!ready && !opts.dryRun) || !/^([A-Za-z0-9]{3}K\d{6})?$/i.test(opts.transport.trim())} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts, transport: opts.transport.trim().toUpperCase() })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
+          <Button variant="primary" disabled={busy || !sel || (!ready && !opts.dryRun) || !/^([A-Za-z0-9]{3}K[A-Za-z0-9]{6})?$/i.test(opts.transport.trim())} onClick={() => start({ kind: 'deploy', manifest: sel, ...opts, transport: opts.transport.trim().toUpperCase() })}><Rocket size={14} /> {opts.dryRun ? 'Show the plan' : 'Deploy to SAP DEV'}</Button>
           {!opts.dryRun && <p className="text-xs text-warn">This creates and activates objects on the SAP development system.</p>}
           {startErr && <p className="text-sm text-bad" role="alert">{startErr}</p>}
         </div>
@@ -302,7 +302,7 @@ function DeployView({ ready, onStarted }: { ready: boolean; onStarted: (id: stri
 function BootstrapCard({ start, busy }: { start: (b: Record<string, unknown>) => Promise<void>; busy: boolean }) {
   const [dry, setDry] = useState(true);
   const [tr, setTr] = useState('');
-  const trOk = /^([A-Za-z0-9]{3}K\d{6})?$/i.test(tr.trim());
+  const trOk = /^([A-Za-z0-9]{3}K[A-Za-z0-9]{6})?$/i.test(tr.trim());
   return (
     <section className="rounded-2xl border border-accent/30 bg-accent/[0.04] p-4 shadow-card lg:col-span-2">
       <div className="flex flex-wrap items-center gap-3">
