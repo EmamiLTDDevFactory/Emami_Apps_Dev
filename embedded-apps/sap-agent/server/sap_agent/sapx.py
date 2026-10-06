@@ -169,7 +169,14 @@ class AdtRunnerClient:
         try:
             self.trace = []
             self._write(runner_test_source(payload, nonce=nonce))
+            self.trace.append(f"saved has id: {self._has(nonce, 'inactive')}")
             msgs = self._activate()
+            if not has_errors(msgs) and self._has(nonce, "active") is not True:
+                # same call the bootstrap uses (that one does activate on EDS)
+                self.trace.append("active lacks id - retry like the bootstrap")
+                msgs = self.adt.activate([("class", self.runner)])
+                self.trace.append(f"activate#2 {len(msgs)} msg" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3]))
+                self.trace.append(f"active has id: {self._has(nonce, 'active')}")
             if has_errors(msgs):
                 raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
             r = self.adt._req("POST", "/sap/bc/adt/abapunit/testruns", data=unit_xml([object_uri("class", self.runner)]),
@@ -195,6 +202,15 @@ class AdtRunnerClient:
         self.trace.append(f"activate {r.status_code}" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3])
                           + (f" body={r.text[:400]}" if r.text.strip() and not msgs else ""))
         return msgs
+
+    def _has(self, nonce: str, version: str):
+        """Whether that version of the class source carries this request's id (None when it cannot be read)."""
+        from .adt import object_uri
+        try:
+            r = self.adt._req("GET", f"{object_uri('class', self.runner)}/source/main?version={version}", headers={"Accept": "text/plain"}, ok=(200, 404))
+        except Exception as e:  # noqa: BLE001
+            return f"? {str(e)[:80]}"
+        return None if r.status_code == 404 else (nonce in r.text)
 
     def node_alive(self) -> bool:
         """True when the runner class exists (the bootstrap installed it)."""

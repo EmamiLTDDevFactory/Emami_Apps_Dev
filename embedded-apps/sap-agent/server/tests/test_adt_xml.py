@@ -138,6 +138,9 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
                 return R(200, "<LOCK_HANDLE>H1</LOCK_HANDLE><CORRNR>EDSK9B0DQN</CORRNR>")
             if method == "GET" and path.endswith("/includes/testclasses"):
                 return R(200, "old")
+            if method == "GET" and "/source/main" in path:
+                puts = [d for m, p, d in self.calls if m == "PUT" and p.endswith("/source/main")]
+                return R(200, puts[-1] if puts else "")
             if path.startswith("/sap/bc/adt/abapunit/testruns"):
                 import re as _re
                 src = [d for m, p, d in self.calls if m == "PUT" and p.endswith("/source/main")][-1]
