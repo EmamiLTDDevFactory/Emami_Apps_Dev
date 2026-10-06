@@ -5,7 +5,8 @@
  * their events and answers approvals.
  *
  * Server URL: NEXT_PUBLIC_SAP_AGENT_API, else per hostname - localhost -> http://localhost:4130,
- * dev.* -> https://sap-agent.emamiapps.in/dev, otherwise https://sap-agent.emamiapps.in.
+ * dev.* -> https://audit-capa-api.emamiapps.in/dev-api/sap-agent (nginx on 172.17.2.21 -> PM2
+ * sap-agent-dev :4130, same pattern as Rate Auction), otherwise .../api/sap-agent (prod, not deployed).
  */
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
@@ -14,7 +15,7 @@ export function apiBase(): string {
   if (env) return env.replace(/\/+$/, '');
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
   if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:4130';
-  return host.includes('dev') ? 'https://sap-agent.emamiapps.in/dev' : 'https://sap-agent.emamiapps.in';
+  return `https://audit-capa-api.emamiapps.in${host.includes('dev') ? '/dev-api/sap-agent' : '/api/sap-agent'}`;
 }
 
 const HUB_EMAIL_KEY = 'emami_apps_user_email';

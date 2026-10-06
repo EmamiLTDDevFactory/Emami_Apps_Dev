@@ -5,7 +5,7 @@ Hub tile **SAP Agent** (category IT, `/apps/sap-agent`, Manage Access app id `sa
 system (see [server/README.md](server/README.md) for what it can build and its safety rails).
 
 ```
-browser (hub origin, /apps/sap-agent)  --Bearer / SSE-->  sap-agent.emamiapps.in/dev  (nginx)
+browser (hub origin, /apps/sap-agent)  --Bearer / SSE-->  audit-capa-api.emamiapps.in/dev-api/sap-agent/  (nginx)
                                                               -> PM2 sap-agent-dev 127.0.0.1:4130  (server/, Python)
                                                                    |-- ADT REST  EDS https://10.17.10.13:4440/sap/bc/adt/...
                                                                    |-- task handler /sap/zsrc_agent/tasks
@@ -47,7 +47,8 @@ cp .env.example .env                               # fill in, see below
 
 On 172.17.2.21: `~/apps/sap-agent-dev/server`, PM2 process `sap-agent-dev`
 (`pm2 start .venv/bin/python --name sap-agent-dev -- -m uvicorn sap_agent_web.app:app --host 127.0.0.1 --port 4130`),
-bound to localhost; nginx template: `server/deploy/nginx-sap-agent.emamiapps.in.conf`.
+bound to localhost; nginx: `location /dev-api/sap-agent/` in the existing `audit-capa-api.emamiapps.in` site (strip
+prefix, `proxy_buffering off`, `proxy_read_timeout 1h`) - see `server/deploy/nginx-location.conf`.
 
 `.env` (server/.env.example has every key): `SAP_HOST`, optional `SAP_CLIENT` (default shown in the sign-in form),
 `SAP_ALLOWED_SIDS=EDS`, `SAP_ALLOWED_PACKAGES=ZEMAMI`, `HUB_AUTH_JWT_SECRET` (the matching hub's), `SESSION_SECRET`,
@@ -60,8 +61,7 @@ or a local server started with `ALLOW_DEV_LOGIN=true` (never on a server). Overr
 
 ## Before the first real run
 
-1. DNS: `sap-agent.emamiapps.in` -> same IP as `audit-capa-api.emamiapps.in`; then install the nginx site and certbot.
-2. SAP EDS: the bootstrap (installs the handler classes in ZEMAMI) and the SICF node `/sap/zsrc_agent/tasks` (currently
+1. SAP EDS: the bootstrap (installs the handler classes in ZEMAMI) and the SICF node `/sap/zsrc_agent/tasks` (currently
    404 on EDS), STVARV `ZSRC_AGENT_SIDS` = EDS and `ZSRC_AGENT_PACKAGES` = ZEMAMI (server/README.md). The people using the
    agent need developer authorisations for ZEMAMI (S_DEVELOP, S_ADT_RES, transports) - or role Z_SRC_AGENT.
-3. Manage Access: give the Admin role on **SAP Agent** to the people who may use it.
+2. Manage Access: give the Admin role on **SAP Agent** to the people who may use it.
