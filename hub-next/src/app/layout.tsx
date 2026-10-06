@@ -1,13 +1,18 @@
 import type { Metadata } from 'next';
-import { Montserrat } from 'next/font/google';
+import localFont from 'next/font/local';
 import Providers from '../components/Providers';
 import './globals.css';
 
 // Montserrat everywhere (sans and the former serif tokens alike), matching the reference Emami
-// Apps home screen's typeface.
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+// Apps home screen's typeface. Self-hosted (variable font, latin, weights 100-900, OFL-1.1, from
+// @fontsource-variable/montserrat 5.3.0) instead of next/font/google: the Google loader downloads
+// the font CSS at BUILD time, and on Amplify that download failed ("An error occurred in next/font
+// ... Cannot read properties of null (reading '1')"), failing the whole PRD build. Same CSS
+// variable, same preload / fallback metrics, no network at build time.
+const montserrat = localFont({
+  src: './fonts/montserrat-latin-wght-normal.woff2',
+  weight: '100 900',
+  style: 'normal',
   variable: '--font-montserrat',
   display: 'swap',
 });
