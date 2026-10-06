@@ -258,6 +258,16 @@ class AdtClient:
             raise
         return parse_package(r.text) or "(unknown)"
 
+    def package_exists(self, name: str) -> bool:
+        """Older releases (e.g. 7.50) have no ADT package resource, so a 404 there proves nothing: fall back to the repository search."""
+        if self.package_of("package", name) is not None:
+            return True
+        try:
+            hits = self.search(f"{name.upper()}&objectType=DEVC/K", 10)
+        except AdtError:
+            return False
+        return any((h.get("name") or "").upper() == name.upper() and (h.get("type") or "").startswith("DEVC") for h in hits)
+
     def read_source(self, kind: str, name: str) -> str:
         return self._req("GET", object_uri(kind, name) + "/source/main", headers={"Accept": "text/plain"}).text
 

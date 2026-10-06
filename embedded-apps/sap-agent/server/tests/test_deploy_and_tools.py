@@ -258,3 +258,15 @@ def test_agent_step_limit(parts):
     llm = FakeLLM([resp([tool("1", "sap_ping")], "tool_use")])
     out = Agent(llm, "m", ToolBox(g, adt, sapx, audit), audit, max_steps=4).run("ping forever")
     assert out.stopped == "max_steps" and out.steps == 4
+
+
+def test_package_step_continues_when_adt_has_no_package_resource(parts, tmp_path):
+    from sap_agent.adt import AdtError
+    g, adt, sapx, audit = parts
+    def no_resource(*a, **k):
+        raise AdtError("POST /sap/bc/adt/packages -> 404", 404, "No suitable resource found")
+    adt.create = no_resource
+    adt.package_exists = lambda name: False
+    d = Deployer(small_manifest(tmp_path), g, adt, sapx, audit, log=lambda s: None)
+    r = d._do_package({"id": "pkg", "type": "package"})
+    assert r["exists"] == "ZSRC" and r["unverified"]

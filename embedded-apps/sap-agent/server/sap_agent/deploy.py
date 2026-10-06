@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional
 
 import yaml
 
-from .adt import AdtClient, has_errors
+from .adt import AdtClient, AdtError, has_errors
 from .audit import Audit
 from .checklists import checklist
 from .recipes import RECIPES
@@ -118,12 +118,19 @@ class Deployer:
     def _do_package(self, s):
         p = self.m.data["package"]
         name = self._pkg()
-        if self.adt.package_of("package", name) is not None:
+        if self.adt.package_exists(name):
             return {"exists": name}
         self.g.check_write("package")
-        self.adt.create("package", name, p.get("description", name), name, self.ctx["request"],
-                        {"software_component": p.get("software_component", "HOME"), "transport_layer": p.get("transport_layer", ""),
-                         "super_package": p.get("super_package", "")})
+        try:
+            self.adt.create("package", name, p.get("description", name), name, self.ctx["request"],
+                            {"software_component": p.get("software_component", "HOME"), "transport_layer": p.get("transport_layer", ""),
+                             "super_package": p.get("super_package", "")})
+        except AdtError as e:
+            if e.status != 404:
+                raise
+            # No ADT package resource on this release (7.50): the package is assumed to exist (create it in SE21 otherwise);
+            # the first object created in it fails clearly if it does not.
+            return {"exists": name, "unverified": True, "note": f"this SAP release cannot read or create packages over ADT; {name} must already exist (SE21)"}
         return {"created": name}
 
     def _do_transport(self, s):

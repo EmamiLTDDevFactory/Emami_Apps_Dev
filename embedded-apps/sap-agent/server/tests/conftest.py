@@ -23,6 +23,9 @@ class FakeAdt:
     def package_of(self, kind, name):
         return self.pkg.get((kind, name.upper()))
 
+    def package_exists(self, name):
+        return self.package_of("package", name) is not None
+
     def exists(self, kind, name):
         return (kind, name.upper()) in self.pkg
 
