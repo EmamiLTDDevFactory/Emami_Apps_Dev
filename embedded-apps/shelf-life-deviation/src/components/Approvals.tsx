@@ -140,7 +140,8 @@ export default function Approvals() {
 
     if (sStatus === "A") {
       const oNow = new Date();
-      oPayload.ApprName = getLoggedInUser();
+      // oPayload.ApprName = getLoggedInUser();
+      oPayload.ApprName = "";
       oPayload.ApprDate = oNow;
       oPayload.ApprTime = formatODataTime(oNow);
     }
