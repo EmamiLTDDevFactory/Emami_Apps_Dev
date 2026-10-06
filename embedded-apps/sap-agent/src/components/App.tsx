@@ -214,6 +214,7 @@ function DeployView({ onStarted }: { onStarted: (id: string) => void }) {
   const m = list.find((x) => x.path === sel);
   return (
     <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
+      <BootstrapCard start={start} busy={busy} />
       <Card title="Project manifest">
         {err && <p className="text-sm text-bad">{err}</p>}
         {list.length === 0 && !err && <Empty title="No manifests on the server">Add one under server/projects/ (see the README).</Empty>}
@@ -255,6 +256,28 @@ function DeployView({ onStarted }: { onStarted: (id: string) => void }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** One-time per system: installs the agent's SAP-side task handler (classes ZCL_SRC_AGENT_TASKS and
+ * ZCL_SRC_AGENT_HTTP in the allowed package, on a new transport) through ADT. */
+function BootstrapCard({ start, busy }: { start: (b: Record<string, unknown>) => Promise<void>; busy: boolean }) {
+  const [dry, setDry] = useState(true);
+  return (
+    <section className="rounded-2xl border border-accent/30 bg-accent/[0.04] p-4 shadow-card lg:col-span-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-deep text-white"><Rocket size={16} /></span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-extrabold">Bootstrap: install the agent&apos;s handler (once per system)</h3>
+          <p className="text-xs text-muted">
+            Creates the package if missing, one transport, and classes ZCL_SRC_AGENT_TASKS / ZCL_SRC_AGENT_HTTP, then activates them - under your SAP user. Afterwards a
+            human creates the SICF node /sap/zsrc_agent/tasks and the STVARV entries (listed at the end).
+          </p>
+        </div>
+        <Toggle label="Dry run" checked={dry} onChange={setDry} />
+        <Button variant="primary" disabled={busy} onClick={() => start({ kind: 'bootstrap', dryRun: dry })}><Play size={14} /> {dry ? 'Show bootstrap plan' : 'Run bootstrap on SAP'}</Button>
+      </div>
+    </section>
   );
 }
 
