@@ -133,9 +133,14 @@ class AdtRunnerClient:
         try:
             body = ('<?xml version="1.0" encoding="UTF-8"?><class:abapClassInclude xmlns:class="http://www.sap.com/adt/oo/classes" '
                     f'xmlns:adtcore="{NS["adtcore"]}" adtcore:name="{self.runner}" class:includeType="testclasses"/>')
-            r = self.adt._req("POST", f"{uri}/includes?lockHandle={handle}{corr}", data=body,
-                              headers={"Content-Type": "application/vnd.sap.adt.oo.classes.include.v1+xml", "Accept": "*/*"}, ok=(200, 201, 204, 400, 409))
-            self.trace.append(f"include create {r.status_code}" + (f" {r.text[:200]}" if r.status_code >= 400 else ""))
+            # 7.50 answers 500 "could not be successfully created" when the include already exists: create only when it is missing
+            exists = self.adt._req("GET", f"{uri}/includes/testclasses", headers={"Accept": "text/plain"}, ok=(200, 404)).status_code == 200
+            if exists:
+                self.trace.append("include exists")
+            else:
+                r = self.adt._req("POST", f"{uri}/includes?lockHandle={handle}{corr}", data=body,
+                                  headers={"Content-Type": "application/vnd.sap.adt.oo.classes.include.v1+xml", "Accept": "*/*"}, ok=(200, 201, 204, 400, 409, 500))
+                self.trace.append(f"include create {r.status_code}" + (f" {r.text[:200]}" if r.status_code >= 400 else ""))
             r = self.adt._req("PUT", f"{uri}/includes/testclasses?lockHandle={handle}{corr}", data=source,
                               headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
             self.trace.append(f"write {r.status_code} corr={corr[8:] or '-'}")
