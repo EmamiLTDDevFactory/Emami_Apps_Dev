@@ -4,16 +4,17 @@ CLASS zcl_src_agent_tasks DEFINITION PUBLIC CREATE PRIVATE.
     " text IDs, STVARV, dynpro inspection, batch input, running Z reports, reading allowed tables.
     "
     " Safety, enforced here as well as in the Python agent:
-    "  - the caller needs the agent role (AGR_USERS); its name is STVARV parameter ZSRC_AGENT_ROLE, default Z_SRC_AGENT
-    "  - the system id must be listed in STVARV select-option ZSRC_AGENT_SIDS; empty list = deny
+    "  - system EDS and package ZEMAMI are built in (C_SID, C_PACKAGE); STVARV select-options ZSRC_AGENT_SIDS and
+    "    ZSRC_AGENT_PACKAGES can add more. A role is required only if STVARV parameter ZSRC_AGENT_ROLE names one
     "  - NO NAME PREFIX RULES. Objects may have any name. What protects SAP standard objects is ownership: the agent only creates
-    "    objects in the packages listed in STVARV select-option ZSRC_AGENT_PACKAGES, and refuses to change any object that already
+    "    objects in the allowed packages (ZEMAMI plus STVARV ZSRC_AGENT_PACKAGES), and refuses to change any object that already
     "    exists in another package. Reports, jobs and text pools only for programs that live in those packages.
     "  - batch input only for an allowed transaction list, table reads only from an allowed list or from tables in those packages
     " Function module parameters were written from memory of ECC 6.0: confirm each in SE37 on first use.
     CLASS-METHODS handle IMPORTING iv_json TYPE string RETURNING VALUE(rv_json) TYPE string.
 
   PRIVATE SECTION.
+    CONSTANTS: c_sid TYPE sysysid VALUE 'EDS', c_package TYPE string VALUE `ZEMAMI`.
     TYPES: BEGIN OF ty_req, task TYPE string, args TYPE REF TO data, END OF ty_req.
     TYPES: BEGIN OF ty_field, n TYPE string, t TYPE string, l TYPE i, d TYPE i, k TYPE string, END OF ty_field,
            tt_field TYPE STANDARD TABLE OF ty_field WITH DEFAULT KEY.
@@ -179,16 +180,17 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD guard.
+    " The role check applies only when STVARV parameter ZSRC_AGENT_ROLE names a role (none by default).
     DATA(lv_agent_role) = stvarv_value( 'ZSRC_AGENT_ROLE' ).
-    IF lv_agent_role IS INITIAL.
-      lv_agent_role = 'Z_SRC_AGENT'.
+    IF lv_agent_role IS NOT INITIAL.
+      SELECT COUNT(*) FROM agr_users WHERE uname = @sy-uname AND agr_name = @lv_agent_role AND from_dat <= @sy-datum AND to_dat >= @sy-datum INTO @DATA(lv_role).
+      IF lv_role = 0.
+        RAISE EXCEPTION TYPE cx_sy_no_handler.   " caught by handle( ) and returned as an error text
+      ENDIF.
     ENDIF.
-    SELECT COUNT(*) FROM agr_users WHERE uname = @sy-uname AND agr_name = @lv_agent_role AND from_dat <= @sy-datum AND to_dat >= @sy-datum INTO @DATA(lv_role).
-    IF lv_role = 0.
-      RAISE EXCEPTION TYPE cx_sy_no_handler.   " caught by handle( ) and returned as an error text
-    ENDIF.
+    " Built in: EDS. STVARV select-option ZSRC_AGENT_SIDS can add more.
     SELECT low FROM tvarvc WHERE name = 'ZSRC_AGENT_SIDS' AND type = 'S' INTO TABLE @DATA(lt_sid).
-    IF NOT line_exists( lt_sid[ low = sy-sysid ] ).
+    IF sy-sysid <> c_sid AND NOT line_exists( lt_sid[ low = sy-sysid ] ).
       RAISE EXCEPTION TYPE cx_sy_no_handler.
     ENDIF.
   ENDMETHOD.
@@ -217,9 +219,10 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD package_allowed.
+    " Built in: ZEMAMI. STVARV select-option ZSRC_AGENT_PACKAGES can add more.
     SELECT low FROM tvarvc WHERE name = 'ZSRC_AGENT_PACKAGES' AND type = 'S' INTO TABLE @DATA(lt).
     DATA(lv_p) = to_upper( CONV string( iv_pkg ) ).
-    rv = xsdbool( line_exists( lt[ low = lv_p ] ) ).
+    rv = xsdbool( lv_p = c_package OR line_exists( lt[ low = lv_p ] ) ).
   ENDMETHOD.
 
   METHOD check_object.

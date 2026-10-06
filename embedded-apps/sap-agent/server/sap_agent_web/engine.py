@@ -79,5 +79,5 @@ def doctor(cfg: Config, adt: AdtClient, sapx: SapxClient, guard: Guard) -> dict:
         guard.check_system(info.get("sid", ""))
         checks.append({"name": "Task handler", "ok": True, "detail": f"system {info.get('sid')}, release {info.get('release')}, user {info.get('user')}, ABAP {info.get('abap', '?')}"})
     except Exception as e:  # noqa: BLE001
-        checks.append({"name": "Task handler", "ok": False, "detail": (f"{e} - run the bootstrap, then create the SICF node {cfg.handler_path} (handler ZCL_SRC_AGENT_HTTP)" if cfg.handler_mode == "http" else f"{e} - run the bootstrap (installs ZCL_SRC_AGENT_RUN), then check STVARV ZSRC_AGENT_SIDS and role Z_SRC_AGENT")})
+        checks.append({"name": "Task handler", "ok": False, "detail": (f"{e} - run the bootstrap, then create the SICF node {cfg.handler_path} (handler ZCL_SRC_AGENT_HTTP)" if cfg.handler_mode == "http" else f"{e} - run the bootstrap (Deploy -> Bootstrap, dry run off) to install or update the agent classes")})
     return {"ready": all(c["ok"] for c in checks), "checks": checks}

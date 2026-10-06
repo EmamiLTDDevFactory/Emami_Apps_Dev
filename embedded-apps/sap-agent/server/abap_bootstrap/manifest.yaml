@@ -1,4 +1,4 @@
-# Installs the agent's own SAP-side handler through ADT. After this, only STVARV and the role are manual (once per system).
+# Installs the agent's own SAP-side handler through ADT. Nothing manual afterwards.
 project: sap_agent_bootstrap
 package:
   name: ZEMAMI
@@ -18,4 +18,4 @@ steps:
   - {id: act, type: activate, group: src}
   - id: icf
     type: note
-    text: "Manual, once: PFCG, the agent role (default Z_SRC_AGENT) for the SAP users who run the agent. STVARV: select-option ZSRC_AGENT_SIDS = this system id, select-option ZSRC_AGENT_PACKAGES = the package(s) the agent may work in (ZEMAMI). No SICF node is needed: the agent reaches the handler through ADT (ZCL_SRC_AGENT_RUN). Only with SAP_HANDLER_MODE=http: SICF /sap/zsrc_agent/tasks with handler ZCL_SRC_AGENT_HTTP."
+    text: "Nothing manual: system EDS and package ZEMAMI are built into ZCL_SRC_AGENT_TASKS, and the agent reaches it through ADT (no SICF node). Optional: STVARV select-options ZSRC_AGENT_SIDS / ZSRC_AGENT_PACKAGES add systems or packages; STVARV parameter ZSRC_AGENT_ROLE makes a role mandatory."

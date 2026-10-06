@@ -172,7 +172,7 @@ function useStart(onStarted: (id: string) => void) {
   return { busy, err, start };
 }
 
-/** Shown while the agent's SICF handler does not answer: tasks and real deploys would stop at sap_ping (404). */
+/** Shown while the agent's SAP handler is not installed: tasks and real deploys would stop at sap_ping. */
 function HandlerSetup({ h, pkg, onRecheck, onBootstrap }: { h: HandlerStatus; pkg: string; onRecheck: () => void; onBootstrap?: () => void }) {
   return (
     <section className="mb-3 rounded-2xl border border-warn/40 bg-warn/[0.06] p-4 shadow-card" role="alert">
@@ -184,8 +184,6 @@ function HandlerSetup({ h, pkg, onRecheck, onBootstrap }: { h: HandlerStatus; pk
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs">
             <li>Deploy → <strong>Bootstrap</strong> with <strong>Dry run off</strong> - creates the agent classes in {pkg} (reuse your transport in the Transport box).</li>
             {h.mode === 'http' && <li>SICF: create service <span className="font-mono">{h.path}</span>, handler class ZCL_SRC_AGENT_HTTP, and activate it.</li>}
-            <li>STVARV select-options: <span className="font-mono">ZSRC_AGENT_SIDS</span> = {h.sid}, <span className="font-mono">ZSRC_AGENT_PACKAGES</span> = {pkg}.</li>
-            <li>Assign role <span className="font-mono">Z_SRC_AGENT</span> to {h.user} (or name another role in STVARV parameter <span className="font-mono">ZSRC_AGENT_ROLE</span>).</li>
           </ol>
         </div>
         <div className="flex gap-2">
@@ -311,7 +309,7 @@ function BootstrapCard({ start, busy }: { start: (b: Record<string, unknown>) =>
           <h3 className="text-sm font-extrabold">Bootstrap: install the agent&apos;s handler (once per system)</h3>
           <p className="text-xs text-muted">
             Creates the package if missing, one transport, and classes ZCL_SRC_AGENT_TASKS / ZCL_SRC_AGENT_HTTP / ZCL_SRC_AGENT_RUN, then activates them - under your SAP user. Afterwards a
-            human maintains the STVARV entries and the agent role (listed at the end); no SICF node is needed.
+            nothing else is needed: system and package are built in, and no SICF node is used.
           </p>
         </div>
         <input className={cx(inputBase, 'w-44 font-mono uppercase')} placeholder="Transport (optional)" value={tr} onChange={(e) => setTr(e.target.value)} aria-label="Existing transport request" title="Use an existing workbench request (e.g. EDSK900123) instead of creating a new one" />

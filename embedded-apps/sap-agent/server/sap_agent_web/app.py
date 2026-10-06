@@ -331,8 +331,8 @@ def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
         ecfg = Config.from_env()
         hx = make_sapx(ecfg, creds.sap_user, creds.sap_password, creds.client or ecfg.client)
         if not hx.node_alive():
-            setup = "then the SICF node, STVARV and role" if ecfg.handler_mode == "http" else "then STVARV and the role"
-            raise HTTPException(409, f"The agent's SAP handler ({hx.path}) is not installed on {creds.sid} yet. Finish the one-time setup first (Deploy -> Bootstrap with dry run off, {setup}).")
+            setup = ", then the SICF node" if ecfg.handler_mode == "http" else ""
+            raise HTTPException(409, f"The agent's SAP handler ({hx.path}) is not installed on {creds.sid} yet. Run the one-time setup first (Deploy -> Bootstrap with dry run off{setup}).")
     manifest = _resolve_manifest(body.manifest, body.kind == "bootstrap") if body.kind in ("deploy", "bootstrap") else ""
     params = {k: v for k, v in body.model_dump().items() if v not in ("", False)}
 
