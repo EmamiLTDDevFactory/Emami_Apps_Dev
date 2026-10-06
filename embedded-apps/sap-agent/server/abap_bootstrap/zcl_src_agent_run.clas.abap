@@ -17,7 +17,7 @@ CLASS zcl_src_agent_run IMPLEMENTATION.
     WHILE lv_off < lv_len.
       DATA(lv_n) = nmin( val1 = 100 val2 = lv_len - lv_off ).
       lv_no = lv_no + 1.
-      DATA(lv_msg) = |ZSRC { lv_no } { lv_count } { substring( val = lv_out off = lv_off len = lv_n ) }|.
+      DATA(lv_msg) = |ZSRC boot { lv_no } { lv_count } { substring( val = lv_out off = lv_off len = lv_n ) }|.
       cl_abap_unit_assert=>fail( msg = lv_msg quit = if_aunit_constants=>no ).
       lv_off = lv_off + lv_n.
     ENDWHILE.

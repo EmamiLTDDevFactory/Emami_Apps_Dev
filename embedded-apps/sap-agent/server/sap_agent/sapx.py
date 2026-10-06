@@ -67,7 +67,7 @@ def _abap_literal(text: str, width: int = 100) -> str:
     return "\n        && ".join("`" + p.replace("`", "``") + "`" for p in parts)
 
 
-def runner_test_source(payload: str, size: int = _CHUNK) -> str:
+def runner_test_source(payload: str, size: int = _CHUNK, nonce: str = "boot") -> str:
     """The whole source of ZCL_SRC_AGENT_RUN for one request: a global test class (no local test include, which 7.50
     only runs when the class is flagged for it) whose test method calls the handler and returns the answer as messages."""
     return (
@@ -89,7 +89,7 @@ def runner_test_source(payload: str, size: int = _CHUNK) -> str:
         "    WHILE lv_off < lv_len.\n"
         f"      DATA(lv_n) = nmin( val1 = {size} val2 = lv_len - lv_off ).\n"
         "      lv_no = lv_no + 1.\n"
-        "      DATA(lv_msg) = |ZSRC { lv_no } { lv_count } { substring( val = lv_out off = lv_off len = lv_n ) }|.\n"
+        f"      DATA(lv_msg) = |ZSRC {nonce} {{ lv_no }} {{ lv_count }} {{ substring( val = lv_out off = lv_off len = lv_n ) }}|.\n"
         "      cl_abap_unit_assert=>fail( msg = lv_msg quit = if_aunit_constants=>no ).\n"
         "      lv_off = lv_off + lv_n.\n"
         "    ENDWHILE.\n"
@@ -97,24 +97,28 @@ def runner_test_source(payload: str, size: int = _CHUNK) -> str:
         "ENDCLASS.\n")
 
 
-def parse_runner_result(body: str, size: int = _CHUNK) -> dict:
+def parse_runner_result(body: str, size: int = _CHUNK, nonce: str = "") -> dict:
     """Reassembles the handler's JSON answer from the ABAP Unit alerts; anything else in the run becomes the error."""
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
         raise SapxError(f"ABAP Unit returned no XML: {body[:300]}")
     chunks: dict[int, str] = {}
-    total, other = 0, []
+    total, other, stale = 0, [], set()
     for el in root.iter():
         if el.tag.split("}")[-1] != "alert":
             continue
         title = "".join(t.text or "" for t in el.iter() if t.tag.split("}")[-1] == "title").strip()
         # 7.50 wraps the message: "Critical Assertion Error: 'ZSRC 1 2 eyJ...'"
-        m = re.search(r"ZSRC (\d+) (\d+) ([A-Za-z0-9+/=]*)", title)
-        if m:
-            chunks[int(m.group(1))], total = m.group(3), int(m.group(2))
+        m = re.search(r"ZSRC (?:([A-Za-z0-9]+) )?(\d+) (\d+) ([A-Za-z0-9+/=]*)", title)
+        if m and nonce and m.group(1) != nonce:
+            stale.add(m.group(1) or "-")       # an older version of the class ran: this is not our request's answer
+        elif m:
+            chunks[int(m.group(2))], total = m.group(4), int(m.group(3))
         elif title and "is not abstract" not in title:   # 7.50 warns about every non-abstract global test class
             other.append(title)
+    if not chunks and stale:
+        raise SapxError(f"SAP ran an older version of the runner (request {', '.join(sorted(stale))}, not {nonce}): the rewritten class was not activated")
     if not chunks:
         raise SapxError("handler run gave no answer" + (f": {'; '.join(other)[:500]}" if other else " (no ABAP Unit result - is ZCL_SRC_AGENT_RUN active?)"))
     if set(chunks) != set(range(1, total + 1)) or any(len(chunks[i]) != size for i in range(1, total)):
@@ -159,10 +163,12 @@ class AdtRunnerClient:
 
     def call(self, task: str, args: dict | None = None) -> dict:
         from .adt import object_uri, unit_xml, has_errors, AdtError
+        import uuid
         payload = json.dumps({"task": task, "args": args or {}}, ensure_ascii=False)
+        nonce = uuid.uuid4().hex[:10]
         try:
             self.trace = []
-            self._write(runner_test_source(payload))
+            self._write(runner_test_source(payload, nonce=nonce))
             msgs = self._activate()
             if has_errors(msgs):
                 raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
@@ -171,7 +177,7 @@ class AdtRunnerClient:
         except AdtError as e:
             raise SapxError(f"{e} {e.body[:300]}")
         try:
-            j = parse_runner_result(r.text)
+            j = parse_runner_result(r.text, nonce=nonce)
         except SapxError as e:
             raise SapxError(f"{e} [{'; '.join(self.trace)}]")
         if not j.get("ok"):
@@ -179,14 +185,15 @@ class AdtRunnerClient:
         return j.get("result", {})
 
     def _activate(self) -> list[dict]:
-        """Activates the class AND its test include by name: 7.50 can leave a changed include inactive when only the class is named."""
+        """Activates the rewritten class. No pre-audit: with it 7.50 can answer 200 with a list of inactive objects and activate nothing."""
         from .adt import object_uri, object_refs_xml, parse_messages
         uri = object_uri("class", self.runner)
         refs = [(uri, self.runner)]
-        r = self.adt._req("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=true", data=object_refs_xml(refs),
+        r = self.adt._req("POST", "/sap/bc/adt/activation?method=activate&preauditRequested=false", data=object_refs_xml(refs),
                           headers={"Content-Type": "application/xml", "Accept": "application/xml"})
         msgs = parse_messages(r.text)
-        self.trace.append(f"activate {r.status_code}" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3]))
+        self.trace.append(f"activate {r.status_code}" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3])
+                          + (f" body={r.text[:400]}" if r.text.strip() and not msgs else ""))
         return msgs
 
     def node_alive(self) -> bool:

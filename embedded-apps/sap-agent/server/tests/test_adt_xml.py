@@ -139,8 +139,11 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
             if method == "GET" and path.endswith("/includes/testclasses"):
                 return R(200, "old")
             if path.startswith("/sap/bc/adt/abapunit/testruns"):
+                import re as _re
+                src = [d for m, p, d in self.calls if m == "PUT" and p.endswith("/source/main")][-1]
+                nonce = _re.search(r"\|ZSRC (\w+) ", src).group(1)
                 ans = base64.b64encode(json.dumps({"ok": True, "result": {"sid": "EDS"}}).encode()).decode()
-                return R(200, f"<r><alert kind='failedAssertion'><title>ZSRC 1 1 {ans}</title></alert></r>")
+                return R(200, f"<r><alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC {nonce} 1 1 {ans}'</title></alert></r>")
             return R(200, "<r/>")
         def unlock(self, kind, name, handle):
             self.calls.append(("UNLOCK", name, handle))
@@ -161,3 +164,10 @@ def test_runner_result_as_eds_750_sends_it():
             "<alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC 1 2 eyJvayI6dHJ1ZSwicmVzdWx0Ijp7InNpZCI6IkVEUyIsImNsaWVudCI6IjkwMCIsInJlbGVhc2UiOiI3NTAiLCJ1c2VyIjoiSVRf'</title></alert>"
             "<alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC 2 2 RkNPTU1PTiIsImFiYXAiOiI3NTAifX0='</title></alert></r>")
     assert parse_runner_result(body) == {"ok": True, "result": {"sid": "EDS", "client": "900", "release": "750", "user": "IT_FCOMMON", "abap": "750"}}
+
+
+def test_runner_reports_a_stale_class_instead_of_its_answer():
+    from sap_agent.sapx import parse_runner_result, SapxError
+    body = "<r><alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC boot 1 1 eyJvayI6dHJ1ZX0='</title></alert></r>"
+    with pytest.raises(SapxError, match="older version"):
+        parse_runner_result(body, nonce="abc123")

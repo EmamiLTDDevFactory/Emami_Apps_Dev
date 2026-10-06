@@ -24,7 +24,7 @@ TOOLS: list[dict] = [
     {"name": "sap_activate", "description": "Mass-activate objects together so mutual dependencies resolve. Returns messages; errors mean not active.",
      "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
     {"name": "sap_run_unit_tests", "description": "Run ABAP Unit tests of the given classes or programs.", "input_schema": {"type": "object", "properties": {"objects": {"type": "array", "items": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}}}, "required": ["objects"]}},
-    {"name": "sap_transport_create", "description": "Create a workbench transport request and return its number.", "input_schema": {"type": "object", "properties": {"description": {"type": "string"}}, "required": ["description"]}},
+    {"name": "sap_transport_create", "description": "Create a workbench transport request and return its number.", "input_schema": {"type": "object", "properties": {"description": {"type": "string"}, "package": {"type": "string", "description": "package the request is for (default: the first allowed package)"}}, "required": ["description"]}},
     {"name": "sap_ddic_tables", "description": "Create and activate transparent tables or structures from a field list. Field: {n: name, t: CHAR|DEC|INT4|INT2|DATS|STRG|R:<data element>, l: length, d: decimals, k: 'X' for key}.",
      "input_schema": {"type": "object", "properties": {"package": {"type": "string"}, "request": {"type": "string"}, "tables": {"type": "array", "items": {"type": "object", "properties": {
          "name": {"type": "string"}, "text": {"type": "string"}, "kind": {"type": "string", "enum": ["TRANSP", "INTTAB"]}, "fields": {"type": "array", "items": {"type": "object"}}}, "required": ["name", "kind", "fields"]}}}, "required": ["package", "tables"]}},
@@ -137,7 +137,8 @@ class ToolBox:
             return adt.run_unit_tests(objs)
         if name == "sap_transport_create":
             g.check_write(name)
-            return {"request": adt.create_transport(a["description"])}
+            pkg = (a.get("package") or (g.cfg.allowed_packages or [""])[0]).upper()
+            return {"request": adt.create_transport(a["description"], package=pkg)}
         if name in ("sap_ddic_tables", "sap_lock_object", "sap_number_range", "sap_text_ids", "sap_stvarv"):
             task = {"sap_ddic_tables": "ddic_tables", "sap_lock_object": "lock_object", "sap_number_range": "number_range", "sap_text_ids": "text_ids", "sap_stvarv": "stvarv"}[name]
             g.check_task(task, a)
