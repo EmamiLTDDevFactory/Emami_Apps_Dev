@@ -1,0 +1,137 @@
+# Emami RFQ and rate auction: whole SAP back end, from an empty package to a registered OData service.
+# Deterministic steps need no LLM. Steps of type "agent" are done by the AI agent (they need discovery on the live system).
+project: emami_sourcing
+package:
+  name: ZSRC
+  description: Emami sourcing portal
+  software_component: HOME
+  transport_layer: ""
+transport:
+  description: "Emami RFQ and auction OData"
+steps:
+  - {id: pkg, type: package}
+  - {id: tr,  type: transport}
+
+  # --- data dictionary and customizing (standard objects first, only 2 custom tables) ---
+  - {id: ddic, type: ddic_tables, spec: ddic/tables.json}
+  - {id: lock, type: lock_object, name: EZSRC_AUC, table: ZSRC_AUC, fields: [AUC_ID]}
+  - {id: nr_auc, type: number_range, name: ZSRC_AUC, length: 10}
+  - {id: nr_rfq, type: number_range, name: ZSRC_RFQ, length: 10}
+  - id: textids
+    type: text_ids
+    items:
+      - {object: EKKO, id: ZPR, text: "Portal RFQ parameters"}
+      - {object: EKKO, id: ZPQ, text: "Portal vendor quote extras"}
+      - {object: EKKO, id: ZQA, text: "Portal Q and A log"}
+      - {object: EKKO, id: ZAM, text: "Portal amendment log"}
+      - {object: EKPO, id: ZPI, text: "Portal item extras"}
+
+  # --- code: classes first, one mass activation so mutual dependencies resolve ---
+  - id: src
+    type: sources
+    base: ../../../sap/abap
+    files:
+      - {kind: class, name: ZCL_SRC_UTIL,        file: zcl_src_util.clas.abap,        description: "Util: time stamps, raise"}
+      - {kind: class, name: ZCL_SRC_KV,          file: zcl_src_kv.clas.abap,          description: "Key value store on standard texts"}
+      - {kind: class, name: ZCL_SRC_CTX,         file: zcl_src_ctx.clas.abap,         description: "Role and vendor of the user"}
+      - {kind: class, name: ZCL_SRC_MPC,         file: zcl_src_mpc.clas.abap,         description: "OData model provider"}
+      - {kind: class, name: ZCL_SRC_NOTIFY,      file: zcl_src_notify.clas.abap,      description: "Mail notifications"}
+      - {kind: class, name: ZCL_SRC_ATT,         file: zcl_src_att.clas.abap,         description: "Attachments on GOS"}
+      - {kind: class, name: ZCL_SRC_RFQ_BDC,     file: zcl_src_rfq_bdc.clas.abap,     description: "RFQ write adapter ME41 ME42 ME47"}
+      - {kind: class, name: ZCL_SRC_PO_SRV,      file: zcl_src_po_srv.clas.abap,      description: "Award PO and release"}
+      - {kind: class, name: ZCL_SRC_RFQ_SRV,     file: zcl_src_rfq_srv.clas.abap,     description: "RFQ service"}
+      - {kind: class, name: ZCL_SRC_AUC_SRV,     file: zcl_src_auc_srv.clas.abap,     description: "Auction engine"}
+      - {kind: class, name: ZCL_SRC_MASTER_SRV,  file: zcl_src_master_srv.clas.abap,  description: "Master data and audit"}
+      - {kind: class, name: ZCL_SRC_DPC,         file: zcl_src_dpc.clas.abap,         description: "OData data provider"}
+      - {kind: program, name: ZSRC_AUC_TICK,     file: zsrc_auc_tick.prog.abap,       description: "Auction timer job"}
+  - {id: act, type: activate, group: src}
+
+  # --- Tier A: automated (standard APIs, verified by read-back) ---
+  - id: idx_ekko
+    type: ddic_objects
+    items:
+      - {kind: INDX, name: Z01, table: EKKO, fields: [BSTYP, SUBMI], text: "RFQ collective number (portal)"}
+  - id: tick_job
+    type: job
+    job: ZSRC_AUC_TICK
+    report: ZSRC_AUC_TICK
+    period_min: 1
+  - id: util_tests
+    type: test_include
+    class: ZCL_SRC_UTIL
+    file: abap_tests/zcl_src_util.testclasses.abap
+    group: src
+  - {id: act_tests, type: activate, group: src}
+  - id: run_tests
+    type: unit_tests
+    objects: [{kind: class, name: ZCL_SRC_UTIL}]
+  - id: tax_codes
+    type: stvarv
+    items:
+      # EDIT: the input tax code of your GST setup for each rate
+      - {name: ZSRC_TAX_5,  value: V1}
+      - {name: ZSRC_TAX_12, value: V2}
+      - {name: ZSRC_TAX_18, value: V3}
+      - {name: ZSRC_TAX_28, value: V4}
+  - id: test_material
+    type: testdata
+    kind: material
+    spec: {material: ZTEST_FILM_40, description: "Test shrink film 40 micron", mtart: VERP, base_uom: KG, plant: "1010", matl_group: PKG-FILM, pur_group: P01}
+  - id: test_pr
+    type: testdata
+    kind: requisition
+    spec: {material: ZTEST_FILM_40, plant: "1010", quantity: "18000", unit: KG, pur_group: P01, deliv_days: 30}
+  - id: test_vendor_1
+    type: testdata
+    kind: vendor
+    spec: {name1: "ZTEST Vendor One", land1: IN, regio: "19", ekorg: "1000", email: "vendor1@example.com"}
+
+  # --- Tier B: assisted by the agent through batch input, verified, manual checklist as fallback ---
+  - id: users
+    type: user
+    user: ZSRC_BUYER1
+    password_env: SRC_PWD_BUYER1
+    first_name: Test
+    last_name: Buyer
+    email: buyer1@example.com
+    roles: [Z_SRC_BUYER]
+  - id: role_buyer
+    type: role
+    name: Z_SRC_BUYER
+    description: "Sourcing portal buyer"
+    tcodes: [ME41, ME42, ME43, ME47, ME49]
+    auth_objects:
+      - {object: S_SERVICE, fields: {SRV_NAME: [ZSRC_SRV], SRV_TYPE: [HT]}}
+      - {object: M_ANFR_EKG, fields: {EKGRP: ["P01", "P02"], ACTVT: ["01", "02", "03"]}}
+  - id: role_vendor
+    type: role
+    name: Z_SRC_VENDOR
+    description: "Sourcing portal vendor (service access only)"
+    auth_objects:
+      - {object: S_SERVICE, fields: {SRV_NAME: [ZSRC_SRV], SRV_TYPE: [HT]}}
+  - id: release
+    type: release_strategy
+    strategy: Z1
+    group: "01"
+    class: ZSRC_PO_REL
+    codes: [{code: "01", text: Procurement Manager}]
+    from_value: "5,000,000"
+  - {id: rfc_tech, type: rfc, name: ZSRC_TECH, user: ZSRC_TECH}
+  - {id: icf_check, type: icf, path: /sap/zsrc_agent/tasks, handler: ZCL_SRC_AGENT_HTTP}
+  - id: reg_odata
+    type: gateway
+    model: ZSRC_MDL
+    service: ZSRC_SRV
+    mpc: ZCL_SRC_MPC
+    dpc: ZCL_SRC_DPC
+    alias: LOCAL
+    expect: [RfqSet, AuctionSet, AuctionRoomSet, PlaceBid]
+  - id: rfq_writer
+    type: agent
+    prompt: |
+      ZCL_SRC_RFQ_BDC contains a typical-recording guess of the batch input for ME41, ME42 and ME47. Use sap_dynpro_inspect on
+      SAPMM06E screens 0200, 0201, 0205 and 0220 (and any popup the flow uses) to get the real screen numbers and field names on this system.
+      Correct the batch input steps in ZCL_SRC_RFQ_BDC with sap_read_source and sap_write_source, syntax check, activate it together with
+      ZCL_SRC_RFQ_SRV, then validate with sap_bdc_validate and test one RFQ for two vendors with sap_bdc_run on ME41 using the test
+      material ZTEST_FILM_40 and plant 1010. Do not release or delete anything. Report the verified screen numbers.
+  - {id: verify, type: verify_odata, path: /sap/opu/odata/sap/ZSRC_SRV/$metadata, expect: [RfqSet, AuctionSet, AuctionRoomSet, PlaceBid]}

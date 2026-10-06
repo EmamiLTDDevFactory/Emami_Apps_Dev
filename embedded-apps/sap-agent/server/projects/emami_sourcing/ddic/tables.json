@@ -1,0 +1,361 @@
+{
+ "tables": [
+  {
+   "name": "ZSRC_AUC",
+   "text": "Reverse auction setup",
+   "kind": "TRANSP",
+   "fields": [
+    {
+     "n": "MANDT",
+     "t": "R:MANDT",
+     "l": 0,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "AUC_ID",
+     "t": "CHAR",
+     "l": 10,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "TITLE",
+     "t": "CHAR",
+     "l": 100,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "MATNR",
+     "t": "R:MATNR",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "MATKL",
+     "t": "R:MATKL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "MATERIAL",
+     "t": "CHAR",
+     "l": 60,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "SPEC",
+     "t": "CHAR",
+     "l": 100,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "MEINS",
+     "t": "R:MEINS",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "WAERS",
+     "t": "R:WAERS",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "WERKS",
+     "t": "R:WERKS_D",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "CATEGORY",
+     "t": "CHAR",
+     "l": 20,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "QTY",
+     "t": "DEC",
+     "l": 13,
+     "d": 3,
+     "k": ""
+    },
+    {
+     "n": "BASELINE",
+     "t": "DEC",
+     "l": 15,
+     "d": 4,
+     "k": ""
+    },
+    {
+     "n": "CEILING",
+     "t": "DEC",
+     "l": 15,
+     "d": 4,
+     "k": ""
+    },
+    {
+     "n": "DEC_TYPE",
+     "t": "CHAR",
+     "l": 1,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "DECREMENT",
+     "t": "DEC",
+     "l": 15,
+     "d": 4,
+     "k": ""
+    },
+    {
+     "n": "START_TS",
+     "t": "R:TIMESTAMPL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "END_TS",
+     "t": "R:TIMESTAMPL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "PAUSED_MS",
+     "t": "INT4",
+     "l": 10,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "VISIBILITY",
+     "t": "CHAR",
+     "l": 1,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "BEAT_LOW",
+     "t": "CHAR",
+     "l": 1,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "SNIPE_SEC",
+     "t": "INT4",
+     "l": 10,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "EXT_SEC",
+     "t": "INT4",
+     "l": 10,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "EXT_MAX",
+     "t": "INT2",
+     "l": 5,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "EXT_USED",
+     "t": "INT2",
+     "l": 5,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "MIN_VEND",
+     "t": "INT2",
+     "l": 5,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "STATUS",
+     "t": "CHAR",
+     "l": 1,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "RFQ_ID",
+     "t": "R:SUBMI",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "RFQ_ITEM",
+     "t": "R:EBELP",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "VALIDATED",
+     "t": "CHAR",
+     "l": 1,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "CANCEL_RSN",
+     "t": "CHAR",
+     "l": 100,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "AWD_LIFNR",
+     "t": "R:LIFNR",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "AWD_RATE",
+     "t": "DEC",
+     "l": 15,
+     "d": 4,
+     "k": ""
+    },
+    {
+     "n": "AWD_BY",
+     "t": "R:SYUNAME",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "AWD_TS",
+     "t": "R:TIMESTAMPL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "AWD_EBELN",
+     "t": "R:EBELN",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "CREATED_BY",
+     "t": "R:SYUNAME",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "CREATED_TS",
+     "t": "R:TIMESTAMPL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    }
+   ]
+  },
+  {
+   "name": "ZSRC_EVT",
+   "text": "Auction and portal event ledger",
+   "kind": "TRANSP",
+   "fields": [
+    {
+     "n": "MANDT",
+     "t": "R:MANDT",
+     "l": 0,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "OBJ_TYPE",
+     "t": "CHAR",
+     "l": 3,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "OBJ_ID",
+     "t": "CHAR",
+     "l": 10,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "EVT_ID",
+     "t": "R:SYSUUID_C32",
+     "l": 0,
+     "d": 0,
+     "k": "X"
+    },
+    {
+     "n": "TS",
+     "t": "R:TIMESTAMPL",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "EVT",
+     "t": "CHAR",
+     "l": 4,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "LIFNR",
+     "t": "R:LIFNR",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "REF",
+     "t": "CHAR",
+     "l": 32,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "AMT",
+     "t": "DEC",
+     "l": 15,
+     "d": 4,
+     "k": ""
+    },
+    {
+     "n": "TXT",
+     "t": "CHAR",
+     "l": 255,
+     "d": 0,
+     "k": ""
+    },
+    {
+     "n": "UNAME",
+     "t": "R:SYUNAME",
+     "l": 0,
+     "d": 0,
+     "k": ""
+    }
+   ]
+  }
+ ]
+}

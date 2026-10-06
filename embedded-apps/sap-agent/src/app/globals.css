@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hub palette as RGB triplets (tailwind.config.ts maps them). Light only, like every sibling app.
+   ink/muted on panel/bg meet WCAG AA. */
+:root {
+  color-scheme: light;
+  --bg: 238 240 244;        /* #EEF0F4 appBg */
+  --panel: 255 255 255;
+  --sunken: 246 244 253;    /* #F6F4FD cream */
+  --line: 230 227 245;      /* #E6E3F5 */
+  --ink: 31 27 51;          /* #1F1B33 */
+  --muted: 107 114 128;     /* #6B7280 inkSoft */
+  --faint: 117 121 140;
+  --accent: 79 63 214;      /* #4F3FD6 rust (hub primary) */
+  --accent-deep: 59 47 176; /* #3B2FB0 */
+  --accent-ink: 255 255 255;
+  --plum: 36 30 61;         /* #241E3D */
+  --plum-deep: 21 17 41;    /* #151129 */
+  --good: 31 122 77;        /* #1F7A4D */
+  --warn: 180 83 9;         /* #B45309 */
+  --bad: 192 57 43;         /* #C0392B */
+  --sim: 194 24 91;         /* #C2185B - "simulated", distinct from the brand indigo */
+  --src-contract: #008300;
+  --src-inforec: #eda100;
+  --src-markt: #0e9fb5;
+  --src-consump: #eb6834;
+  --src-mbew: #e34948;
+  --src-none: #8a8984;
+}
+
+html, body { height: 100%; }
+body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11' 1; }
+.num { font-variant-numeric: tabular-nums; }
+
+*:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
+
+.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #d9d4ee; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
+
+/* Simulated / AI-written content marker kept for parity with sibling apps. */
+.indeterminate { animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .indeterminate { animation: none; } }

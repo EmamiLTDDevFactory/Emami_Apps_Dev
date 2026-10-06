@@ -1,0 +1,11 @@
+# Engine (sap_agent) - same as pyproject.toml
+anthropic>=0.40
+requests>=2.31
+pyyaml>=6.0
+# Web layer (sap_agent_web)
+fastapi>=0.110
+uvicorn>=0.29
+pyjwt>=2.8
+# Tests
+pytest>=8
+httpx>=0.27

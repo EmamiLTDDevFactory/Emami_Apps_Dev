@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+dist
+.env*.local
+next-env.d.ts
+*.tsbuildinfo
+server/.venv
+server/.env
+server/runs
+server/audit.jsonl
+server/MANUAL_TODO.md
+__pycache__
+playwright-report
+test-results
