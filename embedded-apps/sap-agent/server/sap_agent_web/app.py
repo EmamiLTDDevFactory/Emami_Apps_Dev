@@ -260,6 +260,36 @@ def _resolve_manifest(rel: str, bootstrap: bool) -> str:
     return p
 
 
+def _bootstrap(cfg: Config, m, guard, adt, sapx, audit, run: Run, body: "RunRequest") -> dict:
+    """The bootstrap installs the task handler, so it cannot start with Deployer.run's handler ping
+    (404 until the bootstrap is done). Same steps, same guard and audit, but the system is identified
+    from /sap/public/info instead."""
+    from sap_agent.deploy import StepResult
+    sid = _sap_system_id(cfg)
+    guard.check_system(sid or "?")
+    run.emit("log", text=f"system {sid} (from /sap/public/info) client {cfg.client or 'default'} - bootstrap does not need the task handler")
+    dep = Deployer(m, guard, adt, sapx, audit, None, log=lambda t: run.emit("log", text=t))
+    results = []
+    for step in m.data["steps"]:
+        if run.cancel_requested:
+            raise RunCancelled("cancelled by the user")
+        if body.dryRun:
+            results.append(StepResult(step["id"], step["type"], True, "dry run", skipped=True))
+            run.emit("log", text=f"[dry-run] {step['id']} ({step['type']})")
+            continue
+        res = dep._run_step(step)
+        results.append(res)
+        run.emit("step", id=step["id"], type=step["type"], status="manual" if res.manual else ("ok" if res.ok else "failed"))
+        if not res.ok:
+            run.emit("log", text=json.dumps(res.detail, default=str)[:3000])
+        audit.log("deploy_step", id=step["id"], type=step["type"], ok=res.ok)
+        if not res.ok and not body.keepGoing:
+            break
+    steps = [{"id": x.id, "type": x.type, "ok": x.ok, "skipped": x.skipped, "manual": x.manual, "detail": x.detail if isinstance(x.detail, (dict, list, str)) else str(x.detail)} for x in results]
+    notes = [s.get("text", "") for s in m.data["steps"] if s.get("type") == "note"]
+    return {"steps": steps, "todo": "\n\n".join(notes), "_status": "failed" if any(not x.ok for x in results) else "done"}
+
+
 @app.post("/api/runs")
 def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
     email = str(user)
@@ -295,6 +325,8 @@ def start_run(body: RunRequest, user: auth.SessionUser = Depends(admin)):
             return {"finalText": out.final_text, "steps": out.steps, "stopped": out.stopped, "_status": "done" if out.stopped == "end_turn" else "stopped"}
 
         m = Manifest.load(manifest)
+        if body.kind == "bootstrap":
+            return _bootstrap(cfg, m, guard, adt, sapx, audit, run, body)
 
         def log(s: str):
             if cancelled():

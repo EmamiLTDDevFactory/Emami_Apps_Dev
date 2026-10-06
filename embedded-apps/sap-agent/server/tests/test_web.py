@@ -223,3 +223,32 @@ def test_credentials_never_show_in_repr():
     from sap_agent_web.vault import Creds
     c = Creds("JDOE", "secret-pw", "sk-ant-good", "EDS", 0)
     assert "secret-pw" not in repr(c) and "sk-ant-good" not in repr(c)
+
+
+def test_bootstrap_runs_without_the_handler_and_into_zemami(web):
+    client, appmod, fakes = web
+    h = login(client)
+
+    def no_handler(task, args=None):
+        raise RuntimeError("handler HTTP 404")
+
+    fakes["sapx"].call = no_handler  # not installed yet: the bootstrap must not need it
+    rid = client.post("/api/runs", headers=h, json={"kind": "bootstrap"}).json()["id"]
+    r = wait(client, h, rid)
+    assert r["status"] == "done", r
+    ids = [s["id"] for s in r["result"]["steps"]]
+    assert ids == ["pkg", "tr", "src", "act", "icf"]
+    assert ("create", "class", "ZCL_SRC_AGENT_TASKS", "ZEMAMI", "DEVK900001") in fakes["adt"].calls
+    assert ("activate", ["ZCL_SRC_AGENT_TASKS", "ZCL_SRC_AGENT_HTTP"]) in fakes["adt"].calls
+    assert "SICF" in r["result"]["todo"]
+    assert any(e["type"] == "log" and "from /sap/public/info" in e["text"] for e in r["eventList"])
+
+
+def test_bootstrap_refuses_a_non_development_system(web):
+    client, appmod, fakes = web
+    h = login(client)
+    fakes["sid"] = "NWP"
+    rid = client.post("/api/runs", headers=h, json={"kind": "bootstrap"}).json()["id"]
+    r = wait(client, h, rid)
+    assert r["status"] == "failed"
+    assert not [c for c in fakes["adt"].calls if c[0] in ("create", "write", "activate", "transport")]

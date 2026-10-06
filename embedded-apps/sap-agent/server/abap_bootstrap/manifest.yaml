@@ -1,8 +1,8 @@
 # Installs the agent's own SAP-side handler through ADT. After this, only the ICF node is manual (once per system).
 project: sap_agent_bootstrap
 package:
-  name: ZSRC
-  description: Emami sourcing portal
+  name: ZEMAMI
+  description: Emami development (SAP agent)
   software_component: HOME
   transport_layer: ""
 steps:
@@ -17,4 +17,4 @@ steps:
   - {id: act, type: activate, group: src}
   - id: icf
     type: note
-    text: "Manual, once: SICF, create /sap/zsrc_agent/tasks with handler ZCL_SRC_AGENT_HTTP. PFCG: the agent role (default Z_SRC_AGENT). STVARV: select-option ZSRC_AGENT_SIDS = this system id, select-option ZSRC_AGENT_PACKAGES = the package(s) the agent may work in."
+    text: "Manual, once: SICF, create /sap/zsrc_agent/tasks with handler ZCL_SRC_AGENT_HTTP. PFCG: the agent role (default Z_SRC_AGENT). STVARV: select-option ZSRC_AGENT_SIDS = this system id, select-option ZSRC_AGENT_PACKAGES = the package(s) the agent may work in (ZEMAMI)."
