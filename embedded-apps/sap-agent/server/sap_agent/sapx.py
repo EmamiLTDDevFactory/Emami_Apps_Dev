@@ -137,7 +137,6 @@ class AdtRunnerClient:
         self.adt, self.runner = adt, runner.upper()
         self.path = f"ADT / ABAP Unit of {self.runner}"
         self.trace: list[str] = []
-        self._include_cleared = False
 
     def _write(self, source: str):
         from .adt import object_uri, parse_lock_handle
@@ -148,13 +147,6 @@ class AdtRunnerClient:
         m = re.search(r"<CORRNR>([^<]*)</CORRNR>", r.text)
         corr = f"&corrNr={m.group(1)}" if m and m.group(1) else ""
         try:
-            if not self._include_cleared:
-                # an earlier version used the local test include; empty it so it cannot break the class pool
-                if self.adt._req("GET", f"{uri}/includes/testclasses", headers={"Accept": "text/plain"}, ok=(200, 404)).status_code == 200:
-                    r = self.adt._req("PUT", f"{uri}/includes/testclasses?lockHandle={handle}{corr}", data='" not used - see the class definition\n',
-                                      headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"}, ok=(200, 204, 400, 404, 500))
-                    self.trace.append(f"old include emptied {r.status_code}")
-                self._include_cleared = True
             r = self.adt._req("PUT", f"{uri}/source/main?lockHandle={handle}{corr}", data=source,
                               headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
             self.trace.append(f"write {r.status_code} corr={corr[8:] or '-'}")
@@ -171,12 +163,14 @@ class AdtRunnerClient:
             self._write(runner_test_source(payload, nonce=nonce))
             self.trace.append(f"saved has id: {self._has(nonce, 'inactive')}")
             msgs = self._activate()
-            if not has_errors(msgs) and self._has(nonce, "active") is not True:
-                # same call the bootstrap uses (that one does activate on EDS)
-                self.trace.append("active lacks id - retry like the bootstrap")
-                msgs = self.adt.activate([("class", self.runner)])
-                self.trace.append(f"activate#2 {len(msgs)} msg" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3]))
-                self.trace.append(f"active has id: {self._has(nonce, 'active')}")
+            if not has_errors(msgs):
+                waited = self._wait_active(nonce)
+                if waited is None:
+                    # same call the bootstrap uses, then wait again
+                    msgs = self.adt.activate([("class", self.runner)])
+                    self.trace.append(f"activate#2 {len(msgs)} msg" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3]))
+                    if not has_errors(msgs):
+                        self._wait_active(nonce)
             if has_errors(msgs):
                 raise SapxError("handler request did not activate: " + "; ".join(m.get("text", "") for m in msgs if m.get("type", "").upper() in ("E", "A", "X"))[:500])
             r = self.adt._req("POST", "/sap/bc/adt/abapunit/testruns", data=unit_xml([object_uri("class", self.runner)]),
@@ -202,6 +196,20 @@ class AdtRunnerClient:
         self.trace.append(f"activate {r.status_code}" + "".join(f" | {m.get('type')}: {(m.get('text') or '')[:160]}" for m in msgs[:3])
                           + (f" body={r.text[:400]}" if r.text.strip() and not msgs else ""))
         return msgs
+
+    def _wait_active(self, nonce: str, timeout: float = 30.0, step: float = 1.5):
+        """EDS (7.50) answers the activation at once and switches the active version a little later: wait for it."""
+        import time
+        t0 = time.monotonic()
+        while True:
+            if self._has(nonce, "active") is True:
+                took = time.monotonic() - t0
+                self.trace.append(f"active after {took:.1f}s")
+                return took
+            if time.monotonic() - t0 >= timeout:
+                self.trace.append(f"still not active after {timeout:.0f}s")
+                return None
+            time.sleep(step)
 
     def _has(self, nonce: str, version: str):
         """Whether that version of the class source carries this request's id (None when it cannot be read)."""

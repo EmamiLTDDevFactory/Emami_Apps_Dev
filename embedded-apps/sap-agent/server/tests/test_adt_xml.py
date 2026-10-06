@@ -155,10 +155,46 @@ def test_runner_client_writes_the_main_source_and_reads_the_answer():
     c = AdtRunnerClient(adt)
     assert c.call("ping") == {"sid": "EDS"}
     puts = [(p, d) for m, p, d in adt.calls if m == "PUT"]
-    assert puts[0][0].endswith("/includes/testclasses") and "not used" in puts[0][1]
-    assert puts[1][0].endswith("/zcl_src_agent_run/source/main") and "FOR TESTING" in puts[1][1]
-    c.call("ping")   # the old include is emptied only once
-    assert sum(1 for m, p, d in adt.calls if m == "PUT" and p.endswith("/includes/testclasses")) == 1
+    assert len(puts) == 1 and puts[0][0].endswith("/zcl_src_agent_run/source/main") and "FOR TESTING" in puts[0][1]
+    assert any(t.startswith("active after") for t in c.trace)
+
+
+def test_runner_waits_for_a_late_activation(monkeypatch):
+    """EDS switches the active version a moment after the activation call returns."""
+    import base64, json, re as _re, time
+    from sap_agent.sapx import AdtRunnerClient
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    class R:
+        def __init__(self, code=200, text=""):
+            self.status_code, self.text = code, text
+
+    class LateAdt:
+        def __init__(self):
+            self.saved, self.active, self.reads = "", "boot", 0
+        def _req(self, method, path, data=None, headers=None, ok=(200,)):
+            if "_action=LOCK" in path:
+                return R(200, "<LOCK_HANDLE>H</LOCK_HANDLE><CORRNR>EDSK9B0DQN</CORRNR>")
+            if method == "PUT":
+                self.saved = data
+                return R(200)
+            if method == "GET" and "version=active" in path:
+                self.reads += 1
+                if self.reads >= 3:          # becomes active on the third look
+                    self.active = self.saved
+                return R(200, self.active)
+            if method == "GET":
+                return R(200, self.saved)
+            if path.startswith("/sap/bc/adt/abapunit"):
+                nonce = _re.search(r"\|ZSRC (\w+) ", self.active).group(1)
+                ans = base64.b64encode(json.dumps({"ok": True, "result": {"n": nonce}}).encode()).decode()
+                return R(200, f"<r><alert><title>Critical Assertion Error: 'ZSRC {nonce} 1 1 {ans}'</title></alert></r>")
+            return R(200, "")
+        def unlock(self, *a):
+            pass
+
+    c = AdtRunnerClient(LateAdt())
+    assert c.call("ddic_read", {"name": "EKKO"})["n"] != "boot"
 
 
 def test_runner_result_as_eds_750_sends_it():
