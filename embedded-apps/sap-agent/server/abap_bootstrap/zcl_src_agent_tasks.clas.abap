@@ -343,7 +343,7 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
     DATA: ls_dd25v TYPE dd25v, lt_dd26e TYPE STANDARD TABLE OF dd26e, lt_dd27p TYPE STANDARD TABLE OF dd27p, lv_rc TYPE sy-subrc.
     DATA(lv_name) = CONV ddobjname( to_upper( is-name ) ).
     ls_dd25v = VALUE #( viewname = lv_name aggtype = 'E' roottab = to_upper( is-table ) ddlanguage = sy-langu ddtext = |{ lv_name }| ).
-    lt_dd26e = VALUE #( ( enqtype = lv_name tabname = to_upper( is-table ) tabpos = '0001' enqmode = 'E' ) ).
+    lt_dd26e = VALUE #( ( viewname = lv_name tabname = to_upper( is-table ) tabpos = '0001' enqmode = 'E' ) ).
     DATA(lv_pos) = 0.
     LOOP AT is-fields INTO DATA(lv_f).
       lv_pos = lv_pos + 1.
@@ -370,8 +370,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
       rv = fail( lv_nerr ).
       RETURN.
     ENDIF.
-    " NUMBER_RANGE_OBJECT_UPDATE and NUMBER_RANGE_INTERVAL_UPDATE: check parameter names in SE37 (INRO / INRI structures)
-    DATA: ls_attr TYPE inro, ls_text TYPE tnrot, lt_int TYPE STANDARD TABLE OF inriv, lv_err TYPE c LENGTH 1.
+    " NUMBER_RANGE_OBJECT_UPDATE and NUMBER_RANGE_INTERVAL_UPDATE: check parameter names in SE37 (TNRO / INRIV structures)
+    DATA: ls_attr TYPE tnro, ls_text TYPE tnrot, lt_int TYPE STANDARD TABLE OF inriv, lv_err TYPE c LENGTH 1.
     ls_attr = VALUE #( object = to_upper( is-name ) domlen = COND #( WHEN is-length > 0 THEN |{ is-length WIDTH = 6 ALIGN = RIGHT PAD = '0' }| ELSE '000010' ) ).
     ls_text = VALUE #( langu = sy-langu object = to_upper( is-name ) txt = |{ is-name }| ).
     CALL FUNCTION 'NUMBER_RANGE_OBJECT_UPDATE'
@@ -415,7 +415,8 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
       IF stvarv_value( ls_i-name ) IS NOT INITIAL AND is-overwrite <> 'X'.
         CONTINUE.
       ENDIF.
-      MODIFY tvarvc FROM VALUE tvarvc( name = to_upper( ls_i-name ) type = 'P' numb = '0000' low = ls_i-value ).
+      DATA(ls_tvarvc) = VALUE tvarvc( name = to_upper( ls_i-name ) type = 'P' numb = '0000' low = ls_i-value ).
+      MODIFY tvarvc FROM ls_tvarvc.
     ENDLOOP.
     COMMIT WORK.
     rv = ok( VALUE string_table( ( |{ lines( is-items ) } parameter(s) saved| ) ) ).
@@ -611,9 +612,11 @@ CLASS zcl_src_agent_tasks IMPLEMENTATION.
       DATA(lv_ar) = CONV arbgb( to_upper( ls_c-arbgb ) ).
       CALL FUNCTION 'TR_TADIR_INTERFACE' EXPORTING wi_test_modus = space wi_tadir_pgmid = 'R3TR' wi_tadir_object = 'MSAG'
         wi_tadir_obj_name = CONV sobj_name( lv_ar ) wi_tadir_devclass = CONV devclass( to_upper( is-package ) ) wi_tadir_author = sy-uname EXCEPTIONS OTHERS = 1.
-      MODIFY t100a FROM VALUE t100a( arbgb = lv_ar stext = ls_c-text masterlang = sy-langu ).
+      DATA(ls_t100a) = VALUE t100a( arbgb = lv_ar stext = ls_c-text masterlang = sy-langu ).
+      MODIFY t100a FROM ls_t100a.
       LOOP AT ls_c-texts INTO DATA(ls_t).
-        MODIFY t100 FROM VALUE t100( sprsl = sy-langu arbgb = lv_ar msgnr = |{ ls_t-nr WIDTH = 3 ALIGN = RIGHT PAD = '0' }| text = ls_t-text ).
+        DATA(ls_t100) = VALUE t100( sprsl = sy-langu arbgb = lv_ar msgnr = |{ ls_t-nr WIDTH = 3 ALIGN = RIGHT PAD = '0' }| text = ls_t-text ).
+        MODIFY t100 FROM ls_t100.
       ENDLOOP.
       add_to_request( iv_request = is-request iv_object = 'MSAG' iv_name = CONV #( lv_ar ) ).
     ENDLOOP.
