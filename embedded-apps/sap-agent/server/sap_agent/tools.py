@@ -17,7 +17,7 @@ TOOLS: list[dict] = [
     {"name": "sap_ping", "description": "System id, client, release and the user the agent runs as. Call first.", "input_schema": {"type": "object", "properties": {}}},
     {"name": "sap_search", "description": "Search repository objects by name pattern, for example ZCL_SRC*.", "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
     {"name": "sap_read_source", "description": "Read the source of a class, interface or program.", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}},
-    {"name": "sap_write_source", "description": "Create the object if missing, then replace its full source. Does not activate. Any name is allowed, but an existing object outside the allowed packages is never changed.",
+    {"name": "sap_write_source", "description": "Create the object if missing, then replace its full source. Does not activate. The transport request is handled for you: an object already in a request is saved there, otherwise the given one is used, otherwise one is created - so do not call sap_transport_create first; the result says which request was used. Any name is allowed, but an existing object outside the allowed packages is never changed.",
      "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}, "source": {"type": "string"}, "package": {"type": "string"},
                                                       "description": {"type": "string"}, "transport": {"type": "string"}}, "required": ["kind", "name", "source", "package"]}},
     {"name": "sap_syntax_check", "description": "Syntax check the inactive version of an object. Returns messages with line numbers.", "input_schema": {"type": "object", "properties": {"kind": KIND, "name": {"type": "string"}}, "required": ["kind", "name"]}},
@@ -114,10 +114,13 @@ class ToolBox:
             g.check_source(a["kind"], a["name"], a.get("package"))
             owner = adt.package_of(a["kind"], a["name"])
             g.check_owner(a["name"], owner)                # new, or already in an allowed package; never anything else
+            # the request is resolved by the ADT layer: the one the object is already in, else the given one, else a new one
+            pkg = (owner or a.get("package") or "").upper()
+            tr = a.get("transport", "")
             if owner is None:
-                adt.create(a["kind"], a["name"], a.get("description") or a["name"], a["package"], a.get("transport", ""))
-            adt.write_source(a["kind"], a["name"], a["source"], a.get("transport", ""))
-            return {"written": a["name"].upper(), "chars": len(a["source"])}
+                tr = adt.create(a["kind"], a["name"], a.get("description") or a["name"], a["package"], tr, auto_transport=True) or tr
+            used = adt.write_source(a["kind"], a["name"], a["source"], tr, package=pkg)
+            return {"written": a["name"].upper(), "chars": len(a["source"]), "transport": used or "(local / none needed)"}
         if name == "sap_syntax_check":
             g.check_source(a["kind"], a["name"])
             msgs = adt.syntax_check(a["kind"], a["name"])

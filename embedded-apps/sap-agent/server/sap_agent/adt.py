@@ -130,6 +130,11 @@ def parse_messages(body: str) -> list[dict]:
     return out
 
 
+def _needs_request(e: "AdtError") -> bool:
+    """SAP's answer when a change in a transportable package comes without a request."""
+    return e.status == 400 and "corrNr" in (e.body or "")
+
+
 def has_errors(msgs: list[dict]) -> bool:
     return any(m.get("type", "").upper() in ("E", "A", "X") for m in msgs)
 
@@ -280,25 +285,52 @@ class AdtClient:
     def read_source(self, kind: str, name: str) -> str:
         return self._req("GET", object_uri(kind, name) + "/source/main", headers={"Accept": "text/plain"}).text
 
-    def create(self, kind: str, name: str, description: str, package: str, transport: str = "", extra: Optional[dict] = None):
-        q = f"?corrNr={transport}" if transport else ""
+    def create(self, kind: str, name: str, description: str, package: str, transport: str = "", extra: Optional[dict] = None,
+               auto_transport: bool = False) -> str:
+        """Creates the object; returns the request used. With auto_transport, a transportable package without a request
+        given gets a new one (SAP answers 'Parameter corrNr could not be found')."""
         body = create_xml(kind, name, description, package, self.user, extra)
-        self._req("POST", KIND_URI[kind] + q, data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
+        try:
+            q = f"?corrNr={transport}" if transport else ""
+            self._req("POST", KIND_URI[kind] + q, data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
+            return transport
+        except AdtError as e:
+            if not (auto_transport and not transport and _needs_request(e)):
+                raise
+        transport = self.create_transport(f"{name.upper()} ({package.upper()})", package=package)
+        self._req("POST", KIND_URI[kind] + f"?corrNr={transport}", data=body, headers={"Content-Type": self.ctype(kind), "Accept": "*/*"})
+        return transport
 
     def lock(self, kind: str, name: str) -> str:
+        return self.lock_info(kind, name)[0]
+
+    def lock_info(self, kind: str, name: str) -> tuple[str, str]:
+        """Lock handle, and the request the object is already recorded in (CORRNR, empty when none)."""
         r = self._req("POST", object_uri(kind, name) + "?_action=LOCK&accessMode=MODIFY",
                       headers={"Accept": "application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result"})
-        return parse_lock_handle(r.text)
+        m = re.search(r"<CORRNR>([^<]*)</CORRNR>", r.text)
+        return parse_lock_handle(r.text), (m.group(1).strip() if m else "")
 
     def unlock(self, kind: str, name: str, handle: str):
         self._req("POST", object_uri(kind, name) + f"?_action=UNLOCK&lockHandle={handle}", ok=(200, 204))
 
-    def write_source(self, kind: str, name: str, source: str, transport: str = ""):
-        h = self.lock(kind, name)
+    def write_source(self, kind: str, name: str, source: str, transport: str = "", package: str = "") -> str:
+        """Replaces the source; returns the request used. An object already recorded in a request is always saved
+        there (SAP refuses any other one). Otherwise the given request is used, and with a package and no request a
+        new one is created when SAP asks for it."""
+        h, locked_in = self.lock_info(kind, name)
         try:
-            q = f"?lockHandle={h}" + (f"&corrNr={transport}" if transport else "")
-            self._req("PUT", object_uri(kind, name) + "/source/main" + q, data=source,
-                      headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
+            req = locked_in or transport
+            put = lambda r: self._req("PUT", object_uri(kind, name) + "/source/main" + f"?lockHandle={h}" + (f"&corrNr={r}" if r else ""),  # noqa: E731
+                                      data=source, headers={"Content-Type": "text/plain; charset=utf-8", "Accept": "text/plain"})
+            try:
+                put(req)
+            except AdtError as e:
+                if req or not package or not _needs_request(e):
+                    raise
+                req = self.create_transport(f"{name.upper()} ({package.upper()})", package=package)
+                put(req)
+            return req
         finally:
             self.unlock(kind, name, h)
 

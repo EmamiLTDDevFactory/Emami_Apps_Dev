@@ -178,3 +178,49 @@ def test_runner_reports_a_stale_class_instead_of_its_answer():
     body = "<r><alert kind='failedAssertion'><title>Critical Assertion Error: 'ZSRC boot 1 1 eyJvayI6dHJ1ZX0='</title></alert></r>"
     with pytest.raises(SapxError, match="answered another request"):
         parse_runner_result(body, nonce="abc123")
+
+
+def _fake_session(responses):
+    """requests-like session: responses(method, url, data) -> (status, text)."""
+    class R:
+        def __init__(self, code, text):
+            self.status_code, self.text, self.headers = code, text, {}
+
+    class S:
+        headers = {}
+        def __init__(self):
+            self.calls = []
+        def request(self, method, url, data=None, headers=None):
+            self.calls.append((method, url))
+            return R(*responses(method, url, data))
+    return S()
+
+
+def test_write_source_uses_the_request_the_object_is_locked_in():
+    from sap_agent.adt import AdtClient
+    def resp(method, url, data):
+        if "_action=LOCK" in url:
+            return 200, "<LOCK_HANDLE>H</LOCK_HANDLE><CORRNR>EDSK9B0DQT</CORRNR>"
+        if method == "PUT":
+            return (200, "") if "corrNr=EDSK9B0DQT" in url else (500, "ExceptionResourceSaveFailure")
+        return 200, ""
+    s = _fake_session(resp)
+    c = AdtClient("https://sap", "", "U", "", session=s)
+    assert c.write_source("program", "ZSRC_RFQ_AGING", "REPORT x.", "EDSK9B0DQX", package="ZEMAMI") == "EDSK9B0DQT"
+    assert not any("transportrequests" in u or "/cts/transports" in u for m, u in s.calls)
+
+
+def test_write_source_creates_a_request_only_when_sap_asks_for_one():
+    from sap_agent.adt import AdtClient
+    def resp(method, url, data):
+        if "_action=LOCK" in url:
+            return 200, "<LOCK_HANDLE>H</LOCK_HANDLE><CORRNR></CORRNR>"
+        if method == "PUT":
+            return (200, "") if "corrNr=EDSK9B0DQZ" in url else (400, "<message>Parameter corrNr could not be found.</message>")
+        if "/cts/transportrequests" in url:
+            return 400, "user action  is not supported"
+        if "/cts/transports" in url:
+            return 200, "/com.sap.cts/object_record/EDSK9B0DQZ"
+        return 200, ""
+    c = AdtClient("https://sap", "", "U", "", session=_fake_session(resp))
+    assert c.write_source("program", "ZNEW", "REPORT x.", package="ZEMAMI") == "EDSK9B0DQZ"

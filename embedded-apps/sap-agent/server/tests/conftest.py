@@ -29,13 +29,14 @@ class FakeAdt:
     def exists(self, kind, name):
         return (kind, name.upper()) in self.pkg
 
-    def create(self, kind, name, description, package, transport="", extra=None):
+    def create(self, kind, name, description, package, transport="", extra=None, auto_transport=False):
         self.calls.append(("create", kind, name.upper(), package, transport))
         self.pkg[(kind, name.upper())] = package.upper()
 
-    def write_source(self, kind, name, source, transport=""):
+    def write_source(self, kind, name, source, transport="", package=""):
         self.calls.append(("write", kind, name.upper()))
         self.sources[(kind, name.upper())] = source
+        return transport
 
     def read_source(self, kind, name):
         return self.sources.get((kind, name.upper()), "REPORT x.")
