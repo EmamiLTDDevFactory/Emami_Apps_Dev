@@ -5,6 +5,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../../../src/utils/claim-date';
+import { displayStatusLabel } from '../../../../src/utils/claim-status';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -184,7 +185,7 @@ export default function DashboardScreen() {
               <View style={[styles.claimRight, isWideScreen && styles.claimRightWide]}>
                 <Text style={[styles.claimAmount, isWideScreen && styles.claimAmountWide]}>₹{claim.amount.toFixed(2)}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
-                  <Text style={[styles.statusText, { color: badge.text }]}>{claim.status}</Text>
+                  <Text style={[styles.statusText, { color: badge.text }]}>{displayStatusLabel(claim.status)}</Text>
                 </View>
               </View>
             </TouchableOpacity>

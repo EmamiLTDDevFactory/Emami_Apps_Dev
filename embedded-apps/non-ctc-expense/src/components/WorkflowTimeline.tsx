@@ -68,7 +68,7 @@ export const WorkflowTimeline: React.FC<WorkflowTimelineProps> = ({ events }) =>
                 <View style={styles.titleRow}>
                   <Text style={styles.stepName}>{event.step}</Text>
                   <Text style={[styles.outcomeBadge, { backgroundColor: `${color}1A`, color }]}>
-                    {event.outcome}
+                    {event.outcome === 'Paid' ? 'Posted' : event.outcome}
                   </Text>
                 </View>
 

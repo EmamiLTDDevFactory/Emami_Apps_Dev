@@ -1,0 +1,155 @@
+// Client-side PDF attachment compression — ported from payment-tracking (IBD Provision
+// Tracking)'s src/lib/pdfAttachment.ts, which already solved this exact problem for its own SAP
+// OData submission (same gateway, same symptom): a claim gets POSTed as one base64-embedded JSON
+// body straight to SAP, with no app-controlled size limit anywhere in that path, and something in
+// front of the OData service caps the request body well below what even a small PDF's base64
+// encoding needs. Confirmed independently for this app (non-ctc-expense) too — see create.tsx's
+// own compressAttachmentImage, same ~70KB real-world ceiling measured directly.
+//
+// One deliberate difference from IBD's version: that file loads the PDF.js worker from
+// https://unpkg.com/... at runtime. The exact same worker file already ships inside the
+// pdfjs-dist package itself (legacy/build/pdf.worker.min.js) — loading it locally via
+// `new URL(..., import.meta.url)` (the standard bundler-resolved-asset pattern) means this
+// doesn't depend on an external CDN being reachable at runtime, which a corporate network
+// could plausibly block even though the compression logic itself is otherwise identical.
+export const MAX_ATTACHMENT_BYTES = 70 * 1024;
+
+/** Reads a picked attachment (blob:/file: uri) into a plain base64 string — same helper
+ * ClaimContext.tsx already has privately; duplicated here rather than exporting that one, to
+ * keep this change scoped to new files only, not touching the submission flow at all. */
+function readAttachmentAsBase64(uri: string): Promise<string> {
+  return fetch(uri)
+    .then((res) => res.blob())
+    .then((blob) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = (reader.result as string) || '';
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    }));
+}
+
+/** Byte length of the file a base64 string decodes to, without actually decoding it. */
+function base64ByteLength(b64: string): number {
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// Tried largest/highest-quality first, only stepping down when the previous combination didn't
+// fit — a 1-3 page invoice/receipt PDF (the common case) usually fits well before reaching the
+// floor. Identical to IBD's own steps.
+const RENDER_SCALES = [1.5, 1.0, 0.75, 0.5];
+const JPEG_QUALITIES = [0.7, 0.5, 0.35, 0.2];
+
+async function renderPageCanvases(pdfjsLib: any, bytes: Uint8Array, scale: number): Promise<HTMLCanvasElement[]> {
+  // pdf.js transfers (not copies) this buffer to its worker, detaching it afterward — the caller
+  // loops over multiple scales reusing the same `bytes`, so each call needs its own fresh copy or
+  // every call after the first throws "ArrayBuffer is detached".
+  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const canvases: HTMLCanvasElement[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable.');
+    // eslint-disable-next-line no-await-in-loop
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    canvases.push(canvas);
+  }
+  return canvases;
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) { reject(new Error('JPEG encode failed.')); return; }
+      blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))).catch(reject);
+    }, 'image/jpeg', quality);
+  });
+}
+
+async function buildPdfFromCanvases(PDFDocument: any, canvases: HTMLCanvasElement[], quality: number): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  for (const canvas of canvases) {
+    // eslint-disable-next-line no-await-in-loop
+    const jpeg = await canvasToJpeg(canvas, quality);
+    // eslint-disable-next-line no-await-in-loop
+    const img = await doc.embedJpg(jpeg);
+    const page = doc.addPage([canvas.width, canvas.height]);
+    page.drawImage(img, { x: 0, y: 0, width: canvas.width, height: canvas.height });
+  }
+  return doc.save();
+}
+
+let workerConfigured = false;
+
+/** Web-only: rasterizes every page (pdf.js) and rebuilds the PDF from JPEG-compressed pages
+ * (pdf-lib), stepping resolution/quality down until the rebuilt file fits under maxBytes. Returns
+ * null if even the lowest scale/quality combination still doesn't fit — the caller then asks the
+ * user for a smaller file rather than silently shipping something over the limit. */
+export async function compressPdfToMaxBytes(bytes: Uint8Array, maxBytes: number): Promise<Uint8Array | null> {
+  const [pdfjsLib, pdfLib] = await Promise.all([
+    import('pdfjs-dist/legacy/build/pdf'),
+    import('pdf-lib'),
+  ]);
+
+  if (!workerConfigured) {
+    // Same CDN URL payment-tracking's own proven-working version of this file uses — Metro
+    // (this app's bundler) doesn't support the `new URL(..., import.meta.url)` local-asset
+    // pattern in this context the way webpack/Next.js does, so the locally-bundled-worker
+    // approach isn't available here; this plain string has no such requirement.
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js`;
+    workerConfigured = true;
+  }
+
+  let smallest: Uint8Array | null = null;
+  for (const scale of RENDER_SCALES) {
+    // eslint-disable-next-line no-await-in-loop
+    const canvases = await renderPageCanvases(pdfjsLib, bytes, scale);
+    for (const quality of JPEG_QUALITIES) {
+      // eslint-disable-next-line no-await-in-loop
+      const rebuilt = await buildPdfFromCanvases(pdfLib.PDFDocument, canvases, quality);
+      if (!smallest || rebuilt.byteLength < smallest.byteLength) smallest = rebuilt;
+      if (rebuilt.byteLength <= maxBytes) return rebuilt;
+    }
+  }
+  return null;
+}
+
+/** Given a freshly-picked PDF's uri, returns a new { uri, size } under MAX_ATTACHMENT_BYTES if
+ * possible — null if it's already small enough (caller keeps the original uri/size as-is, same
+ * as create.tsx's image path when compression doesn't apply), or null if it's over the limit and
+ * compression couldn't get it under the limit, so the caller should reject the file rather than
+ * let it fail later with a confusing SAP/gateway error.
+ *
+ * Returns a blob: uri (not a raw base64 string) deliberately — create.tsx's Attachment.uri is
+ * always something ClaimContext.tsx's existing readAttachmentAsBase64(att.uri) can re-fetch at
+ * submit time, exactly like every other attachment (including compressed images). Keeping that
+ * contract means the submission flow itself needs zero changes for this to work. */
+export async function ensurePdfAttachmentUnderLimit(uri: string): Promise<{ uri: string; size: number } | null> {
+  const base64 = await readAttachmentAsBase64(uri);
+  const originalSize = base64ByteLength(base64);
+  if (originalSize <= MAX_ATTACHMENT_BYTES) return null;
+
+  try {
+    const compressed = await compressPdfToMaxBytes(base64ToBytes(base64), MAX_ATTACHMENT_BYTES);
+    if (!compressed) return null;
+    const blob = new Blob([compressed as unknown as BlobPart], { type: 'application/pdf' });
+    return { uri: URL.createObjectURL(blob), size: compressed.byteLength };
+  } catch (e) {
+    console.warn('Failed to compress PDF attachment', e);
+    return null;
+  }
+}

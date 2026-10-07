@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as WT from '../../../../src/components/WorkflowTimeline';
 import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -27,6 +27,7 @@ export default function ClaimDetailPage() {
   // SAP returns ~1,600 tax codes for a claim, so the list is unusable without a filter.
   const [taxSearch, setTaxSearch] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<{ filename: string; mimetype: string; dataUri: string; raw: any } | null>(null);
   const router = useRouter();
   const { currentUser } = useAuth();
   // RESUBMIT_FEATURE: Get setTempClaimForResubmit from context
@@ -167,8 +168,8 @@ export default function ClaimDetailPage() {
     const status = (entry?.Status || '').toString().toUpperCase();
     const action = (entry?.Action || '').toString().toUpperCase();
 
-    if (status === 'S') return 'Paid';
-    if (status === 'P') return 'Release for Payment';
+    if (status === 'S') return 'Posted';
+    if (status === 'P') return 'Parked';
     if (status === 'H') return 'Pending at finance';
 
     if (action === 'APPROVE') return 'Approved';
@@ -204,9 +205,9 @@ export default function ClaimDetailPage() {
     const normalized = (status || '').toString().trim().toLowerCase();
     switch (normalized) {
       case 'approved':
-      case 'paid':
+      case 'posted':
         return { bg: '#D1FAE5', border: '#10B981', text: '#065F46' };
-      case 'release for payment':
+      case 'parked':
         return { bg: '#E0F2FE', border: '#0284C7', text: '#0369A1' };
       case 'pending at finance':
         return { bg: '#FEF3C7', border: '#D97706', text: '#B45309' };
@@ -217,6 +218,17 @@ export default function ClaimDetailPage() {
       default:
         return { bg: '#FFFFFF', border: '#E2E8F0', text: '#111827' };
     }
+  };
+
+  const handlePreviewAttachment = (ln: any) => {
+    const mimetype = ln.Mimetype || ln.mimetype || 'application/pdf';
+    const filename = ln.Filename || ln.filename || 'attachment';
+    const value = ln.Value || ln.value;
+    if (!value) {
+      Alert.alert('Attachment', 'No attachment data available');
+      return;
+    }
+    setPreviewAttachment({ filename, mimetype, dataUri: `data:${mimetype};base64,${value}`, raw: ln });
   };
 
   const handleOpenAttachment = async (ln: any) => {
@@ -372,7 +384,14 @@ export default function ClaimDetailPage() {
   };
 
   const TimelineComp = (WT as any)?.WorkflowTimeline || null;
-  const normalizedStatus = header.Status === 'R' ? 'Rejected' : header.Status === 'A' ? 'Approved' : header.Status === 'N' ? 'Submitted' : header.Status;
+  const normalizedStatus = header.Status === 'R' ? 'Rejected'
+    : header.Status === 'A' ? 'Approved'
+    : header.Status === 'N' ? 'Submitted'
+    : header.Status === 'C' ? 'Created'
+    : header.Status === 'H' ? 'Pending at Finance'
+    : header.Status === 'P' ? 'Parked'
+    : header.Status === 'S' ? 'Posted'
+    : header.Status;
   const claimOwner = currentUser && currentUser.employeeId === header.EmpId;
   const canEdit = claimOwner && (header.Status === 'R' || String(header.Status).toLowerCase() === 'rejected');
   const isRejectedClaim = canEdit;
@@ -562,16 +581,26 @@ export default function ClaimDetailPage() {
             {ln.attachments && ln.attachments.length > 0 ? (
               <View style={{ marginTop: 8, gap: 4 }}>
                 {ln.attachments.map((att: any, aIdx: number) => (
-                  <TouchableOpacity 
-                    key={aIdx} 
-                    onPress={() => handleOpenAttachment(att)} 
-                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}
-                  >
+                  <View key={aIdx} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                     <Ionicons name="document-text" size={16} color="#005A9E" style={{ marginRight: 6 }} />
                     <Text style={styles.attachmentText}>
                       {att.Filename ? `Attachment: ${att.Filename}` : `Attachment ${aIdx + 1}`}
                     </Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handlePreviewAttachment(att)}
+                      style={styles.attachmentIconBtn}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="eye-outline" size={18} color="#005A9E" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleOpenAttachment(att)}
+                      style={styles.attachmentIconBtn}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="download-outline" size={18} color="#059669" />
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             ) : null}
@@ -796,6 +825,46 @@ export default function ClaimDetailPage() {
         </View>
       </Modal>
 
+      {/* Attachment preview popup — eye icon opens this instead of leaving the page/downloading */}
+      <Modal visible={!!previewAttachment} transparent animationType="fade" onRequestClose={() => setPreviewAttachment(null)}>
+        <View style={styles.previewOverlay}>
+          <View style={styles.previewBox}>
+            <View style={styles.previewHeader}>
+              <Text style={styles.previewTitle} numberOfLines={1}>{previewAttachment?.filename}</Text>
+              <TouchableOpacity onPress={() => setPreviewAttachment(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={24} color="#475569" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.previewBody}>
+              {previewAttachment?.mimetype.startsWith('image/') ? (
+                <Image source={{ uri: previewAttachment.dataUri }} style={styles.previewImage} resizeMode="contain" />
+              ) : previewAttachment?.mimetype === 'application/pdf' && Platform.OS === 'web' ? (
+                React.createElement('iframe', {
+                  src: previewAttachment.dataUri,
+                  style: { width: '100%', height: '100%', border: 'none' },
+                })
+              ) : (
+                <View style={styles.previewUnsupported}>
+                  <Ionicons name="document-outline" size={48} color="#94A3B8" />
+                  <Text style={styles.previewUnsupportedText}>Preview not available for this file type.</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.previewFooter}>
+              <TouchableOpacity
+                style={styles.previewDownloadBtn}
+                onPress={() => previewAttachment && handleOpenAttachment(previewAttachment.raw)}
+              >
+                <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.previewDownloadText}>Download</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -879,6 +948,79 @@ const styles = StyleSheet.create({
   lineDate: { color: '#64748B', marginTop: 4, fontSize: 13 },
   lineAmt: { fontWeight: '800', color: '#0F172A' },
   attachmentText: { marginTop: 8, color: '#1D4ED8', fontSize: 13 },
+  attachmentIconBtn: { marginLeft: 10, padding: 2 },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  previewBox: {
+    width: '100%',
+    maxWidth: 720,
+    height: '85%',
+    maxHeight: 700,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  previewTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginRight: 12,
+  },
+  previewBody: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewUnsupported: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  previewUnsupportedText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  previewFooter: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    alignItems: 'flex-end',
+  },
+  previewDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#059669',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  previewDownloadText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 6,
+  },
   actionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,

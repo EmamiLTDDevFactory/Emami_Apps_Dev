@@ -7,6 +7,7 @@ import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextIn
 import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
+import { ensurePdfAttachmentUnderLimit } from '../../../../src/lib/pdfAttachment';
 import { Attachment } from '../../../../src/types';
 
 // Remove hardcoded EXPENSE_TYPES
@@ -34,6 +35,75 @@ const ALLOWED_ATTACHMENT_LABEL = 'PDF, PNG, JPG, JPEG, XLS, XLSX, CSV, TXT';
 
 const MAX_ATTACHMENTS_TOTAL_BYTES = 30 * 1024 * 1024;
 const MAX_ATTACHMENTS_TOTAL_LABEL = '30 MB';
+
+// The claim gets POSTed as one base64-embedded JSON body straight to SAP, with no app-controlled
+// size limit anywhere in that path — a modest image can trip a 413 from the gateway sitting in
+// front of SAP well before it reaches the 30MB ceiling this screen warns about. Images can be
+// safely re-encoded smaller without losing their usefulness as a receipt; compression tries
+// progressively smaller width/quality combinations (most lenient first) until the file is at or
+// under TARGET_FILE_BYTES, falling back to whatever got smallest if none of the steps quite reach
+// it. PDF/XLS/XLSX/CSV/TXT attachments can't be shrunk this way and are deliberately left
+// untouched.
+//
+// Uses the plain DOM canvas APIs directly (this app only ever runs on web — no native build
+// config exists) rather than expo-image-manipulator: that library's web implementation in the
+// SDK-52-compatible version (~13.0.6) silently ignores the compress/format options on
+// saveAsync() and always returns a lossless PNG re-encode regardless of what's requested, which
+// would have made the "JPEG at quality X" steps below no-ops.
+const TARGET_FILE_BYTES = 70 * 1024;
+const MAX_IMAGE_WIDTH = 1280;
+const MIN_IMAGE_WIDTH = 320;
+const COMPRESSION_STEPS = [
+  { width: MAX_IMAGE_WIDTH, quality: 0.6 },
+  { width: MAX_IMAGE_WIDTH, quality: 0.4 },
+  { width: 960, quality: 0.4 },
+  { width: 960, quality: 0.25 },
+  { width: 640, quality: 0.3 },
+  { width: 640, quality: 0.18 },
+  { width: MIN_IMAGE_WIDTH, quality: 0.2 },
+  { width: MIN_IMAGE_WIDTH, quality: 0.1 },
+];
+
+function loadImageElement(uri: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = uri;
+  });
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality));
+}
+
+async function compressAttachmentImage(uri: string, knownWidth?: number) {
+  try {
+    const img = await loadImageElement(uri);
+    const naturalWidth = img.naturalWidth || knownWidth || img.width;
+    const naturalHeight = img.naturalHeight || img.height;
+
+    let bestBlob: Blob | null = null;
+    for (const step of COMPRESSION_STEPS) {
+      const targetWidth = Math.min(naturalWidth, step.width); // never upscale past the original
+      const targetHeight = Math.max(1, Math.round(naturalHeight * (targetWidth / naturalWidth)));
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context unavailable.');
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      // eslint-disable-next-line no-await-in-loop
+      const blob = await canvasToJpegBlob(canvas, step.quality);
+      if (blob && (!bestBlob || blob.size < bestBlob.size)) bestBlob = blob;
+      if (blob && blob.size <= TARGET_FILE_BYTES) break;
+    }
+    return bestBlob ? { uri: URL.createObjectURL(bestBlob), size: bestBlob.size } : null;
+  } catch (e) {
+    console.warn('Failed to compress attachment image, falling back to the original', e);
+    return null;
+  }
+}
 
 export default function CreateClaimScreen() {
   const router = useRouter();
@@ -408,9 +478,39 @@ export default function CreateClaimScreen() {
             return;
           }
 
+          // Images can be safely re-encoded smaller, and a PDF can be re-rasterized smaller
+          // (see pdfAttachment.ts, ported from payment-tracking's own working fix for this same
+          // gateway limit) — XLS/XLSX/CSV/TXT can't be shrunk either way and are left exactly as
+          // picked.
+          let finalUri = asset.uri;
+          let finalSize = asset.size || 0;
+          let finalType = attachmentMimeType;
+          if (attachmentMimeType.startsWith('image/')) {
+            const compressed = await compressAttachmentImage(asset.uri, asset.width);
+            if (compressed) {
+              finalUri = compressed.uri;
+              finalSize = compressed.size;
+              // Compression always re-encodes as JPEG (see compressAttachmentImage's
+              // SaveFormat.JPEG) — the stored Mimetype must say so too, or claim/[id].tsx's
+              // preview/download (which trusts this field, not the actual bytes) ends up
+              // labelling real JPEG data as the original PNG/etc.
+              finalType = 'image/jpeg';
+            }
+          } else if (attachmentMimeType === 'application/pdf') {
+            if ((asset.size || 0) > 70 * 1024) {
+              const compressed = await ensurePdfAttachmentUnderLimit(asset.uri);
+              if (compressed) {
+                finalUri = compressed.uri;
+                finalSize = compressed.size;
+              } else {
+                setFormError('This PDF is too large and could not be compressed enough to upload. Please attach a smaller PDF.');
+                return;
+              }
+            }
+          }
+
           const existingTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
-          const newFileSize = asset.size || 0;
-          if (existingTotal + newFileSize > MAX_ATTACHMENTS_TOTAL_BYTES) {
+          if (existingTotal + finalSize > MAX_ATTACHMENTS_TOTAL_BYTES) {
             setFormError(`Total attachment size cannot exceed ${MAX_ATTACHMENTS_TOTAL_LABEL}. Please attach a smaller file or remove an existing one.`);
             return;
           }
@@ -418,9 +518,9 @@ export default function CreateClaimScreen() {
           const newAtt: Attachment = {
             id: `att-${Date.now()}`,
             name: asset.name || 'document',
-            uri: asset.uri,
-            size: asset.size,
-            type: attachmentMimeType,
+            uri: finalUri,
+            size: finalSize,
+            type: finalType,
           };
           setAttachments(prev => [...prev, newAtt]);
         }

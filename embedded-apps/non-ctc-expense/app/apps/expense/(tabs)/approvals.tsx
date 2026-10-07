@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
@@ -10,6 +10,9 @@ export default function ApprovalsScreen() {
   const router = useRouter();
   const { filterClaims, approveClaim, rejectClaim, requestClarification, releasePayment, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries } = useClaim();
   const { currentUser } = useAuth();
+  // Desktop-only layout switch, same breakpoint/pattern as the Dashboard's recent-claims grid.
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideScreen = windowWidth >= 900;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
@@ -325,37 +328,43 @@ export default function ApprovalsScreen() {
               <Text style={styles.emptySub}>No {selectedStat?.toLowerCase()} claims found in your history.</Text>
             </View>
           ) : (
-            filteredHistoryItems.map((entry: any, idx: number) => {
-              const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
-              return (
-                <TouchableOpacity
-                  key={`${entry.ClaimId}-${idx}`}
-                  style={[
-                    styles.historyClaimCard,
-                    {
-                      borderLeftWidth: 5,
-                      borderLeftColor: isApprove ? '#059669' : '#DC2626',
-                      backgroundColor: isApprove ? '#D1FAE5' : '#FEE2E2',
-                    }
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => router.push(`/apps/expense/claim/${entry.ClaimId}`)}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'stretch' }}>
-                    <View style={{ flex: 1, paddingRight: 12 }}>
+            <View style={[styles.historyGrid, isWideScreen && styles.historyGridWide]}>
+              {filteredHistoryItems.map((entry: any, idx: number) => {
+                const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
+                // HistorySet only has the approver's own action trail (ActionBy/ActionByName is
+                // always the logged-in manager, since fetchHistorySet filters by their own SAP
+                // id) — the submitter's name/amount/expense type live on the matching claim in
+                // `claims`, so look that up by ClaimId instead of using ActionByName here.
+                const matchedClaim = claims.find(c => c.id === entry.ClaimId);
+                const expenseType = (matchedClaim?.expenseType || '').trim();
+                return (
+                  <TouchableOpacity
+                    key={`${entry.ClaimId}-${idx}`}
+                    style={[
+                      styles.historyClaimCard,
+                      isWideScreen && styles.historyClaimCardWide,
+                      {
+                        borderLeftWidth: 5,
+                        borderLeftColor: isApprove ? '#059669' : '#DC2626',
+                        backgroundColor: isApprove ? '#D1FAE5' : '#FEE2E2',
+                      }
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => router.push(`/apps/expense/claim/${entry.ClaimId}`)}
+                  >
+                    <View style={styles.historyTopRow}>
                       <Text style={styles.historyClaimId}>{entry.ClaimId}</Text>
-                      <Text style={styles.historyClaimDate}>{formatHistoryDate(entry.ActionDate)}</Text>
-                      {entry.ActionByName ? (
-                        <Text style={styles.historyClaimActor}>By: {entry.ActionByName}</Text>
-                      ) : null}
-                      {entry.Remarks ? (
-                        <Text style={styles.historyClaimRemarks} numberOfLines={2}>
-                          Remarks: {entry.Remarks}
-                        </Text>
-                      ) : null}
+                      {expenseType ? <Text style={styles.historyTypeBadge}>{expenseType}</Text> : null}
                     </View>
+                    {matchedClaim?.employeeName ? (
+                      <Text style={styles.historyClaimActor}>By: {matchedClaim.employeeName}</Text>
+                    ) : null}
+                    <Text style={styles.historyClaimDate}>{formatHistoryDate(entry.ActionDate)}</Text>
 
-                    <View style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <View style={styles.historyBottomRow}>
+                      <Text style={styles.historyAmount}>
+                        {matchedClaim ? `₹${matchedClaim.amount.toFixed(2)}` : ''}
+                      </Text>
                       <View style={[
                         styles.historyActionBadge,
                         { backgroundColor: isApprove ? '#D1FAE5' : '#FEE2E2' },
@@ -367,15 +376,16 @@ export default function ApprovalsScreen() {
                           {isApprove ? 'Approved' : 'Rejected'}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                        <Text style={styles.historyClaimViewText}>View Full Details</Text>
-                        <Ionicons name="chevron-forward" size={16} color="#005A9E" />
-                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+
+                    <View style={styles.historyViewRow}>
+                      <Text style={styles.historyClaimViewText}>View Full Details</Text>
+                      <Ionicons name="chevron-forward" size={14} color="#005A9E" />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           )
         ) : (
           /* Default: Pending claims awaiting approval */
@@ -664,18 +674,66 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '600',
   },
-  // History claim cards (for Approved/Rejected/Total view)
+  // History claim cards (for Approved/Rejected/Total view) — a smaller grid than the Dashboard's
+  // Recent Claims Activity cards (which sit at 31.5% width / larger padding), same wrapping
+  // pattern but sized down further.
+  historyGrid: {
+    gap: 10,
+  },
+  historyGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
   historyClaimCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    padding: 16,
+    padding: 12,
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
+  },
+  historyClaimCardWide: {
+    width: '23%',
+    flexGrow: 1,
+  },
+  historyTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 2,
+  },
+  historyTypeBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1E40AF',
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  historyBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  historyAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  historyViewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: 8,
   },
   historyClaimHeader: {
     flexDirection: 'row',

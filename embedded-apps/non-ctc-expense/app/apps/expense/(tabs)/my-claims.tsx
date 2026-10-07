@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../../../src/utils/claim-date';
+import { displayStatusLabel } from '../../../../src/utils/claim-status';
 
 const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Paid', 'Rejected'];
 
@@ -103,6 +104,9 @@ export default function MyClaimsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ status?: string; period?: string }>();
   const { filterClaims, expenseTypes, fetchExpenseTypes } = useClaim();
+  // Desktop-only layout switch, same breakpoint/pattern as the Dashboard's recent-claims grid.
+  const { width: windowWidth } = useWindowDimensions();
+  const isWideScreen = windowWidth >= 900;
   const expenseTypeOptions = React.useMemo(() => {
     const sapExpenseTypes = expenseTypes
       .map(expenseType => expenseType.name)
@@ -271,7 +275,7 @@ export default function MyClaimsScreen() {
 
             {/* Status Filter */}
             <TouchableOpacity style={styles.filterPill} onPress={() => setStatusFilterModal(true)}>
-              <Text style={styles.filterPillLabel}>Status: {selectedStatus}</Text>
+              <Text style={styles.filterPillLabel}>Status: {displayStatusLabel(selectedStatus)}</Text>
               <Ionicons name="chevron-down" size={14} color="#005A9E" />
             </TouchableOpacity>
 
@@ -295,36 +299,42 @@ export default function MyClaimsScreen() {
             <Text style={styles.emptySub}>No expense claims match your active search or filter criteria.</Text>
           </View>
         ) : (
-          displayedClaims.map(claim => {
-            const badge = getStatusBadge(claim.status);
-            return (
-              <TouchableOpacity
-                key={claim.id}
-                style={[styles.claimCard, { backgroundColor: tintColors[claim.status] || tintColors.default, borderLeftColor: accentColors[claim.status] || accentColors.default }]}
-                onPress={() => router.push(`/apps/expense/claim/${claim.id}`)}
-              >
-                <View style={styles.cardHeader}>
-                  <View>
-                    <Text style={styles.claimId}>{claim.id}</Text>
-                    <Text style={styles.claimType}>{claim.expenseType}</Text>
-                  </View>
-                  <View style={styles.amountBadgeCol}>
-                    <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
-                      <Text style={[styles.statusText, { color: badge.text }]}>{claim.status}</Text>
+          <View style={[styles.claimsGrid, isWideScreen && styles.claimsGridWide]}>
+            {displayedClaims.map(claim => {
+              const badge = getStatusBadge(claim.status);
+              return (
+                <TouchableOpacity
+                  key={claim.id}
+                  style={[
+                    styles.claimCard,
+                    isWideScreen && styles.claimCardWide,
+                    { backgroundColor: tintColors[claim.status] || tintColors.default, borderLeftColor: accentColors[claim.status] || accentColors.default },
+                  ]}
+                  onPress={() => router.push(`/apps/expense/claim/${claim.id}`)}
+                >
+                  <View style={styles.cardHeader}>
+                    <View>
+                      <Text style={styles.claimId}>{claim.id}</Text>
+                      <Text style={styles.claimType}>{claim.expenseType}</Text>
+                    </View>
+                    <View style={styles.amountBadgeCol}>
+                      <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+                        <Text style={[styles.statusText, { color: badge.text }]}>{displayStatusLabel(claim.status)}</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                <Text style={styles.justification} numberOfLines={2}>{claim.justification}</Text>
+                  <Text style={styles.justification} numberOfLines={2}>{claim.justification}</Text>
 
-                <View style={styles.cardFooter}>
-                  <Text style={styles.metaText}>Cost Center: {claim.costCenter}</Text>
-                  <Text style={styles.metaText}>Submitted: {formatClaimDisplayDate(claim)}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.metaText}>Cost Center: {claim.costCenter}</Text>
+                    <Text style={styles.metaText}>Submitted: {formatClaimDisplayDate(claim)}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
       </ScrollView>
 
@@ -380,7 +390,7 @@ export default function MyClaimsScreen() {
                   setStatusFilterModal(false);
                 }}
               >
-                <Text style={styles.modalOptionText}>{item}</Text>
+                <Text style={styles.modalOptionText}>{displayStatusLabel(item)}</Text>
                 {selectedStatus === item && <Ionicons name="checkmark" size={20} color="#005A9E" />}
               </TouchableOpacity>
             ))}
@@ -524,10 +534,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 260,
   },
+  // Smaller grid than the Dashboard's Recent Claims Activity cards, same wrapping pattern (and
+  // the same one used for Approvals/Finance history views) but sized down further.
+  claimsGrid: {
+    gap: 10,
+  },
+  claimsGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
   claimCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderLeftWidth: 6,
@@ -537,6 +556,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 12,
     elevation: 4,
+  },
+  claimCardWide: {
+    width: '23%',
+    flexGrow: 1,
   },
   cardHeader: {
     flexDirection: 'row',
