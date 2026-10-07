@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { SAP_BASE_URL } from '../config/api';
-import { AreaCode, ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError, TaxCode } from '../types';
+import { AreaCode, Attachment, ClaimKPIs, ClaimStatus, ExpenseClaim, SAPError, TaxCode } from '../types';
 import { getClaimCreatedTimestamp } from '../utils/claim-date';
 import { useAuth } from './AuthContext';
 
@@ -32,6 +32,13 @@ interface ClaimContextType {
   filterClaims: (roleFilter?: 'employee' | 'manager' | 'finance', search?: string, expenseType?: string, status?: string) => ExpenseClaim[];
   fetchClaims: () => Promise<void>;
   fetchHistorySet: () => Promise<void>;
+  // Claim detail lookups for history-trail cards (Approvals/Finance's Approved/Rejected/Total
+  // view) — HistorySet itself never carries expense type/amount, and `claims` only holds claims
+  // currently assigned to this user (ClaimHeaderSet's LoginId is cleared once a claim moves past
+  // them), so already-processed claims silently vanish from it. This fetches/caches each claim's
+  // own ClaimHeaderSet record instead — the same call the claim detail page already relies on.
+  claimSummaryCache: Record<string, { amount: number; expenseType: string; employeeName: string }>;
+  fetchClaimSummaries: (claimIds: string[]) => Promise<void>;
   expenseTypes: any[];
   fetchExpenseTypes: () => Promise<void>;
   // RESUBMIT_FEATURE: Temporary storage for resubmit workflow
@@ -78,6 +85,19 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   'text/plain',
 ]);
 
+// SAP's stored Filename never includes an extension — used only to reconstruct one when mapping
+// a claim's attachments back from SAP (below), so create.tsx's submit-time extension check has
+// something valid to find instead of treating the whole extension-less name as one.
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/csv': 'csv',
+  'text/plain': 'txt',
+};
+
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'xls', 'xlsx', 'csv', 'txt']);
 
 // Reads a picked attachment (blob: or file: uri) into a plain base64 string, so it can travel
@@ -113,6 +133,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [claims, setClaims] = useState<ExpenseClaim[]>(INITIAL_CLAIMS);
   const [errors, setErrors] = useState<SAPError[]>(INITIAL_ERRORS);
   const [historyEntries, setHistoryEntries] = useState<any[]>([]);
+  const [claimSummaryCache, setClaimSummaryCache] = useState<Record<string, { amount: number; expenseType: string; employeeName: string }>>({});
   const [expenseTypes, setExpenseTypes] = useState<any[]>([]);
   // RESUBMIT_FEATURE: State to hold claim data for resubmit workflow
   const [tempClaimForResubmit, setTempClaimForResubmit] = useState<any | null>(null);
@@ -230,14 +251,23 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
 
           // Map attachments if Base64 data is present in the line items
-          const attachments = [];
+          const attachments: Attachment[] = [];
           if (sap.CLAIMNAV && sap.CLAIMNAV.results) {
-              sap.CLAIMNAV.results.forEach((item: any) => {
+              sap.CLAIMNAV.results.forEach((item: any, attIdx: number) => {
                   if (item.Filename && item.Value) {
+                      const mimetype = item.Mimetype || 'application/pdf';
+                      // SAP stores Filename with no extension at all — create.tsx's submit-time
+                      // attachment-type check derives the extension from the name, so editing/
+                      // resubmitting a claim loaded through this path would fail that check for
+                      // an otherwise perfectly valid attachment. See MIME_TO_EXTENSION above.
+                      const name = item.Filename.includes('.')
+                        ? item.Filename
+                        : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
                       attachments.push({
-                          name: item.Filename,
-                          type: item.Mimetype || 'application/pdf',
-                          uri: `data:${item.Mimetype || 'application/pdf'};base64,${item.Value}`
+                          id: `att-${attIdx}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
+                          name,
+                          type: mimetype,
+                          uri: `data:${mimetype};base64,${item.Value}`
                       });
                   }
               });
@@ -291,6 +321,52 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('Failed to fetch SAP history set:', err);
     }
   }, [currentUser?.employeeId]);
+
+  // Kept in a ref (not just reading claimSummaryCache state directly) so fetchClaimSummaries'
+  // identity stays stable across cache updates — callers' useEffects depending on this function
+  // won't re-fire every time a new claim gets cached.
+  const claimSummaryCacheRef = useRef<Record<string, { amount: number; expenseType: string; employeeName: string }>>({});
+  useEffect(() => {
+    claimSummaryCacheRef.current = claimSummaryCache;
+  }, [claimSummaryCache]);
+
+  const fetchClaimSummaries = useCallback(async (claimIds: string[]) => {
+    const missing = Array.from(new Set(claimIds)).filter(id => id && !claimSummaryCacheRef.current[id]);
+    if (missing.length === 0) return;
+
+    const results = await Promise.all(missing.map(async (id) => {
+      try {
+        // Same ClaimHeaderSet call (and same $expand combination) the claim detail page already
+        // uses — HistorySet itself never carries expense type/amount, and `claims` drops
+        // already-processed claims (ClaimHeaderSet's LoginId clears once a claim moves past the
+        // current user). Confirmed by direct testing: this SAP service only actually populates
+        // CLAIMNAV's results when HISTORYNAV is expanded alongside it — expanding CLAIMNAV alone
+        // silently returns an empty array, even though the line items exist.
+        const resp = await fetch(`${SAP_BASE_URL}/ClaimHeaderSet('${id}')?$format=json&$expand=CLAIMNAV,HISTORYNAV`);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const sap = data.d || data;
+        const claimNavResults = sap.CLAIMNAV?.results || [];
+        return {
+          id,
+          summary: {
+            amount: parseFloat(sap.TotalAmount || '0') || 0,
+            expenseType: claimNavResults[0]?.ZglName || '',
+            employeeName: sap.EmpName || '',
+          },
+        };
+      } catch (e) {
+        console.warn('Failed to fetch claim summary for', id, e);
+        return null;
+      }
+    }));
+
+    setClaimSummaryCache(prev => {
+      const next = { ...prev };
+      results.forEach(r => { if (r) next[r.id] = r.summary; });
+      return next;
+    });
+  }, []);
 
   // BR-001: Calculate KPIs dynamically
   const kpis = useMemo<ClaimKPIs>(() => {
@@ -1052,6 +1128,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       filterClaims,
       fetchClaims,
       fetchHistorySet,
+      claimSummaryCache,
+      fetchClaimSummaries,
       expenseTypes,
       fetchExpenseTypes,
       // RESUBMIT_FEATURE: Add temp claim for resubmit

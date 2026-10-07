@@ -313,9 +313,9 @@ export default function MyClaimsScreen() {
                   onPress={() => router.push(`/apps/expense/claim/${claim.id}`)}
                 >
                   <View style={styles.cardHeader}>
-                    <View>
+                    <View style={{ flex: 1, marginRight: 8 }}>
                       <Text style={styles.claimId}>{claim.id}</Text>
-                      <Text style={styles.claimType}>{claim.expenseType}</Text>
+                      <Text style={styles.claimType} numberOfLines={1}>{claim.expenseType}</Text>
                     </View>
                     <View style={styles.amountBadgeCol}>
                       <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>

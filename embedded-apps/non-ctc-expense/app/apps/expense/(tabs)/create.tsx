@@ -33,6 +33,19 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
 const ALLOWED_ATTACHMENT_EXTENSIONS = new Set(['pdf', 'png', 'jpg', 'jpeg', 'xls', 'xlsx', 'csv', 'txt']);
 const ALLOWED_ATTACHMENT_LABEL = 'PDF, PNG, JPG, JPEG, XLS, XLSX, CSV, TXT';
 
+// SAP's stored Filename never includes an extension — used only to reconstruct one for
+// resubmitted attachments (see mapSAPClaimToFormData below), so the submit-time extension check
+// has something valid to find instead of treating the whole extension-less name as one.
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/csv': 'csv',
+  'text/plain': 'txt',
+};
+
 const MAX_ATTACHMENTS_TOTAL_BYTES = 30 * 1024 * 1024;
 const MAX_ATTACHMENTS_TOTAL_LABEL = '30 MB';
 
@@ -301,11 +314,20 @@ export default function CreateClaimScreen() {
     if (lineItems.length > 0) {
       lineItems.forEach((item: any, index: number) => {
         if (item.Filename && item.Value) {
+          const mimetype = item.Mimetype || 'application/pdf';
+          // SAP stores Filename with no extension at all (e.g. "90000367_0000000011_000001") —
+          // handleSubmit's attachment-type check derives the extension from the name, so on
+          // resubmit it fails even a perfectly valid attachment since there's no "." to split on.
+          // Appending the right extension here (same mapping ALLOWED_ATTACHMENT_MIME_TYPES
+          // covers) fixes that without touching the shared validation logic itself.
+          const name = item.Filename.includes('.')
+            ? item.Filename
+            : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
           attachmentList.push({
             id: `att-${index}-${Date.now()}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
-            name: item.Filename,
-            uri: `data:${item.Mimetype || 'application/pdf'};base64,${item.Value}`,
-            type: item.Mimetype || 'application/pdf'
+            name,
+            uri: `data:${mimetype};base64,${item.Value}`,
+            type: mimetype
           });
         }
       });

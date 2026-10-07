@@ -10,7 +10,7 @@ import { formatSapErrorMessage } from '../../../../src/utils/sap-error';
 
 export default function FinanceScreen() {
   const router = useRouter();
-  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries } = useClaim();
+  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
   // Desktop-only layout switch, same breakpoint/pattern as the Dashboard's recent-claims grid.
   const { width: windowWidth } = useWindowDimensions();
@@ -86,7 +86,7 @@ export default function FinanceScreen() {
   };
 
   // History items filtered by selected stat card
-  const filteredHistoryItems =
+  const statFilteredHistoryItems =
     selectedStat === 'Approved'
       ? financeHistoryEntries.filter(e => (e.Action || '').toUpperCase() === 'APPROVE')
       : selectedStat === 'Rejected'
@@ -94,6 +94,68 @@ export default function FinanceScreen() {
       : selectedStat === 'Total'
       ? [...financeHistoryEntries]
       : [];
+
+  // HistorySet entries don't carry expense type/amount/employee name — fetch+cache each unique
+  // claim's own ClaimHeaderSet record (same call the claim detail page uses) so the cards below
+  // can show them, and so search has real expense-type/employee-name text to match against.
+  const statFilteredHistoryClaimIds = statFilteredHistoryItems.map((e: any) => e.ClaimId).filter(Boolean).join('|');
+  useEffect(() => {
+    const ids = statFilteredHistoryClaimIds ? statFilteredHistoryClaimIds.split('|') : [];
+    if (ids.length > 0) fetchClaimSummaries(ids);
+  }, [statFilteredHistoryClaimIds, fetchClaimSummaries]);
+
+  const isSearching = searchQuery.trim() !== '';
+  const searchMatchedHistoryItems = isSearching
+    ? statFilteredHistoryItems.filter((entry: any) => {
+        const q = searchQuery.trim().toLowerCase();
+        const summary = claimSummaryCache[entry.ClaimId];
+        return (
+          (entry.ClaimId || '').toLowerCase().includes(q) ||
+          (summary?.employeeName || '').toLowerCase().includes(q) ||
+          (summary?.expenseType || '').toLowerCase().includes(q)
+        );
+      })
+    : statFilteredHistoryItems;
+
+  const getEntryYear = (value?: string) => {
+    if (!value) return '';
+    let d = new Date(value);
+    const m = value.match(/(\d+)/);
+    if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
+    if (Number.isNaN(d.getTime())) return '';
+    return String(d.getFullYear());
+  };
+
+  // Years present among the current search matches — most recent first. Only relevant while
+  // searching; browsing without a search term keeps showing everything, same as before this
+  // feature existed.
+  const availableHistoryYears = Array.from(
+    new Set(searchMatchedHistoryItems.map((e: any) => getEntryYear(e.ActionDate)).filter(Boolean))
+  ).sort((a, b) => b.localeCompare(a));
+
+  // null = no year filter active (used whenever search is empty); 'ALL' = user explicitly chose
+  // "All Years" while searching; otherwise a specific year string like '2026'.
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  const availableHistoryYearsKey = availableHistoryYears.join('|');
+  useEffect(() => {
+    if (!isSearching) {
+      setSelectedHistoryYear(null);
+      return;
+    }
+    // Default to the most recent year the moment a search starts, or if the previously-selected
+    // year no longer has any matches (e.g. the search text changed) — never auto-override an
+    // explicit "All Years" choice or a still-valid specific year pick.
+    setSelectedHistoryYear(prev => {
+      if (prev === 'ALL') return prev;
+      if (prev && availableHistoryYears.includes(prev)) return prev;
+      return availableHistoryYears[0] || 'ALL';
+    });
+  }, [isSearching, availableHistoryYearsKey]);
+
+  const filteredHistoryItems = !isSearching || !selectedHistoryYear || selectedHistoryYear === 'ALL'
+    ? searchMatchedHistoryItems
+    : searchMatchedHistoryItems.filter((e: any) => getEntryYear(e.ActionDate) === selectedHistoryYear);
+
   // When Approved/Rejected/Total selected → show history. Pending → show finance claims.
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
@@ -367,7 +429,7 @@ export default function FinanceScreen() {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search by Claim ID, Employee, Cost Center..."
+            placeholder="Search by Claim ID, Employee, Cost Center, or Expense Type..."
             placeholderTextColor="#94A3B8"
           />
           {searchQuery !== '' && (
@@ -414,6 +476,32 @@ export default function FinanceScreen() {
           </View>
         )}
 
+        {/* Year pills — only appear while actively searching the history view, so browsing
+            without a search term looks exactly like it always has. */}
+        {showHistoryList && isSearching && availableHistoryYears.length > 0 && (
+          <View style={styles.yearPillRow}>
+            <TouchableOpacity
+              style={[styles.yearPill, selectedHistoryYear === 'ALL' && styles.yearPillActive]}
+              onPress={() => setSelectedHistoryYear('ALL')}
+            >
+              <Text style={[styles.yearPillText, selectedHistoryYear === 'ALL' && styles.yearPillTextActive]}>
+                All Years
+              </Text>
+            </TouchableOpacity>
+            {availableHistoryYears.map(year => (
+              <TouchableOpacity
+                key={year}
+                style={[styles.yearPill, selectedHistoryYear === year && styles.yearPillActive]}
+                onPress={() => setSelectedHistoryYear(year)}
+              >
+                <Text style={[styles.yearPillText, selectedHistoryYear === year && styles.yearPillTextActive]}>
+                  {year}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {showHistoryList ? (
           /* History view for Approved / Rejected / Total */
           filteredHistoryItems.length === 0 ? (
@@ -428,9 +516,10 @@ export default function FinanceScreen() {
                 const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
                 // HistorySet only has the approver's own action trail (ActionBy/ActionByName is
                 // always the logged-in finance user, since fetchHistorySet filters by their own
-                // SAP id) — the submitter's name/amount/expense type live on the matching claim
-                // in `claims`, so look that up by ClaimId instead of using ActionByName here.
-                const matchedClaim = claims.find(c => c.id === entry.ClaimId);
+                // SAP id) — the submitter's name/amount/expense type come from claimSummaryCache
+                // (fetched per-claim above), not `claims`, which drops a claim once it moves past
+                // this user (ClaimHeaderSet's LoginId clears at that point).
+                const matchedClaim = claimSummaryCache[entry.ClaimId];
                 const expenseType = (matchedClaim?.expenseType || '').trim();
                 return (
                   <TouchableOpacity
@@ -1346,6 +1435,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  yearPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  yearPill: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  yearPillActive: {
+    backgroundColor: '#005A9E',
+    borderColor: '#005A9E',
+  },
+  yearPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  yearPillTextActive: {
+    color: '#FFFFFF',
   },
   selectedStatTitle: {
     fontSize: 16,
