@@ -6,6 +6,7 @@ import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../../../src/utils/claim-date';
 import { displayStatusLabel } from '../../../../src/utils/claim-status';
+import { formatCurrency } from '../../../../src/utils/currency';
 
 const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Paid', 'Rejected'];
 
@@ -318,7 +319,7 @@ export default function MyClaimsScreen() {
                       <Text style={styles.claimType} numberOfLines={1}>{claim.expenseType}</Text>
                     </View>
                     <View style={styles.amountBadgeCol}>
-                      <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>
+                      <Text style={styles.amount}>₹{formatCurrency(claim.amount)}</Text>
                       <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
                         <Text style={[styles.statusText, { color: badge.text }]}>{displayStatusLabel(claim.status)}</Text>
                       </View>

@@ -7,6 +7,7 @@ import { SAP_BASE_URL } from '../../../../src/config/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 // RESUBMIT_FEATURE: Import useClaim to access setTempClaimForResubmit
 import { useClaim } from '../../../../src/context/ClaimContext';
+import { formatCurrency } from '../../../../src/utils/currency';
 import { formatSapErrorMessage } from '../../../../src/utils/sap-error';
 
 export default function ClaimDetailPage() {
@@ -473,7 +474,7 @@ export default function ClaimDetailPage() {
         <View style={styles.inlineGrid}>
           <View style={styles.inlineItem}>
             <Text style={styles.infoLabel}>Amount</Text>
-            <Text style={styles.infoValue}>₹{parseFloat(header.TotalAmount || header.Total || 0).toFixed(2)}</Text>
+            <Text style={styles.infoValue}>₹{formatCurrency(parseFloat(header.TotalAmount || header.Total || 0))}</Text>
           </View>
           <View style={[styles.inlineItem, styles.divider]}>
             <Text style={styles.infoLabel}>Status</Text>
@@ -569,7 +570,7 @@ export default function ClaimDetailPage() {
           <View key={idx} style={[styles.lineRow, { backgroundColor: lineBackground, borderColor: lineBorder }]}>
             <View style={styles.lineRowHeader}>
               <Text style={styles.lineType}>{ln.type}</Text>
-              <Text style={styles.lineAmt}>₹{ln.amount.toFixed(2)}</Text>
+              <Text style={styles.lineAmt}>₹{formatCurrency(ln.amount)}</Text>
             </View>
             <Text style={styles.lineDesc}>{ln.desc}</Text>
             {ln.date ? (

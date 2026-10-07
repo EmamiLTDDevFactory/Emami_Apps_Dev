@@ -6,6 +6,7 @@ import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../../../src/utils/claim-date';
 import { displayStatusLabel } from '../../../../src/utils/claim-status';
+import { formatCurrency } from '../../../../src/utils/currency';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -117,7 +118,7 @@ export default function DashboardScreen() {
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.kpiCard, isWideScreen && styles.kpiCardWide, styles.cardEmerald]} onPress={() => router.push('/apps/expense/my-claims?status=Paid&period=last3months')}>
-          <Text style={styles.kpiCount}>₹{(kpis.last3MonthsTotal || 0).toFixed(2)}</Text>
+          <Text style={styles.kpiCount}>₹{formatCurrency(kpis.last3MonthsTotal || 0)}</Text>
           <Text style={styles.kpiLabel}>Last 3 Months Total</Text>
           <View style={[styles.kpiIconWrap, { backgroundColor: iconBg.paid }]}> 
             <Ionicons name="bar-chart-outline" size={22} color={iconColors.paid} />
@@ -183,7 +184,7 @@ export default function DashboardScreen() {
                 <Text style={styles.claimMeta}>{claim.employeeName} | Date: {formatClaimDisplayDate(claim)}</Text>
               </View>
               <View style={[styles.claimRight, isWideScreen && styles.claimRightWide]}>
-                <Text style={[styles.claimAmount, isWideScreen && styles.claimAmountWide]}>₹{claim.amount.toFixed(2)}</Text>
+                <Text style={[styles.claimAmount, isWideScreen && styles.claimAmountWide]}>₹{formatCurrency(claim.amount)}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
                   <Text style={[styles.statusText, { color: badge.text }]}>{displayStatusLabel(claim.status)}</Text>
                 </View>

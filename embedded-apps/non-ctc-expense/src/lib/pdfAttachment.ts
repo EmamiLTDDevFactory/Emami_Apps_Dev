@@ -106,11 +106,12 @@ export async function compressPdfToMaxBytes(bytes: Uint8Array, maxBytes: number)
   ]);
 
   if (!workerConfigured) {
-    // Same CDN URL payment-tracking's own proven-working version of this file uses — Metro
-    // (this app's bundler) doesn't support the `new URL(..., import.meta.url)` local-asset
-    // pattern in this context the way webpack/Next.js does, so the locally-bundled-worker
-    // approach isn't available here; this plain string has no such requirement.
-    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js`;
+    // Self-hosted instead of the CDN URL payment-tracking's version uses — confirmed live that a
+    // corporate network blocking unpkg.com breaks PDF compression entirely (images still worked
+    // since they don't need this worker). The file is copied into public/pdf.worker.min.js,
+    // which Expo's web export places at this app's own dist root — the hub then merges that root
+    // into /apps/expense/, so this fixed path is where it always ends up once deployed.
+    (pdfjsLib as any).GlobalWorkerOptions.workerSrc = `/apps/expense/pdf.worker.min.js`;
     workerConfigured = true;
   }
 

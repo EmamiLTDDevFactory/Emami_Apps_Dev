@@ -5,6 +5,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
+import { formatCurrency } from '../../../../src/utils/currency';
 
 export default function ApprovalsScreen() {
   const router = useRouter();
@@ -442,16 +443,16 @@ export default function ApprovalsScreen() {
                   >
                     <View style={styles.historyTopRow}>
                       <Text style={styles.historyClaimId}>{entry.ClaimId}</Text>
-                      {expenseType ? <Text style={styles.historyTypeBadge}>{expenseType}</Text> : null}
+                      {expenseType ? <Text style={styles.historyTypeBadge} numberOfLines={1}>{expenseType}</Text> : null}
                     </View>
                     {matchedClaim?.employeeName ? (
-                      <Text style={styles.historyClaimActor}>By: {matchedClaim.employeeName}</Text>
+                      <Text style={styles.historyClaimActor} numberOfLines={1}>By: {matchedClaim.employeeName}</Text>
                     ) : null}
                     <Text style={styles.historyClaimDate}>{formatHistoryDate(entry.ActionDate)}</Text>
 
                     <View style={styles.historyBottomRow}>
                       <Text style={styles.historyAmount}>
-                        {matchedClaim ? `₹${matchedClaim.amount.toFixed(2)}` : ''}
+                        {matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}
                       </Text>
                       <View style={[
                         styles.historyActionBadge,
@@ -508,7 +509,7 @@ export default function ApprovalsScreen() {
                       <Text style={styles.claimId}>{claim.id}</Text>
                       <Text style={styles.employeeName}>{claim.employeeName} ({claim.designation})</Text>
                     </View>
-                    <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>
+                    <Text style={styles.amount}>₹{formatCurrency(claim.amount)}</Text>
                   </View>
 
                   <View style={styles.justificationBox}>
@@ -817,11 +818,12 @@ const styles = StyleSheet.create({
   historyTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 2,
   },
   historyTypeBadge: {
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 11,
     fontWeight: '700',
     color: '#1E40AF',

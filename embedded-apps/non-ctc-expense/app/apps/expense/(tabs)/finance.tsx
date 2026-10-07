@@ -6,6 +6,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ExpenseClaim } from '../../../../src/types';
 import { displayStatusLabel } from '../../../../src/utils/claim-status';
+import { formatCurrency } from '../../../../src/utils/currency';
 import { formatSapErrorMessage } from '../../../../src/utils/sap-error';
 
 export default function FinanceScreen() {
@@ -538,16 +539,16 @@ export default function FinanceScreen() {
                   >
                     <View style={styles.historyTopRow}>
                       <Text style={styles.historyClaimId}>{entry.ClaimId}</Text>
-                      {expenseType ? <Text style={styles.historyTypeBadge}>{expenseType}</Text> : null}
+                      {expenseType ? <Text style={styles.historyTypeBadge} numberOfLines={1}>{expenseType}</Text> : null}
                     </View>
                     {matchedClaim?.employeeName ? (
-                      <Text style={styles.historyClaimActor}>By: {matchedClaim.employeeName}</Text>
+                      <Text style={styles.historyClaimActor} numberOfLines={1}>By: {matchedClaim.employeeName}</Text>
                     ) : null}
                     <Text style={styles.historyClaimDate}>{formatHistoryDate(entry.ActionDate)}</Text>
 
                     <View style={styles.historyBottomRow}>
                       <Text style={styles.historyAmount}>
-                        {matchedClaim ? `₹${matchedClaim.amount.toFixed(2)}` : ''}
+                        {matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}
                       </Text>
                       <View style={[
                         styles.historyActionBadge,
@@ -608,7 +609,7 @@ export default function FinanceScreen() {
                         <Text style={styles.employeeName}>{claim.employeeName} ({claim.department})</Text>
                       </View>
                       <View style={styles.amountBadgeCol}>
-                        <Text style={styles.amount}>₹{claim.amount.toFixed(2)}</Text>
+                        <Text style={styles.amount}>₹{formatCurrency(claim.amount)}</Text>
                         <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
                           <Text style={[styles.statusText, { color: badge.text }]}>{displayStatusLabel(getDisplayStatus(claim))}</Text>
                         </View>
@@ -1505,11 +1506,12 @@ const styles = StyleSheet.create({
   historyTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 2,
   },
   historyTypeBadge: {
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 11,
     fontWeight: '700',
     color: '#1E40AF',

@@ -9,6 +9,7 @@ import { useAuth } from '../../../../src/context/AuthContext';
 import { useClaim } from '../../../../src/context/ClaimContext';
 import { ensurePdfAttachmentUnderLimit } from '../../../../src/lib/pdfAttachment';
 import { Attachment } from '../../../../src/types';
+import { formatCurrency } from '../../../../src/utils/currency';
 
 // Remove hardcoded EXPENSE_TYPES
 
@@ -1047,7 +1048,7 @@ export default function CreateClaimScreen() {
             </View>
             <Text style={styles.duplicateModalTitle}>Potential Duplicate Detected</Text>
             <Text style={styles.duplicateModalDesc}>
-              A claim with the exact same Employee ID ({currentUser.employeeId}), Claim Date ({claimDate}), and Amount (₹{parsedAmount}) already exists in the system.
+              A claim with the exact same Employee ID ({currentUser.employeeId}), Claim Date ({claimDate}), and Amount (₹{formatCurrency(parsedAmount)}) already exists in the system.
             </Text>
             <Text style={styles.duplicateModalQuestion}>Do you wish to proceed and create this claim anyway?</Text>
 
@@ -1292,6 +1293,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
+    textAlign: 'left',
   },
   formErrorBanner: {
     flexDirection: 'row',
