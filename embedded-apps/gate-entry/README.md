@@ -21,8 +21,10 @@ npm run build      # -> dist/, merged into the hub by scripts/build-embedded-app
 ## Vehicle number from a photo
 Under **Vehicle number**: *Take photo* (opens the camera on phones/tablets) or *Upload photo*. The photo is shrunk to
 1568 px in the browser and sent, with the hub session token, to `POST /api/vision/vehicle-number` on the Emami Apps
-server (172.17.2.21, the SAP Agent server behind `audit-capa-api.emamiapps.in/dev-api/sap-agent`). That server holds
-the Anthropic key (`VISION_ANTHROPIC_API_KEY`, model `VISION_MODEL`, default `claude-opus-5-5`) and asks Claude to
+server (172.17.2.21, the SAP Agent server behind `audit-capa-api.emamiapps.in/dev-api/sap-agent`). The Anthropic key
+is typed in on the first photo (kept only in that browser tab, sent as `X-Anthropic-Key`, used for that request and
+never stored by the server; the green key button changes or forgets it); a server key `VISION_ANTHROPIC_API_KEY` is
+used when none is sent. Model `VISION_MODEL`, default `claude-opus-5-5`. The server asks Claude to
 read the plate **twice in parallel**; the readings are compared and checked against the Indian formats
 (`SS NN X(XX) NNNN`, `YY BH NNNN X(X)`):
 - both agree, valid format, high confidence -> filled in ("Read from photo")

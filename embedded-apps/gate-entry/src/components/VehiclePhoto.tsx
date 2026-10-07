@@ -1,8 +1,8 @@
 'use client';
 import { useRef, useState } from 'react';
-import { Camera, ImageUp, ScanLine } from 'lucide-react';
-import { readVehicleNumber, shrinkPhoto, type PlateReading } from '@/lib/vision';
-import { Button, cx, Spinner } from './ui';
+import { Camera, ImageUp, KeyRound, ScanLine } from 'lucide-react';
+import { getApiKey, KEY_RE, KeyError, readVehicleNumber, setApiKey, shrinkPhoto, type PlateReading } from '@/lib/vision';
+import { Button, cx, Field, inputCls, Modal, Spinner } from './ui';
 
 /**
  * Take or attach a photo of the truck; Claude reads the number plate. A confident reading fills the vehicle number
@@ -15,6 +15,32 @@ export default function VehiclePhoto({ onPlate }: { onPlate: (plate: string) => 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [r, setR] = useState<PlateReading | null>(null);
+  const [hasKey, setHasKey] = useState(() => typeof window !== 'undefined' && !!getApiKey());
+  const [askKey, setAskKey] = useState<null | 'cam' | 'file' | 'change'>(null);
+  const [keyInput, setKeyInput] = useState('');
+  const [keyMsg, setKeyMsg] = useState('');
+
+  /** Opens the camera / file picker, asking for the key first when there is none. */
+  const open = (which: 'cam' | 'file') => {
+    if (!getApiKey()) {
+      setKeyInput('');
+      setAskKey(which);
+      return;
+    }
+    (which === 'cam' ? camRef : fileRef).current?.click();
+  };
+  const saveKey = () => {
+    const k = keyInput.trim();
+    if (!KEY_RE.test(k)) return setKeyMsg('An Anthropic API key starts with sk-ant-');
+    setApiKey(k);
+    setHasKey(true);
+    setKeyMsg('');
+    const then = askKey;
+    setAskKey(null);
+    // still inside the click, so the browser lets the picker open
+    if (then === 'cam') camRef.current?.click();
+    if (then === 'file') fileRef.current?.click();
+  };
 
   const pick = async (f: File | undefined) => {
     if (!f) return;
@@ -29,6 +55,12 @@ export default function VehiclePhoto({ onPlate }: { onPlate: (plate: string) => 
       if (reading.plate && reading.confidence !== 'low') onPlate(reading.plate);
       if (!reading.plate) setErr('No vehicle number found in this photo. Take it closer to the number plate.');
     } catch (e) {
+      if (e instanceof KeyError) {
+        setHasKey(false);
+        setKeyMsg(e.message);
+        setKeyInput('');
+        setAskKey('change');
+      }
       setErr(e instanceof Error ? e.message : 'Could not read the photo');
     } finally {
       setBusy(false);
@@ -41,11 +73,35 @@ export default function VehiclePhoto({ onPlate }: { onPlate: (plate: string) => 
   return (
     <div className="mt-1.5">
       <div className="flex flex-wrap gap-1.5">
-        <Button size="sm" disabled={busy} onClick={() => camRef.current?.click()}><Camera size={13} /> Take photo</Button>
-        <Button size="sm" disabled={busy} onClick={() => fileRef.current?.click()}><ImageUp size={13} /> Upload photo</Button>
+        <Button size="sm" disabled={busy} onClick={() => open('cam')}><Camera size={13} /> Take photo</Button>
+        <Button size="sm" disabled={busy} onClick={() => open('file')}><ImageUp size={13} /> Upload photo</Button>
+        {hasKey && (
+          <Button size="sm" variant="ghost" title="Change or forget the Anthropic API key" onClick={() => { setKeyInput(''); setKeyMsg(''); setAskKey('change'); }}>
+            <KeyRound size={13} className="text-good" />
+          </Button>
+        )}
         <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => void pick(e.target.files?.[0])} />
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => void pick(e.target.files?.[0])} />
       </div>
+      <Modal
+        open={!!askKey}
+        onClose={() => setAskKey(null)}
+        title="Anthropic API key for reading number plates"
+        footer={
+          <>
+            {hasKey && <Button variant="danger" onClick={() => { setApiKey(''); setHasKey(false); setAskKey(null); }}>Forget key</Button>}
+            <Button onClick={() => setAskKey(null)}>Cancel</Button>
+            <Button variant="primary" onClick={saveKey}><KeyRound size={14} /> {askKey === 'cam' ? 'Save and take photo' : askKey === 'file' ? 'Save and choose photo' : 'Save key'}</Button>
+          </>
+        }
+      >
+        <Field label="API key" error={keyMsg} hint="Kept only in this browser tab until you close it; sent with each photo and never stored on the server.">
+          {(id) => (
+            <input id={id} type="password" autoComplete="off" spellCheck={false} className={cx(inputCls, 'font-mono')} placeholder="sk-ant-..."
+              value={keyInput} onChange={(e) => setKeyInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveKey()} autoFocus />
+          )}
+        </Field>
+      </Modal>
       {(preview || busy) && (
         <div className="mt-2 flex items-start gap-2 rounded-xl border border-line bg-sunken/60 p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}

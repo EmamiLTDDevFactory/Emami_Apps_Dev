@@ -4,7 +4,9 @@ POST /api/vision/vehicle-number  {image: <base64>, mediaType: "image/jpeg"}  Aut
 -> {plate, confidence, valid, candidates, source, notes, agreed}
 
 Any person signed in to the Emami Apps hub may call it (the hub token is verified with the hub's secret; no
-Manage Access role needed). The Anthropic key stays here (VISION_ANTHROPIC_API_KEY); the browser never sees it.
+Manage Access role needed). The Anthropic key comes from the person (header X-Anthropic-Key, typed into the app
+and kept only in that browser tab) or, when none is sent, from this server (VISION_ANTHROPIC_API_KEY). A key sent
+by the browser is used for that request only - never stored or logged.
 The photo is read twice in parallel and the two readings are compared: if they disagree the answer is marked
 low confidence and both are offered, so a misread is never filled in silently.
 """
@@ -153,11 +155,14 @@ def combine(a: dict, b: dict) -> dict:
 
 
 @router.post("/api/vision/vehicle-number")
-def vehicle_number(body: PlateRequest, authorization: str = Header(default="")):
+def vehicle_number(body: PlateRequest, authorization: str = Header(default=""), x_anthropic_key: str = Header(default="")):
     email = _who(authorization)
-    key = os.environ.get("VISION_ANTHROPIC_API_KEY", "")
+    own = x_anthropic_key.strip()
+    if own and not re.fullmatch(r"sk-ant-[A-Za-z0-9_\-]{20,}", own):
+        raise HTTPException(400, "That does not look like an Anthropic API key (it starts with sk-ant-).")
+    key = own or os.environ.get("VISION_ANTHROPIC_API_KEY", "")
     if not key:
-        raise HTTPException(503, "Reading vehicle numbers from photos is not set up on the server yet (Anthropic key missing).")
+        raise HTTPException(428, "Enter an Anthropic API key to read vehicle numbers from photos.")
     media = body.mediaType.lower()
     if media not in MEDIA:
         raise HTTPException(400, "Send a JPEG, PNG or WebP photo.")
@@ -176,9 +181,11 @@ def vehicle_number(body: PlateRequest, authorization: str = Header(default="")):
         with ThreadPoolExecutor(2) as ex:
             a, b = ex.map(lambda _: _read_once(client, model, media, data), range(2))
     except anthropic.AuthenticationError:
-        raise HTTPException(503, "The server's Anthropic key was rejected.")
+        raise HTTPException(401 if own else 503, "Anthropic rejected the API key. Check it and enter it again." if own else "The server's Anthropic key was rejected.")
+    except anthropic.PermissionDeniedError:
+        raise HTTPException(403, "This Anthropic API key may not use the vision model.")
     except anthropic.APIError as e:
         raise HTTPException(502, f"The photo reader is not available right now ({e.__class__.__name__}).")
     out = combine(a, b)
-    print(f"vision plate by={email} plate={out['plate']} conf={out['confidence']} agreed={out['agreed']}", flush=True)
+    print(f"vision plate by={email} key={'user' if own else 'server'} plate={out['plate']} conf={out['confidence']} agreed={out['agreed']}", flush=True)
     return out

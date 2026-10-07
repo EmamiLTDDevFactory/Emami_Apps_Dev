@@ -61,7 +61,21 @@ def test_needs_a_hub_session_and_a_key(client, monkeypatch):
     assert c.post("/api/vision/vehicle-number", json={"image": IMG}).status_code == 401
     assert c.post("/api/vision/vehicle-number", json={"image": IMG}, headers=hub(secret="other")).status_code == 401
     monkeypatch.delenv("VISION_ANTHROPIC_API_KEY")
-    assert c.post("/api/vision/vehicle-number", json={"image": IMG}, headers=hub()).status_code == 503
+    assert c.post("/api/vision/vehicle-number", json={"image": IMG}, headers=hub()).status_code == 428
+
+
+def test_key_typed_in_the_app_is_used_and_checked(client, monkeypatch):
+    c, vision = client
+    monkeypatch.delenv("VISION_ANTHROPIC_API_KEY")
+    used = []
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", lambda **k: used.append(k["api_key"]) or object())
+    monkeypatch.setattr(vision, "_read_once", lambda *a: {"plate": "WB25F4521", "confidence": "high", "source": "rear plate"})
+    h = {**hub(), "X-Anthropic-Key": "sk-ant-api03-" + "x" * 40}
+    assert c.post("/api/vision/vehicle-number", json={"image": IMG}, headers=h).json()["plate"] == "WB25F4521"
+    assert used == ["sk-ant-api03-" + "x" * 40]
+    bad = {**hub(), "X-Anthropic-Key": "hello"}
+    assert c.post("/api/vision/vehicle-number", json={"image": IMG}, headers=bad).status_code == 400
 
 
 def test_rejects_non_images_and_rate_limits(client, monkeypatch):
