@@ -8,6 +8,7 @@ import { checkHeader, checkLines, type Errors } from '@/lib/validate';
 import type { AsnDetail, AsnSummary, Line, PoBlock, PoInfo, SharedHeader } from '@/lib/types';
 import { Button, Card, cx, Empty, Field, inputBase, inputCls, Modal, Pill, Segmented, Spinner } from './ui';
 import { openPdf } from './print';
+import VehiclePhoto from './VehiclePhoto';
 
 type Mode = 'PO' | 'ASN';
 
@@ -235,7 +236,14 @@ export default function NewEntry({ onOpenEntry }: { onOpenEntry: (reqNo: string)
       <Card title="Truck, LR and invoice" actions={mode === 'PO' && pos.length > 0 ? <span className="text-2xs text-muted">shared by every PO of this entry</span> : null}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Request date" error={fe('reqDate')}>{(id) => <input id={id} type="date" className={inputCls} value={header.reqDate} onChange={(e) => set({ reqDate: e.target.value })} />}</Field>
-          <Field label="Vehicle number *" error={fe('truckNo')}>{(id) => <input id={id} className={cx(inputCls, 'uppercase')} maxLength={20} placeholder="WB02AB1234" value={header.truckNo} onChange={(e) => set({ truckNo: e.target.value.toUpperCase() })} />}</Field>
+          <Field label="Vehicle number *" error={fe('truckNo')}>
+            {(id) => (
+              <>
+                <input id={id} className={cx(inputCls, 'uppercase')} maxLength={20} placeholder="WB02AB1234" value={header.truckNo} onChange={(e) => set({ truckNo: e.target.value.toUpperCase() })} />
+                <VehiclePhoto onPlate={(p) => set({ truckNo: p })} />
+              </>
+            )}
+          </Field>
           <Field label="Truck entry date *" error={fe('truckDate')}>{(id) => <input id={id} type="date" className={inputCls} value={header.truckDate} onChange={(e) => set({ truckDate: e.target.value })} />}</Field>
           <Field label="Truck entry time *" error={fe('truckTim')}>{(id) => <input id={id} type="time" className={inputCls} value={header.truckTim} onChange={(e) => set({ truckTim: e.target.value })} />}</Field>
           <Field label="LR number *" error={fe('lrno')}>{(id) => <input id={id} className={inputCls} maxLength={30} value={header.lrno} onChange={(e) => set({ lrno: e.target.value })} />}</Field>

@@ -18,6 +18,19 @@ npm run build      # -> dist/, merged into the hub by scripts/build-embedded-app
 | Gate entries | Search by year, request, PO, ASN; detail with Print gate pass, Record out time, Cancel (with reason) |
 | Truck out | Same list, only trucks without an out time |
 
+## Vehicle number from a photo
+Under **Vehicle number**: *Take photo* (opens the camera on phones/tablets) or *Upload photo*. The photo is shrunk to
+1568 px in the browser and sent, with the hub session token, to `POST /api/vision/vehicle-number` on the Emami Apps
+server (172.17.2.21, the SAP Agent server behind `audit-capa-api.emamiapps.in/dev-api/sap-agent`). That server holds
+the Anthropic key (`VISION_ANTHROPIC_API_KEY`, model `VISION_MODEL`, default `claude-opus-5-5`) and asks Claude to
+read the plate **twice in parallel**; the readings are compared and checked against the Indian formats
+(`SS NN X(XX) NNNN`, `YY BH NNNN X(X)`):
+- both agree, valid format, high confidence -> filled in ("Read from photo")
+- agree with medium confidence -> filled in, marked "check it"
+- they disagree, or the format is wrong -> nothing filled; both readings shown to tap
+The user can always correct the field. Any signed-in hub user may call it (30 photos per minute each); photos are
+not stored. Code: `src/lib/vision.ts`, `src/components/VehiclePhoto.tsx`, server `sap_agent_web/vision.py`.
+
 ## How it reaches SAP
 Browser -> shared Azure SAP gateway -> `NGD` -> OData V2 service **`ZGATE_ENTRY_SRV`** (`src/lib/config.ts`).
 The gateway logs on with its technical user and does the CSRF handshake, and appends `$format=json` to every URL -

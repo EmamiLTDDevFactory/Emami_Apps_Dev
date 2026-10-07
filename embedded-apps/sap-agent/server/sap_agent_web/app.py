@@ -54,6 +54,9 @@ STEP_LINE = re.compile(r"^(OK  |FAIL|TODO) (\S+) \(([\w]+)\)$")
 app = FastAPI(title="sap-agent", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(CORSMiddleware, allow_origins=S.allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"], max_age=600)
 
+from .vision import router as vision_router  # noqa: E402  - vehicle number from a photo (Gate Entry); any hub user
+app.include_router(vision_router)
+
 
 @app.exception_handler(auth.AuthError)
 async def _auth_error(_: Request, e: auth.AuthError):
