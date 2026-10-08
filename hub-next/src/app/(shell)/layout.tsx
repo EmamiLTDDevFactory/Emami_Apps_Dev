@@ -9,6 +9,7 @@ import { SearchProvider, useSearch } from '../../context/SearchContext';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import InstallPrompt from '../../components/InstallPrompt';
+import AssistantPanel from '../../components/assistant/AssistantPanel';
 
 function ShellChrome({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -71,6 +72,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   return (
     <SearchProvider>
       <ShellChrome>{children}</ShellChrome>
+      {/* Voice/text assistant (English, Hindi, Bengali) on every signed-in page. */}
+      <AssistantPanel />
     </SearchProvider>
   );
 }
