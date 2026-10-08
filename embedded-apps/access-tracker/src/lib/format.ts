@@ -102,3 +102,17 @@ export function downloadCsv(filename: string, header: string[], rows: (string | 
 }
 
 export const stamp = () => new Date().toISOString().slice(0, 10);
+
+/** 75 -> "1m 15s", 3900 -> "1h 5m" - session lengths are often under a minute. */
+export function fmtDuration(seconds: number | null): string {
+  if (seconds == null) return '—';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m ${seconds % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+export const fmtWeekday = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { weekday: 'short' });
+
+/** The roster's timeSpent string, or a dash when the backend sent a negative interval
+ * (a mispaired SESSION_END; the backend now blanks these itself once deployed). */
+export const timeSpentLabel = (s: string | null | undefined) => (!s || s.includes('-') ? '—' : s);

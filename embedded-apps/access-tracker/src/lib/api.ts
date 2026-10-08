@@ -109,3 +109,22 @@ export const getUserAppStats = (email: string) =>
   get<(OpenStat & { appId: string })[]>(`/admin/user/${encodeURIComponent(email)}/apps`, 'apps');
 export const getAppUserStats = (appId: string) =>
   get<(OpenStat & { email: string })[]>(`/admin/app/${encodeURIComponent(appId)}/users`, 'users');
+
+export interface UserSession {
+  start: string;
+  /** null when no sign-out was recorded (tab closed, session expired). */
+  end: string | null;
+  durationSeconds: number | null;
+  apps: { appId: string; at: string }[];
+}
+
+export interface UserActivity {
+  logins: string[];
+  sessions: UserSession[];
+  recordedSeconds: number;
+  truncated: boolean;
+}
+
+/** Sign-in times and sessions (with the apps opened in each) for one user. Needs the backend's
+ * /admin/user/:email/activity route; an older backend answers 404. */
+export const getUserActivity = (email: string) => get<UserActivity>(`/admin/user/${encodeURIComponent(email)}/activity`, 'activity');

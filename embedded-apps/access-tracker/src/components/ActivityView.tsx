@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, LayoutGrid, Search } from 'lucide-react';
 import type { RosterUser } from '@/lib/api';
 import { appName } from '@/lib/apps';
-import { RECENCY, downloadCsv, fmtDate, fmtNum, recencyOf, relative, stamp, type Recency } from '@/lib/format';
+import { RECENCY, downloadCsv, fmtDate, fmtNum, recencyOf, relative, stamp, type Recency, timeSpentLabel } from '@/lib/format';
 import { nameFromEmail } from '@/lib/hub';
 import type { Data, Intent } from './App';
 import { BarList } from './charts';
@@ -68,7 +68,7 @@ function ByUser({ data, onPerson, initialBuckets = [] }: { data: Data; onPerson:
     downloadCsv(
       `emami-apps-sign-in-activity-${stamp()}.csv`,
       ['Name', 'Email', 'Access level', 'Last sign-in', 'Sign-ins', 'Sessions', 'Time spent', 'Apps opened', 'Most used app'],
-      rows.map((u) => [u.usage.name || nameFromEmail(u.email), u.email, u.accessLevel, u.usage.lastLogin ?? 'Never', u.usage.logins, u.usage.sessionsTotal, u.usage.timeSpent, u.usage.appsOpened, u.usage.mostUsedApp ? appName(u.usage.mostUsedApp) : '']),
+      rows.map((u) => [u.usage.name || nameFromEmail(u.email), u.email, u.accessLevel, u.usage.lastLogin ?? 'Never', u.usage.logins, u.usage.sessionsTotal, timeSpentLabel(u.usage.timeSpent), u.usage.appsOpened, u.usage.mostUsedApp ? appName(u.usage.mostUsedApp) : '']),
     );
 
   return (
@@ -125,7 +125,7 @@ function ByUser({ data, onPerson, initialBuckets = [] }: { data: Data; onPerson:
                   <td className="num px-4 py-2.5 text-right text-xs font-semibold">{fmtNum(u.usage.logins)}</td>
                   <td className="num px-4 py-2.5 text-right text-xs">{fmtNum(u.usage.sessionsTotal)}</td>
                   <td className="num px-4 py-2.5 text-right text-xs">{fmtNum(u.usage.appsOpened)}</td>
-                  <td className="num whitespace-nowrap px-4 py-2.5 text-right text-xs text-muted">{u.usage.timeSpent || '—'}</td>
+                  <td className="num whitespace-nowrap px-4 py-2.5 text-right text-xs text-muted">{timeSpentLabel(u.usage.timeSpent)}</td>
                   <td className="max-w-[180px] truncate px-4 py-2.5 text-xs">{u.usage.mostUsedApp ? appName(u.usage.mostUsedApp) : <span className="text-faint">—</span>}</td>
                 </tr>
               ))}

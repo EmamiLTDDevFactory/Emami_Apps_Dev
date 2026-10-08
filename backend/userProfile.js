@@ -78,6 +78,9 @@ function formatTimeSpent(interval) {
     if (!interval) return '—';
     const hours = (interval.days || 0) * 24 + (interval.hours || 0);
     const minutes = interval.minutes || 0;
+    // A SESSION_END paired against a later start makes user_time_spent's interval negative (seen as
+    // "-2323h -45m"); that's not a real duration, so show nothing rather than a negative time.
+    if (hours < 0 || minutes < 0) return '—';
     if (!hours && !minutes) return '—';
     return [hours ? `${hours}h` : null, minutes ? `${minutes}m` : null].filter(Boolean).join(' ') || '—';
 }
