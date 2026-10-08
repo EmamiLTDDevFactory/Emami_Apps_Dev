@@ -16,6 +16,7 @@ import type { CategoryIcon } from '../../components/CategoryIcons';
 import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, motion } from '../../theme/tokens';
 import { useTiltHover } from '../../hooks/useTiltHover';
 import type { AppItem, CategoryFilter } from '../../types';
+import LiveBadge from '../../components/LiveBadge';
 
 /** A Home card (category or Recently Used), styled after the reference Emami Apps home screen:
  * white card, pale accent-tinted icon chip, bold name, one-line description, and a lock (no
@@ -23,7 +24,7 @@ import type { AppItem, CategoryFilter } from '../../types';
  * shadow on hover (see useTiltHover). Kept as its own component since a tilt hook needs one hook
  * instance per tile. */
 function HoverTile({
-  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, iconFit = SIMPLE_ICON_FIT, name, subtitle,
+  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, iconFit = SIMPLE_ICON_FIT, name, subtitle, live,
 }: {
   /** Mobile sizing — smaller padding/chip/type so two cards still fit side by side on a phone. */
   compact: boolean;
@@ -37,6 +38,8 @@ function HoverTile({
   iconFit?: IconFit;
   name: string;
   subtitle: string;
+  /** Shows the LIVE badge in the top-right corner (app tiles only, see AppItem.isLive). */
+  live?: boolean;
 }) {
   const { ref, hovered, tiltTransform, handlers } = useTiltHover<HTMLButtonElement>();
   const active = hovered && !locked;
@@ -72,6 +75,11 @@ function HoverTile({
       aria-label={ariaLabel}
       title={title}
     >
+      {live && (
+        <span style={{ position: 'absolute', top: compact ? 12 : 16, right: compact ? 12 : 16, display: 'flex' }}>
+          <LiveBadge compact={compact} />
+        </span>
+      )}
       <div style={{ width: chip, height: chip, borderRadius: radii.lg, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: categoryTint(accent), flexShrink: 0, marginBottom: compact ? 12 : 18 }}>
         <Icon size={Math.round((compact ? 30 : 36) * iconFit.scale)} color={accent} strokeWidth={iconFit.strokeWidth} />
       </div>
@@ -213,6 +221,7 @@ export default function HomePage() {
                   icon={app.icon}
                   name={app.name}
                   subtitle={r.when}
+                  live={app.isLive}
                   ariaLabel={`Open ${app.name}`}
                   title={app.name}
                 />
