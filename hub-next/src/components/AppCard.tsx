@@ -6,7 +6,7 @@ import type { AppItem, AppRole } from '../types';
 import { colors, fonts, fontWeights, radii, appColor, motion, focusRing } from '../theme/tokens';
 import { useIsMobile } from '../hooks/useColumnCount';
 import { useTiltHover } from '../hooks/useTiltHover';
-import LiveBadge from './LiveBadge';
+import StageBadge from './StageBadge';
 
 interface AppCardProps {
   app: AppItem;
@@ -92,7 +92,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
           {locked ? <Lock size={isMobile ? 14 : 17} color={accent} strokeWidth={2.1} /> : <Icon size={isMobile ? 16 : 19} color={accent} strokeWidth={2.1} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {app.isLive && <LiveBadge compact={isMobile} />}
+        {app.stage && <StageBadge stage={app.stage} compact={isMobile} />}
         {!locked && (
         <button
           type="button"

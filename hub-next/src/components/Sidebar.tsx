@@ -125,7 +125,7 @@ export default function Sidebar({ compact = false }: SidebarProps) {
   const onOpenApp = (app: (typeof APPS)[number]) => {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
-    if (app.url) window.open(app.url, '_blank', 'noopener,noreferrer');
+    if (app.url) window.location.assign(app.url);
   };
 
   // Manage Access and Administration are only for Super Admin/Admin — each of those pages also

@@ -15,6 +15,10 @@ export const colors = {
   green: '#1F7A4D',
   greenTint: '#1F7A4D17',
   greenBorder: '#1F7A4D33',
+  // UAT stage badge — a darker amber than `amber`, which stays reserved for favorites/most used.
+  uat: '#B45309',
+  uatTint: '#B4530917',
+  uatBorder: '#B4530933',
   // Hub-shell-only tokens (post-login screens). Deliberately separate from
   // cream2/plum above, which stay reserved for the Login screen's look —
   // changing these never touches Login.

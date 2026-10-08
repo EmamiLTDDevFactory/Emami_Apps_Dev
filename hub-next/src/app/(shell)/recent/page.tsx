@@ -21,7 +21,7 @@ export default function RecentPage() {
     if (userEmail) logEvent(userEmail, 'APP_OPEN', appId);
     const url = appById(appId)?.url;
     if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.location.assign(url);
       return;
     }
     router.push(`/apps/${appId}`);

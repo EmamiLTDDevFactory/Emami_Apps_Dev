@@ -51,14 +51,14 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
 
 const RAW_APPS: AppItem[] = [
   { id: 'expense', name: 'Non CTC Expense', desc: 'Submit and track non-CTC (non-salary) expense claims and reimbursements.', cat: 'Cross-Function', icon: Receipt, uses: 128 },
-  { id: 'finance', name: 'Recruitment Consultant Management Portal', desc: 'Onboarding of an External Recruitment Consultant( Agency or Individual )', cat: 'HR', icon: Landmark, uses: 96 },
-  { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Supply Chain', icon: Truck, uses: 210, isLive: true },
-  { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Packaging', icon: Activity, uses: 29 },
-  { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'CQA', icon: ClipboardCheck, uses: 0 },
-  { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0, isLive: true },
-  { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'IT', icon: Code2, uses: 0, isLive: true },
+  { id: 'finance', name: 'Recruitment Consultant Management Portal', desc: 'Onboarding of an External Recruitment Consultant( Agency or Individual )', cat: 'HR', icon: Landmark, uses: 96, stage: 'UAT' },
+  { id: 'hr', name: 'Dispatch Tracker', desc: 'Track shipment dispatches and delivery status in real time.', cat: 'Supply Chain', icon: Truck, uses: 210, stage: 'Live' },
+  { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Packaging', icon: Activity, uses: 29, stage: 'UAT' },
+  { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'CQA', icon: ClipboardCheck, uses: 0, stage: 'UAT' },
+  { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0, stage: 'Live' },
+  { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
-  { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0 },
+  { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0, stage: 'UAT' },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0 },
   { id: 'fm-po-deviation', name: 'PO Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0 },
   { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0 },
@@ -66,13 +66,13 @@ const RAW_APPS: AppItem[] = [
   { id: 'cashflow-forecast', name: 'CashFlow Intelligence', desc: 'AI-driven 13-week cash flow forecast, risk dashboard and explainability with SAP OData integration.', cat: 'Finance', icon: LineChart, uses: 0 },
   { id: 'journal-anomaly-agent', name: 'Journal Entry & GL Anomaly Agent', desc: 'AI-driven journal entry and GL anomaly monitoring, case management and audit evidence with SAP OData integration.', cat: 'Finance', icon: ScanSearch, uses: 0 },
   { id: 'credit-risk-advisory', name: 'Credit Risk Advisory', desc: 'Credit risk advisory command center — executive KPIs, worklist, Customer 360, portfolio analytics and governed approval workflow with SAP OData integration.', cat: 'Finance', icon: ShieldAlert, uses: 0 },
-  { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0, isLive: true },
+  { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0, stage: 'Live' },
   { id: 'audit-tool', name: 'Audit Tool', desc: 'MSD internal audit — masters, checklist, audit scheduling and kickoff, observations workflow and MIS reporting on SAP.', cat: 'MSD', icon: FileSearch, uses: 0 },
   { id: 'rate-auction', name: 'Rate Auction', desc: 'Live reverse auction for material and freight rates — vendors bid anonymously, Central Purchase awards and creates the SAP info record or contract.', cat: 'CPD', icon: Gavel, uses: 0 },
-  { id: 'bom-cost-explorer', name: 'BOM Simulator', desc: 'Multi-level BOM costing from SAP by plant — rate sources, freight, budget and coverage, plant comparison, and what-if scenario simulation.', cat: 'CPD', icon: Calculator, uses: 0, isLive: true },
+  { id: 'bom-cost-explorer', name: 'BOM Simulator', desc: 'Multi-level BOM costing from SAP by plant — rate sources, freight, budget and coverage, plant comparison, and what-if scenario simulation.', cat: 'CPD', icon: Calculator, uses: 0, stage: 'Live' },
   { id: 'sap-agent', name: 'SAP Agent', desc: 'AI agent that builds, fixes and tests ABAP objects on the SAP development system through ADT, with a policy guard, typed approvals and a full audit log. Admins only.', cat: 'IT', icon: Bot, uses: 0 },
   { id: 'gate-entry', name: 'Gate Entry', desc: 'Inward truck gate entry against purchase orders or ASNs on SAP, with gate pass print, truck out time and cancellation.', cat: 'Supply Chain', icon: DoorOpen, uses: 0 },
-  { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, isLive: true },
+  { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

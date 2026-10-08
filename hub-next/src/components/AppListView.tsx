@@ -55,7 +55,7 @@ function AppListViewContent({ title, onlyFavorites }: AppListViewProps) {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.open(app.url, '_blank', 'noopener,noreferrer');
+      window.location.assign(app.url);
       return;
     }
     router.push(`/apps/${app.id}`);
