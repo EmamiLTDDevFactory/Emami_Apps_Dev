@@ -1,15 +1,31 @@
 'use client';
-import { useMemo } from 'react';
-import { ArrowRight, History, LogIn, MousePointerClick, UserCheck, UserX, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, History, LogIn, Rows3, Table2, MousePointerClick, UserCheck, UserX, Users } from 'lucide-react';
 import { appName } from '@/lib/apps';
 import { LEVELS, RECENCY, fmtNum, levelColor, recencyOf, type Recency } from '@/lib/format';
 import type { Data, Go } from './App';
 import { BarList, DayColumns, ShareBar } from './charts';
-import { ChangeRow } from './feed';
-import { Card, Empty, Kpi } from './ui';
+import { ChangeRow, ChangeTable } from './feed';
+import { Card, Empty, Kpi, Tabs } from './ui';
+
+const LAYOUT_KEY = 'access-tracker:recent-changes-layout';
 
 export default function Overview({ data, onGo, onPerson, onApp }: { data: Data; onGo: Go; onPerson: (email: string) => void; onApp: (appId: string) => void }) {
   const { overview: o, roster, appStats, history } = data;
+  // Feed or table for Recent access changes; remembered per browser (a convenience, so storage
+  // failures just fall back to the feed).
+  const [layout, setLayout] = useState<'feed' | 'table'>('feed');
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(LAYOUT_KEY) === 'table') setLayout('table');
+    } catch {}
+  }, []);
+  const pickLayout = (l: 'feed' | 'table') => {
+    setLayout(l);
+    try {
+      localStorage.setItem(LAYOUT_KEY, l);
+    } catch {}
+  };
 
   const usersPerApp = useMemo(() => {
     const m = new Map<string, { total: number; admins: number }>();
@@ -93,11 +109,23 @@ export default function Overview({ data, onGo, onPerson, onApp }: { data: Data; 
       <Card
         title="Recent access changes"
         sub={`Latest ${Math.min(8, history.length)} of ${history.length}`}
-        actions={<button type="button" onClick={() => onGo('changes')} className="inline-flex items-center gap-1 text-2xs font-bold text-accent hover:underline">Full change log <ArrowRight size={12} /></button>}
-        bodyClass="px-4 py-1"
+        actions={
+          <>
+            <Tabs label="Show recent changes as" value={layout} onChange={pickLayout} tabs={[
+              { id: 'feed', label: <span className="inline-flex items-center gap-1.5"><Rows3 size={13} /> Feed</span> },
+              { id: 'table', label: <span className="inline-flex items-center gap-1.5"><Table2 size={13} /> Table</span> },
+            ]} />
+            <button type="button" onClick={() => onGo('changes')} className="ml-2 inline-flex items-center gap-1 text-2xs font-bold text-accent hover:underline">Full change log <ArrowRight size={12} /></button>
+          </>
+        }
+        bodyClass={layout === 'table' && history.length ? 'p-0' : 'px-4 py-1'}
       >
         {history.length ? (
-          <ul className="divide-y divide-line">{history.slice(0, 8).map((c) => <ChangeRow key={c.id} c={c} onPerson={onPerson} />)}</ul>
+          layout === 'table' ? (
+            <ChangeTable changes={history.slice(0, 8)} onPerson={onPerson} />
+          ) : (
+            <ul className="divide-y divide-line">{history.slice(0, 8).map((c) => <ChangeRow key={c.id} c={c} onPerson={onPerson} />)}</ul>
+          )
         ) : (
           <Empty icon={History} title="No access changes recorded yet" />
         )}
