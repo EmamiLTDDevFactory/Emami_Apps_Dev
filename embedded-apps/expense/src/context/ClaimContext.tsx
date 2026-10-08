@@ -26,6 +26,7 @@ interface ClaimContextType {
   validateClaimFinance: (id: string) => void;
   releasePayment: (id: string, taxCode?: string, taxDescription?: string) => Promise<{ success: boolean; error?: string }>;
   fetchTaxes: (claimId: string) => Promise<TaxCode[]>;
+  calculateTax: (totalAmount: number, currency: string, mwskz: string) => Promise<{ expenseAmt: number; taxAmt: number } | null>;
   fetchAreas: () => Promise<AreaCode[]>;
   rejectClaimFinance: (id: string, remarks: string) => Promise<{ success: boolean; error?: string }>;
   // Error Management Actions
@@ -867,6 +868,32 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Calls SAP's real tax engine (CALCULATE_TAX_FROM_GROSSAMOUNT) to split a claim's gross total
+  // into expense vs. tax amount for whichever tax code Finance has just clicked in the tax-code
+  // picker — purely informational display, no effect on the actual release/approve flow, which
+  // still sends the same selected tax code to releasePayment() exactly as before.
+  // NOT YET DEPLOYED TO NGQ at the time this was written — field names (Mwskz/Currency/TotalAmount
+  // in, ExpenseAmt/TaxAmaount out, the latter matching a typo in the backend's own field name) are
+  // a direct PascalCase read of the ABAP structure zexp_st_tax; re-verify once it's live.
+  const calculateTax = async (totalAmount: number, currency: string, mwskz: string): Promise<{ expenseAmt: number; taxAmt: number } | null> => {
+    try {
+      const postData = { Mwskz: mwskz, Currency: currency, TotalAmount: totalAmount.toFixed(3) };
+      const response = await sapClient.post(`${SAP_BASE_URL}/CalculateSet`, postData, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const bodyType = (response.data?.d?.Type || response.data?.Type || '').toString().toUpperCase();
+      if (response.status < 200 || response.status >= 300 || bodyType === 'E') return null;
+      const d = response.data?.d || response.data;
+      const expenseAmt = parseFloat(d?.ExpenseAmt ?? d?.Expense_amt ?? '0');
+      const taxAmt = parseFloat(d?.TaxAmaount ?? d?.Tax_amaount ?? '0');
+      if (Number.isNaN(expenseAmt) || Number.isNaN(taxAmt)) return null;
+      return { expenseAmt, taxAmt };
+    } catch (err) {
+      console.error('[CALCULATE_TAX] Error:', err);
+      return null;
+    }
+  };
+
   const fetchAreas = async (): Promise<AreaCode[]> => {
     try {
       const response = await sapClient.get(`${SAP_BASE_URL}/AreaSet?$format=json`);
@@ -1125,6 +1152,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         validateClaimFinance,
         releasePayment,
         fetchTaxes,
+        calculateTax,
         fetchAreas,
         rejectClaimFinance,
         retrySAPPosting,

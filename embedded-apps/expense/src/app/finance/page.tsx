@@ -35,7 +35,7 @@ const TAX_RESULTS_LIMIT = 50;
 
 export default function FinancePage() {
   const router = useRouter();
-  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
+  const { filterClaims, validateClaimFinance, releasePayment, fetchTaxes, calculateTax, rejectClaimFinance, claims, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
   const { currentUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,6 +55,8 @@ export default function FinancePage() {
   const [availableTaxes, setAvailableTaxes] = useState<any[]>([]);
   const [selectedTaxCode, setSelectedTaxCode] = useState('');
   const [selectedTaxDescription, setSelectedTaxDescription] = useState('');
+  const [taxCalculation, setTaxCalculation] = useState<{ expenseAmt: number; taxAmt: number } | null>(null);
+  const [taxCalculating, setTaxCalculating] = useState(false);
   const [taxDropdownOpen, setTaxDropdownOpen] = useState(false);
   const [taxLoading, setTaxLoading] = useState(false);
   const [taxSearch, setTaxSearch] = useState('');
@@ -181,9 +183,24 @@ export default function FinancePage() {
     setReleaseConfirmClaimId('');
     setSelectedTaxCode('');
     setSelectedTaxDescription('');
+    setTaxCalculation(null);
     setTaxDropdownOpen(false);
     setTaxSearch('');
     setAvailableTaxes([]);
+  };
+
+  // Purely informational — the selected tax code still goes to releasePayment() exactly as
+  // before; this just shows Finance the expense/tax split SAP's own tax engine computes for it.
+  const handleSelectTaxCode = async (tax: any) => {
+    setSelectedTaxCode(tax.Mwskz);
+    setSelectedTaxDescription(tax.Text1 || '');
+    setTaxCalculation(null);
+    const claim = claims.find((c) => c.id === releaseConfirmClaimId);
+    if (!claim) return;
+    setTaxCalculating(true);
+    const result = await calculateTax(claim.amount, 'INR', tax.Mwskz);
+    setTaxCalculating(false);
+    setTaxCalculation(result);
   };
 
   const taxQuery = taxSearch.trim().toLowerCase();
@@ -439,6 +456,17 @@ export default function FinancePage() {
               </span>
               {taxDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
+
+            {taxCalculating && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Calculating tax split…</div>
+            )}
+            {!taxCalculating && taxCalculation && (
+              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-appBg p-2.5 text-sm">
+                <div><p className="text-2xs font-bold text-inkFaint">Expense Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt)}</p></div>
+                <div><p className="text-2xs font-bold text-inkFaint">Tax Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.taxAmt)}</p></div>
+              </div>
+            )}
+
             {taxDropdownOpen && (
               <div className="mt-1 rounded-lg border border-border bg-white">
                 <div className="flex items-center gap-2 border-b border-line bg-appBg px-2.5 py-2">
@@ -454,7 +482,7 @@ export default function FinancePage() {
                       <button
                         key={`${tax.Mwskz}-${index}`}
                         type="button"
-                        onClick={() => { setSelectedTaxCode(tax.Mwskz); setSelectedTaxDescription(tax.Text1 || ''); }}
+                        onClick={() => handleSelectTaxCode(tax)}
                         className={`block w-full border-b border-line px-3 py-2.5 text-left text-sm last:border-b-0 ${selectedTaxCode === tax.Mwskz ? 'bg-cream font-bold text-ink' : 'text-ink'}`}
                       >
                         {tax.Mwskz}{tax.Text1 ? ` (${tax.Text1})` : ''}

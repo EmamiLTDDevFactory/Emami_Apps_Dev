@@ -247,15 +247,30 @@ function CreateClaimInner() {
   // Reset once on mount when there's nothing to edit/resubmit. expo-router's useFocusEffect had no
   // tab-switch-triggered re-reset to approximate here yet (slice 1 has only one route) — this gets
   // revisited once more tabs exist (slice 2+) and navigating back to Create needs the same reset.
+  // Re-runs whenever editingClaimId (the URL's ?claimId=) changes — not just on mount — because
+  // the tab bar navigates with next/link replace, which keeps this SAME page instance mounted when
+  // going from /create/?claimId=X (Edit/Resubmit) back to plain /create/. Without this, the old
+  // claim's data stayed in the form (and in tempClaimForResubmit) for the rest of the session,
+  // leaking into every later "Create New Claim" visit. editingClaimId being empty is the
+  // authoritative "not resubmitting" signal — Edit/Resubmit always sets both the URL's claimId and
+  // tempClaimForResubmit together (see claim/page.tsx), so clearing here whenever claimId is absent
+  // is safe and doesn't affect the Edit/Resubmit flow itself.
   useEffect(() => {
-    if (!editingClaimId && !tempClaimForResubmit) {
+    if (!editingClaimId) {
+      if (tempClaimForResubmit) setTempClaimForResubmit(null);
       resetForm();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [editingClaimId]);
 
   useEffect(() => {
-    if (tempClaimForResubmit) {
+    // Gated on editingClaimId too, not just tempClaimForResubmit's truthiness — on a fresh mount
+    // both this effect and the reset-guard effect above run off the SAME initial render's closure,
+    // so the reset-guard's setTempClaimForResubmit(null) call (scheduled for the next render)
+    // wouldn't stop this effect from still reading the stale pre-clear value in that same pass.
+    // Tying population to editingClaimId (the real URL signal for "this is a resubmit") closes
+    // that race instead of relying on clear-then-hope-the-order-helps.
+    if (editingClaimId && tempClaimForResubmit) {
       const formData = mapSAPClaimToFormData(tempClaimForResubmit);
       if (formData) {
         setExistingClaimId(tempClaimForResubmit.ClaimId);

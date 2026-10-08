@@ -111,6 +111,13 @@ function MyClaimsInner() {
   // Fiscal-year slider: always-on, 5 years visible (2 before, selected in the middle, 2 after).
   // Clicking any visible year re-centers the window on it — defaults to the current year.
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(() => new Date().getFullYear());
+  // Purely cosmetic — which way the year chips slide in, based on whether the newly clicked year
+  // was to the right or left of the previously-centered one. Doesn't affect filtering at all.
+  const [yearSlideDirection, setYearSlideDirection] = useState<'left' | 'right'>('right');
+  const handleSelectFiscalYear = (year: number) => {
+    setYearSlideDirection(year >= selectedFiscalYear ? 'right' : 'left');
+    setSelectedFiscalYear(year);
+  };
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -212,15 +219,20 @@ function MyClaimsInner() {
           <Chip tone="green" icon={Download} onClick={handleExportExcel}>
             Export Excel
           </Chip>
-          {visibleFiscalYears.map((year) => (
-            <Chip
-              key={year}
-              tone={year === selectedFiscalYear ? 'red' : 'neutral'}
-              onClick={() => setSelectedFiscalYear(year)}
-            >
-              {year}
-            </Chip>
-          ))}
+          <div
+            key={selectedFiscalYear}
+            className={`flex items-center gap-2 ${yearSlideDirection === 'right' ? 'animate-slideFromRight' : 'animate-slideFromLeft'}`}
+          >
+            {visibleFiscalYears.map((year) => (
+              <Chip
+                key={year}
+                tone={year === selectedFiscalYear ? 'red' : 'neutral'}
+                onClick={() => handleSelectFiscalYear(year)}
+              >
+                {year}
+              </Chip>
+            ))}
+          </div>
         </div>
       </Card>
 

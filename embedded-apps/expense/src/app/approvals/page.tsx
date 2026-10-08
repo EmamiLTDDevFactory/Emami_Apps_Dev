@@ -47,6 +47,13 @@ export default function ApprovalsPage() {
   // Fiscal-year slider (history view only): always-on, 5 years visible (2 before, selected in the
   // middle, 2 after) — same widget as My Claims, replacing the old search-only "All Years" pills.
   const [selectedFiscalYear, setSelectedFiscalYear] = useState(() => new Date().getFullYear());
+  // Purely cosmetic — which way the year chips slide in, based on whether the newly clicked year
+  // was to the right or left of the previously-centered one. Doesn't affect filtering at all.
+  const [yearSlideDirection, setYearSlideDirection] = useState<'left' | 'right'>('right');
+  const handleSelectFiscalYear = (year: number) => {
+    setYearSlideDirection(year >= selectedFiscalYear ? 'right' : 'left');
+    setSelectedFiscalYear(year);
+  };
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const isBulkReleaseUser = currentUser?.role === 'B';
@@ -221,12 +228,15 @@ export default function ApprovalsPage() {
           {searchQuery !== '' && <button type="button" onClick={() => setSearchQuery('')}><X size={16} className="text-inkFaint" /></button>}
         </div>
         {showHistoryList && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div
+            key={selectedFiscalYear}
+            className={`mt-2 flex flex-wrap items-center gap-2 ${yearSlideDirection === 'right' ? 'animate-slideFromRight' : 'animate-slideFromLeft'}`}
+          >
             {visibleFiscalYears.map((year) => (
               <Chip
                 key={year}
                 tone={year === selectedFiscalYear ? 'red' : 'neutral'}
-                onClick={() => setSelectedFiscalYear(year)}
+                onClick={() => handleSelectFiscalYear(year)}
               >
                 {year}
               </Chip>

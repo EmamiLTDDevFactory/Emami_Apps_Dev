@@ -40,10 +40,14 @@ const config: Config = {
       keyframes: {
         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         slideUp: { '0%': { opacity: '0', transform: 'translateY(6px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        slideFromRight: { '0%': { opacity: '0', transform: 'translateX(14px)' }, '100%': { opacity: '1', transform: 'translateX(0)' } },
+        slideFromLeft: { '0%': { opacity: '0', transform: 'translateX(-14px)' }, '100%': { opacity: '1', transform: 'translateX(0)' } },
       },
       animation: {
         fadeIn: 'fadeIn 0.15s ease-out',
         slideUp: 'slideUp 0.2s ease-out',
+        slideFromRight: 'slideFromRight 0.22s ease-out',
+        slideFromLeft: 'slideFromLeft 0.22s ease-out',
       },
     },
   },
