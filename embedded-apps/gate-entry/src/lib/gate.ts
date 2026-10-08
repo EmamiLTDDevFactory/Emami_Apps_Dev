@@ -7,14 +7,34 @@
  *    with its Items; SAP allocates ReqNo and returns it. All or nothing.
  *  - ConfirmDateWarning and GateCancel.Admin are ABAP flags ('X' / ''), not Edm.Boolean - SAP refuses true/false.
  *  - out time and cancel are creates on GateOutTimeSet / GateCancelSet.
- *  - the gateway logs on with its technical user, so SAP's plant/cancel authority and REQ_BY are that user's.
+ *  - the gateway logs on with its technical user, so the signed-in Emami Apps email goes in every list $filter
+ *    (Email eq '<login email>', see list()). NGD has no Email property yet (2026-10-09: "Property Email not found
+ *    in type ..."), so on that answer the read is repeated without it and Email is left out for the rest of the
+ *    session; once SAP adds the property the filter applies with no app change.
  *  - the gateway has no route for DELETE or for .../$value (both answer its own 404), see deleteLine / getPdf.
  */
 import { and, dec, eq, fromSapDate, fromSapTime, num, odataKey, str, toSapDate, toSapTime } from './format';
+import { getHubEmail } from './hub';
 import { GateError, parseSapError, sapDelete, sapGet, sapPost, sapPut, sapRawUrl } from './sap';
 import type { AsnDetail, AsnSummary, EntryDetail, EntryHeader, EntryItem, EntrySummary, Line, PoBlock, PoInfo, PoItem, SharedHeader } from './types';
 
 const flag = (b: boolean) => (b ? 'X' : '');
+
+let emailInFilter = true;
+
+/** Filtered list read with Email = the Emami Apps login email in front of the other conditions. */
+async function list(path: string, ...conds: (string | undefined | false | null)[]): Promise<any[]> {
+  const email = getHubEmail().toLowerCase();
+  if (emailInFilter && email) {
+    try {
+      return (await sapGet<any[]>(path, { $filter: and(eq('Email', email), ...conds) })) ?? [];
+    } catch (e) {
+      if (!(e instanceof GateError && /Property Email not found/i.test(e.message))) throw e;
+      emailInFilter = false;
+    }
+  }
+  return (await sapGet<any[]>(path, { $filter: and(...conds) || undefined })) ?? [];
+}
 
 /* ------------------------------ mappers ------------------------------ */
 
@@ -72,14 +92,14 @@ const itemKey = (i: { reqNo: string; slno: string; ebeln: string; ebelp: string 
 
 /** WD OVS_ASN: open ASNs SAP offers (plants of the SAP user, not yet used, not cancelled), optionally for one PO. */
 export async function searchAsn(poNo?: string): Promise<AsnSummary[]> {
-  const rows = await sapGet<any[]>('/AsnSet', poNo ? { $filter: eq('Ebeln', poNo) } : undefined);
+  const rows = await list('/AsnSet', poNo && eq('Ebeln', poNo));
   return (rows ?? []).map(mapAsn);
 }
 
 export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: PoItem[] }> {
   const [a, items] = await Promise.all([
     sapGet<any>(`/AsnSet(${odataKey(shipId)})`),
-    sapGet<any[]>('/AsnItemSet', { $filter: eq('ShipId', shipId) }),
+    list('/AsnItemSet', eq('ShipId', shipId)),
   ]);
   return {
     asn: { ...mapAsn(a), lrDate: fromSapDate(a.LrDate), invDate: fromSapDate(a.InvDate), regio: str(a.Regio), rgnDesc: str(a.RgnDesc) },
@@ -93,7 +113,7 @@ export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: P
 export async function getPo(ebeln: string): Promise<{ po: PoInfo; items: PoItem[] }> {
   const [p, items] = await Promise.all([
     sapGet<any>(`/PoInfoSet(${odataKey(ebeln)})`),
-    sapGet<any[]>('/PoItemSet', { $filter: eq('Ebeln', ebeln) }),
+    list('/PoItemSet', eq('Ebeln', ebeln)),
   ]);
   return {
     po: { ebeln: str(p.Ebeln), werks: str(p.Werks), lifnr: str(p.Lifnr), poVendrName: str(p.PoVendrName), regio: str(p.Regio), rgnDesc: str(p.RgnDesc) },
@@ -103,7 +123,7 @@ export async function getPo(ebeln: string): Promise<{ po: PoInfo; items: PoItem[
 
 /** WD PO_HIST: earlier, non-cancelled receipts of a PO. */
 export async function poHistory(ebeln: string) {
-  const rows = await sapGet<any[]>('/GateRequestItemSet', { $filter: eq('Ebeln', ebeln) });
+  const rows = await list('/GateRequestItemSet', eq('Ebeln', ebeln));
   return (rows ?? []).map((r) => ({ reqNo: str(r.ReqNo), slno: str(r.Slno), ...mapItem(r) }));
 }
 
@@ -182,9 +202,7 @@ function reqNoOf(r: any): string {
 /* ------------------------ search / read / actions ------------------------ */
 
 export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: string; asnNo?: string }): Promise<EntrySummary[]> {
-  const rows = await sapGet<any[]>('/GateSummarySet', {
-    $filter: and(f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo)) || undefined,
-  });
+  const rows = await list('/GateSummarySet', f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo));
   return (rows ?? [])
     .map((r) => ({
       reqNo: str(r.ReqNo),
@@ -204,8 +222,8 @@ export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: s
 export async function getEntry(reqNo: string): Promise<EntryDetail> {
   const key = reqNo.toUpperCase();
   const [headers, items] = await Promise.all([
-    sapGet<any[]>('/GateRequestSet', { $filter: eq('ReqNo', key) }),
-    sapGet<any[]>('/GateRequestItemSet', { $filter: eq('ReqNo', key) }),
+    list('/GateRequestSet', eq('ReqNo', key)),
+    list('/GateRequestItemSet', eq('ReqNo', key)),
   ]);
   const byPo = new Map<string, EntryItem[]>();
   (items ?? []).forEach((r) => {

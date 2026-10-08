@@ -69,11 +69,13 @@ TRUCK_DATE, TRUCK_TIM; QNT_RECIEVD shows as a general message), `CONFIRM_DATE|te
 ### Gaps (where NGD or the gateway differ from the brief)
 1. **Flags are ABAP flags, not booleans.** `ConfirmDateWarning` and `GateCancel.Admin` are strings: SAP refuses
    `true`/`false` ("Failed to read property 'Admin'"), so the app sends `'X'` / `''`.
-2. **Everything runs as the gateway's technical SAP user**, not the person signed in (the brief assumed the browser
-   user is the SAP user). So plant authority, cancel authority, admin rights and `ReqBy` are that technical user's:
-   on 2026-10-08 the lists came back empty and cancel answered "You are not authorized to cancel the gate entry".
-   Needs a decision on the SAP side (authorise the technical user, or pass the hub user and map it in the DPC - the
-   service has no property for that, so the app sends nothing).
+2. **Email.** Every call runs as the gateway's technical SAP user, so the signed-in Emami Apps email (lower case) goes
+   first in every list `$filter`: `Email eq '<login email>' and ...` (AsnSet, AsnItemSet, PoItemSet, GateSummarySet,
+   GateRequestSet, GateRequestItemSet). **NGD does not have an `Email` property yet** (2026-10-09: "Property Email not
+   found in type ..."); on that answer the app repeats the read without it and leaves Email out until reload, so it
+   works today and filters by email as soon as SAP adds the property (filterable, on each of those entity types).
+   Keyed reads (`PoInfoSet('..')`, `AsnSet('..')`) and the creates cannot carry it. Until then plant authority,
+   cancel authority and `ReqBy` are the technical user's (lists empty, cancel "not authorized" on 2026-10-08).
 3. **The gateway has no route for `.../$value` or for `DELETE`** (its own 404 "Cannot GET/DELETE /api/..."). Print
    falls back to a printable gate pass built from the entry data (`src/components/print.ts`); delete line shows
    "The SAP gateway does not pass this request on to SAP yet". Both start working unchanged once the gateway
