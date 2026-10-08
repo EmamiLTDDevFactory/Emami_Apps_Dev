@@ -489,9 +489,9 @@ function CreateClaimInner() {
             ['Department', currentUser.department],
             ['Designation', currentUser.designation],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-center gap-3 py-2">
-              <span className="w-28 shrink-0 text-xs font-semibold text-inkSoft">{label}</span>
-              <span className="flex-1 text-left text-sm font-bold text-ink">{value}</span>
+            <div key={label} className="flex items-center justify-between py-2">
+              <span className="text-xs font-semibold text-inkSoft">{label}</span>
+              <span className="w-64 text-left text-sm font-bold text-ink">{value}</span>
             </div>
           ))}
         </div>
