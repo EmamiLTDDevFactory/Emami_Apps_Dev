@@ -2,6 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 
 export type Category = 'CQA' | 'CPD' | 'IT' | 'Supply Chain' | 'IBD' | 'HR' | 'Cross-Function' | 'Packaging' | 'Finance' | 'SD' | 'MSD';
 
+export type AppStage = 'Live' | 'UAT';
+
 export interface AppItem {
   id: string;
   name: string;
@@ -10,8 +12,9 @@ export interface AppItem {
   icon: LucideIcon;
   uses: number;
   isNew?: boolean;
-  /** Released to production — tiles show a pulsing "LIVE" badge (see LiveBadge). */
-  isLive?: boolean;
+  /** Release stage shown as a badge on the tile (see StageBadge): 'Live' for apps released to
+   * production, 'UAT' for apps in user acceptance testing. Omit for no badge. */
+  stage?: AppStage;
   /** Same-origin path or externally hosted web app URL. When set, AppDetail embeds it in an iframe
    * (cross-origin) or does a full-page navigation (same-origin, see isSameOriginRoute). */
   url?: string;

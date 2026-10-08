@@ -15,8 +15,8 @@ import { CATEGORY_ICONS, CATEGORY_DESCRIPTIONS, SIMPLE_ICON_FIT, categoryIconFit
 import type { CategoryIcon } from '../../components/CategoryIcons';
 import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, motion } from '../../theme/tokens';
 import { useTiltHover } from '../../hooks/useTiltHover';
-import type { AppItem, CategoryFilter } from '../../types';
-import LiveBadge from '../../components/LiveBadge';
+import type { AppItem, AppStage, CategoryFilter } from '../../types';
+import StageBadge from '../../components/StageBadge';
 
 /** A Home card (category or Recently Used), styled after the reference Emami Apps home screen:
  * white card, pale accent-tinted icon chip, bold name, one-line description, and a lock (no
@@ -24,7 +24,7 @@ import LiveBadge from '../../components/LiveBadge';
  * shadow on hover (see useTiltHover). Kept as its own component since a tilt hook needs one hook
  * instance per tile. */
 function HoverTile({
-  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, iconFit = SIMPLE_ICON_FIT, name, subtitle, live,
+  compact, accent, locked, onClick, ariaLabel, title, icon: Icon, iconFit = SIMPLE_ICON_FIT, name, subtitle, stage,
 }: {
   /** Mobile sizing — smaller padding/chip/type so two cards still fit side by side on a phone. */
   compact: boolean;
@@ -38,8 +38,8 @@ function HoverTile({
   iconFit?: IconFit;
   name: string;
   subtitle: string;
-  /** Shows the LIVE badge in the top-right corner (app tiles only, see AppItem.isLive). */
-  live?: boolean;
+  /** Release-stage badge in the top-right corner (app tiles only, see AppItem.stage). */
+  stage?: AppStage;
 }) {
   const { ref, hovered, tiltTransform, handlers } = useTiltHover<HTMLButtonElement>();
   const active = hovered && !locked;
@@ -75,9 +75,9 @@ function HoverTile({
       aria-label={ariaLabel}
       title={title}
     >
-      {live && (
+      {stage && (
         <span style={{ position: 'absolute', top: compact ? 12 : 16, right: compact ? 12 : 16, display: 'flex' }}>
-          <LiveBadge compact={compact} />
+          <StageBadge stage={stage} compact={compact} />
         </span>
       )}
       <div style={{ width: chip, height: chip, borderRadius: radii.lg, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: categoryTint(accent), flexShrink: 0, marginBottom: compact ? 12 : 18 }}>
@@ -141,7 +141,8 @@ export default function HomePage() {
     if (!unlockedAppIds.has(app.id)) return;
     if (userEmail) logEvent(userEmail, 'APP_OPEN', app.id);
     if (app.url) {
-      window.open(app.url, '_blank', 'noopener,noreferrer');
+      // Same tab: browser Back returns to the hub.
+      window.location.assign(app.url);
       return;
     }
     router.push(`/apps/${app.id}`);
@@ -151,10 +152,9 @@ export default function HomePage() {
   // navigates in place to that category's own app list (/my-applications already seeds its filter
   // from ?category=).
   //
-  // Deliberately router.push, NOT window.open: a category is hub navigation, so it stays inside
-  // Emami Apps and keeps the shell, the sidebar and the browser's own Back button working. Only a
-  // real application gets a new browser tab — see openApp above, which is where window.open
-  // belongs, since those are separate applications rather than another view of this one.
+  // router.push: a category is hub navigation, so it stays inside the shell with the sidebar and
+  // the browser's own Back button working. An application is a full same-tab page load instead
+  // (see openApp above), since each app is its own build under /apps/<slug>.
   const openCategory = (c: CategoryFilter) => {
     router.push(`/my-applications?category=${encodeURIComponent(c)}`);
   };
@@ -221,7 +221,7 @@ export default function HomePage() {
                   icon={app.icon}
                   name={app.name}
                   subtitle={r.when}
-                  live={app.isLive}
+                  stage={app.stage}
                   ariaLabel={`Open ${app.name}`}
                   title={app.name}
                 />

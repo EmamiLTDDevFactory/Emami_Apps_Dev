@@ -237,5 +237,8 @@ export function logEvent(email: string, eventType: ActivityEventType, appId?: st
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, eventType, appId }),
+    // APP_OPEN is followed straight away by a same-tab navigation into the app; keepalive lets the
+    // request finish after this page unloads instead of being cancelled with it.
+    keepalive: true,
   }).catch(() => {});
 }
