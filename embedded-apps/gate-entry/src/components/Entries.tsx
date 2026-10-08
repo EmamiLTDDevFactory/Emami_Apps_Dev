@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { Ban, Clock, LogOut as OutIcon, Printer, RefreshCw, Search } from 'lucide-react';
-import { cancelEntry, getEntry, recordOutTime, searchEntries } from '@/lib/gate';
+import { Ban, Clock, LogOut as OutIcon, Printer, RefreshCw, Search, ShieldAlert, Trash2 } from 'lucide-react';
+import { cancelEntry, deleteLine, getEntry, recordOutTime, searchEntries, zeroLine } from '@/lib/gate';
 import { fmtDate, fmtQty, fmtTime } from '@/lib/format';
-import type { EntryDetail, EntrySummary } from '@/lib/types';
+import type { EntryDetail, EntryItem, EntrySummary } from '@/lib/types';
 import { Button, Card, cx, Drawer, Empty, Field, inputCls, Modal, Pill, Skeleton, Spinner } from './ui';
 import { openPdf } from './print';
 
@@ -96,19 +96,40 @@ function Detail({ summary, onClose, onChanged }: { summary: EntrySummary | { req
   const reqNo = summary?.reqNo ?? null;
   const [d, setD] = useState<EntryDetail | null>(null);
   const [err, setErr] = useState('');
-  const [act, setAct] = useState<'' | 'pdf' | 'out' | 'cancel'>('');
+  const [act, setAct] = useState<'' | 'pdf' | 'out' | 'cancel' | 'admin'>('');
   const [actErr, setActErr] = useState('');
   const [msg, setMsg] = useState('');
   const [confirmOut, setConfirmOut] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminReason, setAdminReason] = useState('');
+  const [adminErr, setAdminErr] = useState('');
   const outDone = summary && 'truckOutDat' in summary && !!summary.truckOutDat;
 
   useEffect(() => {
-    setD(null); setErr(''); setActErr(''); setMsg(''); setReason('');
+    setD(null); setErr(''); setActErr(''); setMsg(''); setReason(''); setAdminReason(''); setAdminErr('');
     if (!reqNo) return;
     getEntry(reqNo).then(setD).catch((e) => setErr(errText(e)));
   }, [reqNo]);
+
+  /** Admin actions: SAP decides who may run them; its message is shown when it refuses. */
+  const runAdmin = async (label: string, call: () => Promise<void>) => {
+    if (!reqNo) return;
+    setAct('admin');
+    setAdminErr('');
+    setMsg('');
+    try {
+      await call();
+      setMsg(label);
+      onChanged();
+      setD(await getEntry(reqNo));
+    } catch (e) {
+      setAdminErr(errText(e));
+    } finally {
+      setAct('');
+    }
+  };
 
   const run = async (kind: 'pdf' | 'out' | 'cancel') => {
     if (!reqNo) return;
@@ -139,6 +160,7 @@ function Detail({ summary, onClose, onChanged }: { summary: EntrySummary | { req
             <Button variant="primary" disabled={!!act} onClick={() => void run('pdf')}>{act === 'pdf' ? <Spinner /> : <Printer size={14} />} Print gate pass</Button>
             {!outDone && <Button disabled={!!act} onClick={() => setConfirmOut(true)}><OutIcon size={14} /> Record out time</Button>}
             <Button variant="danger" disabled={!!act} onClick={() => setCancelOpen(true)}><Ban size={14} /> Cancel entry</Button>
+            <Button disabled={!!act} onClick={() => { setAdminErr(''); setAdminOpen(true); }}><ShieldAlert size={14} /> Admin</Button>
           </div>
           {msg && <p className="rounded-xl bg-good/10 px-3 py-2 text-sm font-semibold text-good">{msg}</p>}
           {actErr && <p className="rounded-xl bg-bad/[0.06] px-3 py-2 text-sm text-bad" role="alert">{actErr}</p>}
@@ -180,6 +202,35 @@ function Detail({ summary, onClose, onChanged }: { summary: EntrySummary | { req
         <Field label="Reason for cancellation *" hint="SAP refuses it if the GRN is not reversed or you have no cancel authority for the plant.">
           {(id) => <textarea id={id} className={cx(inputCls, 'h-24 py-2')} maxLength={255} value={reason} onChange={(e) => setReason(e.target.value)} />}
         </Field>
+      </Modal>
+      <Modal open={adminOpen} onClose={() => setAdminOpen(false)} title={`Admin - gate entry ${reqNo ?? ''}`}
+        footer={<Button onClick={() => setAdminOpen(false)}>Close</Button>}>
+        <div className="flex flex-col gap-3 text-sm">
+          <p className="text-xs text-muted">Only SAP gate entry admins may do this; SAP refuses anyone else and its message is shown here.</p>
+          {adminErr && <p className="rounded-xl bg-bad/[0.06] px-3 py-2 text-sm text-bad" role="alert">{adminErr}</p>}
+          {d?.entries.map((e) => (
+            <div key={`${e.slno}-${e.poNo}`} className="rounded-xl border border-line">
+              <div className="border-b border-line bg-sunken px-3 py-1.5 text-xs font-bold">PO <span className="font-mono">{e.poNo || '-'}</span></div>
+              {e.items.map((i: EntryItem) => (
+                <div key={i.ebelp} className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-1.5 first:border-t-0">
+                  <span className="font-mono text-xs">{i.ebelp}</span>
+                  <span className="min-w-0 flex-1 truncate">{i.txz01}</span>
+                  <span className="num text-xs font-semibold">{fmtQty(i.qntRecievd)} {i.meins}</span>
+                  <Button size="sm" disabled={!!act || i.qntRecievd === 0} onClick={() => void runAdmin(`Line ${i.ebelp} of PO ${i.ebeln} set to 0.`, () => zeroLine(i))}>Set to 0</Button>
+                  <Button size="sm" variant="danger" disabled={!!act} aria-label={`Delete line ${i.ebelp}`} onClick={() => void runAdmin(`Line ${i.ebelp} of PO ${i.ebeln} deleted.`, () => deleteLine(i))}><Trash2 size={13} /></Button>
+                </div>
+              ))}
+            </div>
+          ))}
+          <Field label="Admin cancel - reason *">
+            {(id) => <textarea id={id} className={cx(inputCls, 'h-20 py-2')} maxLength={255} value={adminReason} onChange={(e) => setAdminReason(e.target.value)} />}
+          </Field>
+          <div>
+            <Button variant="danger" disabled={!adminReason.trim() || !!act} onClick={() => void runAdmin('Gate entry cancelled (admin).', () => cancelEntry(reqNo!, adminReason, true))}>
+              {act === 'admin' ? <Spinner /> : <Ban size={14} />} Admin cancel
+            </Button>
+          </div>
+        </div>
       </Modal>
     </Drawer>
   );

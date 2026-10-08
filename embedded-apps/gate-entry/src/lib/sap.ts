@@ -1,10 +1,10 @@
 /**
- * Minimal OData V2 client for ZGATE_ENTRY_SRV through the Azure gateway (same contract as every sibling app's client):
+ * Minimal OData V2 client for ZMM_GATE_ENTRY_SRV through the Azure gateway (same contract as every sibling app's client):
  * no CSRF handshake here (the gateway does it), JSON via $format=json, SAP's error body turned into a GateError.
  */
-import { SAP_BASE_URL } from './config';
+import { SAP_BASE_URL, SAP_SERVICE } from './config';
 
-export type ErrorCode = 'BUSINESS' | 'CONFIRM_DATE' | 'FORBIDDEN' | 'NOT_FOUND' | 'SERVICE_MISSING' | 'SAP_UNAVAILABLE' | 'INTERNAL';
+export type ErrorCode = 'BUSINESS' | 'CONFIRM_DATE' | 'FORBIDDEN' | 'NOT_FOUND' | 'SERVICE_MISSING' | 'SAP_UNAVAILABLE' | 'GATEWAY_UNSUPPORTED' | 'INTERNAL';
 
 export class GateError extends Error {
   constructor(public status: number, public code: ErrorCode, message: string, public field?: string) {
@@ -30,10 +30,14 @@ export function parseSapError(status: number, text: string): GateError {
     /* HTML from the gateway */
   }
   if (code === '/IWFND/MED/170' || /No service found for namespace/.test(message)) {
-    return new GateError(503, 'SERVICE_MISSING', 'The SAP service ZGATE_ENTRY_SRV is not available on the SAP gateway yet.');
+    return new GateError(503, 'SERVICE_MISSING', `The SAP service ${SAP_SERVICE} is not available on the SAP gateway.`);
+  }
+  // The Azure gateway's own Express 404 ("Cannot DELETE /api/..."): it has no route for this method or for /$value.
+  if (status === 404 && /Cannot (GET|POST|PUT|DELETE) \/api\//.test(text)) {
+    return new GateError(501, 'GATEWAY_UNSUPPORTED', 'The SAP gateway does not pass this request on to SAP yet.');
   }
   if (message.startsWith('CONFIRM_DATE|')) return new GateError(409, 'CONFIRM_DATE', message.slice('CONFIRM_DATE|'.length));
-  if (status === 403 && !message) return new GateError(403, 'FORBIDDEN', 'No authorization for this SAP service');
+  if (status === 401 || status === 403) return new GateError(status, 'FORBIDDEN', message || `SAP refused the request (HTTP ${status})`);
   if (status === 404 && !message) return new GateError(404, 'NOT_FOUND', 'Not found');
   const m = /^([A-Z][A-Z0-9_]{1,30}):\s+([\s\S]+)$/.exec(message);
   if (status >= 400 && status < 500) {
@@ -55,7 +59,7 @@ const unwrap = (json: any) => {
   return d && Array.isArray(d.results) ? d.results : d;
 };
 
-async function send(method: 'GET' | 'POST', path: string, query?: Record<string, string | undefined>, body?: unknown) {
+async function send(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, query?: Record<string, string | undefined>, body?: unknown) {
   let res: Response;
   try {
     res = await fetch(url(path, query), {
@@ -75,3 +79,9 @@ async function send(method: 'GET' | 'POST', path: string, query?: Record<string,
 export const sapGet = <T = any>(path: string, query?: Record<string, string | undefined>) => send('GET', path, query) as Promise<T>;
 export const sapPost = <T = any>(path: string, body?: unknown, query?: Record<string, string | undefined>) =>
   send('POST', path, query, body) as Promise<T>;
+/** PUT replaces the whole entity (SAP refuses partial updates, so no MERGE). */
+export const sapPut = (path: string, body: unknown) => send('PUT', path, undefined, body);
+export const sapDelete = (path: string) => send('DELETE', path);
+
+/** Entity URL with a plain path (no $format) for media reads, e.g. GateRequestPdfSet('..')/$value. */
+export const sapRawUrl = (path: string) => `${SAP_BASE_URL}${path}`;

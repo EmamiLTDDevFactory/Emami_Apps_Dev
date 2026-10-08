@@ -34,72 +34,61 @@ The user can always correct the field. Any signed-in hub user may call it (30 ph
 not stored. Code: `src/lib/vision.ts`, `src/components/VehiclePhoto.tsx`, server `sap_agent_web/vision.py`.
 
 ## How it reaches SAP
-Browser -> shared Azure SAP gateway -> `NGD` -> OData V2 service **`ZGATE_ENTRY_SRV`** (`src/lib/config.ts`).
-The gateway logs on with its technical user and does the CSRF handshake, and appends `$format=json` to every URL -
-same as Shelf Life Deviation, PO Approval and the other SAP apps. There is no server of our own.
+Browser -> shared Azure SAP gateway -> `NGD` -> OData V2 service **`ZMM_GATE_ENTRY_SRV`** (SEGW `ZMM_GATE_ENTRY_MDL`,
+`src/lib/config.ts`). The gateway logs on with its technical user, does the CSRF handshake and appends
+`$format=json` to every URL - same as Shelf Life Deviation, PO Approval and the other SAP apps. No server of our own.
+The contract below follows `UI5_CONVERSION_PROMPT.md` (written for a UI5 app; this app is Next.js, so manifest /
+Component / i18n / UI5 proxy items do not apply) and was checked live on NGD on 2026-10-08: every property name
+there exists (checked with `$select`), and every call below reaches the DPC.
 
-**Status (2026-10-07): `ZGATE_ENTRY_SRV` does not exist on NGD yet** (`/IWFND/MED/170 No service found`). The app
-shows a banner until it does. The SAP side is Phase 0 of `gate-entry-web/docs/PLAN.md` (ZCL_GATE_ENTRY_BL, SEGW
-project, DPC_EXT, `/IWFND/MAINT_SERVICE`); its ABAP files were not in the gate-entry-web folder.
-
-## SAP contract (build the SEGW service to this)
-`gate-entry-web` assumed its own Node server calling SAP as each user (Basic auth), `$batch` and a `$value` PDF.
-Behind the Emami gateway that does not work, so the contract differs in four places:
-
-1. **Email instead of sy-uname.** All calls run as the gateway's technical user, so the hub user's email
-   (lower case) travels with every call. `ZCL_GATE_ENTRY_BL` maps it to the SAP user (e.g. ADR6/USR21) and uses that
-   for `ZGATE_AUTH` (plants, cancel authority 'D') and `REQ_BY`.
-   - reads: `$filter=Email eq '<email>' and ...` on every entity set below
-   - function imports: parameter `Email`
-   - create: property `Email` on `GateRequest`
-2. **Filtered reads instead of keyed reads** (so Email can travel): `AsnSet?$filter=Email eq .. and ShipId eq ..`,
-   `PoInfoSet?$filter=Email eq .. and Ebeln eq ..` (one row each).
-3. **Multi-PO entry = one deep insert.** `POST GateRequestSet` with `Items` of every PO (each item has its `Ebeln`);
-   the BL splits them into one header per PO under one new request number - the same thing it already does for an
-   ASN - and derives vendor/region per PO. The header carries the first PO's data. One call = one LUW, so the
-   all-or-nothing rule of the `$batch` design still holds. `NewReqNo` is not called by the app.
-4. **PDF as base64.** `GET GateRequestPdfSet?$filter=Email eq .. and ReqNo eq ..` -> one row, property `Pdf` =
-   base64 of the Smartform `ZF_GATE_ENTRY` PDF.
-
-Calls the app makes (entity/property names as in gate-entry-web):
-
-| Call | Used for |
+| UI action | Call |
 |---|---|
-| `GET AsnSet?$filter=Email eq '..' [and Ebeln eq '..']` | open ASNs of the user's plants (WD OVS_ASN) |
-| `GET AsnSet?$filter=Email eq '..' and ShipId eq '..'` + `GET AsnItemSet?$filter=... ShipId eq '..'` | ASN header defaults + lines |
-| `GET PoInfoSet?$filter=Email eq '..' and Ebeln eq '..'` + `GET PoItemSet?$filter=...` | PO_ENTER; errors as `PO_NO: <WD message>` |
-| `GET GateRequestItemSet?$filter=Email eq '..' and Ebeln eq '..'` | earlier receipts of a PO (PO_HIST) |
-| `POST GateRequestSet` (deep insert, `Items`) | save (PO or ASN mode); returns `ReqNo` |
-| `GET GateSummarySet?$filter=Email eq '..' [and Year/PoNo/ReqNo/AsnNo eq '..']` | search |
-| `GET GateRequestSet` / `GateRequestItemSet?$filter=Email eq '..' and ReqNo eq '..'` | entry detail |
-| `POST RecordOutTime?ReqNo='..'&Email='..'` | out time (server time) |
-| `POST CancelRequest?ReqNo='..'&Reason='..'&Email='..'` | cancel |
-| `GET GateRequestPdfSet?$filter=Email eq '..' and ReqNo eq '..'` | gate pass PDF (base64 `Pdf`) |
+| PO + Enter | `GET PoInfoSet('<po>')` + `GET PoItemSet?$filter=Ebeln eq '<po>'` |
+| ASN value help | `GET AsnSet[?$filter=Ebeln eq '<po>']` |
+| ASN chosen | `GET AsnSet('<id>')` + `GET AsnItemSet?$filter=ShipId eq '<id>'` |
+| Save (PO or ASN) | `POST GateEntrySet` deep insert, `Pos` = one element per PO (one for an ASN), each with `Items`; response `ReqNo` |
+| Search | `GET GateSummarySet?$filter=Year/PoNo/ReqNo/AsnNo eq ..` |
+| Open an entry | `GET GateRequestSet` + `GateRequestItemSet?$filter=ReqNo eq '..'` |
+| PO history | `GET GateRequestItemSet?$filter=Ebeln eq '..'` |
+| Print | `GET GateRequestPdfSet('<ReqNo>')/$value` (see gaps) |
+| Record out time | `POST GateOutTimeSet { ReqNo }` (SAP stamps the time) |
+| Cancel / admin cancel | `POST GateCancelSet { ReqNo, Reason, Admin: '' / 'X' }` |
+| Admin: set line to 0 | `PUT GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp)` with the full entity as read, `QntRecievd: "0.000"` |
+| Admin: delete line | `DELETE GateRequestItemSet(...)` (see gaps) |
 
-Errors: raise `FIELD_NAME: text` (the UI puts the text under that input, e.g. `INV_NO: ...` -> invoice number) and
-`CONFIRM_DATE|text` for the 7-day question (the UI asks YES/NO and resends with `ConfirmDateWarning: true`).
+Create body: `{ "ConfirmDateWarning": "", "Pos": [{ ReqDate, PoNo, PoVendr, PoVendrName, Regio, RegioDesc, Plnt,
+TruckNo, TruckDate, TruckTim, Lrno, Lrdt, FrVendr, VehVendrNo, VehVendrName, InvNo, InvDate, [AsnNo],
+"Items": [{ Ebeln, Ebelp, Txz01, Matnr, Werks, PoQnty, Menge, Meins, QntRecievd, RetVend122, "Selected": "X" }] }] }`.
+Dates `/Date(<UTC midnight ms>)/`, times `PT14H35M00S`, decimals strings with 3 places. PO mode sends only lines with a
+quantity above 0, ASN mode only the ticked lines (with `PoNo` empty).
 
-Create body (PO mode, two POs on one truck):
-```json
-{ "Email": "gate.user@emamigroup.com", "ReqDate": "/Date(1791331200000)/", "PoNo": "4500000001", "PoVendr": "100123",
-  "PoVendrName": "Kolkata Chemicals Ltd", "Regio": "19", "RegioDesc": "West Bengal", "TruckNo": "WB25F4521",
-  "TruckDate": "/Date(1791331200000)/", "TruckTim": "PT14H35M00S", "Lrno": "LR-7781", "FrVendr": "02",
-  "VehVendrNo": "", "VehVendrName": "Sharma Roadways", "InvNo": "INV/2026/551", "InvDate": "/Date(1791158400000)/",
-  "Plnt": "1101", "ConfirmDateWarning": false,
-  "Items": [
-    { "Ebeln": "4500000001", "Ebelp": "00010", "Txz01": "Menthol crystals", "Matnr": "RM1010", "Werks": "1101", "PoQnty": "500.000",
-      "Menge": "300.000", "Meins": "KG", "QntRecievd": "120.000", "RetVend122": "0.000", "Selected": "X" },
-    { "Ebeln": "4500000002", "Ebelp": "00020", "Txz01": "Glass bottle 100ml", "Matnr": "RM1020", "Werks": "1101", "PoQnty": "500.000",
-      "Menge": "250.000", "Meins": "PC", "QntRecievd": "40.000", "RetVend122": "0.000", "Selected": "X" } ] }
-```
-ASN mode: same, `PoNo` empty, `AsnNo` set, `Items` = the ticked ASN lines.
+Errors (`error.message.value`): `FIELD: text` marks that input (PO_NO, TRUCK_NO, LRNO, FR_VENDR, INV_NO, INV_DATE,
+TRUCK_DATE, TRUCK_TIM; QNT_RECIEVD shows as a general message), `CONFIRM_DATE|text` asks YES/NO and resends with
+`ConfirmDateWarning: 'X'`, anything else is shown as is.
+
+### Gaps (where NGD or the gateway differ from the brief)
+1. **Flags are ABAP flags, not booleans.** `ConfirmDateWarning` and `GateCancel.Admin` are strings: SAP refuses
+   `true`/`false` ("Failed to read property 'Admin'"), so the app sends `'X'` / `''`.
+2. **Everything runs as the gateway's technical SAP user**, not the person signed in (the brief assumed the browser
+   user is the SAP user). So plant authority, cancel authority, admin rights and `ReqBy` are that technical user's:
+   on 2026-10-08 the lists came back empty and cancel answered "You are not authorized to cancel the gate entry".
+   Needs a decision on the SAP side (authorise the technical user, or pass the hub user and map it in the DPC - the
+   service has no property for that, so the app sends nothing).
+3. **The gateway has no route for `.../$value` or for `DELETE`** (its own 404 "Cannot GET/DELETE /api/..."). Print
+   falls back to a printable gate pass built from the entry data (`src/components/print.ts`); delete line shows
+   "The SAP gateway does not pass this request on to SAP yet". Both start working unchanged once the gateway
+   forwards them. PUT does reach SAP.
+4. ReqNo must be a full 10-character number: a short one (e.g. `ZZZ`) makes the DPC dump ("Invalid access to a
+   string (too long)", HTTP 500) instead of answering "not found".
+5. There was never a mock data path in this app (it was built against the contract), so there is no mock flag.
 
 ## Code map
 | File | Role |
 |---|---|
-| `src/lib/sap.ts` | gateway client, SAP error -> `GateError` (`FIELD: msg`, `CONFIRM_DATE|`, service missing) |
+| `src/lib/sap.ts` | gateway client, SAP error -> `GateError` (`FIELD: msg`, `CONFIRM_DATE|`, service missing, gateway 404) |
 | `src/lib/gate.ts` | every call above, OData <-> camelCase mapping |
 | `src/lib/format.ts` | `/Date()`, `PT..H..M..S`, decimals, display formats |
 | `src/lib/validate.ts` | fast-feedback checks (SAP stays the authority) |
 | `src/components/NewEntry.tsx` | PO/ASN form, line table, ASN picker, 7-day dialog, saved screen |
-| `src/components/Entries.tsx` | search, detail drawer, out time, cancel |
+| `src/components/Entries.tsx` | search, detail drawer, out time, cancel, admin dialog |
+| `src/components/print.ts` | gate pass PDF, or the printable fallback |
