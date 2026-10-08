@@ -13,7 +13,9 @@ import {
   ALLOWED_ATTACHMENT_LABEL,
   ALLOWED_ATTACHMENT_MIME_TYPES,
   compressAttachmentImage,
+  getPerFileTargetBytes,
   MIME_TO_EXTENSION,
+  SAFE_COMBINED_RAW_ATTACHMENT_BYTES,
 } from '../../lib/attachmentCompression';
 import { getDocumentAsync } from '../../lib/documentPicker';
 import { ensurePdfAttachmentUnderLimit } from '../../lib/pdfAttachment';
@@ -22,8 +24,10 @@ import { formatCurrency } from '../../utils/currency';
 
 const COST_CENTERS = ['CC-SA', 'CC-ENG-GLOBAL', 'CC-MARKETING-UK', 'CC-FINANCE-HQ', 'CC-IT-INFRA'];
 
-const MAX_ATTACHMENTS_TOTAL_BYTES = 30 * 1024 * 1024;
-const MAX_ATTACHMENTS_TOTAL_LABEL = '30 MB';
+// Real measured ceiling (see attachmentCompression.ts), not a generic file-size cap — showing an
+// honest number here instead of a made-up "30 MB" that the real gateway would reject long before.
+const MAX_ATTACHMENTS_TOTAL_BYTES = SAFE_COMBINED_RAW_ATTACHMENT_BYTES;
+const MAX_ATTACHMENTS_TOTAL_LABEL = `${Math.round(SAFE_COMBINED_RAW_ATTACHMENT_BYTES / 1024)} KB`;
 
 const getMimeTypeForFile = (fileName?: string, mimeType?: string) => {
   if (mimeType) return mimeType;
@@ -124,6 +128,13 @@ function CreateClaimInner() {
   const [areaSearch, setAreaSearch] = useState('');
   const [justification, setJustification] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Pristine, pre-compression source for every attachment picked THIS session (keyed by attachment
+  // id) — the only way to recompress an already-added file to a tighter shared target when a new
+  // attachment arrives, without compounding quality loss by re-encoding an already-compressed copy.
+  // Attachments loaded from an existing claim (resubmit) have no entry here — there's no original
+  // file to re-derive, so their already-fixed size is treated as a sunk cost against the shared
+  // budget instead.
+  const [originalSources, setOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
   const filteredAreas = availableAreas.filter((area) =>
     `${area.Bland || ''} ${area.Bezei || ''}`.toLowerCase().includes(areaSearch.toLowerCase())
@@ -158,6 +169,7 @@ function CreateClaimInner() {
     setHsnSac('');
     setJustification('');
     setAttachments([]);
+    setOriginalSources({});
     setPreviewAttachment(null);
     setPreviewModalVisible(false);
     setAmountError('');
@@ -222,11 +234,15 @@ function CreateClaimInner() {
           const name = item.Filename.includes('.')
             ? item.Filename
             : `${item.Filename}.${MIME_TO_EXTENSION[mimetype] || 'pdf'}`;
+          // Base64 char count -> decoded byte length, so this already-submitted attachment counts
+          // accurately against the shared attachment budget if the user adds another file here.
+          const sizeBytes = item.Value ? Math.floor((item.Value.length * 3) / 4) : 0;
           attachmentList.push({
             id: `att-${index}-${Date.now()}-${item.Filename.replace(/[^a-zA-Z0-9]/g, '')}`,
             name,
             uri: `data:${mimetype};base64,${item.Value}`,
             type: mimetype,
+            size: sizeBytes,
           });
         }
       });
@@ -283,6 +299,7 @@ function CreateClaimInner() {
         setCostCenter(formData.costCenter);
         setJustification(formData.justification);
         setAttachments(formData.attachments);
+        setOriginalSources({});
       }
       return;
     }
@@ -300,6 +317,7 @@ function CreateClaimInner() {
     setCostCenter(claim.costCenter);
     setJustification(claim.justification);
     setAttachments(claim.attachments || []);
+    setOriginalSources({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingClaimId, getClaimById, tempClaimForResubmit, expenseTypes]);
 
@@ -364,56 +382,101 @@ function CreateClaimInner() {
     try {
       setFormError('');
       const result = await getDocumentAsync({ multiple: false });
-      if (!result.canceled) {
-        const asset = result.assets[0];
-        if (asset && asset.uri) {
-          const attachmentMimeType = getMimeTypeForFile(asset.name, asset.mimeType);
-          if (!isAttachmentAllowed(asset.name, attachmentMimeType)) {
-            setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
-            return;
-          }
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset || !asset.uri) return;
 
-          // Images can be safely re-encoded smaller, and a PDF can be re-rasterized smaller —
-          // XLS/XLSX/CSV/TXT can't be shrunk either way and are left exactly as picked.
-          let finalUri = asset.uri;
-          let finalSize = asset.size || 0;
-          let finalType = attachmentMimeType;
-          if (attachmentMimeType.startsWith('image/')) {
-            const compressed = await compressAttachmentImage(asset.uri);
-            if (compressed) {
-              finalUri = compressed.uri;
-              finalSize = compressed.size;
-              // Compression always re-encodes as JPEG — the stored Mimetype must say so too.
-              finalType = 'image/jpeg';
-            }
-          } else if (attachmentMimeType === 'application/pdf') {
-            if ((asset.size || 0) > 70 * 1024) {
-              const compressed = await ensurePdfAttachmentUnderLimit(asset.uri);
-              if (compressed) {
-                finalUri = compressed.uri;
-                finalSize = compressed.size;
-              } else {
-                setFormError('This PDF is too large and could not be compressed enough to upload. Please attach a smaller PDF.');
-                return;
-              }
-            }
-          }
+      const attachmentMimeType = getMimeTypeForFile(asset.name, asset.mimeType);
+      if (!isAttachmentAllowed(asset.name, attachmentMimeType)) {
+        setFormError(`Unsupported attachment type. Allowed file types: ${ALLOWED_ATTACHMENT_LABEL}.`);
+        return;
+      }
 
-          const existingTotal = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
-          if (existingTotal + finalSize > MAX_ATTACHMENTS_TOTAL_BYTES) {
-            setFormError(`Total attachment size cannot exceed ${MAX_ATTACHMENTS_TOTAL_LABEL}. Please attach a smaller file or remove an existing one.`);
-            return;
-          }
+      // Images can be safely re-encoded smaller, and a PDF can be re-rasterized smaller —
+      // XLS/XLSX/CSV/TXT can't be shrunk either way and are left exactly as picked.
+      const isRecompressible = attachmentMimeType.startsWith('image/') || attachmentMimeType === 'application/pdf';
+      const newId = `att-${Date.now()}`;
 
-          const newAtt: Attachment = {
-            id: `att-${Date.now()}`,
-            name: asset.name || 'document',
-            uri: finalUri,
-            size: finalSize,
-            type: finalType,
-          };
-          setAttachments((prev) => [...prev, newAtt]);
+      // Attachments that can't be (further) shrunk — resubmit-loaded attachments, and any
+      // non-image/PDF file already on the claim — are a fixed cost against the shared budget.
+      // Everything else (image/PDF attachments picked this session) gets re-targeted below.
+      const reservedBytes = attachments.reduce(
+        (sum, a) => (originalSources[a.id] ? sum : sum + (a.size || 0)),
+        0,
+      );
+      const recompressibleCount = attachments.filter((a) => originalSources[a.id]).length + (isRecompressible ? 1 : 0);
+      const targetBytes = recompressibleCount > 0 ? getPerFileTargetBytes(recompressibleCount, reservedBytes) : null;
+
+      if (isRecompressible && targetBytes === null) {
+        setFormError('This claim is already close to the safe combined attachment size. Remove an attachment before adding another.');
+        return;
+      }
+
+      let finalUri = asset.uri;
+      let finalSize = asset.size || 0;
+      let finalType = attachmentMimeType;
+
+      if (attachmentMimeType.startsWith('image/')) {
+        const compressed = await compressAttachmentImage(asset.uri, targetBytes as number);
+        if (compressed) {
+          finalUri = compressed.uri;
+          finalSize = compressed.size;
+          // Compression always re-encodes as JPEG — the stored Mimetype must say so too.
+          finalType = 'image/jpeg';
         }
+      } else if (attachmentMimeType === 'application/pdf') {
+        if ((asset.size || 0) > (targetBytes as number)) {
+          const compressed = await ensurePdfAttachmentUnderLimit(asset.uri, targetBytes as number);
+          if (compressed) {
+            finalUri = compressed.uri;
+            finalSize = compressed.size;
+          } else {
+            setFormError('This PDF is too large and could not be compressed enough to upload alongside your other attachments. Please attach a smaller PDF or remove an existing attachment.');
+            return;
+          }
+        }
+      } else if (reservedBytes + finalSize > SAFE_COMBINED_RAW_ATTACHMENT_BYTES) {
+        // XLS/XLSX/CSV/TXT can't be shrunk — reject outright rather than let it blow the real
+        // combined ceiling at submit time.
+        setFormError(`This file is too large to add alongside your other attachments (max ${MAX_ATTACHMENTS_TOTAL_LABEL}). Please use a smaller file or remove an existing attachment.`);
+        return;
+      }
+
+      const newAtt: Attachment = { id: newId, name: asset.name || 'document', uri: finalUri, size: finalSize, type: finalType };
+
+      // Existing session-picked image/PDF attachments were compressed against a looser
+      // (fewer-attachments) target — re-derive each from its pristine source against the same
+      // tighter target this new attachment uses, so the combined total actually stays in budget.
+      let finalAttachments: Attachment[];
+      if (isRecompressible && recompressibleCount > 1) {
+        finalAttachments = await Promise.all(
+          attachments.map(async (a) => {
+            const original = originalSources[a.id];
+            if (!original) return a;
+            if (original.mimeType.startsWith('image/')) {
+              const recompressed = await compressAttachmentImage(original.uri, targetBytes as number);
+              return recompressed ? { ...a, uri: recompressed.uri, size: recompressed.size, type: 'image/jpeg' } : a;
+            }
+            const recompressed = await ensurePdfAttachmentUnderLimit(original.uri, targetBytes as number);
+            return recompressed ? { ...a, uri: recompressed.uri, size: recompressed.size } : a;
+          }),
+        );
+        finalAttachments.push(newAtt);
+      } else {
+        finalAttachments = [...attachments, newAtt];
+      }
+
+      // Final safety net against the real combined ceiling, using the actual post-compression
+      // sizes rather than the predicted target — catches any edge case the math above missed.
+      const finalTotal = finalAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+      if (finalTotal > SAFE_COMBINED_RAW_ATTACHMENT_BYTES) {
+        setFormError(`Combined attachment size would exceed the safe upload limit (${MAX_ATTACHMENTS_TOTAL_LABEL}). Please remove an attachment or use a smaller file.`);
+        return;
+      }
+
+      setAttachments(finalAttachments);
+      if (isRecompressible) {
+        setOriginalSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
       }
     } catch (err) {
       setFormError('Unable to add attachment. Please try again with a supported file.');
@@ -422,6 +485,12 @@ function CreateClaimInner() {
 
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
+    setOriginalSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setFormError('');
   };
 
@@ -645,7 +714,7 @@ function CreateClaimInner() {
         <h2 className="text-sm font-bold text-ink">Supporting Documents *</h2>
         <p className="text-xs text-inkSoft">At least 1 attachment is mandatory</p>
         <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
-        <p className="mb-3 text-xs text-inkSoft">Total size limit: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
+        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 
         {attachments.map((att) => (
           <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">

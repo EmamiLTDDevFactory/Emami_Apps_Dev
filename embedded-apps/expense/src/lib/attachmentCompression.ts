@@ -29,14 +29,38 @@ export const MIME_TO_EXTENSION: Record<string, string> = {
 };
 
 // The claim gets POSTed as one base64-embedded JSON body straight to SAP, with no app-controlled
-// size limit anywhere in that path — a modest image can trip a 413 from the gateway sitting in
-// front of SAP well before it reaches the 30MB ceiling the Create Claim screen warns about. Images
-// can be safely re-encoded smaller without losing their usefulness as a receipt; compression tries
-// progressively smaller width/quality combinations (most lenient first) until the file is at or
-// under TARGET_FILE_BYTES, falling back to whatever got smallest if none of the steps quite reach
-// it. PDF/XLS/XLSX/CSV/TXT attachments can't be shrunk this way and are deliberately left
-// untouched.
+// size limit anywhere in that path. Measured directly against the real gateway in front of SAP: a
+// request body over ~100KB gets rejected with no CORS header at all, which the browser then
+// reports to the app as a generic "Network Error" rather than a real status code. A single
+// attachment compressed to ~70KB keeps the whole request safely under that — but with N
+// attachments, each one needs to target roughly a 1/N share of the same combined budget, or two
+// "individually fine" 70KB files together still blow past the real ceiling. Images can be safely
+// re-encoded smaller without losing their usefulness as a receipt; compression tries progressively
+// smaller width/quality combinations (most lenient first) until the file is at or under the target,
+// falling back to whatever got smallest if none of the steps quite reach it. XLS/XLSX/CSV/TXT
+// attachments can't be shrunk this way and are deliberately left untouched (PDFs are rasterized and
+// rebuilt smaller instead — see pdfAttachment.ts).
 export const TARGET_FILE_BYTES = 70 * 1024;
+
+// Combined raw (pre-base64) budget shared across every attachment on one claim, chosen with a
+// safety margin under the measured real ceiling (~100KB request body ≈ ~75KB raw attachment
+// content once base64 + JSON overhead is accounted for).
+export const SAFE_COMBINED_RAW_ATTACHMENT_BYTES = TARGET_FILE_BYTES;
+// Below this, a compressed image/PDF stops being a useful receipt — if the shared budget would
+// push a file's target under this floor, the app asks the user to remove an attachment instead of
+// silently producing something unusable.
+export const MIN_PER_FILE_TARGET_BYTES = 12 * 1024;
+
+/** Per-file compression target for one more attachment, given how much of the shared combined
+ * budget is already spoken for by attachments that can't be (further) compressed. Returns null
+ * if there's no room left even at the minimum floor — the caller should reject the new attachment
+ * rather than compress it into something unusable. */
+export function getPerFileTargetBytes(recompressibleCount: number, reservedBytes: number): number | null {
+  const count = Math.max(1, recompressibleCount);
+  const available = SAFE_COMBINED_RAW_ATTACHMENT_BYTES - reservedBytes;
+  const target = Math.floor(available / count);
+  return target >= MIN_PER_FILE_TARGET_BYTES ? target : null;
+}
 const MAX_IMAGE_WIDTH = 1280;
 const MIN_IMAGE_WIDTH = 320;
 const COMPRESSION_STEPS = [
@@ -63,7 +87,11 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<B
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality));
 }
 
-export async function compressAttachmentImage(uri: string, knownWidth?: number): Promise<{ uri: string; size: number } | null> {
+export async function compressAttachmentImage(
+  uri: string,
+  targetBytes: number = TARGET_FILE_BYTES,
+  knownWidth?: number,
+): Promise<{ uri: string; size: number } | null> {
   try {
     const img = await loadImageElement(uri);
     const naturalWidth = img.naturalWidth || knownWidth || img.width;
@@ -82,7 +110,7 @@ export async function compressAttachmentImage(uri: string, knownWidth?: number):
       // eslint-disable-next-line no-await-in-loop
       const blob = await canvasToJpegBlob(canvas, step.quality);
       if (blob && (!bestBlob || blob.size < bestBlob.size)) bestBlob = blob;
-      if (blob && blob.size <= TARGET_FILE_BYTES) break;
+      if (blob && blob.size <= targetBytes) break;
     }
     return bestBlob ? { uri: URL.createObjectURL(bestBlob), size: bestBlob.size } : null;
   } catch (e) {

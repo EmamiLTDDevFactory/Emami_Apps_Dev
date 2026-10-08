@@ -128,13 +128,16 @@ export async function compressPdfToMaxBytes(bytes: Uint8Array, maxBytes: number)
  * ClaimContext.tsx's existing readAttachmentAsBase64(att.uri) can re-fetch at submit time, exactly
  * like every other attachment (including compressed images). Keeping that contract means the
  * submission flow itself needs zero changes for this to work. */
-export async function ensurePdfAttachmentUnderLimit(uri: string): Promise<{ uri: string; size: number } | null> {
+export async function ensurePdfAttachmentUnderLimit(
+  uri: string,
+  maxBytes: number = MAX_ATTACHMENT_BYTES,
+): Promise<{ uri: string; size: number } | null> {
   const base64 = await readAttachmentAsBase64(uri);
   const originalSize = base64ByteLength(base64);
-  if (originalSize <= MAX_ATTACHMENT_BYTES) return null;
+  if (originalSize <= maxBytes) return null;
 
   try {
-    const compressed = await compressPdfToMaxBytes(base64ToBytes(base64), MAX_ATTACHMENT_BYTES);
+    const compressed = await compressPdfToMaxBytes(base64ToBytes(base64), maxBytes);
     if (!compressed) return null;
     const blob = new Blob([compressed as unknown as BlobPart], { type: 'application/pdf' });
     return { uri: URL.createObjectURL(blob), size: compressed.byteLength };

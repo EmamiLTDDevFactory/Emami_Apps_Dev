@@ -341,7 +341,7 @@ function ClaimDetailInner() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div><p className="text-2xs font-bold text-inkSoft">Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(parseFloat(header.TotalAmount || 0))}</p></div>
           <div><p className="text-2xs font-bold text-inkSoft">Status</p><p className="text-sm font-extrabold text-ink">{normalizedStatus}</p></div>
-          <div><p className="text-2xs font-bold text-inkSoft">Cost Center</p><p className="text-sm font-extrabold text-ink">{header.CostCenter || '-'}</p></div>
+          <div><p className="text-2xs font-bold text-inkSoft">Cost Center</p><p className="text-sm font-extrabold text-ink">{header.CostCenter ? `${header.CostCenter}${header.Ltext ? ` (${header.Ltext})` : ''}` : '-'}</p></div>
           <div><p className="text-2xs font-bold text-inkSoft">Department</p><p className="text-sm font-extrabold text-ink">{header.Department || '-'}</p></div>
           <div><p className="text-2xs font-bold text-inkSoft">Designation</p><p className="text-sm font-extrabold text-ink">{header.Designation || '-'}</p></div>
           {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Posting Document</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
