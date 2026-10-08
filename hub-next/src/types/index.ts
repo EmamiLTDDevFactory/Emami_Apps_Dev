@@ -10,6 +10,8 @@ export interface AppItem {
   icon: LucideIcon;
   uses: number;
   isNew?: boolean;
+  /** Released to production — tiles show a pulsing "LIVE" badge (see LiveBadge). */
+  isLive?: boolean;
   /** Same-origin path or externally hosted web app URL. When set, AppDetail embeds it in an iframe
    * (cross-origin) or does a full-page navigation (same-origin, see isSameOriginRoute). */
   url?: string;

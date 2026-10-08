@@ -24,3 +24,19 @@ button {
 a {
   color: inherit;
 }
+
+/* LiveBadge's dot — a soft ring pulsing out from the green dot. */
+.live-badge-dot {
+  box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.55);
+  animation: live-badge-pulse 1.8s ease-out infinite;
+}
+
+@keyframes live-badge-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.55); }
+  70% { box-shadow: 0 0 0 5px rgba(31, 122, 77, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-badge-dot { animation: none; }
+}
