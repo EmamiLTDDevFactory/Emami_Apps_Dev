@@ -19,16 +19,6 @@ export const colors = {
   uat: '#B45309',
   uatTint: '#B4530917',
   uatBorder: '#B4530933',
-  // Other release-stage badges (StageBadge): Partial Live teal, IAT blue, WIP slate.
-  partial: '#0F766E',
-  partialTint: '#0F766E17',
-  partialBorder: '#0F766E33',
-  iat: '#1D4ED8',
-  iatTint: '#1D4ED817',
-  iatBorder: '#1D4ED833',
-  wip: '#475569',
-  wipTint: '#47556917',
-  wipBorder: '#47556933',
   // Hub-shell-only tokens (post-login screens). Deliberately separate from
   // cream2/plum above, which stay reserved for the Login screen's look —
   // changing these never touches Login.

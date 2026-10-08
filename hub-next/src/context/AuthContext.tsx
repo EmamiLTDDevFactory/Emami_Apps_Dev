@@ -13,7 +13,7 @@ import {
   recordLogin,
   type UserProfile,
 } from '../lib/authApi';
-import { getMyAccess } from '../lib/accessApi';
+import { ACCESS_CHANGED_EVENT, getMyAccess } from '../lib/accessApi';
 import type { MyAccess } from '../types';
 
 const SSO_ERROR_MESSAGES: Record<string, string> = {
@@ -49,6 +49,8 @@ export function getLastLoginEmail(): string {
   return storage.getItem(LAST_LOGIN_EMAIL_STORAGE_KEY) || '';
 }
 const LAST_ACTIVITY_STORAGE_KEY = 'emami_apps_last_activity_at';
+/** How often an open, visible hub re-reads its own app grants (see the focus/poll effect below). */
+const ACCESS_POLL_MS = 20_000;
 const INACTIVITY_LIMIT_MS = 12 * 60 * 60 * 1000;
 /** How often a fresh activity timestamp is actually written to storage — every mousemove/scroll
  * would otherwise hit localStorage far more than needed. */
@@ -295,7 +297,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAccess = useCallback(() => {
     if (!userEmail) return;
-    getMyAccess(userEmail).then((a) => { if (a) setAccess(a); });
+    // Polled (see below): keep the same object when nothing changed, so tiles don't re-render every time.
+    getMyAccess(userEmail).then((a) => {
+      if (a) setAccess((prev) => (prev && JSON.stringify(prev) === JSON.stringify(a) ? prev : a));
+    });
   }, [userEmail]);
 
   // Fetches (or re-fetches) the real profile whenever the logged-in email changes — covers both
@@ -312,17 +317,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // `access` is otherwise only fetched once per session (above), so an app grant made by an admin
   // in Manage Access never reached an already-open tab until that person signed out and back in.
-  // Re-fetching whenever the tab regains focus — the moment someone comes back to try an app again
-  // after being told they don't have access yet — closes that gap without any push/polling infra.
+  // Re-fetching whenever the tab regains focus, and every ACCESS_POLL_MS while it stays visible,
+  // unlocks a newly granted app without a manual reload (the Admin Center also calls
+  // refreshAccess right after it changes anyone's grants, for the admin's own tiles).
   useEffect(() => {
     const onFocus = () => {
       if (document.visibilityState === 'hidden') return;
       refreshAccess();
       refreshProfile();
     };
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshAccess();
+    }, ACCESS_POLL_MS);
     document.addEventListener('visibilitychange', onFocus);
     window.addEventListener('focus', onFocus);
+    // Bulk actions fire one event per person changed; re-read once they have settled.
+    let changedTimer: number | undefined;
+    const onAccessChanged = () => {
+      window.clearTimeout(changedTimer);
+      changedTimer = window.setTimeout(refreshAccess, 400);
+    };
+    window.addEventListener(ACCESS_CHANGED_EVENT, onAccessChanged);
     return () => {
+      window.clearTimeout(changedTimer);
+      window.removeEventListener(ACCESS_CHANGED_EVENT, onAccessChanged);
+      window.clearInterval(poll);
       document.removeEventListener('visibilitychange', onFocus);
       window.removeEventListener('focus', onFocus);
     };

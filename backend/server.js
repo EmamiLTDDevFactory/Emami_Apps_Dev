@@ -805,6 +805,9 @@ apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
     }
 });
 
+// Release status per app tile (Admin Center's App status tab) — own table and routes, see appStages.js.
+apiRouter.use(require('./appStages').appStagesRouter(requireAccessManager));
+
 apiRouter.get('/health', (req, res) => res.json({ success: true }));
 
 if (require.main === module) {

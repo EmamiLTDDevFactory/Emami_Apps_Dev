@@ -3,6 +3,7 @@
 import React from 'react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { FavoritesProvider } from '../context/FavoritesContext';
+import { AppStagesProvider } from '../context/AppStagesContext';
 import PwaRuntime from './PwaRuntime';
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -18,8 +19,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <FavoritesProvider>
-        <PwaRuntime />
-        <Gate>{children}</Gate>
+        <AppStagesProvider>
+          <PwaRuntime />
+          <Gate>{children}</Gate>
+        </AppStagesProvider>
       </FavoritesProvider>
     </AuthProvider>
   );

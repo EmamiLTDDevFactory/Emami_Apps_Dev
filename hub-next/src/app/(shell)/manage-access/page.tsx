@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ShieldAlert, Search, X, Users, UserCheck, UserX, LogIn, MousePointerClick, TrendingUp, Download,
   UserPlus, LayoutGrid, History, Settings2, ChevronRight, ChevronDown, ChevronUp, KeyRound, FileSpreadsheet,
-  CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock,
+  CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock, Rocket,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useIsWideScreen } from '../../../hooks/useIsWideScreen';
@@ -19,6 +19,7 @@ import UserDrawer, { Segmented } from '../../../components/admin/UserDrawer';
 import AppDrawer from '../../../components/admin/AppDrawer';
 import AddUsersDialog from '../../../components/admin/AddUsersDialog';
 import ChangeTimeline from '../../../components/admin/ChangeTimeline';
+import AppStatusPanel from '../../../components/admin/AppStatusPanel';
 import {
   AdminStyles, AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot,
   AUDIT_CAPA_APP_ID, GRANTABLE_LEVELS, SORTED_APPS,
@@ -29,10 +30,10 @@ import {
 
 /** Admin Center — Manage Access and Administration merged into one screen: Overview (KPIs, top
  * apps, recent changes), People (the editable roster with usage, bulk actions and a per-person
- * drawer), Apps (per-app access + usage), Activity (the org-wide audit trail) and Settings (SSO).
+ * drawer), Apps (per-app access + usage), App status (release stage per app tile), Activity (the org-wide audit trail) and Settings (SSO).
  * The old /administration routes redirect here. */
 
-type Tab = 'overview' | 'people' | 'apps' | 'activity' | 'settings';
+type Tab = 'overview' | 'people' | 'apps' | 'status' | 'activity' | 'settings';
 type StatusFilter = 'all' | 'active' | 'inactive' | 'never';
 type SortKey = 'name' | 'lastSeen' | 'apps' | 'level';
 type ChangeFilter = 'all' | 'grants' | 'revokes' | 'people' | 'status' | 'level';
@@ -43,6 +44,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'overview', label: 'Overview', icon: Sparkles },
   { id: 'people', label: 'People', icon: Users },
   { id: 'apps', label: 'Apps', icon: LayoutGrid },
+  { id: 'status', label: 'App status', icon: Rocket },
   { id: 'activity', label: 'Activity', icon: History },
   { id: 'settings', label: 'Settings', icon: Settings2 },
 ];
@@ -531,6 +533,7 @@ function AdminCenter() {
         )}
 
         {/* ── Apps ── */}
+        {tab === 'status' && <AppStatusPanel notify={notify} isWide={isWide} />}
         {tab === 'apps' && <AppsPanel accessCount={accessCountByApp} statByApp={statByApp} appStats={appStats} loading={statsLoading} onOpen={openApp} notify={notify} />}
 
         {/* ── Activity ── */}
