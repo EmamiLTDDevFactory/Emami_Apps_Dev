@@ -14,7 +14,12 @@ const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'P
 
 const getStatusParamValue = (statusParam: string | null) => (statusParam && STATUSES.includes(statusParam) ? statusParam : 'All');
 
-const getClaimYear = (claim: ExpenseClaim) => claim.claimDate?.slice(0, 4) || '';
+// Fiscal-year filter reads the same "Submitted" timestamp shown on each card (createdOn/
+// createdTime, falling back to claimDate) — not claim.claimDate — per the stakeholder requirement.
+const getSubmittedYear = (claim: ExpenseClaim) => {
+  const ts = getClaimCreatedTimestamp(claim);
+  return ts ? new Date(ts).getFullYear() : null;
+};
 
 const escapeExcelCell = (value: unknown) =>
   String(value ?? '')
@@ -103,7 +108,9 @@ function MyClaimsInner() {
   const [typeFilterModal, setTypeFilterModal] = useState(false);
   const [statusFilterModal, setStatusFilterModal] = useState(false);
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
-  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  // Fiscal-year slider: always-on, 5 years visible (2 before, selected in the middle, 2 after).
+  // Clicking any visible year re-centers the window on it — defaults to the current year.
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState(() => new Date().getFullYear());
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -127,28 +134,13 @@ function MyClaimsInner() {
 
   const filteredClaims = filterClaims('employee', searchQuery, selectedExpenseType, selectedStatus);
 
-  // Years present among the current search matches — most recent first. Only relevant while
-  // searching; browsing without a search term keeps showing everything, same as before this
-  // feature existed (same rule Approvals/Finance already use for their own year pills).
-  const isSearching = searchQuery.trim() !== '';
-  const availableHistoryYears = useMemo(
-    () => Array.from(new Set(filteredClaims.map(getClaimYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
-    [filteredClaims]
+  // The 5 years currently visible in the slider — 2 before, the selected year in the middle, 2
+  // after. Pure integer arithmetic, not clamped to years that actually have claims, so the window
+  // keeps sliding freely in either direction even into years with no data (shows an empty state).
+  const visibleFiscalYears = useMemo(
+    () => [selectedFiscalYear - 2, selectedFiscalYear - 1, selectedFiscalYear, selectedFiscalYear + 1, selectedFiscalYear + 2],
+    [selectedFiscalYear]
   );
-  const availableHistoryYearsKey = availableHistoryYears.join('|');
-
-  useEffect(() => {
-    if (!isSearching) { setSelectedHistoryYear(null); return; }
-    // Default to the most recent year the moment a search starts, or if the previously-selected
-    // year no longer has any matches — never auto-override an explicit "All Years" choice or a
-    // still-valid specific year pick.
-    setSelectedHistoryYear((prev) => {
-      if (prev === 'ALL') return prev;
-      if (prev && availableHistoryYears.includes(prev)) return prev;
-      return availableHistoryYears[0] || 'ALL';
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearching, availableHistoryYearsKey]);
 
   const displayedClaims = useMemo(() => {
     let next = filteredClaims;
@@ -166,11 +158,9 @@ function MyClaimsInner() {
         console.warn('Failed to apply last3months filter', e);
       }
     }
-    if (isSearching && selectedHistoryYear && selectedHistoryYear !== 'ALL') {
-      next = next.filter((c) => getClaimYear(c) === selectedHistoryYear);
-    }
+    next = next.filter((c) => getSubmittedYear(c) === selectedFiscalYear);
     return [...next].sort((a, b) => getClaimCreatedTimestamp(b) - getClaimCreatedTimestamp(a));
-  }, [filteredClaims, period, isSearching, selectedHistoryYear]);
+  }, [filteredClaims, period, selectedFiscalYear]);
 
   const handleExportExcel = () => {
     if (displayedClaims.length === 0) {
@@ -222,17 +212,17 @@ function MyClaimsInner() {
           <Chip tone="green" icon={Download} onClick={handleExportExcel}>
             Export Excel
           </Chip>
-        </div>
-      </Card>
-
-      {isSearching && availableHistoryYears.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Chip tone={selectedHistoryYear === 'ALL' ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear('ALL')}>All Years</Chip>
-          {availableHistoryYears.map((year) => (
-            <Chip key={year} tone={selectedHistoryYear === year ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear(year)}>{year}</Chip>
+          {visibleFiscalYears.map((year) => (
+            <Chip
+              key={year}
+              tone={year === selectedFiscalYear ? 'red' : 'neutral'}
+              onClick={() => setSelectedFiscalYear(year)}
+            >
+              {year}
+            </Chip>
           ))}
         </div>
-      )}
+      </Card>
 
       {displayedClaims.length === 0 ? (
         <EmptyState icon={FileText} title="No Claims Found" hint="No expense claims match your active search or filter criteria." />

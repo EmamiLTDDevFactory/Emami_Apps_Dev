@@ -21,12 +21,12 @@ const formatHistoryDate = (value?: string) => {
 };
 
 const getEntryYear = (value?: string) => {
-  if (!value) return '';
+  if (!value) return null;
   let d = new Date(value);
   const m = value.match(/(\d+)/);
   if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
-  if (Number.isNaN(d.getTime())) return '';
-  return String(d.getFullYear());
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getFullYear();
 };
 
 export default function ApprovalsPage() {
@@ -44,7 +44,9 @@ export default function ApprovalsPage() {
   const [clarifyModalVisible, setClarifyModalVisible] = useState(false);
   const [clarificationRemarks, setClarificationRemarks] = useState('');
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
-  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  // Fiscal-year slider (history view only): always-on, 5 years visible (2 before, selected in the
+  // middle, 2 after) — same widget as My Claims, replacing the old search-only "All Years" pills.
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState(() => new Date().getFullYear());
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const isBulkReleaseUser = currentUser?.role === 'B';
@@ -130,25 +132,12 @@ export default function ApprovalsPage() {
       })
     : statFilteredHistoryItems;
 
-  const availableHistoryYears = useMemo(
-    () => Array.from(new Set(searchMatchedHistoryItems.map((e: any) => getEntryYear(e.ActionDate)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
-    [searchMatchedHistoryItems]
+  const visibleFiscalYears = useMemo(
+    () => [selectedFiscalYear - 2, selectedFiscalYear - 1, selectedFiscalYear, selectedFiscalYear + 1, selectedFiscalYear + 2],
+    [selectedFiscalYear]
   );
-  const availableHistoryYearsKey = availableHistoryYears.join('|');
 
-  useEffect(() => {
-    if (!isSearching) { setSelectedHistoryYear(null); return; }
-    setSelectedHistoryYear((prev) => {
-      if (prev === 'ALL') return prev;
-      if (prev && availableHistoryYears.includes(prev)) return prev;
-      return availableHistoryYears[0] || 'ALL';
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearching, availableHistoryYearsKey]);
-
-  const filteredHistoryItems = !isSearching || !selectedHistoryYear || selectedHistoryYear === 'ALL'
-    ? searchMatchedHistoryItems
-    : searchMatchedHistoryItems.filter((e: any) => getEntryYear(e.ActionDate) === selectedHistoryYear);
+  const filteredHistoryItems = searchMatchedHistoryItems.filter((e: any) => getEntryYear(e.ActionDate) === selectedFiscalYear);
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
@@ -231,6 +220,19 @@ export default function ApprovalsPage() {
           />
           {searchQuery !== '' && <button type="button" onClick={() => setSearchQuery('')}><X size={16} className="text-inkFaint" /></button>}
         </div>
+        {showHistoryList && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {visibleFiscalYears.map((year) => (
+              <Chip
+                key={year}
+                tone={year === selectedFiscalYear ? 'red' : 'neutral'}
+                onClick={() => setSelectedFiscalYear(year)}
+              >
+                {year}
+              </Chip>
+            ))}
+          </div>
+        )}
       </Card>
 
       {selectedStat && (
@@ -239,15 +241,6 @@ export default function ApprovalsPage() {
           <button type="button" onClick={() => setSelectedStat(null)} className="flex items-center gap-1 text-xs font-semibold text-inkSoft">
             <X size={14} /> Clear
           </button>
-        </div>
-      )}
-
-      {showHistoryList && isSearching && availableHistoryYears.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Chip tone={selectedHistoryYear === 'ALL' ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear('ALL')}>All Years</Chip>
-          {availableHistoryYears.map((year) => (
-            <Chip key={year} tone={selectedHistoryYear === year ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear(year)}>{year}</Chip>
-          ))}
         </div>
       )}
 
