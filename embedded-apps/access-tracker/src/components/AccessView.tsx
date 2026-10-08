@@ -5,20 +5,20 @@ import type { RosterUser } from '@/lib/api';
 import { appName } from '@/lib/apps';
 import { LEVELS, downloadCsv, fmtNum, relative, stamp } from '@/lib/format';
 import { nameFromEmail } from '@/lib/hub';
-import type { Data } from './App';
+import type { Data, Intent } from './App';
 import { Button, Card, Empty, LevelBadge, Person, Pill, Select, StatusBadge, Tabs, cx, inputBase } from './ui';
 
 const ELEVATED = new Set(['Admin', 'CQA', 'Finance']);
 const roleTone = (role: string) => (ELEVATED.has(role) ? 'accent' : 'neutral') as 'accent' | 'neutral';
 const displayName = (u: RosterUser) => u.usage.name || nameFromEmail(u.email);
 
-export default function AccessView({ data, onPerson }: { data: Data; onPerson: (email: string) => void }) {
+export default function AccessView({ data, onPerson, intent = {} }: { data: Data; onPerson: (email: string) => void; intent?: Intent }) {
   const { roster } = data;
   const [mode, setMode] = useState<'list' | 'matrix'>('list');
   const [q, setQ] = useState('');
   const [level, setLevel] = useState('');
-  const [status, setStatus] = useState('');
-  const [app, setApp] = useState('');
+  const [status, setStatus] = useState<string>(intent.status ?? '');
+  const [app, setApp] = useState(intent.app ?? '');
 
   const appIds = useMemo(() => {
     const count = new Map<string, number>();

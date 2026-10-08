@@ -5,7 +5,7 @@ import { getAppUserStats, type OpenStat, type RosterUser } from '@/lib/api';
 import { appName } from '@/lib/apps';
 import { RECENCY, downloadCsv, fmtDate, fmtNum, recencyOf, relative, stamp, type Recency } from '@/lib/format';
 import { nameFromEmail } from '@/lib/hub';
-import type { Data } from './App';
+import type { Data, Intent } from './App';
 import { BarList } from './charts';
 import { Button, Card, Drawer, Empty, LevelBadge, Person, Skeleton, Tabs, cx, inputBase } from './ui';
 
@@ -28,8 +28,8 @@ const val = (u: RosterUser, k: SortKey): string | number => {
   }
 };
 
-export default function ActivityView({ data, onPerson }: { data: Data; onPerson: (email: string) => void }) {
-  const [tab, setTab] = useState<'users' | 'apps'>('users');
+export default function ActivityView({ data, onPerson, intent = {} }: { data: Data; onPerson: (email: string) => void; intent?: Intent }) {
+  const [tab, setTab] = useState<'users' | 'apps'>(intent.tab ?? 'users');
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -39,14 +39,14 @@ export default function ActivityView({ data, onPerson }: { data: Data; onPerson:
         </div>
         <Tabs label="Activity view" value={tab} onChange={setTab} tabs={[{ id: 'users', label: 'By user' }, { id: 'apps', label: 'By app' }]} />
       </div>
-      {tab === 'users' ? <ByUser data={data} onPerson={onPerson} /> : <ByApp data={data} onPerson={onPerson} />}
+      {tab === 'users' ? <ByUser data={data} onPerson={onPerson} initialBuckets={intent.buckets} /> : <ByApp data={data} onPerson={onPerson} />}
     </div>
   );
 }
 
-function ByUser({ data, onPerson }: { data: Data; onPerson: (email: string) => void }) {
+function ByUser({ data, onPerson, initialBuckets = [] }: { data: Data; onPerson: (email: string) => void; initialBuckets?: Recency[] }) {
   const active = useMemo(() => data.roster.filter((u) => u.isActive), [data.roster]);
-  const [bucket, setBucket] = useState<Recency | ''>('');
+  const [picked, setPicked] = useState<Recency[]>(initialBuckets);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'lastLogin', desc: true });
 
@@ -55,14 +55,14 @@ function ByUser({ data, onPerson }: { data: Data; onPerson: (email: string) => v
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return active
-      .filter((u) => !bucket || recencyOf(u.usage.lastLogin) === bucket)
+      .filter((u) => !picked.length || picked.includes(recencyOf(u.usage.lastLogin)))
       .filter((u) => !needle || u.email.includes(needle) || (u.usage.name || '').toLowerCase().includes(needle))
       .sort((a, b) => {
         const x = val(a, sort.key), y = val(b, sort.key);
         const c = x < y ? -1 : x > y ? 1 : 0;
         return sort.desc ? -c : c;
       });
-  }, [active, bucket, q, sort]);
+  }, [active, picked, q, sort]);
 
   const exportCsv = () =>
     downloadCsv(
@@ -78,9 +78,9 @@ function ByUser({ data, onPerson }: { data: Data; onPerson: (email: string) => v
           <button
             key={b.id}
             type="button"
-            aria-pressed={bucket === b.id}
-            onClick={() => setBucket(bucket === b.id ? '' : b.id)}
-            className={cx('rounded-2xl border bg-panel px-4 py-3 text-left shadow-card transition', bucket === b.id ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-accent/40')}
+            aria-pressed={picked.includes(b.id)}
+            onClick={() => setPicked(picked.length === 1 && picked[0] === b.id ? [] : [b.id])}
+            className={cx('rounded-2xl border bg-panel px-4 py-3 text-left shadow-card transition', picked.includes(b.id) ? 'border-accent ring-2 ring-accent/20' : 'border-line hover:border-accent/40')}
           >
             <div className="text-2xs font-bold uppercase tracking-wide text-muted">{b.label}</div>
             <div className={cx('num mt-0.5 text-xl font-extrabold', b.id === 'never' && b.value > 0 && 'text-warn')}>{fmtNum(b.value)}</div>
@@ -94,7 +94,7 @@ function ByUser({ data, onPerson }: { data: Data; onPerson: (email: string) => v
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or email" aria-label="Search users" className={cx('h-9 w-full pl-8', inputBase)} />
         </label>
-        {bucket && <Button onClick={() => setBucket('')}>Clear: {RECENCY.find((r) => r.id === bucket)?.label}</Button>}
+        {picked.length > 0 && <Button onClick={() => setPicked([])}>Clear: {picked.map((p) => RECENCY.find((r) => r.id === p)?.label).join(' + ')}</Button>}
         <Button onClick={exportCsv} disabled={!rows.length}><Download size={14} /> Export</Button>
       </div>
 

@@ -1,6 +1,6 @@
 'use client';
 import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { X, type LucideIcon } from 'lucide-react';
+import { ChevronRight, X, type LucideIcon } from 'lucide-react';
 import type { AccessLevel } from '@/lib/api';
 import { levelColor } from '@/lib/format';
 import { nameFromEmail } from '@/lib/hub';
@@ -96,17 +96,22 @@ export function Person({ email, name, sub }: { email: string; name?: string | nu
   );
 }
 
-export function Kpi({ label, value, sub, icon: Icon, tone = 'accent' }: { label: string; value: ReactNode; sub?: ReactNode; icon: LucideIcon; tone?: 'accent' | 'good' | 'warn' | 'bad' }) {
+export function Kpi({ label, value, sub, icon: Icon, tone = 'accent', onClick }: { label: string; value: ReactNode; sub?: ReactNode; icon: LucideIcon; tone?: 'accent' | 'good' | 'warn' | 'bad'; onClick?: () => void }) {
   const t = { accent: 'bg-accent/10 text-accent', good: 'bg-good/10 text-good', warn: 'bg-warn/10 text-warn', bad: 'bg-bad/10 text-bad' }[tone];
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-line bg-panel p-4 shadow-card">
+    <Tag
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={cx('group relative flex w-full items-start gap-3 rounded-2xl border border-line bg-panel p-4 text-left shadow-card transition', onClick && 'hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-cardHover')}
+    >
+      {onClick && <ChevronRight size={16} aria-hidden className="absolute right-3 top-3 text-faint transition group-hover:translate-x-0.5 group-hover:text-accent" />}
       <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', t)}><Icon size={19} /></span>
       <div className="min-w-0">
         <div className="text-2xs font-bold uppercase tracking-wide text-muted">{label}</div>
         <div className="num mt-0.5 text-2xl font-extrabold tracking-tight">{value}</div>
         {sub && <div className="num mt-0.5 truncate text-2xs text-muted">{sub}</div>}
       </div>
-    </div>
+    </Tag>
   );
 }
 

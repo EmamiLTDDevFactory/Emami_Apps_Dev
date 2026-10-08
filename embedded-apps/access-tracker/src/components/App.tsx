@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Activity as ActivityIcon, ArrowLeft, Calendar, History, LayoutDashboard, Menu, RefreshCw, ShieldX, User, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getAppStats, getHistory, getOverview, getRoster, type AccessChange, type AppStat, type Overview as OverviewData, type RosterUser } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
-import { fmtTime } from '@/lib/format';
+import { fmtTime, type Recency } from '@/lib/format';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
 import { Button, cx } from './ui';
 import Overview from './Overview';
@@ -21,6 +21,14 @@ export interface Data {
 }
 
 export type View = 'overview' | 'access' | 'changes' | 'activity';
+/** Preset filters a drill-down (e.g. an Overview KPI card) opens its target view with. */
+export interface Intent {
+  app?: string;
+  status?: 'active' | 'inactive';
+  tab?: 'users' | 'apps';
+  buckets?: Recency[];
+}
+export type Go = (v: View, intent?: Intent) => void;
 const NAV: { id: View; label: string; hint: string; icon: LucideIcon }[] = [
   { id: 'overview', label: 'Overview', hint: 'Headline numbers and trends', icon: LayoutDashboard },
   { id: 'access', label: 'Who has access', hint: 'Users, levels and app roles', icon: Users },
@@ -38,6 +46,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
   const [person, setPerson] = useState<string | null>(null);
+  const [intent, setIntent] = useState<{ n: number; v: Intent }>({ n: 0, v: {} });
 
   const load = useCallback(async (initial: boolean) => {
     if (initial) setState({ kind: 'loading' });
@@ -95,8 +104,9 @@ export default function App() {
   }
 
   const { data } = state;
-  const go = (v: View) => {
+  const go: Go = (v, preset = {}) => {
     setView(v);
+    setIntent((i) => ({ n: i.n + 1, v: preset }));
     setMenu(false);
   };
 
@@ -144,9 +154,9 @@ export default function App() {
         <main className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3 lg:p-5">
           <div className="mx-auto max-w-7xl">
             {view === 'overview' && <Overview data={data} onGo={go} onPerson={setPerson} />}
-            {view === 'access' && <AccessView data={data} onPerson={setPerson} />}
+            {view === 'access' && <AccessView key={intent.n} intent={intent.v} data={data} onPerson={setPerson} />}
             {view === 'changes' && <ChangeLog data={data} onPerson={setPerson} />}
-            {view === 'activity' && <ActivityView data={data} onPerson={setPerson} />}
+            {view === 'activity' && <ActivityView key={intent.n} intent={intent.v} data={data} onPerson={setPerson} />}
           </div>
         </main>
       </div>

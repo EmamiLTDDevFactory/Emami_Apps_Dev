@@ -2,13 +2,13 @@
 import { useMemo } from 'react';
 import { ArrowRight, History, LogIn, MousePointerClick, UserCheck, UserX, Users } from 'lucide-react';
 import { appName } from '@/lib/apps';
-import { LEVELS, RECENCY, fmtNum, levelColor, recencyOf } from '@/lib/format';
-import type { Data, View } from './App';
+import { LEVELS, RECENCY, fmtNum, levelColor, recencyOf, type Recency } from '@/lib/format';
+import type { Data, Go } from './App';
 import { BarList, DayColumns, ShareBar } from './charts';
 import { ChangeRow } from './feed';
 import { Card, Empty, Kpi } from './ui';
 
-export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: (v: View) => void; onPerson: (email: string) => void }) {
+export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: Go; onPerson: (email: string) => void }) {
   const { overview: o, roster, appStats, history } = data;
 
   const usersPerApp = useMemo(() => {
@@ -57,22 +57,22 @@ export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: (
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Kpi icon={Users} label="Authorized users" value={fmtNum(o.totalAuthorizedUsers)} sub={`${fmtNum(o.activeAuthorizedUsers)} active · ${fmtNum(inactive)} inactive`} />
-        <Kpi icon={UserCheck} tone="good" label="Signed in, last 7 days" value={fmtNum(o.activeLast7Days)} sub={`${pct(o.activeLast7Days, o.activeAuthorizedUsers)} of active users · ${fmtNum(o.activeLast30Days)} in 30 days`} />
-        <Kpi icon={UserX} tone="warn" label="Never signed in" value={fmtNum(o.neverLoggedIn)} sub={`${pct(o.neverLoggedIn, o.activeAuthorizedUsers)} of active users have not used their access`} />
-        <Kpi icon={MousePointerClick} label="App opens" value={fmtNum(o.totalAppOpens)} sub={`${fmtNum(o.totalLogins)} sign-ins · top: ${o.mostUsedApp ? appName(o.mostUsedApp.appId) : '—'}`} />
+        <Kpi onClick={() => onGo('access')} icon={Users} label="Authorized users" value={fmtNum(o.totalAuthorizedUsers)} sub={`${fmtNum(o.activeAuthorizedUsers)} active · ${fmtNum(inactive)} inactive`} />
+        <Kpi onClick={() => onGo('activity', { tab: 'users', buckets: ['today', 'week'] })} icon={UserCheck} tone="good" label="Signed in, last 7 days" value={fmtNum(o.activeLast7Days)} sub={`${pct(o.activeLast7Days, o.activeAuthorizedUsers)} of active users · ${fmtNum(o.activeLast30Days)} in 30 days`} />
+        <Kpi onClick={() => onGo('activity', { tab: 'users', buckets: ['never'] })} icon={UserX} tone="warn" label="Never signed in" value={fmtNum(o.neverLoggedIn)} sub={`${pct(o.neverLoggedIn, o.activeAuthorizedUsers)} of active users have not used their access`} />
+        <Kpi onClick={() => onGo('activity', { tab: 'apps' })} icon={MousePointerClick} label="App opens" value={fmtNum(o.totalAppOpens)} sub={`${fmtNum(o.totalLogins)} sign-ins · top: ${o.mostUsedApp ? appName(o.mostUsedApp.appId) : '—'}`} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title="Users with access, by app" sub="Granted in Manage Access - hover for admin count, click to see app usage">
-          {usersPerApp.length ? <BarList rows={usersPerApp} unit="users" max={12} onPick={() => onGo('activity')} /> : <Empty title="No app grants yet" />}
+        <Card className="lg:col-span-2" title="Users with access, by app" sub="Granted in Manage Access - hover for admin count, click for the people">
+          {usersPerApp.length ? <BarList rows={usersPerApp} unit="users" max={12} onPick={(app) => onGo('access', { app })} /> : <Empty title="No app grants yet" />}
         </Card>
         <div className="space-y-4">
           <Card title="Hub access level" sub="Who can manage access">
             <ShareBar segments={levels} unit="users" />
           </Card>
           <Card title="Last sign-in" sub="Active users only">
-            <BarList rows={recency} unit="users" max={5} />
+            <BarList rows={recency} unit="users" max={5} onPick={(b) => onGo('activity', { tab: 'users', buckets: [b as Recency] })} />
           </Card>
         </div>
       </div>
@@ -81,7 +81,7 @@ export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: (
         <Card className="lg:col-span-2" title="Access changes, last 30 days" sub="Adds, removals, level and app-role changes per day">
           <DayColumns days={days} unit="changes" />
         </Card>
-        <Card title="Most opened apps" sub="All time, active users" actions={<button type="button" onClick={() => onGo('activity')} className="text-2xs font-bold text-accent hover:underline">Details</button>}>
+        <Card title="Most opened apps" sub="All time, active users" actions={<button type="button" onClick={() => onGo('activity', { tab: 'apps' })} className="text-2xs font-bold text-accent hover:underline">Details</button>}>
           {appStats.length ? (
             <BarList rows={appStats.map((a) => ({ key: a.appId, label: appName(a.appId), value: a.opens, detail: `${fmtNum(a.uniqueUsers)} unique users` }))} unit="opens" max={6} />
           ) : (
