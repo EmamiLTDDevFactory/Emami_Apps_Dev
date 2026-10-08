@@ -74,8 +74,9 @@ const mapHeader = (r: any): Omit<EntryHeader, 'items'> => ({
   asnNo: str(r.AsnNo),
 });
 
+/** GateRequestItem key: ReqNo, Slno, Ebeln, Ebelp and Email (the Emami Apps login email). */
 const itemKey = (i: { reqNo: string; slno: string; ebeln: string; ebelp: string }) =>
-  `(ReqNo=${odataKey(i.reqNo)},Slno=${odataKey(i.slno)},Ebeln=${odataKey(i.ebeln)},Ebelp=${odataKey(i.ebelp)})`;
+  `(ReqNo=${odataKey(i.reqNo)},Slno=${odataKey(i.slno)},Ebeln=${odataKey(i.ebeln)},Ebelp=${odataKey(i.ebelp)},Email=${odataKey(email())})`;
 
 /* -------------------------------- ASN -------------------------------- */
 
@@ -246,7 +247,7 @@ export async function deleteLine(i: EntryItem) {
 
 /** Admin: set a line's received quantity to 0 - PUT of the full entity as read (SAP refuses partial updates). */
 export async function zeroLine(i: EntryItem) {
-  await sapPut(`/GateRequestItemSet${itemKey(i)}`, { ...i.raw, QntRecievd: dec(0) });
+  await sapPut(`/GateRequestItemSet${itemKey(i)}`, { ...i.raw, Email: email(), QntRecievd: dec(0) });
 }
 
 /**

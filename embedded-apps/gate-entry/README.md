@@ -53,8 +53,8 @@ there exists (checked with `$select`), and every call below reaches the DPC.
 | Print | `GET GateRequestPdfSet('<ReqNo>')/$value` (see gaps) |
 | Record out time | `POST GateOutTimeSet { ReqNo }` (SAP stamps the time) |
 | Cancel / admin cancel | `POST GateCancelSet { ReqNo, Reason, Admin: '' / 'X' }` |
-| Admin: set line to 0 | `PUT GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp)` with the full entity as read, `QntRecievd: "0.000"` |
-| Admin: delete line | `DELETE GateRequestItemSet(...)` (see gaps) |
+| Admin: set line to 0 | `PUT GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp,Email)` with the full entity as read, `QntRecievd: "0.000"` |
+| Admin: delete line | `DELETE GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp,Email)` (see gaps) |
 
 Create body: `{ "ConfirmDateWarning": "", "Pos": [{ ReqDate, PoNo, PoVendr, PoVendrName, Regio, RegioDesc, Plnt,
 TruckNo, TruckDate, TruckTim, Lrno, Lrdt, FrVendr, VehVendrNo, VehVendrName, InvNo, InvDate, [AsnNo],
@@ -71,7 +71,7 @@ TRUCK_DATE, TRUCK_TIM; QNT_RECIEVD shows as a general message), `CONFIRM_DATE|te
    `true`/`false` ("Failed to read property 'Admin'"), so the app sends `'X'` / `''`.
 2. **Email.** Every call runs as the gateway's technical SAP user, so the signed-in Emami Apps email (lower case)
    goes with every call: first in every list `$filter` (`Email eq '<login email>' and ...`), as the second key of
-   `AsnSet(ShipId='..',Email='..')`, and as property `Email` on the GateEntry create (top level and each `Pos`),
+   `AsnSet(ShipId='..',Email='..')` and of `GateRequestItemSet(ReqNo,Slno,Ebeln,Ebelp,Email)` (admin PUT / DELETE), and as property `Email` on the GateEntry create (top level and each `Pos`),
    GateOutTime and GateCancel. NGD has `Email` on every entity type except `GateRequestPdf` (2026-10-09);
    `PoInfoSet('<po>')` is still keyed by `Ebeln` alone.
 3. **The gateway has no route for `.../$value` or for `DELETE`** (its own 404 "Cannot GET/DELETE /api/..."). Print
