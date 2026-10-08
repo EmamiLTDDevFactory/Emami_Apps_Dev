@@ -106,9 +106,9 @@ export default function RootPage() {
             onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)}
             className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} flex flex-col gap-2 p-3.5 text-left transition-shadow hover:shadow-lift`}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-extrabold text-ink">{claim.id}</span>
-              {claim.expenseType && <Chip tone="blue">{claim.expenseType}</Chip>}
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-sm font-extrabold text-ink">{claim.id}</span>
+              {claim.expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{claim.expenseType}</Chip>}
             </div>
             <p className="truncate text-sm text-ink">{claim.justification}</p>
             <p className="text-xs font-semibold text-inkSoft">{claim.employeeName} | Date: {formatClaimDisplayDate(claim)}</p>

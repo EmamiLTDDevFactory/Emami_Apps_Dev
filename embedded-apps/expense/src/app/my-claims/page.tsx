@@ -8,7 +8,7 @@ import { ExpenseClaim } from '../../types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../utils/claim-date';
 import { displayStatusLabel } from '../../utils/claim-status';
 import { formatCurrency } from '../../utils/currency';
-import { Card, Chip, EmptyState, Modal } from '../../components/ui';
+import { Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
 const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Paid', 'Rejected'];
 
@@ -100,6 +100,7 @@ function MyClaimsInner() {
   const [selectedStatus, setSelectedStatus] = useState(() => getStatusParamValue(searchParams.get('status')));
   const [typeFilterModal, setTypeFilterModal] = useState(false);
   const [statusFilterModal, setStatusFilterModal] = useState(false);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -145,7 +146,7 @@ function MyClaimsInner() {
 
   const handleExportExcel = () => {
     if (displayedClaims.length === 0) {
-      alert('There are no claims to export for the current filters.');
+      setMessageModal({ title: 'Export Excel', message: 'There are no claims to export for the current filters.', type: 'error' });
       return;
     }
     const html = buildClaimsExcelHtml(displayedClaims);
@@ -270,6 +271,8 @@ function MyClaimsInner() {
           ))}
         </div>
       </Modal>
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

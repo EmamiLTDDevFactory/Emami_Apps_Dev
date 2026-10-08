@@ -9,7 +9,7 @@ import { ExpenseClaim } from '../../types';
 import { displayStatusLabel } from '../../utils/claim-status';
 import { formatCurrency } from '../../utils/currency';
 import { formatSapErrorMessage } from '../../utils/sap-error';
-import { Banner, Button, Card, Chip, EmptyState, Modal, Spinner } from '../../components/ui';
+import { Banner, Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
 const formatHistoryDate = (value?: string) => {
   if (!value) return '';
@@ -43,6 +43,7 @@ export default function FinancePage() {
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectClaimId, setRejectClaimId] = useState('');
@@ -141,10 +142,17 @@ export default function FinancePage() {
   };
 
   const handleValidate = (id: string) => {
-    if (confirm(`Run simulated SAP compliance checks and verify posting readiness for claim ${id}?`)) {
-      validateClaimFinance(id);
-      showScreenMessage(`Claim ${id} passed financial checks. Status changed to Parked.`, 'success');
-    }
+    setMessageModal({
+      title: 'Simulate SAP Financial Validation',
+      message: `Run simulated SAP compliance checks and verify posting readiness for claim ${id}?`,
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Validate Claim',
+      onConfirm: () => {
+        setMessageModal(null);
+        validateClaimFinance(id);
+        showScreenMessage(`Claim ${id} passed financial checks. Status changed to Parked.`, 'success');
+      },
+    });
   };
 
   // 'B' (Top Level) never picks a tax code here — Finance already selected and sent it to SAP on
@@ -331,9 +339,9 @@ export default function FinancePage() {
                   onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
                   className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-ink">{entry.ClaimId}</span>
-                    {expenseType && <Chip tone="blue">{expenseType}</Chip>}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                    {expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{expenseType}</Chip>}
                   </div>
                   {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                   <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -471,6 +479,8 @@ export default function FinancePage() {
         <p className="mb-3 text-sm text-inkSoft">Please provide the reason for rejecting claim {rejectClaimId}.</p>
         <textarea className="input" rows={4} value={rejectRemarks} onChange={(e) => setRejectRemarks(e.target.value)} placeholder="Enter rejection reason" />
       </Modal>
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

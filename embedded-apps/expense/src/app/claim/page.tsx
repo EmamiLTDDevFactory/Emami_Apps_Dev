@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { formatCurrency } from '../../utils/currency';
 import { formatSapErrorMessage } from '../../utils/sap-error';
-import { Banner, Button, LoadingBlock, Modal, Spinner } from '../../components/ui';
+import { Banner, Button, LoadingBlock, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
 const sapClient = axios.create({ validateStatus: () => true });
 
@@ -101,6 +101,7 @@ function ClaimDetailInner() {
   const [taxSearch, setTaxSearch] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{ filename: string; mimetype: string; dataUri: string; raw: any } | null>(null);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const loadClaim = async () => {
     if (!claimId) return null;
@@ -116,7 +117,7 @@ function ClaimDetailInner() {
       return nextData;
     } catch (e: any) {
       console.error('Failed to load claim detail', e);
-      alert(e?.message || String(e));
+      setMessageModal({ title: 'Load Error', message: e?.message || String(e), type: 'error' });
       return null;
     } finally {
       setLoading(false);
@@ -159,7 +160,7 @@ function ClaimDetailInner() {
     const mimetype = ln.Mimetype || 'application/pdf';
     const filename = ln.Filename || 'attachment';
     const value = ln.Value;
-    if (!value) { alert('No attachment data available'); return; }
+    if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     setPreviewAttachment({ filename, mimetype, dataUri: `data:${mimetype};base64,${value}`, raw: ln });
   };
 
@@ -167,7 +168,7 @@ function ClaimDetailInner() {
     const mimetype = ln.Mimetype || 'application/pdf';
     const filename = ln.Filename || 'attachment.pdf';
     const value = ln.Value;
-    if (!value) { alert('No attachment data available'); return; }
+    if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     const dataUri = `data:${mimetype};base64,${value}`;
     const a = document.createElement('a');
     a.href = dataUri;
@@ -179,9 +180,9 @@ function ClaimDetailInner() {
 
   const handleManagerApprove = async () => {
     const result = await approveClaim(claimId);
-    if (!result.success) { alert(result.error || 'Failed to approve claim.'); return; }
+    if (!result.success) { setMessageModal({ title: 'Approval Failed', message: result.error || 'Failed to approve claim.', type: 'error' }); return; }
     await loadClaim();
-    alert(`Claim ${claimId} has been approved successfully.`);
+    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been approved successfully.`, type: 'success' });
   };
 
   const handleOpenManagerReject = () => {
@@ -222,11 +223,11 @@ function ClaimDetailInner() {
       return;
     }
     await loadClaim();
-    alert(`Claim ${claimId} has been paid successfully and workflow updated.`);
+    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been paid successfully and workflow updated.`, type: 'success' });
   };
 
   const handleConfirmReleaseWithTax = () => {
-    if (!selectedTaxCode) { alert('Please select a tax code.'); return; }
+    if (!selectedTaxCode) { setMessageModal({ title: 'Selection Required', message: 'Please select a tax code.', type: 'error' }); return; }
     executeReleasePayment(selectedTaxCode, selectedTaxDescription);
   };
 
@@ -238,12 +239,12 @@ function ClaimDetailInner() {
 
   const handleConfirmReject = async () => {
     const remarks = actionRemarks.trim();
-    if (!remarks) { alert('Rejection remarks are mandatory.'); return; }
+    if (!remarks) { setMessageModal({ title: 'Validation Error', message: 'Rejection remarks are mandatory.', type: 'error' }); return; }
     const result = actionMode === 'finance-reject' ? await rejectClaimFinance(claimId, remarks) : await rejectClaim(claimId, remarks);
-    if (!result.success) { alert(result.error || 'Failed to reject claim.'); return; }
+    if (!result.success) { setMessageModal({ title: 'Rejection Failed', message: result.error || 'Failed to reject claim.', type: 'error' }); return; }
     setActionModalVisible(false);
     await loadClaim();
-    alert(`Claim ${claimId} has been rejected successfully.`);
+    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been rejected successfully.`, type: 'success' });
   };
 
   const normalizedStatus =
@@ -301,7 +302,7 @@ function ClaimDetailInner() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card p-4">
         <p className="mb-3 text-xs font-extrabold text-brand">{header.ZglName || header.ExpenseType || 'Claim Summary'}</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div><p className="text-2xs font-bold text-inkSoft">Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(parseFloat(header.TotalAmount || 0))}</p></div>
@@ -321,7 +322,7 @@ function ClaimDetailInner() {
       </div>
 
       {(showManagerActions || showFinanceActions) && (
-        <div className="card flex flex-col gap-2">
+        <div className="card flex flex-col gap-2 p-4">
           {showManagerActions && (
             <div className="flex gap-2">
               <Button variant="danger" className="flex-1" onClick={handleOpenManagerReject}>Reject</Button>
@@ -475,6 +476,8 @@ function ClaimDetailInner() {
           )}
         </div>
       </Modal>
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { formatCurrency } from '../../utils/currency';
-import { Button, Card, Chip, EmptyState, Modal } from '../../components/ui';
+import { Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
 const formatHistoryDate = (value?: string) => {
   if (!value) return '';
@@ -45,6 +45,7 @@ export default function ApprovalsPage() {
   const [clarificationRemarks, setClarificationRemarks] = useState('');
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
   const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const isBulkReleaseUser = currentUser?.role === 'B';
   const managerHistoryEntries = historyEntries || [];
@@ -70,7 +71,7 @@ export default function ApprovalsPage() {
   const refreshHistoryStats = async () => { await fetchHistorySet(); };
 
   const confirmBulkRelease = async () => {
-    if (selectedClaimIds.length === 0) { alert('Please select at least one claim to release.'); return; }
+    if (selectedClaimIds.length === 0) { setMessageModal({ title: 'No Claims Selected', message: 'Please select at least one claim to release.', type: 'error' }); return; }
     let successCount = 0, failureCount = 0;
     const failedIds: string[] = [];
     for (const claimId of selectedClaimIds) {
@@ -81,13 +82,19 @@ export default function ApprovalsPage() {
     setSelectedClaimIds(failedIds);
     await refreshHistoryStats();
     await fetchClaims();
-    if (failureCount > 0) alert(`${successCount} claim(s) released. ${failureCount} claim(s) could not be released.`);
-    else alert(`${successCount} claim(s) were released successfully.`);
+    if (failureCount > 0) setMessageModal({ title: 'Bulk Release Partial', message: `${successCount} claim(s) released. ${failureCount} claim(s) could not be released.`, type: 'error' });
+    else setMessageModal({ title: 'Bulk Release Complete', message: `${successCount} claim(s) were released successfully.`, type: 'success' });
   };
 
   const handleBulkRelease = () => {
-    if (selectedClaimIds.length === 0) { alert('Please select at least one claim to release.'); return; }
-    if (confirm(`Release ${selectedClaimIds.length} selected claim(s)?`)) confirmBulkRelease();
+    if (selectedClaimIds.length === 0) { setMessageModal({ title: 'No Claims Selected', message: 'Please select at least one claim to release.', type: 'error' }); return; }
+    setMessageModal({
+      title: 'Confirm Bulk Release',
+      message: `Release ${selectedClaimIds.length} selected claim(s)?`,
+      cancelLabel: 'Cancel',
+      confirmLabel: 'Release',
+      onConfirm: () => { setMessageModal(null); confirmBulkRelease(); },
+    });
   };
 
   const managerApprovedCount = managerHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'APPROVE').length;
@@ -148,7 +155,7 @@ export default function ApprovalsPage() {
   const handleApprove = async (id: string) => {
     if (isBulkReleaseUser) {
       const result = await releasePayment(id);
-      if (!result.success) { alert(result.error || 'Failed to release payment.'); return; }
+      if (!result.success) { setMessageModal({ title: 'Release Failed', message: result.error || 'Failed to release payment.', type: 'error' }); return; }
       await refreshHistoryStats();
       await fetchClaims();
       setSuccessMessage(`Claim ${id} has been released successfully.`);
@@ -166,7 +173,7 @@ export default function ApprovalsPage() {
 
   const handleConfirmReject = async () => {
     const result = isBulkReleaseUser ? await rejectClaimFinance(selectedClaimId, rejectionRemarks) : await rejectClaim(selectedClaimId, rejectionRemarks);
-    if (!result.success) { alert(result.error || 'Rejection remarks are mandatory.'); return; }
+    if (!result.success) { setMessageModal({ title: 'Rejection Failed', message: result.error || 'Rejection remarks are mandatory.', type: 'error' }); return; }
     await refreshHistoryStats();
     await fetchClaims();
     setRejectModalVisible(false);
@@ -177,7 +184,7 @@ export default function ApprovalsPage() {
   const handleConfirmClarify = () => {
     requestClarification(selectedClaimId, clarificationRemarks);
     setClarifyModalVisible(false);
-    alert(`A clarification request has been sent to the employee for claim ${selectedClaimId}.`);
+    setMessageModal({ title: 'Clarification Requested', message: `A clarification request has been sent to the employee for claim ${selectedClaimId}.`, type: 'success' });
   };
 
   return (
@@ -260,9 +267,9 @@ export default function ApprovalsPage() {
                   onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
                   className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-ink">{entry.ClaimId}</span>
-                    {expenseType && <Chip tone="blue">{expenseType}</Chip>}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                    {expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{expenseType}</Chip>}
                   </div>
                   {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                   <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -341,6 +348,8 @@ export default function ApprovalsPage() {
         <p className="mb-3 text-sm text-inkSoft">Send a message to the employee requesting additional documentation or explanation for claim {selectedClaimId}.</p>
         <textarea className="input" rows={4} value={clarificationRemarks} onChange={(e) => setClarificationRemarks(e.target.value)} placeholder="What details or documents do you need?" />
       </Modal>
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }

@@ -261,8 +261,8 @@ export function Modal({ open = true, title, subtitle, onClose, children, footer,
   if (!open) return null;
   const w = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-3xl', xl: 'max-w-6xl' }[size];
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/55 p-0 backdrop-blur-[2px] animate-fadeIn sm:items-center sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-pop animate-slideUp sm:rounded-2xl', w)} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/55 p-4 backdrop-blur-[2px] animate-fadeIn" onClick={onClose}>
+      <div role="dialog" aria-modal="true" className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-pop animate-slideUp', w)} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0">
             <h2 className="truncate text-[15px] font-extrabold text-ink">{title}</h2>
@@ -274,6 +274,50 @@ export function Modal({ open = true, title, subtitle, onClose, children, footer,
         {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-cream/50 px-4 py-2.5">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+/**
+ * Styled replacement for the browser's native alert()/confirm(). One shared shape for both:
+ * - Alert (info/success/error, single "OK" button): pass no `cancelLabel`.
+ * - Confirm (Yes/No decision): pass `cancelLabel` and `onConfirm` — the dialog stays open and lets
+ *   the caller decide when to close it (e.g. after an async action finishes), matching how the
+ *   native confirm()'s callers used to gate on the boolean return value before proceeding.
+ */
+export type MessageModalState = {
+  title: string;
+  message: React.ReactNode;
+  type?: 'info' | 'success' | 'error';
+  onConfirm?: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+} | null;
+
+export function MessageModal({ state, onClose }: { state: MessageModalState; onClose: () => void }) {
+  if (!state) return null;
+  const { title, message, type = 'info', onConfirm, confirmLabel = 'OK', cancelLabel } = state;
+  const ICONS = { info: Info, success: CheckCircle2, error: AlertCircle } as const;
+  const COLORS = { info: 'text-blue', success: 'text-green', error: 'text-red' } as const;
+  const Icon = ICONS[type];
+  return (
+    <Modal
+      open
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          {cancelLabel && <Button variant="secondary" onClick={onClose}>{cancelLabel}</Button>}
+          <Button variant={type === 'error' ? 'danger' : 'primary'} onClick={() => { onConfirm?.(); if (!cancelLabel) onClose(); }}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex items-start gap-2.5">
+        <Icon size={20} className={cx('mt-0.5 shrink-0', COLORS[type])} />
+        <p className="text-sm text-inkSoft">{message}</p>
+      </div>
+    </Modal>
   );
 }
 

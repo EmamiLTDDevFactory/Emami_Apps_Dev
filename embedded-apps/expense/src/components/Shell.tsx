@@ -12,7 +12,7 @@ import { Spinner, cx } from './ui';
 // next/link prepends next.config.mjs's basePath automatically; plain <img>/<a> don't.
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || '/apps/expense';
 
-type NavItem = { href: string; label: string; subtitle: string; icon: LucideIcon; badge?: number };
+type NavItem = { href: string; label: string; subtitle: string; icon: LucideIcon; badge?: number; accent: string };
 
 const normalizeId = (id?: string) => (id || '').toString().replace(/\D/g, '').padStart(8, '0');
 const norm = (p: string | null) => (p || '/').replace(/\/?$/, '/');
@@ -45,46 +45,69 @@ function TabBar() {
     return normalizeId(c.employeeId) !== myNumeric;
   }).length;
 
+  // Same per-tab identity colors the original Expo app's tab bar already used (Dashboard=green,
+  // Create=blue, My Claims=orange, Approvals=purple, Finance=sky blue) — carried over rather than
+  // invented fresh, so the web version still reads as the same app.
   const items: NavItem[] = [
-    { href: '/', label: 'Dashboard', subtitle: 'Overview & Analytics', icon: LayoutDashboard },
-    { href: '/create/', label: 'Create', subtitle: 'New Claim', icon: FilePlus2 },
-    { href: '/my-claims/', label: 'My Claims', subtitle: 'View & Track Claims', icon: ListChecks },
+    { href: '/', label: 'Dashboard', subtitle: 'Overview & Analytics', icon: LayoutDashboard, accent: '#10B981' },
+    { href: '/create/', label: 'Create', subtitle: 'New Claim', icon: FilePlus2, accent: '#2563EB' },
+    { href: '/my-claims/', label: 'My Claims', subtitle: 'View & Track Claims', icon: ListChecks, accent: '#F97316' },
   ];
   if (activeRole === 'manager' || activeRole === 'B') {
-    items.push({ href: '/approvals/', label: 'Approvals', subtitle: 'Manager Review', icon: FileCheck2, badge: approvalsCount });
+    items.push({ href: '/approvals/', label: 'Approvals', subtitle: 'Manager Review', icon: FileCheck2, badge: approvalsCount, accent: '#8B5CF6' });
   }
   if (activeRole === 'finance') {
-    items.push({ href: '/finance/', label: 'Finance', subtitle: 'Finance & Reports', icon: Wallet, badge: financeCount });
+    items.push({ href: '/finance/', label: 'Finance', subtitle: 'Finance & Reports', icon: Wallet, badge: financeCount, accent: '#0EA5E9' });
   }
 
+  // 3 tabs (employee role) already fit comfortably on one row even on a narrow phone, so they
+  // keep the flex-wrap/stretch layout that lines their edges up with the cards above. 4 tabs
+  // (manager/finance/Boss, who also get Approvals or Finance) don't fit four-across below ~440px
+  // — without this, the 4th tab wrapped alone onto its own full-width row instead of a clean grid.
+  const needsMobileGrid = items.length >= 4;
+
   return (
-    <nav className="flex flex-wrap items-center justify-center gap-2 border-t border-border bg-white px-3 py-2">
-      {items.map((item) => {
-        const active = pathname === norm(item.href);
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            replace
-            className={cx(
-              'relative flex min-w-[110px] items-center gap-2 rounded-xl border px-3 py-2 transition-colors',
-              active ? 'border-brand bg-brand text-white shadow-lift' : 'border-border bg-white text-ink hover:bg-appBg'
-            )}
-          >
-            <Icon size={18} />
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-bold">{item.label}</span>
-              <span className={cx('text-2xs', active ? 'text-white/80' : 'text-inkSoft')}>{item.subtitle}</span>
-            </span>
-            {!!item.badge && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red px-1 text-2xs font-bold text-white">
-                {item.badge > 99 ? '99+' : item.badge}
+    <nav className="border-t border-border bg-white px-3 py-2">
+      <div
+        className={cx(
+          'mx-auto w-full max-w-[1280px] gap-2',
+          needsMobileGrid ? 'grid grid-cols-2 sm:flex sm:flex-wrap sm:items-stretch' : 'flex flex-wrap items-stretch'
+        )}
+      >
+        {items.map((item) => {
+          const active = pathname === norm(item.href);
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              replace
+              style={active ? { backgroundColor: item.accent, borderColor: item.accent } : { backgroundColor: `${item.accent}0D`, borderColor: `${item.accent}40` }}
+              className={cx(
+                'relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2 transition-colors',
+                needsMobileGrid ? 'sm:min-w-[110px] sm:flex-1' : 'min-w-[110px] flex-1',
+                active ? 'text-white shadow-lift' : 'text-ink hover:brightness-95'
+              )}
+            >
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: active ? 'rgba(255,255,255,0.25)' : `${item.accent}26` }}
+              >
+                <Icon size={16} color={active ? '#FFFFFF' : item.accent} />
               </span>
-            )}
-          </Link>
-        );
-      })}
+              <span className="flex flex-col leading-tight">
+                <span className="text-sm font-bold">{item.label}</span>
+                <span className={cx('text-2xs', active ? 'text-white/80' : 'text-inkSoft')}>{item.subtitle}</span>
+              </span>
+              {!!item.badge && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red px-1 text-2xs font-bold text-white">
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
     </nav>
   );
 }
@@ -124,7 +147,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2.5">
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-logo1.png.jpg`} alt="Emami Apps" className="h-8 w-8 rounded-full object-cover" />
+          <img src={`${BASE_PATH}/emami-logo1.png.jpg`} alt="Emami Apps" className="h-[53px] w-16 shrink-0 object-contain" />
           <div>
             <p className="text-2xs font-semibold text-brand">Logged in as</p>
             <p className="text-sm font-extrabold text-ink">{currentUser?.employeeName || currentUser?.name || '—'}</p>
