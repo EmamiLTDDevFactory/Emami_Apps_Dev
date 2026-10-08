@@ -7,10 +7,9 @@
  *    with its Items; SAP allocates ReqNo and returns it. All or nothing.
  *  - ConfirmDateWarning and GateCancel.Admin are ABAP flags ('X' / ''), not Edm.Boolean - SAP refuses true/false.
  *  - out time and cancel are creates on GateOutTimeSet / GateCancelSet.
- *  - the gateway logs on with its technical user, so the signed-in Emami Apps email goes in every list $filter
- *    (Email eq '<login email>', see list()). NGD has no Email property yet (2026-10-09: "Property Email not found
- *    in type ..."), so on that answer the read is repeated without it and Email is left out for the rest of the
- *    session; once SAP adds the property the filter applies with no app change.
+ *  - the gateway logs on with its technical user, so the signed-in Emami Apps email (lower case) goes with every
+ *    call: first in every list $filter, as the second key of AsnSet (ShipId, Email), and as property Email on
+ *    every create. Every entity type except GateRequestPdf has Email (NGD, 2026-10-09).
  *  - the gateway has no route for DELETE or for .../$value (both answer its own 404), see deleteLine / getPdf.
  */
 import { and, dec, eq, fromSapDate, fromSapTime, num, odataKey, str, toSapDate, toSapTime } from './format';
@@ -20,21 +19,11 @@ import type { AsnDetail, AsnSummary, EntryDetail, EntryHeader, EntryItem, EntryS
 
 const flag = (b: boolean) => (b ? 'X' : '');
 
-let emailInFilter = true;
+const email = () => getHubEmail().toLowerCase();
 
 /** Filtered list read with Email = the Emami Apps login email in front of the other conditions. */
-async function list(path: string, ...conds: (string | undefined | false | null)[]): Promise<any[]> {
-  const email = getHubEmail().toLowerCase();
-  if (emailInFilter && email) {
-    try {
-      return (await sapGet<any[]>(path, { $filter: and(eq('Email', email), ...conds) })) ?? [];
-    } catch (e) {
-      if (!(e instanceof GateError && /Property Email not found/i.test(e.message))) throw e;
-      emailInFilter = false;
-    }
-  }
-  return (await sapGet<any[]>(path, { $filter: and(...conds) || undefined })) ?? [];
-}
+const list = async (path: string, ...conds: (string | undefined | false | null)[]): Promise<any[]> =>
+  (await sapGet<any[]>(path, { $filter: and(eq('Email', email()), ...conds) })) ?? [];
 
 /* ------------------------------ mappers ------------------------------ */
 
@@ -98,7 +87,7 @@ export async function searchAsn(poNo?: string): Promise<AsnSummary[]> {
 
 export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: PoItem[] }> {
   const [a, items] = await Promise.all([
-    sapGet<any>(`/AsnSet(${odataKey(shipId)})`),
+    sapGet<any>(`/AsnSet(ShipId=${odataKey(shipId)},Email=${odataKey(email())})`),
     list('/AsnItemSet', eq('ShipId', shipId)),
   ]);
   return {
@@ -146,6 +135,7 @@ const sapItem = (i: Line) => ({
 /** One element of GateEntrySet.Pos: the shared truck data plus one PO (or the ASN) and its lines. */
 function posElement(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: string; poVendrName: string; regio: string; regioDesc: string; asnNo?: string; items: Line[] }) {
   return {
+    Email: email(),
     ReqDate: toSapDate(h.reqDate),
     PoNo: o.poNo,
     PoVendr: o.poVendr,
@@ -169,7 +159,7 @@ function posElement(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: s
 }
 
 const createEntry = async (pos: ReturnType<typeof posElement>[], confirm: boolean) =>
-  reqNoOf(await sapPost<any>('/GateEntrySet', { ConfirmDateWarning: flag(confirm), Pos: pos }));
+  reqNoOf(await sapPost<any>('/GateEntrySet', { Email: email(), ConfirmDateWarning: flag(confirm), Pos: pos }));
 
 /** PO mode: one Pos element per PO with its received lines; SAP saves them under one new request number. */
 export async function createFromPos(h: SharedHeader, pos: PoBlock[], confirm: boolean): Promise<string> {
@@ -241,12 +231,12 @@ export async function getEntry(reqNo: string): Promise<EntryDetail> {
 
 /** SAP stamps the current date and time. */
 export async function recordOutTime(reqNo: string) {
-  await sapPost('/GateOutTimeSet', { ReqNo: reqNo.toUpperCase() });
+  await sapPost('/GateOutTimeSet', { ReqNo: reqNo.toUpperCase(), Email: email() });
 }
 
 /** SAP decides who may cancel (and refuses while a GRN is not reversed); admin = the admin cancel of the WD app. */
 export async function cancelEntry(reqNo: string, reason: string, admin = false) {
-  await sapPost('/GateCancelSet', { ReqNo: reqNo.toUpperCase(), Reason: reason.trim(), Admin: flag(admin) });
+  await sapPost('/GateCancelSet', { ReqNo: reqNo.toUpperCase(), Reason: reason.trim(), Admin: flag(admin), Email: email() });
 }
 
 /** Admin: delete one received line. The Azure gateway has no DELETE route yet (answers GATEWAY_UNSUPPORTED). */

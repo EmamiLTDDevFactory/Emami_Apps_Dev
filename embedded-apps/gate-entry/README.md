@@ -45,7 +45,7 @@ there exists (checked with `$select`), and every call below reaches the DPC.
 |---|---|
 | PO + Enter | `GET PoInfoSet('<po>')` + `GET PoItemSet?$filter=Ebeln eq '<po>'` |
 | ASN value help | `GET AsnSet[?$filter=Ebeln eq '<po>']` |
-| ASN chosen | `GET AsnSet('<id>')` + `GET AsnItemSet?$filter=ShipId eq '<id>'` |
+| ASN chosen | `GET AsnSet(ShipId='<id>',Email='<login email>')` + `GET AsnItemSet?$filter=Email eq .. and ShipId eq '<id>'` |
 | Save (PO or ASN) | `POST GateEntrySet` deep insert, `Pos` = one element per PO (one for an ASN), each with `Items`; response `ReqNo` |
 | Search | `GET GateSummarySet?$filter=Year/PoNo/ReqNo/AsnNo eq ..` |
 | Open an entry | `GET GateRequestSet` + `GateRequestItemSet?$filter=ReqNo eq '..'` |
@@ -69,13 +69,11 @@ TRUCK_DATE, TRUCK_TIM; QNT_RECIEVD shows as a general message), `CONFIRM_DATE|te
 ### Gaps (where NGD or the gateway differ from the brief)
 1. **Flags are ABAP flags, not booleans.** `ConfirmDateWarning` and `GateCancel.Admin` are strings: SAP refuses
    `true`/`false` ("Failed to read property 'Admin'"), so the app sends `'X'` / `''`.
-2. **Email.** Every call runs as the gateway's technical SAP user, so the signed-in Emami Apps email (lower case) goes
-   first in every list `$filter`: `Email eq '<login email>' and ...` (AsnSet, AsnItemSet, PoItemSet, GateSummarySet,
-   GateRequestSet, GateRequestItemSet). **NGD does not have an `Email` property yet** (2026-10-09: "Property Email not
-   found in type ..."); on that answer the app repeats the read without it and leaves Email out until reload, so it
-   works today and filters by email as soon as SAP adds the property (filterable, on each of those entity types).
-   Keyed reads (`PoInfoSet('..')`, `AsnSet('..')`) and the creates cannot carry it. Until then plant authority,
-   cancel authority and `ReqBy` are the technical user's (lists empty, cancel "not authorized" on 2026-10-08).
+2. **Email.** Every call runs as the gateway's technical SAP user, so the signed-in Emami Apps email (lower case)
+   goes with every call: first in every list `$filter` (`Email eq '<login email>' and ...`), as the second key of
+   `AsnSet(ShipId='..',Email='..')`, and as property `Email` on the GateEntry create (top level and each `Pos`),
+   GateOutTime and GateCancel. NGD has `Email` on every entity type except `GateRequestPdf` (2026-10-09);
+   `PoInfoSet('<po>')` is still keyed by `Ebeln` alone.
 3. **The gateway has no route for `.../$value` or for `DELETE`** (its own 404 "Cannot GET/DELETE /api/..."). Print
    falls back to a printable gate pass built from the entry data (`src/components/print.ts`); delete line shows
    "The SAP gateway does not pass this request on to SAP yet". Both start working unchanged once the gateway
