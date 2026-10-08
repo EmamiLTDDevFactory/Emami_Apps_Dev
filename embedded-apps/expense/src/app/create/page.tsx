@@ -53,7 +53,7 @@ function CreateClaimInner() {
   const searchParams = useSearchParams();
   const { currentUser } = useAuth() as { currentUser: any };
   const editingClaimId = searchParams.get('claimId') || '';
-  const { addClaim, policyLimit, autoApprovalThreshold, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas } = useClaim();
+  const { addClaim, policyLimit, autoApprovalThreshold, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims } = useClaim();
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -462,6 +462,9 @@ function CreateClaimInner() {
         : `Your claim has been successfully submitted.${isAutoApprove ? ' Amount is below threshold (₹100), claim has been auto-approved!' : ''}`
     );
     setSuccessModalVisible(true);
+    // Refresh claims in the background so Dashboard/My Claims already show the new submission by
+    // the time the user navigates there — previously only the manual Refresh button did this.
+    fetchClaims();
   };
 
   if (!currentUser) return null;
@@ -486,9 +489,9 @@ function CreateClaimInner() {
             ['Department', currentUser.department],
             ['Designation', currentUser.designation],
           ].map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between py-2">
-              <span className="text-xs font-semibold text-inkSoft">{label}</span>
-              <span className="text-left text-sm font-bold text-ink">{value}</span>
+            <div key={label} className="flex items-center gap-3 py-2">
+              <span className="w-28 shrink-0 text-xs font-semibold text-inkSoft">{label}</span>
+              <span className="flex-1 text-left text-sm font-bold text-ink">{value}</span>
             </div>
           ))}
         </div>

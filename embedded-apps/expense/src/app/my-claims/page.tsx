@@ -14,6 +14,8 @@ const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'P
 
 const getStatusParamValue = (statusParam: string | null) => (statusParam && STATUSES.includes(statusParam) ? statusParam : 'All');
 
+const getClaimYear = (claim: ExpenseClaim) => claim.claimDate?.slice(0, 4) || '';
+
 const escapeExcelCell = (value: unknown) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -101,6 +103,7 @@ function MyClaimsInner() {
   const [typeFilterModal, setTypeFilterModal] = useState(false);
   const [statusFilterModal, setStatusFilterModal] = useState(false);
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -124,13 +127,36 @@ function MyClaimsInner() {
 
   const filteredClaims = filterClaims('employee', searchQuery, selectedExpenseType, selectedStatus);
 
+  // Years present among the current search matches — most recent first. Only relevant while
+  // searching; browsing without a search term keeps showing everything, same as before this
+  // feature existed (same rule Approvals/Finance already use for their own year pills).
+  const isSearching = searchQuery.trim() !== '';
+  const availableHistoryYears = useMemo(
+    () => Array.from(new Set(filteredClaims.map(getClaimYear).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
+    [filteredClaims]
+  );
+  const availableHistoryYearsKey = availableHistoryYears.join('|');
+
+  useEffect(() => {
+    if (!isSearching) { setSelectedHistoryYear(null); return; }
+    // Default to the most recent year the moment a search starts, or if the previously-selected
+    // year no longer has any matches — never auto-override an explicit "All Years" choice or a
+    // still-valid specific year pick.
+    setSelectedHistoryYear((prev) => {
+      if (prev === 'ALL') return prev;
+      if (prev && availableHistoryYears.includes(prev)) return prev;
+      return availableHistoryYears[0] || 'ALL';
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSearching, availableHistoryYearsKey]);
+
   const displayedClaims = useMemo(() => {
     let next = filteredClaims;
     if (period === 'last3months') {
       try {
         const now = new Date();
         const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-        next = filteredClaims.filter((c) => {
+        next = next.filter((c) => {
           if (!c || c.status !== 'Paid') return false;
           const createdTimestamp = getClaimCreatedTimestamp(c);
           if (!createdTimestamp) return false;
@@ -138,11 +164,13 @@ function MyClaimsInner() {
         });
       } catch (e) {
         console.warn('Failed to apply last3months filter', e);
-        next = filteredClaims;
       }
     }
+    if (isSearching && selectedHistoryYear && selectedHistoryYear !== 'ALL') {
+      next = next.filter((c) => getClaimYear(c) === selectedHistoryYear);
+    }
     return [...next].sort((a, b) => getClaimCreatedTimestamp(b) - getClaimCreatedTimestamp(a));
-  }, [filteredClaims, period]);
+  }, [filteredClaims, period, isSearching, selectedHistoryYear]);
 
   const handleExportExcel = () => {
     if (displayedClaims.length === 0) {
@@ -196,6 +224,15 @@ function MyClaimsInner() {
           </Chip>
         </div>
       </Card>
+
+      {isSearching && availableHistoryYears.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <Chip tone={selectedHistoryYear === 'ALL' ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear('ALL')}>All Years</Chip>
+          {availableHistoryYears.map((year) => (
+            <Chip key={year} tone={selectedHistoryYear === year ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear(year)}>{year}</Chip>
+          ))}
+        </div>
+      )}
 
       {displayedClaims.length === 0 ? (
         <EmptyState icon={FileText} title="No Claims Found" hint="No expense claims match your active search or filter criteria." />

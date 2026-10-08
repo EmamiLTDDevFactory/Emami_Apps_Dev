@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import axios from 'axios';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronUp, Download, Eye, Pencil, Search, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Download, Eye, Pencil, Search, X } from 'lucide-react';
 import { SAP_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
@@ -85,7 +85,7 @@ function ClaimDetailInner() {
   const claimId = searchParams.get('id') || '';
   const router = useRouter();
   const { currentUser } = useAuth();
-  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance, fetchTaxes } = useClaim();
+  const { setTempClaimForResubmit, approveClaim, rejectClaim, releasePayment, rejectClaimFinance, fetchTaxes, fetchClaims } = useClaim();
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
@@ -149,11 +149,19 @@ function ClaimDetailInner() {
   // Approve/Reject is for the ONE manager the claim is actually routed to. This must stay a full
   // AND, not an OR — an OR previously let any manager approve claims they themselves had raised,
   // because the status check alone satisfied the condition. See ClaimContext.tsx/plan notes.
+  //
+  // Status check includes 'A'/'APPROVED' alongside 'N'/'SUBMITTED' to cover a second-level (L2)
+  // approver: ClaimContext's own pending-claims list filter already treats rawStatus 'N' OR 'A' as
+  // "needs this manager's action" (a claim moves to 'A' once an L1 manager approves, then waits on
+  // whichever manager CurrentApprover names next) — this page's own check was missing the 'A' case,
+  // so an L2 approver saw their Approve/Reject buttons in the Approvals list but not here on the
+  // claim's own detail page. claimApproverId === currentUserId still gates this to the one manager
+  // SAP actually routed it to, exactly as before.
   const showManagerActions =
     isManagerRole &&
     !isOwnClaim &&
     claimApproverId === currentUserId &&
-    (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED');
+    (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED');
   const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
 
   const handlePreviewAttachment = (ln: any) => {
@@ -182,6 +190,7 @@ function ClaimDetailInner() {
     const result = await approveClaim(claimId);
     if (!result.success) { setMessageModal({ title: 'Approval Failed', message: result.error || 'Failed to approve claim.', type: 'error' }); return; }
     await loadClaim();
+    fetchClaims();
     setMessageModal({ title: 'Success', message: `Claim ${claimId} has been approved successfully.`, type: 'success' });
   };
 
@@ -223,6 +232,7 @@ function ClaimDetailInner() {
       return;
     }
     await loadClaim();
+    fetchClaims();
     setMessageModal({ title: 'Success', message: `Claim ${claimId} has been paid successfully and workflow updated.`, type: 'success' });
   };
 
@@ -244,6 +254,7 @@ function ClaimDetailInner() {
     if (!result.success) { setMessageModal({ title: 'Rejection Failed', message: result.error || 'Failed to reject claim.', type: 'error' }); return; }
     setActionModalVisible(false);
     await loadClaim();
+    fetchClaims();
     setMessageModal({ title: 'Success', message: `Claim ${claimId} has been rejected successfully.`, type: 'success' });
   };
 
@@ -283,6 +294,14 @@ function ClaimDetailInner() {
 
   return (
     <div className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={() => router.back()}
+        className="flex w-fit items-center gap-1.5 text-sm font-bold text-brand hover:opacity-80"
+      >
+        <ArrowLeft size={16} /> Back
+      </button>
+
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-extrabold text-ink">Claim {header.ClaimId}</h1>
