@@ -8,7 +8,7 @@ import { BarList, DayColumns, ShareBar } from './charts';
 import { ChangeRow } from './feed';
 import { Card, Empty, Kpi } from './ui';
 
-export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: Go; onPerson: (email: string) => void }) {
+export default function Overview({ data, onGo, onPerson, onApp }: { data: Data; onGo: Go; onPerson: (email: string) => void; onApp: (appId: string) => void }) {
   const { overview: o, roster, appStats, history } = data;
 
   const usersPerApp = useMemo(() => {
@@ -64,8 +64,8 @@ export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: G
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2" title="Users with access, by app" sub="Granted in Manage Access - hover for admin count, click for the people">
-          {usersPerApp.length ? <BarList rows={usersPerApp} unit="users" max={12} onPick={(app) => onGo('access', { app })} /> : <Empty title="No app grants yet" />}
+        <Card className="lg:col-span-2" title="Users with access, by app" sub="Granted in Manage Access - click a bar for that app's people, roles and usage">
+          {usersPerApp.length ? <BarList rows={usersPerApp} unit="users" max={12} onPick={onApp} /> : <Empty title="No app grants yet" />}
         </Card>
         <div className="space-y-4">
           <Card title="Hub access level" sub="Who can manage access">
@@ -83,7 +83,7 @@ export default function Overview({ data, onGo, onPerson }: { data: Data; onGo: G
         </Card>
         <Card title="Most opened apps" sub="All time, active users" actions={<button type="button" onClick={() => onGo('activity', { tab: 'apps' })} className="text-2xs font-bold text-accent hover:underline">Details</button>}>
           {appStats.length ? (
-            <BarList rows={appStats.map((a) => ({ key: a.appId, label: appName(a.appId), value: a.opens, detail: `${fmtNum(a.uniqueUsers)} unique users` }))} unit="opens" max={6} />
+            <BarList rows={appStats.map((a) => ({ key: a.appId, label: appName(a.appId), value: a.opens, detail: `${fmtNum(a.uniqueUsers)} unique users` }))} unit="opens" max={6} onPick={onApp} />
           ) : (
             <Empty icon={LogIn} title="No app opens recorded yet" />
           )}

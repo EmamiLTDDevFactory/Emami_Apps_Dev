@@ -1,13 +1,13 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Download, LayoutGrid, Search } from 'lucide-react';
-import { getAppUserStats, type OpenStat, type RosterUser } from '@/lib/api';
+import type { RosterUser } from '@/lib/api';
 import { appName } from '@/lib/apps';
 import { RECENCY, downloadCsv, fmtDate, fmtNum, recencyOf, relative, stamp, type Recency } from '@/lib/format';
 import { nameFromEmail } from '@/lib/hub';
 import type { Data, Intent } from './App';
 import { BarList } from './charts';
-import { Button, Card, Drawer, Empty, LevelBadge, Person, Skeleton, Tabs, cx, inputBase } from './ui';
+import { Button, Card, Empty, LevelBadge, Person, Tabs, cx, inputBase } from './ui';
 
 type SortKey = 'name' | 'lastLogin' | 'logins' | 'sessions' | 'apps';
 const COLS: { key: SortKey; label: string; right?: boolean }[] = [
@@ -28,7 +28,7 @@ const val = (u: RosterUser, k: SortKey): string | number => {
   }
 };
 
-export default function ActivityView({ data, onPerson, intent = {} }: { data: Data; onPerson: (email: string) => void; intent?: Intent }) {
+export default function ActivityView({ data, onPerson, onApp, intent = {} }: { data: Data; onPerson: (email: string) => void; onApp: (appId: string) => void; intent?: Intent }) {
   const [tab, setTab] = useState<'users' | 'apps'>(intent.tab ?? 'users');
   return (
     <div className="space-y-4">
@@ -39,7 +39,7 @@ export default function ActivityView({ data, onPerson, intent = {} }: { data: Da
         </div>
         <Tabs label="Activity view" value={tab} onChange={setTab} tabs={[{ id: 'users', label: 'By user' }, { id: 'apps', label: 'By app' }]} />
       </div>
-      {tab === 'users' ? <ByUser data={data} onPerson={onPerson} initialBuckets={intent.buckets} /> : <ByApp data={data} onPerson={onPerson} />}
+      {tab === 'users' ? <ByUser data={data} onPerson={onPerson} initialBuckets={intent.buckets} /> : <ByApp data={data} onApp={onApp} />}
     </div>
   );
 }
@@ -138,8 +138,7 @@ function ByUser({ data, onPerson, initialBuckets = [] }: { data: Data; onPerson:
   );
 }
 
-function ByApp({ data, onPerson }: { data: Data; onPerson: (email: string) => void }) {
-  const [open, setOpen] = useState<string | null>(null);
+function ByApp({ data, onApp }: { data: Data; onApp: (appId: string) => void }) {
   const granted = useMemo(() => {
     const m = new Map<string, number>();
     for (const u of data.roster) for (const g of u.apps) m.set(g.appId, (m.get(g.appId) ?? 0) + 1);
@@ -159,7 +158,7 @@ function ByApp({ data, onPerson }: { data: Data; onPerson: (email: string) => vo
     <>
       <div className="grid gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-2" title="Opens by app" sub="Click a bar for the people behind it">
-          <BarList rows={data.appStats.map((a) => ({ key: a.appId, label: appName(a.appId), value: a.opens, detail: `${fmtNum(a.uniqueUsers)} unique users` }))} unit="opens" max={14} onPick={setOpen} />
+          <BarList rows={data.appStats.map((a) => ({ key: a.appId, label: appName(a.appId), value: a.opens, detail: `${fmtNum(a.uniqueUsers)} unique users` }))} unit="opens" max={14} onPick={onApp} />
         </Card>
         <Card className="lg:col-span-3" title="Adoption" sub="Users who opened the app vs users granted it" actions={<Button size="sm" onClick={exportCsv}><Download size={13} /> Export</Button>} bodyClass="p-0">
           <div className="scroll-thin overflow-x-auto">
@@ -177,7 +176,7 @@ function ByApp({ data, onPerson }: { data: Data; onPerson: (email: string) => vo
                   const g = granted.get(a.appId) ?? 0;
                   const pct = g ? Math.min(100, Math.round((a.uniqueUsers / g) * 100)) : null;
                   return (
-                    <tr key={a.appId} onClick={() => setOpen(a.appId)} className="cursor-pointer transition hover:bg-sunken/70">
+                    <tr key={a.appId} onClick={() => onApp(a.appId)} className="cursor-pointer transition hover:bg-sunken/70">
                       <td className="px-4 py-2.5 text-[13px] font-semibold">{appName(a.appId)}</td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2">
@@ -195,38 +194,6 @@ function ByApp({ data, onPerson }: { data: Data; onPerson: (email: string) => vo
           </div>
         </Card>
       </div>
-      <AppDrawer appId={open} onClose={() => setOpen(null)} onPerson={(e) => { setOpen(null); onPerson(e); }} />
     </>
-  );
-}
-
-function AppDrawer({ appId, onClose, onPerson }: { appId: string | null; onClose: () => void; onPerson: (email: string) => void }) {
-  const [users, setUsers] = useState<(OpenStat & { email: string })[] | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    if (!appId) return;
-    setUsers(null);
-    setError('');
-    getAppUserStats(appId).then(setUsers, (e: Error) => setError(e.message));
-  }, [appId]);
-
-  return (
-    <Drawer open={Boolean(appId)} onClose={onClose} title={<div><div className="text-2xs font-bold uppercase tracking-wide text-muted">App usage</div><div className="text-lg font-extrabold">{appName(appId)}</div></div>} width={520}>
-      {error ? <p className="text-sm text-bad">{error}</p> : !users ? <Skeleton rows={6} /> : !users.length ? <Empty title="Nobody has opened this app yet" /> : (
-        <Card bodyClass="p-0">
-          <ul className="divide-y divide-line">
-            {users.map((u) => (
-              <li key={u.email}>
-                <button type="button" onClick={() => onPerson(u.email)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-sunken/70">
-                  <div className="min-w-0 flex-1"><Person email={u.email} sub={`First ${fmtDate(u.firstOpened)} · last ${relative(u.lastOpened)}`} /></div>
-                  <span className="num text-sm font-bold">{fmtNum(u.opens)}</span>
-                  <span className="text-2xs text-muted">opens</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-    </Drawer>
   );
 }

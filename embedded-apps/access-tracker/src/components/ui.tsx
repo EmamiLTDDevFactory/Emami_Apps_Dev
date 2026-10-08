@@ -153,7 +153,10 @@ export function Drawer({ open, onClose, title, children, width = 640 }: { open: 
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      const dialogs = document.querySelectorAll('[data-drawer]');
+      if (e.key === 'Escape' && dialogs[dialogs.length - 1]?.contains(ref.current)) onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
@@ -162,7 +165,7 @@ export function Drawer({ open, onClose, title, children, width = 640 }: { open: 
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>
+    <div data-drawer className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>
       <div className="absolute inset-0 bg-plum-deep/40 backdrop-blur-[2px]" onClick={onClose} />
       <div ref={ref} tabIndex={-1} className="relative flex h-full w-full animate-slideIn flex-col border-l border-line bg-bg shadow-2xl outline-none" style={{ maxWidth: width }}>
         <div className="flex items-start justify-between gap-3 border-b border-line bg-panel px-5 py-4">

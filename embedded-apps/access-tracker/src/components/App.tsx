@@ -11,6 +11,7 @@ import AccessView from './AccessView';
 import ChangeLog from './ChangeLog';
 import ActivityView from './ActivityView';
 import UserDrawer from './UserDrawer';
+import AppDetail from './AppDetail';
 
 export interface Data {
   overview: OverviewData;
@@ -46,6 +47,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
   const [person, setPerson] = useState<string | null>(null);
+  const [appDetail, setAppDetail] = useState<string | null>(null);
   const [intent, setIntent] = useState<{ n: number; v: Intent }>({ n: 0, v: {} });
 
   const load = useCallback(async (initial: boolean) => {
@@ -153,13 +155,15 @@ export default function App() {
         </header>
         <main className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3 lg:p-5">
           <div className="mx-auto max-w-7xl">
-            {view === 'overview' && <Overview data={data} onGo={go} onPerson={setPerson} />}
+            {view === 'overview' && <Overview data={data} onGo={go} onPerson={setPerson} onApp={setAppDetail} />}
             {view === 'access' && <AccessView key={intent.n} intent={intent.v} data={data} onPerson={setPerson} />}
             {view === 'changes' && <ChangeLog data={data} onPerson={setPerson} />}
-            {view === 'activity' && <ActivityView key={intent.n} intent={intent.v} data={data} onPerson={setPerson} />}
+            {view === 'activity' && <ActivityView key={intent.n} intent={intent.v} data={data} onPerson={setPerson} onApp={setAppDetail} />}
           </div>
         </main>
       </div>
+      {/* App panel first so a person opened from it stacks on top and closing returns to the app. */}
+      <AppDetail appId={appDetail} data={data} onClose={() => setAppDetail(null)} onPerson={setPerson} />
       <UserDrawer email={person} data={data} onClose={() => setPerson(null)} />
     </div>
   );
