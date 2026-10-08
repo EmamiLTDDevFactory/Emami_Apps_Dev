@@ -1,6 +1,6 @@
 import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
-  HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet, BarChart3,
+  HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
   Bot, DoorOpen, UserCog,
 } from 'lucide-react';
@@ -88,8 +88,7 @@ export const NAV: NavItem[] = [
   { id: 'Favorites', label: 'Favorites', icon: Star },
   { id: 'Help', label: 'Help & Support', icon: HelpCircle },
   { id: 'Settings', label: 'My Profile', icon: CircleUserRound },
-  { id: 'UserAccess', label: 'Manage Access', icon: ShieldCheck },
-  { id: 'Administration', label: 'Administration', icon: BarChart3 },
+  { id: 'UserAccess', label: 'Admin Center', icon: ShieldCheck },
 ];
 
 /** Maps a nav item id to its real route — kept alongside NAV rather than folded into it since
