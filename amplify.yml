@@ -16,7 +16,7 @@ frontend:
         # automatically in production mode.
         - echo "NEXT_PUBLIC_AUTH_API_URL=$EXPO_PUBLIC_AUTH_API_URL" > hub-next/.env.production
         - echo "NEXT_PUBLIC_ACCESS_API_URL=$EXPO_PUBLIC_ACCESS_API_URL" >> hub-next/.env.production
-        - echo "EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL" > embedded-apps/non-ctc-expense/.env
+        - echo "NEXT_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL" > embedded-apps/expense/.env
         - echo "VITE_API_BASE_URL=$VITE_API_BASE_URL" > embedded-apps/rc-portal/.env
         - echo "REACT_APP_API_URL=$REACT_APP_API_URL" > embedded-apps/audit-capa/.env
         - cd hub-next && npm run build && cd ..
