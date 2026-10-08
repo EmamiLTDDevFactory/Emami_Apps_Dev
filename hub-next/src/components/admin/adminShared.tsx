@@ -5,7 +5,7 @@ import { ShieldCheck, Crown, Eye } from 'lucide-react';
 import { APPS, appById } from '../../data/mockData';
 import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../types';
 import type { AdminRosterUsage } from '../../lib/adminApi';
-import { colors, fonts, fontWeights, radii, appColor, shadows } from '../../theme/tokens';
+import { appColor, colors, fontWeights, fonts, gradients, radii, shadows } from '../../theme/tokens';
 
 /** Shared bits for the Admin Center (the merged Manage Access + Administration screen) — role
  * rules, formatters and the small visual primitives every panel/drawer there reuses. */
@@ -123,14 +123,14 @@ export function changeTone(c: AccessChangeEntry): ChangeTone {
   if (c.changeType === 'APP_ROLE') return !c.oldValue ? 'positive' : !c.newValue ? 'negative' : 'neutral';
   return 'neutral';
 }
-export const TONE_COLOR: Record<ChangeTone, string> = { positive: '#16A34A', negative: '#E11D48', neutral: colors.rust };
+export const TONE_COLOR: Record<ChangeTone, string> = { positive: colors.green, negative: '#E11D48', neutral: colors.rust };
 
 /** The one merged view of a person — Manage Access's editable row plus Administration's usage. */
 export type AdminUser = UserAccessEntry & { usage: AdminRosterUsage | null };
 
 // ── Visual primitives ────────────────────────────────────────────────────────────────────────
 
-const AVATAR_HUES = ['#4F3FD6', '#0EA5E9', '#E11D48', '#16A34A', '#F59E0B', '#9333EA', '#0D9488', '#DB2777', '#EA580C'];
+const AVATAR_HUES = [colors.rust, '#0EA5E9', '#E11D48', colors.green, '#F59E0B', '#9333EA', '#0D9488', '#DB2777', '#EA580C'];
 export function Initials({ email, name, size = 34 }: { email: string; name?: string | null; size?: number }) {
   const label = displayName(email, name);
   const initials = label.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -145,7 +145,7 @@ export function Initials({ email, name, size = 34 }: { email: string; name?: str
 }
 
 export function LevelBadge({ level, compact }: { level: AccessLevel; compact?: boolean }) {
-  const tone = level === 'Super Admin' ? { c: '#B45309', Icon: Crown } : level === 'Admin' ? { c: colors.rust, Icon: ShieldCheck } : { c: '#64748B', Icon: Eye };
+  const tone = level === 'Super Admin' ? { c: colors.uat, Icon: Crown } : level === 'Admin' ? { c: colors.rust, Icon: ShieldCheck } : { c: colors.inkSoft, Icon: Eye };
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: radii.pill, padding: compact ? '3px 8px' : '4px 10px', backgroundColor: `${tone.c}14`, border: `1px solid ${tone.c}2e`, color: tone.c, fontSize: compact ? 10.5 : 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, whiteSpace: 'nowrap' }}>
       <tone.Icon size={compact ? 11 : 12} strokeWidth={2.2} />
@@ -155,9 +155,9 @@ export function LevelBadge({ level, compact }: { level: AccessLevel; compact?: b
 }
 
 export function StatusDot({ active, label }: { active: boolean; label?: string }) {
-  const c = active ? '#16A34A' : '#94A3B8';
+  const c = active ? colors.green : colors.inkSoft;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: active ? '#15803D' : colors.inkSoft, whiteSpace: 'nowrap' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: active ? colors.green : colors.inkSoft, whiteSpace: 'nowrap' }}>
       <span style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c, boxShadow: active ? `0 0 0 3px ${c}26` : 'none' }} />
       {label ?? (active ? 'Active' : 'Inactive')}
     </span>
@@ -177,7 +177,7 @@ export function AppIcon({ appId, size = 30 }: { appId: string; size?: number }) 
 /** Toggle switch — used for Active/Inactive so it reads as a setting, not a form checkbox. */
 export function Switch({ on, onChange, disabled, label }: { on: boolean; onChange: () => void; disabled?: boolean; label: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onChange} disabled={disabled} style={{ width: 40, height: 23, borderRadius: 12, border: 'none', padding: 2, cursor: disabled ? 'not-allowed' : 'pointer', backgroundColor: on ? '#16A34A' : '#CBD5E1', transition: 'background-color 180ms', flexShrink: 0, opacity: disabled ? 0.6 : 1 }}>
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onChange} disabled={disabled} style={{ width: 40, height: 23, borderRadius: 12, border: 'none', padding: 2, cursor: disabled ? 'not-allowed' : 'pointer', backgroundColor: on ? colors.green : '#CBD5E1', transition: 'background-color 180ms', flexShrink: 0, opacity: disabled ? 0.6 : 1 }}>
       <span style={{ display: 'block', width: 19, height: 19, borderRadius: 10, backgroundColor: colors.white, boxShadow: shadows.sm, transform: `translateX(${on ? 17 : 0}px)`, transition: 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)' }} />
     </button>
   );
@@ -220,29 +220,29 @@ export function AdminStyles() {
       .ac-pop { animation: ac-pop 240ms cubic-bezier(0.22, 1, 0.36, 1); }
       @keyframes ac-pop { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
       .ac-row { transition: background-color 120ms; }
-      .ac-row:hover { background-color: #f7f6fe !important; }
+      .ac-row:hover { background-color: ${colors.cream} !important; }
       .ac-card { transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms, border-color 180ms; }
-      .ac-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -8px rgba(21, 17, 41, 0.16); border-color: #d6d1f3 !important; }
+      .ac-card:hover { transform: translateY(-2px); box-shadow: ${shadows.md}; border-color: ${colors.rust}33 !important; }
       .ac-btn { transition: filter 120ms, background-color 120ms, transform 80ms; }
       .ac-btn:hover:not(:disabled) { filter: brightness(0.96); }
       .ac-btn:active:not(:disabled) { transform: scale(0.97); }
       .ac-btn:disabled { opacity: 0.55; cursor: not-allowed !important; }
-      .ac-input:focus-within { box-shadow: 0 0 0 3px rgba(79, 63, 214, 0.16); border-color: #4f3fd6 !important; }
+      .ac-input:focus-within { box-shadow: 0 0 0 3px ${colors.rust}29; border-color: ${colors.rust} !important; }
       .ac-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-      .ac-scroll::-webkit-scrollbar-thumb { background: #d9d6ea; border-radius: 8px; }
+      .ac-scroll::-webkit-scrollbar-thumb { background: ${colors.border}; border-radius: 8px; }
     `}</style>
   );
 }
 
 // ── Shared styles ────────────────────────────────────────────────────────────────────────────
 
-export const cardStyle: React.CSSProperties = { border: `1px solid ${colors.border}`, borderRadius: radii.xxl, backgroundColor: colors.white, boxShadow: '0 1px 2px rgba(21,17,41,0.04)' };
+export const cardStyle: React.CSSProperties = { border: `1px solid ${colors.border}`, borderRadius: radii.xxl, backgroundColor: colors.white, boxShadow: shadows.sm };
 export const sectionTitleStyle: React.CSSProperties = { margin: 0, fontSize: 14.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink };
 export const sectionSubStyle: React.CSSProperties = { margin: '2px 0 0', fontSize: 12, fontFamily: fonts.sansRegular, color: colors.inkSoft };
 export const labelStyle: React.CSSProperties = { fontSize: 10.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.6 };
 export const inputWrapStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, borderRadius: radii.lg, padding: '0 12px', height: 40, backgroundColor: colors.white, border: `1px solid ${colors.border}`, transition: 'box-shadow 150ms, border-color 150ms' };
 export const inputStyle: React.CSSProperties = { flex: 1, minWidth: 0, fontSize: 13, color: colors.ink, fontFamily: fonts.sansRegular, border: 'none', outline: 'none', background: 'transparent', height: '100%' };
-export const primaryBtnStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, border: 'none', borderRadius: radii.lg, padding: '0 16px', height: 40, background: `linear-gradient(135deg, #6D5BF5, ${colors.rust})`, color: colors.white, cursor: 'pointer', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, boxShadow: `0 4px 12px -4px ${colors.rust}80`, whiteSpace: 'nowrap' };
+export const primaryBtnStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, border: 'none', borderRadius: radii.lg, padding: '0 16px', height: 40, background: `linear-gradient(135deg, ${gradients.primary.join(', ')})`, color: colors.white, cursor: 'pointer', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, boxShadow: `0 4px 12px -4px ${colors.rust}80`, whiteSpace: 'nowrap' };
 export const secondaryBtnStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, border: `1px solid ${colors.border}`, borderRadius: radii.lg, padding: '0 14px', height: 40, backgroundColor: colors.white, color: colors.ink, cursor: 'pointer', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, whiteSpace: 'nowrap' };
 export const ghostIconBtnStyle: React.CSSProperties = { width: 32, height: 32, borderRadius: radii.md, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', backgroundColor: 'transparent', cursor: 'pointer', flexShrink: 0 };
 export const chipStyle = (active: boolean, accent: string = colors.rust): React.CSSProperties => ({
@@ -250,4 +250,4 @@ export const chipStyle = (active: boolean, accent: string = colors.rust): React.
   border: `1px solid ${active ? accent : colors.border}`, backgroundColor: active ? `${accent}12` : colors.white,
   color: active ? accent : colors.inkSoft, fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold,
 });
-export const errorTextStyle: React.CSSProperties = { fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: '#C0392B', margin: '8px 0 0' };
+export const errorTextStyle: React.CSSProperties = { fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: '#DC2626', margin: '8px 0 0' };

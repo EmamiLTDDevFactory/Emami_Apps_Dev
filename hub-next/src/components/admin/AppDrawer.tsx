@@ -5,7 +5,7 @@ import { Download, Search, Users, X, ChevronRight } from 'lucide-react';
 import { appById } from '../../data/mockData';
 import { getAdminAppUserStats, type AdminAppStat, type AdminAppUserStat } from '../../lib/adminApi';
 import { exportAppUserStatsToExcel } from '../../lib/exportAdminExcel';
-import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
+import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
 import {
   ROLE_MANAGED_INTERNALLY, AppIcon, EmptyState, Initials, Skeleton, Spinner, StatusDot,
@@ -134,7 +134,7 @@ export default function AppDrawer({
                   <Initials email={u.email} size={32} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={nameStyle}>{nameOf(u.email)}</span>
-                    <span style={{ display: 'block', height: 5, borderRadius: 3, backgroundColor: '#EEF0F4', marginTop: 6, overflow: 'hidden' }}>
+                    <span style={{ display: 'block', height: 5, borderRadius: 3, backgroundColor: colors.appBg, marginTop: 6, overflow: 'hidden' }}>
                       <span style={{ display: 'block', height: '100%', width: `${Math.max(4, (u.opens / max) * 100)}%`, background: accent, borderRadius: 3 }} />
                     </span>
                   </span>

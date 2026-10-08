@@ -7,7 +7,7 @@ import { getMyProfile, type UserProfile } from '../../lib/authApi';
 import { getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
 import { getAccessHistory, removeAuthorizedUser, setAccessLevel, setAppAccess, setUserActive } from '../../lib/accessApi';
 import { exportUserReportToExcel } from '../../lib/exportAdminExcel';
-import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
+import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
 import ChangeTimeline from './ChangeTimeline';
 import {
@@ -223,11 +223,11 @@ export default function UserDrawer({
             <LevelBadge level={user.accessLevel} compact />
             <StatusDot active={user.isActive} />
             {user.mobile && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium }}>
                 <Phone size={11} /> {user.mobile}
               </span>
             )}
-            <span style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium }}>
+            <span style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium }}>
               {user.usage?.hasLoggedIn ? `Last seen ${timeAgo(user.usage.lastLogin)}` : 'Never signed in'}
             </span>
           </div>
@@ -248,7 +248,7 @@ export default function UserDrawer({
   const footer =
     tab !== 'access' ? null : confirmClose ? (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <AlertTriangle size={16} color="#B45309" />
+        <AlertTriangle size={16} color={colors.uat} />
         <span style={{ flex: 1, fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, minWidth: 160 }}>Discard {changeCount} unsaved change{changeCount === 1 ? '' : 's'}?</span>
         <button type="button" className="ac-btn" onClick={() => setConfirmClose(false)} style={secondaryBtnStyle}>Keep editing</button>
         <button type="button" className="ac-btn" onClick={onClose} style={{ ...primaryBtnStyle, background: '#E11D48', boxShadow: 'none' }}>Discard</button>
@@ -265,7 +265,7 @@ export default function UserDrawer({
         </button>
       </div>
     ) : (
-      <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, color: colors.inkSoft }}>All changes saved. Edits here apply only after you press Save.</span>
+      <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>All changes saved. Edits here apply only after you press Save.</span>
     );
 
   return (
@@ -331,7 +331,7 @@ export default function UserDrawer({
                 const changed = changedAppIds.includes(app.id);
                 const accent = appColor(app.id);
                 return (
-                  <div key={app.id} style={{ padding: '10px 12px', borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`, backgroundColor: changed ? '#FFFBEB' : role ? colors.white : '#FCFCFD' }}>
+                  <div key={app.id} style={{ padding: '10px 12px', borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`, backgroundColor: changed ? '#FFFBEB' : role ? colors.white : colors.cream }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <AppIcon appId={app.id} size={30} />
                       <div style={{ flex: 1, minWidth: 130 }}>
@@ -427,9 +427,9 @@ export default function UserDrawer({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
                             <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appLabel(s.appId)}</span>
-                            <span style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium, whiteSpace: 'nowrap' }}>{s.opens} opens · {timeAgo(s.lastOpened)}</span>
+                            <span style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, whiteSpace: 'nowrap' }}>{s.opens} opens · {timeAgo(s.lastOpened)}</span>
                           </div>
-                          <div style={{ height: 6, borderRadius: 3, backgroundColor: '#EEF0F4', overflow: 'hidden' }}>
+                          <div style={{ height: 6, borderRadius: 3, backgroundColor: colors.appBg, overflow: 'hidden' }}>
                             <div style={{ width: `${Math.max(4, (s.opens / max) * 100)}%`, height: '100%', borderRadius: 3, background: `linear-gradient(90deg, ${accent}99, ${accent})` }} />
                           </div>
                         </div>
@@ -480,7 +480,7 @@ export function Segmented<T extends string | null>({
   accent?: string;
 }) {
   return (
-    <div style={{ display: 'inline-flex', padding: 3, borderRadius: radii.lg, backgroundColor: '#EEF0F4', gap: 2, flexShrink: 0 }}>
+    <div style={{ display: 'inline-flex', padding: 3, borderRadius: radii.lg, backgroundColor: colors.appBg, gap: 2, flexShrink: 0 }}>
       {options.map((o) => {
         const active = o.value === value;
         const isNone = o.value === null;
@@ -497,7 +497,7 @@ export function Segmented<T extends string | null>({
               padding: size === 'sm' ? '5px 10px' : '7px 14px',
               fontSize: size === 'sm' ? 11.5 : 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold,
               backgroundColor: active ? (isNone ? colors.white : accent) : 'transparent',
-              color: active ? (isNone ? colors.ink : colors.white) : o.disabled ? '#A0A6B1' : colors.inkSoft,
+              color: active ? (isNone ? colors.ink : colors.white) : o.disabled ? colors.inkSoft : colors.inkSoft,
               boxShadow: active ? '0 1px 3px rgba(21,17,41,0.14)' : 'none',
               transition: 'background-color 140ms, color 140ms',
               flex: size === 'md' ? 1 : undefined, justifyContent: 'center',

@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import { Mail, Phone, Search, UserPlus, Users, X, CheckCircle2 } from 'lucide-react';
 import type { AppRole, UserAccessEntry, UserAppGrant } from '../../types';
 import { addAuthorizedUser, setAppAccess } from '../../lib/accessApi';
-import { colors, fonts, fontWeights, radii, appColor } from '../../theme/tokens';
+import { appColor, colors, fontWeights, fonts, gradients, radii } from '../../theme/tokens';
 import { Segmented } from './UserDrawer';
 import {
   AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, EMAIL_RE, SORTED_APPS,
@@ -135,7 +135,7 @@ export default function AddUsersDialog({
       <div className="ac-backdrop" onClick={close} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(21,17,41,0.42)', backdropFilter: 'blur(2px)' }} />
       <div className="ac-fade" role="dialog" aria-modal="true" style={{ position: 'relative', width: '100%', maxWidth: 620, maxHeight: '90vh', display: 'flex', flexDirection: 'column', backgroundColor: colors.white, borderRadius: radii.xxxl, boxShadow: '0 30px 60px -20px rgba(21,17,41,0.4)', overflow: 'hidden' }}>
         <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${colors.border}`, background: `linear-gradient(135deg, ${colors.rust}10, transparent 70%)` }}>
-          <span style={{ width: 38, height: 38, borderRadius: radii.lg, background: `linear-gradient(135deg, #6D5BF5, ${colors.rust})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ width: 38, height: 38, borderRadius: radii.lg, background: `linear-gradient(135deg, ${gradients.primary.join(', ')})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <UserPlus size={18} color={colors.white} />
           </span>
           <div style={{ flex: 1 }}>
@@ -182,8 +182,8 @@ export default function AddUsersDialog({
                 style={{ ...inputWrapStyle, height: 'auto', minHeight: 110, padding: '10px 12px', fontSize: 13, fontFamily: fonts.sansRegular, color: colors.ink, outline: 'none', resize: 'vertical' }}
               />
               {parsed.length > 0 && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
-                  <CheckCircle2 size={14} color="#16A34A" /> <b style={{ color: colors.ink }}>{bulkValid.length}</b> ready to add
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>
+                  <CheckCircle2 size={14} color={colors.green} /> <b style={{ color: colors.ink }}>{bulkValid.length}</b> ready to add
                   {bulkSkipped > 0 && <span> · {bulkSkipped} skipped (invalid or already added)</span>}
                 </span>
               )}
@@ -194,7 +194,7 @@ export default function AddUsersDialog({
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
               <span style={labelStyle}>App access {mode === 'bulk' && '· applied to everyone'} · {granted.length} selected</span>
               {granted.length > 0 && (
-                <button type="button" onClick={() => setRoles({})} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11.5, fontFamily: fonts.sansSemiBold, color: colors.rust }}>Clear</button>
+                <button type="button" onClick={() => setRoles({})} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust }}>Clear</button>
               )}
             </div>
             <div className="ac-input" style={{ ...inputWrapStyle, height: 36, marginBottom: 8 }}>
@@ -231,8 +231,8 @@ export default function AddUsersDialog({
           {!!error && <p style={{ ...errorTextStyle, margin: 0 }}>{error}</p>}
         </div>
 
-        <div style={{ padding: '12px 20px', borderTop: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 10, backgroundColor: '#FBFBFE' }}>
-          <span style={{ flex: 1, fontSize: 12, fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
+        <div style={{ padding: '12px 20px', borderTop: `1px solid ${colors.border}`, display: 'flex', alignItems: 'center', gap: 10, backgroundColor: colors.cream }}>
+          <span style={{ flex: 1, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>
             {progress ? `Adding ${progress.done}/${progress.total}…` : 'New people start as Viewer.'}
           </span>
           <button type="button" className="ac-btn" onClick={close} disabled={busy} style={secondaryBtnStyle}>Cancel</button>

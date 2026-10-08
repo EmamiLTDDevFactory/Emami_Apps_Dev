@@ -45,7 +45,7 @@ export default function SidePanel({
           </button>
         </div>
         <div className="ac-scroll" style={{ flex: 1, overflowY: 'auto' }}>{children}</div>
-        {footer && <div style={{ borderTop: `1px solid ${colors.border}`, padding: '12px 20px', flexShrink: 0, backgroundColor: '#FBFBFE' }}>{footer}</div>}
+        {footer && <div style={{ borderTop: `1px solid ${colors.border}`, padding: '12px 20px', flexShrink: 0, backgroundColor: colors.cream }}>{footer}</div>}
       </aside>
     </div>
   );
@@ -66,7 +66,7 @@ export function PanelTabs<T extends string>({ tabs, value, onChange }: { tabs: {
           >
             {t.label}
             {t.count !== undefined && (
-              <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : '#EEF0F4', color: active ? colors.rust : colors.inkSoft }}>{t.count}</span>
+              <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : colors.appBg, color: active ? colors.rust : colors.inkSoft }}>{t.count}</span>
             )}
           </button>
         );

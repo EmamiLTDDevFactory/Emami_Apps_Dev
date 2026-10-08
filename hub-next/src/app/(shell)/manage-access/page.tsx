@@ -14,7 +14,7 @@ import { listAuthorizedUsers, setAccessLevel, setAppAccess, setUserActive, getAc
 import { getAdminOverview, getAdminRoster, getAdminAppStats, type AdminOverview, type AdminRosterUsage, type AdminAppStat, type AdminRosterEntry } from '../../../lib/adminApi';
 import { exportUsersToExcel } from '../../../lib/exportUsersExcel';
 import { exportAdministrationReportToExcel, exportAppStatsToExcel } from '../../../lib/exportAdminExcel';
-import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/tokens';
+import { appColor, colors, fontWeights, fonts, radii } from '../../../theme/tokens';
 import UserDrawer, { Segmented } from '../../../components/admin/UserDrawer';
 import AppDrawer from '../../../components/admin/AppDrawer';
 import AddUsersDialog from '../../../components/admin/AddUsersDialog';
@@ -306,57 +306,56 @@ function AdminCenter() {
     <div style={{ minHeight: '100%', padding: pad, paddingBottom: selected.size > 0 ? 120 : 48 }}>
       <AdminStyles />
 
-      {/* ── Hero ── */}
-      <div style={{ position: 'relative', overflow: 'hidden', borderRadius: radii.xxxl + 4, padding: isWide ? '26px 28px 0' : '20px 18px 0', background: `linear-gradient(125deg, ${colors.plumDeep} 0%, #2A2070 45%, ${colors.rust} 100%)`, boxShadow: '0 18px 40px -18px rgba(37,27,120,0.6)' }}>
-        <div aria-hidden style={{ position: 'absolute', right: -60, top: -80, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,124,255,0.55), transparent 70%)' }} />
-        <div aria-hidden style={{ position: 'absolute', left: '40%', bottom: -120, width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(14,165,233,0.25), transparent 70%)' }} />
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: '#C7C0FF', letterSpacing: 0.8, textTransform: 'uppercase' }}>
-              <ShieldCheck size={13} /> {actingLevel ?? 'Admin'}
-            </span>
-            <h1 style={{ margin: '6px 0 4px', fontSize: isWide ? 26 : 22, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.white, letterSpacing: -0.3 }}>Admin Center</h1>
-            <p style={{ margin: 0, fontSize: 13, fontFamily: fonts.sansRegular, color: 'rgba(255,255,255,0.72)', maxWidth: 520 }}>
-              Who can sign in, what they can open, and how Emami Apps is being used — all in one place.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" className="ac-btn" onClick={downloadReport} disabled={!overview || reportBusy || usersLoading} style={{ ...secondaryBtnStyle, backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.22)', color: colors.white }}>
-              {reportBusy ? <Spinner light size={14} /> : <Download size={15} />} Full report
-            </button>
-            <button type="button" className="ac-btn" onClick={() => setShowAdd(true)} disabled={usersLoading} style={{ ...primaryBtnStyle, background: colors.white, color: colors.rust, boxShadow: '0 6px 16px -6px rgba(0,0,0,0.4)' }}>
-              <UserPlus size={15} /> Add people
-            </button>
-          </div>
+      {/* ── Page header (flat, same as My Profile / Help & Support) ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <span style={{ width: 44, height: 44, borderRadius: radii.xl, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ShieldCheck size={20} color={colors.rust} />
+        </span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <span style={{ fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+            {actingLevel ?? 'Admin'}
+          </span>
+          <p style={{ margin: '2px 0 0', fontSize: 22, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>Admin Center</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, fontFamily: fonts.sansRegular, color: colors.inkSoft, maxWidth: 520 }}>
+            Who can sign in, what they can open, and how Emami Apps is being used — all in one place.
+          </p>
         </div>
-
-        <nav className="ac-scroll" style={{ position: 'relative', display: 'flex', gap: 4, marginTop: 22, overflowX: 'auto' }} aria-label="Admin Center sections">
-          {TABS.map((t) => {
-            const active = t.id === tab;
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => goTab(t.id)}
-                aria-current={active ? 'page' : undefined}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 7, padding: '11px 16px', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-                  borderRadius: `${radii.lg}px ${radii.lg}px 0 0`, backgroundColor: active ? colors.appBg : 'transparent',
-                  color: active ? colors.rust : 'rgba(255,255,255,0.78)', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold,
-                  transition: 'background-color 160ms, color 160ms',
-                }}
-              >
-                <Icon size={15} />
-                {t.label}
-                {t.id === 'people' && !usersLoading && (
-                  <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : 'rgba(255,255,255,0.16)' }}>{users.length}</span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button type="button" className="ac-btn" onClick={downloadReport} disabled={!overview || reportBusy || usersLoading} style={secondaryBtnStyle}>
+            {reportBusy ? <Spinner size={14} /> : <Download size={15} />} Full report
+          </button>
+          <button type="button" className="ac-btn" onClick={() => setShowAdd(true)} disabled={usersLoading} style={primaryBtnStyle}>
+            <UserPlus size={15} /> Add people
+          </button>
+        </div>
       </div>
+
+      <nav className="ac-scroll" style={{ display: 'flex', gap: 4, marginTop: 18, overflowX: 'auto', borderBottom: `1px solid ${colors.border}` }} aria-label="Admin Center sections">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => goTab(t.id)}
+              aria-current={active ? 'page' : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7, padding: '10px 14px', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                background: 'none', marginBottom: -1, borderBottom: `2px solid ${active ? colors.rust : 'transparent'}`,
+                color: active ? colors.rust : colors.inkSoft, fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold,
+                transition: 'color 160ms, border-color 160ms',
+              }}
+            >
+              <Icon size={15} />
+              {t.label}
+              {t.id === 'people' && !usersLoading && (
+                <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : colors.appBg, color: active ? colors.rust : colors.inkSoft }}>{users.length}</span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
 
       <div key={tab} className="ac-fade" style={{ marginTop: 20 }}>
         {/* ── Overview ── */}
@@ -364,7 +363,7 @@ function AdminCenter() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isWide ? 190 : 150}px, 1fr))`, gap: 12 }}>
               <Kpi icon={Users} accent={colors.rust} label="People with access" value={usersLoading ? null : users.length} sub={`${activeCount} can sign in`} onClick={() => showPeople({})} />
-              <Kpi icon={UserCheck} accent="#16A34A" label="Active last 7 days" value={statsLoading ? null : overview?.activeLast7Days ?? '—'} sub={overview ? `${overview.activeLast30Days} in 30 days` : ''} />
+              <Kpi icon={UserCheck} accent={colors.green} label="Active last 7 days" value={statsLoading ? null : overview?.activeLast7Days ?? '—'} sub={overview ? `${overview.activeLast30Days} in 30 days` : ''} />
               <Kpi icon={LogIn} accent="#0EA5E9" label="Total sign-ins" value={statsLoading ? null : overview?.totalLogins ?? '—'} sub="all time" />
               <Kpi icon={MousePointerClick} accent="#9333EA" label="App opens" value={statsLoading ? null : overview?.totalAppOpens ?? '—'} sub="all time" onClick={() => goTab('apps')} />
               <Kpi icon={TrendingUp} accent="#F59E0B" label="Most used app" value={statsLoading ? null : overview?.mostUsedApp ? appLabel(overview.mostUsedApp.appId) : '—'} sub={overview?.mostUsedApp ? `${overview.mostUsedApp.opens} opens` : 'no activity yet'} small onClick={overview?.mostUsedApp ? () => openApp(overview.mostUsedApp!.appId) : undefined} />
@@ -381,14 +380,14 @@ function AdminCenter() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {[...appStats].sort((a, b) => b.opens - a.opens).slice(0, 7).map((s, i, arr) => (
                       <button key={s.appId} type="button" className="ac-row" onClick={() => openApp(s.appId)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 8px', border: 'none', background: 'transparent', borderRadius: radii.md, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-                        <span style={{ width: 18, fontSize: 12, fontFamily: fonts.sansBold, color: colors.inkSoft, textAlign: 'center' }}>{i + 1}</span>
+                        <span style={{ width: 18, fontSize: 12, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.inkSoft, textAlign: 'center' }}>{i + 1}</span>
                         <AppIcon appId={s.appId} size={30} />
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                             <span style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appLabel(s.appId)}</span>
-                            <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, color: colors.ink, whiteSpace: 'nowrap' }}>{s.opens.toLocaleString()} <span style={{ color: colors.inkSoft, fontWeight: 500 }}>· {s.uniqueUsers} people</span></span>
+                            <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, whiteSpace: 'nowrap' }}>{s.opens.toLocaleString()} <span style={{ color: colors.inkSoft, fontWeight: 500 }}>· {s.uniqueUsers} people</span></span>
                           </span>
-                          <span style={{ display: 'block', height: 6, borderRadius: 3, backgroundColor: '#EEF0F4', marginTop: 6, overflow: 'hidden' }}>
+                          <span style={{ display: 'block', height: 6, borderRadius: 3, backgroundColor: colors.appBg, marginTop: 6, overflow: 'hidden' }}>
                             <span style={{ display: 'block', height: '100%', width: `${Math.max(3, (s.opens / (arr[0].opens || 1)) * 100)}%`, borderRadius: 3, background: `linear-gradient(90deg, ${appColor(s.appId)}88, ${appColor(s.appId)})` }} />
                           </span>
                         </span>
@@ -404,7 +403,7 @@ function AdminCenter() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <AttentionRow icon={Clock} accent="#F59E0B" label="Never signed in" count={neverCount} loading={usersLoading} onClick={() => showPeople({ status: 'never' })} />
                     <AttentionRow icon={UserX} accent="#E11D48" label="Sign-in blocked (inactive)" count={users.length - activeCount} loading={usersLoading} onClick={() => showPeople({ status: 'inactive' })} />
-                    <AttentionRow icon={AppWindow} accent="#64748B" label="No apps granted" count={noAppsCount} loading={usersLoading} onClick={() => showPeople({ app: 'none' })} />
+                    <AttentionRow icon={AppWindow} accent={colors.inkSoft} label="No apps granted" count={noAppsCount} loading={usersLoading} onClick={() => showPeople({ app: 'none' })} />
                     <AttentionRow icon={ShieldCheck} accent={colors.rust} label="Admins & Super Admins" count={adminCount} loading={usersLoading} onClick={() => goTab('people')} />
                   </div>
                 </div>
@@ -436,7 +435,7 @@ function AdminCenter() {
                 <Select value={levelFilter} onChange={(v) => setLevelFilter(v as AccessLevel | 'all')} options={[{ value: 'all', label: 'All levels' }, { value: 'Super Admin', label: 'Super Admin' }, { value: 'Admin', label: 'Admin' }, { value: 'Viewer', label: 'Viewer' }]} />
                 <Select value={appFilter} onChange={setAppFilter} options={[{ value: 'all', label: 'Any app' }, { value: 'none', label: 'No apps granted' }, ...SORTED_APPS.map((a) => ({ value: a.id, label: `Has ${a.name}` }))]} />
                 <button type="button" className="ac-btn" onClick={exportPeople} disabled={exporting || visiblePeople.length === 0} style={secondaryBtnStyle}>
-                  {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color="#16A34A" />} Export
+                  {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color={colors.green} />} Export
                 </button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -451,19 +450,19 @@ function AdminCenter() {
                   </button>
                 ))}
                 <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, color: colors.inkSoft }}>
+                <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>
                   Showing {visiblePeople.length} of {users.length}
                 </span>
                 {filtersActive && <LinkBtn onClick={resetFilters}>Clear filters</LinkBtn>}
               </div>
             </div>
 
-            {usersError && <p style={{ padding: '12px 20px', margin: 0, color: '#C0392B', fontSize: 12.5, fontFamily: fonts.sansMedium }}>{usersError}</p>}
+            {usersError && <p style={{ padding: '12px 20px', margin: 0, color: '#DC2626', fontSize: 12.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium }}>{usersError}</p>}
 
             {/* header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', backgroundColor: '#FAFAFD', borderBottom: `1px solid ${colors.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', backgroundColor: colors.cream, borderBottom: `1px solid ${colors.border}` }}>
               <button type="button" onClick={toggleAll} style={checkBtnStyle} aria-label="Select all shown">
-                {allVisibleSelected ? <CheckSquare size={17} color={colors.rust} /> : someVisibleSelected ? <MinusSquare size={17} color={colors.rust} /> : <Square size={17} color="#A0A6B1" />}
+                {allVisibleSelected ? <CheckSquare size={17} color={colors.rust} /> : someVisibleSelected ? <MinusSquare size={17} color={colors.rust} /> : <Square size={17} color={colors.inkSoft} />}
               </button>
               <SortHead label="Person" k="name" sort={sort} setSort={setSort} style={{ flex: 1, minWidth: 0 }} />
               {isWide && <SortHead label="Level" k="level" sort={sort} setSort={setSort} style={{ width: 120 }} />}
@@ -496,7 +495,7 @@ function AdminCenter() {
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: isWide ? '11px 20px' : '11px 14px', borderBottom: `1px solid ${colors.border}`, cursor: 'pointer', backgroundColor: isSel ? `${colors.rust}0a` : colors.white }}
                     >
                       <button type="button" onClick={(e) => { e.stopPropagation(); toggleOne(u.email); }} style={checkBtnStyle} aria-label={`Select ${u.email}`}>
-                        {isSel ? <CheckSquare size={17} color={colors.rust} /> : <Square size={17} color="#A0A6B1" />}
+                        {isSel ? <CheckSquare size={17} color={colors.rust} /> : <Square size={17} color={colors.inkSoft} />}
                       </button>
                       <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, opacity: u.isActive ? 1 : 0.6 }}>
                         <Initials email={u.email} name={u.usage?.name} size={36} />
@@ -517,12 +516,12 @@ function AdminCenter() {
                       {isWide && <span style={{ width: 120 }}><LevelBadge level={u.accessLevel} compact /></span>}
                       <span style={{ width: isWide ? 150 : 70 }}><AppStack apps={u.apps.map((g) => g.appId)} max={isWide ? 4 : 1} /></span>
                       {isWide && (
-                        <span style={{ width: 110, fontSize: 12, fontFamily: fonts.sansMedium, color: u.usage?.hasLoggedIn ? colors.ink : colors.inkSoft }} title={u.usage?.lastLogin ? new Date(u.usage.lastLogin).toLocaleString() : undefined}>
+                        <span style={{ width: 110, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: u.usage?.hasLoggedIn ? colors.ink : colors.inkSoft }} title={u.usage?.lastLogin ? new Date(u.usage.lastLogin).toLocaleString() : undefined}>
                           {u.usage ? (u.usage.hasLoggedIn ? timeAgo(u.usage.lastLogin) : 'Never') : '—'}
                         </span>
                       )}
                       {isWide && <span style={{ width: 80 }}><StatusDot active={u.isActive} /></span>}
-                      <ChevronRight size={16} color="#A0A6B1" />
+                      <ChevronRight size={16} color={colors.inkSoft} />
                     </div>
                   );
                 })}
@@ -553,9 +552,9 @@ function AdminCenter() {
             <div style={{ ...cardStyle, padding: 20 }}>
               <CardHead title="Access levels" sub="What each hub level can do" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <LevelExplainer icon={Crown} accent="#B45309" title="Super Admin" text="Everything Admin can do, plus promote people to Admin. Fixed — can’t be granted from here." />
+                <LevelExplainer icon={Crown} accent={colors.uat} title="Super Admin" text="Everything Admin can do, plus promote people to Admin. Fixed — can’t be granted from here." />
                 <LevelExplainer icon={ShieldCheck} accent={colors.rust} title="Admin" text="Opens Admin Center, adds and removes people, grants app access and sets people to Viewer." />
-                <LevelExplainer icon={Eye} accent="#64748B" title="Viewer" text="Regular user — signs in and opens only the apps granted to them." />
+                <LevelExplainer icon={Eye} accent={colors.inkSoft} title="Viewer" text="Regular user — signs in and opens only the apps granted to them." />
               </div>
             </div>
             <div style={{ ...cardStyle, padding: 20, gridColumn: isWide ? '1 / -1' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', background: `linear-gradient(135deg, ${colors.rust}08, ${colors.white})` }}>
@@ -688,7 +687,7 @@ function AppsPanel({
           onClick={async () => { setExporting(true); try { await exportAppStatsToExcel(appStats); } catch { notify('Could not export', 'error'); } finally { setExporting(false); } }}
           style={secondaryBtnStyle}
         >
-          {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color="#16A34A" />} Export
+          {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color={colors.green} />} Export
         </button>
       </div>
 
@@ -709,7 +708,7 @@ function AppsPanel({
                     <span style={{ display: 'block', fontSize: 13.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
                     <span style={{ display: 'block', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>{a.cat}</span>
                   </span>
-                  <ChevronRight size={16} color="#A0A6B1" />
+                  <ChevronRight size={16} color={colors.inkSoft} />
                 </span>
                 <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   <MiniStat label="Access" value={n} />
@@ -717,10 +716,10 @@ function AppsPanel({
                   <MiniStat label="Users" value={loading ? '…' : s?.uniqueUsers ?? 0} />
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: '#EEF0F4', overflow: 'hidden' }}>
+                  <span style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.appBg, overflow: 'hidden' }}>
                     <span style={{ display: 'block', height: '100%', width: `${(n / maxAccess) * 100}%`, background: accent, borderRadius: 3 }} />
                   </span>
-                  <span style={{ fontSize: 11, fontFamily: fonts.sansMedium, color: colors.inkSoft, whiteSpace: 'nowrap' }}>Used {timeAgo(s?.lastOpened)}</span>
+                  <span style={{ fontSize: 11, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft, whiteSpace: 'nowrap' }}>Used {timeAgo(s?.lastOpened)}</span>
                 </span>
               </button>
             );
@@ -787,7 +786,6 @@ function Kpi({ icon: Icon, accent, label, value, sub, onClick, small }: { icon: 
   const Tag = onClick ? 'button' : 'div';
   return (
     <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={onClick ? 'ac-card' : undefined} style={{ ...cardStyle, padding: 16, textAlign: 'left', cursor: onClick ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative', overflow: 'hidden' }}>
-      <span aria-hidden style={{ position: 'absolute', right: -18, top: -18, width: 70, height: 70, borderRadius: 35, backgroundColor: `${accent}10` }} />
       <span style={{ width: 34, height: 34, borderRadius: radii.md, backgroundColor: `${accent}17`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={17} color={accent} />
       </span>
@@ -812,13 +810,13 @@ function AttentionRow({ icon: Icon, accent, label, count, loading, onClick }: { 
       <span style={{ width: 30, height: 30, borderRadius: radii.md, backgroundColor: `${accent}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={15} color={accent} /></span>
       <span style={{ flex: 1, fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>{label}</span>
       {loading ? <Skeleton width={24} height={14} /> : <span style={{ fontSize: 14, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: count ? accent : colors.inkSoft }}>{count}</span>}
-      <ChevronRight size={15} color="#A0A6B1" />
+      <ChevronRight size={15} color={colors.inkSoft} />
     </button>
   );
 }
 
 function AppStack({ apps, max }: { apps: string[]; max: number }) {
-  if (apps.length === 0) return <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, color: '#A0A6B1' }}>None</span>;
+  if (apps.length === 0) return <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>None</span>;
   const shown = apps.slice(0, max);
   return (
     <span style={{ display: 'flex', alignItems: 'center' }} title={apps.map(appLabel).join(', ')}>
@@ -875,7 +873,7 @@ function LinkBtn({ onClick, children }: { onClick: () => void; children: React.R
 
 function MiniStat({ label, value }: { label: string; value: number | string }) {
   return (
-    <span style={{ display: 'block', padding: '8px 10px', borderRadius: radii.md, backgroundColor: '#F6F7FA' }}>
+    <span style={{ display: 'block', padding: '8px 10px', borderRadius: radii.md, backgroundColor: colors.cream2 }}>
       <span style={{ display: 'block', fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{typeof value === 'number' ? value.toLocaleString() : value}</span>
       <span style={{ display: 'block', fontSize: 10, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
     </span>
