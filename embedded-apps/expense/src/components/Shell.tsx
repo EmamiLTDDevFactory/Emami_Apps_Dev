@@ -143,14 +143,11 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       <Suspense fallback={null}>
         <ScreenHistoryTracker />
       </Suspense>
-      {/* Back (previous in-app screen) sits before the unchanged hub link; the 1fr column keeps the
-          hub link's full-width click area. */}
-      <div className="grid grid-cols-[auto_1fr] bg-brandDeep">
+      {/* Single Back control — useScreenBack's own fallback chain (previous in-app screen, else
+          browser back, else the hub) already covers returning to the hub, so a separate "Back to
+          Emami Apps" link next to it was redundant. */}
+      <div className="bg-brandDeep">
         <BackButton />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <a href="/" className="bg-brandDeep px-4 py-2 text-sm font-semibold text-white hover:bg-brand">
-          ← Back to Emami Apps
-        </a>
       </div>
 
       <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2.5">
@@ -180,7 +177,7 @@ function BackButton() {
     <button
       type="button"
       onClick={goBack}
-      className="border-r border-white/20 bg-brandDeep px-4 py-2 text-left text-sm font-semibold text-white hover:bg-brand"
+      className="w-full bg-brandDeep px-4 py-2 text-left text-sm font-semibold text-white hover:bg-brand"
     >
       ← Back
     </button>
