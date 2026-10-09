@@ -8,6 +8,7 @@ import { isIdentity } from '../cost/simulate';
 import type { Pivot } from '../cost/pivot';
 import type { TableTotals } from '../cost/table';
 import type { SapMessage } from '../sap/messages';
+import { sanitizeCell } from './spreadsheetSafe';
 
 /** Excel number formats. INR gets Indian grouping (lakh/crore) via conditional sections. */
 const INR_FMT = (dp: number) => {
@@ -44,7 +45,7 @@ function download(blob: Blob, name: string) {
 }
 
 const csvCell = (v: unknown) => {
-  const s = v === null || v === undefined ? '' : String(v);
+  const s = v === null || v === undefined ? '' : String(sanitizeCell(v));
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
@@ -75,7 +76,7 @@ export async function exportTable(spec: ExportSpec) {
   const addSheet = (name: string, cols: XCol[], count: number) => {
     const ws = wb.addWorksheet(name, { views: [{ state: 'frozen', ySplit: 1 }] });
     ws.columns = cols.map((c) => ({ header: c.header, width: c.width ?? Math.max(10, Math.min(40, c.header.length + 4)) }));
-    for (let i = 0; i < count; i++) ws.addRow(cols.map((c) => c.get(i)));
+    for (let i = 0; i < count; i++) ws.addRow(cols.map((c) => sanitizeCell(c.get(i))));
     cols.forEach((c, ci) => {
       if (c.dp !== undefined) ws.getColumn(ci + 1).numFmt = numFmt(c.dp, c.curr);
     });
@@ -90,13 +91,13 @@ export async function exportTable(spec: ExportSpec) {
   const ps = wb.addWorksheet('Parameters');
   ps.columns = [{ header: 'Parameter', width: 28 }, { header: 'Value', width: 90 }];
   ps.getRow(1).font = { bold: true };
-  for (const [k, v] of describeQuery(spec.query)) ps.addRow([k, v]);
+  for (const [k, v] of describeQuery(spec.query)) ps.addRow([k, sanitizeCell(v)]);
   ps.addRow(['Exported at', new Date().toLocaleString('en-IN')]);
-  for (const [k, v] of spec.extraParams ?? []) ps.addRow([k, v]);
+  for (const [k, v] of spec.extraParams ?? []) ps.addRow([k, sanitizeCell(v)]);
   if (spec.messages?.length) {
     ps.addRow([]);
     ps.addRow(['SAP messages']).font = { bold: true };
-    for (const m of spec.messages) ps.addRow([m.severity, `${m.code ? `${m.code}: ` : ''}${m.message}`]);
+    for (const m of spec.messages) ps.addRow([m.severity, sanitizeCell(`${m.code ? `${m.code}: ` : ''}${m.message}`)]);
   }
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `${file}.xlsx`);

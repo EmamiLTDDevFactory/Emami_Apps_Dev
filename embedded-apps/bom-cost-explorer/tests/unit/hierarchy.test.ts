@@ -42,3 +42,12 @@ describe('Brand -> Product -> CRS -> Material', () => {
     expect(r.params.$select?.split(',')).toEqual(expect.arrayContaining(['Matnr', 'Zbrandcode', 'Zsalesbrand', 'Zskugrcode', 'Zskugroup', 'Zskugrcodecrs', 'Zskugroupcrs']));
   });
 });
+
+describe('export formula guard (VAPT round 2)', () => {
+  it('neutralises formula-looking text but keeps numbers', async () => {
+    const { sanitizeCell } = await import('@/lib/client/spreadsheetSafe');
+    expect(sanitizeCell('=HYPERLINK("x")')).toBe(`'=HYPERLINK("x")`);
+    expect(sanitizeCell('-12.5')).toBe('-12.5');
+    expect(sanitizeCell(42)).toBe(42);
+  });
+});
