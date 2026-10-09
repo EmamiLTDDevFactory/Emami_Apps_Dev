@@ -60,7 +60,25 @@ export default function FinancePage() {
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
-  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(null);
+  // Which expense-category groups are expanded in the history list — collapsed by default, a group
+  // reveals its claims only once its own card is clicked. Independent per group (not an exclusive
+  // accordion), keyed by the group's Setname.
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const toggleGroupExpanded = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  // Groups with more than this many claims show a "Show more" button instead of rendering
+  // everything at once on expand.
+  const GROUP_PAGE_SIZE = 12;
+  const [groupsShowingAll, setGroupsShowingAll] = useState<Set<string>>(new Set());
+  const showAllInGroup = (key: string) => setGroupsShowingAll((prev) => new Set(prev).add(key));
+  // Always defaults to the current fiscal year — Finance now sends Fiscalyear in the HistorySet
+  // filter on every fetch, same as Approvals, instead of only while actively searching.
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(() => String(new Date().getFullYear()));
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -142,12 +160,14 @@ export default function FinancePage() {
   );
   const availableHistoryYearsKey = availableHistoryYears.join('|');
 
+  // Keeps whatever year is already selected (defaults to the current fiscal year, set above) when
+  // not searching — no longer resets to null, since the fiscal-year filter should always be sent.
   useEffect(() => {
-    if (!isSearching) { setSelectedHistoryYear(null); return; }
+    if (!isSearching) return;
     setSelectedHistoryYear((prev) => {
       if (prev === 'ALL') return prev;
       if (prev && availableHistoryYears.includes(prev)) return prev;
-      return availableHistoryYears[0] || 'ALL';
+      return availableHistoryYears[0] || prev || 'ALL';
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSearching, availableHistoryYearsKey]);
@@ -386,36 +406,63 @@ export default function FinancePage() {
         filteredHistoryItems.length === 0 ? (
           <EmptyState icon={FileText} title="No Records" hint={`No ${selectedStat?.toLowerCase()} claims found in your history.`} />
         ) : (
-          <div className="flex flex-col gap-4">
-            {groupedHistoryItems.map((group) => (
-              <div key={group.key || 'other'}>
-                <h3 className="mb-2 text-xs font-extrabold text-brand">{group.label} ({group.items.length})</h3>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                  {group.items.map((entry: any, idx: number) => {
-                    const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
-                    const matchedClaim = claimSummaryCache[entry.ClaimId];
-                    return (
-                      <button
-                        key={`${entry.ClaimId}-${idx}`}
-                        type="button"
-                        onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                        className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
-                        </div>
-                        {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
-                        <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
-                        <div className="mt-1 flex items-center justify-between">
-                          <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
-                          <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
-                        </div>
-                      </button>
-                    );
-                  })}
+          <div className="flex flex-col gap-3">
+            {groupedHistoryItems.map((group) => {
+              const groupKey = group.key || 'other';
+              const isExpanded = expandedGroups.has(groupKey);
+              const showingAll = groupsShowingAll.has(groupKey);
+              const visibleItems = showingAll ? group.items : group.items.slice(0, GROUP_PAGE_SIZE);
+              const remaining = group.items.length - visibleItems.length;
+              return (
+                <div key={groupKey}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupExpanded(groupKey)}
+                    className="card flex w-full items-center justify-between !p-3 text-left"
+                  >
+                    <span className="text-sm font-extrabold text-brand">{group.label} ({group.items.length})</span>
+                    {isExpanded ? <ChevronUp size={16} className="text-brand" /> : <ChevronDown size={16} className="text-inkFaint" />}
+                  </button>
+                  {isExpanded && (
+                    <>
+                      <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                        {visibleItems.map((entry: any, idx: number) => {
+                          const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
+                          const matchedClaim = claimSummaryCache[entry.ClaimId];
+                          return (
+                            <button
+                              key={`${entry.ClaimId}-${idx}`}
+                              type="button"
+                              onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
+                              className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                              </div>
+                              {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
+                              <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
+                              <div className="mt-1 flex items-center justify-between">
+                                <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
+                                <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {remaining > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => showAllInGroup(groupKey)}
+                          className="mt-2.5 w-full rounded-xl2 border border-line bg-white py-2 text-xs font-bold text-brand"
+                        >
+                          Show {remaining} more
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )
       ) : financeClaims.length === 0 ? (
