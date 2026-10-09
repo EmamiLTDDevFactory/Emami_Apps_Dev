@@ -96,10 +96,13 @@ export default function FinancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statFilteredHistoryClaimIds]);
 
+  // Re-fetches from SAP (server-side Fiscalyear filter) whenever the selected year changes —
+  // same debug-visible wiring as Approvals, so the actual SAP request can be inspected per year.
   useEffect(() => {
-    fetchHistorySet();
+    const year = selectedHistoryYear && selectedHistoryYear !== 'ALL' ? Number(selectedHistoryYear) : undefined;
+    fetchHistorySet(year);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedHistoryYear]);
 
   useEffect(() => {
     setSelectedClaimIds((prev) => prev.filter((id) => bulkReleaseClaims.some((c) => c.id === id)));
@@ -131,13 +134,16 @@ export default function FinancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSearching, availableHistoryYearsKey]);
 
-  const filteredHistoryItems = !isSearching || !selectedHistoryYear || selectedHistoryYear === 'ALL'
-    ? searchMatchedHistoryItems
-    : searchMatchedHistoryItems.filter((e: any) => getEntryYear(e.ActionDate) === selectedHistoryYear);
+  // historyEntries is already scoped to selectedHistoryYear server-side (see fetchHistorySet) — no
+  // further client-side year filtering needed here.
+  const filteredHistoryItems = searchMatchedHistoryItems;
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
-  const refreshHistoryStats = async () => { await fetchHistorySet(); };
+  const refreshHistoryStats = async () => {
+    const year = selectedHistoryYear && selectedHistoryYear !== 'ALL' ? Number(selectedHistoryYear) : undefined;
+    await fetchHistorySet(year);
+  };
 
   const showScreenMessage = (message: string, type: 'success' | 'error' = 'success', title?: string) => {
     setScreenMessage({ title: title || (type === 'error' ? 'Action Failed' : 'Success'), message, type });

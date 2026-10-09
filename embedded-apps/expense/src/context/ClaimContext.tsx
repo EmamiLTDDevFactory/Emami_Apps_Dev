@@ -35,7 +35,7 @@ interface ClaimContextType {
   getClaimById: (id: string) => ExpenseClaim | undefined;
   filterClaims: (roleFilter?: 'employee' | 'manager' | 'finance', search?: string, expenseType?: string, status?: string) => ExpenseClaim[];
   fetchClaims: () => Promise<void>;
-  fetchHistorySet: () => Promise<void>;
+  fetchHistorySet: (fiscalYear?: number) => Promise<void>;
   // Claim detail lookups for history-trail cards (Approvals/Finance's Approved/Rejected/Total
   // view) — HistorySet itself never carries expense type/amount, and `claims` only holds claims
   // currently assigned to this user (ClaimHeaderSet's LoginId is cleared once a claim moves past
@@ -315,13 +315,19 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // NOT YET VERIFIED AGAINST REAL SAP IN THIS REWRITE — slice 5 (Approvals).
-  const fetchHistorySet = useCallback(async () => {
+  const fetchHistorySet = useCallback(async (fiscalYear?: number) => {
     try {
       if (!currentUser?.employeeId) return;
 
       // HistorySet is open for direct anonymous GET (confirmed with Basis).
       const loginIdForSAP = currentUser.employeeId.replace(/\D/g, '').padStart(8, '0');
-      const filter = encodeURIComponent(`ActionBy eq '${loginIdForSAP}'`);
+      // Fiscal-year scoping now happens server-side (SAP's own Fiscalyear field), replacing the
+      // old client-side ActionDate-based year filter — Approvals passes the selected year chip's
+      // value through here on every change instead of fetching everything and filtering locally.
+      const filterClause = fiscalYear
+        ? `ActionBy eq '${loginIdForSAP}' and Fiscalyear eq '${fiscalYear}'`
+        : `ActionBy eq '${loginIdForSAP}'`;
+      const filter = encodeURIComponent(filterClause);
       const response = await sapClient.get(`${SAP_BASE_URL}/HistorySet?$filter=${filter}&$format=json`);
       if (response.status < 200 || response.status >= 300) return;
 

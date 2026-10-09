@@ -20,15 +20,6 @@ const formatHistoryDate = (value?: string) => {
   return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
-const getEntryYear = (value?: string) => {
-  if (!value) return null;
-  let d = new Date(value);
-  const m = value.match(/(\d+)/);
-  if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
-  if (Number.isNaN(d.getTime())) return null;
-  return d.getFullYear();
-};
-
 export default function ApprovalsPage() {
   const router = useRouter();
   const { filterClaims, approveClaim, rejectClaim, requestClarification, releasePayment, rejectClaimFinance, fetchClaims, fetchHistorySet, historyEntries, claimSummaryCache, fetchClaimSummaries } = useClaim();
@@ -69,15 +60,18 @@ export default function ApprovalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bulkReleaseClaims.map((c) => c.id).join('|')]);
 
+  // Re-fetches from SAP (server-side Fiscalyear filter) every time the selected year chip
+  // changes, instead of fetching once and filtering ActionDate client-side — covers the initial
+  // mount too since selectedFiscalYear is already set before this first runs.
   useEffect(() => {
-    fetchHistorySet();
+    fetchHistorySet(selectedFiscalYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedFiscalYear]);
 
   const toggleClaimSelection = (id: string) => setSelectedClaimIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   const toggleSelectAllBulkClaims = () => setSelectedClaimIds(allBulkSelected ? [] : bulkReleaseClaims.map((c) => c.id));
 
-  const refreshHistoryStats = async () => { await fetchHistorySet(); };
+  const refreshHistoryStats = async () => { await fetchHistorySet(selectedFiscalYear); };
 
   const confirmBulkRelease = async () => {
     if (selectedClaimIds.length === 0) { setMessageModal({ title: 'No Claims Selected', message: 'Please select at least one claim to release.', type: 'error' }); return; }
@@ -144,7 +138,9 @@ export default function ApprovalsPage() {
     [selectedFiscalYear]
   );
 
-  const filteredHistoryItems = searchMatchedHistoryItems.filter((e: any) => getEntryYear(e.ActionDate) === selectedFiscalYear);
+  // historyEntries is already scoped to selectedFiscalYear server-side (see fetchHistorySet) — no
+  // further client-side year filtering needed here.
+  const filteredHistoryItems = searchMatchedHistoryItems;
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
