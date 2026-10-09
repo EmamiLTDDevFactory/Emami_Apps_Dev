@@ -15,6 +15,7 @@ import { CloseGuardPage, IntegrationsPage } from '../components/Pages3';
 import { EvidencePage, ModelPage } from '../components/Pages4';
 import { SecurityPage } from '../components/Pages5';
 import { useIsWideScreen } from '../lib/useIsWideScreen';
+import { useScreenHistory } from '../lib/useScreenHistory';
 import { SAP_CONFIGURED, fetchCompanyCodeOptions, fetchExplanation, fetchSummary, fetchWorklist } from '../lib/sapClient';
 import type { CompanyCodeOption, Explanation, FilterDraft, Summary, WorklistEntry } from '../types';
 
@@ -37,6 +38,16 @@ function DashboardContent() {
   const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [exportType, setExportType] = useState('CSV');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // In-app "Back": the screen is the page, the entry open in the drawer, and (on the Entry
+  // Explorer page) the entry being explored. Entries are small flat records, kept by value.
+  const { back } = useScreenHistory(
+    { page, drawer: drawerEntry, explorer: page === 'explorer' ? explorerEntry : null },
+    (s) => {
+      setPage(s.page);
+      setDrawerEntry(s.drawer);
+      if (s.page === 'explorer') setExplorerEntry(s.explorer);
+    },
+  );
 
   const toast = (m: string) => {
     setToastMsg(m);
@@ -101,10 +112,15 @@ function DashboardContent() {
       />
       {!isWideScreen && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div className="main-column">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a href="/" className="back-to-hub">
-          <ArrowLeft size={14} /> Back to Emami Apps
-        </a>
+        <div className="back-bar">
+          <button type="button" className="back-to-hub back-in-app" onClick={back}>
+            <ArrowLeft size={14} /> Back
+          </button>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/" className="back-to-hub">
+            <ArrowLeft size={14} /> Back to Emami Apps
+          </a>
+        </div>
         <TopBar
           freshMinutes={freshMinutes}
           hasError={!!error}

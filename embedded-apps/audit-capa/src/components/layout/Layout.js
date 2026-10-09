@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
-import { Box, CircularProgress, Typography, Button } from "@mui/material";
+import { Box, CircularProgress, Typography, Button, ButtonBase } from "@mui/material";
+import ArrowBackIosNewIcon from "@mui/icons-material/ArrowBackIosNew";
 import { useEffect, useState } from "react";
 
 import Sidebar from "./Sidebar";
@@ -11,6 +12,26 @@ import { EMAMI_APPS_URL } from "./emamiAppsUrl";
 // see the hub's src/context/AuthContext.tsx. Audit & CAPA runs same-origin under /apps/audit-capa
 // on the hub's own domain, so it can read that same key directly.
 const HUB_SESSION_TOKEN_KEY = "emami_apps_session_token";
+
+// "Back": the previous page in this tab's history, or the Emami Apps hub when there is none.
+function goBack() {
+  if (window.history.length > 1) window.history.back();
+  else window.location.href = EMAMI_APPS_URL;
+}
+
+// Shared look for the two controls in the compact bar above the Navbar.
+const backBarButtonSx = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0.75,
+  px: 2,
+  py: 0.75,
+  color: "#FFFFFF",
+  fontSize: 12.5,
+  fontWeight: 600,
+  fontFamily: "inherit",
+  "&:hover": { bgcolor: "rgba(255,255,255,0.12)" },
+};
 
 /**
  * Audit & CAPA has no login screen of its own — every route in this app is gated here instead.
@@ -173,6 +194,24 @@ export default function Layout() {
       <Sidebar />
 
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <Box
+          component="nav"
+          aria-label="Back navigation"
+          sx={{ flexShrink: 0, display: "flex", flexWrap: "wrap", bgcolor: "#3730A3" }}
+        >
+          <ButtonBase type="button" onClick={goBack} sx={backBarButtonSx}>
+            <ArrowBackIosNewIcon sx={{ fontSize: 12 }} />
+            Back
+          </ButtonBase>
+          <ButtonBase
+            type="button"
+            onClick={() => { window.location.href = EMAMI_APPS_URL; }}
+            sx={backBarButtonSx}
+          >
+            <ArrowBackIosNewIcon sx={{ fontSize: 12 }} />
+            Back to Emami Apps
+          </ButtonBase>
+        </Box>
         <Navbar />
 
         <Box

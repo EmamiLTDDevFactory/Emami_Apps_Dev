@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { PoFollowupAuthProvider, usePoFollowupAuth } from '../../../src/context/PoFollowupAuthContext';
 import { UnsavedChangesProvider, useUnsavedChanges } from '../../../src/context/UnsavedChangesContext';
+import { goScreenBack, useScreenHistoryTracker } from '../../../src/lib/screenHistory';
 
 function formatDateCompact(d: Date): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
@@ -67,6 +68,7 @@ function LayoutContent() {
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
   const { confirmLeave } = useUnsavedChanges();
+  useScreenHistoryTracker();
 
   useEffect(() => {
     setHubEmail(getHubEmail());
@@ -92,20 +94,38 @@ function LayoutContent() {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <StatusBar style="light" />
-        <TouchableOpacity
-          style={styles.backToHubBar}
-          onPress={() => {
-            if (!confirmLeave()) return;
-            if (typeof window !== 'undefined') {
-              window.location.href = '/';
-            }
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Back to Emami Apps"
-        >
-          <Ionicons name="arrow-back" size={14} color={colors.white} />
-          <Text style={styles.backToHubText}>Back to Emami Apps</Text>
-        </TouchableOpacity>
+        {/* Back (previous in-app screen) sits before the unchanged hub link in the same bar, behind
+            the same unsaved-changes guard. */}
+        <View style={styles.backRow}>
+          <Pressable
+            style={({ pressed }: { pressed: boolean }) => [styles.backToHubBar, styles.backPrevBtn, pressed && styles.pressed]}
+            onPress={() => {
+              if (!confirmLeave()) return;
+              goScreenBack();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={14} color={colors.white} />
+            <Text style={styles.backToHubText}>Back</Text>
+          </Pressable>
+          <View style={styles.flex1}>
+            <TouchableOpacity
+              style={styles.backToHubBar}
+              onPress={() => {
+                if (!confirmLeave()) return;
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/';
+                }
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Emami Apps"
+            >
+              <Ionicons name="arrow-back" size={14} color={colors.white} />
+              <Text style={styles.backToHubText}>Back to Emami Apps</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <View style={styles.titleBar}>
           <TouchableOpacity
@@ -183,6 +203,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.plum,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  backRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.plum,
+  },
+  backPrevBtn: {
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.2)',
+  },
+  pressed: {
+    opacity: 0.6,
   },
   backToHubText: {
     color: colors.white,

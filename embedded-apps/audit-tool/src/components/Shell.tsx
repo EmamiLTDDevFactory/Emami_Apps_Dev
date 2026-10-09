@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronRight, Home, Menu, X, Database, ClipboardList, BarChart3, ShieldAlert } from 'lucide-react';
 import { hasHubSession, getHubEmail, nameFromEmail } from '../lib/hubEmailLogin';
+import { goBack } from '../lib/goBack';
 import { AppProvider, useApp } from '../context/AppContext';
 import { UiProvider, useUi } from '../context/UiContext';
 import { NAV_GROUPS, ROUTES, gateForPath, isGateAllowed, navTextForPath, type NavGroup, type NavLeaf } from '../lib/routes';
@@ -155,6 +156,10 @@ function SideNav({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
               {nameFromEmail(email)}
             </div>
           )}
+          <button type="button" onClick={goBack} className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
+            <ArrowLeft size={13} />
+            Back
+          </button>
           <a href="/" className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
             <ArrowLeft size={13} />
             Back to Emami Apps

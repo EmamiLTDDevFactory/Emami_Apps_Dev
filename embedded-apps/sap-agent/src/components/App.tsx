@@ -4,6 +4,7 @@ import {
   Activity, AlertTriangle, ArrowLeft, Bot, Calendar, History, KeyRound, LogIn, LogOut, Menu, Play, Rocket, ScrollText, ShieldCheck, Stethoscope, User, X, type LucideIcon,
 } from 'lucide-react';
 import { ACTIVE, api, ApiError, BASE_PATH, signIn, type AppConfig, type AuditEntry, type HandlerStatus, type Capability, type ManifestInfo, type RunSummary } from '@/lib/api';
+import { useScreenHistory } from '@/lib/useScreenHistory';
 import RunView, { StatusPill } from './RunView';
 import { Button, Card, cx, Empty, inputBase, inputCls, Pill, Toggle } from './ui';
 
@@ -34,6 +35,11 @@ export default function App() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
+  // In-app "Back": the screen is the section plus the open run, if any.
+  const { back } = useScreenHistory({ view, runId }, (s) => {
+    setView(s.view);
+    setRunId(s.runId);
+  });
 
   const loadCfg = useCallback(() => api.config().then((c) => setCfg(c)).catch(() => undefined), []);
   const [handler, setHandler] = useState<HandlerStatus | null>(null);
@@ -113,7 +119,10 @@ export default function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
-        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        <div className="flex bg-plum">
+          <button type="button" onClick={back} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back</button>
+          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
           <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
           <h1 className="text-[15px] font-extrabold">SAP Agent</h1>

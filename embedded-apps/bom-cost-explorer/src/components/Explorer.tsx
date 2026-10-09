@@ -22,6 +22,7 @@ import type { SapMessage } from '@/lib/sap/messages';
 import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer, RefreshCw } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
 import Shell from './Shell';
+import { useScreenHistory } from '@/lib/useScreenHistory';
 import BomTree, { type NodeAgg } from './BomTree';
 import RowDrawer from './RowDrawer';
 import ComparisonView from './ComparisonView';
@@ -72,6 +73,17 @@ export default function Explorer() {
   const [copied, setCopied] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [resultAt, setResultAt] = useState<number>(0);
+  const [booted, setBooted] = useState(false);
+  // In-app "Back": the screen is the side-pane mode, the result tab and the open row drawer. A
+  // drawer is remembered with the result it belongs to, so it is only reopened on that result.
+  const { back } = useScreenHistory(
+    booted ? { mode: query.mode, tab, drawer: drawer === null ? null : [drawer, resultAt] } : null,
+    (s) => {
+      setQuery((q) => (q.mode === s.mode ? q : { ...q, mode: s.mode }));
+      setTab(s.tab);
+      setDrawer(s.drawer && s.drawer[1] === resultAt ? s.drawer[0] : null);
+    },
+  );
 
   const scen = useScenarios(user);
   const [autoRun, setAutoRun] = useState<string[]>([]);
@@ -95,6 +107,7 @@ export default function Explorer() {
     const fromUrl = decodeQuery(new URLSearchParams(window.location.search).get('q'));
     const q = fromUrl ?? ls.get<CostQuery | null>(lastQueryKey(user), null);
     if (q) setQuery({ ...defaultQuery(q.mode), ...q });
+    setBooted(true);
   }, [user]);
 
   const run = useCallback(
@@ -301,7 +314,7 @@ export default function Explorer() {
   const hasResult = !!result || (isPaged && ranQuery?.mode === mode);
 
   return (
-    <Shell env={{ system: sap.system, appEnv: sap.appEnv }} mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions}>
+    <Shell env={{ system: sap.system, appEnv: sap.appEnv }} mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions} onBack={back}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4">
         <FilterPanel
           query={query}

@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, Boxes, Calendar, Layers, Menu, Scale, Tags, Truck, User, X, type LucideIcon } from 'lucide-react';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
+import { leaveApp } from '@/lib/useScreenHistory';
 import { cx } from './ui';
 
 /** Same shell as every sibling embedded app (Rate Auction, PO Approval...): white side pane with the
@@ -102,7 +103,7 @@ export function EnvBadge({ system, appEnv }: { system: string; appEnv: string })
   );
 }
 
-export default function Shell({ mode, onMode, email, actions, children, env }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string } }) {
+export default function Shell({ mode, onMode, email, actions, children, env, onBack }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string }; onBack?: () => void }) {
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -112,9 +113,15 @@ export default function Shell({ mode, onMode, email, actions, children, env }: {
     <div className="flex h-screen overflow-clip bg-plum">
       <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} />
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
-        <a href={HUB_HOME} className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep no-print">
-          <ArrowLeft size={14} /> Back to Emami Apps
-        </a>
+        <div className="flex bg-plum no-print">
+          {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
+          <button type="button" onClick={onBack ?? leaveApp} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep no-print">
+            <ArrowLeft size={14} /> Back
+          </button>
+          <a href={HUB_HOME} className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep no-print">
+            <ArrowLeft size={14} /> Back to Emami Apps
+          </a>
+        </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5 no-print">
           {!wide && (
             <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="p-1 text-ink"><Menu size={22} /></button>

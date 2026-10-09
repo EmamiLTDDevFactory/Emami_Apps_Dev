@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FilePlus2, LayoutDashboard, ListChecks, Wallet, FileCheck2, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClaim } from '../context/ClaimContext';
 import { hasHubSession } from '../lib/hubEmailLogin';
+import { ScreenHistoryTracker, useScreenBack } from '../lib/screenHistory';
 import { Spinner, cx } from './ui';
 
 // next/link prepends next.config.mjs's basePath automatically; plain <img>/<a> don't.
@@ -139,10 +140,18 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen flex-col bg-appBg">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <a href="/" className="bg-brandDeep px-4 py-2 text-sm font-semibold text-white hover:bg-brand">
-        ← Back to Emami Apps
-      </a>
+      <Suspense fallback={null}>
+        <ScreenHistoryTracker />
+      </Suspense>
+      {/* Back (previous in-app screen) sits before the unchanged hub link; the 1fr column keeps the
+          hub link's full-width click area. */}
+      <div className="grid grid-cols-[auto_1fr] bg-brandDeep">
+        <BackButton />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <a href="/" className="bg-brandDeep px-4 py-2 text-sm font-semibold text-white hover:bg-brand">
+          ← Back to Emami Apps
+        </a>
+      </div>
 
       <div className="flex items-center justify-between border-b border-border bg-white px-4 py-2.5">
         <div className="flex items-center gap-2.5">
@@ -162,6 +171,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 
       <TabBar />
     </div>
+  );
+}
+
+function BackButton() {
+  const goBack = useScreenBack();
+  return (
+    <button
+      type="button"
+      onClick={goBack}
+      className="border-r border-white/20 bg-brandDeep px-4 py-2 text-left text-sm font-semibold text-white hover:bg-brand"
+    >
+      ← Back
+    </button>
   );
 }
 

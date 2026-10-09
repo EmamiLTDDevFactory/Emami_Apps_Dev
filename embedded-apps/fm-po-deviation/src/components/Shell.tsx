@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ClipboardCheck, LayoutDashboard, Menu, X, ArrowLeft, User, Calendar } from 'lucide-react';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
+import { goBack } from '../lib/goBack';
 import { PendingCountProvider, usePendingCount } from '../context/PendingCountContext';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
@@ -130,13 +131,23 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isWideScreen={isWideScreen} />
 
         <div className="flex min-w-0 flex-1 flex-col bg-appBg">
-          <a
-            href="/"
-            className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plumDeep"
-          >
-            <ArrowLeft size={14} />
-            Back to Emami Apps
-          </a>
+          <div className="flex flex-wrap bg-plum">
+            <button
+              type="button"
+              onClick={goBack}
+              className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plumDeep"
+            >
+              <ArrowLeft size={14} />
+              Back
+            </button>
+            <a
+              href="/"
+              className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plumDeep"
+            >
+              <ArrowLeft size={14} />
+              Back to Emami Apps
+            </a>
+          </div>
 
           <header className="flex items-center gap-2.5 border-b border-border bg-white px-4 py-2.5">
             {!isWideScreen && (

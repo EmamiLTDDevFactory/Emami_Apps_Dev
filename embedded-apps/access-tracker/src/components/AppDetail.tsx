@@ -60,7 +60,7 @@ export default function AppDetail({ appId, data, onClose, onPerson }: { appId: s
   const exportCsv = () =>
     downloadCsv(
       `${appId}-access-${stamp()}.csv`,
-      ['Name', 'Email', 'Role', 'Depot', 'Hub level', 'Status', 'Opens', 'First opened', 'Last opened', 'Has access now'],
+      ['Name', 'Email', 'Role', 'Depot', 'Access level', 'Status', 'Opens', 'First opened', 'Last opened', 'Has access now'],
       [
         ...rows.map((r) => [r.user.usage.name || nameFromEmail(r.user.email), r.user.email, r.role, r.depot ?? '', r.user.accessLevel, r.user.isActive ? 'Active' : 'Inactive', r.stat?.opens ?? 0, fmtDate(r.stat?.firstOpened ?? null), fmtDate(r.stat?.lastOpened ?? null), 'Yes']),
         ...former.map((s) => [nameFromEmail(s.email), s.email, '', '', '', '', s.opens, fmtDate(s.firstOpened), fmtDate(s.lastOpened), 'No']),
@@ -98,7 +98,7 @@ export default function AppDetail({ appId, data, onClose, onPerson }: { appId: s
 
         <Card
           title="People with access"
-          sub="Role in this app, hub level, status and how often they open it"
+          sub="Role in this app, access level, status and how often they open it"
           actions={<Button size="sm" onClick={exportCsv}><Download size={13} /> Export</Button>}
           bodyClass="p-0"
         >

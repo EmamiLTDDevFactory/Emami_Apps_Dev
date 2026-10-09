@@ -15,6 +15,7 @@ import { AgentMonitoring } from '../components/AgentMonitoring';
 import { IntegrationHealth } from '../components/IntegrationHealth';
 import { KpiDrawer } from '../components/KpiDrawer';
 import { useIsWideScreen } from '../lib/useIsWideScreen';
+import { useScreenHistory } from '../lib/useScreenHistory';
 import { loadDashboard } from '../lib/sapClient';
 import type { Customer, DashboardPayload, Kpi, WorklistRow } from '../types';
 
@@ -56,6 +57,11 @@ function DashboardContent() {
   const [toDate, setToDate] = useState('2026-08-28');
   const [stamp, setStamp] = useState('Last refresh: just now');
   const [activeKpi, setActiveKpi] = useState<Kpi | null>(null);
+  // In-app "Back": the screen is the section plus the open KPI drill-down (by its label).
+  const { back } = useScreenHistory({ page, kpi: activeKpi?.label ?? null }, (s) => {
+    setPage(s.page);
+    setActiveKpi((s.kpi && data?.kpis.find((k) => k.label === s.kpi)) || null);
+  });
 
   const load = useCallback((org: 'ALL' | 'EM01' | 'EM02') => {
     setBusy(true);
@@ -163,10 +169,15 @@ function DashboardContent() {
       />
       {!isWideScreen && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div className="main-column">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a href="/" className="back-to-hub">
-          <ArrowLeft size={14} /> Back to Emami Apps
-        </a>
+        <div className="back-bar">
+          <button type="button" className="back-to-hub back-in-app" onClick={back}>
+            <ArrowLeft size={14} /> Back
+          </button>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/" className="back-to-hub">
+            <ArrowLeft size={14} /> Back to Emami Apps
+          </a>
+        </div>
         <Topbar onRefresh={() => load(orgFilter)} onExport={doExport} onMenu={() => setNavOpen(true)} busy={busy} isWideScreen={isWideScreen} stamp={stamp} />
         <div className="content">
           <div className="filterbar">

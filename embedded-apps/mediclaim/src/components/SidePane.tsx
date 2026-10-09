@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { HeartPulse, BarChart3, ArrowLeft, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { nameFromEmail } from '../lib/hubEmailLogin';
+import { goBack } from '../lib/goBack';
 
 // next/link's `href` auto-prepends next.config.js's basePath — nav hrefs below are written
 // WITHOUT it. Plain <img> tags get no such help, so this is the one place that constant is
@@ -89,6 +90,10 @@ export default function SidePane({
               {nameFromEmail(email)}
             </div>
           )}
+          <button type="button" onClick={goBack} className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
+            <ArrowLeft size={13} />
+            Back
+          </button>
           <a href="/" className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
             <ArrowLeft size={13} />
             Back to Emami Apps

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -8,6 +8,7 @@ import {
   CheckCheck, History, AlertCircle, type LucideIcon,
 } from 'lucide-react';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../lib/hubEmailLogin';
+import { ScreenHistoryTracker, useScreenBack } from '../lib/screenHistory';
 import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../context/PaymentTrackingAuthContext';
 import { MonthYearProvider, useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS, fiscalYearLabel } from '../context/MonthYearContext';
 import { Select, Spinner, cx } from './ui';
@@ -151,9 +152,17 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-plum">
       <NavPane isOpen={menuOpen} onClose={() => setMenuOpen(false)} isWide={isWide} />
       <div className="flex min-w-0 flex-1 flex-col bg-appBg">
-        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2 text-xs font-semibold text-white hover:bg-plumDeep">
-          <ArrowLeft size={13} /> Back to Emami Apps
-        </a>
+        <Suspense fallback={null}>
+          <ScreenHistoryTracker />
+        </Suspense>
+        {/* Back (previous in-app screen) sits before the unchanged hub link; the 1fr column keeps the
+            hub link's full-width click area. */}
+        <div className="grid grid-cols-[auto_1fr] bg-plum">
+          <BackButton />
+          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2 text-xs font-semibold text-white hover:bg-plumDeep">
+            <ArrowLeft size={13} /> Back to Emami Apps
+          </a>
+        </div>
         <header className="flex items-center gap-2 border-b border-border bg-white px-4 py-2">
           {!isWide && (
             <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="-ml-1 p-1 text-ink"><Menu size={20} /></button>
@@ -176,6 +185,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+  );
+}
+
+function BackButton() {
+  const goBack = useScreenBack();
+  return (
+    <button
+      type="button"
+      onClick={goBack}
+      className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2 text-xs font-semibold text-white hover:bg-plumDeep"
+    >
+      <ArrowLeft size={13} /> Back
+    </button>
   );
 }
 

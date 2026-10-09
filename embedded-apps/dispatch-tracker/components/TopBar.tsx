@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { DateRangeRow } from '@/components/FilterBar';
 import { isoDate, toDate, todayDate } from '@/lib/format';
+import { goBack, goToEmamiApps } from '@/lib/goBack';
 
 /**
  * Ported from top_bar() in main_panel.py. Date/time/email are dropped on
@@ -29,6 +30,16 @@ export function TopBar() {
 
   return (
     <View>
+      {Platform.OS === 'web' && (
+        <View style={styles.backRow}>
+          <Pressable style={styles.backBtn} onPress={goBack} accessibilityRole="button" accessibilityLabel="Back">
+            <Text style={styles.backText}>{'\u2039'} Back</Text>
+          </Pressable>
+          <Pressable style={styles.backBtn} onPress={goToEmamiApps} accessibilityRole="button" accessibilityLabel="Back to Emami Apps">
+            <Text style={styles.backText}>{'\u2039'} Back to Emami Apps</Text>
+          </Pressable>
+        </View>
+      )}
       <View style={styles.bar}>
         <View style={styles.leftCluster}>
           <View style={styles.logoBlock}>
@@ -72,6 +83,19 @@ export function TopBar() {
 }
 
 const styles = StyleSheet.create({
+  backRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.g200,
+  },
+  backBtn: { borderWidth: 1, borderColor: colors.g200, borderRadius: 6, height: 26, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  backText: { color: colors.navy, fontSize: 10, fontWeight: '700' },
   bar: {
     height: 52,
     paddingHorizontal: 14,

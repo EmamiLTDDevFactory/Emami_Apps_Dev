@@ -57,6 +57,9 @@ button, select, input { font: inherit; }
   padding: 9px 16px;
 }
 .back-to-hub:hover { background: var(--plum-deep); }
+/* "Back" (previous page) sits beside the hub link in one plum bar. */
+.back-bar { flex-shrink: 0; display: flex; flex-wrap: wrap; background: var(--plum); }
+.back-prev { border: 0; cursor: pointer; }
 
 /* ---------- Sidebar ---------- */
 .sidebar {

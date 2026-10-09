@@ -553,7 +553,7 @@ function AdminCenter() {
               <ChevronRight size={18} color={colors.inkSoft} style={{ marginTop: 12 }} />
             </button>
             <div style={{ ...cardStyle, padding: 20 }}>
-              <CardHead title="Access levels" sub="What each hub level can do" />
+              <CardHead title="Access levels" sub="What each access level can do" />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <LevelExplainer icon={Crown} accent={colors.uat} title="Super Admin" text="Everything Admin can do, plus promote people to Admin. Fixed — can’t be granted from here." />
                 <LevelExplainer icon={ShieldCheck} accent={colors.rust} title="Admin" text="Opens Admin Center, adds and removes people, grants app access and sets people to Viewer." />

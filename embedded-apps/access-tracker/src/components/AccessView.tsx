@@ -53,7 +53,7 @@ export default function AccessView({ data, onPerson, intent = {} }: { data: Data
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">Who has access</h2>
-          <p className="text-sm text-muted">Every authorized user, their hub access level and their role in each app.</p>
+          <p className="text-sm text-muted">Every authorized user, their access level and their role in each app.</p>
         </div>
         <Tabs label="Layout" value={mode} onChange={setMode} tabs={[
           { id: 'list', label: <span className="inline-flex items-center gap-1.5"><List size={13} /> List</span> },

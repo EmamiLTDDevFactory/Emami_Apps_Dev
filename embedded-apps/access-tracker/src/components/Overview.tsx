@@ -84,7 +84,7 @@ export default function Overview({ data, onGo, onPerson, onApp }: { data: Data; 
           {usersPerApp.length ? <BarList rows={usersPerApp} unit="users" max={12} onPick={onApp} /> : <Empty title="No app grants yet" />}
         </Card>
         <div className="space-y-4">
-          <Card title="Hub access level" sub="Who can manage access">
+          <Card title="Access level" sub="Who can manage access">
             <ShareBar segments={levels} unit="users" />
           </Card>
           <Card title="Last sign-in" sub="Active users only">

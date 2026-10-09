@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Calendar, ClipboardList, Database, LogOut as OutIcon, Menu, PlusSquare, User, X, type LucideIcon } from 'lucide-react';
 import { BASE_PATH, SAP_SERVICE, SAP_SYSTEM } from '@/lib/config';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
+import { useScreenHistory } from '@/lib/useScreenHistory';
 import { searchAsn } from '@/lib/gate';
 import { GateError } from '@/lib/sap';
 import { cx } from './ui';
@@ -24,6 +25,14 @@ export default function App() {
   const [today, setToday] = useState('');
   const [service, setService] = useState<'ok' | 'missing' | 'down' | 'unknown'>('unknown');
   const [openReq, setOpenReq] = useState<string | null>(null);
+  // In-app "Back": the screen is the section plus the entry handed to it. Entries reads openReq
+  // only when it mounts, so a restore remounts it (restoreN) to reopen that entry.
+  const [restoreN, setRestoreN] = useState(0);
+  const { back } = useScreenHistory({ view, openReq }, (s) => {
+    setView(s.view);
+    setOpenReq(s.openReq);
+    setRestoreN((n) => n + 1);
+  });
 
   const probe = useCallback(() => {
     // One cheap read tells whether the SAP service answers on the gateway.
@@ -92,7 +101,10 @@ export default function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
-        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        <div className="flex bg-plum">
+          <button type="button" onClick={back} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back</button>
+          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
           <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
           <h1 className="text-[15px] font-extrabold">Gate Entry</h1>
@@ -120,8 +132,8 @@ export default function App() {
               </section>
             )}
             {view === 'new' && <NewEntry onOpenEntry={showEntry} />}
-            {view === 'entries' && <Entries mode="all" openReq={openReq} onCloseReq={() => setOpenReq(null)} />}
-            {view === 'out' && <Entries mode="out" openReq={openReq} onCloseReq={() => setOpenReq(null)} />}
+            {view === 'entries' && <Entries key={restoreN} mode="all" openReq={openReq} onCloseReq={() => setOpenReq(null)} />}
+            {view === 'out' && <Entries key={restoreN} mode="out" openReq={openReq} onCloseReq={() => setOpenReq(null)} />}
           </div>
         </main>
       </div>
