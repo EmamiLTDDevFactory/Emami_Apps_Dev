@@ -350,6 +350,67 @@ apiRouter.get('/admin/user/:email/apps', requireAccessManager, async (req, res) 
     }
 });
 
+/** Administration / Access Tracker — one user's sign-ins and sessions, rebuilt from the raw
+ * emami_apps.events log (the views above only keep totals). A session runs from a SESSION_START
+ * (written with every LOGIN, see userProfile.js upsertLoginProfile) to the SESSION_END the hub
+ * writes on sign-out, or is left open when there was none (closed tab, expired token) — those have
+ * no duration rather than a guessed one. Every APP_OPEN between a session's start and its end (or
+ * the next start) is that session's app list. Reads the newest ACTIVITY_EVENT_LIMIT events only,
+ * so a very old session can be cut at its start; the response says when that happened. */
+const ACTIVITY_EVENT_LIMIT = 5000;
+apiRouter.get('/admin/user/:email/activity', requireAccessManager, async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    if (!email) {
+        return res.status(400).json({ success: false, error: 'email is required.' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT e.event_type, e.app_id, e.occurred_at
+             FROM emami_apps.users u
+             JOIN emami_apps.events e ON e.user_id = u.user_id
+             WHERE u.email = $1 AND e.event_type IN ('LOGIN', 'SESSION_START', 'SESSION_END', 'APP_OPEN')
+             ORDER BY e.occurred_at DESC, e.event_type
+             LIMIT $2`,
+            [email, ACTIVITY_EVENT_LIMIT]
+        );
+        const events = rows.reverse();
+        const logins = [];
+        const sessions = [];
+        let current = null;
+        for (const e of events) {
+            const at = e.occurred_at;
+            if (e.event_type === 'LOGIN') {
+                logins.push(at);
+            } else if (e.event_type === 'SESSION_START') {
+                current = { start: at, end: null, apps: [] };
+                sessions.push(current);
+            } else if (e.event_type === 'SESSION_END') {
+                if (current && !current.end) current.end = at;
+            } else if (e.event_type === 'APP_OPEN' && e.app_id && current && !current.end) {
+                current.apps.push({ appId: e.app_id, at });
+            }
+        }
+        let recordedSeconds = 0;
+        const out = sessions.reverse().map((s) => {
+            const seconds = s.end ? Math.max(0, (new Date(s.end) - new Date(s.start)) / 1000) : null;
+            if (seconds != null) recordedSeconds += seconds;
+            return { start: s.start, end: s.end, durationSeconds: seconds == null ? null : Math.round(seconds), apps: s.apps };
+        });
+        res.json({
+            success: true,
+            activity: {
+                logins: logins.reverse(),
+                sessions: out,
+                recordedSeconds: Math.round(recordedSeconds),
+                truncated: rows.length === ACTIVITY_EVENT_LIMIT,
+            },
+        });
+    } catch (err) {
+        console.error('[admin] Failed to load sign-in activity for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load sign-in activity.' });
+    }
+});
+
 /** Administration tab — app-wise usage aggregated across every user, not scoped to one (that's
  * the per-user drill-down above). Backs the "App-wise Usage" sheet in the Excel export button.
  * Scoped through the same `scope` (active authorized users) as /admin/overview's own app_opens
@@ -743,6 +804,9 @@ apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
         res.status(500).json({ success: false, error: 'Could not load change history.' });
     }
 });
+
+// Release status per app tile (Admin Center's App status tab) — own table and routes, see appStages.js.
+apiRouter.use(require('./appStages').appStagesRouter(requireAccessManager));
 
 apiRouter.get('/health', (req, res) => res.json({ success: true }));
 

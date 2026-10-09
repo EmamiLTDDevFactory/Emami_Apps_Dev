@@ -22,6 +22,11 @@ const toLines = (items: { qntRecievd: number }[], fromAsn: boolean): Line[] =>
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
+/** SAP's "FIELD: text" field (camelCase, see lib/sap.ts) -> the input that shows it; anything else is a general message. */
+const HEADER_INPUTS = new Set(['poNo', 'asnNo', 'truckNo', 'lrno', 'lrdt', 'invNo', 'invDate', 'truckDate', 'truckTim', 'reqDate']);
+const inputFor = (field: string | undefined, h: SharedHeader) =>
+  field === 'frVendr' ? (h.frVendr === '01' ? 'vehVendrNo' : 'vehVendrName') : field && HEADER_INPUTS.has(field) ? field : undefined;
+
 export default function NewEntry({ onOpenEntry }: { onOpenEntry: (reqNo: string) => void }) {
   const [mode, setMode] = useState<Mode>('PO');
   const [header, setHeader] = useState<SharedHeader>(blankHeader);
@@ -74,7 +79,7 @@ export default function NewEntry({ onOpenEntry }: { onOpenEntry: (reqNo: string)
         setCurrent({ po, lines: toLines(items, false) });
       }
     } catch (e) {
-      setErr({ msg: errText(e), field: e instanceof GateError ? e.field ?? 'poNo' : 'poNo' });
+      setErr({ msg: errText(e), field: e instanceof GateError ? inputFor(e.field, header) ?? 'poNo' : 'poNo' });
     } finally {
       setBusy('');
     }
@@ -153,7 +158,7 @@ export default function NewEntry({ onOpenEntry }: { onOpenEntry: (reqNo: string)
       setSaved(reqNo);
     } catch (e) {
       if (e instanceof GateError && e.code === 'CONFIRM_DATE') setConfirmDate(e.message);
-      else setErr({ msg: errText(e), field: e instanceof GateError ? e.field : undefined });
+      else setErr({ msg: errText(e), field: e instanceof GateError ? inputFor(e.field, header) : undefined });
     } finally {
       setBusy('');
     }

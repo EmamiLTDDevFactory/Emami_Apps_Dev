@@ -17,6 +17,7 @@ import { colors, fonts, fontWeights, radii, appColor, catColor, categoryTint, mo
 import { useTiltHover } from '../../hooks/useTiltHover';
 import type { AppItem, AppStage, CategoryFilter } from '../../types';
 import StageBadge from '../../components/StageBadge';
+import { useAppStages } from '../../context/AppStagesContext';
 
 /** A Home card (category or Recently Used), styled after the reference Emami Apps home screen:
  * white card, pale accent-tinted icon chip, bold name, one-line description, and a lock (no
@@ -126,6 +127,7 @@ export default function HomePage() {
   const router = useRouter();
   const { userEmail, profile } = useAuth();
   const unlockedAppIds = useUnlockedAppIds();
+  const { stageOf } = useAppStages();
   const recent = useRecentApps();
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -221,7 +223,7 @@ export default function HomePage() {
                   icon={app.icon}
                   name={app.name}
                   subtitle={r.when}
-                  stage={app.stage}
+                  stage={stageOf(app.id)}
                   ariaLabel={`Open ${app.name}`}
                   title={app.name}
                 />

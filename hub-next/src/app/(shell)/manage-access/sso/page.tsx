@@ -73,9 +73,9 @@ export default function SsoConfigPage() {
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: 20, paddingBottom: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <button type="button" onClick={() => router.push('/manage-access')} style={{ display: 'flex', alignItems: 'center', gap: 6, border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: '7px 12px', backgroundColor: colors.white, cursor: 'pointer' }}>
+        <button type="button" onClick={() => router.push('/manage-access/?tab=settings')} style={{ display: 'flex', alignItems: 'center', gap: 6, border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: '7px 12px', backgroundColor: colors.white, cursor: 'pointer' }}>
           <ArrowLeft size={13} color={colors.ink} />
-          <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>Back to Manage Access</span>
+          <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>Back to Admin Center</span>
         </button>
         <p style={{ fontSize: 18, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>Configure SSO</p>
       </div>

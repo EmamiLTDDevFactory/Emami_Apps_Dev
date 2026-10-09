@@ -26,7 +26,7 @@ export default function App() {
   const [openReq, setOpenReq] = useState<string | null>(null);
 
   const probe = useCallback(() => {
-    // One cheap read tells whether ZGATE_ENTRY_SRV exists on the gateway yet.
+    // One cheap read tells whether the SAP service answers on the gateway.
     searchAsn('0000000000')
       .then(() => setService('ok'))
       .catch((e) => setService(e instanceof GateError && e.code === 'SERVICE_MISSING' ? 'missing' : e instanceof GateError && e.code === 'SAP_UNAVAILABLE' ? 'down' : 'ok'));
@@ -87,7 +87,7 @@ export default function App() {
           ))}
         </nav>
         <div className="border-t border-line px-4 py-3 text-[11px] leading-snug text-faint">
-          Entries are saved in SAP under your name. Plant authorisation, quantities and invoice checks are decided by SAP.
+          Entries are saved in SAP. Plant authorisation, quantities and invoice checks are decided by SAP.
         </div>
       </aside>
 
@@ -109,8 +109,8 @@ export default function App() {
               <section className="mb-3 flex items-start gap-3 rounded-2xl border border-warn/40 bg-warn/[0.06] p-4 shadow-card" role="alert">
                 <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warn" />
                 <div className="text-sm">
-                  <p className="font-extrabold">The SAP service {SAP_SERVICE} is not available on {SAP_SYSTEM} yet.</p>
-                  <p className="mt-0.5 text-xs text-muted">The screens work, but nothing can be loaded or saved until the SAP side (class ZCL_GATE_ENTRY_BL and the SEGW service) is activated and registered in /IWFND/MAINT_SERVICE.</p>
+                  <p className="font-extrabold">The SAP service {SAP_SERVICE} is not available on {SAP_SYSTEM}.</p>
+                  <p className="mt-0.5 text-xs text-muted">Nothing can be loaded or saved until the service is registered in /IWFND/MAINT_SERVICE and reachable through the SAP gateway.</p>
                 </div>
               </section>
             )}

@@ -1,24 +1,29 @@
 /**
- * Gate entry operations on ZGATE_ENTRY_SRV (ported from gate-entry-web src/lib/sap/gate-service.ts).
+ * Gate entry operations on ZMM_GATE_ENTRY_SRV (SEGW ZMM_GATE_ENTRY_MDL) on NGD, through the Azure gateway.
  *
- * Differences from that BFF design, because this app runs in the browser behind the shared Azure gateway
- * (technical SAP user, $format=json appended to every call) - see README "SAP contract":
- *  - Email: the signed-in hub user's email goes with every call ($filter Email eq '..' on reads, an Email
- *    parameter on function imports, an Email property on the create). ZCL_GATE_ENTRY_BL maps it to the SAP user
- *    for ZGATE_AUTH (plants, cancel authority) and REQ_BY, since sy-uname is the gateway's technical user.
- *  - Keyed reads become filtered reads (AsnSet, PoInfoSet) so the Email filter can travel with them.
- *  - Multi-PO entries are ONE deep insert (items of every PO, each with its Ebeln); the BL splits them into one
- *    header per PO under one new request number, exactly as it already does for an ASN. No $batch: the gateway
- *    appends $format to the URL, which $batch does not accept.
- *  - Print returns the PDF base64 in a property (GateRequestPdfSet?$filter=..) instead of a $value stream.
+ * Contract checked live on NGD 2026-10-08 (UI5_CONVERSION_PROMPT.md is the brief):
+ *  - keyed reads for one PO / one ASN, filtered reads for lists; no function imports.
+ *  - save = ONE deep insert on GateEntrySet with navigation Pos (one element per PO, exactly one for an ASN), each
+ *    with its Items; SAP allocates ReqNo and returns it. All or nothing.
+ *  - ConfirmDateWarning and GateCancel.Admin are ABAP flags ('X' / ''), not Edm.Boolean - SAP refuses true/false.
+ *  - out time and cancel are creates on GateOutTimeSet / GateCancelSet.
+ *  - the gateway logs on with its technical user, so the signed-in Emami Apps email (lower case) goes with every
+ *    call: first in every list $filter, as the second key of AsnSet (ShipId, Email), and as property Email on
+ *    every create. Every entity type except GateRequestPdf has Email (NGD, 2026-10-09).
+ *  - the gateway has no route for DELETE or for .../$value (both answer its own 404), see deleteLine / getPdf.
  */
 import { and, dec, eq, fromSapDate, fromSapTime, num, odataKey, str, toSapDate, toSapTime } from './format';
 import { getHubEmail } from './hub';
-import { GateError, sapGet, sapPost } from './sap';
-import type { AsnDetail, AsnSummary, EntryDetail, EntryHeader, EntrySummary, Line, PoBlock, PoInfo, PoItem, SharedHeader } from './types';
+import { GateError, parseSapError, sapDelete, sapGet, sapPost, sapPut, sapRawUrl } from './sap';
+import type { AsnDetail, AsnSummary, EntryDetail, EntryHeader, EntryItem, EntrySummary, Line, PoBlock, PoInfo, PoItem, SharedHeader } from './types';
+
+const flag = (b: boolean) => (b ? 'X' : '');
 
 const email = () => getHubEmail().toLowerCase();
-const withEmail = (...c: (string | undefined | false | null)[]) => and(eq('Email', email()), ...c);
+
+/** Filtered list read with Email = the Emami Apps login email in front of the other conditions. */
+const list = async (path: string, ...conds: (string | undefined | false | null)[]): Promise<any[]> =>
+  (await sapGet<any[]>(path, { $filter: and(eq('Email', email()), ...conds) })) ?? [];
 
 /* ------------------------------ mappers ------------------------------ */
 
@@ -69,25 +74,23 @@ const mapHeader = (r: any): Omit<EntryHeader, 'items'> => ({
   asnNo: str(r.AsnNo),
 });
 
-const first = <T>(rows: T[] | undefined, what: string): T => {
-  if (!rows || !rows.length) throw new GateError(404, 'NOT_FOUND', `${what} not found`);
-  return rows[0];
-};
+/** GateRequestItem key: ReqNo, Slno, Ebeln, Ebelp and Email (the Emami Apps login email). */
+const itemKey = (i: { reqNo: string; slno: string; ebeln: string; ebelp: string }) =>
+  `(ReqNo=${odataKey(i.reqNo)},Slno=${odataKey(i.slno)},Ebeln=${odataKey(i.ebeln)},Ebelp=${odataKey(i.ebelp)},Email=${odataKey(email())})`;
 
 /* -------------------------------- ASN -------------------------------- */
 
-/** WD OVS_ASN: the user's open ASNs (their plants, not yet used, not cancelled), optionally for one PO. */
+/** WD OVS_ASN: open ASNs SAP offers (plants of the SAP user, not yet used, not cancelled), optionally for one PO. */
 export async function searchAsn(poNo?: string): Promise<AsnSummary[]> {
-  const rows = await sapGet<any[]>('/AsnSet', { $filter: withEmail(poNo && eq('Ebeln', poNo)) });
+  const rows = await list('/AsnSet', poNo && eq('Ebeln', poNo));
   return (rows ?? []).map(mapAsn);
 }
 
 export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: PoItem[] }> {
-  const [hdr, items] = await Promise.all([
-    sapGet<any[]>('/AsnSet', { $filter: withEmail(eq('ShipId', shipId)) }),
-    sapGet<any[]>('/AsnItemSet', { $filter: withEmail(eq('ShipId', shipId)) }),
+  const [a, items] = await Promise.all([
+    sapGet<any>(`/AsnSet(ShipId=${odataKey(shipId)},Email=${odataKey(email())})`),
+    list('/AsnItemSet', eq('ShipId', shipId)),
   ]);
-  const a = first(hdr, `ASN ${shipId}`);
   return {
     asn: { ...mapAsn(a), lrDate: fromSapDate(a.LrDate), invDate: fromSapDate(a.InvDate), regio: str(a.Regio), rgnDesc: str(a.RgnDesc) },
     items: (items ?? []).map(mapItem),
@@ -96,13 +99,12 @@ export async function getAsn(shipId: string): Promise<{ asn: AsnDetail; items: P
 
 /* --------------------------------- PO --------------------------------- */
 
-/** WD PO_ENTER. SAP answers with the WD message (not released, not authorised, ...) as an error on field poNo. */
+/** WD PO_ENTER. SAP answers with the WD message (not released, not authorised, ...), often as "PO_NO: text". */
 export async function getPo(ebeln: string): Promise<{ po: PoInfo; items: PoItem[] }> {
-  const [hdr, items] = await Promise.all([
-    sapGet<any[]>('/PoInfoSet', { $filter: withEmail(eq('Ebeln', ebeln)) }),
-    sapGet<any[]>('/PoItemSet', { $filter: withEmail(eq('Ebeln', ebeln)) }),
+  const [p, items] = await Promise.all([
+    sapGet<any>(`/PoInfoSet(${odataKey(ebeln)})`),
+    list('/PoItemSet', eq('Ebeln', ebeln)),
   ]);
-  const p = first(hdr, `PO ${ebeln}`);
   return {
     po: { ebeln: str(p.Ebeln), werks: str(p.Werks), lifnr: str(p.Lifnr), poVendrName: str(p.PoVendrName), regio: str(p.Regio), rgnDesc: str(p.RgnDesc) },
     items: (items ?? []).map(mapItem),
@@ -111,7 +113,7 @@ export async function getPo(ebeln: string): Promise<{ po: PoInfo; items: PoItem[
 
 /** WD PO_HIST: earlier, non-cancelled receipts of a PO. */
 export async function poHistory(ebeln: string) {
-  const rows = await sapGet<any[]>('/GateRequestItemSet', { $filter: withEmail(eq('Ebeln', ebeln)) });
+  const rows = await list('/GateRequestItemSet', eq('Ebeln', ebeln));
   return (rows ?? []).map((r) => ({ reqNo: str(r.ReqNo), slno: str(r.Slno), ...mapItem(r) }));
 }
 
@@ -131,7 +133,8 @@ const sapItem = (i: Line) => ({
   Selected: 'X',
 });
 
-function requestBody(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: string; poVendrName: string; regio: string; regioDesc: string; asnNo?: string; items: Line[]; confirm: boolean }) {
+/** One element of GateEntrySet.Pos: the shared truck data plus one PO (or the ASN) and its lines. */
+function posElement(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: string; poVendrName: string; regio: string; regioDesc: string; asnNo?: string; items: Line[] }) {
   return {
     Email: email(),
     ReqDate: toSapDate(h.reqDate),
@@ -140,6 +143,7 @@ function requestBody(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: 
     PoVendrName: o.poVendrName,
     Regio: o.regio,
     RegioDesc: o.regioDesc,
+    Plnt: o.plnt,
     TruckNo: h.truckNo.trim().toUpperCase(),
     TruckDate: toSapDate(h.truckDate),
     TruckTim: toSapTime(h.truckTim),
@@ -151,29 +155,33 @@ function requestBody(h: SharedHeader, o: { plnt: string; poNo: string; poVendr: 
     InvNo: h.invNo.trim(),
     InvDate: toSapDate(h.invDate),
     ...(o.asnNo ? { AsnNo: o.asnNo } : {}),
-    Plnt: o.plnt,
-    ConfirmDateWarning: o.confirm,
     Items: o.items.map(sapItem),
   };
 }
 
-/** PO mode: one deep insert with the received lines of every PO (the BL creates one header per PO). */
+const createEntry = async (pos: ReturnType<typeof posElement>[], confirm: boolean) =>
+  reqNoOf(await sapPost<any>('/GateEntrySet', { Email: email(), ConfirmDateWarning: flag(confirm), Pos: pos }));
+
+/** PO mode: one Pos element per PO with its received lines; SAP saves them under one new request number. */
 export async function createFromPos(h: SharedHeader, pos: PoBlock[], confirm: boolean): Promise<string> {
-  const lead = pos[0].po;
-  const items = pos.flatMap((p) => p.lines.filter((l) => l.selected && l.qntRecievd > 0));
-  const r = await sapPost<any>('/GateRequestSet', requestBody(h, {
-    plnt: lead.werks, poNo: lead.ebeln, poVendr: lead.lifnr, poVendrName: lead.poVendrName, regio: lead.regio, regioDesc: lead.rgnDesc, items, confirm,
-  }));
-  return reqNoOf(r);
+  return createEntry(
+    pos.map(({ po, lines }) => posElement(h, {
+      plnt: po.werks, poNo: po.ebeln, poVendr: po.lifnr, poVendrName: po.poVendrName, regio: po.regio, regioDesc: po.rgnDesc,
+      items: lines.filter((l) => l.selected && l.qntRecievd > 0),
+    })),
+    confirm,
+  );
 }
 
-/** ASN mode: one deep insert with the ticked lines (the BL splits them per PO). */
+/** ASN mode: exactly one Pos element with the ticked lines. */
 export async function createFromAsn(h: SharedHeader, asn: AsnDetail, lines: Line[], confirm: boolean): Promise<string> {
-  const r = await sapPost<any>('/GateRequestSet', requestBody(h, {
-    plnt: asn.werks, poNo: '', poVendr: asn.lifnr, poVendrName: asn.name1, regio: asn.regio, regioDesc: asn.rgnDesc, asnNo: asn.shipId,
-    items: lines.filter((l) => l.selected), confirm,
-  }));
-  return reqNoOf(r);
+  return createEntry(
+    [posElement(h, {
+      plnt: asn.werks, poNo: '', poVendr: asn.lifnr, poVendrName: asn.name1, regio: asn.regio, regioDesc: asn.rgnDesc, asnNo: asn.shipId,
+      items: lines.filter((l) => l.selected),
+    })],
+    confirm,
+  );
 }
 
 function reqNoOf(r: any): string {
@@ -185,9 +193,7 @@ function reqNoOf(r: any): string {
 /* ------------------------ search / read / actions ------------------------ */
 
 export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: string; asnNo?: string }): Promise<EntrySummary[]> {
-  const rows = await sapGet<any[]>('/GateSummarySet', {
-    $filter: withEmail(f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo)),
-  });
+  const rows = await list('/GateSummarySet', f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo));
   return (rows ?? [])
     .map((r) => ({
       reqNo: str(r.ReqNo),
@@ -207,13 +213,14 @@ export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: s
 export async function getEntry(reqNo: string): Promise<EntryDetail> {
   const key = reqNo.toUpperCase();
   const [headers, items] = await Promise.all([
-    sapGet<any[]>('/GateRequestSet', { $filter: withEmail(eq('ReqNo', key)) }),
-    sapGet<any[]>('/GateRequestItemSet', { $filter: withEmail(eq('ReqNo', key)) }),
+    list('/GateRequestSet', eq('ReqNo', key)),
+    list('/GateRequestItemSet', eq('ReqNo', key)),
   ]);
-  const byPo = new Map<string, PoItem[]>();
+  const byPo = new Map<string, EntryItem[]>();
   (items ?? []).forEach((r) => {
     const k = `${str(r.Slno)}|${str(r.Ebeln)}`;
-    byPo.set(k, [...(byPo.get(k) ?? []), mapItem(r)]);
+    const { __metadata, ...raw } = r ?? {};
+    byPo.set(k, [...(byPo.get(k) ?? []), { ...mapItem(r), reqNo: str(r.ReqNo), slno: str(r.Slno), raw }]);
   });
   return {
     reqNo: key,
@@ -223,21 +230,40 @@ export async function getEntry(reqNo: string): Promise<EntryDetail> {
   };
 }
 
+/** SAP stamps the current date and time. */
 export async function recordOutTime(reqNo: string) {
-  await sapPost('/RecordOutTime', undefined, { ReqNo: odataKey(reqNo.toUpperCase()), Email: odataKey(email()) });
+  await sapPost('/GateOutTimeSet', { ReqNo: reqNo.toUpperCase(), Email: email() });
 }
 
-export async function cancelEntry(reqNo: string, reason: string) {
-  await sapPost('/CancelRequest', undefined, { ReqNo: odataKey(reqNo.toUpperCase()), Reason: odataKey(reason.trim()), Email: odataKey(email()) });
+/** SAP decides who may cancel (and refuses while a GRN is not reversed); admin = the admin cancel of the WD app. */
+export async function cancelEntry(reqNo: string, reason: string, admin = false) {
+  await sapPost('/GateCancelSet', { ReqNo: reqNo.toUpperCase(), Reason: reason.trim(), Admin: flag(admin), Email: email() });
 }
 
-/** The gate pass PDF (Smartform ZF_GATE_ENTRY), base64 in property Pdf. */
+/** Admin: delete one received line. The Azure gateway has no DELETE route yet (answers GATEWAY_UNSUPPORTED). */
+export async function deleteLine(i: EntryItem) {
+  await sapDelete(`/GateRequestItemSet${itemKey(i)}`);
+}
+
+/** Admin: set a line's received quantity to 0 - PUT of the full entity as read (SAP refuses partial updates). */
+export async function zeroLine(i: EntryItem) {
+  await sapPut(`/GateRequestItemSet${itemKey(i)}`, { ...i.raw, Email: email(), QntRecievd: dec(0) });
+}
+
+/**
+ * The gate pass PDF (Smartform) is a media entity: GET GateRequestPdfSet('<ReqNo>')/$value. The Azure gateway has no
+ * route for /$value today (its own 404), so callers fall back to a printable page built from the entry
+ * (components/print.ts) when this throws GATEWAY_UNSUPPORTED.
+ */
 export async function getPdf(reqNo: string): Promise<Blob> {
-  const rows = await sapGet<any[]>('/GateRequestPdfSet', { $filter: withEmail(eq('ReqNo', reqNo.toUpperCase())) });
-  const b64 = str(first(rows, `PDF of ${reqNo}`).Pdf);
-  if (!b64) throw new GateError(404, 'NOT_FOUND', 'SAP returned an empty PDF');
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new Blob([bytes], { type: 'application/pdf' });
+  let res: Response;
+  try {
+    res = await fetch(sapRawUrl(`/GateRequestPdfSet(${odataKey(reqNo.toUpperCase())})/$value`), { cache: 'no-store' });
+  } catch {
+    throw new GateError(502, 'SAP_UNAVAILABLE', 'SAP is not reachable right now. Check the network and try again.');
+  }
+  if (!res.ok) throw parseSapError(res.status, await res.text());
+  const blob = await res.blob();
+  if (!blob.size) throw new GateError(404, 'NOT_FOUND', 'SAP returned an empty PDF');
+  return blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
 }

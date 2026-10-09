@@ -18,11 +18,20 @@ const ACCESS_API_URL =
 
 type ApiResult = { ok: boolean; error?: string };
 
+/** Fired on window after any successful access change made from this tab; AuthContext re-reads the
+ * signed-in person's own grants on it, so an admin who grants themselves an app sees it unlock at once. */
+export const ACCESS_CHANGED_EVENT = 'emami-apps:access-changed';
+const announceAccessChange = () => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(ACCESS_CHANGED_EVENT));
+};
+
+/** Only the mutating calls use this, so a success here always means someone's access changed. */
 async function parseResult(res: Response): Promise<ApiResult> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.success) {
     return { ok: false, error: data?.error || 'Something went wrong. Please try again.' };
   }
+  announceAccessChange();
   return { ok: true };
 }
 
@@ -61,6 +70,7 @@ export async function addAuthorizedUser(
     if (!res.ok || !data?.success) {
       return { ok: false, error: data?.error || 'Something went wrong. Please try again.' };
     }
+    announceAccessChange();
     return { ok: true, apps: data.apps };
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };

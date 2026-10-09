@@ -3,7 +3,7 @@ const { Pool } = require('pg');
 /** Hub-wide role(s) that can never be reassigned through the app — see runMigrations' access_level
  * seed below and server.js's access-level route, which both hard-code these addresses as permanent
  * Super Admins. */
-const PERMANENT_SUPER_ADMIN_EMAILS = ['indranil.banerjee@emamigroup.com', 'sayontan.das@emamigroup.com'];
+const PERMANENT_SUPER_ADMIN_EMAILS = ['indranil.banerjee@emamigroup.com', 'sayontan.das@emamigroup.com', 'samrat.banerjee@emamigroup.com'];
 
 /*
    POSTGRES CONNECTION POOL — Development Environment DB (same instance used by

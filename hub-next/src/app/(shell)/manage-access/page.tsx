@@ -1,952 +1,914 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Mail, Plus, ShieldCheck, ShieldAlert, Trash2, Info, Check, Save, KeyRound,
-  ChevronRight, Lock, Search, X, Pencil, Square, CheckSquare, FileSpreadsheet, Phone,
+  ArrowLeft, ShieldAlert, Search, X, Users, UserCheck, UserX, LogIn, MousePointerClick, TrendingUp, Download,
+  UserPlus, LayoutGrid, History, Settings2, ChevronRight, ChevronDown, ChevronUp, KeyRound, FileSpreadsheet,
+  CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock, Rocket,
 } from 'lucide-react';
-import { APPS } from '../../../data/mockData';
-import Dialog from '../../../components/Dialog';
 import { useAuth } from '../../../context/AuthContext';
-import type { AccessLevel, AppRole, UserAccessEntry, UserAppGrant } from '../../../types';
-import { colors, fonts, fontWeights, radii, appColor } from '../../../theme/tokens';
+import { useIsWideScreen } from '../../../hooks/useIsWideScreen';
+import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../../types';
+import { listAuthorizedUsers, setAccessLevel, setAppAccess, setUserActive, getAccessHistory } from '../../../lib/accessApi';
+import { getAdminOverview, getAdminRoster, getAdminAppStats, type AdminOverview, type AdminRosterUsage, type AdminAppStat, type AdminRosterEntry } from '../../../lib/adminApi';
 import { exportUsersToExcel } from '../../../lib/exportUsersExcel';
+import { exportAdministrationReportToExcel, exportAppStatsToExcel } from '../../../lib/exportAdminExcel';
+import { appColor, colors, fontWeights, fonts, radii } from '../../../theme/tokens';
+import UserDrawer, { Segmented } from '../../../components/admin/UserDrawer';
+import AppDrawer from '../../../components/admin/AppDrawer';
+import AddUsersDialog from '../../../components/admin/AddUsersDialog';
+import ChangeTimeline from '../../../components/admin/ChangeTimeline';
+import AppStatusPanel from '../../../components/admin/AppStatusPanel';
 import {
-  listAuthorizedUsers, addAuthorizedUser, removeAuthorizedUser, setAppAccess, setUserActive, setAccessLevel,
-} from '../../../lib/accessApi';
+  AdminStyles, AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot,
+  AUDIT_CAPA_APP_ID, GRANTABLE_LEVELS, SORTED_APPS,
+  appLabel, canSetLevel, cardStyle, chipStyle, displayName, inputStyle, inputWrapStyle, labelStyle, primaryBtnStyle,
+  roleOf, roleOptionsFor, runBatched, secondaryBtnStyle, sectionSubStyle, sectionTitleStyle, timeAgo,
+  type AdminUser,
+} from '../../../components/admin/adminShared';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Folds the backend's auto-granted defaults (e.g. Mediclaim/Term Policy — see server.js's
- * DEFAULT_GRANTED_APPS) together with whatever the admin explicitly picked in the Add User
- * dialog, so a just-added row shows its true granted apps right away instead of only after a
- * refresh. An explicit pick always wins over a default for the same app. */
-function mergeAppGrants(defaults: UserAppGrant[] | undefined, explicit: UserAppGrant[]): UserAppGrant[] {
-  const explicitAppIds = new Set(explicit.map((g) => g.appId));
-  return [...(defaults || []).filter((g) => !explicitAppIds.has(g.appId)), ...explicit];
-}
-const AUDIT_CAPA_APP_ID = 'audit-capa';
-const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
-const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
-const FM_PO_DEVIATION_APP_ID = 'fm-po-deviation';
-const AUDIT_TOOL_APP_ID = 'audit-tool';
-const SHELF_LIFE_DEVIATION_APP_ID = 'shelf-life-deviation';
-/** Apps shown here alphabetically by name — insertion order in mockData.ts reflects when each
- * app was added to the hub, not a meaningful display order. */
-const SORTED_APPS = [...APPS].sort((a, b) => a.name.localeCompare(b.name));
+/** Admin Center — Manage Access and Administration merged into one screen: Overview (KPIs, top
+ * apps, recent changes), People (the editable roster with usage, bulk actions and a per-person
+ * drawer), Apps (per-app access + usage), App status (release stage per app tile), Activity (the org-wide audit trail) and Settings (SSO).
+ * The old /administration routes redirect here. */
 
-function roleOptionsFor(appId: string | null | undefined): (AppRole | null)[] {
-  if (appId === AUDIT_CAPA_APP_ID) return [null, 'Depot', 'CQA'];
-  if (appId === PAYMENT_TRACKING_APP_ID) return [null, 'User', 'Admin', 'Finance'];
-  // PO Approval has no Admin/User bifurcation — access is a single granted role.
-  if (appId === FM_PO_DEVIATION_APP_ID) return [null, 'User'];
-  // Audit Tool's own screen roles (Audit Head, Performer/Reviewer, Masters, Scheduling...) come
-  // from SAP (ZST_AUTH_USERSet / CheckAuditHeadSet), so the hub only grants access, not a role.
-  if (appId === AUDIT_TOOL_APP_ID) return [null, 'User'];
-  // Shelf Life Deviation: who may approve comes from SAP (UserSet Flag = 'X' shows the Approval
-  // Worklist), so the hub only grants access, same as Audit Tool.
-  if (appId === SHELF_LIFE_DEVIATION_APP_ID) return [null, 'User'];
-  return [null, 'User', 'Admin'];
-}
+type Tab = 'overview' | 'people' | 'apps' | 'status' | 'activity' | 'settings';
+type StatusFilter = 'all' | 'active' | 'inactive' | 'never';
+type SortKey = 'name' | 'lastSeen' | 'apps' | 'level';
+type ChangeFilter = 'all' | 'grants' | 'revokes' | 'people' | 'status' | 'level';
 
-function isElevatedRole(appId: string, role: AppRole | null): boolean {
-  return appId === AUDIT_CAPA_APP_ID ? role === 'CQA' : role === 'Admin';
-}
-const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
 const BULK_CONCURRENCY = 8;
+const LEVEL_RANK: Record<AccessLevel, number> = { 'Super Admin': 0, Admin: 1, Viewer: 2 };
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: 'overview', label: 'Overview', icon: Sparkles },
+  { id: 'people', label: 'People', icon: Users },
+  { id: 'apps', label: 'Apps', icon: LayoutGrid },
+  { id: 'status', label: 'App status', icon: Rocket },
+  { id: 'activity', label: 'Activity', icon: History },
+  { id: 'settings', label: 'Settings', icon: Settings2 },
+];
 
-type PendingChanges = {
-  isActive?: boolean;
-  accessLevel?: AccessLevel;
-  roles: Record<string, AppRole | null>;
-  depots?: Record<string, string | null>;
-};
-
-function roleOf(user: UserAccessEntry, appId: string): AppRole | null {
-  return user.apps.find((a) => a.appId === appId)?.role ?? null;
-}
-function depotOf(user: UserAccessEntry, appId: string): string | null {
-  return user.apps.find((a) => a.appId === appId)?.depot ?? null;
-}
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-async function runBatched<T, R>(items: T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = [];
-  for (const batch of chunk(items, size)) {
-    out.push(...(await Promise.all(batch.map(fn))));
-  }
-  return out;
-}
-function parseBulkEmails(text: string): string[] {
-  const raw = text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
-  return Array.from(new Set(raw));
-}
-function normalizeIndianMobileClient(raw: string): string | null {
-  let digits = raw.replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-  if (!/^[6-9]\d{9}$/.test(digits)) return null;
-  return `+91${digits}`;
-}
-
-export default function ManageAccessPage() {
+function AdminCenter() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isWide = useIsWideScreen();
   const { userEmail, access } = useAuth();
   const actingLevel = access?.accessLevel;
-  const canManageAccess = actingLevel === 'Super Admin' || actingLevel === 'Admin';
+  const canManage = actingLevel === 'Super Admin' || actingLevel === 'Admin';
 
+  const tab = (TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview') as Tab;
+  const openEmail = searchParams.get('user');
+  const openAppId = searchParams.get('app');
+  const setParams = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v) next.set(k, v);
+        else next.delete(k);
+      }
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams]
+  );
+  const goTab = (t: Tab) => setParams({ tab: t, user: null, app: null });
+  const openUser = (email: string) => setParams({ user: email, app: null });
+  const openApp = (appId: string) => setParams({ app: appId, user: null });
+
+  // ── Data ──────────────────────────────────────────────────────────────────────────────────
   const [users, setUsers] = useState<UserAccessEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [userSearch, setUserSearch] = useState('');
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState<string | null>(null);
-  const [pending, setPending] = useState<Record<string, PendingChanges>>({});
-  const [exporting, setExporting] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState('');
+  const [usage, setUsage] = useState<Record<string, AdminRosterUsage>>({});
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [appStats, setAppStats] = useState<AdminAppStat[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [history, setHistory] = useState<AccessChangeEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkNote, setBulkNote] = useState('');
-  const [bulkTargetApp, setBulkTargetApp] = useState<string | null>(null);
-
-  const [editingEmail, setEditingEmail] = useState<string | null>(null);
-  const [rolePickerFor, setRolePickerFor] = useState<{ context: 'add' | 'edit'; appId: string } | null>(null);
-
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addMode, setAddMode] = useState<'single' | 'bulk'>('single');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserMobile, setNewUserMobile] = useState('');
-  const [bulkEmailsText, setBulkEmailsText] = useState('');
-  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
-  const [newUserRoles, setNewUserRoles] = useState<Record<string, AppRole | null>>({});
-  const [newUserDepots, setNewUserDepots] = useState<Record<string, string | null>>({});
-  const [dialogError, setDialogError] = useState('');
-  const [addingUser, setAddingUser] = useState(false);
-
-  useEffect(() => {
-    listAuthorizedUsers().then((result) => {
-      setLoading(false);
-      if (result.ok && result.users) setUsers(result.users);
-      else setError(result.error || 'Could not load authorized users.');
+  const refreshHistory = useCallback(() => {
+    getAccessHistory().then((r) => {
+      setHistoryLoading(false);
+      if (r.ok && r.changes) setHistory(r.changes);
     });
   }, []);
 
-  const openAddUserModal = () => {
-    setAddMode('single');
-    setNewUserEmail('');
-    setNewUserMobile('');
-    setBulkEmailsText('');
-    setNewUserRoles({});
-    setNewUserDepots({});
-    setDialogError('');
-    setShowAddModal(true);
-  };
-  const closeAddUserModal = () => {
-    if (addingUser) return;
-    setShowAddModal(false);
-    setRolePickerFor(null);
-  };
-  const setNewUserRole = (appId: string, role: AppRole | null) => setNewUserRoles((prev) => ({ ...prev, [appId]: role }));
-  const setNewUserDepot = (appId: string, depot: string | null) => setNewUserDepots((prev) => ({ ...prev, [appId]: depot }));
-
-  const submitNewUser = async () => {
-    const value = newUserEmail.trim().toLowerCase();
-    if (!value) return;
-    if (!EMAIL_RE.test(value)) {
-      setDialogError('Enter a valid email address.');
-      return;
-    }
-    if (users.some((u) => u.email === value)) {
-      setDialogError('This email already has access.');
-      return;
-    }
-    let mobile: string | undefined;
-    if (newUserMobile.trim()) {
-      const normalized = normalizeIndianMobileClient(newUserMobile.trim());
-      if (!normalized) {
-        setDialogError('Enter a valid 10-digit Indian mobile number, or leave it blank.');
-        return;
-      }
-      mobile = normalized;
-    }
-    setDialogError('');
-    setAddingUser(true);
-    try {
-      const result = await addAuthorizedUser(value, userEmail || undefined, mobile);
-      if (!result.ok) {
-        setDialogError(result.error || 'Could not add this user.');
-        return;
-      }
-      const grantedRoles = Object.entries(newUserRoles).filter((entry): entry is [string, AppRole] => !!entry[1]);
-      const roleResults = await Promise.all(
-        grantedRoles.map(([appId, role]) => setAppAccess(value, appId, role, newUserDepots[appId] ?? null, userEmail || undefined))
-      );
-      const explicitApps = grantedRoles
-        .filter((_, i) => roleResults[i].ok)
-        .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
-      const apps = mergeAppGrants(result.apps, explicitApps);
-      setUsers((prev) => [...prev, { email: value, isActive: true, accessLevel: 'Viewer', mobile: mobile || null, apps }]);
-      const failedRole = roleResults.find((r) => !r.ok);
-      setShowAddModal(false);
-      if (failedRole) {
-        setError(failedRole.error || `${value} was added, but one or more app roles couldn't be saved — edit them below.`);
-      }
-    } finally {
-      setAddingUser(false);
-    }
-  };
-
-  const parsedBulkEmails = addMode === 'bulk' ? parseBulkEmails(bulkEmailsText) : [];
-  const existingEmails = new Set(users.map((u) => u.email));
-  const bulkValidEmails = parsedBulkEmails.filter((e) => EMAIL_RE.test(e) && !existingEmails.has(e));
-  const bulkSkippedCount = parsedBulkEmails.length - bulkValidEmails.length;
-
-  const submitBulkUsers = async () => {
-    if (bulkValidEmails.length === 0) {
-      setDialogError('Paste at least one valid, new email address.');
-      return;
-    }
-    setDialogError('');
-    setAddingUser(true);
-    setBulkProgress({ done: 0, total: bulkValidEmails.length });
-    const grantedRoles = Object.entries(newUserRoles).filter((entry): entry is [string, AppRole] => !!entry[1]);
-    const added: UserAccessEntry[] = [];
-    let failures = 0;
-    try {
-      for (const batch of chunk(bulkValidEmails, 5)) {
-        const results = await Promise.all(
-          batch.map(async (email) => {
-            const res = await addAuthorizedUser(email, userEmail || undefined);
-            if (!res.ok) return { email, ok: false as const };
-            const roleResults = await Promise.all(
-              grantedRoles.map(([appId, role]) => setAppAccess(email, appId, role, newUserDepots[appId] ?? null, userEmail || undefined))
-            );
-            const explicitApps = grantedRoles
-              .filter((_, i) => roleResults[i].ok)
-              .map(([appId, role]) => ({ appId, role, depot: newUserDepots[appId] ?? undefined }));
-            return { email, ok: true as const, apps: mergeAppGrants(res.apps, explicitApps) };
-          })
-        );
-        for (const r of results) {
-          if (r.ok) added.push({ email: r.email, isActive: true, accessLevel: 'Viewer', apps: r.apps });
-          else failures += 1;
-        }
-        setBulkProgress((prev) => (prev ? { done: prev.done + batch.length, total: prev.total } : null));
-      }
-      setUsers((prev) => [...prev, ...added]);
-      setShowAddModal(false);
-      if (failures > 0) {
-        setError(`${added.length} of ${bulkValidEmails.length} users added. ${failures} failed — add those individually to retry.`);
-      }
-    } finally {
-      setAddingUser(false);
-      setBulkProgress(null);
-    }
-  };
-
-  const removeUser = async (email: string) => {
-    const result = await removeAuthorizedUser(email, userEmail || undefined);
-    if (!result.ok) {
-      setError(result.error || 'Could not remove this user.');
-      return;
-    }
-    setUsers((prev) => prev.filter((u) => u.email !== email));
-    setPending((prev) => {
-      const { [email]: _drop, ...rest } = prev;
-      return rest;
+  useEffect(() => {
+    if (!canManage) return;
+    listAuthorizedUsers().then((r) => {
+      setUsersLoading(false);
+      if (r.ok && r.users) setUsers(r.users);
+      else setUsersError(r.error || 'Could not load people.');
     });
+    getAdminRoster().then((r) => {
+      if (r.ok && r.users) setUsage(Object.fromEntries(r.users.map((u) => [u.email, u.usage])));
+    });
+    Promise.all([getAdminOverview(), getAdminAppStats()]).then(([o, a]) => {
+      setStatsLoading(false);
+      if (o.ok && o.overview) setOverview(o.overview);
+      if (a.ok && a.apps) setAppStats(a.apps);
+    });
+    refreshHistory();
+  }, [canManage, refreshHistory]);
+
+  const people: AdminUser[] = useMemo(() => users.map((u) => ({ ...u, usage: usage[u.email] ?? null })), [users, usage]);
+  const statByApp = useMemo(() => Object.fromEntries(appStats.map((s) => [s.appId, s])), [appStats]);
+  const accessCountByApp = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const u of users) for (const g of u.apps) m[g.appId] = (m[g.appId] || 0) + 1;
+    return m;
+  }, [users]);
+
+  // ── Toast ─────────────────────────────────────────────────────────────────────────────────
+  const [toast, setToast] = useState<{ id: number; message: string; tone: 'success' | 'error' } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const notify = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
+    setToast({ id: Date.now(), message, tone });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  // ── People filters / selection ───────────────────────────────────────────────────────────
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [levelFilter, setLevelFilter] = useState<AccessLevel | 'all'>('all');
+  const [appFilter, setAppFilter] = useState<string>('all');
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'name', dir: 1 });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showAdd, setShowAdd] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+
+  const visiblePeople = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = people.filter((u) => {
+      if (q && !u.email.includes(q) && !displayName(u.email, u.usage?.name).toLowerCase().includes(q) && !(u.mobile || '').includes(q)) return false;
+      if (statusFilter === 'active' && !u.isActive) return false;
+      if (statusFilter === 'inactive' && u.isActive) return false;
+      if (statusFilter === 'never' && (!u.usage || u.usage.hasLoggedIn)) return false;
+      if (levelFilter !== 'all' && u.accessLevel !== levelFilter) return false;
+      if (appFilter === 'none' && u.apps.length > 0) return false;
+      if (appFilter !== 'all' && appFilter !== 'none' && !roleOf(u, appFilter)) return false;
+      return true;
+    });
+    const cmp = (a: AdminUser, b: AdminUser) => {
+      switch (sort.key) {
+        case 'lastSeen':
+          return (new Date(a.usage?.lastLogin || 0).getTime() - new Date(b.usage?.lastLogin || 0).getTime()) * -1;
+        case 'apps':
+          return b.apps.length - a.apps.length;
+        case 'level':
+          return LEVEL_RANK[a.accessLevel] - LEVEL_RANK[b.accessLevel];
+        default:
+          return displayName(a.email, a.usage?.name).localeCompare(displayName(b.email, b.usage?.name));
+      }
+    };
+    return [...list].sort((a, b) => cmp(a, b) * sort.dir);
+  }, [people, search, statusFilter, levelFilter, appFilter, sort]);
+
+  const filtersActive = !!search.trim() || statusFilter !== 'all' || levelFilter !== 'all' || appFilter !== 'all';
+  const resetFilters = () => { setSearch(''); setStatusFilter('all'); setLevelFilter('all'); setAppFilter('all'); };
+  const showPeople = (patch: { status?: StatusFilter; level?: AccessLevel | 'all'; app?: string }) => {
+    setSearch('');
+    setStatusFilter(patch.status ?? 'all');
+    setLevelFilter(patch.level ?? 'all');
+    setAppFilter(patch.app ?? 'all');
+    goTab('people');
+  };
+
+  const allVisibleSelected = visiblePeople.length > 0 && visiblePeople.every((u) => selected.has(u.email));
+  const someVisibleSelected = visiblePeople.some((u) => selected.has(u.email));
+  const toggleAll = () =>
     setSelected((prev) => {
-      if (!prev.has(email)) return prev;
       const next = new Set(prev);
-      next.delete(email);
+      if (allVisibleSelected) visiblePeople.forEach((u) => next.delete(u.email));
+      else visiblePeople.forEach((u) => next.add(u.email));
       return next;
     });
-  };
-
-  const visibleUsers = users.filter((u) => u.email.toLowerCase().includes(userSearch.trim().toLowerCase()));
-
-  const effectiveActive = (user: UserAccessEntry) => pending[user.email]?.isActive ?? user.isActive;
-  const effectiveRole = (user: UserAccessEntry, appId: string) => {
-    const p = pending[user.email]?.roles[appId];
-    return p !== undefined ? p : roleOf(user, appId);
-  };
-  const effectiveDepot = (user: UserAccessEntry, appId: string) => {
-    const p = pending[user.email]?.depots?.[appId];
-    return p !== undefined ? p : depotOf(user, appId);
-  };
-  const effectiveAccessLevel = (user: UserAccessEntry): AccessLevel => pending[user.email]?.accessLevel ?? user.accessLevel;
-  const isDirty = (user: UserAccessEntry) => {
-    const p = pending[user.email];
-    if (!p) return false;
-    if (p.isActive !== undefined && p.isActive !== user.isActive) return true;
-    if (p.accessLevel !== undefined && p.accessLevel !== user.accessLevel) return true;
-    if (Object.entries(p.roles).some(([appId, role]) => role !== roleOf(user, appId))) return true;
-    if (p.depots && Object.entries(p.depots).some(([appId, depot]) => depot !== depotOf(user, appId))) return true;
-    return false;
-  };
-
-  const canSetAccessLevel = (user: UserAccessEntry, level: AccessLevel) => {
-    if (user.accessLevel === 'Super Admin') return false;
-    if (actingLevel === 'Super Admin') return true;
-    return actingLevel === 'Admin' && level === 'Viewer';
-  };
-
-  const setPendingRole = (user: UserAccessEntry, appId: string, role: AppRole | null) => {
-    setPending((prev) => {
-      const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, roles: { ...existing.roles, [appId]: role } } };
-    });
-  };
-  const setPendingDepot = (user: UserAccessEntry, appId: string, depot: string | null) => {
-    setPending((prev) => {
-      const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, depots: { ...(existing.depots ?? {}), [appId]: depot } } };
-    });
-  };
-  const setAccessLevelPending = (user: UserAccessEntry, level: AccessLevel) => {
-    if (!canSetAccessLevel(user, level)) return;
-    setPending((prev) => {
-      const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, accessLevel: level } };
-    });
-  };
-  const toggleActivePending = (user: UserAccessEntry) => {
-    const next = !effectiveActive(user);
-    setPending((prev) => {
-      const existing = prev[user.email] ?? { roles: {} };
-      return { ...prev, [user.email]: { ...existing, isActive: next } };
-    });
-  };
-
-  const saveUser = async (user: UserAccessEntry) => {
-    const changes = pending[user.email];
-    if (!changes) return;
-    setError('');
-    setSaving(user.email);
-    try {
-      const calls: Promise<{ ok: boolean; error?: string }>[] = [];
-      if (changes.isActive !== undefined && changes.isActive !== user.isActive) {
-        calls.push(setUserActive(user.email, changes.isActive, userEmail || undefined));
-      }
-      if (changes.accessLevel !== undefined && changes.accessLevel !== user.accessLevel && userEmail) {
-        calls.push(setAccessLevel(user.email, changes.accessLevel, userEmail));
-      }
-      const touchedAppIds = new Set([...Object.keys(changes.roles), ...Object.keys(changes.depots ?? {})]);
-      for (const appId of touchedAppIds) {
-        const role = changes.roles[appId] !== undefined ? changes.roles[appId] : roleOf(user, appId);
-        const depot = changes.depots?.[appId] !== undefined ? changes.depots[appId] : depotOf(user, appId);
-        const roleChanged = changes.roles[appId] !== undefined && changes.roles[appId] !== roleOf(user, appId);
-        const depotChanged = changes.depots?.[appId] !== undefined && changes.depots[appId] !== depotOf(user, appId);
-        if (roleChanged || depotChanged) {
-          calls.push(role ? setAppAccess(user.email, appId, role, depot, userEmail || undefined) : setAppAccess(user.email, appId, null, null, userEmail || undefined));
-        }
-      }
-      const results = await Promise.all(calls);
-      const failed = results.find((r) => !r.ok);
-      if (failed) {
-        setError(failed.error || 'Could not save some changes. Please try again.');
-        return;
-      }
-      setUsers((prev) =>
-        prev.map((u) => {
-          if (u.email !== user.email) return u;
-          const nextApps = u.apps.filter((a) => !touchedAppIds.has(a.appId));
-          for (const appId of touchedAppIds) {
-            const role = changes.roles[appId] !== undefined ? changes.roles[appId] : roleOf(user, appId);
-            const depot = changes.depots?.[appId] !== undefined ? changes.depots[appId] : depotOf(user, appId);
-            if (role) nextApps.push({ appId, role, depot: depot ?? undefined });
-          }
-          return { ...u, isActive: changes.isActive ?? u.isActive, accessLevel: changes.accessLevel ?? u.accessLevel, apps: nextApps };
-        })
-      );
-      setPending((prev) => {
-        const { [user.email]: _drop, ...rest } = prev;
-        return rest;
-      });
-      setEditingEmail((current) => (current === user.email ? null : current));
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const toggleSelected = (email: string) => {
+  const toggleOne = (email: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(email)) next.delete(email);
       else next.add(email);
       return next;
     });
-  };
-  const allVisibleSelected = visibleUsers.length > 0 && visibleUsers.every((u) => selected.has(u.email));
-  const toggleSelectAll = () => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allVisibleSelected) visibleUsers.forEach((u) => next.delete(u.email));
-      else visibleUsers.forEach((u) => next.add(u.email));
-      return next;
-    });
-  };
-  const clearSelection = () => {
-    setSelected(new Set());
-    setBulkTargetApp(null);
-    setBulkNote('');
-  };
 
-  const bulkSetAccessLevel = async (level: AccessLevel) => {
-    const targets = users.filter((u) => selected.has(u.email));
-    const eligible = targets.filter((u) => canSetAccessLevel(u, level));
-    const skipped = targets.length - eligible.length;
-    if (eligible.length === 0) {
-      setBulkNote('None of the selected users are eligible for that change.');
-      return;
-    }
+  // ── Bulk actions ─────────────────────────────────────────────────────────────────────────
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMenu, setBulkMenu] = useState<'level' | 'app' | null>(null);
+  const [bulkApp, setBulkApp] = useState<string>(SORTED_APPS[0]?.id ?? '');
+  const [bulkRole, setBulkRole] = useState<AppRole | null>(null);
+
+  const finishBulk = (message: string, failed: number) => {
+    notify(message, failed ? 'error' : 'success');
+    setSelected(new Set());
+    setBulkMenu(null);
+    refreshHistory();
+  };
+  const bulkLevel = async (level: AccessLevel) => {
     if (!userEmail) return;
+    const targets = users.filter((u) => selected.has(u.email));
+    const eligible = targets.filter((u) => canSetLevel(actingLevel, u, level));
+    if (eligible.length === 0) return notify('None of the selected people can be set to that level', 'error');
     setBulkBusy(true);
-    setBulkNote('');
     try {
       const results = await runBatched(eligible, BULK_CONCURRENCY, (u) => setAccessLevel(u.email, level, userEmail));
-      const okEmails = new Set(eligible.filter((_, i) => results[i].ok).map((u) => u.email));
-      const failed = eligible.length - okEmails.size;
-      setUsers((prev) => prev.map((u) => (okEmails.has(u.email) ? { ...u, accessLevel: level } : u)));
-      setBulkNote(
-        `Set ${okEmails.size} of ${eligible.length} selected user(s) to ${level}.` +
-        (skipped ? ` ${skipped} skipped (not eligible).` : '') +
-        (failed ? ` ${failed} failed.` : '')
-      );
-      clearSelection();
+      const ok = new Set(eligible.filter((_, i) => results[i].ok).map((u) => u.email));
+      setUsers((prev) => prev.map((u) => (ok.has(u.email) ? { ...u, accessLevel: level } : u)));
+      const skipped = targets.length - eligible.length;
+      finishBulk(`${ok.size} set to ${level}${skipped ? ` · ${skipped} skipped` : ''}${eligible.length - ok.size ? ` · ${eligible.length - ok.size} failed` : ''}`, eligible.length - ok.size);
     } finally {
       setBulkBusy(false);
     }
   };
-
-  const bulkSetActive = async (isActive: boolean) => {
+  const bulkActive = async (isActive: boolean) => {
     const targets = users.filter((u) => selected.has(u.email));
-    if (targets.length === 0) return;
     setBulkBusy(true);
-    setBulkNote('');
     try {
       const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setUserActive(u.email, isActive, userEmail || undefined));
-      const okEmails = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
-      const failed = targets.length - okEmails.size;
-      setUsers((prev) => prev.map((u) => (okEmails.has(u.email) ? { ...u, isActive } : u)));
-      setBulkNote(`${isActive ? 'Activated' : 'Deactivated'} ${okEmails.size} of ${targets.length} selected user(s).` + (failed ? ` ${failed} failed.` : ''));
-      clearSelection();
+      const ok = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
+      setUsers((prev) => prev.map((u) => (ok.has(u.email) ? { ...u, isActive } : u)));
+      finishBulk(`${isActive ? 'Activated' : 'Deactivated'} ${ok.size} of ${targets.length}`, targets.length - ok.size);
     } finally {
       setBulkBusy(false);
     }
   };
-
-  const bulkSetAppRole = async (role: AppRole | null) => {
-    if (!bulkTargetApp) {
-      setBulkNote('Pick an app to target first.');
-      return;
-    }
-    const targetAppId = bulkTargetApp;
+  const bulkAppRole = async () => {
     const targets = users.filter((u) => selected.has(u.email));
-    if (targets.length === 0) return;
+    if (bulkApp === AUDIT_CAPA_APP_ID && bulkRole === 'Depot') return notify('Depot roles need a depot — set them per person', 'error');
     setBulkBusy(true);
-    setBulkNote('');
     try {
-      const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setAppAccess(u.email, targetAppId, role, null, userEmail || undefined));
-      const okEmails = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
-      const failed = targets.length - okEmails.size;
+      const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setAppAccess(u.email, bulkApp, bulkRole, null, userEmail || undefined));
+      const ok = new Set(targets.filter((_, i) => results[i].ok).map((u) => u.email));
       setUsers((prev) =>
         prev.map((u) => {
-          if (!okEmails.has(u.email)) return u;
-          const apps = u.apps.filter((a) => a.appId !== targetAppId);
-          if (role) apps.push({ appId: targetAppId, role });
+          if (!ok.has(u.email)) return u;
+          const apps = u.apps.filter((a) => a.appId !== bulkApp);
+          if (bulkRole) apps.push({ appId: bulkApp, role: bulkRole });
           return { ...u, apps };
         })
       );
-      const appLabel = APPS.find((a) => a.id === targetAppId)?.name ?? targetAppId;
-      setBulkNote(`Set ${appLabel} to ${role ?? 'None'} for ${okEmails.size} of ${targets.length} selected user(s).` + (failed ? ` ${failed} failed.` : ''));
-      clearSelection();
+      finishBulk(`${appLabel(bulkApp)} ${bulkRole ? `set to ${bulkRole}` : 'revoked'} for ${ok.size} of ${targets.length}`, targets.length - ok.size);
     } finally {
       setBulkBusy(false);
     }
   };
 
-  const handleExport = async () => {
+  // ── Exports ──────────────────────────────────────────────────────────────────────────────
+  const exportPeople = async () => {
     setExporting(true);
-    setError('');
     try {
-      await exportUsersToExcel(visibleUsers, SORTED_APPS);
+      await exportUsersToExcel(visiblePeople, SORTED_APPS);
     } catch {
-      setError('Could not export the roster. Please try again.');
+      notify('Could not export the list', 'error');
     } finally {
       setExporting(false);
     }
   };
+  const downloadReport = async () => {
+    if (!overview) return;
+    setReportBusy(true);
+    try {
+      const roster: AdminRosterEntry[] = people.map((u) => ({
+        email: u.email, isActive: u.isActive, accessLevel: u.accessLevel, apps: u.apps,
+        usage: u.usage ?? { name: null, lastLogin: null, sessionsTotal: 0, logins: 0, timeSpent: '0m', appsOpened: 0, mostUsedApp: null, hasLoggedIn: false },
+      }));
+      await exportAdministrationReportToExcel(overview, roster, appStats, history);
+    } catch {
+      notify('Could not generate the report', 'error');
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
-  if (access && !canManageAccess) {
+  // ── Guard ────────────────────────────────────────────────────────────────────────────────
+  if (access && !canManage) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 8 }}>
         <ShieldAlert size={32} color={colors.inkSoft} />
         <p style={{ fontSize: 16, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, marginTop: 6 }}>You don&apos;t have access to this page</p>
-        <p style={{ fontSize: 13, fontFamily: fonts.sansRegular, color: colors.inkSoft, textAlign: 'center', marginBottom: 14 }}>Manage Access is only available to Super Admin and Admin users.</p>
-        <button type="button" onClick={() => router.push('/')} style={backBtnStyle}>
-          <ArrowLeft size={13} color={colors.ink} />
-          <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>Back to Emami Apps</span>
+        <p style={{ fontSize: 13, fontFamily: fonts.sansRegular, color: colors.inkSoft, textAlign: 'center', marginBottom: 14 }}>Admin Center is only available to Super Admin and Admin users.</p>
+        <button type="button" className="ac-btn" onClick={() => router.push('/')} style={secondaryBtnStyle}>
+          <ArrowLeft size={14} /> Back to Emami Apps
         </button>
+        <AdminStyles />
       </div>
     );
   }
 
-  const editTarget = editingEmail ? users.find((u) => u.email === editingEmail) ?? null : null;
-  const closeEdit = () => {
-    if (editTarget && saving === editTarget.email) return;
-    setEditingEmail(null);
-    setRolePickerFor(null);
-  };
+  const drawerUser = openEmail ? people.find((u) => u.email === openEmail) ?? null : null;
+  const activeCount = users.filter((u) => u.isActive).length;
+  const neverCount = people.filter((u) => u.usage && !u.usage.hasLoggedIn).length;
+  const noAppsCount = users.filter((u) => u.apps.length === 0).length;
+  const adminCount = users.filter((u) => u.accessLevel !== 'Viewer').length;
+  const pad = isWide ? 24 : 14;
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: 20, paddingBottom: 40 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <button type="button" onClick={() => router.push('/')} style={backBtnStyle}>
-          <ArrowLeft size={13} color={colors.ink} />
-          <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>Back to Emami Apps</span>
-        </button>
-        <p style={{ fontSize: 18, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>Manage Access</p>
-      </div>
+    <div style={{ minHeight: '100%', padding: pad, paddingBottom: selected.size > 0 ? 120 : 48 }}>
+      <AdminStyles />
 
-      <button
-        type="button"
-        onClick={() => router.push('/manage-access/sso')}
-        style={{ ...baseCardStyle, display: 'flex', alignItems: 'center', gap: 10, padding: 14, marginBottom: 16, width: '100%', cursor: 'pointer', textAlign: 'left' }}
-      >
-        <div style={cardIconBoxStyle}><KeyRound size={15} color={colors.rust} /></div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 14.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>Configure SSO</p>
-          <p style={{ fontSize: 12, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 1, marginBottom: 0 }}>Set up &quot;Sign in with Microsoft&quot; by uploading Entra&apos;s Federation Metadata XML</p>
+      {/* ── Page header (flat, same as My Profile / Help & Support) ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <span style={{ width: 44, height: 44, borderRadius: radii.xl, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <ShieldCheck size={20} color={colors.rust} />
+        </span>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <span style={{ fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+            {actingLevel ?? 'Admin'}
+          </span>
+          <p style={{ margin: '2px 0 0', fontSize: 22, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>Admin Center</p>
+          <p style={{ margin: '4px 0 0', fontSize: 13, fontFamily: fonts.sansRegular, color: colors.inkSoft, maxWidth: 520 }}>
+            Who can sign in, what they can open, and how Emami Apps is being used — all in one place.
+          </p>
         </div>
-        <ChevronRight size={16} color={colors.inkSoft} />
-      </button>
-
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, border: `1px solid ${colors.rust}33`, backgroundColor: `${colors.rust}0d`, borderRadius: radii.lg, padding: 14, marginBottom: 16 }}>
-        <Info size={15} color={colors.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-        <p style={{ flex: 1, fontSize: 12, fontFamily: fonts.sansRegular, color: colors.ink, lineHeight: '17px', margin: 0 }}>
-          This list is the source of truth for who can sign in to EmamiApps at all — an email not listed here (or marked inactive) is blocked at login, regardless of sign-in method.
-          Tap the pencil to edit a user&apos;s access level and app roles, tick rows to change many at once, or use Export/Add Users above the table.
-        </p>
-      </div>
-
-      <div style={{ ...baseCardStyle, padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-          <div style={cardIconBoxStyle}><ShieldCheck size={15} color={colors.rust} /></div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 14.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, margin: 0 }}>Authorized Users</p>
-            <p style={{ fontSize: 12, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 1, marginBottom: 0 }}>Grant each person a role per app, and control who can sign in</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-          <div style={{ ...inputWrapStyle, flex: 1, minWidth: 200 }}>
-            <Search size={14} color={colors.inkSoft} />
-            <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search by email…" style={inputStyle} aria-label="Search authorized users by email" />
-            {!!userSearch && (
-              <button type="button" onClick={() => setUserSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Clear search">
-                <X size={14} color={colors.inkSoft} />
-              </button>
-            )}
-          </div>
-          <button type="button" onClick={handleExport} disabled={exporting || visibleUsers.length === 0} style={exportBtnStyle}>
-            {exporting ? <Spinner /> : (<><FileSpreadsheet size={14} color={colors.ink} /><span style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>Export</span></>)}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button type="button" className="ac-btn" onClick={downloadReport} disabled={!overview || reportBusy || usersLoading} style={secondaryBtnStyle}>
+            {reportBusy ? <Spinner size={14} /> : <Download size={15} />} Full report
           </button>
-          <button type="button" onClick={openAddUserModal} style={addBtnStyle}>
-            <Plus size={14} color={colors.white} />
-            <span style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.white }}>Add Users</span>
+          <button type="button" className="ac-btn" onClick={() => setShowAdd(true)} disabled={usersLoading} style={primaryBtnStyle}>
+            <UserPlus size={15} /> Add people
           </button>
         </div>
-        {!!error && <p style={errorTextStyle}>{error}</p>}
+      </div>
 
-        {selected.size > 0 && (
-          <div style={{ border: `1px solid ${colors.rust}33`, backgroundColor: `${colors.rust}0d`, borderRadius: radii.lg, padding: 12, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>{selected.size} selected</span>
-              <button type="button" onClick={clearSelection} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Clear selection"><X size={14} color={colors.inkSoft} /></button>
+      <nav className="ac-scroll" style={{ display: 'flex', gap: 4, marginTop: 18, overflowX: 'auto', borderBottom: `1px solid ${colors.border}` }} aria-label="Admin Center sections">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => goTab(t.id)}
+              aria-current={active ? 'page' : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7, padding: '10px 14px', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+                background: 'none', marginBottom: -1, borderBottom: `2px solid ${active ? colors.rust : 'transparent'}`,
+                color: active ? colors.rust : colors.inkSoft, fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold,
+                transition: 'color 160ms, border-color 160ms',
+              }}
+            >
+              <Icon size={15} />
+              {t.label}
+              {t.id === 'people' && !usersLoading && (
+                <span style={{ fontSize: 10.5, padding: '1px 7px', borderRadius: 999, backgroundColor: active ? `${colors.rust}17` : colors.appBg, color: active ? colors.rust : colors.inkSoft }}>{users.length}</span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div key={tab} className="ac-fade" style={{ marginTop: 20 }}>
+        {/* ── Overview ── */}
+        {tab === 'overview' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isWide ? 190 : 150}px, 1fr))`, gap: 12 }}>
+              <Kpi icon={Users} accent={colors.rust} label="People with access" value={usersLoading ? null : users.length} sub={`${activeCount} can sign in`} onClick={() => showPeople({})} />
+              <Kpi icon={UserCheck} accent={colors.green} label="Active last 7 days" value={statsLoading ? null : overview?.activeLast7Days ?? '—'} sub={overview ? `${overview.activeLast30Days} in 30 days` : ''} />
+              <Kpi icon={LogIn} accent="#0EA5E9" label="Total sign-ins" value={statsLoading ? null : overview?.totalLogins ?? '—'} sub="all time" />
+              <Kpi icon={MousePointerClick} accent="#9333EA" label="App opens" value={statsLoading ? null : overview?.totalAppOpens ?? '—'} sub="all time" onClick={() => goTab('apps')} />
+              <Kpi icon={TrendingUp} accent="#F59E0B" label="Most used app" value={statsLoading ? null : overview?.mostUsedApp ? appLabel(overview.mostUsedApp.appId) : '—'} sub={overview?.mostUsedApp ? `${overview.mostUsedApp.opens} opens` : 'no activity yet'} small onClick={overview?.mostUsedApp ? () => openApp(overview.mostUsedApp!.appId) : undefined} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-              <span style={bulkLabelStyle}>Access level</span>
-              {GRANTABLE_LEVELS.map((level) => (
-                <button key={level} type="button" onClick={() => bulkSetAccessLevel(level)} disabled={bulkBusy} style={bulkChipStyle}>{level}</button>
-              ))}
-              <span style={{ width: 1, height: 18, backgroundColor: `${colors.rust}33`, margin: '0 4px' }} />
-              <span style={bulkLabelStyle}>Status</span>
-              <button type="button" onClick={() => bulkSetActive(true)} disabled={bulkBusy} style={bulkChipStyle}>Activate</button>
-              <button type="button" onClick={() => bulkSetActive(false)} disabled={bulkBusy} style={bulkChipStyle}>Deactivate</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                <span style={bulkLabelStyle}>App role</span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {SORTED_APPS.map((app) => {
-                    const accent = appColor(app.id);
-                    const targeted = bulkTargetApp === app.id;
-                    const Icon = app.icon;
-                    return (
-                      <button
-                        key={app.id}
-                        type="button"
-                        onClick={() => setBulkTargetApp(targeted ? null : app.id)}
-                        style={{ ...appChipStyle, borderColor: targeted ? accent : colors.border, backgroundColor: targeted ? `${accent}14` : colors.appBg }}
-                      >
-                        <Icon size={12.5} color={targeted ? accent : colors.inkSoft} />
-                        <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: targeted ? accent : colors.inkSoft }}>{app.name}</span>
+
+            <div style={{ display: 'grid', gridTemplateColumns: isWide ? 'minmax(0, 1.25fr) minmax(0, 1fr)' : '1fr', gap: 16 }}>
+              <div style={{ ...cardStyle, padding: 20 }}>
+                <CardHead title="Top apps" sub="By total opens, org-wide" action={<LinkBtn onClick={() => goTab('apps')}>All apps</LinkBtn>} />
+                {statsLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={28} />)}</div>
+                ) : appStats.length === 0 ? (
+                  <EmptyState icon={AppWindow} title="No app activity yet" />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {[...appStats].sort((a, b) => b.opens - a.opens).slice(0, 7).map((s, i, arr) => (
+                      <button key={s.appId} type="button" className="ac-row" onClick={() => openApp(s.appId)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 8px', border: 'none', background: 'transparent', borderRadius: radii.md, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                        <span style={{ width: 18, fontSize: 12, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.inkSoft, textAlign: 'center' }}>{i + 1}</span>
+                        <AppIcon appId={s.appId} size={30} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appLabel(s.appId)}</span>
+                            <span style={{ fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, whiteSpace: 'nowrap' }}>{s.opens.toLocaleString()} <span style={{ color: colors.inkSoft, fontWeight: 500 }}>· {s.uniqueUsers} people</span></span>
+                          </span>
+                          <span style={{ display: 'block', height: 6, borderRadius: 3, backgroundColor: colors.appBg, marginTop: 6, overflow: 'hidden' }}>
+                            <span style={{ display: 'block', height: '100%', width: `${Math.max(3, (s.opens / (arr[0].opens || 1)) * 100)}%`, borderRadius: 3, background: `linear-gradient(90deg, ${appColor(s.appId)}88, ${appColor(s.appId)})` }} />
+                          </span>
+                        </span>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ ...cardStyle, padding: 20 }}>
+                  <CardHead title="Needs attention" sub="Quick filters into People" />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <AttentionRow icon={Clock} accent="#F59E0B" label="Never signed in" count={neverCount} loading={usersLoading} onClick={() => showPeople({ status: 'never' })} />
+                    <AttentionRow icon={UserX} accent="#E11D48" label="Sign-in blocked (inactive)" count={users.length - activeCount} loading={usersLoading} onClick={() => showPeople({ status: 'inactive' })} />
+                    <AttentionRow icon={AppWindow} accent={colors.inkSoft} label="No apps granted" count={noAppsCount} loading={usersLoading} onClick={() => showPeople({ app: 'none' })} />
+                    <AttentionRow icon={ShieldCheck} accent={colors.rust} label="Admins & Super Admins" count={adminCount} loading={usersLoading} onClick={() => goTab('people')} />
+                  </div>
+                </div>
+                <div style={{ ...cardStyle, padding: 20, flex: 1 }}>
+                  <CardHead title="Recent changes" sub="Latest access updates" action={<LinkBtn onClick={() => goTab('activity')}>View all</LinkBtn>} />
+                  {historyLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={34} />)}</div>
+                  ) : history.length === 0 ? (
+                    <EmptyState icon={History} title="No changes yet" />
+                  ) : (
+                    <ChangeTimeline changes={history.slice(0, 5)} onOpenUser={openUser} />
+                  )}
                 </div>
               </div>
-              {!!bulkTargetApp && (
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                  <span style={bulkLabelStyle}>Set to</span>
-                  {roleOptionsFor(bulkTargetApp).filter((r): r is AppRole => r !== null).map((role) => (
-                    <button key={role} type="button" onClick={() => bulkSetAppRole(role)} disabled={bulkBusy} style={bulkChipStyle}>{role}</button>
-                  ))}
-                  <button type="button" onClick={() => bulkSetAppRole(null)} disabled={bulkBusy} style={bulkChipStyle}>None</button>
-                </div>
-              )}
             </div>
-            {bulkBusy && <Spinner />}
-            {!!bulkNote && <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.ink }}>{bulkNote}</span>}
           </div>
         )}
 
-        {loading ? (
-          <Spinner />
-        ) : (
-          <div style={{ overflowX: 'auto', marginTop: 8 }}>
-            <div style={{ minWidth: 720, border: `1px solid ${colors.border}`, borderRadius: radii.lg, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', backgroundColor: colors.appBg, borderBottom: `1px solid ${colors.border}` }}>
-                <button type="button" onClick={toggleSelectAll} style={{ width: 24, display: 'flex', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Select all visible users">
-                  {allVisibleSelected ? <CheckSquare size={16} color={colors.rust} /> : <Square size={16} color={colors.inkSoft} />}
+        {/* ── People ── */}
+        {tab === 'people' && (
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
+            <div style={{ padding: isWide ? '18px 20px 14px' : 14, display: 'flex', flexDirection: 'column', gap: 12, borderBottom: `1px solid ${colors.border}` }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <div className="ac-input" style={{ ...inputWrapStyle, flex: 1, minWidth: 220 }}>
+                  <Search size={15} color={colors.inkSoft} />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email or mobile…" style={inputStyle} aria-label="Search people" />
+                  {!!search && <button type="button" onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Clear search"><X size={14} color={colors.inkSoft} /></button>}
+                </div>
+                <Select value={levelFilter} onChange={(v) => setLevelFilter(v as AccessLevel | 'all')} options={[{ value: 'all', label: 'All levels' }, { value: 'Super Admin', label: 'Super Admin' }, { value: 'Admin', label: 'Admin' }, { value: 'Viewer', label: 'Viewer' }]} />
+                <Select value={appFilter} onChange={setAppFilter} options={[{ value: 'all', label: 'Any app' }, { value: 'none', label: 'No apps granted' }, ...SORTED_APPS.map((a) => ({ value: a.id, label: `Has ${a.name}` }))]} />
+                <button type="button" className="ac-btn" onClick={exportPeople} disabled={exporting || visiblePeople.length === 0} style={secondaryBtnStyle}>
+                  {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color={colors.green} />} Export
                 </button>
-                <span style={{ ...tableHeaderTextStyle, width: 220 }}>Email</span>
-                <span style={{ ...tableHeaderTextStyle, width: 100 }}>Mobile</span>
-                <span style={{ ...tableHeaderTextStyle, width: 90 }}>Access</span>
-                <span style={{ ...tableHeaderTextStyle, width: 50 }}>Apps</span>
-                <span style={{ ...tableHeaderTextStyle, width: 44 }}>Active</span>
-                <span style={{ ...tableHeaderTextStyle, width: 90 }}>Actions</span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {([
+                  ['all', 'Everyone', users.length],
+                  ['active', 'Active', activeCount],
+                  ['inactive', 'Inactive', users.length - activeCount],
+                  ['never', 'Never signed in', neverCount],
+                ] as [StatusFilter, string, number][]).map(([id, label, n]) => (
+                  <button key={id} type="button" onClick={() => setStatusFilter(id)} style={chipStyle(statusFilter === id)}>
+                    {label} <span style={{ opacity: 0.7 }}>{n}</span>
+                  </button>
+                ))}
+                <span style={{ flex: 1 }} />
+                <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>
+                  Showing {visiblePeople.length} of {users.length}
+                </span>
+                {filtersActive && <LinkBtn onClick={resetFilters}>Clear filters</LinkBtn>}
+              </div>
+            </div>
 
-              {visibleUsers.length === 0 && (
-                <p style={{ padding: 20, textAlign: 'center', fontSize: 12.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, margin: 0 }}>
-                  {userSearch.trim() ? `No authorized users match "${userSearch.trim()}".` : 'No authorized users yet.'}
-                </p>
-              )}
+            {usersError && <p style={{ padding: '12px 20px', margin: 0, color: '#DC2626', fontSize: 12.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium }}>{usersError}</p>}
 
-              <div style={{ maxHeight: 460, overflowY: 'auto' }}>
-                {visibleUsers.map((user, i) => {
-                  const active = effectiveActive(user);
-                  const grantedCount = APPS.filter((app) => effectiveRole(user, app.id)).length;
-                  const dirty = isDirty(user);
-                  const accessLevel = effectiveAccessLevel(user);
+            {/* header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px', backgroundColor: colors.cream, borderBottom: `1px solid ${colors.border}` }}>
+              <button type="button" onClick={toggleAll} style={checkBtnStyle} aria-label="Select all shown">
+                {allVisibleSelected ? <CheckSquare size={17} color={colors.rust} /> : someVisibleSelected ? <MinusSquare size={17} color={colors.rust} /> : <Square size={17} color={colors.inkSoft} />}
+              </button>
+              <SortHead label="Person" k="name" sort={sort} setSort={setSort} style={{ flex: 1, minWidth: 0 }} />
+              {isWide && <SortHead label="Level" k="level" sort={sort} setSort={setSort} style={{ width: 120 }} />}
+              <SortHead label="Apps" k="apps" sort={sort} setSort={setSort} style={{ width: isWide ? 150 : 70 }} />
+              {isWide && <SortHead label="Last seen" k="lastSeen" sort={sort} setSort={setSort} style={{ width: 110 }} />}
+              {isWide && <span style={{ ...labelStyle, width: 80 }}>Status</span>}
+              <span style={{ width: 16 }} />
+            </div>
+
+            {usersLoading ? (
+              <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Skeleton width={36} height={36} radius={18} />
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}><Skeleton width="40%" height={12} /><Skeleton width="60%" height={10} /></div>
+                  </div>
+                ))}
+              </div>
+            ) : visiblePeople.length === 0 ? (
+              <EmptyState icon={Search} title={filtersActive ? 'No one matches these filters' : 'No people yet'} hint={filtersActive ? 'Try clearing a filter or searching something else.' : 'Add the first person to get started.'} />
+            ) : (
+              <div>
+                {visiblePeople.map((u) => {
+                  const isSel = selected.has(u.email);
                   return (
                     <div
-                      key={user.email}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', backgroundColor: active ? colors.white : colors.appBg, opacity: active ? 1 : 0.7, borderBottom: i < visibleUsers.length - 1 ? `1px solid ${colors.border}` : 'none' }}
+                      key={u.email}
+                      className="ac-row"
+                      onClick={() => openUser(u.email)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: isWide ? '11px 20px' : '11px 14px', borderBottom: `1px solid ${colors.border}`, cursor: 'pointer', backgroundColor: isSel ? `${colors.rust}0a` : colors.white }}
                     >
-                      <button type="button" onClick={() => toggleSelected(user.email)} style={{ width: 24, display: 'flex', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer' }} aria-label={`Select ${user.email}`}>
-                        {selected.has(user.email) ? <CheckSquare size={16} color={colors.rust} /> : <Square size={16} color={colors.inkSoft} />}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); toggleOne(u.email); }} style={checkBtnStyle} aria-label={`Select ${u.email}`}>
+                        {isSel ? <CheckSquare size={17} color={colors.rust} /> : <Square size={17} color={colors.inkSoft} />}
                       </button>
-                      <span style={{ width: 220, fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
-                      <span style={{ width: 100, fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.mobile || '—'}</span>
-                      <span style={{ width: 90 }}>
-                        {user.accessLevel === 'Super Admin' ? (
-                          <span style={superAdminBadgeCompactStyle}><ShieldCheck size={11} color={colors.rust} />Super</span>
-                        ) : (
-                          <span style={{ ...accessLevelBadgeStyle, ...(accessLevel === 'Admin' ? accessLevelBadgeAdminStyle : null) }}>{accessLevel}</span>
-                        )}
-                      </span>
-                      <span style={{ width: 50, fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>{grantedCount}/{APPS.length}</span>
-                      <span style={{ width: 44 }}>
-                        <input type="checkbox" checked={active} onChange={() => toggleActivePending(user)} aria-label={`${active ? 'Deactivate' : 'Activate'} ${user.email}`} style={{ width: 18, height: 18, cursor: 'pointer' }} />
-                      </span>
-                      <span style={{ width: 90, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {dirty && (
-                          <button type="button" onClick={() => saveUser(user)} disabled={saving === user.email} style={iconBtnSaveStyle} aria-label={`Save changes for ${user.email}`}>
-                            {saving === user.email ? <Spinner light /> : <Save size={13} color={colors.white} />}
-                          </button>
-                        )}
-                        <button type="button" onClick={() => setEditingEmail(user.email)} style={iconBtnStyle} aria-label={`Edit access level and app roles for ${user.email}`}><Pencil size={14} color={colors.ink} /></button>
-                        <button type="button" onClick={() => removeUser(user.email)} style={iconBtnStyle} aria-label={`Remove ${user.email}`}><Trash2 size={14} color={colors.rust} /></button>
-                      </span>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, opacity: u.isActive ? 1 : 0.6 }}>
+                        <Initials email={u.email} name={u.usage?.name} size={36} />
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName(u.email, u.usage?.name)}</p>
+                          <p style={{ margin: '1px 0 0', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {u.email}
+                            {!isWide && ` · ${u.usage?.hasLoggedIn ? timeAgo(u.usage.lastLogin) : 'Never signed in'}`}
+                          </p>
+                          {!isWide && (u.accessLevel !== 'Viewer' || !u.isActive) && (
+                            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                              {u.accessLevel !== 'Viewer' && <LevelBadge level={u.accessLevel} compact />}
+                              {!u.isActive && <StatusDot active={false} />}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {isWide && <span style={{ width: 120 }}><LevelBadge level={u.accessLevel} compact /></span>}
+                      <span style={{ width: isWide ? 150 : 70 }}><AppStack apps={u.apps.map((g) => g.appId)} max={isWide ? 4 : 1} /></span>
+                      {isWide && (
+                        <span style={{ width: 110, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: u.usage?.hasLoggedIn ? colors.ink : colors.inkSoft }} title={u.usage?.lastLogin ? new Date(u.usage.lastLogin).toLocaleString() : undefined}>
+                          {u.usage ? (u.usage.hasLoggedIn ? timeAgo(u.usage.lastLogin) : 'Never') : '—'}
+                        </span>
+                      )}
+                      {isWide && <span style={{ width: 80 }}><StatusDot active={u.isActive} /></span>}
+                      <ChevronRight size={16} color={colors.inkSoft} />
                     </div>
                   );
                 })}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Apps ── */}
+        {tab === 'status' && <AppStatusPanel notify={notify} isWide={isWide} />}
+        {tab === 'apps' && <AppsPanel accessCount={accessCountByApp} statByApp={statByApp} appStats={appStats} loading={statsLoading} onOpen={openApp} notify={notify} />}
+
+        {/* ── Activity ── */}
+        {tab === 'activity' && <ActivityPanel history={history} loading={historyLoading} onOpenUser={openUser} />}
+
+        {/* ── Settings ── */}
+        {tab === 'settings' && (
+          <div style={{ display: 'grid', gridTemplateColumns: isWide ? 'repeat(2, minmax(0, 1fr))' : '1fr', gap: 16 }}>
+            <button type="button" className="ac-card" onClick={() => router.push('/manage-access/sso')} style={{ ...cardStyle, padding: 20, display: 'flex', gap: 14, alignItems: 'flex-start', cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ width: 44, height: 44, borderRadius: radii.lg, background: 'linear-gradient(135deg, #0EA5E9, #2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <KeyRound size={20} color={colors.white} />
+              </span>
+              <span style={{ flex: 1 }}>
+                <span style={{ ...sectionTitleStyle, display: 'block' }}>Single sign-on (Microsoft)</span>
+                <span style={{ ...sectionSubStyle, display: 'block', lineHeight: '17px' }}>Service-provider details for Entra and the identity-provider certificate in use.</span>
+              </span>
+              <ChevronRight size={18} color={colors.inkSoft} style={{ marginTop: 12 }} />
+            </button>
+            <div style={{ ...cardStyle, padding: 20 }}>
+              <CardHead title="Access levels" sub="What each hub level can do" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <LevelExplainer icon={Crown} accent={colors.uat} title="Super Admin" text="Everything Admin can do, plus promote people to Admin. Fixed — can’t be granted from here." />
+                <LevelExplainer icon={ShieldCheck} accent={colors.rust} title="Admin" text="Opens Admin Center, adds and removes people, grants app access and sets people to Viewer." />
+                <LevelExplainer icon={Eye} accent={colors.inkSoft} title="Viewer" text="Regular user — signs in and opens only the apps granted to them." />
+              </div>
+            </div>
+            <div style={{ ...cardStyle, padding: 20, gridColumn: isWide ? '1 / -1' : undefined, display: 'flex', gap: 12, alignItems: 'flex-start', background: `linear-gradient(135deg, ${colors.rust}08, ${colors.white})` }}>
+              <AlertCircle size={18} color={colors.rust} style={{ flexShrink: 0, marginTop: 1 }} />
+              <p style={{ margin: 0, fontSize: 12.5, fontFamily: fonts.sansRegular, color: colors.ink, lineHeight: '19px' }}>
+                The People list is the source of truth for who can sign in. An email that isn&apos;t listed, or is marked inactive, is blocked at login whatever the sign-in method. Some apps
+                (Audit &amp; CAPA, RC Portal, Current Market Rate, Mould Health Inspection, Non CTC Expense, Dispatch Tracker) also manage roles inside the app — the hub grant only opens the door.
+              </p>
             </div>
           </div>
         )}
       </div>
 
-      {showAddModal && (
-        <Dialog onClose={closeAddUserModal}>
-          <div style={dialogHeaderRowStyle}>
-            <p style={dialogTitleStyle}>Add Users</p>
-            <button type="button" onClick={closeAddUserModal} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Close"><X size={18} color={colors.inkSoft} /></button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            <button type="button" onClick={() => setAddMode('single')} style={{ ...tabBtnStyle, ...(addMode === 'single' ? tabBtnActiveStyle : null) }}>
-              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: addMode === 'single' ? colors.rust : colors.inkSoft }}>Single</span>
-            </button>
-            <button type="button" onClick={() => setAddMode('bulk')} style={{ ...tabBtnStyle, ...(addMode === 'bulk' ? tabBtnActiveStyle : null) }}>
-              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: addMode === 'bulk' ? colors.rust : colors.inkSoft }}>Bulk Add</span>
-            </button>
-          </div>
-
-          {addMode === 'single' ? (
-            <>
-              <div style={inputWrapStyle}>
-                <Mail size={14} color={colors.inkSoft} />
-                <input value={newUserEmail} onChange={(e) => { setNewUserEmail(e.target.value); if (dialogError) setDialogError(''); }} placeholder="name@emamigroup.com" autoFocus style={inputStyle} aria-label="Email address to grant access" />
-              </div>
-              <div style={{ ...inputWrapStyle, marginTop: 8 }}>
-                <Phone size={14} color={colors.inkSoft} />
-                <input
-                  value={newUserMobile}
-                  onChange={(e) => { setNewUserMobile(e.target.value); if (dialogError) setDialogError(''); }}
-                  placeholder="Mobile number (optional)"
-                  style={inputStyle}
-                  aria-label="Mobile number for the new user"
-                />
-              </div>
-              <p style={{ fontSize: 10.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 6, marginBottom: 0 }}>
-                Shown on their Profile once they sign in for the first time — they can still change it themselves later.
-              </p>
-            </>
-          ) : (
-            <>
-              <textarea
-                value={bulkEmailsText}
-                onChange={(e) => { setBulkEmailsText(e.target.value); if (dialogError) setDialogError(''); }}
-                placeholder="Paste emails — separated by commas, spaces, or one per line"
-                rows={5}
-                style={bulkTextAreaStyle}
-                aria-label="Paste multiple email addresses, one per line or comma-separated"
-              />
-              {parsedBulkEmails.length > 0 && (
-                <p style={bulkParseHintStyle}>
-                  {bulkValidEmails.length} new email{bulkValidEmails.length === 1 ? '' : 's'} ready to add
-                  {bulkSkippedCount > 0 ? ` · ${bulkSkippedCount} skipped (invalid or already has access)` : ''}
-                </p>
+      {/* ── Bulk action bar ── */}
+      {selected.size > 0 && (
+        <div className="ac-pop" style={{ position: 'fixed', left: '50%', bottom: 22, transform: 'translateX(-50%)', zIndex: 80, width: 'max-content', maxWidth: 'calc(100vw - 24px)' }}>
+          {bulkMenu && (
+            <div className="ac-fade" style={{ marginBottom: 8, backgroundColor: colors.white, borderRadius: radii.xl, padding: 14, boxShadow: '0 20px 40px -12px rgba(21,17,41,0.35)', border: `1px solid ${colors.border}` }}>
+              {bulkMenu === 'level' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={labelStyle}>Set level to</span>
+                  {GRANTABLE_LEVELS.map((l) => (
+                    <button key={l} type="button" className="ac-btn" disabled={bulkBusy || (actingLevel !== 'Super Admin' && l === 'Admin')} onClick={() => bulkLevel(l)} style={{ ...secondaryBtnStyle, height: 34 }}>
+                      <LevelBadge level={l} compact />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <Select value={bulkApp} onChange={(v) => { setBulkApp(v); setBulkRole(null); }} options={SORTED_APPS.map((a) => ({ value: a.id, label: a.name }))} />
+                  <Segmented size="sm" accent={appColor(bulkApp)} options={[{ value: null, label: 'Revoke' }, ...roleOptionsFor(bulkApp).map((r) => ({ value: r, label: r }))]} value={bulkRole} onChange={setBulkRole} />
+                  <button type="button" className="ac-btn" disabled={bulkBusy} onClick={bulkAppRole} style={{ ...primaryBtnStyle, height: 34 }}>
+                    {bulkBusy ? <Spinner light size={13} /> : <CheckCircle2 size={14} />} Apply
+                  </button>
+                </div>
               )}
-            </>
+            </div>
           )}
-
-          <p style={dialogSectionLabelStyle}>Assign app roles{addMode === 'bulk' ? ' (applied to every user added)' : ''}</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {SORTED_APPS.map((app) => {
-              const role = newUserRoles[app.id] ?? null;
-              const accent = appColor(app.id);
-              const Icon = app.icon;
-              return (
-                <button key={app.id} type="button" onClick={() => setRolePickerFor({ context: 'add', appId: app.id })} style={{ ...appChipStyle, borderColor: role ? accent : colors.border, backgroundColor: role ? `${accent}14` : colors.appBg }}>
-                  <Icon size={12.5} color={role ? accent : colors.inkSoft} />
-                  <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: role ? accent : colors.inkSoft }}>{app.name}{role ? ` · ${role}` : ''}</span>
-                  {isElevatedRole(app.id, role) && <Check size={12} color={accent} />}
-                </button>
-              );
-            })}
-          </div>
-
-          {newUserRoles[AUDIT_CAPA_APP_ID] === 'Depot' && (
-            <>
-              <p style={dialogSectionLabelStyle}>Depot</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {AUDIT_CAPA_DEPOTS.map((depot) => {
-                  const isCurrent = (newUserDepots[AUDIT_CAPA_APP_ID] ?? null) === depot;
-                  return (
-                    <button key={depot} type="button" onClick={() => setNewUserDepot(AUDIT_CAPA_APP_ID, depot)} style={{ ...appChipStyle, borderColor: isCurrent ? colors.rust : colors.border, backgroundColor: isCurrent ? `${colors.rust}14` : colors.appBg }}>
-                      <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: isCurrent ? colors.rust : colors.inkSoft }}>{depot}</span>
-                      {isCurrent && <Check size={12} color={colors.rust} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {!!dialogError && <p style={errorTextStyle}>{dialogError}</p>}
-          {!!bulkProgress && <p style={bulkParseHintStyle}>Adding {bulkProgress.done}/{bulkProgress.total}…</p>}
-
-          <div style={dialogFooterRowStyle}>
-            <button type="button" onClick={closeAddUserModal} disabled={addingUser} style={dialogCancelBtnStyle}>Cancel</button>
-            <button type="button" onClick={addMode === 'single' ? submitNewUser : submitBulkUsers} disabled={addingUser} style={{ ...saveBtnStyle, flex: 1 }}>
-              {addingUser ? <Spinner light /> : (<><Save size={13} color={colors.white} /><span style={saveBtnTextStyle}>{addMode === 'single' ? 'Save' : `Add ${bulkValidEmails.length || ''} Users`}</span></>)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: 6, paddingLeft: 16, borderRadius: radii.pill, backgroundColor: colors.plumDeep, boxShadow: '0 20px 40px -12px rgba(21,17,41,0.55)', overflowX: 'auto' }}>
+            <span style={{ fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.white, whiteSpace: 'nowrap', marginRight: 6 }}>
+              {bulkBusy ? <Spinner light size={13} /> : selected.size} selected
+            </span>
+            <BarBtn active={bulkMenu === 'app'} onClick={() => setBulkMenu(bulkMenu === 'app' ? null : 'app')}>App access <ChevronDown size={13} /></BarBtn>
+            <BarBtn active={bulkMenu === 'level'} onClick={() => setBulkMenu(bulkMenu === 'level' ? null : 'level')}>Level <ChevronDown size={13} /></BarBtn>
+            <BarBtn disabled={bulkBusy} onClick={() => bulkActive(true)}>Activate</BarBtn>
+            <BarBtn disabled={bulkBusy} onClick={() => bulkActive(false)}>Deactivate</BarBtn>
+            <button type="button" onClick={() => { setSelected(new Set()); setBulkMenu(null); }} style={{ width: 32, height: 32, borderRadius: 16, border: 'none', backgroundColor: 'rgba(255,255,255,0.12)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-label="Clear selection">
+              <X size={15} color={colors.white} />
             </button>
           </div>
-        </Dialog>
+        </div>
       )}
 
-      {editTarget && (
-        <Dialog onClose={closeEdit}>
-          <div style={dialogHeaderRowStyle}>
-            <p style={{ ...dialogTitleStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{editTarget.email}</p>
-            <button type="button" onClick={closeEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Close"><X size={18} color={colors.inkSoft} /></button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.4 }}>Access level</span>
-            {editTarget.accessLevel === 'Super Admin' ? (
-              <span style={superAdminBadgeStyle}><ShieldCheck size={12} color={colors.rust} />Super Admin · Fixed</span>
-            ) : (
-              <div style={{ display: 'flex', gap: 8 }}>
-                {GRANTABLE_LEVELS.map((level) => {
-                  const isCurrent = effectiveAccessLevel(editTarget) === level;
-                  const allowed = canSetAccessLevel(editTarget, level);
-                  return (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => setAccessLevelPending(editTarget, level)}
-                      disabled={!allowed}
-                      style={{ ...accessLevelChipStyle, ...(isCurrent ? accessLevelChipActiveStyle : null), ...(!allowed && !isCurrent ? { opacity: 0.55 } : null) }}
-                    >
-                      {!allowed && !isCurrent && <Lock size={10} color={colors.inkSoft} />}
-                      <span style={{ fontSize: 11.5, fontFamily: isCurrent ? fonts.sansSemiBold : fonts.sansMedium, fontWeight: isCurrent ? fontWeights.sansSemiBold : fontWeights.sansMedium, color: isCurrent ? colors.rust : colors.inkSoft }}>{level}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <p style={dialogSectionLabelStyle}>App roles</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {SORTED_APPS.map((app) => {
-              const role = effectiveRole(editTarget, app.id);
-              const accent = appColor(app.id);
-              const Icon = app.icon;
-              return (
-                <button key={app.id} type="button" onClick={() => setRolePickerFor({ context: 'edit', appId: app.id })} style={{ ...appChipStyle, borderColor: role ? accent : colors.border, backgroundColor: role ? `${accent}14` : colors.appBg }}>
-                  <Icon size={12.5} color={role ? accent : colors.inkSoft} />
-                  <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: role ? accent : colors.inkSoft }}>{app.name}{role ? ` · ${role}` : ''}</span>
-                  {isElevatedRole(app.id, role) && <Check size={12} color={accent} />}
-                </button>
-              );
-            })}
-          </div>
-
-          {effectiveRole(editTarget, AUDIT_CAPA_APP_ID) === 'Depot' && (
-            <>
-              <p style={dialogSectionLabelStyle}>Depot</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {AUDIT_CAPA_DEPOTS.map((depot) => {
-                  const isCurrent = effectiveDepot(editTarget, AUDIT_CAPA_APP_ID) === depot;
-                  return (
-                    <button key={depot} type="button" onClick={() => setPendingDepot(editTarget, AUDIT_CAPA_APP_ID, depot)} style={{ ...appChipStyle, borderColor: isCurrent ? colors.rust : colors.border, backgroundColor: isCurrent ? `${colors.rust}14` : colors.appBg }}>
-                      <span style={{ fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: isCurrent ? colors.rust : colors.inkSoft }}>{depot}</span>
-                      {isCurrent && <Check size={12} color={colors.rust} />}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {!!error && <p style={errorTextStyle}>{error}</p>}
-
-          <div style={dialogFooterRowStyle}>
-            <button type="button" onClick={closeEdit} style={dialogCancelBtnStyle}>Close</button>
-            {isDirty(editTarget) && (
-              <button type="button" onClick={() => saveUser(editTarget)} disabled={saving === editTarget.email} style={{ ...saveBtnStyle, flex: 1 }}>
-                {saving === editTarget.email ? <Spinner light /> : (<><Save size={13} color={colors.white} /><span style={saveBtnTextStyle}>Save changes</span></>)}
-              </button>
-            )}
-          </div>
-        </Dialog>
+      {/* ── Overlays ── */}
+      {drawerUser && (
+        <UserDrawer
+          key={drawerUser.email}
+          user={drawerUser}
+          actingLevel={actingLevel}
+          actingEmail={userEmail}
+          onClose={() => setParams({ user: null })}
+          onSaved={(updated) => { setUsers((prev) => prev.map((u) => (u.email === updated.email ? updated : u))); refreshHistory(); }}
+          onRemoved={(email) => {
+            setUsers((prev) => prev.filter((u) => u.email !== email));
+            setSelected((prev) => { const n = new Set(prev); n.delete(email); return n; });
+            setParams({ user: null });
+            refreshHistory();
+          }}
+          notify={notify}
+        />
+      )}
+      {openAppId && <AppDrawer appId={openAppId} users={people} stat={statByApp[openAppId]} onClose={() => setParams({ app: null })} onOpenUser={openUser} />}
+      {showAdd && (
+        <AddUsersDialog
+          existingEmails={new Set(users.map((u) => u.email))}
+          actingEmail={userEmail}
+          onClose={() => setShowAdd(false)}
+          onAdded={(added) => { setUsers((prev) => [...prev, ...added]); refreshHistory(); if (added.length && tab !== 'people') goTab('people'); }}
+          notify={notify}
+        />
       )}
 
-      {rolePickerFor && (() => {
-        const app = APPS.find((a) => a.id === rolePickerFor.appId);
-        if (!app) return null;
-        const Icon = app.icon;
-        const accent = appColor(app.id);
-        const currentRole = rolePickerFor.context === 'add' ? newUserRoles[rolePickerFor.appId] ?? null : editTarget ? effectiveRole(editTarget, rolePickerFor.appId) : null;
-        const choose = (role: AppRole | null) => {
-          if (rolePickerFor.context === 'add') setNewUserRole(rolePickerFor.appId, role);
-          else if (editTarget) setPendingRole(editTarget, rolePickerFor.appId, role);
-          setRolePickerFor(null);
-        };
-        return (
-          <Dialog onClose={() => setRolePickerFor(null)} maxWidth={300}>
-            <div style={dialogHeaderRowStyle}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                <Icon size={16} color={accent} />
-                <p style={dialogTitleStyle}>{app.name}</p>
-              </div>
-              <button type="button" onClick={() => setRolePickerFor(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Close"><X size={18} color={colors.inkSoft} /></button>
-            </div>
-            <p style={{ fontSize: 12, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginBottom: 12 }}>Choose this person&apos;s access for {app.name}</p>
-            {roleOptionsFor(rolePickerFor.appId).map((role) => {
-              const isCurrent = currentRole === role;
-              const label = role ?? 'None';
-              return (
-                <button key={label} type="button" onClick={() => choose(role)} style={{ ...rolePickerOptionStyle, ...(isCurrent ? rolePickerOptionActiveStyle : null) }}>
-                  <span style={{ fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: isCurrent ? colors.rust : colors.ink }}>{label}</span>
-                  {isCurrent && <Check size={15} color={colors.rust} />}
-                </button>
-              );
-            })}
-          </Dialog>
-        );
-      })()}
+      {toast && (
+        <div key={toast.id} className="ac-pop" role="status" style={{ position: 'fixed', left: '50%', bottom: selected.size > 0 ? 90 : 24, transform: 'translateX(-50%)', zIndex: 120, display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderRadius: radii.lg, backgroundColor: toast.tone === 'success' ? '#0F3D2A' : '#4C0519', color: colors.white, boxShadow: '0 16px 32px -10px rgba(0,0,0,0.4)', maxWidth: 'calc(100vw - 32px)' }}>
+          {toast.tone === 'success' ? <CheckCircle2 size={17} color="#4ADE80" /> : <AlertCircle size={17} color="#FDA4AF" />}
+          <span style={{ fontSize: 13, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium }}>{toast.message}</span>
+          <button type="button" onClick={() => setToast(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', marginLeft: 4 }} aria-label="Dismiss"><X size={14} color="rgba(255,255,255,0.7)" /></button>
+        </div>
+      )}
     </div>
   );
 }
 
-function Spinner({ light }: { light?: boolean }) {
+// ── Panels ───────────────────────────────────────────────────────────────────────────────────
+
+function AppsPanel({
+  accessCount, statByApp, appStats, loading, onOpen, notify,
+}: {
+  accessCount: Record<string, number>;
+  statByApp: Record<string, AdminAppStat>;
+  appStats: AdminAppStat[];
+  loading: boolean;
+  onOpen: (appId: string) => void;
+  notify: (m: string, t?: 'success' | 'error') => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'opens' | 'access'>('opens');
+  const [exporting, setExporting] = useState(false);
+  const q = search.trim().toLowerCase();
+  const apps = SORTED_APPS.filter((a) => !q || a.name.toLowerCase().includes(q) || a.cat.toLowerCase().includes(q)).sort((a, b) => {
+    if (sortBy === 'opens') return (statByApp[b.id]?.opens || 0) - (statByApp[a.id]?.opens || 0);
+    if (sortBy === 'access') return (accessCount[b.id] || 0) - (accessCount[a.id] || 0);
+    return a.name.localeCompare(b.name);
+  });
+  const maxAccess = Math.max(1, ...Object.values(accessCount));
+
   return (
-    <>
-      <div className="manage-access-spinner" style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${light ? 'rgba(255,255,255,0.4)' : colors.border}`, borderTopColor: light ? colors.white : colors.rust }} />
-      <style jsx>{`
-        .manage-access-spinner {
-          animation: manage-access-spin 0.8s linear infinite;
-        }
-        @keyframes manage-access-spin {
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
-    </>
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
+        <div className="ac-input" style={{ ...inputWrapStyle, flex: 1, minWidth: 220 }}>
+          <Search size={15} color={colors.inkSoft} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search apps or categories…" style={inputStyle} />
+          {!!search && <button type="button" onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Clear"><X size={14} color={colors.inkSoft} /></button>}
+        </div>
+        <Segmented options={[{ value: 'opens', label: 'Most used' }, { value: 'access', label: 'Most access' }, { value: 'name', label: 'A–Z' }]} value={sortBy} onChange={(v) => setSortBy(v as typeof sortBy)} />
+        <button
+          type="button"
+          className="ac-btn"
+          disabled={appStats.length === 0 || exporting}
+          onClick={async () => { setExporting(true); try { await exportAppStatsToExcel(appStats); } catch { notify('Could not export', 'error'); } finally { setExporting(false); } }}
+          style={secondaryBtnStyle}
+        >
+          {exporting ? <Spinner size={14} /> : <FileSpreadsheet size={15} color={colors.green} />} Export
+        </button>
+      </div>
+
+      {apps.length === 0 ? (
+        <div style={cardStyle}><EmptyState icon={LayoutGrid} title="No apps match" /></div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 14 }}>
+          {apps.map((a) => {
+            const s = statByApp[a.id];
+            const accent = appColor(a.id);
+            const n = accessCount[a.id] || 0;
+            return (
+              <button key={a.id} type="button" className="ac-card" onClick={() => onOpen(a.id)} style={{ ...cardStyle, padding: 16, textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 14, position: 'relative', overflow: 'hidden' }}>
+                <span aria-hidden style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: accent, opacity: 0.85 }} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <AppIcon appId={a.id} size={40} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13.5, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                    <span style={{ display: 'block', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>{a.cat}</span>
+                  </span>
+                  <ChevronRight size={16} color={colors.inkSoft} />
+                </span>
+                <span style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  <MiniStat label="Access" value={n} />
+                  <MiniStat label="Opens" value={loading ? '…' : s?.opens ?? 0} />
+                  <MiniStat label="Users" value={loading ? '…' : s?.uniqueUsers ?? 0} />
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.appBg, overflow: 'hidden' }}>
+                    <span style={{ display: 'block', height: '100%', width: `${(n / maxAccess) * 100}%`, background: accent, borderRadius: 3 }} />
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft, whiteSpace: 'nowrap' }}>Used {timeAgo(s?.lastOpened)}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
-const backBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: '7px 12px', backgroundColor: colors.white, cursor: 'pointer' };
-const baseCardStyle: React.CSSProperties = { border: `1px solid ${colors.border}`, borderRadius: radii.xl, backgroundColor: colors.white };
-const cardIconBoxStyle: React.CSSProperties = { width: 30, height: 30, borderRadius: radii.md, backgroundColor: `${colors.rust}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
-const inputWrapStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, borderRadius: radii.lg, padding: '0 12px', height: 40, backgroundColor: colors.appBg };
-const inputStyle: React.CSSProperties = { flex: 1, minWidth: 0, fontSize: 13, color: colors.ink, fontFamily: fonts.sansRegular, border: 'none', outline: 'none', background: 'transparent', height: '100%' };
-const exportBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: `1px solid ${colors.border}`, borderRadius: radii.lg, padding: '0 14px', height: 40, backgroundColor: colors.white, cursor: 'pointer' };
-const addBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, border: 'none', borderRadius: radii.lg, padding: '0 16px', height: 40, backgroundColor: colors.rust, cursor: 'pointer' };
-const errorTextStyle: React.CSSProperties = { fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: '#C0392B', marginTop: 8 };
-const bulkLabelStyle: React.CSSProperties = { fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft };
-const bulkChipStyle: React.CSSProperties = { border: `1px solid ${colors.rust}`, borderRadius: radii.pill, padding: '5px 10px', backgroundColor: colors.white, cursor: 'pointer', fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust };
-const appChipStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, border: '1px solid', borderRadius: radii.pill, padding: '6px 10px', cursor: 'pointer', background: 'none' };
-const tableHeaderTextStyle: React.CSSProperties = { fontSize: 10.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.3, flexShrink: 0 };
-const superAdminBadgeCompactStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, borderRadius: radii.pill, padding: '3px 8px', backgroundColor: `${colors.rust}14`, fontSize: 10.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust };
-const accessLevelBadgeStyle: React.CSSProperties = { display: 'inline-block', borderRadius: radii.pill, padding: '3px 8px', backgroundColor: colors.appBg, border: `1px solid ${colors.border}`, fontSize: 10.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft };
-const accessLevelBadgeAdminStyle: React.CSSProperties = { backgroundColor: `${colors.rust}14`, borderColor: colors.rust, color: colors.rust };
-const iconBtnStyle: React.CSSProperties = { width: 26, height: 26, borderRadius: radii.md, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.appBg, border: 'none', cursor: 'pointer', flexShrink: 0 };
-const iconBtnSaveStyle: React.CSSProperties = { ...iconBtnStyle, backgroundColor: colors.rust };
-const dialogHeaderRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 10 };
-const dialogTitleStyle: React.CSSProperties = { fontSize: 16, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, flex: 1, margin: 0 };
-const dialogSectionLabelStyle: React.CSSProperties = { fontSize: 11, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 16, marginBottom: 10 };
-const dialogFooterRowStyle: React.CSSProperties = { display: 'flex', gap: 10, marginTop: 16 };
-const dialogCancelBtnStyle: React.CSSProperties = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${colors.border}`, borderRadius: radii.lg, padding: '10px 0', backgroundColor: colors.white, cursor: 'pointer', fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink };
-const saveBtnStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', borderRadius: radii.lg, padding: '10px 0', backgroundColor: colors.rust, cursor: 'pointer' };
-const saveBtnTextStyle: React.CSSProperties = { fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.white };
-const tabBtnStyle: React.CSSProperties = { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${colors.border}`, borderRadius: radii.lg, padding: '8px 0', backgroundColor: colors.appBg, cursor: 'pointer' };
-const tabBtnActiveStyle: React.CSSProperties = { borderColor: colors.rust, backgroundColor: `${colors.rust}14` };
-const bulkTextAreaStyle: React.CSSProperties = { width: '100%', borderRadius: radii.lg, padding: '10px 12px', minHeight: 100, fontSize: 13, color: colors.ink, fontFamily: fonts.sansRegular, backgroundColor: colors.appBg, border: 'none', outline: 'none', resize: 'vertical', boxSizing: 'border-box' };
-const bulkParseHintStyle: React.CSSProperties = { fontSize: 11.5, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft, marginTop: 6 };
-const superAdminBadgeStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: radii.pill, padding: '5px 10px', backgroundColor: `${colors.rust}14`, fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust };
-const accessLevelChipStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 5, border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: '5px 10px', backgroundColor: colors.appBg, cursor: 'pointer' };
-const accessLevelChipActiveStyle: React.CSSProperties = { borderColor: colors.rust, backgroundColor: `${colors.rust}14` };
-const rolePickerOptionStyle: React.CSSProperties = { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${colors.border}`, borderRadius: radii.lg, padding: '12px 14px', marginBottom: 8, backgroundColor: colors.appBg, cursor: 'pointer' };
-const rolePickerOptionActiveStyle: React.CSSProperties = { borderColor: colors.rust, backgroundColor: `${colors.rust}14` };
+const CHANGE_FILTERS: { id: ChangeFilter; label: string; match: (c: AccessChangeEntry) => boolean }[] = [
+  { id: 'all', label: 'All', match: () => true },
+  { id: 'grants', label: 'Grants', match: (c) => c.changeType === 'APP_ROLE' && !!c.newValue },
+  { id: 'revokes', label: 'Revokes', match: (c) => c.changeType === 'APP_ROLE' && !c.newValue },
+  { id: 'people', label: 'Added / removed', match: (c) => c.changeType === 'USER_ADDED' || c.changeType === 'USER_REMOVED' },
+  { id: 'status', label: 'Sign-in status', match: (c) => c.changeType === 'ACTIVE_STATUS' },
+  { id: 'level', label: 'Level', match: (c) => c.changeType === 'ACCESS_LEVEL' },
+];
+
+function ActivityPanel({ history, loading, onOpenUser }: { history: AccessChangeEntry[]; loading: boolean; onOpenUser: (email: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<ChangeFilter>('all');
+  const [limit, setLimit] = useState(60);
+  const q = search.trim().toLowerCase();
+  const match = CHANGE_FILTERS.find((f) => f.id === filter)!.match;
+  const list = history.filter((c) => match(c) && (!q || c.targetEmail.includes(q) || (c.changedBy || '').includes(q) || (c.appId ? appLabel(c.appId).toLowerCase().includes(q) : false)));
+
+  return (
+    <div style={{ ...cardStyle, padding: 20 }}>
+      <CardHead title="Audit trail" sub="Every access change, who made it and when" />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="ac-input" style={{ ...inputWrapStyle, flex: 1, minWidth: 220 }}>
+          <Search size={15} color={colors.inkSoft} />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setLimit(60); }} placeholder="Search person, admin or app…" style={inputStyle} />
+          {!!search && <button type="button" onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }} aria-label="Clear"><X size={14} color={colors.inkSoft} /></button>}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+        {CHANGE_FILTERS.map((f) => (
+          <button key={f.id} type="button" onClick={() => { setFilter(f.id); setLimit(60); }} style={chipStyle(filter === f.id)}>{f.label}</button>
+        ))}
+      </div>
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={36} />)}</div>
+      ) : list.length === 0 ? (
+        <EmptyState icon={History} title={q || filter !== 'all' ? 'Nothing matches' : 'No changes recorded yet'} />
+      ) : (
+        <>
+          <ChangeTimeline changes={list.slice(0, limit)} onOpenUser={onOpenUser} />
+          {list.length > limit && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 18 }}>
+              <button type="button" className="ac-btn" onClick={() => setLimit((l) => l + 60)} style={secondaryBtnStyle}>Show more ({list.length - limit} left)</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Small pieces ─────────────────────────────────────────────────────────────────────────────
+
+function Kpi({ icon: Icon, accent, label, value, sub, onClick, small }: { icon: React.ElementType; accent: string; label: string; value: number | string | null; sub: string; onClick?: () => void; small?: boolean }) {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={onClick ? 'ac-card' : undefined} style={{ ...cardStyle, padding: 16, textAlign: 'left', cursor: onClick ? 'pointer' : 'default', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative', overflow: 'hidden' }}>
+      <span style={{ width: 34, height: 34, borderRadius: radii.md, backgroundColor: `${accent}17`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={17} color={accent} />
+      </span>
+      <span>
+        {value === null ? (
+          <Skeleton width={70} height={22} />
+        ) : (
+          <span style={{ display: 'block', fontSize: small ? 16 : 24, lineHeight: small ? '24px' : '28px', fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, letterSpacing: -0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </span>
+        )}
+        <span style={{ display: 'block', fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, marginTop: 4 }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 1 }}>{sub || ' '}</span>
+      </span>
+    </Tag>
+  );
+}
+
+function AttentionRow({ icon: Icon, accent, label, count, loading, onClick }: { icon: React.ElementType; accent: string; label: string; count: number; loading: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="ac-row" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 10px', border: `1px solid ${colors.border}`, borderRadius: radii.lg, backgroundColor: colors.white, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+      <span style={{ width: 30, height: 30, borderRadius: radii.md, backgroundColor: `${accent}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={15} color={accent} /></span>
+      <span style={{ flex: 1, fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>{label}</span>
+      {loading ? <Skeleton width={24} height={14} /> : <span style={{ fontSize: 14, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: count ? accent : colors.inkSoft }}>{count}</span>}
+      <ChevronRight size={15} color={colors.inkSoft} />
+    </button>
+  );
+}
+
+function AppStack({ apps, max }: { apps: string[]; max: number }) {
+  if (apps.length === 0) return <span style={{ fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.inkSoft }}>None</span>;
+  const shown = apps.slice(0, max);
+  return (
+    <span style={{ display: 'flex', alignItems: 'center' }} title={apps.map(appLabel).join(', ')}>
+      {shown.map((id, i) => (
+        <span key={id} style={{ marginLeft: i === 0 ? 0 : -8, borderRadius: radii.md, border: `2px solid ${colors.white}`, display: 'flex', backgroundColor: colors.white }}>
+          <AppIcon appId={id} size={26} />
+        </span>
+      ))}
+      {apps.length > max && <span style={{ marginLeft: 6, fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft }}>+{apps.length - max}</span>}
+    </span>
+  );
+}
+
+function SortHead({ label, k, sort, setSort, style }: { label: string; k: SortKey; sort: { key: SortKey; dir: 1 | -1 }; setSort: (s: { key: SortKey; dir: 1 | -1 }) => void; style?: React.CSSProperties }) {
+  const active = sort.key === k;
+  return (
+    <button type="button" onClick={() => setSort({ key: k, dir: active ? (sort.dir === 1 ? -1 : 1) : 1 })} style={{ ...labelStyle, ...style, display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: active ? colors.rust : colors.inkSoft, textAlign: 'left' }}>
+      {label}
+      {active && (sort.dir === 1 ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+    </button>
+  );
+}
+
+function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="ac-input" style={{ ...inputWrapStyle, position: 'relative', padding: 0, minWidth: 150 }}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} style={{ appearance: 'none', WebkitAppearance: 'none', border: 'none', outline: 'none', background: 'transparent', height: '100%', width: '100%', padding: '0 34px 0 12px', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, cursor: 'pointer' }}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <ChevronDown size={14} color={colors.inkSoft} style={{ position: 'absolute', right: 12, pointerEvents: 'none' }} />
+    </div>
+  );
+}
+
+function CardHead({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 }}>
+      <div style={{ flex: 1 }}>
+        <p style={sectionTitleStyle}>{title}</p>
+        {sub && <p style={sectionSubStyle}>{sub}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function LinkBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.rust, whiteSpace: 'nowrap' }}>
+      {children} <ChevronRight size={13} />
+    </button>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <span style={{ display: 'block', padding: '8px 10px', borderRadius: radii.md, backgroundColor: colors.cream2 }}>
+      <span style={{ display: 'block', fontSize: 15, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{typeof value === 'number' ? value.toLocaleString() : value}</span>
+      <span style={{ display: 'block', fontSize: 10, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+    </span>
+  );
+}
+
+function LevelExplainer({ icon: Icon, accent, title, text }: { icon: React.ElementType; accent: string; title: string; text: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <span style={{ width: 30, height: 30, borderRadius: radii.md, backgroundColor: `${accent}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={15} color={accent} /></span>
+      <span>
+        <span style={{ display: 'block', fontSize: 13, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 12, fontFamily: fonts.sansRegular, color: colors.inkSoft, lineHeight: '17px' }}>{text}</span>
+      </span>
+    </div>
+  );
+}
+
+function BarBtn({ children, onClick, active, disabled }: { children: React.ReactNode; onClick: () => void; active?: boolean; disabled?: boolean }) {
+  return (
+    <button type="button" className="ac-btn" onClick={onClick} disabled={disabled} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 32, padding: '0 12px', borderRadius: 16, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', backgroundColor: active ? colors.white : 'rgba(255,255,255,0.12)', color: active ? colors.plumDeep : colors.white, fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold }}>
+      {children}
+    </button>
+  );
+}
+
+const checkBtnStyle: React.CSSProperties = { width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0 };
+
+export default function ManageAccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminCenter />
+    </Suspense>
+  );
+}

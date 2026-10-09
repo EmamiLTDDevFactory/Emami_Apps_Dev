@@ -58,6 +58,13 @@ export interface EntrySummary {
   truckOutTim: string | null;
 }
 
+/** A saved line of a gate entry; raw = the SAP row as read, sent back whole by the admin PUT. */
+export interface EntryItem extends PoItem {
+  reqNo: string;
+  slno: string;
+  raw: Record<string, unknown>;
+}
+
 export interface EntryHeader {
   reqNo: string;
   slno: string;
@@ -79,7 +86,7 @@ export interface EntryHeader {
   invNo: string;
   invDate: string | null;
   asnNo: string;
-  items: PoItem[];
+  items: EntryItem[];
 }
 
 export interface EntryDetail {

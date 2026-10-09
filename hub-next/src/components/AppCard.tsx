@@ -7,6 +7,7 @@ import { colors, fonts, fontWeights, radii, appColor, motion, focusRing } from '
 import { useIsMobile } from '../hooks/useColumnCount';
 import { useTiltHover } from '../hooks/useTiltHover';
 import StageBadge from './StageBadge';
+import { useAppStages } from '../context/AppStagesContext';
 
 interface AppCardProps {
   app: AppItem;
@@ -30,6 +31,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
   const Icon = app.icon;
   const accent = locked ? colors.inkSoft : appColor(app.id);
   const isMobile = useIsMobile();
+  const stage = useAppStages().stageOf(app.id);
 
   const [focused, setFocused] = useState(false);
   const { ref, hovered, pressed, tiltTransform, handlers } = useTiltHover<HTMLAnchorElement>();
@@ -92,7 +94,7 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
           {locked ? <Lock size={isMobile ? 14 : 17} color={accent} strokeWidth={2.1} /> : <Icon size={isMobile ? 16 : 19} color={accent} strokeWidth={2.1} />}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {app.stage && <StageBadge stage={app.stage} compact={isMobile} />}
+        {stage && <StageBadge stage={stage} compact={isMobile} />}
         {!locked && (
         <button
           type="button"

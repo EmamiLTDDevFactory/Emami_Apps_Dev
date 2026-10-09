@@ -128,12 +128,12 @@ export default function Sidebar({ compact = false }: SidebarProps) {
     if (app.url) window.location.assign(app.url);
   };
 
-  // Manage Access and Administration are only for Super Admin/Admin — each of those pages also
+  // Admin Center (Manage Access + Administration, merged) is only for Super Admin/Admin — each of those pages also
   // enforces the same rule server-side too; this just keeps the nav items from showing to a
   // Viewer at all. Favorites is dropped from the side pane entirely, per instruction — the page
   // and route (NAV_ROUTES.Favorites) still exist, just unlinked from here.
   const canManageAccess = access?.accessLevel === 'Super Admin' || access?.accessLevel === 'Admin';
-  const ADMIN_ONLY_NAV_IDS = new Set(['UserAccess', 'Administration']);
+  const ADMIN_ONLY_NAV_IDS = new Set(['UserAccess']);
   const HIDDEN_NAV_IDS = new Set(['Favorites']);
   const navItems = NAV.filter((item) => !HIDDEN_NAV_IDS.has(item.id) && (!ADMIN_ONLY_NAV_IDS.has(item.id) || canManageAccess));
 
