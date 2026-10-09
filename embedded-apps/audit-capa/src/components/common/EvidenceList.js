@@ -1,3 +1,4 @@
+import { showMessage, confirmBox } from "../../context/MessageContext";
 import {
     Box,
     Button,
@@ -48,7 +49,7 @@ export default function EvidenceList({
             await downloadCAPAEvidence(file.filePath, file.fileName);
         } catch (error) {
             console.error(error);
-            alert(error.message || "Unable to download evidence.");
+            showMessage(error.message || "Unable to download evidence.", "error");
         }
     };
 
@@ -117,11 +118,14 @@ export default function EvidenceList({
                             size="small"
                             color="error"
                             startIcon={<DeleteOutlineIcon />}
-                            onClick={() => {
+                            onClick={async () => {
                                 if (
-                                    window.confirm(
-                                        `Remove "${file.fileName}" from the evidence list?`
-                                    )
+                                    await confirmBox({
+                                        title: "Remove evidence",
+                                        message: `Remove "${file.fileName}" from the evidence list?`,
+                                        confirmText: "Remove",
+                                        confirmColor: "error",
+                                    })
                                 ) {
                                     onRemove(file);
                                 }

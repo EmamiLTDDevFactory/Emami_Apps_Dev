@@ -115,6 +115,18 @@ async function runMigrations() {
         console.error("[postgres] CAPAs additional-CAPA migration failed:", err.message);
     }
 
+    // Depot "Add CAPA": extra Root Cause / Corrective Action entries inside one
+    // CAPA, kept as a jsonb list (removed entries stay with removed: true).
+    // Additive + nullable; existing CAPAs stay NULL (= no extra entries).
+    try {
+        await pool.query(`
+            ALTER TABLE audit_capa.capas ADD COLUMN IF NOT EXISTS additional_actions jsonb;
+        `);
+        console.log("[postgres] audit_capa.capas schema up to date (additional_actions).");
+    } catch (err) {
+        console.error("[postgres] CAPAs additional_actions migration failed:", err.message);
+    }
+
     // Audit deactivation (CQA): soft on/off switch with an audit trail. Additive and
     // nullable; NULL is_active means active, so every existing audit stays active.
     try {

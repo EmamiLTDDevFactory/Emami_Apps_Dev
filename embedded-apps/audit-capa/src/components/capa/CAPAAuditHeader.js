@@ -9,6 +9,7 @@ import {
 import ChecklistIcon from "@mui/icons-material/Checklist";
 
 import { calculateCategoryCompliance } from "../../utils/complianceUtils";
+import { STATUTORY_LICENCE_FIELDS } from "../../utils/generalInfoFields";
 
 const gridColumns = "2fr 0.8fr 0.8fr 0.8fr";
 
@@ -37,7 +38,12 @@ export default function CAPAAuditHeader({ audit }) {
         { label: "Date of Visit / Audit", value: info.dateOfVisitAudit, date: true },
         { label: "Purpose of Visit / Audit", value: info.purposeOfVisitAudit, multiline: true },
         { label: "Lay out display", value: info.layoutDisplay },
-        { label: "Display of Statutory Licences", value: info.statutoryLicences },
+        ...STATUTORY_LICENCE_FIELDS.map((field) => ({
+            label: field.label,
+            value: info[field.key],
+            date: field.date,
+        })),
+        { label: "Other Licences / Remarks", value: info.statutoryLicences },
         { label: "Copy of Insurance Coverage of Building & Goods", value: info.insuranceCoverage },
     ];
 

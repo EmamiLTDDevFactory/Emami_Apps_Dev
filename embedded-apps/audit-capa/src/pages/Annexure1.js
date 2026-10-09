@@ -1,3 +1,4 @@
+import { showMessage } from "../context/MessageContext";
 import {
     Box,
     Grid,
@@ -82,6 +83,10 @@ import {
     findingKey,
     getFindingNo,
 } from "../utils/findingUtils";
+import {
+    GENERAL_INFO_DEFAULTS,
+    STATUTORY_LICENCE_FIELDS,
+} from "../utils/generalInfoFields";
 
 // Red asterisk for mandatory signature fields.
 const RequiredMark = () => (
@@ -614,9 +619,8 @@ export default function Annexure1() {
             );
 
         if (missingFields) {
-            alert(
-                "Action Plan, Responsibility and Target Date are mandatory for Non-Compliance findings."
-            );
+            showMessage(
+                "Action Plan, Responsibility and Target Date are mandatory for Non-Compliance findings.", "warning");
             return;
         }
 
@@ -638,13 +642,12 @@ export default function Annexure1() {
             );
         } catch (error) {
             console.error(error);
-            alert("Unable to complete audit.");
+            showMessage("Unable to complete audit.", "error");
             return;
         }
 
-        alert(
-            "Audit completed successfully. No CAPA required."
-        );
+        showMessage(
+            "Audit completed successfully. No CAPA required.", "success");
 
         navigate("/audits");
     };
@@ -682,9 +685,8 @@ export default function Annexure1() {
     const handleSelfAssessmentSubmit = async () => {
 
         if (unansweredItems.length > 0) {
-            alert(
-                `Please answer all questions before submitting — ${unansweredItems.length} question(s) still need a score or "NA".`
-            );
+            showMessage(
+                `Please answer all questions before submitting — ${unansweredItems.length} question(s) still need a score or "NA".`, "warning");
             return;
         }
 
@@ -737,9 +739,8 @@ export default function Annexure1() {
                 existingCAPAs &&
                 existingCAPAs.length > 0
             ) {
-                alert(
-                    "Self Assessment already submitted."
-                );
+                showMessage(
+                    "Self Assessment already submitted.", "warning");
                 return;
             }
 
@@ -793,17 +794,15 @@ export default function Annexure1() {
                 )
             );
 
-            alert(
-                "Self Assessment Submitted Successfully."
-            );
+            showMessage(
+                "Self Assessment Submitted Successfully.", "success");
 
         } catch (error) {
 
             console.error(error);
 
-            alert(
-                "Unable to submit self assessment."
-            );
+            showMessage(
+                "Unable to submit self assessment.", "error");
         }
     };
 
@@ -848,9 +847,8 @@ export default function Annexure1() {
                     email: currentUser?.email ?? "",
                 });
 
-                alert(
-                    "Assessment Approved"
-                );
+                showMessage(
+                    "Assessment Approved", "success");
 
             } catch (error) {
                 console.error(error);
@@ -899,9 +897,8 @@ export default function Annexure1() {
                     link: `/annexure1/${id}`,
                 });
 
-                alert(
-                    "Sent back for rework"
-                );
+                showMessage(
+                    "Sent back for rework", "success");
 
             } catch (error) {
                 console.error(error);
@@ -1130,14 +1127,13 @@ export default function Annexure1() {
         const activeCount = getChecklistEvidences(question).length;
 
         if (activeCount + files.length > MAX_EVIDENCE_FILES) {
-            alert(
-                `A question can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`
-            );
+            showMessage(
+                `A question can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`, "warning");
             return;
         }
 
         if (files.some((file) => file.size > MAX_EVIDENCE_BYTES)) {
-            alert("Each evidence file must be 10 MB or smaller.");
+            showMessage("Each evidence file must be 10 MB or smaller.", "warning");
             return;
         }
 
@@ -1166,7 +1162,7 @@ export default function Annexure1() {
             );
         } catch (error) {
             console.error(error);
-            alert(error.message || "Unable to upload evidence.");
+            showMessage(error.message || "Unable to upload evidence.", "error");
         } finally {
             setUploadingEvidenceFor(null);
         }
@@ -1197,7 +1193,7 @@ export default function Annexure1() {
             );
         } catch (error) {
             console.error(error);
-            alert("Unable to remove evidence.");
+            showMessage("Unable to remove evidence.", "error");
         }
     };
 
@@ -1219,7 +1215,7 @@ export default function Annexure1() {
         if (!file || !sigRef.current) return;
 
         if (!file.type.startsWith("image/")) {
-            alert("Please upload an image file.");
+            showMessage("Please upload an image file.", "warning");
             return;
         }
 
@@ -1267,7 +1263,7 @@ export default function Annexure1() {
             };
 
             img.onerror = () =>
-                alert("Unable to read the signature image.");
+                showMessage("Unable to read the signature image.", "error");
 
             img.src = dataUrl;
         };
@@ -1286,12 +1282,12 @@ export default function Annexure1() {
     const handleDepotSignatureSubmit = async () => {
 
         if (isAuditInactive) {
-            alert("This audit is deactivated and read-only.");
+            showMessage("This audit is deactivated and read-only.", "warning");
             return;
         }
 
         if (!selectedAudit?.depotInchargeName?.trim()) {
-            alert("Name of Depot Incharge is mandatory.");
+            showMessage("Name of Depot Incharge is mandatory.", "warning");
             return;
         }
 
@@ -1299,7 +1295,7 @@ export default function Annexure1() {
             !depotSigRef.current ||
             depotSigRef.current.isEmpty()
         ) {
-            alert("Please provide depot incharge signature.");
+            showMessage("Please provide depot incharge signature.", "warning");
             return;
         }
 
@@ -1325,19 +1321,18 @@ export default function Annexure1() {
             );
         } catch (error) {
             console.error(error);
-            alert("Unable to submit depot signature.");
+            showMessage("Unable to submit depot signature.", "error");
             return;
         }
 
-        alert(
-            "Signature submitted successfully."
-        );
+        showMessage(
+            "Signature submitted successfully.", "success");
     };
 
     const handleAuditorSignatureSubmit = async () => {
 
         if (isAuditInactive) {
-            alert("This audit is deactivated and read-only.");
+            showMessage("This audit is deactivated and read-only.", "warning");
             return;
         }
 
@@ -1345,7 +1340,7 @@ export default function Annexure1() {
             !auditorSigRef.current ||
             auditorSigRef.current.isEmpty()
         ) {
-            alert("Please provide auditor signature.");
+            showMessage("Please provide auditor signature.", "warning");
             return;
         }
 
@@ -1370,15 +1365,14 @@ export default function Annexure1() {
             );
         } catch (error) {
             console.error(error);
-            alert("Unable to submit auditor signature.");
+            showMessage("Unable to submit auditor signature.", "error");
             return;
         }
 
 
 
-        alert(
-            "Auditor signature submitted successfully."
-        );
+        showMessage(
+            "Auditor signature submitted successfully.", "success");
     };
 
     const sectionColors = {
@@ -1410,6 +1404,9 @@ export default function Annexure1() {
         layoutDisplay: "",
         statutoryLicences: "",
         insuranceCoverage: "",
+        ...Object.fromEntries(
+            STATUTORY_LICENCE_FIELDS.map(({ key }) => [key, ""])
+        ),
     });
 
     // useEffect(() => {
@@ -1497,20 +1494,27 @@ export default function Annexure1() {
                     "",
 
                 purposeOfVisitAudit:
-                    selectedAudit?.generalInfo?.purposeOfVisitAudit ||
-                    "",
+                    selectedAudit?.generalInfo?.purposeOfVisitAudit ??
+                    GENERAL_INFO_DEFAULTS.purposeOfVisitAudit,
 
                 layoutDisplay:
-                    selectedAudit?.generalInfo?.layoutDisplay ||
-                    "",
+                    selectedAudit?.generalInfo?.layoutDisplay ??
+                    GENERAL_INFO_DEFAULTS.layoutDisplay,
 
                 statutoryLicences:
                     selectedAudit?.generalInfo?.statutoryLicences ||
                     "",
 
                 insuranceCoverage:
-                    selectedAudit?.generalInfo?.insuranceCoverage ||
-                    "",
+                    selectedAudit?.generalInfo?.insuranceCoverage ??
+                    GENERAL_INFO_DEFAULTS.insuranceCoverage,
+
+                ...Object.fromEntries(
+                    STATUTORY_LICENCE_FIELDS.map(({ key }) => [
+                        key,
+                        selectedAudit?.generalInfo?.[key] || "",
+                    ])
+                ),
             };
         });
     }, [selectedAudit]);
@@ -2285,12 +2289,45 @@ export default function Annexure1() {
                         </Grid>
 
                         {/* 9. Display of statutory licences */}
+                        <Grid item xs={12} sx={{ width: "100%" }}>
+                            <Typography
+                                variant="subtitle2"
+                                fontWeight={700}
+                                sx={{ color: "#334155" }}
+                            >
+                                Display of Statutory Licences (e.g. State Registration, C Form, FSSAI, etc.)
+                            </Typography>
+                        </Grid>
+
+                        {STATUTORY_LICENCE_FIELDS.map((field) => (
+                            <Grid item xs={12} key={field.key}>
+                                <TextField
+                                    fullWidth
+                                    type={field.date ? "date" : "text"}
+                                    label={field.label}
+                                    value={generalInfo[field.key] || ""}
+                                    onChange={(e) =>
+                                        handleGeneralInfoChange(
+                                            field.key,
+                                            e.target.value
+                                        )
+                                    }
+                                    disabled={!canEditAnnexure}
+                                    slotProps={
+                                        field.date
+                                            ? { inputLabel: { shrink: true } }
+                                            : undefined
+                                    }
+                                />
+                            </Grid>
+                        ))}
+
                         <Grid item xs={12}>
                             <TextField
                                 fullWidth
                                 multiline
                                 rows={2}
-                                label="Display of Statutory Licences"
+                                label="Other Licences / Remarks"
                                 value={generalInfo.statutoryLicences}
                                 onChange={(e) =>
                                     handleGeneralInfoChange(
@@ -3347,10 +3384,10 @@ export default function Annexure1() {
                                             )
                                         );
 
-                                        alert("Checklist draft saved successfully.");
+                                        showMessage("Checklist draft saved successfully.", "success");
                                     } catch (error) {
                                         console.error(error);
-                                        alert("Unable to save checklist draft.");
+                                        showMessage("Unable to save checklist draft.", "error");
                                     }
                                 }}
                             >
@@ -3393,7 +3430,7 @@ export default function Annexure1() {
                                 onClick={async () => {
 
                                     if (!selectedAudit?.auditorSignatureSubmitted) {
-                                        alert("Auditor signature is mandatory before completing the audit.");
+                                        showMessage("Auditor signature is mandatory before completing the audit.", "warning");
                                         return;
                                     }
 
@@ -3414,13 +3451,12 @@ export default function Annexure1() {
                                         );
                                     } catch (error) {
                                         console.error(error);
-                                        alert("Unable to complete audit.");
+                                        showMessage("Unable to complete audit.", "error");
                                         return;
                                     }
 
-                                    alert(
-                                        "Audit completed successfully. No CAPA required."
-                                    );
+                                    showMessage(
+                                        "Audit completed successfully. No CAPA required.", "success");
 
                                     navigate("/audits");
                                 }}
@@ -3523,7 +3559,7 @@ export default function Annexure1() {
                             onClick={async () => {
 
                                 if (!selectedAudit?.auditorSignatureSubmitted) {
-                                    alert("Auditor signature is mandatory before generating CAPA.");
+                                    showMessage("Auditor signature is mandatory before generating CAPA.", "warning");
                                     return;
                                 }
 
@@ -3555,29 +3591,13 @@ export default function Annexure1() {
                                     );
 
                                 if (missingFields) {
-                                    alert(
-                                        "Action Plan, Responsibility and Target Date are mandatory for Non-Compliance findings."
-                                    );
+                                    showMessage(
+                                        "Action Plan, Responsibility and Target Date are mandatory for Non-Compliance findings.", "warning");
                                     return;
                                 }
 
-                                // Evidence is mandatory for every Non-Compliance question
-                                // (same definition generateCAPA uses); optional otherwise.
-                                const missingEvidence =
-                                    auditItems.filter(
-                                        item =>
-                                            item.actualScore !== null &&
-                                            item.status !== "NA" &&
-                                            item.actualScore < 2 &&
-                                            getChecklistEvidences(item).length === 0
-                                    );
-
-                                if (missingEvidence.length > 0) {
-                                    alert(
-                                        `Evidence is mandatory for Non-Compliance findings. ${missingEvidence.length} question(s) still need at least one evidence file.`
-                                    );
-                                    return;
-                                }
+                                // Evidence is optional (Compliance / Non-Compliance) or
+                                // disabled (NA), so Generate CAPA does not check it.
 
                                 const capaRecords =
                                     generateCAPA(auditItems, selectedAudit?.auditNo);
@@ -3609,9 +3629,8 @@ export default function Annexure1() {
                                     await getCAPAs(Number(id));
 
                                 if (existingCAPAs.length > 0) {
-                                    alert(
-                                        "CAPA already generated for this audit."
-                                    );
+                                    showMessage(
+                                        "CAPA already generated for this audit.", "warning");
                                     return;
                                 }
 
@@ -3664,12 +3683,12 @@ export default function Annexure1() {
                                         )
                                     );
 
-                                    alert("CAPA generated and sent to Depot");
+                                    showMessage("CAPA generated and sent to Depot", "success");
 
                                     navigate("/audits");
                                 } catch (error) {
                                     console.error(error);
-                                    alert("Unable to update audit.");
+                                    showMessage("Unable to update audit.", "error");
                                 }
                             }}
                         >

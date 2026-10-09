@@ -1,3 +1,6 @@
+// Depot audit checklist (CQA, updated 2026-10-09). Used only for new audits;
+// saved audits keep their own copy in audits.checklist. Ids of unchanged
+// questions are kept; questions added in this revision are 40-49.
 const checklistData = [
     // =====================================================
     // BUILDING / PREMISES
@@ -25,7 +28,7 @@ const checklistData = [
         category: "Building / Premises",
         section: "Infrastructure & Facility Conditions",
         parameter:
-            "Structure is weatherproof and rodent",
+            "Structure is weatherproof and free from rodents.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -59,24 +62,7 @@ const checklistData = [
         category: "Building / Premises",
         section: "Infrastructure & Facility Conditions",
         parameter:
-            "Proper lighting as per SOP, and ventilation available",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
-        id: 5,
-        category: "Building / Premises",
-        section: "Infrastructure & Facility Conditions",
-        parameter:
-            "Adequate ventilation available.",
+            "Proper lighting and ventilation available, check the Light intensity -100-200LUX",
         status: "",
         observation: "",
         actionPlan: "",
@@ -93,7 +79,7 @@ const checklistData = [
         category: "Building / Premises",
         section: "Infrastructure & Facility Conditions",
         parameter:
-            "Walkway is free from any obstical.",
+            "Walkway is free from any obstacle",
         status: "",
         observation: "",
         actionPlan: "",
@@ -106,11 +92,11 @@ const checklistData = [
     },
 
     {
-        id: 7,
+        id: 40,
         category: "Building / Premises",
         section: "Infrastructure & Facility Conditions",
         parameter:
-            "Loading/unloading area is protected from rain.",
+            "Check whether Aisles are wide enough for easy movement of goods.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -121,27 +107,6 @@ const checklistData = [
         evidence: null,
         isCustom: false,
     },
-
-    {
-        id: 8,
-        category: "Building / Premises",
-        section: "Infrastructure & Facility Conditions",
-        parameter:
-            "Pallets/ Tarpuline are used for storing goods",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    // -----------------------------
-    // Loading / unloading
-    // -----------------------------
 
     {
         id: 9,
@@ -177,10 +142,6 @@ const checklistData = [
         isCustom: false,
     },
 
-    // -----------------------------
-    // Material Control
-    // -----------------------------
-
     {
         id: 11,
         category: "Building / Premises",
@@ -203,7 +164,7 @@ const checklistData = [
         category: "Building / Premises",
         section: "Storage Practices",
         parameter:
-            "Racking and / 1ft from wall",
+            "Racking 1ft from wall",
         status: "",
         observation: "",
         actionPlan: "",
@@ -237,7 +198,7 @@ const checklistData = [
         category: "Building / Premises",
         section: "Pest Control",
         parameter:
-            "Pest control schedule documented and up to date",
+            "Whether the Depot having Pest Control Schedule and its documented",
         status: "",
         observation: "",
         actionPlan: "",
@@ -249,16 +210,80 @@ const checklistData = [
         isCustom: false,
     },
 
-    // -----------------------------
-    // SOPs
-    // -----------------------------
-
     {
         id: 15,
         category: "Building / Premises",
         section: "Pest Control",
         parameter:
-            "Pest control carried out by a certified vendor",
+            "Check Whether the Pest Control is carried out by certified Pest Control agency",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 41,
+        category: "Building / Premises",
+        section: "Pest Control",
+        parameter:
+            "Availability of Pest Control Agreement",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 42,
+        category: "Building / Premises",
+        section: "Pest Control",
+        parameter:
+            "Check Whether all the services as per CQA SOP have been covered in the agreement",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 43,
+        category: "Building / Premises",
+        section: "Pest Control",
+        parameter:
+            "Availability and display of Pest Control Layout",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 44,
+        category: "Building / Premises",
+        section: "Pest Control",
+        parameter:
+            "Check Whether the Layout is approved by Depot In charge",
         status: "",
         observation: "",
         actionPlan: "",
@@ -273,9 +298,9 @@ const checklistData = [
     {
         id: 16,
         category: "Building / Premises",
-        section: "Product Management",
+        section: "Specific Storage Practices- Zandu Honey",
         parameter:
-            "Trained in product handling",
+            "Check Whether the People are trained in Food Product handling",
         status: "",
         observation: "",
         actionPlan: "",
@@ -286,38 +311,13 @@ const checklistData = [
         evidence: null,
         isCustom: false,
     },
-
-    // -----------------------------
-    // Redressal / rework
-    // -----------------------------
-
-    {
-        id: 17,
-        category: "Building / Premises",
-        section: "Product Management",
-        parameter:
-            "Dedicated Area for Honey Storage",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    // -----------------------------
-    // Destruction
-    // -----------------------------
 
     {
         id: 18,
         category: "Building / Premises",
-        section: "Product Management",
+        section: "Specific Storage Practices- Zandu Honey",
         parameter:
-            "Honey covered with special covers",
+            "Check Whether the Zandu Honey is being covered with Tarpaulin",
         status: "",
         observation: "",
         actionPlan: "",
@@ -329,6 +329,22 @@ const checklistData = [
         isCustom: false,
     },
 
+    {
+        id: 17,
+        category: "Building / Premises",
+        section: "Specific Storage Practices- Zandu Honey",
+        parameter:
+            "Check Whether the Zandu Honey is stored in Demarcated area.",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
 
     // =====================================================
     // SAFETY ASSESSMENT
@@ -407,7 +423,7 @@ const checklistData = [
         category: "Safety",
         section: "Safety Awareness Trainng & Certificate.",
         parameter:
-            "Training on safety Awareness : Training Date",
+            "Training on safety Awareness :",
         status: "",
         observation: "",
         actionPlan: "",
@@ -436,12 +452,16 @@ const checklistData = [
         isCustom: false,
     },
 
+    // =====================================================
+    // GENERAL HYGIENE AND STORE PRACTICES
+    // =====================================================
+
     {
         id: 25,
         category: "General Hygiene and Store Practices",
         section: "SOPs",
         parameter:
-            "Standard operating procedures are available at least for basic operations like; Product receipt, product storage, product despatch,  product recall/rework, product destruction and housekeeping, CQA quidelines/SOPs",
+            "Latest version of Applicable SOPs are available with the Depots",
         status: "",
         observation: "",
         actionPlan: "",
@@ -453,17 +473,29 @@ const checklistData = [
         isCustom: false,
     },
 
-
-    // =====================================================
-    // GENERAL HYGIENE AND GODOWN PRACTICES
-    // =====================================================
-
     {
         id: 26,
         category: "General Hygiene and Store Practices",
         section: "SOPs",
         parameter:
-            "Concerned personnel are trained on SOPs and training records available",
+            "Concerned persons are trained on applicable SOPs",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 45,
+        category: "General Hygiene and Store Practices",
+        section: "SOPs",
+        parameter:
+            "Check the training records.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -480,7 +512,41 @@ const checklistData = [
         category: "General Hygiene and Store Practices",
         section: "Housekeeping & Sanitation",
         parameter:
-            "Regular cleaning schedule in place and documented",
+            "Availability of Housekeeping Schedule/Checklist",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 46,
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
+        parameter:
+            "Whether the Checklist is aligned with the Housekeeping SOP",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 30,
+        category: "General Hygiene and Store Practices",
+        section: "Housekeeping & Sanitation",
+        parameter:
+            "Housekeeping of the premises as per Schedule and Records are available",
         status: "",
         observation: "",
         actionPlan: "",
@@ -497,7 +563,7 @@ const checklistData = [
         category: "General Hygiene and Store Practices",
         section: "Housekeeping & Sanitation",
         parameter:
-            "Restrooms/toilet and staff areas are clean and hygienic and saperate from product storage area with hand wash area.",
+            "Restrooms/toilet and staff areas are clean and hygienic and separate from product storage area with hand wash area.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -527,49 +593,28 @@ const checklistData = [
     },
 
     {
-        id: 30,
-        category: "General Hygiene and Store Practices",
-        section: "Housekeeping & Sanitation",
-        parameter:
-            "Schedule displayed and followed: Check record",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    // -----------------------------
-    // Product storage
-    // -----------------------------
-
-    {
-        id: 31,
-        category: "General Hygiene and Store Practices",
-        section: "Personnel & Hygiene",
-        parameter:
-            "Personal hygiene standards followed",
-        status: "",
-        observation: "",
-        actionPlan: "",
-        responsibility: "",
-        targetDate: "",
-        maxScore: 3,
-        actualScore: null,
-        evidence: null,
-        isCustom: false,
-    },
-
-    {
         id: 32,
         category: "General Hygiene and Store Practices",
         section: "Personnel & Hygiene",
         parameter:
-            "Eating/drinking/smoking/Tobacco prohibited in storage areas",
+            "Check whether displays of “Prohibited Smoking, Eating, Drinking & Tobacco “inside the storage area is available.",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 47,
+        category: "General Hygiene and Store Practices",
+        section: "Personnel & Hygiene",
+        parameter:
+            "Check Whether there is any evidence of spitting inside the premises",
         status: "",
         observation: "",
         actionPlan: "",
@@ -598,16 +643,12 @@ const checklistData = [
         isCustom: false,
     },
 
-    // -----------------------------
-    // Goods Receipt / Handling
-    // -----------------------------
-
     {
         id: 34,
         category: "General Hygiene and Store Practices",
         section: "Goods Reciept/Handling",
         parameter:
-            "Clear and defined guidelines are available and training given to all loading unloading personnel.",
+            "Clear and defined guidelines are available, and training given to all loading unloading personnel.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -624,7 +665,7 @@ const checklistData = [
         category: "General Hygiene and Store Practices",
         section: "Goods Reciept/Handling",
         parameter:
-            "Receipt of damaged goods is recorded and highlighted to all the concerned.Damaged qty is seggregated and labelled for redressal",
+            "Receipt of damaged goods is recorded and highlighted to all the concerned. Damaged qty is segregated and labelled for redressal",
         status: "",
         observation: "",
         actionPlan: "",
@@ -671,11 +712,11 @@ const checklistData = [
     },
 
     {
-        id: 38,
+        id: 48,
         category: "General Hygiene and Store Practices",
-        section: "Weight Machine Calliberation",
+        section: "Environmental Control",
         parameter:
-            "Periodic weight machine calliberation to be performed and documented.",
+            "Check Whether Environmental monitoring device is calibrated",
         status: "",
         observation: "",
         actionPlan: "",
@@ -687,16 +728,46 @@ const checklistData = [
         isCustom: false,
     },
 
-    // -----------------------------
-    // Environmental Control
-    // -----------------------------
+    {
+        id: 38,
+        category: "General Hygiene and Store Practices",
+        section: "Calibration & Verification",
+        parameter:
+            "Check Whether weighing Balance is properly calibrated by the agency",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
+
+    {
+        id: 49,
+        category: "General Hygiene and Store Practices",
+        section: "Calibration & Verification",
+        parameter:
+            "Check Whether Daily verification system is available for weighing balance at least with one weight",
+        status: "",
+        observation: "",
+        actionPlan: "",
+        responsibility: "",
+        targetDate: "",
+        maxScore: 3,
+        actualScore: null,
+        evidence: null,
+        isCustom: false,
+    },
 
     {
         id: 39,
         category: "General Hygiene and Store Practices",
-        section: "Weight Machine Calliberation",
+        section: "Calibration & Verification",
         parameter:
-            "stamped weights for caliberation",
+            "Check Whether the stamping from legal metrology department of weighing balance and bullion weights is available & Valid.",
         status: "",
         observation: "",
         actionPlan: "",
@@ -707,6 +778,7 @@ const checklistData = [
         evidence: null,
         isCustom: false,
     },
+
 ];
 
 export default checklistData;

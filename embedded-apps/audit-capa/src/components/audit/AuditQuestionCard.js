@@ -880,17 +880,8 @@ export default function AuditQuestionCard({
                                 />
                             </Button>
 
-                            {/* Evidence: mandatory for Non-Compliance (checked at Generate
-                                CAPA), optional for Compliance, disabled for NA. */}
-                            {isNonCompliance && evidences.length === 0 && (
-                                <Typography
-                                    variant="caption"
-                                    color="error"
-                                    fontWeight={600}
-                                >
-                                    Evidence is mandatory *
-                                </Typography>
-                            )}
+                            {/* Evidence: disabled for NA; optional for Compliance and
+                                Non-Compliance. */}
                         </Box>
                     )}
                 </Grid>
