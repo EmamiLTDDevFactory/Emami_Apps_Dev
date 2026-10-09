@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 // import Sidebar from "./components/layout/Sidebar";
 // import Navbar from "./components/layout/Navbar";
 import AppRoutes from "./routes/AppRoutes";
+import { MessageProvider } from "./context/MessageContext";
 // import { Box } from "@mui/material";
 // import Login from "./pages/Login";
 
@@ -102,7 +103,9 @@ function App() {
               overflow: "auto",
             }}
           > */}
-      <AppRoutes />
+      <MessageProvider>
+        <AppRoutes />
+      </MessageProvider>
       {/* </Box> */}
       {/* </Box> */}
       {/* </Box> */}

@@ -1,3 +1,4 @@
+import { showMessage, confirmBox } from "../context/MessageContext";
 import {
     Box,
     Card,
@@ -81,6 +82,11 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AccessTimeFilledIcon from "@mui/icons-material/AccessTimeFilled";
+
+
+// CQA "Add CAPA" (a separate CAPA per finding) is replaced by the Depot adding
+// Root Cause / Corrective Action entries inside a CAPA.
+const CQA_ADD_CAPA_ENABLED = false;
 
 // const capaData = [
 //     {
@@ -321,7 +327,7 @@ export default function CAPAManagement() {
 
     const handleCloseCAPA = (id) => {
         if (!hasCqaRemarks(capaData.find((c) => c.id === id))) {
-            alert("CQA Remarks are mandatory before closing the CAPA.");
+            showMessage("CQA Remarks are mandatory before closing the CAPA.", "warning");
             return;
         }
         setSelectedCAPA(id);
@@ -545,12 +551,12 @@ export default function CAPAManagement() {
         const description = addCapaForm.description.trim();
 
         if (!description) {
-            alert("Action required / CAPA description is mandatory.");
+            showMessage("Action required / CAPA description is mandatory.", "warning");
             return;
         }
 
         if (!addCapaForm.targetDate) {
-            alert("Target Date is mandatory.");
+            showMessage("Target Date is mandatory.", "warning");
             return;
         }
 
@@ -590,10 +596,10 @@ export default function CAPAManagement() {
                 },
             });
 
-            alert(`CAPA ${newCAPA.capaNo} added.`);
+            showMessage(`CAPA ${newCAPA.capaNo} added.`, "success");
         } catch (error) {
             console.error("Add CAPA failed:", error);
-            alert(error.message || "Unable to add CAPA.");
+            showMessage(error.message || "Unable to add CAPA.", "error");
         } finally {
             setSavingAddCapa(false);
         }
@@ -603,9 +609,13 @@ export default function CAPAManagement() {
     // exactly as it does after the last Accept & Close.
     const handleCancelCAPA = async (item) => {
         if (
-            !window.confirm(
-                `Cancel CAPA ${item.capaNo}? It will be kept for the record but no longer counted.`
-            )
+            !(await confirmBox({
+                title: "Cancel CAPA",
+                message: `Cancel CAPA ${item.capaNo}? It will be kept for the record but no longer counted.`,
+                confirmText: "Cancel CAPA",
+                cancelText: "Keep",
+                confirmColor: "error",
+            }))
         ) {
             return;
         }
@@ -633,9 +643,84 @@ export default function CAPAManagement() {
             }
         } catch (error) {
             console.error("Cancel CAPA failed:", error);
-            alert(error.message || "Unable to cancel CAPA.");
+            showMessage(error.message || "Unable to cancel CAPA.", "error");
         }
     };
+
+    // Depot "Add CAPA": more Root Cause / Corrective Action entries under one
+    // CAPA, saved in capas.additional_actions. Removed entries are only flagged.
+    const activeAdditionalActions = (item) =>
+        (item.additionalActions || []).filter((entry) => !entry.removed);
+
+    const saveAdditionalActions = async (capaId, additionalActions) => {
+        setCapaData((previous) =>
+            previous.map((capa) =>
+                capa.id === capaId ? { ...capa, additionalActions } : capa
+            )
+        );
+
+        try {
+            await updateCAPA(capaId, { additionalActions });
+        } catch (error) {
+            console.error("Unable to save CAPA entries:", error);
+        }
+    };
+
+    const handleAddCAPAEntry = (item) =>
+        saveAdditionalActions(item.id, [
+            ...(item.additionalActions || []),
+            {
+                id: `${Date.now()}`,
+                rootCause: "",
+                correctiveAction: "",
+                addedBy: currentUser?.username || "Depot",
+                addedAt: new Date().toISOString(),
+                removed: false,
+            },
+        ]);
+
+    const handleCAPAEntryChange = (item, entryId, field, value) =>
+        saveAdditionalActions(
+            item.id,
+            (item.additionalActions || []).map((entry) =>
+                entry.id === entryId ? { ...entry, [field]: value } : entry
+            )
+        );
+
+    const handleRemoveCAPAEntry = async (item, entryId) => {
+        if (
+            !(await confirmBox({
+                title: "Remove CAPA",
+                message: "Remove this Root Cause / Corrective Action entry?",
+                confirmText: "Remove",
+                cancelText: "Keep",
+                confirmColor: "error",
+            }))
+        ) {
+            return;
+        }
+
+        saveAdditionalActions(
+            item.id,
+            (item.additionalActions || []).map((entry) =>
+                entry.id === entryId
+                    ? {
+                        ...entry,
+                        removed: true,
+                        removedBy: currentUser?.username || "",
+                        removedAt: new Date().toISOString(),
+                    }
+                    : entry
+            )
+        );
+    };
+
+    // Entries already submitted to CQA stay; only ones added since the last
+    // submission can be removed (same rule as evidence files).
+    const canRemoveCAPAEntry = (item, entry, canEditCAPA) =>
+        canEditCAPA &&
+        (!item.submittedDate ||
+            new Date(entry.addedAt) > new Date(item.submittedDate));
 
     const activeCAPAEvidence = (item) =>
         (item.evidenceFiles || []).filter((file) => !file.removed);
@@ -676,14 +761,13 @@ export default function CAPAManagement() {
         const activeCount = activeCAPAEvidence(item).length;
 
         if (activeCount + files.length > MAX_EVIDENCE_FILES) {
-            alert(
-                `A CAPA can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`
-            );
+            showMessage(
+                `A CAPA can have at most ${MAX_EVIDENCE_FILES} evidence files (${activeCount} already attached).`, "warning");
             return;
         }
 
         if (files.some((file) => file.size > MAX_EVIDENCE_BYTES)) {
-            alert("Evidence file size must not exceed 10 MB.");
+            showMessage("Evidence file size must not exceed 10 MB.", "warning");
             return;
         }
 
@@ -699,7 +783,7 @@ export default function CAPAManagement() {
             );
         } catch (error) {
             console.error("Evidence upload failed:", error);
-            alert(error.message || "Unable to upload evidence.");
+            showMessage(error.message || "Unable to upload evidence.", "error");
         } finally {
             setUploadingEvidenceFor(null);
         }
@@ -717,7 +801,7 @@ export default function CAPAManagement() {
             );
         } catch (error) {
             console.error("Evidence remove failed:", error);
-            alert(error.message || "Unable to remove evidence.");
+            showMessage(error.message || "Unable to remove evidence.", "error");
         }
     };
 
@@ -730,7 +814,12 @@ export default function CAPAManagement() {
             item.rootCause?.trim() &&
             item.preventiveAction?.trim() &&
             item.targetDate &&
-            hasEvidence
+            hasEvidence &&
+            activeAdditionalActions(item).every(
+                (entry) =>
+                    entry.rootCause?.trim() &&
+                    entry.correctiveAction?.trim()
+            )
         );
     };
 
@@ -749,21 +838,19 @@ export default function CAPAManagement() {
             !auditForSignature?.depotSignatureSubmitted ||
             !auditForSignature?.depotInchargeName?.trim()
         ) {
-            alert(
-                "Depot Incharge name and signature are mandatory before submitting the CAPA. Please sign on the audit checklist page first."
-            );
+            showMessage(
+                "Depot Incharge name and signature are mandatory before submitting the CAPA. Please sign on the audit checklist page first.", "warning");
             return;
         }
 
         if (activeCAPAEvidence(item).length === 0) {
-            alert("Please attach at least one evidence file before submitting the CAPA.");
+            showMessage("Please attach at least one evidence file before submitting the CAPA.", "warning");
             return;
         }
 
         if (!canSubmitCAPA(item)) {
-            alert(
-                "Root Cause, Corrective Action and Target Date are mandatory."
-            );
+            showMessage(
+                "Root Cause, Corrective Action and Target Date are mandatory (including every added CAPA entry).", "warning");
             return;
         }
 
@@ -777,6 +864,7 @@ export default function CAPAManagement() {
                 {
                     rootCause: item.rootCause,
                     preventiveAction: item.preventiveAction,
+                    additionalActions: item.additionalActions || [],
                     targetDate: item.targetDate,
                     status: "In Progress",
                     submittedDate: new Date().toISOString(),
@@ -788,9 +876,8 @@ export default function CAPAManagement() {
 
             // setEvidenceCAPAId(null);
 
-            alert(
-                "CAPA submitted successfully."
-            );
+            showMessage(
+                "CAPA submitted successfully.", "success");
 
             const freshCapas = await getCAPAs(item.auditId);
 
@@ -837,10 +924,10 @@ export default function CAPAManagement() {
                 error
             );
 
-            alert(
+            showMessage(
                 error.message ||
-                "Unable to submit CAPA."
-            );
+                "Unable to submit CAPA.",
+            "error");
 
         } finally {
 
@@ -993,7 +1080,7 @@ export default function CAPAManagement() {
     ) => {
 
         if (!hasCqaRemarks(capaData.find((c) => c.id === capaId))) {
-            alert("CQA Remarks are mandatory before sending the CAPA back.");
+            showMessage("CQA Remarks are mandatory before sending the CAPA back.", "warning");
             return;
         }
 
@@ -1066,9 +1153,8 @@ export default function CAPAManagement() {
             email: currentUser?.email ?? "",
         });
 
-        alert(
-            "CAPA sent back."
-        );
+        showMessage(
+            "CAPA sent back.", "success");
     };
 
 
@@ -1516,7 +1602,10 @@ export default function CAPAManagement() {
                             </Typography>
                         </Box>
 
-                        {canAddCAPA && (
+                        {/* Separate CAPAs per finding by CQA are switched off: Add CAPA
+                            is now done by the Depot inside each CAPA (see below).
+                            Earlier added CAPAs still show and can be cancelled. */}
+                        {CQA_ADD_CAPA_ENABLED && canAddCAPA && (
                             <Button
                                 variant="contained"
                                 size="small"
@@ -1739,6 +1828,94 @@ export default function CAPAManagement() {
                                         }
                                     />
                                 </Grid>
+
+                                {/* Depot "Add CAPA": more Root Cause / Corrective
+                                    Action pairs for this CAPA. */}
+                                {activeAdditionalActions(item).map((entry, index) => (
+                                    <Grid item xs={12} key={entry.id}>
+                                        <Box
+                                            sx={{
+                                                p: 2,
+                                                borderRadius: 2,
+                                                border: "1px dashed #A5B4FC",
+                                                bgcolor: "#F8FAFF",
+                                            }}
+                                        >
+                                            <Box
+                                                sx={{
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                    alignItems: "center",
+                                                    mb: 1.5,
+                                                }}
+                                            >
+                                                <Typography fontWeight={700} variant="body2">
+                                                    {item.capaNo} - CAPA {index + 2}
+                                                </Typography>
+
+                                                {canRemoveCAPAEntry(item, entry, canEditCAPA) && (
+                                                    <Button
+                                                        size="small"
+                                                        color="error"
+                                                        onClick={() =>
+                                                            handleRemoveCAPAEntry(item, entry.id)
+                                                        }
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                )}
+                                            </Box>
+
+                                            <TextField
+                                                label="Root Cause"
+                                                fullWidth
+                                                multiline
+                                                rows={3}
+                                                sx={{ mb: 2 }}
+                                                disabled={!canEditCAPA}
+                                                value={entry.rootCause || ""}
+                                                onChange={(e) =>
+                                                    handleCAPAEntryChange(
+                                                        item,
+                                                        entry.id,
+                                                        "rootCause",
+                                                        e.target.value
+                                                    )
+                                                }
+                                            />
+
+                                            <TextField
+                                                label="Corrective Action"
+                                                fullWidth
+                                                multiline
+                                                rows={3}
+                                                disabled={!canEditCAPA}
+                                                value={entry.correctiveAction || ""}
+                                                onChange={(e) =>
+                                                    handleCAPAEntryChange(
+                                                        item,
+                                                        entry.id,
+                                                        "correctiveAction",
+                                                        e.target.value
+                                                    )
+                                                }
+                                            />
+                                        </Box>
+                                    </Grid>
+                                ))}
+
+                                {canEditCAPA && (
+                                    <Grid item xs={12}>
+                                        <Button
+                                            variant="outlined"
+                                            size="small"
+                                            startIcon={<AddIcon />}
+                                            onClick={() => handleAddCAPAEntry(item)}
+                                        >
+                                            Add CAPA
+                                        </Button>
+                                    </Grid>
+                                )}
 
                                 <Grid item xs={12}>
 
@@ -2117,7 +2294,7 @@ export default function CAPAManagement() {
                                         <Button
                                             variant="outlined"
                                             onClick={() => {
-                                                alert("CAPA Draft Saved Successfully");
+                                                showMessage("CAPA Draft Saved Successfully", "success");
                                             }}
                                         >
                                             Save Draft

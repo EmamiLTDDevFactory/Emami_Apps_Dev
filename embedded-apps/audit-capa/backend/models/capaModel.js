@@ -166,6 +166,10 @@ const mapCAPA = (row) => {
     isAdditional:
       row.is_additional === true,
 
+    // Depot "Add CAPA": extra Root Cause / Corrective Action entries.
+    additionalActions:
+      Array.isArray(row.additional_actions) ? row.additional_actions : [],
+
     cancelledBy:
       row.cancelled_by,
 
@@ -320,6 +324,7 @@ const updateCAPA = async (id, changes) => {
           status = COALESCE($4, status),
           reviewer_remarks = COALESCE($5, reviewer_remarks),
           submitted_date = COALESCE($6, submitted_date),
+          additional_actions = COALESCE($8::jsonb, additional_actions),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $7
       RETURNING *
@@ -332,7 +337,10 @@ const updateCAPA = async (id, changes) => {
       changes.status ?? null,
       changes.cqaRemarks ?? null,
       changes.submittedDate ?? null,
-      id
+      id,
+      Array.isArray(changes.additionalActions)
+        ? JSON.stringify(changes.additionalActions)
+        : null
     ]
   );
 

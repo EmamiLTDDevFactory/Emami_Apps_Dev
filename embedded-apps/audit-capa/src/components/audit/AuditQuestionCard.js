@@ -836,7 +836,7 @@ export default function AuditQuestionCard({
                                 variant="outlined"
                                 size={isAuditorTablet ? "large" : "small"}
                                 startIcon={<PhotoCameraIcon />}
-                                disabled={isNA || uploadingEvidence}
+                                disabled={uploadingEvidence}
                             >
                                 Capture Photo
 
@@ -861,7 +861,7 @@ export default function AuditQuestionCard({
                                 variant="outlined"
                                 size={isAuditorTablet ? "large" : "small"}
                                 startIcon={<UploadFileIcon />}
-                                disabled={isNA || uploadingEvidence}
+                                disabled={uploadingEvidence}
                             >
                                 {uploadingEvidence ? "Uploading..." : "Upload File"}
 
@@ -880,17 +880,8 @@ export default function AuditQuestionCard({
                                 />
                             </Button>
 
-                            {/* Evidence: mandatory for Non-Compliance (checked at Generate
-                                CAPA), optional for Compliance, disabled for NA. */}
-                            {isNonCompliance && evidences.length === 0 && (
-                                <Typography
-                                    variant="caption"
-                                    color="error"
-                                    fontWeight={600}
-                                >
-                                    Evidence is mandatory *
-                                </Typography>
-                            )}
+                            {/* Evidence is optional for every status (NA, Compliance,
+                                Non-Compliance). */}
                         </Box>
                     )}
                 </Grid>

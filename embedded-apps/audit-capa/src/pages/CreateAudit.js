@@ -1,3 +1,4 @@
+import { showMessage } from "../context/MessageContext";
 import {
     Box,
     Grid,
@@ -228,10 +229,10 @@ export default function CreateAudit() {
                 email: currentUser?.email ?? "",
             });
 
-            alert("Audit created successfully.");
+            showMessage("Audit created successfully.", "success");
         } catch (error) {
             console.error(error);
-            alert("Unable to create audit. Please make sure the backend is running.");
+            showMessage("Unable to create audit. Please make sure the backend is running.", "error");
         }
     };
 

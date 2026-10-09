@@ -1,3 +1,4 @@
+import { showMessage, confirmBox } from "../context/MessageContext";
 import { useState } from "react";
 
 import {
@@ -133,10 +134,10 @@ export default function AuditList() {
         try {
             replaceAudit(await updateAudit(editingAudit.id, form));
             setEditingAudit(null);
-            alert("Audit updated successfully.");
+            showMessage("Audit updated successfully.", "success");
         } catch (error) {
             console.error(error);
-            alert(error.message || "Unable to update audit.");
+            showMessage(error.message || "Unable to update audit.", "error");
         }
     };
 
@@ -152,12 +153,19 @@ export default function AuditList() {
             setDeactivatingAudit(null);
         } catch (error) {
             console.error(error);
-            alert(error.message || "Unable to deactivate audit.");
+            showMessage(error.message || "Unable to deactivate audit.", "error");
         }
     };
 
     const handleActivate = async (audit) => {
-        if (!window.confirm(`Activate audit ${audit.auditNo} again?`)) {
+        if (
+            !(await confirmBox({
+                title: "Activate audit",
+                message: `Activate audit ${audit.auditNo} again?`,
+                confirmText: "Activate",
+                confirmColor: "success",
+            }))
+        ) {
             return;
         }
 
@@ -170,7 +178,7 @@ export default function AuditList() {
             );
         } catch (error) {
             console.error(error);
-            alert(error.message || "Unable to activate audit.");
+            showMessage(error.message || "Unable to activate audit.", "error");
         }
     };
 
@@ -300,9 +308,12 @@ export default function AuditList() {
     const handleDeleteAudit = async (auditId) => {
 
         const confirmDelete =
-            window.confirm(
-                "Are you sure you want to delete this audit?"
-            );
+            await confirmBox({
+                title: "Delete audit",
+                message: "Are you sure you want to delete this audit?",
+                confirmText: "Delete",
+                confirmColor: "error",
+            });
 
         if (!confirmDelete) return;
 
@@ -315,10 +326,10 @@ export default function AuditList() {
         try {
             await deleteAudit(auditId);
             setAudits(updatedAudits);
-            alert("Audit deleted successfully.");
+            showMessage("Audit deleted successfully.", "success");
         } catch (error) {
             console.error(error);
-            alert("Unable to delete audit.");
+            showMessage("Unable to delete audit.", "error");
         }
     };
 

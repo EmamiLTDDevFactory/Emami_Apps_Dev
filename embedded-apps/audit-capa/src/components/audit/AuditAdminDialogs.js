@@ -1,3 +1,4 @@
+import { showMessage } from "../../context/MessageContext";
 import { useEffect, useState } from "react";
 import {
     Button,
@@ -51,12 +52,12 @@ export function EditAuditDialog({ audit, onClose, onSave }) {
         const missing = Object.entries(form).find(([, value]) => !value);
 
         if (missing) {
-            alert("All fields are mandatory.");
+            showMessage("All fields are mandatory.", "warning");
             return;
         }
 
         if (form.dueDate < form.auditDate) {
-            alert("Due Date cannot be before the Audit Date.");
+            showMessage("Due Date cannot be before the Audit Date.", "warning");
             return;
         }
 
@@ -155,7 +156,7 @@ export function DeactivateAuditDialog({ audit, onClose, onConfirm }) {
 
     const handleConfirm = async () => {
         if (!reason.trim()) {
-            alert("Reason for deactivation is mandatory.");
+            showMessage("Reason for deactivation is mandatory.", "warning");
             return;
         }
 
