@@ -22,6 +22,24 @@ const formatHistoryDate = (value?: string) => {
   return `${dd}-${mm}-${d.getFullYear()}`;
 };
 
+// HistorySet rows come back in SAP's own order (effectively oldest-first) with no sort applied —
+// this derives a real millisecond timestamp from ActionDate + ActionTime so the most recently
+// created/actioned entries can be shown first, same expectation as My Claims.
+const getActionTimestamp = (entry: any): number => {
+  const value = entry?.ActionDate;
+  if (!value) return 0;
+  let dateMs = NaN;
+  const m = typeof value === 'string' ? value.match(/(\d+)/) : null;
+  if (m && value.includes('/Date(')) dateMs = parseInt(m[1], 10);
+  else dateMs = new Date(value).getTime();
+  if (Number.isNaN(dateMs)) return 0;
+  const timeStr = entry?.ActionTime || '';
+  const hours = parseInt(timeStr.match(/(\d+)H/)?.[1] || '0', 10);
+  const minutes = parseInt(timeStr.match(/(\d+)M/)?.[1] || '0', 10);
+  const seconds = parseInt(timeStr.match(/(\d+)S/)?.[1] || '0', 10);
+  return dateMs + ((hours * 60 + minutes) * 60 + seconds) * 1000;
+};
+
 const getEntryYear = (value?: string) => {
   if (!value) return '';
   let d = new Date(value);
@@ -137,6 +155,24 @@ export default function FinancePage() {
   // historyEntries is already scoped to selectedHistoryYear server-side (see fetchHistorySet) — no
   // further client-side year filtering needed here.
   const filteredHistoryItems = searchMatchedHistoryItems;
+
+  // Groups the (already year-scoped) history list by expense category — Setname is SAP's internal
+  // category code (e.g. "EMA_CONEXP"), Descript its human-readable label (e.g. "Conveyance
+  // Expenses"). Groups are ordered by first appearance in the already-sorted list.
+  const groupedHistoryItems = useMemo(() => {
+    const sorted = [...filteredHistoryItems].sort((a, b) => getActionTimestamp(b) - getActionTimestamp(a));
+    const groups: { key: string; label: string; items: any[] }[] = [];
+    const indexByKey: Record<string, number> = {};
+    sorted.forEach((entry: any) => {
+      const key = entry.Setname || '';
+      if (!(key in indexByKey)) {
+        indexByKey[key] = groups.length;
+        groups.push({ key, label: entry.Descript || key || 'Other', items: [] });
+      }
+      groups[indexByKey[key]].items.push(entry);
+    });
+    return groups;
+  }, [filteredHistoryItems]);
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
@@ -350,31 +386,36 @@ export default function FinancePage() {
         filteredHistoryItems.length === 0 ? (
           <EmptyState icon={FileText} title="No Records" hint={`No ${selectedStat?.toLowerCase()} claims found in your history.`} />
         ) : (
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            {filteredHistoryItems.map((entry: any, idx: number) => {
-              const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
-              const matchedClaim = claimSummaryCache[entry.ClaimId];
-              const expenseType = (matchedClaim?.expenseType || '').trim();
-              return (
-                <button
-                  key={`${entry.ClaimId}-${idx}`}
-                  type="button"
-                  onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                  className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
-                    {expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{expenseType}</Chip>}
-                  </div>
-                  {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
-                  <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
-                    <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="flex flex-col gap-4">
+            {groupedHistoryItems.map((group) => (
+              <div key={group.key || 'other'}>
+                <h3 className="mb-2 text-xs font-extrabold text-brand">{group.label} ({group.items.length})</h3>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                  {group.items.map((entry: any, idx: number) => {
+                    const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
+                    const matchedClaim = claimSummaryCache[entry.ClaimId];
+                    return (
+                      <button
+                        key={`${entry.ClaimId}-${idx}`}
+                        type="button"
+                        onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
+                        className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                        </div>
+                        {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
+                        <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
+                        <div className="mt-1 flex items-center justify-between">
+                          <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
+                          <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )
       ) : financeClaims.length === 0 ? (

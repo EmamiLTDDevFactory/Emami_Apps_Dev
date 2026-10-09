@@ -346,6 +346,13 @@ function ClaimDetailInner() {
           <div><p className="text-2xs font-bold text-inkSoft">Designation</p><p className="text-sm font-extrabold text-ink">{header.Designation || '-'}</p></div>
           {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Posting Document</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
           {fiscalYear && <div><p className="text-2xs font-bold text-inkSoft">Fiscal Year</p><p className="text-sm font-extrabold text-ink">{fiscalYear}</p></div>}
+          {taxCalculation && (
+            <>
+              <div><p className="text-2xs font-bold text-inkSoft">Expense Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt)}</p></div>
+              <div><p className="text-2xs font-bold text-inkSoft">Tax Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.taxAmt)}</p></div>
+              <div><p className="text-2xs font-bold text-inkSoft">Total</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt + taxCalculation.taxAmt)}</p></div>
+            </>
+          )}
         </div>
         {(header.Status === 'R' || String(header.Status).toLowerCase() === 'rejected') && header.RejReason && (
           <div className="mt-3">
