@@ -2,13 +2,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Briefcase, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, CreditCard, FileText, IndianRupee, Search, ShieldCheck, Square, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Briefcase, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, CreditCard, Download, FileText, IndianRupee, Search, ShieldCheck, Square, X, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { getCategoryStyle } from '../../utils/category-style';
 import { displayStatusLabel } from '../../utils/claim-status';
 import { formatCurrency } from '../../utils/currency';
+import { buildHistoryExcelHtml } from '../../utils/history-excel';
 import { formatSapErrorMessage } from '../../utils/sap-error';
 import { Banner, Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
@@ -175,6 +176,29 @@ export default function FinancePage() {
   }, [filteredHistoryItems]);
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
+
+  // Drives both the drill-down view and the "Type:" filter readout — null means no category
+  // selected yet (showing the category grid), so exports/labels fall back to "All".
+  const activeGroup = selectedGroupKey ? groupedHistoryItems.find((g) => (g.key || 'other') === selectedGroupKey) : null;
+
+  const handleExportExcel = () => {
+    const entriesToExport = activeGroup ? activeGroup.items : filteredHistoryItems;
+    if (entriesToExport.length === 0) {
+      setMessageModal({ title: 'Export Excel', message: 'There are no claims to export for the current filters.', type: 'error' });
+      return;
+    }
+    const html = buildHistoryExcelHtml(entriesToExport, claimSummaryCache);
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStamp = new Date().toISOString().split('T')[0];
+    link.href = url;
+    link.download = `finance-${dateStamp}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const refreshHistoryStats = async () => { await fetchHistorySet(selectedFiscalYear); };
 
@@ -345,19 +369,26 @@ export default function FinancePage() {
           {searchQuery !== '' && <button type="button" onClick={() => setSearchQuery('')}><X size={16} className="text-inkFaint" /></button>}
         </div>
         {showHistoryList && (
-          <div
-            key={selectedFiscalYear}
-            className={`mt-2 flex flex-wrap items-center gap-2 ${yearSlideDirection === 'right' ? 'animate-slideFromRight' : 'animate-slideFromLeft'}`}
-          >
-            {visibleFiscalYears.map((year) => (
-              <Chip
-                key={year}
-                tone={year === selectedFiscalYear ? 'red' : 'neutral'}
-                onClick={() => handleSelectFiscalYear(year)}
-              >
-                {year}
-              </Chip>
-            ))}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Chip tone="brand">Type: {activeGroup?.label || 'All'}</Chip>
+            <Chip tone="brand">Status: {selectedStat}</Chip>
+            <Chip tone="green" icon={Download} onClick={handleExportExcel}>
+              Export Excel
+            </Chip>
+            <div
+              key={selectedFiscalYear}
+              className={`flex items-center gap-2 ${yearSlideDirection === 'right' ? 'animate-slideFromRight' : 'animate-slideFromLeft'}`}
+            >
+              {visibleFiscalYears.map((year) => (
+                <Chip
+                  key={year}
+                  tone={year === selectedFiscalYear ? 'red' : 'neutral'}
+                  onClick={() => handleSelectFiscalYear(year)}
+                >
+                  {year}
+                </Chip>
+              ))}
+            </div>
           </div>
         )}
         {isBulkReleaseUser && bulkReleaseClaims.length > 0 && (
@@ -412,7 +443,6 @@ export default function FinancePage() {
             })}
           </div>
         ) : (() => {
-          const activeGroup = groupedHistoryItems.find((g) => (g.key || 'other') === selectedGroupKey);
           if (!activeGroup) return null;
           const showingAll = groupsShowingAll.has(selectedGroupKey);
           const visibleItems = showingAll ? activeGroup.items : activeGroup.items.slice(0, GROUP_PAGE_SIZE);
