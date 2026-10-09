@@ -137,3 +137,10 @@ DROP TRIGGER IF EXISTS trg_touch_timesheet ON timesheet.timesheet_entries;
 CREATE TRIGGER trg_touch_timesheet
 AFTER INSERT OR UPDATE OR DELETE ON timesheet.timesheet_entries
 FOR EACH ROW EXECUTE FUNCTION timesheet.touch_timesheet_updated_at();
+
+-- SAP vendor number (LIFNR) of the agency/vendor an employee is engaged through. Sent as Lifnr to
+-- SAP's ZIT_TIMESHEET_SRV when a manager approves/rejects a timesheet (see
+-- server/src/services/sapTimesheetMail.js), which CCs the mail IDs SAP keeps for that vendor.
+-- Vendor ID only, not the company name; leading zeros optional (SAP pads them). NULL = not
+-- maintained yet, in which case no SAP mail is sent for that employee.
+ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS vendor_id TEXT;
