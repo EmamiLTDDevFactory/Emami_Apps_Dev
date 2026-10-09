@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import { pool } from '../db/pool.js'
+import { notifySapTimesheetDecision } from '../services/sapTimesheetMail.js'
 
 const router = Router()
 
@@ -362,6 +363,7 @@ router.post('/:id/approve', async (req, res, next) => {
     )
     await client.query('COMMIT')
     res.json(await loadTimesheet(pool, req.params.id))
+    notifySapTimesheetDecision(req.params.id, 'Approved')
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
@@ -388,6 +390,7 @@ router.post('/:id/reject', async (req, res, next) => {
     )
     await client.query('COMMIT')
     res.json(await loadTimesheet(pool, req.params.id))
+    notifySapTimesheetDecision(req.params.id, 'Rejected')
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
@@ -413,6 +416,7 @@ router.post('/bulk-approve', async (req, res, next) => {
     }
     await client.query('COMMIT')
     res.json(await Promise.all(timesheetIds.map((id) => loadTimesheet(pool, id))))
+    timesheetIds.forEach((id) => notifySapTimesheetDecision(id, 'Approved'))
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
