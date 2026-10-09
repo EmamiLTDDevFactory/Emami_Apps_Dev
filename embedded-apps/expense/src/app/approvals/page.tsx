@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Clock, Fi
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
+import { getCategoryStyle } from '../../utils/category-style';
 import { formatCurrency } from '../../utils/currency';
 import { Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
@@ -303,15 +304,20 @@ export default function ApprovalsPage() {
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
             {groupedHistoryItems.map((group) => {
               const groupKey = group.key || 'other';
+              const style = getCategoryStyle(group.label);
+              const Icon = style.icon;
               return (
                 <button
                   key={groupKey}
                   type="button"
                   onClick={() => setSelectedGroupKey(groupKey)}
-                  className="card flex flex-col items-center gap-1 p-3 text-center"
+                  className={`card flex flex-col items-center gap-1.5 p-3 text-center ${style.bg} border-transparent`}
                 >
-                  <span className="text-sm font-extrabold text-brand">{group.label}</span>
-                  <span className="text-xs font-semibold text-inkSoft">{group.items.length} claim{group.items.length === 1 ? '' : 's'}</span>
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-full bg-white/60 ${style.text}`}>
+                    <Icon size={18} />
+                  </div>
+                  <span className="text-sm font-extrabold text-ink">{group.label}</span>
+                  <span className={`text-xs font-semibold ${style.text}`}>{group.items.length} claim{group.items.length === 1 ? '' : 's'}</span>
                 </button>
               );
             })}
