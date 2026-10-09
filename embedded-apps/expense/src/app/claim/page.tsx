@@ -303,6 +303,13 @@ function ClaimDetailInner() {
   const gjahrRaw = header?.Gjahr ? String(header.Gjahr).trim() : '';
   const fiscalYear = gjahrRaw && gjahrRaw !== '0000' ? gjahrRaw : '';
 
+  // Persisted on the claim itself once it's gone through a GST tax-code release — SAP leaves
+  // these at '0.000' for claims that never had a tax code applied, so only show them once real,
+  // non-zero values actually come back (Amount above already covers the total either way).
+  const persistedExpenseAmt = parseFloat(header?.ExpenseAmt || '0');
+  const persistedTaxAmount = parseFloat(header?.TaxAmaount || '0');
+  const hasPersistedTaxSplit = persistedExpenseAmt > 0 && persistedTaxAmount > 0;
+
   const taxQuery = taxSearch.trim().toLowerCase();
   const filteredTaxes = taxQuery ? availableTaxes.filter((t: any) => `${t?.Mwskz ?? ''} ${t?.Text1 ?? ''}`.toLowerCase().includes(taxQuery)) : availableTaxes;
   const visibleTaxes = filteredTaxes.slice(0, TAX_RESULTS_LIMIT);
@@ -346,11 +353,10 @@ function ClaimDetailInner() {
           <div><p className="text-2xs font-bold text-inkSoft">Designation</p><p className="text-sm font-extrabold text-ink">{header.Designation || '-'}</p></div>
           {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Posting Document</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
           {fiscalYear && <div><p className="text-2xs font-bold text-inkSoft">Fiscal Year</p><p className="text-sm font-extrabold text-ink">{fiscalYear}</p></div>}
-          {taxCalculation && (
+          {hasPersistedTaxSplit && (
             <>
-              <div><p className="text-2xs font-bold text-inkSoft">Expense Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt)}</p></div>
-              <div><p className="text-2xs font-bold text-inkSoft">Tax Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.taxAmt)}</p></div>
-              <div><p className="text-2xs font-bold text-inkSoft">Total</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt + taxCalculation.taxAmt)}</p></div>
+              <div><p className="text-2xs font-bold text-inkSoft">Expense Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(persistedExpenseAmt)}</p></div>
+              <div><p className="text-2xs font-bold text-inkSoft">Tax Amaount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(persistedTaxAmount)}</p></div>
             </>
           )}
         </div>
@@ -477,9 +483,10 @@ function ClaimDetailInner() {
               <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Calculating tax split…</div>
             )}
             {!taxCalculating && taxCalculation && (
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-appBg p-2.5 text-sm">
+              <div className="mt-2 grid grid-cols-3 gap-2 rounded-lg border border-border bg-appBg p-2.5 text-sm">
                 <div><p className="text-2xs font-bold text-inkFaint">Expense Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt)}</p></div>
                 <div><p className="text-2xs font-bold text-inkFaint">Tax Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.taxAmt)}</p></div>
+                <div><p className="text-2xs font-bold text-inkFaint">Total Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt + taxCalculation.taxAmt)}</p></div>
               </div>
             )}
 

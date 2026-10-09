@@ -578,9 +578,10 @@ export default function FinancePage() {
               <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Calculating tax split…</div>
             )}
             {!taxCalculating && taxCalculation && (
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border bg-appBg p-2.5 text-sm">
+              <div className="mt-2 grid grid-cols-3 gap-2 rounded-lg border border-border bg-appBg p-2.5 text-sm">
                 <div><p className="text-2xs font-bold text-inkFaint">Expense Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt)}</p></div>
                 <div><p className="text-2xs font-bold text-inkFaint">Tax Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.taxAmt)}</p></div>
+                <div><p className="text-2xs font-bold text-inkFaint">Total Amount</p><p className="font-extrabold text-ink">₹{formatCurrency(taxCalculation.expenseAmt + taxCalculation.taxAmt)}</p></div>
               </div>
             )}
 
