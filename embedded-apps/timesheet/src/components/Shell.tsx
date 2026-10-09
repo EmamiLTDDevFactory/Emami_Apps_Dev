@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronDown, Menu } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { avatarGradient } from '../utils/avatar';
+import { goBack } from '../lib/goBack';
 import SidePane from './SidePane';
 import Login from './gates/Login';
 import PickManager from './gates/PickManager';
@@ -79,6 +80,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <Menu size={18} />
             </button>
           )}
+
+          <button type="button" onClick={goBack} aria-label="Back" className="btn-ghost">
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">Back</span>
+          </button>
 
           <a href="/" className="btn-ghost">
             <ArrowLeft size={16} />

@@ -3,8 +3,9 @@ import { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import {
   Loader2, LogOut, LayoutDashboard, Folder, Plus,
-  ShieldCheck, Bot, BarChart3, Menu, X
+  ShieldCheck, Bot, BarChart3, Menu, X, ArrowLeft
 } from 'lucide-react';
+import { goBack } from '../lib/goBack';
 import RcChatbot from './RcChatbot';
 
 export default function Layout({ children }) {
@@ -140,6 +141,17 @@ export default function Layout({ children }) {
   function renderFooter() {
     return (
       <div className="p-2.5 border-t border-rc-indigo-100">
+        <button
+          type="button"
+          onClick={goBack}
+          className="mb-1 w-full flex items-center gap-2 py-2 px-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:text-rc-teal hover:bg-slate-50 transition-all cursor-pointer group"
+          title="Back"
+        >
+          <span className="flex h-[27px] w-[27px] shrink-0 items-center justify-center rounded-[9px] text-gray-400 group-hover:text-rc-teal transition-colors">
+            <ArrowLeft className="h-4 w-4" strokeWidth={2.2} />
+          </span>
+          <span>Back</span>
+        </button>
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-2 py-2 px-1.5 rounded-xl text-[13px] font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-all cursor-pointer group"

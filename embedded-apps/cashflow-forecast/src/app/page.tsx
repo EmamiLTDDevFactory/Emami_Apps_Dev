@@ -6,6 +6,7 @@ import HubGate from '../components/HubGate';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import { useIsWideScreen } from '../lib/useIsWideScreen';
+import { goBack } from '../lib/goBack';
 import FiltersBar from '../components/FiltersBar';
 import KpiCard from '../components/KpiCard';
 import SecondaryKpi from '../components/SecondaryKpi';
@@ -303,10 +304,15 @@ function DashboardContent() {
       <Sidebar isOpen={navOpen} onClose={() => setNavOpen(false)} isWideScreen={isWideScreen} live={data.live} />
       {!isWideScreen && navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div className="main-column">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a href="/" className="back-to-hub">
-          <ArrowLeft size={14} /> Back to Emami Apps
-        </a>
+        <div className="back-bar">
+          <button type="button" onClick={goBack} className="back-to-hub back-prev">
+            <ArrowLeft size={14} /> Back
+          </button>
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/" className="back-to-hub">
+            <ArrowLeft size={14} /> Back to Emami Apps
+          </a>
+        </div>
         <Topbar
           onRefresh={() => load(filters)}
           onExport={() => exportCsv(points, filters.currency)}

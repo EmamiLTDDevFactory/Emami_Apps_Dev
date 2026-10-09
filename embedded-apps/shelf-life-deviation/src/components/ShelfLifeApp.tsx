@@ -18,6 +18,7 @@ import { odata, sapErrorMessage } from "@/lib/odata";
 import { userSetPath } from "@/lib/user";
 import { getHubEmail, hasHubSession, nameFromEmail } from "@/lib/hubEmailLogin";
 import { BASE_PATH } from "@/lib/config";
+import { useScreenHistory } from "@/lib/useScreenHistory";
 import { contentDensityClass, useDevice } from "@/lib/device";
 import type { ActionEntity, Kpi, UserEntity } from "@/lib/types";
 import { AppProvider } from "./AppContext";
@@ -58,6 +59,10 @@ function AppView() {
   const [approvalTabVisible, setApprovalTabVisible] = useState<boolean | null>(null);
   const [selectedKey, setSelectedKey] = useState<TabKey>("APPROVAL");
   const zreportRef = useRef<ZReportHandle>(null);
+  // In-app "Back": the screen is the selected tab. Not recorded until UserSet has answered, so the
+  // start-up switch to the report (non-approvers) is not a step. Restores through onTabSelect so the
+  // report reloads exactly as when its tab is pressed.
+  const { back } = useScreenHistory(approvalTabVisible === null ? null : { tab: selectedKey }, (s) => onTabSelect(s.tab));
 
   /* ------------------------------------------------------------- onInit */
   useEffect(() => {
@@ -201,10 +206,16 @@ function AppView() {
         </aside>
 
         <div className="shell-main">
-          <a href="/" className="back-bar">
-            <Icon name="arrow-left" size={14} />
-            Back to Emami Apps
-          </a>
+          <div className="back-bar-row">
+            <button type="button" className="back-bar back-in-app" onClick={back}>
+              <Icon name="arrow-left" size={14} />
+              Back
+            </button>
+            <a href="/" className="back-bar">
+              <Icon name="arrow-left" size={14} />
+              Back to Emami Apps
+            </a>
+          </div>
 
           <header className="shell-header">
             {!isWideScreen ? (

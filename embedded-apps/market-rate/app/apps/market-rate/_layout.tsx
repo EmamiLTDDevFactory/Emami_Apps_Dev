@@ -8,6 +8,7 @@ import SidePane, { type SidePaneItem } from '../../../src/components/SidePane';
 import { colors, radii } from '../../../src/theme/tokens';
 import { getHubEmail, hasHubSession, nameFromEmail } from '../../../src/lib/hubEmailLogin';
 import { MarketRateAuthProvider, useMarketRateAuth } from '../../../src/context/MarketRateAuthContext';
+import { goScreenBack, useScreenHistoryTracker } from '../../../src/lib/screenHistory';
 import Head from 'expo-router/head';
 
 function formatDateCompact(d: Date): string {
@@ -84,6 +85,7 @@ function MarketRateLayoutContent() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hubEmail, setHubEmail] = useState<string | null>(null);
   const [today] = useState(() => formatDateCompact(new Date()));
+  useScreenHistoryTracker();
 
   useEffect(() => {
     setHubEmail(getHubEmail());
@@ -117,19 +119,33 @@ function MarketRateLayoutContent() {
           <View style={styles.mainColumn}>
             <SafeAreaView style={styles.safeArea} edges={['top']}>
               <StatusBar style="light" />
-              <TouchableOpacity
-                style={styles.backToHubBar}
-                onPress={() => {
-                  if (typeof window !== 'undefined') {
-                    window.location.href = '/';
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Back to Emami Apps"
-              >
-                <Ionicons name="arrow-back" size={14} color={colors.white} />
-                <Text style={styles.backToHubText}>Back to Emami Apps</Text>
-              </TouchableOpacity>
+              {/* Back (previous in-app screen) sits before the unchanged hub link in the same bar. */}
+              <View style={styles.backRow}>
+                <Pressable
+                  style={({ pressed }: { pressed: boolean }) => [styles.backToHubBar, styles.backPrevBtn, pressed && styles.pressed]}
+                  onPress={goScreenBack}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                >
+                  <Ionicons name="arrow-back" size={14} color={colors.white} />
+                  <Text style={styles.backToHubText}>Back</Text>
+                </Pressable>
+                <View style={styles.flex1}>
+                  <TouchableOpacity
+                    style={styles.backToHubBar}
+                    onPress={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = '/';
+                      }
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Back to Emami Apps"
+                  >
+                    <Ionicons name="arrow-back" size={14} color={colors.white} />
+                    <Text style={styles.backToHubText}>Back to Emami Apps</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
               <View style={styles.titleBar}>
                 {!isWideScreen && (
@@ -203,6 +219,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.plum,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  backRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.plum,
+  },
+  backPrevBtn: {
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.2)',
+  },
+  pressed: {
+    opacity: 0.6,
   },
   backToHubText: {
     color: colors.white,

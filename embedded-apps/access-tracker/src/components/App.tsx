@@ -5,6 +5,7 @@ import { ApiError, getAppStats, getHistory, getOverview, getRoster, type AccessC
 import { BASE_PATH } from '@/lib/config';
 import { fmtTime, type Recency } from '@/lib/format';
 import { getHubEmail, hasHubSession, nameFromEmail } from '@/lib/hub';
+import { useScreenHistory } from '@/lib/useScreenHistory';
 import { Button, cx } from './ui';
 import Overview from './Overview';
 import AccessView from './AccessView';
@@ -49,6 +50,12 @@ export default function App() {
   const [person, setPerson] = useState<string | null>(null);
   const [appDetail, setAppDetail] = useState<string | null>(null);
   const [intent, setIntent] = useState<{ n: number; v: Intent }>({ n: 0, v: {} });
+  // In-app "Back": the screen is the section plus any open person / app panel.
+  const { back } = useScreenHistory({ view, person, appDetail }, (s) => {
+    setView(s.view);
+    setPerson(s.person);
+    setAppDetail(s.appDetail);
+  });
 
   const load = useCallback(async (initial: boolean) => {
     if (initial) setState({ kind: 'loading' });
@@ -141,7 +148,10 @@ export default function App() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
-        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        <div className="flex bg-plum">
+          <button type="button" onClick={back} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back</button>
+          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
+        </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
           <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
           <h1 className="text-[15px] font-extrabold">Access Tracker</h1>

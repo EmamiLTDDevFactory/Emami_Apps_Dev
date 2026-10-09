@@ -9,6 +9,12 @@ function backToEmamiApps() {
   window.location.href = '/';
 }
 
+// "Back": the previous page in this tab's history, or the Emami Apps hub when there is none.
+function goBack() {
+  if (window.history.length > 1) window.history.back();
+  else window.location.href = '/';
+}
+
 // One flat nav list. `color` is each row's own accent, the same per-item color coding the Emami
 // Apps hub sidebar uses (hub-next/src/theme/tokens.ts navColors) — Home keeps the brand indigo.
 // The project rows (Board … Issues) all open the same workspace page, switched by hash — Jira's
@@ -105,6 +111,10 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
         </nav>
 
         <div className="sidebar-footer">
+          <button type="button" className="sidebar-hub-link" onClick={goBack}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+            <span>Back</span>
+          </button>
           <button type="button" className="sidebar-hub-link" onClick={backToEmamiApps}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
             <span>Back to Emami Apps</span>

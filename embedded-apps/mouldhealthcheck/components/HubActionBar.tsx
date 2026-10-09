@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/contexts/AuthContext";
 import { getHubEmail, hubLogoutUrl, nameFromEmail } from "@/lib/hubEmailLogin";
 import { openNavDrawer } from "@/lib/navDrawer";
+import { goBack } from "@/lib/goBack";
 import { useBreakpoint, SIDEBAR_WIDTH } from "@/utils/responsive";
 
 // Hub palette — same values as the other embedded apps' top bars (market-rate's _layout.tsx).
@@ -60,10 +61,16 @@ export default function HubActionBar({ onTabs }: { onTabs: boolean }) {
 
   return (
     <View style={besideDockedPane && { marginLeft: SIDEBAR_WIDTH }}>
-      <Pressable style={styles.backToHubBar} onPress={goHome} accessibilityRole="button" accessibilityLabel="Back to Emami Apps">
-        <Ionicons name="arrow-back" size={14} color={HUB.white} />
-        <Text style={styles.backToHubText}>Back to Emami Apps</Text>
-      </Pressable>
+      <View style={styles.backRow}>
+        <Pressable style={styles.backToHubBar} onPress={goBack} accessibilityRole="button" accessibilityLabel="Back">
+          <Ionicons name="arrow-back" size={14} color={HUB.white} />
+          <Text style={styles.backToHubText}>Back</Text>
+        </Pressable>
+        <Pressable style={styles.backToHubBar} onPress={goHome} accessibilityRole="button" accessibilityLabel="Back to Emami Apps">
+          <Ionicons name="arrow-back" size={14} color={HUB.white} />
+          <Text style={styles.backToHubText}>Back to Emami Apps</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.titleBar}>
         {onTabs && !isTabletUp && (
@@ -96,6 +103,11 @@ export default function HubActionBar({ onTabs }: { onTabs: boolean }) {
 
 const styles = StyleSheet.create({
   flex1: { flex: 1 },
+  backRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    backgroundColor: HUB.plum,
+  },
   backToHubBar: {
     flexDirection: "row",
     alignItems: "center",
