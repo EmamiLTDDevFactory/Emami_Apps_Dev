@@ -272,6 +272,21 @@ export const MATERIAL = def({
   Meins: ['Meins', 's'],
 });
 
+/** MaterialVHSet's product hierarchy (SEGW 2026-10-09): Brand -> Product (SKU group) -> CRS SKU group
+ * -> Material, used by the Brand / Product / CRS pickers. Read with $select so the plain search above
+ * keeps working on a service that doesn't have these properties yet. */
+export const MATERIAL_HIERARCHY = def({
+  ...MATERIAL,
+  Zbrandcode: ['Zbrandcode', 's'],
+  Zsalesbrand: ['Zsalesbrand', 's'],
+  Zskugrcode: ['Zskugrcode', 's'],
+  Zskugroup: ['Zskugroup', 's'],
+  Zskugrcodecrs: ['Zskugrcodecrs', 's'],
+  Zskugroupcrs: ['Zskugroupcrs', 's'],
+  Zzmatcat: ['Zzmatcat', 's'],
+  Zzschemep: ['Zzschemep', 'd'],
+});
+
 /** ConfigItemSet: CfgKey / CfgVal pairs. */
 export const CONFIG = def({
   CfgKey: ['CfgKey', 's'],
@@ -333,4 +348,5 @@ export type FreightRow = RowOf<typeof FREIGHT_ROW>;
 export type RmPmRow = RowOf<typeof RMPM_ROW>;
 export type PlantRow = RowOf<typeof PLANT>;
 export type MaterialRow = RowOf<typeof MATERIAL>;
+export type MaterialHierarchyRow = RowOf<typeof MATERIAL_HIERARCHY>;
 export type ConfigRow = RowOf<typeof CONFIG>;

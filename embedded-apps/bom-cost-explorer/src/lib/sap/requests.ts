@@ -3,7 +3,7 @@
  * so the exact URLs are unit-tested (tests/unit/filter.test.ts).
  */
 import { ENTITY_SET, MODE_TO_ENTITY, NAV_RATE_OPTIONS } from './entities';
-import { COST_LINE, OPTIONAL_PROPS } from './fields';
+import { COST_LINE, MATERIAL_HIERARCHY, OPTIONAL_PROPS } from './fields';
 import { buildSelectionFilter } from './filter';
 import type { CostQuery } from '../query/schema';
 
@@ -52,6 +52,14 @@ export function materialSearchRequest(term: string): SapRequest | null {
   if (t.length < MATERIAL_SEARCH_MIN) return null;
   return { entitySet: ENTITY_SET.MATERIALS, params: { search: t, $top: String(MATERIAL_SEARCH_MAX_ROWS) } };
 }
+
+/** Every finished good with its Brand / Product / CRS hierarchy, for the cascading pickers. Needs
+ * MaterialVHSet to answer a $filter without ?search= (it returns nothing for that on NGD today). */
+export const MATERIAL_HIERARCHY_TYPE = 'FERT';
+export const materialHierarchyRequest = (): SapRequest => ({
+  entitySet: ENTITY_SET.MATERIALS,
+  params: { $filter: `Mtart eq '${MATERIAL_HIERARCHY_TYPE}'`, $select: Object.values(MATERIAL_HIERARCHY).map(([n]) => n).join(',') },
+});
 
 export const plantsRequest = (): SapRequest => ({ entitySet: ENTITY_SET.PLANTS, params: {} });
 export const configRequest = (): SapRequest => ({ entitySet: ENTITY_SET.CONFIG, params: {} });
