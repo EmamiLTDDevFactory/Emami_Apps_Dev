@@ -314,18 +314,18 @@ export default function ApprovalsPage() {
               const visibleItems = showingAll ? group.items : group.items.slice(0, GROUP_PAGE_SIZE);
               const remaining = group.items.length - visibleItems.length;
               return (
-                <div key={groupKey}>
+                <div key={groupKey} className="card !p-0 overflow-hidden">
                   <button
                     type="button"
                     onClick={() => toggleGroupExpanded(groupKey)}
-                    className="card flex w-full items-center justify-between !p-3 text-left"
+                    className="flex w-full items-center justify-between p-3 text-left"
                   >
                     <span className="text-sm font-extrabold text-brand">{group.label} ({group.items.length})</span>
                     {isExpanded ? <ChevronUp size={16} className="text-brand" /> : <ChevronDown size={16} className="text-inkFaint" />}
                   </button>
                   {isExpanded && (
-                    <>
-                      <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="border-t border-line p-3">
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                         {visibleItems.map((entry: any, idx: number) => {
                           const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
                           const matchedClaim = claimSummaryCache[entry.ClaimId];
@@ -358,7 +358,7 @@ export default function ApprovalsPage() {
                           Show {remaining} more
                         </button>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
               );
