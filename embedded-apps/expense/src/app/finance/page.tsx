@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Briefcase, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, CreditCard, FileText, IndianRupee, Search, ShieldCheck, Square, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Briefcase, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, CreditCard, FileText, IndianRupee, Search, ShieldCheck, Square, X, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
@@ -40,15 +40,6 @@ const getActionTimestamp = (entry: any): number => {
   return dateMs + ((hours * 60 + minutes) * 60 + seconds) * 1000;
 };
 
-const getEntryYear = (value?: string) => {
-  if (!value) return '';
-  let d = new Date(value);
-  const m = value.match(/(\d+)/);
-  if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
-  if (Number.isNaN(d.getTime())) return '';
-  return String(d.getFullYear());
-};
-
 const TAX_RESULTS_LIMIT = 50;
 
 export default function FinancePage() {
@@ -60,25 +51,26 @@ export default function FinancePage() {
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [selectedClaimIds, setSelectedClaimIds] = useState<string[]>([]);
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
-  // Which expense-category groups are expanded in the history list — collapsed by default, a group
-  // reveals its claims only once its own card is clicked. Independent per group (not an exclusive
-  // accordion), keyed by the group's Setname.
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const toggleGroupExpanded = (key: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
+  // Expense-category drill-down: null shows the grid of compact category cards; selecting one
+  // replaces the view with that category's claims (same claim-card style as before), with a Back
+  // control to return to the category grid. Not an in-place accordion/expand.
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   // Groups with more than this many claims show a "Show more" button instead of rendering
-  // everything at once on expand.
+  // everything at once.
   const GROUP_PAGE_SIZE = 12;
   const [groupsShowingAll, setGroupsShowingAll] = useState<Set<string>>(new Set());
   const showAllInGroup = (key: string) => setGroupsShowingAll((prev) => new Set(prev).add(key));
-  // Always defaults to the current fiscal year — Finance now sends Fiscalyear in the HistorySet
-  // filter on every fetch, same as Approvals, instead of only while actively searching.
-  const [selectedHistoryYear, setSelectedHistoryYear] = useState<string | null>(() => String(new Date().getFullYear()));
+  // Fiscal-year slider (history view only): always-on, 5 years visible (2 before, selected in the
+  // middle, 2 after) — same widget as Approvals/My Claims, replacing the old search-only year list.
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState(() => new Date().getFullYear());
+  // Purely cosmetic — which way the year chips slide in, based on whether the newly clicked year
+  // was to the right or left of the previously-centered one. Doesn't affect filtering at all.
+  const [yearSlideDirection, setYearSlideDirection] = useState<'left' | 'right'>('right');
+  const handleSelectFiscalYear = (year: number) => {
+    setYearSlideDirection(year >= selectedFiscalYear ? 'right' : 'left');
+    setSelectedFiscalYear(year);
+    setSelectedGroupKey(null);
+  };
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -132,13 +124,13 @@ export default function FinancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statFilteredHistoryClaimIds]);
 
-  // Re-fetches from SAP (server-side Fiscalyear filter) whenever the selected year changes —
-  // same debug-visible wiring as Approvals, so the actual SAP request can be inspected per year.
+  // Re-fetches from SAP (server-side Fiscalyear filter) every time the selected year chip
+  // changes, instead of fetching once and filtering ActionDate client-side — covers the initial
+  // mount too since selectedFiscalYear is already set before this first runs.
   useEffect(() => {
-    const year = selectedHistoryYear && selectedHistoryYear !== 'ALL' ? Number(selectedHistoryYear) : undefined;
-    fetchHistorySet(year);
+    fetchHistorySet(selectedFiscalYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedHistoryYear]);
+  }, [selectedFiscalYear]);
 
   useEffect(() => {
     setSelectedClaimIds((prev) => prev.filter((id) => bulkReleaseClaims.some((c) => c.id === id)));
@@ -154,25 +146,12 @@ export default function FinancePage() {
       })
     : statFilteredHistoryItems;
 
-  const availableHistoryYears = useMemo(
-    () => Array.from(new Set(searchMatchedHistoryItems.map((e: any) => getEntryYear(e.ActionDate)).filter(Boolean))).sort((a, b) => b.localeCompare(a)),
-    [searchMatchedHistoryItems]
+  const visibleFiscalYears = useMemo(
+    () => [selectedFiscalYear - 2, selectedFiscalYear - 1, selectedFiscalYear, selectedFiscalYear + 1, selectedFiscalYear + 2],
+    [selectedFiscalYear]
   );
-  const availableHistoryYearsKey = availableHistoryYears.join('|');
 
-  // Keeps whatever year is already selected (defaults to the current fiscal year, set above) when
-  // not searching — no longer resets to null, since the fiscal-year filter should always be sent.
-  useEffect(() => {
-    if (!isSearching) return;
-    setSelectedHistoryYear((prev) => {
-      if (prev === 'ALL') return prev;
-      if (prev && availableHistoryYears.includes(prev)) return prev;
-      return availableHistoryYears[0] || prev || 'ALL';
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearching, availableHistoryYearsKey]);
-
-  // historyEntries is already scoped to selectedHistoryYear server-side (see fetchHistorySet) — no
+  // historyEntries is already scoped to selectedFiscalYear server-side (see fetchHistorySet) — no
   // further client-side year filtering needed here.
   const filteredHistoryItems = searchMatchedHistoryItems;
 
@@ -196,10 +175,7 @@ export default function FinancePage() {
 
   const showHistoryList = selectedStat !== null && selectedStat !== 'Pending';
 
-  const refreshHistoryStats = async () => {
-    const year = selectedHistoryYear && selectedHistoryYear !== 'ALL' ? Number(selectedHistoryYear) : undefined;
-    await fetchHistorySet(year);
-  };
+  const refreshHistoryStats = async () => { await fetchHistorySet(selectedFiscalYear); };
 
   const showScreenMessage = (message: string, type: 'success' | 'error' = 'success', title?: string) => {
     setScreenMessage({ title: title || (type === 'error' ? 'Action Failed' : 'Success'), message, type });
@@ -344,7 +320,7 @@ export default function FinancePage() {
             <button
               key={stat.label}
               type="button"
-              onClick={() => setSelectedStat(active ? null : stat.label)}
+              onClick={() => { setSelectedStat(active ? null : stat.label); setSelectedGroupKey(null); }}
               className={`card flex flex-col items-center gap-1 p-3 text-center ${active ? 'ring-2 ring-brand' : ''}`}
             >
               <Icon size={18} className={stat.accent} />
@@ -367,6 +343,22 @@ export default function FinancePage() {
           />
           {searchQuery !== '' && <button type="button" onClick={() => setSearchQuery('')}><X size={16} className="text-inkFaint" /></button>}
         </div>
+        {showHistoryList && (
+          <div
+            key={selectedFiscalYear}
+            className={`mt-2 flex flex-wrap items-center gap-2 ${yearSlideDirection === 'right' ? 'animate-slideFromRight' : 'animate-slideFromLeft'}`}
+          >
+            {visibleFiscalYears.map((year) => (
+              <Chip
+                key={year}
+                tone={year === selectedFiscalYear ? 'red' : 'neutral'}
+                onClick={() => handleSelectFiscalYear(year)}
+              >
+                {year}
+              </Chip>
+            ))}
+          </div>
+        )}
         {isBulkReleaseUser && bulkReleaseClaims.length > 0 && (
           <div className="mt-2 flex gap-2">
             <Button variant="secondary" className="flex-1" icon={allBulkSelected ? CheckSquare : Square} onClick={toggleSelectAllBulkClaims}>
@@ -387,84 +379,79 @@ export default function FinancePage() {
       {selectedStat && (
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-ink">{selectedStat === 'Pending' ? 'Pending Claims' : `${selectedStat} Claims`}</h2>
-          <button type="button" onClick={() => setSelectedStat(null)} className="flex items-center gap-1 text-xs font-semibold text-inkSoft">
+          <button type="button" onClick={() => { setSelectedStat(null); setSelectedGroupKey(null); }} className="flex items-center gap-1 text-xs font-semibold text-inkSoft">
             <X size={14} /> Clear
           </button>
-        </div>
-      )}
-
-      {showHistoryList && isSearching && availableHistoryYears.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <Chip tone={selectedHistoryYear === 'ALL' ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear('ALL')}>All Years</Chip>
-          {availableHistoryYears.map((year) => (
-            <Chip key={year} tone={selectedHistoryYear === year ? 'brand' : 'neutral'} onClick={() => setSelectedHistoryYear(year)}>{year}</Chip>
-          ))}
         </div>
       )}
 
       {showHistoryList ? (
         filteredHistoryItems.length === 0 ? (
           <EmptyState icon={FileText} title="No Records" hint={`No ${selectedStat?.toLowerCase()} claims found in your history.`} />
-        ) : (
-          <div className="flex flex-col gap-3">
+        ) : selectedGroupKey === null ? (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
             {groupedHistoryItems.map((group) => {
               const groupKey = group.key || 'other';
-              const isExpanded = expandedGroups.has(groupKey);
-              const showingAll = groupsShowingAll.has(groupKey);
-              const visibleItems = showingAll ? group.items : group.items.slice(0, GROUP_PAGE_SIZE);
-              const remaining = group.items.length - visibleItems.length;
               return (
-                <div key={groupKey} className="card !p-0 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroupExpanded(groupKey)}
-                    className="flex w-full items-center justify-between p-3 text-left"
-                  >
-                    <span className="text-sm font-extrabold text-brand">{group.label} ({group.items.length})</span>
-                    {isExpanded ? <ChevronUp size={16} className="text-brand" /> : <ChevronDown size={16} className="text-inkFaint" />}
-                  </button>
-                  {isExpanded && (
-                    <div className="border-t border-line p-3">
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                        {visibleItems.map((entry: any, idx: number) => {
-                          const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
-                          const matchedClaim = claimSummaryCache[entry.ClaimId];
-                          return (
-                            <button
-                              key={`${entry.ClaimId}-${idx}`}
-                              type="button"
-                              onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                              className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
-                              </div>
-                              {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
-                              <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
-                              <div className="mt-1 flex items-center justify-between">
-                                <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
-                                <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {remaining > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => showAllInGroup(groupKey)}
-                          className="mt-2.5 w-full rounded-xl2 border border-line bg-white py-2 text-xs font-bold text-brand"
-                        >
-                          Show {remaining} more
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={groupKey}
+                  type="button"
+                  onClick={() => setSelectedGroupKey(groupKey)}
+                  className="card flex flex-col items-center gap-1 p-3 text-center"
+                >
+                  <span className="text-sm font-extrabold text-brand">{group.label}</span>
+                  <span className="text-xs font-semibold text-inkSoft">{group.items.length} claim{group.items.length === 1 ? '' : 's'}</span>
+                </button>
               );
             })}
           </div>
-        )
+        ) : (() => {
+          const activeGroup = groupedHistoryItems.find((g) => (g.key || 'other') === selectedGroupKey);
+          if (!activeGroup) return null;
+          const showingAll = groupsShowingAll.has(selectedGroupKey);
+          const visibleItems = showingAll ? activeGroup.items : activeGroup.items.slice(0, GROUP_PAGE_SIZE);
+          const remaining = activeGroup.items.length - visibleItems.length;
+          return (
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={() => setSelectedGroupKey(null)} className="flex w-fit items-center gap-1 text-xs font-semibold text-brand">
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                {visibleItems.map((entry: any, idx: number) => {
+                  const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
+                  const matchedClaim = claimSummaryCache[entry.ClaimId];
+                  return (
+                    <button
+                      key={`${entry.ClaimId}-${idx}`}
+                      type="button"
+                      onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
+                      className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                      </div>
+                      {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
+                      <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
+                        <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Released' : 'Rejected'}</Chip>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {remaining > 0 && (
+                <button
+                  type="button"
+                  onClick={() => showAllInGroup(selectedGroupKey)}
+                  className="w-full rounded-xl2 border border-line bg-white py-2 text-xs font-bold text-brand"
+                >
+                  Show {remaining} more
+                </button>
+              )}
+            </div>
+          );
+        })()
       ) : financeClaims.length === 0 ? (
         <EmptyState icon={CreditCard} title="All Payments Processed" hint="There are no approved or pending release claims requiring finance action right now." />
       ) : (

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Clock, FileText, IndianRupee, Search, Square, Users, X, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, Clock, FileText, IndianRupee, Search, Square, Users, X, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
@@ -53,19 +53,12 @@ export default function ApprovalsPage() {
   const [clarifyModalVisible, setClarifyModalVisible] = useState(false);
   const [clarificationRemarks, setClarificationRemarks] = useState('');
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
-  // Which expense-category groups are expanded in the history list — collapsed by default, a group
-  // reveals its claims only once its own card is clicked. Independent per group (not an exclusive
-  // accordion), keyed by the group's Setname.
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const toggleGroupExpanded = (key: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
+  // Expense-category drill-down: null shows the grid of compact category cards; selecting one
+  // replaces the view with that category's claims (same claim-card style as before), with a Back
+  // control to return to the category grid. Not an in-place accordion/expand.
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   // Groups with more than this many claims show a "Show more" button instead of rendering
-  // everything at once on expand.
+  // everything at once.
   const GROUP_PAGE_SIZE = 12;
   const [groupsShowingAll, setGroupsShowingAll] = useState<Set<string>>(new Set());
   const showAllInGroup = (key: string) => setGroupsShowingAll((prev) => new Set(prev).add(key));
@@ -78,6 +71,7 @@ export default function ApprovalsPage() {
   const handleSelectFiscalYear = (year: number) => {
     setYearSlideDirection(year >= selectedFiscalYear ? 'right' : 'left');
     setSelectedFiscalYear(year);
+    setSelectedGroupKey(null);
   };
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
@@ -252,7 +246,7 @@ export default function ApprovalsPage() {
             <button
               key={stat.label}
               type="button"
-              onClick={() => setSelectedStat(active ? null : stat.label)}
+              onClick={() => { setSelectedStat(active ? null : stat.label); setSelectedGroupKey(null); }}
               className={`card flex flex-col items-center gap-1 p-3 text-center ${active ? 'ring-2 ring-brand' : ''}`}
             >
               <Icon size={18} className={stat.accent} />
@@ -296,7 +290,7 @@ export default function ApprovalsPage() {
       {selectedStat && (
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-ink">{selectedStat === 'Pending' ? 'Pending Claims' : `${selectedStat} Claims`}</h2>
-          <button type="button" onClick={() => setSelectedStat(null)} className="flex items-center gap-1 text-xs font-semibold text-inkSoft">
+          <button type="button" onClick={() => { setSelectedStat(null); setSelectedGroupKey(null); }} className="flex items-center gap-1 text-xs font-semibold text-inkSoft">
             <X size={14} /> Clear
           </button>
         </div>
@@ -305,66 +299,70 @@ export default function ApprovalsPage() {
       {showHistoryList ? (
         filteredHistoryItems.length === 0 ? (
           <EmptyState icon={FileText} title="No Records" hint={`No ${selectedStat?.toLowerCase()} claims found in your history.`} />
-        ) : (
-          <div className="flex flex-col gap-3">
+        ) : selectedGroupKey === null ? (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
             {groupedHistoryItems.map((group) => {
               const groupKey = group.key || 'other';
-              const isExpanded = expandedGroups.has(groupKey);
-              const showingAll = groupsShowingAll.has(groupKey);
-              const visibleItems = showingAll ? group.items : group.items.slice(0, GROUP_PAGE_SIZE);
-              const remaining = group.items.length - visibleItems.length;
               return (
-                <div key={groupKey} className="card !p-0 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroupExpanded(groupKey)}
-                    className="flex w-full items-center justify-between p-3 text-left"
-                  >
-                    <span className="text-sm font-extrabold text-brand">{group.label} ({group.items.length})</span>
-                    {isExpanded ? <ChevronUp size={16} className="text-brand" /> : <ChevronDown size={16} className="text-inkFaint" />}
-                  </button>
-                  {isExpanded && (
-                    <div className="border-t border-line p-3">
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                        {visibleItems.map((entry: any, idx: number) => {
-                          const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
-                          const matchedClaim = claimSummaryCache[entry.ClaimId];
-                          return (
-                            <button
-                              key={`${entry.ClaimId}-${idx}`}
-                              type="button"
-                              onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                              className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
-                              </div>
-                              {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
-                              <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
-                              <div className="mt-1 flex items-center justify-between">
-                                <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
-                                <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Approved' : 'Rejected'}</Chip>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {remaining > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => showAllInGroup(groupKey)}
-                          className="mt-2.5 w-full rounded-xl2 border border-line bg-white py-2 text-xs font-bold text-brand"
-                        >
-                          Show {remaining} more
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <button
+                  key={groupKey}
+                  type="button"
+                  onClick={() => setSelectedGroupKey(groupKey)}
+                  className="card flex flex-col items-center gap-1 p-3 text-center"
+                >
+                  <span className="text-sm font-extrabold text-brand">{group.label}</span>
+                  <span className="text-xs font-semibold text-inkSoft">{group.items.length} claim{group.items.length === 1 ? '' : 's'}</span>
+                </button>
               );
             })}
           </div>
-        )
+        ) : (() => {
+          const activeGroup = groupedHistoryItems.find((g) => (g.key || 'other') === selectedGroupKey);
+          if (!activeGroup) return null;
+          const showingAll = groupsShowingAll.has(selectedGroupKey);
+          const visibleItems = showingAll ? activeGroup.items : activeGroup.items.slice(0, GROUP_PAGE_SIZE);
+          const remaining = activeGroup.items.length - visibleItems.length;
+          return (
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={() => setSelectedGroupKey(null)} className="flex w-fit items-center gap-1 text-xs font-semibold text-brand">
+                <ArrowLeft size={14} /> Back
+              </button>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                {visibleItems.map((entry: any, idx: number) => {
+                  const isApprove = (entry.Action || '').toUpperCase() === 'APPROVE';
+                  const matchedClaim = claimSummaryCache[entry.ClaimId];
+                  return (
+                    <button
+                      key={`${entry.ClaimId}-${idx}`}
+                      type="button"
+                      onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
+                      className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                      </div>
+                      {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
+                      <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="text-sm font-extrabold text-ink">{matchedClaim ? `₹${formatCurrency(matchedClaim.amount)}` : ''}</span>
+                        <Chip tone={isApprove ? 'green' : 'red'}>{isApprove ? 'Approved' : 'Rejected'}</Chip>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {remaining > 0 && (
+                <button
+                  type="button"
+                  onClick={() => showAllInGroup(selectedGroupKey)}
+                  className="w-full rounded-xl2 border border-line bg-white py-2 text-xs font-bold text-brand"
+                >
+                  Show {remaining} more
+                </button>
+              )}
+            </div>
+          );
+        })()
       ) : pendingClaims.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="All Caught Up!" hint="There are no pending expense claims requiring your approval at this time." />
       ) : (
