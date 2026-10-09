@@ -122,6 +122,16 @@ const readAttachmentAsBase64 = (uri: string): Promise<string> => {
     }));
 };
 
+// SAP's gateway expects the standard OData v2 JSON date-literal wire format for Edm.DateTime
+// fields — a plain 'YYYY-MM-DD' string silently lands as an initial/null value in the backend
+// instead of erroring. Confirmed directly: ClaimDate and ExpenseDate both stored as null on every
+// claim created through this app until switched to this format.
+const toODataDate = (dateStr?: string | null): string | null => {
+  if (!dateStr) return null;
+  const ms = new Date(dateStr).getTime();
+  return Number.isNaN(ms) ? null : `/Date(${ms})/`;
+};
+
 const parseCostCenter = (ccStr?: string) => {
   if (!ccStr) return { costCenter: '', ltext: '' };
   const match = ccStr.match(/^([^\(]+)(?:\((.*)\))?$/);
@@ -494,7 +504,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ExpenseType: selectedSapType ? selectedSapType.id : claimData.expenseType,
         ZglName: selectedSapType ? selectedSapType.name : claimData.expenseType,
         Saknr: selectedSapType ? selectedSapType.saknr : '',
-        ExpenseDate: claimData.expenseDate || null,
+        ExpenseDate: toODataDate(claimData.expenseDate),
         Amount: i === 0 ? claimData.amount.toFixed(3) : '0.000',
         Currency: 'INR',
         Description: claimData.justification || 'Expense',
@@ -506,6 +516,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const sapPayload: any = {
       ClaimId: existingClaimId ? existingClaimId : '', // Create-time empty, resubmit uses existing claim ID
+      ClaimDate: toODataDate(claimData.claimDate),
       EmpId: empIdNumeric,
       EmpName: claimData.employeeName || 'Unknown',
       Department: claimData.department || 'IT',
