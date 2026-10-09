@@ -369,6 +369,9 @@ function CreateClaimInner() {
 
   const parsedAmount = parseFloat(amountStr) || 0;
   const isAutoApprove = parsedAmount > 0 && parsedAmount < autoApprovalThreshold;
+  // ExptypeSet.Flag = 'X' on the selected expense type means an attachment isn't required for it
+  // (mirrors the same check ClaimContext's addClaim/updateDraft enforce server-submission-side).
+  const attachmentOptionalForType = expenseTypes.find((et: any) => et.name === expenseType)?.noAttachmentRequired === true;
 
   useEffect(() => {
     if (parsedAmount > 20000) {
@@ -711,8 +714,8 @@ function CreateClaimInner() {
 
       {/* Attachments */}
       <Card className="mb-3">
-        <h2 className="text-sm font-bold text-ink">Supporting Documents *</h2>
-        <p className="text-xs text-inkSoft">At least 1 attachment is mandatory</p>
+        <h2 className="text-sm font-bold text-ink">Supporting Documents{attachmentOptionalForType ? '' : ' *'}</h2>
+        <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'At least 1 attachment is mandatory'}</p>
         <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
         <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 

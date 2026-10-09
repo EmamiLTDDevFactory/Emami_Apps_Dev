@@ -185,6 +185,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           id: item.ZslNo || item.ExpenseType || '00001',
           name: item.ZglName || item.Description || item.Exptype || 'Unknown Type',
           saknr: item.Saknr || '',
+          // ExptypeSet.Flag = 'X' means this expense type doesn't require a supporting-document
+          // attachment to submit — the mandatory-attachment rule (BR-003) is skipped for it.
+          noAttachmentRequired: item.Flag === 'X',
         }));
         setExpenseTypes(mappedTypes);
       }
@@ -457,8 +460,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!claimData.claimDate || !claimData.expenseType || claimData.expenseType === 'Select Expense Type' || !claimData.amount || !claimData.costCenter) {
         return { success: false, warning: 'Please fill in all mandatory fields before submitting.' };
       }
-      // BR-003: Mandatory attachment check
-      if (!claimData.attachments || claimData.attachments.length === 0) {
+      // BR-003: Mandatory attachment check — skipped when the chosen expense type's ExptypeSet
+      // record has Flag = 'X' (that type doesn't require a supporting document).
+      const attachmentsOptionalForType = expenseTypes.find((et) => et.name === claimData.expenseType)?.noAttachmentRequired === true;
+      if (!attachmentsOptionalForType && (!claimData.attachments || claimData.attachments.length === 0)) {
         return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
       }
 
@@ -652,7 +657,8 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!merged.claimDate || !merged.expenseType || !merged.amount || !merged.costCenter) {
         return { success: false, warning: 'Please fill in all mandatory fields before submitting.' };
       }
-      if (!merged.attachments || merged.attachments.length === 0) {
+      const attachmentsOptionalForType = expenseTypes.find((et) => et.name === merged.expenseType)?.noAttachmentRequired === true;
+      if (!attachmentsOptionalForType && (!merged.attachments || merged.attachments.length === 0)) {
         return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
       }
     }
