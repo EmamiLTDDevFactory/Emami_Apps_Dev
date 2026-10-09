@@ -7,13 +7,13 @@
  */
 const basePath = '/apps/bom-cost-explorer';
 
-// SAP system of the DEPLOYED app (Amplify runs `next build`): NWP = production SAP, which the config
-// guard only allows with APP_ENV=production (header badge turns red). `next dev` and the tests are
-// not affected (they stay on NGD / the mock). An explicit NEXT_PUBLIC_SAP_SYSTEM / NEXT_PUBLIC_APP_ENV
-// still wins. To go back to the development system: set both to NGD / development here.
+// SAP system of the DEPLOYED app (Amplify runs `next build`). This repo (DEV, dev.emamiapps.in) uses
+// NGQ / qa; the PRD copy in Emami_Apps_New sets NWP / production (the config guard only allows NWP with
+// APP_ENV=production, and the header badge turns red). `next dev` and the tests are not affected (they
+// stay on NGD / the mock). An explicit NEXT_PUBLIC_SAP_SYSTEM / NEXT_PUBLIC_APP_ENV still wins.
 const isBuild = process.env.NODE_ENV === 'production';
-const DEPLOYED_SAP_SYSTEM = 'NWP';
-const DEPLOYED_APP_ENV = 'production';
+const DEPLOYED_SAP_SYSTEM = 'NGQ';
+const DEPLOYED_APP_ENV = 'qa';
 const sapEnv = isBuild
   ? {
       NEXT_PUBLIC_SAP_SYSTEM: process.env.NEXT_PUBLIC_SAP_SYSTEM || DEPLOYED_SAP_SYSTEM,
