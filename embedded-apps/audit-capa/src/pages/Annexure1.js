@@ -3596,8 +3596,8 @@ export default function Annexure1() {
                                     return;
                                 }
 
-                                // Evidence is optional for every status (NA, Compliance,
-                                // Non-Compliance), so Generate CAPA does not check it.
+                                // Evidence is optional (Compliance / Non-Compliance) or
+                                // disabled (NA), so Generate CAPA does not check it.
 
                                 const capaRecords =
                                     generateCAPA(auditItems, selectedAudit?.auditNo);

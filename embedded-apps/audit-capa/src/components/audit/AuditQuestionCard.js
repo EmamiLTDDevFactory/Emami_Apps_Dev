@@ -836,7 +836,7 @@ export default function AuditQuestionCard({
                                 variant="outlined"
                                 size={isAuditorTablet ? "large" : "small"}
                                 startIcon={<PhotoCameraIcon />}
-                                disabled={uploadingEvidence}
+                                disabled={isNA || uploadingEvidence}
                             >
                                 Capture Photo
 
@@ -861,7 +861,7 @@ export default function AuditQuestionCard({
                                 variant="outlined"
                                 size={isAuditorTablet ? "large" : "small"}
                                 startIcon={<UploadFileIcon />}
-                                disabled={uploadingEvidence}
+                                disabled={isNA || uploadingEvidence}
                             >
                                 {uploadingEvidence ? "Uploading..." : "Upload File"}
 
@@ -880,8 +880,8 @@ export default function AuditQuestionCard({
                                 />
                             </Button>
 
-                            {/* Evidence is optional for every status (NA, Compliance,
-                                Non-Compliance). */}
+                            {/* Evidence: disabled for NA; optional for Compliance and
+                                Non-Compliance. */}
                         </Box>
                     )}
                 </Grid>
