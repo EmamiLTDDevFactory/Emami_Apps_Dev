@@ -10,7 +10,7 @@ import { displayStatusLabel } from '../../utils/claim-status';
 import { formatCurrency } from '../../utils/currency';
 import { Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
-const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Paid', 'Rejected'];
+const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Pending at finance', 'Paid', 'Rejected'];
 
 const getStatusParamValue = (statusParam: string | null) => (statusParam && STATUSES.includes(statusParam) ? statusParam : 'All');
 
@@ -76,7 +76,8 @@ const buildClaimsExcelHtml = (claims: ExpenseClaim[]) => {
 const STATUS_BADGE_TONE: Record<string, 'green' | 'amber' | 'blue' | 'red' | 'neutral'> = {
   Approved: 'green',
   Paid: 'green',
-  'Pending Release': 'amber',
+  'Pending Release': 'neutral',
+  'Pending at finance': 'amber',
   Submitted: 'blue',
   Rejected: 'red',
 };
@@ -84,7 +85,8 @@ const STATUS_BADGE_TONE: Record<string, 'green' | 'amber' | 'blue' | 'red' | 'ne
 const ACCENT_BORDER: Record<string, string> = {
   Approved: 'border-l-green',
   Paid: 'border-l-green',
-  'Pending Release': 'border-l-amber',
+  'Pending Release': 'border-l-border',
+  'Pending at finance': 'border-l-amber',
   Submitted: 'border-l-blue',
   Rejected: 'border-l-red',
 };

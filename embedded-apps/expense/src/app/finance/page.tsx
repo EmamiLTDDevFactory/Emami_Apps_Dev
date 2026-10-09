@@ -330,7 +330,7 @@ export default function FinancePage() {
     setBulkReleaseConfirmVisible(true);
   };
 
-  const STATUS_TONE: Record<string, 'green' | 'amber' | 'neutral'> = { Approved: 'green', 'Pending Release': 'amber', Paid: 'green' };
+  const STATUS_TONE: Record<string, 'green' | 'amber' | 'neutral'> = { Approved: 'green', 'Pending Release': 'neutral', 'Pending at finance': 'amber', Paid: 'green' };
   const getDisplayStatus = (claim: ExpenseClaim) => (isBPendingRelease(claim) ? 'Pending Release' : claim.status);
 
   return (

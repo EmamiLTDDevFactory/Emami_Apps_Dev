@@ -13,7 +13,8 @@ import { Chip } from '../components/ui';
 const STATUS_BADGE_TONE: Record<string, 'green' | 'amber' | 'blue' | 'red' | 'neutral'> = {
   Approved: 'green',
   Paid: 'green',
-  'Pending Release': 'amber',
+  'Pending Release': 'neutral',
+  'Pending at finance': 'amber',
   Submitted: 'blue',
   Rejected: 'red',
 };
@@ -21,7 +22,8 @@ const STATUS_BADGE_TONE: Record<string, 'green' | 'amber' | 'blue' | 'red' | 'ne
 const ACCENT_BORDER: Record<string, string> = {
   Approved: 'border-l-green',
   Paid: 'border-l-green',
-  'Pending Release': 'border-l-amber',
+  'Pending Release': 'border-l-border',
+  'Pending at finance': 'border-l-amber',
   Submitted: 'border-l-blue',
   Rejected: 'border-l-red',
 };

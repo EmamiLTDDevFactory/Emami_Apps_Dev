@@ -1,6 +1,6 @@
 export type UserRole = 'employee' | 'manager' | 'finance' | 'B';
 
-export type ClaimStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Pending Release' | 'Paid';
+export type ClaimStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Pending Release' | 'Pending at finance' | 'Paid';
 
 export interface Attachment {
   id: string;

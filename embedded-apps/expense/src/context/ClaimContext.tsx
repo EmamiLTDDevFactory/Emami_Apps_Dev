@@ -228,7 +228,13 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (sap.Status === 'D') status = 'Draft';
         if (sap.Status === 'A') status = 'Approved';
         if (sap.Status === 'R') status = 'Rejected';
-        if (sap.Status === 'P' || sap.Status === 's' || sap.Status === 'S') status = 'Paid';
+        // 'P' (Parked) and 'H' (Pending at finance) are real, distinct SAP document states from
+        // 'S'/'s' (Posted) — previously all three were folded into 'Paid', which made every Parked
+        // or Pending-at-finance claim display as "Posted" here even though Claim Detail (which
+        // reads the raw SAP status directly) correctly showed "Parked"/"Pending at finance".
+        if (sap.Status === 'P') status = 'Pending Release';
+        if (sap.Status === 'H') status = 'Pending at finance';
+        if (sap.Status === 's' || sap.Status === 'S') status = 'Paid';
 
         let expenseType = '';
         let justification = '';
@@ -417,7 +423,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (c.status !== 'Draft') total++;
       if (c.status === 'Submitted') pending++;
-      if (c.status === 'Approved' || c.status === 'Pending Release') approved++;
+      if (c.status === 'Approved' || c.status === 'Pending Release' || c.status === 'Pending at finance') approved++;
       if (c.status === 'Rejected') rejected++;
       if (c.status === 'Paid') paid++;
     });
