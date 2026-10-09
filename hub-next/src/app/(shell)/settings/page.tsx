@@ -289,12 +289,12 @@ export default function ProfilePage() {
 
       {/* ── Stats ── */}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isWide ? 165 : 140}px, 1fr))`, gap: 12, marginTop: 18 }}>
-        <Stat icon={LogIn} accent="#0EA5E9" label="Sign-ins" value={profile?.logins} hint="Times you signed in" />
-        <Stat icon={History} accent={colors.rust} label="Sessions" value={profile?.sessionsTotal} hint="Visits to Emami Apps" />
+        <Stat icon={LogIn} accent="#0EA5E9" label="Sign-ins" value={profile?.logins} hint="See every sign-in" onClick={() => router.push('/settings/activity?view=signins')} />
+        <Stat icon={History} accent={colors.rust} label="Sessions" value={profile?.sessionsTotal} hint="See each visit and its apps" onClick={() => router.push('/settings/activity?view=sessions')} />
         <Stat icon={MousePointerClick} accent="#9333EA" label="Apps opened" value={profile?.appsOpened} hint="All-time app launches" />
         <Stat icon={Star} accent="#F59E0B" label="Favourites" value={favoriteApps.length} hint={`${profile?.favoritesAdded ?? 0} stars added over time`} />
         <Stat icon={Download} accent="#16A34A" label="Downloads" value={profile?.downloads} hint="Files downloaded from apps" />
-        <Stat icon={Timer} accent="#0D9488" label={lastSession ? 'Last session' : 'Time on app'} value={profile ? lastSession ?? timeSpent ?? 'Not tracked' : undefined} hint={lastSession ? (timeSpent ? `${timeSpent} in total` : 'Length of your last visit') : 'Tracked when you use Sign out'} small={!lastSession && !timeSpent} />
+        <Stat icon={Timer} accent="#0D9488" label={lastSession ? 'Last session' : 'Time on app'} value={profile ? lastSession ?? timeSpent ?? 'Not tracked' : undefined} hint={lastSession ? (timeSpent ? `${timeSpent} in total` : 'Length of your last visit') : 'Tracked when you use Sign out'} small={!lastSession && !timeSpent} onClick={() => router.push('/settings/activity?view=sessions')} />
       </div>
 
       {/* ── Main grid ── */}
@@ -527,9 +527,11 @@ function ContactTile({ icon: Icon, label, children }: { icon: React.ElementType;
   );
 }
 
-function Stat({ icon: Icon, accent, label, value, hint, small }: { icon: React.ElementType; accent: string; label: string; value: number | string | undefined; hint: string; small?: boolean }) {
+function Stat({ icon: Icon, accent, label, value, hint, small, onClick }: { icon: React.ElementType; accent: string; label: string; value: number | string | undefined; hint: string; small?: boolean; onClick?: () => void }) {
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div style={{ ...cardStyle, padding: 16, position: 'relative', overflow: 'hidden' }} title={hint}>
+    <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={onClick ? 'ac-card' : undefined} style={{ ...cardStyle, padding: 16, position: 'relative', overflow: 'hidden', textAlign: 'left', cursor: onClick ? 'pointer' : 'default', display: 'block', width: '100%' }} title={hint}>
+      {onClick && <ChevronRight size={16} color="#A0A6B1" style={{ position: 'absolute', right: 12, bottom: 14 }} />}
       <span aria-hidden style={{ position: 'absolute', right: -18, top: -18, width: 70, height: 70, borderRadius: 35, backgroundColor: `${accent}10` }} />
       <span style={{ width: 34, height: 34, borderRadius: radii.md, backgroundColor: `${accent}17`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={17} color={accent} />
@@ -545,7 +547,7 @@ function Stat({ icon: Icon, accent, label, value, hint, small }: { icon: React.E
         <span style={{ display: 'block', fontSize: 12, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, marginTop: 4 }}>{label}</span>
         <span style={{ display: 'block', fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft, marginTop: 1 }}>{hint}</span>
       </span>
-    </div>
+    </Tag>
   );
 }
 

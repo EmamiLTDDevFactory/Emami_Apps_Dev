@@ -6,6 +6,8 @@
 // emami_apps.authorized_users table that backs Manage Access (src/lib/accessApi.ts) — an email
 // works if and only if it's present there and marked active, regardless of which path (Microsoft
 // SAML or direct) it comes through.
+import { authFetch } from './authFetch';
+
 const AUTH_API_URL = process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
 
 // Profile/activity (/me, /events — backend/userProfile.js) need the same Postgres-reachable
@@ -241,4 +243,32 @@ export function logEvent(email: string, eventType: ActivityEventType, appId?: st
     // request finish after this page unloads instead of being cancelled with it.
     keepalive: true,
   }).catch(() => {});
+}
+
+export interface MySession {
+  start: string;
+  /** Null when the session never got a sign-out (tab closed, token expired) — no guessed length. */
+  end: string | null;
+  durationSeconds: number | null;
+  apps: { appId: string; at: string }[];
+}
+export interface MyActivity {
+  logins: string[];
+  sessions: MySession[];
+  recordedSeconds: number;
+  truncated: boolean;
+}
+
+/** The signed-in person's own sign-ins and sessions (GET /me/activity) — identified by their
+ * session token, not an email param, so it can only ever return their own history. */
+export async function getMyActivity(): Promise<{ ok: boolean; activity?: MyActivity; error?: string; notAvailable?: boolean }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/me/activity`);
+    if (res.status === 404) return { ok: false, notAvailable: true };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load your activity.' };
+    return { ok: true, activity: data.activity };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
 }
