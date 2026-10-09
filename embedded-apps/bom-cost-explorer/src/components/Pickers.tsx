@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { MaterialRow } from '@/lib/sap/fields';
+import type { MaterialHierarchyRow, MaterialRow } from '@/lib/sap/fields';
+import { cascade, pickLevel, type HierarchyPick, type LevelOption } from '@/lib/client/hierarchy';
 import type { PlantsState } from './FilterPanel';
 import { api } from '@/lib/client/api';
 import { cx, inputCls } from './ui';
@@ -229,3 +230,108 @@ export function PriorityList({ value, onChange, all }: { value: string[]; onChan
 }
 
 export { inputCls };
+
+/** Why the Brand / Product / CRS browser can't load, in words for the person (null = it loaded). */
+function hierarchyProblem(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/Resource not found for the segment|Property .* not found/i.test(msg)) return 'SAP does not provide Brand / Product / CRS on the material list yet. Use the search above.';
+  return `Could not load the brand list from SAP (${msg}). Use the search above.`;
+}
+
+/**
+ * Brand -> Product -> CRS -> Material browser (MaterialVHSet's finished goods, cascaded in the browser,
+ * see lib/client/hierarchy.ts). Loads only when opened. Picked materials go into the same list as the
+ * search above (`values` / `onChange`), so nothing else about running a costing changes.
+ */
+export function MaterialHierarchyPicker({ values, onChange, max }: { values: string[]; onChange: (v: string[]) => void; max: number }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<MaterialHierarchyRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pick, setPick] = useState<HierarchyPick>({ brand: '', product: '', crs: '' });
+  const [text, setText] = useState('');
+
+  useEffect(() => {
+    if (!open || rows || loading || error) return;
+    setLoading(true);
+    api.materialHierarchy()
+      .then((r) => {
+        setRows(r.materials);
+        if (!r.materials.length) setError('SAP returned no finished goods to browse yet: the material list needs the Brand / Product / CRS fields and must answer a filter without a search term. Use the search above.');
+      })
+      .catch((e) => setError(hierarchyProblem(e)))
+      .finally(() => setLoading(false));
+  }, [open, rows, loading, error]);
+
+  const levels = useMemo(() => (rows ? cascade(rows, pick) : null), [rows, pick]);
+  const t = text.trim().toLowerCase();
+  const shown = useMemo(() => (levels ? levels.materials.filter((m) => !t || m.Matnr.toLowerCase().includes(t) || m.Maktx.toLowerCase().includes(t)) : []), [levels, t]);
+  const room = Math.max(0, max - values.length);
+  const addable = shown.filter((m) => !values.includes(m.Matnr));
+
+  const toggle = (matnr: string) => onChange(values.includes(matnr) ? values.filter((v) => v !== matnr) : [...values, matnr].slice(0, max));
+  const addAll = () => onChange([...values, ...addable.slice(0, room).map((m) => m.Matnr)]);
+
+  if (!open) {
+    return (
+      <button type="button" className="mt-1.5 text-xs font-semibold text-accent hover:underline" onClick={() => setOpen(true)}>
+        Or pick by Brand → Product → CRS → Material
+      </button>
+    );
+  }
+
+  const level = (label: string, key: keyof HierarchyPick, opts: LevelOption[]) => (
+    <label className="flex min-w-0 flex-1 flex-col gap-1 text-2xs font-semibold uppercase tracking-wide text-muted">
+      {label}
+      <select className={cx(inputCls, 'normal-case tracking-normal')} value={pick[key]} onChange={(e) => setPick(pickLevel(pick, key, e.target.value))}>
+        <option value="">All ({opts.reduce((n, o) => n + o.count, 0)})</option>
+        {opts.map((o) => (
+          <option key={o.code} value={o.code}>{o.text ? `${o.text} · ${o.code}` : o.code} ({o.count})</option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <div className="mt-2 rounded-xl border border-line bg-sunken/40 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-ink">Pick by Brand → Product → CRS → Material</span>
+        <button type="button" className="text-xs text-muted hover:text-ink" onClick={() => setOpen(false)}>Close</button>
+      </div>
+      {loading && <p className="text-xs text-muted">Loading finished goods from SAP…</p>}
+      {error && <p className="text-xs text-warn">{error}</p>}
+      {levels && !error && (
+        <>
+          <div className="flex flex-col gap-2">
+            {level('Brand', 'brand', levels.brands)}
+            {level('Product', 'product', levels.products)}
+            {level('CRS', 'crs', levels.crs)}
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input className={cx(inputCls, 'h-8')} placeholder={`Filter ${levels.materials.length} materials…`} value={text} onChange={(e) => setText(e.target.value)} aria-label="Filter materials" />
+            <button type="button" className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-xs font-semibold text-accent hover:bg-accent/10 disabled:opacity-50" disabled={!addable.length || !room} onClick={addAll} title={room < addable.length ? `Only ${room} more can be added (max ${max})` : undefined}>
+              Add all {Math.min(addable.length, room)}
+            </button>
+          </div>
+          <ul className="scroll-thin mt-2 max-h-56 overflow-auto rounded-lg border border-line bg-panel">
+            {shown.slice(0, 300).map((m) => {
+              const on = values.includes(m.Matnr);
+              return (
+                <li key={m.Matnr}>
+                  <label className={cx('flex cursor-pointer items-baseline gap-2 px-2.5 py-1.5 text-sm hover:bg-accent/5', on && 'bg-accent/10')}>
+                    <input type="checkbox" checked={on} disabled={!on && !room} onChange={() => toggle(m.Matnr)} className="translate-y-0.5" />
+                    <span className="font-mono text-xs font-bold text-accent">{m.Matnr}</span>
+                    <span className="truncate">{m.Maktx}</span>
+                    {m.Zskugroupcrs && <span className="ml-auto shrink-0 text-2xs text-faint">{m.Zskugroupcrs}</span>}
+                  </label>
+                </li>
+              );
+            })}
+            {!shown.length && <li className="px-3 py-2 text-xs text-muted">No materials here.</li>}
+            {shown.length > 300 && <li className="px-3 py-1.5 text-[11px] text-faint">Showing 300 of {shown.length} - narrow it down or filter.</li>}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}

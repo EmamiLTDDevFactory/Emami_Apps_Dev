@@ -3,7 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, ChevronDown, ChevronUp, Coins, Factory, Gauge, Package, Play, RefreshCw, SlidersHorizontal, Square, Truck, Wallet, type LucideIcon } from 'lucide-react';
 import type { PlantRow } from '@/lib/sap/fields';
 import { costQuerySchema, MAX_MATERIALS, MODE_LABEL, RATE_SOURCES, usesField, type CostQuery, type QueryField } from '@/lib/query/schema';
-import { MaterialPicker, PlantPicker, PriorityList } from './Pickers';
+import { MaterialHierarchyPicker, MaterialPicker, PlantPicker, PriorityList } from './Pickers';
 import { MODE_ICON } from './Shell';
 import { Button, cx, Field, inputBase, inputCls, Segmented } from './ui';
 
@@ -129,6 +129,7 @@ export default function FilterPanel({
               <Field label={`Materials · ${query.materials.length}/${MAX_MATERIALS}`} error={show('materials')} hint="Type to search SAP, or paste a list (comma, space or new line)">
                 {(id) => <MaterialPicker id={id} values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} invalid={!!show('materials')} />}
               </Field>
+              <MaterialHierarchyPicker values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} />
               {u('plants') && (
                 <Field label="Plants" error={show('plants')} hint={plants.loading ? 'Loading plants from SAP…' : `${plants.plants.length} plants from SAP`}>
                   {(id) => <PlantPicker id={id} values={query.plants} onChange={(v) => set('plants', v)} state={plants} invalid={!!show('plants')} />}
