@@ -112,6 +112,8 @@ export const TREE_COLUMNS: Col[] = [
   { id: 'donor', label: 'Donor', width: 70, line: ({ r }) => (r.Donor ? <span className="rounded bg-warn/15 px-1 text-2xs font-semibold text-warn" title={`Costed from donor plant ${r.Donor}`}>{r.Donor}</span> : null) },
   { id: 'matkl', label: 'Mat. group', width: 100, line: ({ r }) => <span className="text-xs text-muted">{r.Matkl}</span> },
   { id: 'mtart', label: 'Type', width: 60, line: ({ r }) => <span className="text-xs text-muted">{r.Mtart}</span> },
+  { id: 'compOgrp', label: 'Comp. origin group', width: 120, line: ({ r }) => <span className="text-xs text-muted">{r.CompOgrp}</span> },
+  { id: 'skusize', label: 'SKU size', width: 90, line: ({ r }) => <span className="text-xs text-muted">{r.Zskusize}</span> },
 ];
 
 const SIM_COL: Col = {
@@ -139,7 +141,7 @@ const SIM_COL: Col = {
 };
 
 export const PRESETS: Record<string, string[]> = {
-  Standard: ['level', 'qty', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'frtPc', 'totLoc', 'totInr', 'budget', 'cover'],
+  Standard: ['level', 'qty', 'skusize', 'compOgrp', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'frtPc', 'totLoc', 'totInr', 'budget', 'cover'],
   Rates: ['level', 'qty', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'ratePcInr', 'donor'],
   Freight: ['level', 'qty', 'source', 'frtPc', 'frtPcInr', 'totPcInr', 'totInr'],
   'Budget & coverage': ['level', 'qty', 'totPcInr', 'budget', 'cover', 'totInr'],
@@ -168,7 +170,19 @@ export default function BomTree({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setColIds(ls.get('bce:tree-cols', PRESETS.Standard));
+    let saved = ls.get<string[]>('bce:tree-cols', PRESETS.Standard);
+    // One-time: SKU size and component origin group joined the Standard columns (2026-10-09); add
+    // them to a column choice saved before that, after Prod. qty, keeping everything else as saved.
+    if (!ls.get('bce:tree-cols-v2', false)) {
+      const add = ['skusize', 'compOgrp'].filter((id) => !saved.includes(id));
+      if (add.length) {
+        const at = saved.indexOf('qty') + 1 || saved.length;
+        saved = [...saved.slice(0, at), ...add, ...saved.slice(at)];
+        ls.set('bce:tree-cols', saved);
+      }
+      ls.set('bce:tree-cols-v2', true);
+    }
+    setColIds(saved);
     setPresets(ls.get('bce:tree-presets', {}));
   }, []);
   useEffect(() => setExpanded(new Set(allExpandableIds(tree, 2))), [tree]);
