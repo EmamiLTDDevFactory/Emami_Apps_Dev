@@ -284,7 +284,7 @@ export default function UserDrawer({
               <Switch on={draft.isActive} onChange={() => setDraft((d) => ({ ...d, isActive: !d.isActive }))} label="Allow sign-in" />
             </div>
             <div style={{ ...settingBoxStyle, flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
-              <p style={settingTitleStyle}>Hub access level</p>
+              <p style={settingTitleStyle}>Access level</p>
               {isSuper ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <LevelBadge level="Super Admin" compact />
