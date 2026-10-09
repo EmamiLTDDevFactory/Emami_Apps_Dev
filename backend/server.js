@@ -358,56 +358,83 @@ apiRouter.get('/admin/user/:email/apps', requireAccessManager, async (req, res) 
  * the next start) is that session's app list. Reads the newest ACTIVITY_EVENT_LIMIT events only,
  * so a very old session can be cut at its start; the response says when that happened. */
 const ACTIVITY_EVENT_LIMIT = 5000;
+/** Rebuilds one person's sign-ins and sessions (see the comment above) — shared by the admin
+ * drill-down and the person's own My Profile > Sign-ins & sessions page. */
+async function loadSignInActivity(email) {
+    const { rows } = await pool.query(
+        `SELECT e.event_type, e.app_id, e.occurred_at
+         FROM emami_apps.users u
+         JOIN emami_apps.events e ON e.user_id = u.user_id
+         WHERE u.email = $1 AND e.event_type IN ('LOGIN', 'SESSION_START', 'SESSION_END', 'APP_OPEN')
+         ORDER BY e.occurred_at DESC, e.event_type
+         LIMIT $2`,
+        [email, ACTIVITY_EVENT_LIMIT]
+    );
+    const events = rows.reverse();
+    const logins = [];
+    const sessions = [];
+    let current = null;
+    for (const e of events) {
+        const at = e.occurred_at;
+        if (e.event_type === 'LOGIN') {
+            logins.push(at);
+        } else if (e.event_type === 'SESSION_START') {
+            current = { start: at, end: null, apps: [] };
+            sessions.push(current);
+        } else if (e.event_type === 'SESSION_END') {
+            if (current && !current.end) current.end = at;
+        } else if (e.event_type === 'APP_OPEN' && e.app_id && current && !current.end) {
+            current.apps.push({ appId: e.app_id, at });
+        }
+    }
+    let recordedSeconds = 0;
+    const out = sessions.reverse().map((s) => {
+        const seconds = s.end ? Math.max(0, (new Date(s.end) - new Date(s.start)) / 1000) : null;
+        if (seconds != null) recordedSeconds += seconds;
+        return { start: s.start, end: s.end, durationSeconds: seconds == null ? null : Math.round(seconds), apps: s.apps };
+    });
+    return {
+        logins: logins.reverse(),
+        sessions: out,
+        recordedSeconds: Math.round(recordedSeconds),
+        truncated: rows.length === ACTIVITY_EVENT_LIMIT,
+    };
+}
+
 apiRouter.get('/admin/user/:email/activity', requireAccessManager, async (req, res) => {
     const email = String(req.params.email || '').trim().toLowerCase();
     if (!email) {
         return res.status(400).json({ success: false, error: 'email is required.' });
     }
     try {
-        const { rows } = await pool.query(
-            `SELECT e.event_type, e.app_id, e.occurred_at
-             FROM emami_apps.users u
-             JOIN emami_apps.events e ON e.user_id = u.user_id
-             WHERE u.email = $1 AND e.event_type IN ('LOGIN', 'SESSION_START', 'SESSION_END', 'APP_OPEN')
-             ORDER BY e.occurred_at DESC, e.event_type
-             LIMIT $2`,
-            [email, ACTIVITY_EVENT_LIMIT]
-        );
-        const events = rows.reverse();
-        const logins = [];
-        const sessions = [];
-        let current = null;
-        for (const e of events) {
-            const at = e.occurred_at;
-            if (e.event_type === 'LOGIN') {
-                logins.push(at);
-            } else if (e.event_type === 'SESSION_START') {
-                current = { start: at, end: null, apps: [] };
-                sessions.push(current);
-            } else if (e.event_type === 'SESSION_END') {
-                if (current && !current.end) current.end = at;
-            } else if (e.event_type === 'APP_OPEN' && e.app_id && current && !current.end) {
-                current.apps.push({ appId: e.app_id, at });
-            }
-        }
-        let recordedSeconds = 0;
-        const out = sessions.reverse().map((s) => {
-            const seconds = s.end ? Math.max(0, (new Date(s.end) - new Date(s.start)) / 1000) : null;
-            if (seconds != null) recordedSeconds += seconds;
-            return { start: s.start, end: s.end, durationSeconds: seconds == null ? null : Math.round(seconds), apps: s.apps };
-        });
-        res.json({
-            success: true,
-            activity: {
-                logins: logins.reverse(),
-                sessions: out,
-                recordedSeconds: Math.round(recordedSeconds),
-                truncated: rows.length === ACTIVITY_EVENT_LIMIT,
-            },
-        });
+        res.json({ success: true, activity: await loadSignInActivity(email) });
     } catch (err) {
         console.error('[admin] Failed to load sign-in activity for', email, ':', err.message);
         res.status(500).json({ success: false, error: 'Could not load sign-in activity.' });
+    }
+});
+
+/** The signed-in person's OWN sign-ins and sessions (My Profile). The email comes from their
+ * verified Emami Apps session token, never from the request, so nobody can read someone else's. */
+apiRouter.get('/me/activity', async (req, res) => {
+    const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+    if (!match || !JWT_SECRET) {
+        return res.status(401).json({ success: false, error: 'Sign in to Emami Apps to see your activity.' });
+    }
+    let email;
+    try {
+        email = String(jwt.verify(match[1].trim(), JWT_SECRET)?.email || '').trim().toLowerCase();
+    } catch {
+        return res.status(401).json({ success: false, error: 'Your Emami Apps session has expired. Please sign in again.' });
+    }
+    if (!email) {
+        return res.status(401).json({ success: false, error: 'Invalid Emami Apps session.' });
+    }
+    try {
+        res.json({ success: true, activity: await loadSignInActivity(email) });
+    } catch (err) {
+        console.error('[me] Failed to load sign-in activity for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not load your sign-in activity.' });
     }
 });
 
