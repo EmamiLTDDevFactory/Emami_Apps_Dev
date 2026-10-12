@@ -885,6 +885,7 @@ export default function CAPAManagement() {
             await addNotification({
                 role: "CQA",
                 auditId: item.auditId,
+                capaId: item.id,
                 title: "CAPA Submitted",
                 message:
                     `CAPA ${item.capaNo} has been submitted by Depot with evidence.`,
