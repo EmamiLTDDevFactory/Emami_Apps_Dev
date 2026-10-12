@@ -521,7 +521,13 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     return json({ d: { results: list.slice(0, top).map((m) => ({ ...meta('MaterialVH', `${ENTITY_SET.MATERIALS}('${m.Matnr}')`), Matnr: m.Matnr, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins })) } });
   }
 
-  const known = [ENTITY_SET.COST_LINES, ENTITY_SET.RATES, ENTITY_SET.FREIGHT, ENTITY_SET.RMPM] as string[];
+  // MOCK_SAP_RATES picks how rate options can be read (lib/rates):
+  //   expand-fails      $expand=RateOptions -> 501 (the live services today); RateOptionSet -> 404
+  //   direct-works      RateOptionSet answers flat rows; $expand -> 501
+  //   only-expand-works $expand works; RateOptionSet -> 404
+  //   (unset)           as before: $expand works, RateOptionSet -> 404
+  const ratesMode = process.env.MOCK_SAP_RATES || '';
+  const known = [ENTITY_SET.COST_LINES, ENTITY_SET.RATES, ENTITY_SET.FREIGHT, ENTITY_SET.RMPM, ...(ratesMode === 'direct-works' ? ['RateOptionSet'] : [])] as string[];
   if (!known.includes(set)) return odataError(404, '/IWBEP/CM_MGW_RT/020', `Resource not found for segment '${set}'`); // incl. RateOptions on its own
 
   const f = parseFilter(sp.get('$filter') ?? '');
@@ -539,8 +545,8 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   ];
   try {
     if (set === ENTITY_SET.COST_LINES) {
-      // MOCK_SAP_EXPAND_501=true reproduces the live NGD service: $expand=RateOptions -> 501.
-      if (process.env.MOCK_SAP_EXPAND_501 === 'true' && (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS)) {
+      // MOCK_SAP_EXPAND_501=true (or MOCK_SAP_RATES expand-fails / direct-works) reproduces the live service: $expand=RateOptions -> 501.
+      if ((process.env.MOCK_SAP_EXPAND_501 === 'true' || ratesMode === 'expand-fails' || ratesMode === 'direct-works') && (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS)) {
         return odataError(501, '/IWBEP/CM_MGW_RT/021', "Method 'RATEOPTIONSET_GET_ENTITYSET' not implemented in data provider class.");
       }
       await sleep(delay() + 40 * p.mats.length * Math.max(1, p.werks.length + p.cplnt.length), signal);
@@ -558,6 +564,27 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
         out = out.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k === '__metadata' || keep.has(k))));
       }
       return json({ d: { results: out } }, 200, msgs);
+    }
+    if (set === 'RateOptionSet') {
+      // Direct set: one flat row per component and source, with the extra per-component fields.
+      await sleep(delay(), signal);
+      const lines = costLines(p, true, msgs).map((r) => toSap(r, COST_LINE, RATE_OPTION)) as Raw[];
+      const flat: Raw[] = [];
+      for (const l of lines) {
+        const opts = ((l[NAV_RATE_OPTIONS] as { results?: Raw[] } | Raw[] | undefined) ?? []) as Raw[] | { results?: Raw[] };
+        const list = Array.isArray(opts) ? opts : opts.results ?? [];
+        for (const o of list) {
+          const q = Number(l.ProdQty ?? 0);
+          const frtPcLoc = Number(l.FrtPcLoc ?? 0);
+          const tot = Number(o.RatePcInr ?? 0) * q + Number(l.FrtPcInr ?? 0) * q;
+          flat.push({
+            ...o, Cost: o.CostLoc, FrtPcLoc: n(frtPcLoc, 6), TotCostLoc: n(Number(o.RatePcLoc ?? 0) * q + frtPcLoc * q, 2), TotCostInr: n(tot, 2),
+            Selected: o.Source === l.SelSource ? 'X' : '', Haschild: l.Haschild, Idnrk: l.Idnrk, Maktx: l.Maktx, Mtart: l.Mtart, Meins: l.Meins,
+            Level: l.Level, ProdQty: l.ProdQty, Vendor: l.SelVendor, Vname: l.SelVname,
+          });
+        }
+      }
+      return json({ d: { results: flat } }, 200, msgs);
     }
     await sleep(delay(), signal);
     const [all, map] = set === ENTITY_SET.RATES ? [rates(p, msgs), RATE_ROW] : set === ENTITY_SET.FREIGHT ? [freight(p, msgs), FREIGHT_ROW] : [rmpm(p, msgs), RMPM_ROW];

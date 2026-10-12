@@ -5,8 +5,11 @@ import { cx } from './ui';
 
 /** Messages from SAP's sap-message header (skipped materials, missing BOMs, unauthorised
  * plants...) and BFF notices. Warnings/errors are expanded by default, info collapsed. */
-export default function Warnings({ messages }: { messages: SapMessage[] }) {
+export default function Warnings({ messages: all }: { messages: SapMessage[] }) {
   const [open, setOpen] = useState(true);
+  // "RATEOPTIONSET_GET_ENTITYSET not implemented" is not a costing problem: the Rate sources tab
+  // says it neutrally ("Rate options are not available from SAP for this system").
+  const messages = all.filter((m) => !/RATEOPTIONSET/i.test(m.message));
   if (!messages.length) return null;
   const warn = messages.filter((m) => m.severity === 'warning' || m.severity === 'error');
   const info = messages.filter((m) => !(m.severity === 'warning' || m.severity === 'error'));

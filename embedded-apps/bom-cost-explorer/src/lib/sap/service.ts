@@ -5,7 +5,8 @@ import {
 } from './fields';
 import { NAV_RATE_OPTIONS } from './entities';
 import { sapConfig } from './config';
-import { getCapability, markSupported, markUnsupported, shouldExpand, type ExpandCapability } from './capability';
+import { type ExpandCapability } from './capability';
+import { getRatesCapability } from '../rates/capability';
 import { SapError, sapGetCollection, type SapGetOptions } from './client';
 import { configRequest, costRequest, materialHierarchyRequest, materialSearchRequest, pagedRequest, plantsRequest } from './requests';
 import { normalizeEntity } from './normalize';
@@ -37,39 +38,22 @@ export interface CostLinesResult extends SapResult<CostLine> {
 }
 
 /**
- * Mode B / C on CostLineSet. Does not page: the tree needs every row in one go.
- * Rate options only ever arrive through $expand=RateOptions (mode B) - RateOptionSet and per-line
- * navigation URLs are never called. SAP_EXPAND_RATE_OPTIONS:
- *   off  -> never expand
- *   on   -> always expand; a failure is shown as is (no silent retry)
- *   auto -> expand unless this system is known not to support it (verdict kept 15 min); if the
- *           expanded call fails with RATEOPTIONSET|not implemented|501|navigation, retry ONCE
- *           without $expand and remember "unsupported" so later runs are not doubled.
+* Mode B / C on CostLineSet. Does not page: the tree needs every row in one go.
+ * Exactly ONE SAP run per call: never $expand, never a retry. Rate options are loaded lazily by
+ * lib/rates/options.ts only when something needs them (Rate sources tab, row drawer, re-pick what-ifs).
  */
 export async function fetchCostLines(q: CostQuery, opts: SapGetOptions = {}): Promise<CostLinesResult> {
   const cfg = sapConfig();
-  const wantExpand = q.mode === 'B' && shouldExpand(cfg.expand, cfg.system);
-  const { entitySet, params } = costRequest(q, wantExpand);
-  let r: Awaited<ReturnType<typeof sapGetCollection>>;
-  let rateOptions = !!params.$expand;
-  try {
-    r = await sapGetCollection(entitySet, params, { ...opts, costing: true });
-    if (params.$expand && cfg.expand === 'auto') markSupported(cfg.system);
-  } catch (e) {
-    if (!params.$expand || cfg.expand !== 'auto' || !isExpandUnsupported(e)) throw e;
-    markUnsupported(cfg.system, (e as Error).message);
-    console.warn(`[sap] system=${cfg.system} set=${entitySet} $expand=${NAV_RATE_OPTIONS} unsupported - retrying once without $expand; not expanding again for 15 min`);
-    r = await sapGetCollection(entitySet, { ...params, $expand: undefined }, { ...opts, costing: true });
-    rateOptions = false;
-    r.messages.push({ code: 'BFF/003', severity: 'warning', message: `Rate options are not available from SAP for this system (${(e as Error).message}). Lines are costed; the rate-option comparison and the re-pick / cheapest-source what-ifs are off.` });
-  }
-  if (q.mode === 'B' && !params.$expand && rateOptions === false && !r.messages.some((m) => m.code === 'BFF/003')) {
-    r.messages.push({ code: 'BFF/004', severity: 'info', message: cfg.expand === 'off' ? 'Rate options are switched off for this system (SAP_EXPAND_RATE_OPTIONS=off).' : 'Rate options are not available from SAP for this system; not requested (re-tested every 15 minutes).' });
-  }
+  const { entitySet, params } = costRequest(q, false);
+  const r = await sapGetCollection(entitySet, params, { ...opts, costing: true });
+  // The live services still warn about RATEOPTIONSET_GET_ENTITYSET in sap-message on some systems:
+  // not a costing problem - the Rate sources tab says it neutrally instead.
+  const messages = r.messages.filter((m) => !/RATEOPTIONSET/i.test(m.message));
   const rows = r.rows.map((raw) => normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }));
   // SAP returns depth-first order; Seqnr makes it explicit, so never trust transport order.
   rows.sort((a, b) => a.Seqnr - b.Seqnr);
-  return { rows, messages: r.messages, ms: r.ms, rateOptions, capability: getCapability(cfg.system).state, sapMessageHeader: r.sapMessageHeader };
+  const cap = getRatesCapability(cfg.system).state;
+  return { rows, messages, ms: r.ms, rateOptions: false, capability: cap === 'unknown' ? 'unknown' : cap === 'unavailable' ? 'unsupported' : 'supported', sapMessageHeader: r.sapMessageHeader };
 }
 
 const PAGE = 5000;

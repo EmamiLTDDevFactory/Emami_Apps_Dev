@@ -3,7 +3,9 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { useHubSession, BASE_PATH } from '@/lib/client/session';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { loadSapConfig } from '@/lib/sap/config';
-import { resetCapability } from '@/lib/sap/capability';
+import { useRateOptions } from '@/lib/rates/useRateOptions';
+import { attachRateOptions } from '@/lib/rates/options';
+import RateSources from './rates/RateSources';
 import type { PlantRow } from '@/lib/sap/fields';
 import { defaultQuery, MODE_LABEL, type CostQuery, type Mode } from '@/lib/query/schema';
 import { decodeQuery, encodeQuery } from '@/lib/query/url';
@@ -19,7 +21,7 @@ import { dataQuality } from '@/lib/cost/analytics';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { exportCostLines, exportPivot } from '@/lib/client/export';
 import type { SapMessage } from '@/lib/sap/messages';
-import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
 import Shell from './Shell';
 import { useScreenHistory } from '@/lib/useScreenHistory';
@@ -35,7 +37,7 @@ import Warnings from './Warnings';
 import PrintView from './PrintView';
 import { Button, cx, Empty, Pill, SimTag, Skeleton, Tabs } from './ui';
 
-type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen';
+type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates';
 
 const lastQueryKey = (u: string) => `bce:last-query:${u}`;
 const lastMsKey = (m: Mode) => `bce:last-ms:${m}`;
@@ -46,14 +48,9 @@ export default function Explorer() {
   const user = session?.email ?? '';
   const cfg = useMemo(() => (typeof window === 'undefined' ? null : loadSapConfig()), []);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [capNote, setCapNote] = useState('');
   useEffect(() => {
     if (user) void fetchIsAdmin(user).then(setIsAdmin);
   }, [user]);
-  // Every app start re-tests the RateOptions expand (no stale "unsupported" from an earlier visit).
-  useEffect(() => {
-    if (cfg?.ok) resetCapability(cfg.config.system);
-  }, [cfg]);
   const [plants, setPlants] = useState<PlantRow[]>([]);
   const [plantsLoading, setPlantsLoading] = useState(false);
   const [plantsErr, setPlantsErr] = useState('');
@@ -141,11 +138,18 @@ export default function Explorer() {
   const mode = query.mode;
   const result: CostResult | null = runner.data && ranQuery && ranQuery.mode === mode && (mode === 'B' || mode === 'C') ? runner.data : null;
   const plantNames = useMemo(() => Object.fromEntries(plants.map((p) => [p.Werks, p.Name1])), [plants]);
-  const tree = useMemo(() => (result && mode === 'B' ? buildTree(result.rows, plantNames) : null), [result, mode, plantNames]);
+  // Rate options load lazily (Rate sources tab, row drawer, re-pick what-ifs) - never on the main run.
+  const rates = useRateOptions(result && mode === 'B' && ranQuery ? ranQuery : null, cfg?.ok ? cfg.config.system : '');
+  const costRows = useMemo(() => (result && mode === 'B' && rates.status === 'ready' && rates.rows ? attachRateOptions(result.rows, rates.rows) : result?.rows ?? []), [result, mode, rates.status, rates.rows]);
+  const tree = useMemo(() => (result && mode === 'B' ? buildTree(costRows, plantNames) : null), [result, costRows, mode, plantNames]);
   const pivot = useMemo(() => (result && mode === 'C' && ranQuery ? buildPivot(result.rows, ranQuery.compPlants) : null), [result, mode, ranQuery]);
   const rows = tree ? tree.rows : result?.rows ?? [];
-  /** Rate options came back from CostLineSet?$expand=RateOptions (mode B, SAP supports the expand). */
-  const rateOptions = mode === 'B' && result?.rateOptions !== false;
+  /** Rate options are loaded (mode B): the re-pick what-ifs and the drawer's options table can use them. */
+  const rateOptions = mode === 'B' && rates.status === 'ready';
+  const { request: requestRates } = rates;
+  useEffect(() => {
+    if (drawer !== null && mode === 'B') requestRates();
+  }, [drawer, mode, requestRates]);
   // Without rate options the re-pick what-ifs can't run: simulate with SAP's own pick.
   const effectiveSim = useMemo(() => (rateOptions || simDeferred.pick === 'sap' ? simDeferred : { ...simDeferred, pick: 'sap' as const }), [rateOptions, simDeferred]);
   // Component-rate / % what-ifs work on CostLineSet results: BOM costing and plant comparison.
@@ -250,6 +254,7 @@ export default function Explorer() {
           { id: 'sim', label: 'Simulator', badge: simOn ? <SimTag /> : undefined },
           { id: 'dq', label: 'Data quality', badge: dqCount ? <Pill tone="warn">{dqCount}</Pill> : undefined },
           { id: 'scen', label: 'Scenarios' },
+          { id: 'rates', label: 'Rate sources' },
         ]
       : mode === 'C'
         ? [
@@ -287,11 +292,6 @@ export default function Explorer() {
     );
   }
   const sap = cfg.config;
-  const retestExpand = () => {
-    resetCapability(sap.system);
-    setCapNote('Rate options will be re-tested on the next BOM costing run.');
-    setTimeout(() => setCapNote(''), 6000);
-  };
 
   const headerActions = (
     <>
@@ -364,17 +364,6 @@ export default function Explorer() {
               {pagedMsgs && isPaged && <>SAP {fmtMs(pagedMsgs.ms)}</>}
             </span>
             {JSON.stringify(query) !== JSON.stringify(ranQuery) && <Pill tone="warn" title="The selection was changed after this run">selection changed – run again</Pill>}
-            {mode === 'B' && result && !rateOptions && (
-              <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted">
-                Rate options are not available from SAP for this system
-                {sap.expand === 'auto' && (
-                  <button type="button" onClick={retestExpand} className="inline-flex items-center gap-1 font-bold text-accent hover:underline" title="Forget the 'unsupported' verdict and send $expand=RateOptions on the next run">
-                    <RefreshCw size={12} /> Re-test
-                  </button>
-                )}
-              </span>
-            )}
-            {capNote && <span className="text-xs font-semibold text-good">{capNote}</span>}
             {total && mode === 'B' && (
               <div className="ml-auto flex items-baseline gap-3 rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
                 <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Total</span>
@@ -425,8 +414,12 @@ export default function Explorer() {
               pending={sim !== simDeferred}
               onSapQtyScenarios={qtyScenarios}
               rateOptions={rateOptions}
+              rateOptionsUnavailable={mode === 'B' && rates.status === 'unavailable'}
+              onNeedRateOptions={mode === 'B' ? requestRates : undefined}
               plantNames={plantNames}
             />
+          ) : activeTab === 'rates' && ranQuery ? (
+            <RateSources rows={rows} rates={rates} query={ranQuery} onOpenRow={setDrawer} />
           ) : activeTab === 'dq' ? (
             <DataQuality rows={rows} onOpenRow={openRow} />
           ) : null}
@@ -439,6 +432,7 @@ export default function Explorer() {
           sim={simRows[drawer]}
           onClose={() => setDrawer(null)}
           rateOptions={rateOptions}
+          rateOptionsState={mode === 'B' ? { status: rates.status, note: rates.note, onRetest: rates.retest } : undefined}
           override={sim.overrides[rowKey(rows[drawer])]}
           onOverride={(k, v) => {
             const o = { ...sim.overrides };

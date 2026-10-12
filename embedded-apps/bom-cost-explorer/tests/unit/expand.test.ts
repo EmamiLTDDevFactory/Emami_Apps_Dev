@@ -29,13 +29,14 @@ const navCalls = () => mockRequestLog.filter((u) => /RateOption(Set)?(\(|\?|$)|\
 const costCalls = () => mockRequestLog.filter((u) => u.includes('/CostLineSet?'));
 
 describe('$expand=RateOptions (auto)', () => {
-  it('mode B expands on CostLineSet; every line has RateOptions; capability -> supported', async () => {
+  // Part A (2026-10-13): the main costing call never expands; rate options load lazily (tests/unit/rates.test.ts).
+  it('mode B makes ONE CostLineSet call without $expand; lines carry no RateOptions', async () => {
     const r = await fetchCostLines(q({ mode: 'B' }));
-    expect(r.rateOptions).toBe(true);
-    expect(r.capability).toBe('supported');
-    expect(r.rows.every((x) => Array.isArray(x.RateOptions))).toBe(true);
-    expect(r.rows.filter(isLeafRow).some((x) => (x.RateOptions?.length ?? 0) > 0)).toBe(true);
-    expect(decodeURIComponent(costCalls()[0])).toContain('$expand=RateOptions');
+    expect(r.rateOptions).toBe(false);
+    expect(r.rows.every((x) => x.RateOptions === undefined)).toBe(true);
+    expect(r.rows.filter(isLeafRow).length).toBeGreaterThan(0);
+    expect(costCalls()).toHaveLength(1);
+    expect(decodeURIComponent(costCalls()[0])).not.toContain('$expand');
     expect(navCalls()).toEqual([]);
   });
 
@@ -46,17 +47,15 @@ describe('$expand=RateOptions (auto)', () => {
     expect(mockRequestLog.every((u) => !u.includes('expand'))).toBe(true);
   });
 
-  it('on 501: retries ONCE without $expand, marks unsupported, and the next run is a single call', async () => {
+  it('with an SAP that cannot expand (501), every run is still exactly ONE call and nothing is warned', async () => {
     process.env.MOCK_SAP_EXPAND_501 = 'true';
     const first = await fetchCostLines(q({ mode: 'B' }));
     expect(first.rateOptions).toBe(false);
-    expect(first.capability).toBe('unsupported');
-    expect(first.messages.some((m) => m.code === 'BFF/003')).toBe(true);
-    expect(costCalls()).toHaveLength(2);
+    expect(first.messages.some((m) => m.code === 'BFF/003' || /RATEOPTIONSET/i.test(m.message))).toBe(false);
+    expect(costCalls()).toHaveLength(1);
     mockRequestLog.length = 0;
-    const second = await fetchCostLines(q({ mode: 'B' }));
-    expect(second.rateOptions).toBe(false);
-    expect(costCalls()).toHaveLength(1); // no double run while unsupported
+    await fetchCostLines(q({ mode: 'B' }));
+    expect(costCalls()).toHaveLength(1);
     expect(costCalls()[0]).not.toMatch(/expand/);
     expect(navCalls()).toEqual([]);
   });
@@ -79,11 +78,13 @@ describe('SAP_EXPAND_RATE_OPTIONS on / off', () => {
     expect(costCalls()).toHaveLength(1);
     expect(costCalls()[0]).not.toMatch(/expand/);
   });
-  it('on: always sends it and shows the SAP error (no silent retry)', async () => {
+  it('on: the main call still never expands (rate options are lazy), one call', async () => {
     process.env.SAP_EXPAND_RATE_OPTIONS = 'on';
     process.env.MOCK_SAP_EXPAND_501 = 'true';
-    await expect(fetchCostLines(q({ mode: 'B' }))).rejects.toThrow(/RATEOPTIONSET_GET_ENTITYSET/);
+    const r = await fetchCostLines(q({ mode: 'B' }));
+    expect(r.rows.length).toBeGreaterThan(0);
     expect(costCalls()).toHaveLength(1);
+    expect(costCalls()[0]).not.toMatch(/expand/);
   });
   it('recognises the not-implemented errors, but not other failures', () => {
     const mk = (msg: string, sapStatus = 400, kind: 'http' | 'timeout' = 'http') => new SapError(msg, kind, 400, [], sapStatus);
@@ -159,13 +160,13 @@ describe('$select on CostLineSet', () => {
     expect(c).not.toContain('RateOptions');
     expect(costLineSelect(true).endsWith(',RateOptions')).toBe(true);
   });
-  it('the mock (like SAP) returns only selected properties and still expands RateOptions', async () => {
+  it('the mock (like SAP) returns only selected properties; the main call selects no RateOptions', async () => {
     const r = await fetchCostLines(q({ mode: 'B' }));
-    expect(r.rateOptions).toBe(true);
-    expect(r.rows.every((x) => Array.isArray(x.RateOptions))).toBe(true);
+    expect(r.rateOptions).toBe(false);
     const sent = decodeURIComponent(costCalls()[0]);
     expect(sent).toMatch(/\$select=Seqnr,/);
-    expect(sent).toContain('$expand=RateOptions');
+    expect(sent).not.toContain('RateOptions');
+    expect(sent).not.toContain('$expand');
     expect(costCalls()[0]).not.toContain('+');
   });
 });

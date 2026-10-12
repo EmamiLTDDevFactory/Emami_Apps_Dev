@@ -7,7 +7,8 @@ import { ENTITY_SET, NAV_RATE_OPTIONS } from '@/lib/sap/entities';
 import { buildSelectionFilter } from '@/lib/sap/filter';
 import { defaultQuery } from '@/lib/query/schema';
 import { parseMetadata, checkMetadata } from '@/lib/sap/metadataCheck';
-import { getCapability, resetCapability } from '@/lib/sap/capability';
+import { getRatesCapability, resetRatesCapability, type RatesCapability } from '@/lib/rates/capability';
+import { clearRatesCache, fetchRateOptions } from '@/lib/rates/options';
 import { unwrapCollection } from '@/lib/sap/normalize';
 import { BASE_PATH, useHubSession } from '@/lib/client/session';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
@@ -42,13 +43,20 @@ export default function ConnectionPage() {
   const [sets, setSets] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [cap, setCap] = useState('');
+  const [rcap, setRcap] = useState<RatesCapability | null>(null);
+  const [rprobing, setRprobing] = useState(false);
+  const [rnote, setRnote] = useState('');
 
   useEffect(() => {
     if (hub && hub !== 'checking') void fetchIsAdmin(hub.email).then(setAdmin);
     else if (hub === null) setAdmin(false);
   }, [hub]);
   useEffect(() => {
-    if (cfg?.ok) setCap(getCapability(cfg.config.system).state);
+    if (cfg?.ok) {
+      const rc = getRatesCapability(cfg.config.system);
+      setCap(rc.state);
+      setRcap(rc);
+    }
   }, [cfg]);
 
   if (!cfg || hub === 'checking' || admin === null) return <div className="grid h-screen place-items-center"><div className="h-8 w-8 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
@@ -103,13 +111,66 @@ export default function ConnectionPage() {
             <div><dt className="text-2xs font-bold uppercase text-faint">Base URL</dt><dd className="break-all font-mono text-xs">{c.baseUrl}</dd></div>
             <div><dt className="text-2xs font-bold uppercase text-faint">Auth</dt><dd className="font-mono">{c.authMode}{c.client ? ` · sap-client ${c.client}` : ' · no sap-client sent'}</dd></div>
             <div>
-              <dt className="text-2xs font-bold uppercase text-faint">RateOptions expand</dt>
+              <dt className="text-2xs font-bold uppercase text-faint">Rate options</dt>
               <dd className="flex items-center gap-2 font-mono">
-                {c.expand} · capability {cap || 'unknown'}
-                <Button size="sm" onClick={() => { resetCapability(c.system); setCap('unknown'); }}>Re-test</Button>
+                {c.expand === 'off' ? 'off' : cap || 'unknown'}
+                {rcap?.at ? <span className="text-2xs text-faint">since {new Date(rcap.at).toLocaleTimeString()}</span> : null}
+                <Button size="sm" onClick={() => { resetRatesCapability(c.system); clearRatesCache(); setCap('unknown'); setRcap(getRatesCapability(c.system)); }}>Re-test</Button>
               </dd>
             </div>
           </dl>
+        </Card>
+
+        <Card
+          title="Rate options capability"
+          actions={
+            <Button
+              size="sm"
+              disabled={rprobing || !matnr.trim() || !werks.trim()}
+              title={!matnr.trim() || !werks.trim() ? 'Enter a material and plant under Checks first' : 'Forget the verdict and probe direct, then expand'}
+              onClick={async () => {
+                setRprobing(true);
+                setRnote('');
+                resetRatesCapability(c.system);
+                clearRatesCache();
+                try {
+                  const r = await fetchRateOptions({ ...defaultQuery('B'), materials: [matnr.trim().toUpperCase()], plants: [werks.trim().toUpperCase()], explQty: '1' });
+                  setRnote('unavailable' in r ? r.reason : `${r.rows.length} option row(s) via ${r.mode}`);
+                } catch (e) {
+                  setRnote((e as Error).message);
+                } finally {
+                  const rc = getRatesCapability(c.system);
+                  setRcap(rc);
+                  setCap(rc.state);
+                  setRprobing(false);
+                }
+              }}
+            >
+              <Play size={14} /> {rprobing ? 'Probing…' : 'Probe now'}
+            </Button>
+          }
+        >
+          <p className="mb-2 text-xs text-muted">
+            Rate options load lazily (never on the main costing run): first RateOptionSet with the costing filter (direct), then CostLineSet with $expand=RateOptions. A verdict holds 15 minutes.
+            {rnote && <span className="ml-1 font-semibold text-ink">{rnote}</span>}
+          </p>
+          {rcap?.probes.length ? (
+            <table className="w-full text-xs">
+              <thead className="text-left text-2xs font-bold uppercase text-faint"><tr><th className="py-1">Probe</th><th>HTTP</th><th>Latency</th><th>Result / SAP message</th></tr></thead>
+              <tbody>
+                {rcap.probes.map((p, i) => (
+                  <tr key={i} className="border-t border-line align-top">
+                    <td className="py-1 font-mono">{p.kind}</td>
+                    <td className={cx('font-mono', p.ok ? 'text-good' : 'text-bad')}>{p.status || '-'}</td>
+                    <td className="font-mono">{p.ms} ms</td>
+                    <td className="break-all">{p.ok ? 'OK' : p.message}<div className="font-mono text-faint">{p.url}</div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-xs text-faint">No probe yet on this browser (state: {cap || 'unknown'}).</p>
+          )}
         </Card>
 
         <Card title="Checks" actions={<Button variant="primary" onClick={run} disabled={running}><Play size={14} /> {running ? 'Running…' : 'Run checks'}</Button>}>

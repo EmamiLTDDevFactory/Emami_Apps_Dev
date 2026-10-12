@@ -29,12 +29,17 @@ function Pct({ label, value, onChange, id }: { label: string; value: number; onC
 
 export default function Simulator({
   rows, sim, settings, onChange, explQty, groupCurr, onOpenRow, onSapQtyScenarios, pending, rateOptions = true, plantNames = {},
+  rateOptionsUnavailable = false, onNeedRateOptions,
 }: {
   rows: CostLine[]; sim: SimRow[]; settings: SimSettings; onChange: (s: SimSettings) => void; explQty: string; groupCurr: string;
   onOpenRow: (i: number) => void; onSapQtyScenarios: (mults: number[]) => void; pending: boolean;
   /** false when SAP could not $expand RateOptions: re-pick / cheapest / latest need them */
   rateOptions?: boolean;
   plantNames?: Record<string, string>;
+  /** SAP has no rate options on this system: the re-pick choices are hidden (default false = previous behaviour) */
+  rateOptionsUnavailable?: boolean;
+  /** asks for the lazily loaded rate options when a re-pick needs them (BOM costing) */
+  onNeedRateOptions?: () => void;
 }) {
   const [more, setMore] = useState(false);
   const set = (patch: Partial<SimSettings>) => onChange({ ...settings, ...patch });
@@ -94,9 +99,10 @@ export default function Simulator({
         <>
         <Card title="Rate source pick">
           <div role="radiogroup" aria-label="Rate pick" className="grid grid-cols-2 gap-1">
-            {([['sap', 'SAP selection'], ['priority', 'Priority order'], ['cheapest', 'Cheapest option'], ['latest', 'Latest valid-from']] as [PickMode, string][]).map(([m, l]) => {
-              const off = !rateOptions && m !== 'sap';
-              const on = (rateOptions ? settings.pick : 'sap') === m;
+            {([['sap', 'SAP selection'], ['priority', 'Priority order'], ['cheapest', 'Cheapest option'], ['latest', 'Latest valid-from']] as [PickMode, string][]).filter(([m]) => !(rateOptionsUnavailable && m !== 'sap')).map(([m, l]) => {
+              const lazy = !rateOptions && !!onNeedRateOptions && !rateOptionsUnavailable;
+              const off = !rateOptions && m !== 'sap' && !lazy;
+              const on = (rateOptions || lazy ? settings.pick : 'sap') === m;
               return (
                 <button
                   key={m}
@@ -105,7 +111,7 @@ export default function Simulator({
                   aria-checked={on}
                   disabled={off}
                   title={off ? 'Needs rate options from SAP' : undefined}
-                  onClick={() => set({ pick: m })}
+                  onClick={() => { if (m !== 'sap' && !rateOptions) onNeedRateOptions?.(); set({ pick: m }); }}
                   className={cx('rounded-lg border px-2 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40', on ? 'border-sim bg-sim/10 font-semibold text-sim' : 'border-line text-muted hover:text-ink')}
                 >
                   {l}
@@ -113,10 +119,13 @@ export default function Simulator({
               );
             })}
           </div>
-          {!rateOptions && (
-            <p className="mt-2 rounded-lg bg-warn/[0.08] px-2.5 py-2 text-2xs text-ink" role="note">
+          {!rateOptions && (rateOptionsUnavailable || !onNeedRateOptions) && (
+            <p className="mt-2 rounded-lg bg-sunken px-2.5 py-2 text-2xs text-ink" role="note">
               Rate options are not available from SAP for this system, so re-picking the source is off. Component rates, % changes, FX, quantity and manual overrides still work.
             </p>
+          )}
+          {!rateOptions && !rateOptionsUnavailable && onNeedRateOptions && settings.pick !== 'sap' && (
+            <p className="mt-2 text-2xs text-muted">Loading rate options from SAP…</p>
           )}
           {rateOptions && settings.pick === 'priority' && (
             <div className="mt-2">

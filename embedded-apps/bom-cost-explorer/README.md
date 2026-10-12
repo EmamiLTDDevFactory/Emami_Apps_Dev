@@ -39,22 +39,48 @@ browser (hub origin) --GET--> ${SAP_GATEWAY_HOST}/api/${SAP_SYSTEM}/ZMM_BOM_COST
 
 | Set | Used for |
 |---|---|
-| CostLineSet | B costing (with `$expand=RateOptions` when supported) and C plant comparison (never expanded) |
+| CostLineSet | B costing and C plant comparison: **one call per Run, never `$expand`** |
 | RateRowSet / FreightRowSet / RmPmRowSet | R / F / M views: fetched once per selection with `$top/$skip/$inlinecount`, then searched / sorted / totalled / paged in the browser (10 min cache) |
 | PlantVHSet | plant picker (10 min cache) |
 | MaterialVHSet | type-ahead `?search=<text>&$top=50`, min 2 characters |
 | ConfigItemSet | GROUP_CURR, DEFAULT_PRIO, MAX_HEADS (10 min cache) |
-| RateOptionSet | never called; only via `CostLineSet?…&$expand=RateOptions` |
+| RateOptionSet / CostLineSet `$expand=RateOptions` | rate options, lazily (see below) |
 
-### RateOptions expand capability (`lib/sap/capability.ts`)
+### Rate options, loaded lazily (`lib/rates/`, 2026-10-13)
 
-`SAP_EXPAND_RATE_OPTIONS=off` never expands; `on` always expands and shows SAP's error; `auto`
-(default) expands on the first mode B run, and if SAP answers RATEOPTIONSET / not implemented /
-501 / navigation it retries **once** without `$expand`, remembers *unsupported* for this system for
-15 minutes (no double runs meanwhile) and shows a warning. A successful expanded run sets
-*supported*. Without rate options the drawer shows "Rate options are not available from SAP for
-this system" and the re-pick / cheapest-source what-ifs are disabled; component rates, %, FX and
-overrides keep working.
+The main costing call never sends `$expand` and is never retried: one SAP run per **Run in SAP**
+(the old "expand, and on 501 run again without it" is gone). Rate options are read only when
+something needs them: the **Rate sources** tab, the row drawer's options table, or a re-pick /
+cheapest-source what-if.
+
+How a system delivers them is found out the first time and remembered for 15 minutes per SAP system
+(browser memory + localStorage `rates:capability:<system>`; the app is a static export, there is no
+server): `unknown -> direct | expand | unavailable`.
+
+1. probe **direct**: `RateOptionSet?$filter=<costing filter>` (flat rows), using
+   `NEXT_PUBLIC_RATES_PROBE_MATNR` / `NEXT_PUBLIC_RATES_PROBE_WERKS` with ExplQty 1, or the user's own
+   query once when those are not set;
+2. if that is "not there" (404 / 501 / not implemented / Resource not found for segment / unknown
+   property), probe **expand**: `CostLineSet?<filter>&$select=Seqnr,Hwerks,Headmat,RateOptions&$expand=RateOptions`;
+3. both "not there" -> **unavailable**. Network errors and 500s decide nothing.
+
+Both shapes are normalised to the same flat rows and joined back to the cost lines on
+`Seqnr|Hwerks|Headmat`; results are cached 5 minutes per query, and a query change or closing the tab
+aborts the request. When unavailable there is no warning anywhere: the tab and the drawer show the
+neutral note "Rate options are not available from SAP for this system", the re-pick choices are
+hidden, and component rates, %, FX, manual overrides, SelSource and SrcCount keep working. Any SAP
+message mentioning `RATEOPTIONSET` is kept out of the warnings panel. Re-test: in the tab, the drawer,
+and on `/admin/connection` (which lists each probe with HTTP code, latency and SAP's raw message).
+`SAP_EXPAND_RATE_OPTIONS=off` still switches rate options off entirely. `lib/sap/capability.ts` (the
+old expand verdict) is no longer used by the costing call.
+
+**Rate sources tab:** one block per source in the report colours (CONTRACT green, INFOREC yellow,
+MARKT cyan, CONSUMP orange, MBEW red), column sets Compact / Report / Local currency, the option SAP
+used in bold, the cheapest marked, Used vs Cheapest with the saving over leaf rows only; a rate of 0
+is never the cheapest; virtualised rows; Excel export. Option total INR = `TotCostInr` from the direct
+set, or (expand) `RatePcInr x ProdQty + line FrtPcInr x ProdQty`. RatePcInr is used rather than
+`RatePc x FxInr` because it already includes the option-to-plant FX (`Fx`), so it stays right when the
+option currency differs from the plant currency.
 
 ### Connection diagnostics (`/admin/connection`)
 
@@ -135,7 +161,10 @@ responses (`npx tsx mock/dump-fixtures.ts` regenerates them).
 
 - `npm test`: Vitest, covering the tree builder, leaf roll-ups, comparison pivot, priority
   re-selection, % what-ifs, sensitivity, scenario waterfall, OData filter builder (escaping,
-  `m` suffix, booleans, dates), normaliser, sap-message parsing, table paging, connection config guards, expand capability.
+  `m` suffix, booleans, dates), normaliser, sap-message parsing, table paging, connection config guards, expand capability,
+  and `tests/unit/rates.test.ts`: the main call's frozen network baseline (snapshot), expand-fails /
+  direct-works / only-expand-works, capability expiry and Re-test, normaliser, no `+` in URLs, Rate sources maths.
+  The mock's rate behaviour is chosen with `MOCK_SAP_RATES=expand-fails|direct-works|only-expand-works`.
 - `npm run test:e2e`: Playwright smoke test. It starts the HTTP mock SAP and the app with
   `MOCK_SAP=false`, so the real SAP client path (Basic auth, sap-client, headers) is exercised:
   hub-token sign-in, B tree/drawer/dashboard/simulator, C pivot, R paging, SAP error, cancel, and

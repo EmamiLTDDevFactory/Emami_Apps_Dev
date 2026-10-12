@@ -30,11 +30,13 @@ function KV({ items }: { items: [string, React.ReactNode][] }) {
 }
 
 export default function RowDrawer({
-  row, sim, onClose, override, onOverride, rateOptions = true,
+  row, sim, onClose, override, onOverride, rateOptions = true, rateOptionsState,
 }: {
   row: CostLine | null; sim: SimRow | null; onClose: () => void; override?: string; onOverride: (key: string, v: string | null) => void;
-  /** false when SAP could not $expand RateOptions for this run */
+  /** false while the rate options are not loaded (or not available) for this run */
   rateOptions?: boolean;
+  /** lazy rate-options state (BOM costing); omitted = the previous behaviour */
+  rateOptionsState?: { status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'error'; note: string; onRetest: () => void };
 }) {
   const [ov, setOv] = useState(override ?? '');
   useEffect(() => setOv(override ?? ''), [override, row]);
@@ -91,10 +93,16 @@ export default function RowDrawer({
 
       {!rateOptions ? (
         <Section title="Rate options">
-          <div className="rounded-xl border border-warn/30 bg-warn/[0.07] px-3 py-2.5 text-sm text-ink" role="note">
-            Rate options are not available from SAP for this system. SAP&apos;s selected rate is shown above; the
-            comparison of all sources appears here once SAP supports the RateOptions expand.
-          </div>
+          {rateOptionsState && (rateOptionsState.status === 'idle' || rateOptionsState.status === 'loading') ? (
+            <p className="text-sm text-muted">Loading rate options from SAP…</p>
+          ) : (
+            <div className="rounded-xl border border-line bg-sunken/60 px-3 py-2.5 text-sm text-ink" role="note">
+              {rateOptionsState?.status === 'error'
+                ? <>Rate options could not be loaded right now ({rateOptionsState.note}). </>
+                : <>Rate options are not available from SAP for this system. SAP&apos;s selected rate is shown above{r.SrcCount > 1 ? ` (SAP reports ${r.SrcCount} sources for this component)` : ''}. </>}
+              {rateOptionsState && <button type="button" onClick={rateOptionsState.onRetest} className="font-bold text-accent hover:underline">Re-test</button>}
+            </div>
+          )}
         </Section>
       ) : (
       <Section title={`Rate options (${opts.length})`}>
