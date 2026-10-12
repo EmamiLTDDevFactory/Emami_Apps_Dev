@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Camera, LogOut, Pencil, Check, X, Mail, Phone, ShieldCheck, Crown, Eye, Clock, LogIn, Layers,
   MousePointerClick, Star, Download, Timer, Search, ChevronRight, ChevronDown, Lock, KeyRound, LifeBuoy,
-  History, Sparkles, Copy, CheckCircle2, Circle, Settings2, Info, Briefcase, Building2, Smartphone,
+  History, Sparkles, Copy, CheckCircle2, Circle, Settings2, Info, Briefcase, Building2, Smartphone, UserRound,
 } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
 import StageBadge from '../../../components/StageBadge';
@@ -500,6 +500,18 @@ export default function ProfilePage() {
               <InfoTile icon={Building2} accent="#7C3AED" title="Department" text={org.department || 'Not set in the directory'} />
               <InfoTile icon={Phone} accent="#0D9488" title="Business phone" text={org.businessPhones.length ? org.businessPhones.join(', ') : 'Not set in the directory'} />
               <InfoTile icon={Smartphone} accent="#EA580C" title="Mobile (directory)" text={org.mobilePhone || 'Not set in the directory'} />
+              {[1, 2].map((level) => {
+                const m = org.managers?.find((x) => x.level === level);
+                return (
+                  <InfoTile
+                    key={level}
+                    icon={UserRound}
+                    accent={level === 1 ? '#0EA5E9' : '#64748B'}
+                    title={`L${level} manager${m?.displayName ? ` · ${m.displayName}` : ''}`}
+                    text={m ? [m.jobTitle || 'Designation not set', m.department, m.mail].filter(Boolean).join(' · ') : 'Not set in the directory'}
+                  />
+                );
+              })}
             </div>
           ) : null}
         </div>

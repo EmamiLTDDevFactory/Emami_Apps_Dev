@@ -281,6 +281,16 @@ export interface OrgProfile {
   department: string | null;
   businessPhones: string[];
   mobilePhone: string | null;
+  /** L1 = manager, L2 = manager's manager (shorter when the directory has no manager). */
+  managers?: OrgManager[];
+}
+
+export interface OrgManager {
+  level: number;
+  displayName: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  mail: string | null;
 }
 
 /** null org = not configured on the server, or no directory record for this person. */

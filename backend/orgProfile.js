@@ -2,7 +2,8 @@
  * The signed-in person's organisation details from Microsoft Entra ID (Graph), for the hub's My Profile page:
  *
  *   GET /me/org-profile   (Authorization: Bearer <Emami Apps session token>)
- *   -> { success, configured, found, org: { id, displayName, jobTitle, department, businessPhones, mobilePhone } }
+ *   -> { success, configured, found, org: { id, displayName, jobTitle, department, businessPhones, mobilePhone,
+ *          managers: [{ level: 1|2, displayName, jobTitle, department, mail }] } }   (L1 = manager, L2 = manager's manager)
  *
  * The email comes only from the verified session token, never from the request, so a person can read only their own
  * record. Graph is called server-side with an app registration's client credentials (application permission
@@ -22,6 +23,8 @@ const TENANT_ID = process.env.GRAPH_TENANT_ID || '0b5a98ee-ffb0-4615-b6c7-17efc9
 const CLIENT_ID = process.env.GRAPH_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.GRAPH_CLIENT_SECRET || '';
 const SELECT = 'id,displayName,jobTitle,department,businessPhones,mobilePhone';
+const MANAGER_SELECT = 'id,displayName,jobTitle,department,mail';
+const MANAGER_LEVELS = 2;
 const PROFILE_TTL_MS = 60 * 60 * 1000;
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 
@@ -39,6 +42,35 @@ async function graphToken() {
     if (!res.ok || !data.access_token) throw new Error(`token request failed (${res.status} ${data.error || ''})`.trim());
     token = { value: data.access_token, expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000 };
     return token.value;
+}
+
+/** The person's manager (GET /users/{id}/manager); null when the directory has none (Graph answers 404). */
+async function managerOf(id) {
+    const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(id)}/manager?$select=${MANAGER_SELECT}`, {
+        headers: { Authorization: `Bearer ${await graphToken()}` },
+    });
+    if (res.status === 404) return null;
+    const m = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Graph manager ${res.status} ${m?.error?.code || ''}`.trim());
+    return m?.id ? { id: m.id, displayName: m.displayName || null, jobTitle: m.jobTitle || null, department: m.department || null, mail: m.mail || null } : null;
+}
+
+/** L1 = manager, L2 = manager's manager. A failed manager lookup leaves the chain short instead of failing the profile. */
+async function managerChain(id) {
+    const chain = [];
+    let current = id;
+    for (let level = 1; level <= MANAGER_LEVELS && current; level++) {
+        let m = null;
+        try {
+            m = await managerOf(current);
+        } catch (err) {
+            console.error('[org-profile] manager lookup failed:', err.message);
+        }
+        if (!m) break;
+        chain.push({ level, displayName: m.displayName, jobTitle: m.jobTitle, department: m.department, mail: m.mail });
+        current = m.id;
+    }
+    return chain;
 }
 
 const cache = new Map(); // email -> { at, org|null }
@@ -59,6 +91,7 @@ async function lookup(email) {
               department: u.department || null,
               businessPhones: Array.isArray(u.businessPhones) ? u.businessPhones.filter(Boolean) : [],
               mobilePhone: u.mobilePhone || null,
+            managers: u.id ? await managerChain(u.id) : [],
           }
         : null;
     cache.set(email, { at: Date.now(), org });
