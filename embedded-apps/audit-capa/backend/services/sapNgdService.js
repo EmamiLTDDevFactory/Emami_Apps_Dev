@@ -104,7 +104,9 @@ const sapErrorMessage = (data) => {
  * swallowed into a null, so a failure is visible rather than silent.
  */
 const sendSapFlag = async (entitySet, payload) => {
-  const entityUrl = `${NGD_BASE}/${entitySet}`;
+  // Callers allowlist entitySet (controllers/sapNotifyController.js); encoding is a second guard
+  // so nothing can ever add path segments or a query string to the SAP URL.
+  const entityUrl = `${NGD_BASE}/${encodeURIComponent(entitySet)}`;
   const flag = payload && payload.Flag;
 
   try {

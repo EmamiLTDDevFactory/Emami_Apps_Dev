@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const express = require("express");
 
 const { grantAccess, revokeAccess } = require("../controllers/internalController");
@@ -16,6 +17,14 @@ const router = express.Router();
  * claim to carry beyond "this really is the hub" — same trust model already used between this
  * backend and the hub for other server-to-server calls (see the hub's backend/authorizedUsers.js).
  */
+// Constant-time compare so the secret can't be recovered byte-by-byte from response timing.
+// timingSafeEqual throws on unequal lengths, so a length mismatch is just a plain "no".
+function secretsMatch(provided, expected) {
+    const a = Buffer.from(String(provided), "utf8");
+    const b = Buffer.from(String(expected), "utf8");
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 function requireInternalSecret(req, res, next) {
     const expected = process.env.AUDIT_CAPA_SYNC_SECRET;
     const provided = req.headers["x-internal-secret"];
@@ -24,7 +33,7 @@ function requireInternalSecret(req, res, next) {
         console.error("AUDIT_CAPA_SYNC_SECRET is not set — cannot verify internal hub requests.");
         return res.status(503).json({ message: "Internal sync is not configured yet." });
     }
-    if (!provided || provided !== expected) {
+    if (!provided || !secretsMatch(provided, expected)) {
         return res.status(401).json({ message: "Not authorized." });
     }
     next();

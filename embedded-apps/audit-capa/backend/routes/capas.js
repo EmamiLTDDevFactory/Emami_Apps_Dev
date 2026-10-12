@@ -10,7 +10,24 @@ const {
   deleteCAPAsForAudit
 } = require("../controllers/capaController");
 
+const allowFields = require("../middleware/fieldAllowlist");
+const actorCheck = require("../middleware/actorCheck");
+
 const router = express.Router();
+
+// Every field the frontend sends on a CAPA update (src/pages/CAPAManagement.js updateCAPA(...)
+// calls, incl. handleSaveDraft's rootCause / preventiveAction / cqaRemarks / targetDate, and the
+// Depot "Add CAPA" entries in additionalActions) — also exactly the fields models/capaModel.js
+// updateCAPA writes. Anything else is logged (and dropped when ENFORCE_AUTH=on).
+const capaUpdateFields = allowFields("/api/capas/:id", [
+  "rootCause",
+  "preventiveAction",
+  "cqaRemarks",
+  "targetDate",
+  "status",
+  "submittedDate",
+  "additionalActions",
+]);
 
 const uploadCAPAEvidence =
   require("../middleware/uploadCAPAEvidence");
@@ -24,6 +41,8 @@ const uploadCAPAEvidence =
 router.post(
   "/:id/evidence",
   uploadCAPAEvidence.capaEvidenceArray,
+  // After multer, so the multipart body is parsed. Log-only.
+  actorCheck("/api/capas/:id/evidence", ["body.uploadedBy:role"]),
   addCAPAEvidenceController
 );
 
@@ -40,7 +59,7 @@ router.get("/", getCAPAs);
 router.post("/", createCAPAs);
 // router.put("/sync", replaceCAPAs);
 router.delete("/", deleteCAPAsForAudit);
-router.patch("/:id", updateCAPA);
-router.put("/:id", updateCAPA);
+router.patch("/:id", capaUpdateFields, updateCAPA);
+router.put("/:id", capaUpdateFields, updateCAPA);
 
 module.exports = router;

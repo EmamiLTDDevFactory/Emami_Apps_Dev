@@ -1,10 +1,12 @@
+const crypto = require("crypto");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { uploadsRoot } = require("../config/uploads");
 
 const uploadDirectory = path.join(
-    __dirname,
-    "../uploads/capa-evidence"
+    uploadsRoot,
+    "capa-evidence"
 );
 
 console.log("UPLOAD __dirname:", __dirname);
@@ -52,26 +54,57 @@ const makeStorage = (directory) => multer.diskStorage({
         cb(null, directory);
     },
 
+    // Stored name is random so a file's /uploads URL can't be guessed (it used to be
+    // `${Date.now()}-${originalname}`). The original name is still saved and returned as
+    // evidenceFileName (controllers/capaController.js), which is what the UI shows and downloads
+    // as. Files already on disk keep their old names.
     filename: (req, file, cb) => {
 
         const extension =
-            path.extname(file.originalname);
+            path.extname(file.originalname).toLowerCase();
 
-        const baseName =
-            path
-                .basename(
-                    file.originalname,
-                    extension
-                )
-                .replace(/[^a-zA-Z0-9-_]/g, "_");
+        const safeExtension =
+            /^\.[a-z0-9]{1,8}$/.test(extension)
+                ? extension
+                : "";
 
-        // Random suffix: several files can arrive in the same millisecond now.
-        const uniqueName =
-            `${Date.now()}-${Math.round(Math.random() * 1e6)}-${baseName}${extension}`;
-
-        cb(null, uniqueName);
+        // A random UUID per file also keeps names unique when several files
+        // arrive in the same request.
+        cb(null, `${crypto.randomUUID()}${safeExtension}`);
     },
 });
+
+// Checked on top of the extension list below, LOG-ONLY unless ENFORCE_AUTH=on (same convention
+// as middleware/requireAuth.js). Covers everything the evidence picker's `accept` allows
+// (src/pages/CAPAManagement.js: pdf, jpg/jpeg, png, doc/docx, xls/xlsx) plus txt/csv/zip.
+const allowedMimeTypes = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "text/plain",
+    "text/csv",
+    "application/zip",
+    "application/x-zip-compressed"
+];
+
+const isAllowedMimeType = (mimeType) => {
+
+    const type =
+        String(mimeType || "").toLowerCase();
+
+    // Browsers send this (or nothing) when the OS has no type registered for the extension, e.g.
+    // .xlsx on a machine without Office — the extension check below is what decides then.
+    if (!type || type === "application/octet-stream") {
+        return true;
+    }
+
+    return (
+        type.startsWith("image/") ||
+        type.startsWith("application/vnd.openxmlformats-officedocument.") ||
+        allowedMimeTypes.includes(type)
+    );
+};
 
 const fileFilter = (req, file, cb) => {
 
@@ -90,6 +123,22 @@ const fileFilter = (req, file, cb) => {
         path.extname(
             file.originalname
         ).toLowerCase();
+
+    if (!isAllowedMimeType(file.mimetype)) {
+
+        console.warn(
+            `[auth-would-reject] upload-mime ${req.method} ${req.originalUrl.split("?")[0]} mimetype=${file.mimetype} ext=${extension}`
+        );
+
+        if (String(process.env.ENFORCE_AUTH || "").trim().toLowerCase() === "on") {
+            return cb(
+                new Error(
+                    "Unsupported evidence file type."
+                ),
+                false
+            );
+        }
+    }
 
     if (allowedTypes.includes(extension)) {
         cb(null, true);
@@ -115,8 +164,8 @@ const makeUploader = (directory) => multer({
 const uploadCAPAEvidence = makeUploader(uploadDirectory);
 
 const checklistUploadDirectory = path.join(
-    __dirname,
-    "../uploads/checklist-evidence"
+    uploadsRoot,
+    "checklist-evidence"
 );
 
 if (!fs.existsSync(checklistUploadDirectory)) {
