@@ -10,6 +10,7 @@ import { usePwaInstall } from '../hooks/usePwaInstall';
 import { useTypewriterPlaceholder } from '../hooks/useTypewriterPlaceholder';
 import { useIsScrolling } from '../hooks/useScrollActivity';
 import Avatar from './Avatar';
+import { useOrgProfile } from '../hooks/useOrgProfile';
 import EmpAppMark from './EmpAppMark';
 
 const SEARCH_EXAMPLES = ['Dispatch Tracker', 'Recruitment Consultant Management Portal', 'Non CTC Expense', 'Mould Health Inspection'];
@@ -25,6 +26,8 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
   const { userEmail, profile, logout } = useAuth();
   const currentUser = { name: profile?.name || userEmail || '', email: profile?.email || userEmail || '' };
   const [profileOpen, setProfileOpen] = useState(false);
+  const org = useOrgProfile(userEmail);
+  const orgLine = [org?.jobTitle, org?.department].filter(Boolean).join(' · ');
   const [searchFocused, setSearchFocused] = useState(false);
   const isWideScreen = useIsWideScreen();
   const isMobile = useIsMobile();
@@ -137,12 +140,13 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
               avatar alone still opens the same account menu. */}
           {!isMobile && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, maxWidth: isWideScreen ? 170 : 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {currentUser.name}
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 1 }}>
-                <span style={{ fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>Account</span>
-                <ChevronDown size={12} color={colors.inkSoft} />
+              <span style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 1 }} title={orgLine || undefined}>
+                {/* Job title from Microsoft Entra ID when known (see useOrgProfile); "Account" otherwise. */}
+                <span style={{ fontSize: 11, fontFamily: fonts.sansRegular, color: colors.inkSoft, maxWidth: isWideScreen ? 156 : 106, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{org?.jobTitle || 'Account'}</span>
+                <ChevronDown size={12} color={colors.inkSoft} style={{ flexShrink: 0 }} />
               </span>
             </div>
           )}
@@ -156,8 +160,8 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
             style={{
               position: 'absolute',
               top: 56,
-              right: 16,
-              width: 220,
+              right: isMobile ? 8 : 16,
+              width: org ? 'min(300px, calc(100vw - 16px))' : 'min(240px, calc(100vw - 16px))',
               backgroundColor: colors.white,
               borderRadius: radii.lg,
               border: `1px solid ${colors.border}`,
@@ -168,8 +172,22 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
           >
             <div style={{ padding: 14, borderBottom: `1px solid ${colors.border}` }}>
               <p style={{ fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0 }}>{currentUser.name}</p>
-              <p style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 2, marginBottom: 0 }}>{currentUser.email}</p>
+              <p style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 2, marginBottom: 0, overflowWrap: 'anywhere' }}>{currentUser.email}</p>
+              {orgLine && <p style={{ fontSize: 12, color: colors.ink, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, marginTop: 6, marginBottom: 0 }}>{orgLine}</p>}
             </div>
+            {!!org?.managers?.length && (
+              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {org.managers.map((m) => (
+                  <div key={m.level} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ flexShrink: 0, marginTop: 1, fontSize: 10, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.rust, backgroundColor: `${colors.rust}12`, borderRadius: 6, padding: '2px 6px' }}>L{m.level}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 12.5, color: colors.ink, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold }}>{m.displayName || '—'}</span>
+                      {m.jobTitle && <span style={{ display: 'block', fontSize: 11, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 1 }}>{m.jobTitle}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <MenuRow icon={<User size={15} color={colors.inkSoft} />} label="Profile" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
             <MenuRow icon={<LogOut size={15} color={colors.inkSoft} />} label="Sign out" onClick={() => { setProfileOpen(false); logout(); }} />
           </div>
