@@ -22,7 +22,7 @@ import ChangeTimeline from '../../../components/admin/ChangeTimeline';
 import AppStatusPanel from '../../../components/admin/AppStatusPanel';
 import {
   AdminStyles, AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot,
-  AUDIT_CAPA_APP_ID, GRANTABLE_LEVELS, SORTED_APPS,
+  AUDIT_CAPA_APP_ID, auditCapaRoleNeedsDepot, GRANTABLE_LEVELS, SORTED_APPS,
   appLabel, canSetLevel, cardStyle, chipStyle, displayName, inputStyle, inputWrapStyle, labelStyle, primaryBtnStyle,
   roleOf, roleOptionsFor, runBatched, secondaryBtnStyle, sectionSubStyle, sectionTitleStyle, timeAgo,
   type AdminUser,
@@ -236,7 +236,7 @@ function AdminCenter() {
   };
   const bulkAppRole = async () => {
     const targets = users.filter((u) => selected.has(u.email));
-    if (bulkApp === AUDIT_CAPA_APP_ID && bulkRole === 'Depot') return notify('Depot roles need a depot — set them per person', 'error');
+    if (bulkApp === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(bulkRole)) return notify('Depot and View roles need a depot — set them per person', 'error');
     setBulkBusy(true);
     try {
       const results = await runBatched(targets, BULK_CONCURRENCY, (u) => setAppAccess(u.email, bulkApp, bulkRole, null, userEmail || undefined));

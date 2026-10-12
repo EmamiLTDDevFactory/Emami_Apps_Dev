@@ -11,7 +11,7 @@ import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens'
 import SidePanel, { PanelTabs } from './SidePanel';
 import ChangeTimeline from './ChangeTimeline';
 import {
-  AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, GRANTABLE_LEVELS, ROLE_MANAGED_INTERNALLY, SORTED_APPS,
+  AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, auditCapaRoleNeedsDepot, GRANTABLE_LEVELS, ROLE_MANAGED_INTERNALLY, SORTED_APPS,
   AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot, Switch,
   appLabel, canSetLevel, chipStyle, depotOf, displayName, errorTextStyle, formatDateTime, inputStyle, inputWrapStyle,
   labelStyle, primaryBtnStyle, roleOf, roleOptionsFor, secondaryBtnStyle, timeAgo,
@@ -123,8 +123,8 @@ export default function UserDrawer({
     setDraft((d) => ({
       ...d,
       roles: { ...d.roles, [appId]: role },
-      // Picking Depot on Audit & CAPA defaults the depot so the grant is never saved half-filled.
-      depots: appId === AUDIT_CAPA_APP_ID && role === 'Depot' && !d.depots[appId] ? { ...d.depots, [appId]: AUDIT_CAPA_DEPOTS[0] } : d.depots,
+      // Picking Depot/View on Audit & CAPA defaults the depot so the grant is never saved half-filled.
+      depots: appId === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(role) && !d.depots[appId] ? { ...d.depots, [appId]: AUDIT_CAPA_DEPOTS[0] } : d.depots,
     }));
   };
 
@@ -349,7 +349,7 @@ export default function UserDrawer({
                         onChange={(r) => setRole(app.id, r)}
                       />
                     </div>
-                    {app.id === AUDIT_CAPA_APP_ID && role === 'Depot' && (
+                    {app.id === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(role) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, paddingLeft: 40, flexWrap: 'wrap' }}>
                         <span style={{ ...labelStyle, fontSize: 10 }}>Depot</span>
                         {AUDIT_CAPA_DEPOTS.map((d) => (

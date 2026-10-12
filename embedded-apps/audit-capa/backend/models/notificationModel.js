@@ -59,7 +59,8 @@ const pool = require("../config/db");
 
 // Depot notifications go to EVERY active Depot user of the audit's depot (one
 // row each, so each sees it in their feed and gets the email) — a depot can have
-// several Depot logins. CQA notifications stay a shared, role-wide feed; for the
+// several Depot logins. View (read-only) users get the same: those of the
+// audit's depot, and Head Office ("HO") viewers for every depot. CQA notifications stay a shared, role-wide feed; for the
 // ones that send an email, the audit's auditor is set as the recipient.
 const resolveDepotRecipients = async (auditId) => {
 
@@ -72,9 +73,11 @@ const resolveDepotRecipients = async (auditId) => {
     SELECT u.id
     FROM audit_capa.audits a
     JOIN audit_capa.users u
-        ON u.depot = a.depot
-        AND u.role = 'Depot'
-        AND u.is_active = TRUE
+        ON u.is_active = TRUE
+        AND (
+            (u.role IN ('Depot', 'View') AND u.depot = a.depot)
+            OR (u.role = 'View' AND u.depot = 'HO')
+        )
     WHERE a.id = $1
     ORDER BY u.id
     `,
@@ -188,8 +191,14 @@ const createNotification =
     return created[0];
   };
 
+// View users read the Depot copies addressed to them (they're stored with role
+// "Depot"), so their feed is the same per-user Depot feed.
+const feedRole = (role) => (role === "View" ? "Depot" : role);
+
 const getAllNotifications =
-  async (role, recipientUserId) => {
+  async (requestedRole, recipientUserId) => {
+
+    const role = feedRole(requestedRole);
 
     // Depot's feed is per-user; CQA stays a shared, role-wide feed.
     const scopeToRecipient = role === "Depot" && recipientUserId;
@@ -247,7 +256,9 @@ const markAsRead =
   };
 
 const markAllAsRead =
-  async (role, recipientUserId) => {
+  async (requestedRole, recipientUserId) => {
+
+    const role = feedRole(requestedRole);
 
     const scopeToRecipient = role === "Depot" && recipientUserId;
 

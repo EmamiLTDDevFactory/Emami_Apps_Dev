@@ -56,6 +56,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import ReplayIcon from "@mui/icons-material/Replay";
+import { isDepotSideUser, seesAllDepots } from "../utils/roles";
 
 
 
@@ -87,8 +88,7 @@ export default function AuditList() {
     );
 
     const isDepot =
-        currentUser?.role ===
-        "Depot";
+        isDepotSideUser(currentUser);
 
     const isTablet =
         useMediaQuery(
@@ -99,7 +99,7 @@ export default function AuditList() {
         !isDepot && isTablet;
 
     const visibleAudits =
-        isDepot
+        isDepot && !seesAllDepots(currentUser)
             ? audits.filter(
                 (audit) =>
                     audit.depot ===
