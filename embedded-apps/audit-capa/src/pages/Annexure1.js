@@ -87,6 +87,7 @@ import {
     GENERAL_INFO_DEFAULTS,
     STATUTORY_LICENCE_FIELDS,
 } from "../utils/generalInfoFields";
+import { isDepotSideUser, isViewOnlyUser } from "../utils/roles";
 
 // Red asterisk for mandatory signature fields.
 const RequiredMark = () => (
@@ -222,9 +223,13 @@ export default function Annexure1() {
             )
         );
 
+    // Depot-side (Depot or View). View users are read-only: canActAsDepot
+    // is what allows filling, signing or submitting as the Depot.
     const isDepot =
-        currentUser?.role ===
-        "Depot";
+        isDepotSideUser(currentUser);
+
+    const canActAsDepot =
+        isDepot && !isViewOnlyUser(currentUser);
 
     // Desktop audits created after the unified-flow change run exactly like
     // Onsite (CQA fills checklist -> CAPA -> Depot). Only Desktop audits that
@@ -265,7 +270,7 @@ export default function Annexure1() {
             // )
 
             isDesktopAudit &&
-            isDepot &&
+            canActAsDepot &&
             [
                 "Open",
                 "In Progress",
@@ -3054,7 +3059,7 @@ export default function Annexure1() {
                                 selectedAudit?.depotInchargeName || ""
                             }
                             disabled={
-                                !isDepot ||
+                                !canActAsDepot ||
                                 isAuditInactive ||
                                 selectedAudit?.depotSignatureSubmitted
                             }
@@ -3136,7 +3141,7 @@ export default function Annexure1() {
                                 >
                                     <SignatureCanvas
                                         ref={depotSigRef}
-                                        disabled={!isDepot}
+                                        disabled={!canActAsDepot}
                                         penColor="black"
                                         canvasProps={{
                                             width: 300,
@@ -3145,7 +3150,7 @@ export default function Annexure1() {
                                     />
                                 </Box>
 
-                                {isDepot && (
+                                {canActAsDepot && (
                                     <>
                                         <Button
                                             size="small"
@@ -3213,7 +3218,7 @@ export default function Annexure1() {
                                 />
                                 <SignatureCanvas
                                     ref={depotSigRef}
-                                    disabled={!isDepot}
+                                    disabled={!canActAsDepot}
                                     penColor="black"
                                     canvasProps={{
                                         width: 300,
@@ -3226,7 +3231,7 @@ export default function Annexure1() {
                     }
 
                     {
-                        isDepot &&
+                        canActAsDepot &&
                         !selectedAudit?.depotSignatureSubmitted && (
                             <>
                                 <Button
@@ -3334,7 +3339,7 @@ export default function Annexure1() {
                     {/* {!isDepot && ( */}
                     {/* {canEditAnnexure && ( */}
                     {(
-                        (isDesktopAudit && isDepot) ||
+                        (isDesktopAudit && canActAsDepot) ||
                         (isOnsiteAudit && !isDepot)
                     ) && (
 
@@ -3467,7 +3472,7 @@ export default function Annexure1() {
 
                     {/* {isDesktopAudit && isDepot && ( */}
                     {isDesktopAudit &&
-                        isDepot &&
+                        canActAsDepot &&
                         // selectedAudit?.status !==
                         // "Self Assessment Submitted" 
                         ["Open", "In Progress", "Rework Required"]

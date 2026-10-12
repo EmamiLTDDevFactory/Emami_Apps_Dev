@@ -244,7 +244,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       const app = appById(str(input.app_id));
       const role = str(input.role) as AppRole;
       if (!app) return fail('Unknown app.');
-      if (app.id === AUDIT_CAPA_APP_ID) return fail('Audit & CAPA needs a CQA/Depot role and a depot - do it in the Admin Center.');
+      if (app.id === AUDIT_CAPA_APP_ID) return fail('Audit & CAPA needs a CQA/Depot/View role and a depot - do it in the Admin Center.');
       if (!roleOptionsFor(app.id).includes(role)) return fail(`${app.name} takes these roles: ${roleOptionsFor(app.id).join(', ')}.`);
       if (!(await ctx.confirm(`Give ${email} access to ${app.name} as ${role}?`))) return ok({ declined: true });
       const r = await setAppAccess(email, app.id, role, null, ctx.userEmail);

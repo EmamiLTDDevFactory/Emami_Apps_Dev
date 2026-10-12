@@ -11,7 +11,10 @@ import { appColor, colors, fontWeights, fonts, gradients, radii, shadows } from 
  * rules, formatters and the small visual primitives every panel/drawer there reuses. */
 
 export const AUDIT_CAPA_APP_ID = 'audit-capa';
-export const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot'];
+export const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot', 'Ahmedabad Depot', 'HO'];
+/** Audit & CAPA roles that belong to a depot: Depot, and View (read-only Depot-side access; a
+ * View user at 'HO' sees every depot inside Audit & CAPA). */
+export const auditCapaRoleNeedsDepot = (role: string | null | undefined) => role === 'Depot' || role === 'View';
 const PAYMENT_TRACKING_APP_ID = 'payment-tracking';
 /** Apps that only take a single hub-level grant — their real screen roles come from SAP or the
  * app's own DB (PO Approval, Audit Tool, Shelf Life Deviation). */
@@ -25,7 +28,7 @@ export const GRANTABLE_LEVELS: AccessLevel[] = ['Admin', 'Viewer'];
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function roleOptionsFor(appId: string): AppRole[] {
-  if (appId === AUDIT_CAPA_APP_ID) return ['Depot', 'CQA'];
+  if (appId === AUDIT_CAPA_APP_ID) return ['Depot', 'View', 'CQA'];
   if (appId === PAYMENT_TRACKING_APP_ID) return ['User', 'Admin', 'Finance'];
   if (SINGLE_GRANT_APP_IDS.has(appId)) return ['User'];
   return ['User', 'Admin'];

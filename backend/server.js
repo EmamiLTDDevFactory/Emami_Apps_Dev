@@ -125,7 +125,7 @@ async function requireAccessManager(req, res, next) {
  * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Approval
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'] };
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

@@ -41,7 +41,7 @@ export type CategoryFilter = 'All' | Category;
  * 'Finance' is Provision Tracking's own third role (Pending Approval, Upcoming Provision (All
  * Vendors), Submission History, Purchase Order Creation and Details) — also gated per-app, and
  * only valid for 'payment-tracking' server-side (see backend/server.js's VALID_ROLES_BY_APP). */
-export type AppRole = 'User' | 'Admin' | 'CQA' | 'Depot' | 'Finance';
+export type AppRole = 'User' | 'Admin' | 'CQA' | 'Depot' | 'View' | 'Finance';
 
 export interface UserAppGrant {
   appId: string;

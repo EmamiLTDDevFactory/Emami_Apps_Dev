@@ -30,6 +30,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 
 import emamiAppsLogo from "../../assets/emami-apps-logo.png";
 import { EMAMI_APPS_URL } from "./emamiAppsUrl";
+import { isDepotSideUser } from "../../utils/roles";
 
 export default function Sidebar() {
     const location = useLocation();
@@ -123,8 +124,7 @@ export default function Sidebar() {
     ];
 
     const menuItems =
-        currentUser?.role ===
-            "Depot"
+        isDepotSideUser(currentUser)
             ? depotMenus
             : cqaMenus;
 

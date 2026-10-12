@@ -82,6 +82,7 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import AccessTimeFilledIcon from "@mui/icons-material/AccessTimeFilled";
+import { isDepotSideUser, isViewOnlyUser } from "../utils/roles";
 
 
 // CQA "Add CAPA" (a separate CAPA per finding) is replaced by the Depot adding
@@ -234,8 +235,9 @@ export default function CAPAManagement() {
         )
     );
 
+    // Depot-side (Depot or View); View users never get canEditCAPA.
     const isDepot =
-        currentUser?.role === "Depot";
+        isDepotSideUser(currentUser);
 
     // const refreshCAPAs = async () => {
     //     const data = await getCAPAs(auditId);
@@ -1628,6 +1630,7 @@ export default function CAPAManagement() {
 
                 const canEditCAPA =
                     isDepot &&
+                    !isViewOnlyUser(currentUser) &&
                     !isFrozen &&
                     (
                         item.status === "Open" ||

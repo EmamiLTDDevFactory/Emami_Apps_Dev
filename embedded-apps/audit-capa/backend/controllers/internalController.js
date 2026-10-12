@@ -7,7 +7,8 @@ const { upsertUserFromHub, deactivateUserByEmail } = require("../models/userMode
  * effect the next time this person's browser talks to /auth/login (see routes/auth.js), instead of
  * requiring someone to run that script.
  */
-const VALID_ROLES = ["CQA", "Depot"];
+// View = read-only Depot-side access (depot "HO" sees every depot).
+const VALID_ROLES = ["CQA", "Depot", "View"];
 
 const grantAccess = async (req, res) => {
     try {

@@ -7,7 +7,7 @@ import { addAuthorizedUser, setAppAccess } from '../../lib/accessApi';
 import { appColor, colors, fontWeights, fonts, gradients, radii } from '../../theme/tokens';
 import { Segmented } from './UserDrawer';
 import {
-  AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, EMAIL_RE, SORTED_APPS,
+  AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, auditCapaRoleNeedsDepot, EMAIL_RE, SORTED_APPS,
   AppIcon, Spinner, chipStyle, chunk, errorTextStyle, ghostIconBtnStyle, inputStyle, inputWrapStyle, labelStyle,
   primaryBtnStyle, roleOptionsFor, secondaryBtnStyle,
 } from './adminShared';
@@ -63,7 +63,7 @@ export default function AddUsersDialog({
     return q ? SORTED_APPS.filter((a) => a.name.toLowerCase().includes(q)) : SORTED_APPS;
   }, [appSearch]);
 
-  const depotFor = (appId: string) => (appId === AUDIT_CAPA_APP_ID && roles[appId] === 'Depot' ? depot : null);
+  const depotFor = (appId: string) => (appId === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(roles[appId]) ? depot : null);
   const close = () => {
     if (!busy) onClose();
   };
@@ -215,7 +215,7 @@ export default function AddUsersDialog({
                       onChange={(r) => setRoles((p) => ({ ...p, [app.id]: r }))}
                     />
                   </div>
-                  {app.id === AUDIT_CAPA_APP_ID && roles[app.id] === 'Depot' && (
+                  {app.id === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(roles[app.id]) && (
                     <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingLeft: 36, flexWrap: 'wrap' }}>
                       {AUDIT_CAPA_DEPOTS.map((d) => (
                         <button key={d} type="button" onClick={() => setDepot(d)} style={{ ...chipStyle(depot === d, appColor(app.id)), padding: '4px 10px', fontSize: 11.5 }}>{d}</button>
