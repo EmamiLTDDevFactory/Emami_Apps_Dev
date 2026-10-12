@@ -82,6 +82,29 @@ set, or (expand) `RatePcInr x ProdQty + line FrtPcInr x ProdQty`. RatePcInr is u
 `RatePc x FxInr` because it already includes the option-to-plant FX (`Fx`), so it stays right when the
 option currency differs from the plant currency.
 
+### Production Plan module (`lib/plan/`, `components/plan/`, phase 2 of 5: scaffolding)
+
+Off unless the build sets `PLAN_MODULE_ENABLED=true` (or `NEXT_PUBLIC_PLAN_MODULE_ENABLED=true`;
+next.config.mjs maps the first onto the second). Off = no "Production plan" nav section, no plan
+requests, and no plan code in the costing page's scripts (each plan route loads its screen with a
+dynamic import only when the flag is on; checked in the built `dist/`).
+
+Routes: `/plan` (plans), `/plan/upload` (upload wizard) and `/plan/view/?plan=<name>` (one plan, with its
+own tab bar: Entries | Breakup & cost | Requirement | Checks | WIP | Scenarios). A static export cannot have
+a dynamic `/plan/[plan]` route for plan names unknown at build time, so the plan name is a query parameter.
+Reads go browser -> gateway like every costing read; writes (phase 3) will go the same way, the gateway
+doing the CSRF handshake (as Gate Entry's saves do). All SAP names live in `lib/plan/fields.ts`
+(PlanHeadSet, PlanEntrySet, PlanUploadSet deep insert, PlanCheckSet, PlanSummarySet, PlanWipSet, and the
+Mode P fields of CostLineSet); requests in `lib/plan/requests.ts` (Mode P never sends `$expand`), reads in
+`lib/plan/client.ts`. The lazy rate-options layer accepts any CostLineSet filter
+(`fetchRateOptionsByFilter`) so the plan breakup can reuse it. Browser storage keys start with `plan:`.
+Status in phase 2: nav, routes, client and mock only; every tab is an empty placeholder.
+
+The mock (`mock/plan.ts`) seeds plans FY27-BASE (5 rows, including FG5001 in BD10, which has no BOM of its
+own and is costed with plant 1000's BOM: the LASTPROD example) and FY27-EXPORT, and answers every plan set,
+the PlanUploadSet deep insert (dry run and save, merge / replace, per-row status), entry PUT / DELETE, and
+the 30-plan-rows-per-request limit.
+
 ### Connection diagnostics (`/admin/connection`)
 
 Runs `$metadata`, `ConfigItemSet`, `PlantVHSet?$top=1` and a tiny `CostLineSet` (with and without
@@ -165,6 +188,8 @@ responses (`npx tsx mock/dump-fixtures.ts` regenerates them).
   and `tests/unit/rates.test.ts`: the main call's frozen network baseline (snapshot), expand-fails /
   direct-works / only-expand-works, capability expiry and Re-test, normaliser, no `+` in URLs, Rate sources maths.
   The mock's rate behaviour is chosen with `MOCK_SAP_RATES=expand-fails|direct-works|only-expand-works`.
+  `tests/unit/plan.test.ts`: plan flag off by default, Mode P filter / no `$expand` / no `+`, every plan set
+  against the mock, LASTPROD, the 30-row limit, and the upload dry run / save.
 - `npm run test:e2e`: Playwright smoke test. It starts the HTTP mock SAP and the app with
   `MOCK_SAP=false`, so the real SAP client path (Basic auth, sap-client, headers) is exercised:
   hub-token sign-in, B tree/drawer/dashboard/simulator, C pivot, R paging, SAP error, cancel, and

@@ -35,7 +35,8 @@ const nextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
   reactStrictMode: true,
-  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv },
+  // Production Plan module: off unless PLAN_MODULE_ENABLED / NEXT_PUBLIC_PLAN_MODULE_ENABLED is 'true' at build time.
+  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv, NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || 'false' },
 };
 
 export default nextConfig;

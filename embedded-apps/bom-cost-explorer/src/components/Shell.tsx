@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, Boxes, Calendar, Layers, Menu, Scale, Tags, Truck, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Boxes, Calendar, ClipboardList, Layers, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
@@ -37,7 +38,10 @@ export function nameFromEmail(email: string): string {
 /** Hub home: the embedded app lives at /apps/bom-cost-explorer on the hub's own origin. */
 const HUB_HOME = '/';
 
-function NavPane({ mode, onMode, open, onClose, wide }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean }) {
+/** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
+export type PlanNav = 'plans' | 'upload';
+
+function NavPane({ mode, onMode, open, onClose, wide, planActive }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav }) {
   const pane = wide
     ? 'relative w-64 shrink-0 border-r border-line bg-panel'
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-panel shadow-pop transition-transform duration-200', open ? 'translate-x-0' : '-translate-x-full');
@@ -58,9 +62,16 @@ function NavPane({ mode, onMode, open, onClose, wide }: { mode: Mode; onMode: (m
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
           <p className="px-3 pb-1 pt-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Costing</p>
-          {(['B', 'C'] as Mode[]).map((m) => <NavItem key={m} m={m} active={mode === m} onClick={() => { onMode(m); onClose(); }} />)}
+          {(['B', 'C'] as Mode[]).map((m) => <NavItem key={m} m={m} active={!planActive && mode === m} onClick={() => { onMode(m); onClose(); }} />)}
           <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Analysis</p>
-          {(['R', 'F', 'M'] as Mode[]).map((m) => <NavItem key={m} m={m} active={mode === m} onClick={() => { onMode(m); onClose(); }} />)}
+          {(['R', 'F', 'M'] as Mode[]).map((m) => <NavItem key={m} m={m} active={!planActive && mode === m} onClick={() => { onMode(m); onClose(); }} />)}
+          {PLAN_MODULE_ENABLED && (
+            <>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Production plan</p>
+              <NavLink href={`${BASE_PATH}/plan/`} icon={ClipboardList} label="Plans" hint="Plans in SAP, breakup and cost" active={planActive === 'plans'} />
+              <NavLink href={`${BASE_PATH}/plan/upload/`} icon={Upload} label="Upload plan" hint="Excel template, check, save" active={planActive === 'upload'} />
+            </>
+          )}
         </nav>
         <div className="border-t border-line px-4 py-3 text-[11px] leading-snug text-faint">
           Costs come from SAP <span className="font-mono">ZMM_BOM_COST_SRV</span>. Simulations stay in your browser.
@@ -90,6 +101,24 @@ function NavItem({ m, active, onClick }: { m: Mode; active: boolean; onClick: ()
   );
 }
 
+function NavLink({ href, icon: Icon, label, hint, active }: { href: string; icon: LucideIcon; label: string; hint: string; active: boolean }) {
+  return (
+    <a
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      className={cx('group flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition', active ? 'bg-accent/10 text-accent' : 'text-ink hover:bg-sunken')}
+    >
+      <span className={cx('mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg transition', active ? 'bg-gradient-to-br from-accent to-accent-deep text-white shadow-sm' : 'bg-sunken text-accent group-hover:bg-panel')}>
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold">{label}</span>
+        <span className={cx('block truncate text-[11px]', active ? 'text-accent/80' : 'text-muted')}>{hint}</span>
+      </span>
+    </a>
+  );
+}
+
 /** SAP system + app environment, always visible; red for production SAP (NWP). */
 export function EnvBadge({ system, appEnv }: { system: string; appEnv: string }) {
   const prod = system === 'NWP';
@@ -103,7 +132,7 @@ export function EnvBadge({ system, appEnv }: { system: string; appEnv: string })
   );
 }
 
-export default function Shell({ mode, onMode, email, actions, children, env, onBack }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string }; onBack?: () => void }) {
+export default function Shell({ mode, onMode, email, actions, children, env, onBack, planActive }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string }; onBack?: () => void; planActive?: PlanNav }) {
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -111,7 +140,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   const Icon = MODE_ICON[mode];
   return (
     <div className="flex h-screen overflow-clip bg-plum">
-      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} />
+      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} />
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <div className="flex bg-plum no-print">
           {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
@@ -128,7 +157,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
           )}
           <h1 className="truncate text-[15px] font-extrabold text-ink">BOM Simulator</h1>
           <span className="hidden items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-accent sm:inline-flex">
-            <Icon size={11} /> {MODE_LABEL[mode]}
+            {planActive ? <><ClipboardList size={11} /> Production plan</> : <><Icon size={11} /> {MODE_LABEL[mode]}</>}
           </span>
           <EnvBadge {...env} />
           <div className="flex-1" />

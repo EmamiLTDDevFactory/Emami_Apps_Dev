@@ -17,7 +17,7 @@ import { buildSelectionFilter } from '../sap/filter';
 import { ENTITY_SET, NAV_RATE_OPTIONS } from '../sap/entities';
 import { RATE_OPTION, type CostLine } from '../sap/fields';
 import { normalizeEntity } from '../sap/normalize';
-import type { CostQuery } from '../query/schema';
+import { defaultQuery, type CostQuery } from '../query/schema';
 import { getRatesCapability, setRatesCapability, type RatesProbe } from './capability';
 import { EXPAND_PARENT, RATE_OPTION_DIRECT, RATE_OPTION_SET, optionKey, type RateOptionRow } from './fields';
 
@@ -38,13 +38,13 @@ export function isRatesShapeMissing(e: unknown): boolean {
 }
 
 /** The probe / fetch request for each shape. Same filter builder as the costing call. */
-export function directRequest(q: CostQuery) {
-  return { entitySet: RATE_OPTION_SET, params: { $filter: buildSelectionFilter(q) } as Record<string, string | undefined> };
+export function directRequest(q: CostQuery | string) {
+  return { entitySet: RATE_OPTION_SET, params: { $filter: typeof q === 'string' ? q : buildSelectionFilter(q) } as Record<string, string | undefined> };
 }
-export function expandRequest(q: CostQuery) {
+export function expandRequest(q: CostQuery | string) {
   return {
     entitySet: ENTITY_SET.COST_LINES,
-    params: { $filter: buildSelectionFilter(q), $select: [...Object.values(EXPAND_PARENT).map(([n]) => n), NAV_RATE_OPTIONS].join(','), $expand: NAV_RATE_OPTIONS } as Record<string, string | undefined>,
+    params: { $filter: typeof q === 'string' ? q : buildSelectionFilter(q), $select: [...Object.values(EXPAND_PARENT).map(([n]) => n), NAV_RATE_OPTIONS].join(','), $expand: NAV_RATE_OPTIONS } as Record<string, string | undefined>,
   };
 }
 
@@ -77,13 +77,14 @@ export function attachRateOptions(lines: CostLine[], options: RateOptionRow[]): 
   return lines.map((l) => ({ ...l, RateOptions: by.get(optionKey(l)) ?? [] }));
 }
 
-function probeQuery(q: CostQuery): CostQuery {
+/** The probe as a filter: the configured probe material/plant (Mode B, ExplQty 1), else the caller's own filter. */
+function probeFilter(own: string, base: CostQuery): string {
   const matnr = (process.env.NEXT_PUBLIC_RATES_PROBE_MATNR || '').trim();
   const werks = (process.env.NEXT_PUBLIC_RATES_PROBE_WERKS || '').trim();
-  return matnr && werks ? { ...q, mode: 'B', materials: [matnr], plants: [werks], explQty: '1' } : q;
+  return matnr && werks ? buildSelectionFilter({ ...base, mode: 'B', materials: [matnr], plants: [werks], explQty: '1' }) : own;
 }
 
-async function run(kind: 'direct' | 'expand', q: CostQuery, opts: SapGetOptions, c: SapConfig): Promise<{ rows: RateOptionRow[]; probe: RatesProbe }> {
+async function run(kind: 'direct' | 'expand', q: string, opts: SapGetOptions, c: SapConfig): Promise<{ rows: RateOptionRow[]; probe: RatesProbe }> {
   const req = kind === 'direct' ? directRequest(q) : expandRequest(q);
   const t = Date.now();
   const url = `${req.entitySet}?$filter=${encodeURIComponent(req.params.$filter ?? '')}${req.params.$expand ? `&$expand=${req.params.$expand}` : ''}`;
@@ -102,23 +103,33 @@ const cache = new Map<string, { at: number; result: RatesResult }>();
 const inflight = new Map<string, Promise<RatesResult>>();
 export const clearRatesCache = () => { cache.clear(); inflight.clear(); };
 
-/** Rate options for a costing query (mode B or P). Shares one request per query between callers. */
-export async function fetchRateOptions(q: CostQuery, opts: SapGetOptions = {}): Promise<RatesResult> {
+/** Rate options for a costing query (mode B). Shares one request per query between callers. */
+export function fetchRateOptions(q: CostQuery, opts: SapGetOptions = {}): Promise<RatesResult> {
+  const own = buildSelectionFilter(q);
+  return fetchRateOptionsByFilter(own, opts, probeFilter(own, q));
+}
+
+/**
+ * Same, for any CostLineSet filter (e.g. the Production Plan's Mode P filter). `probe` is the filter for
+ * the capability probe (default: the same filter). Shares the capability verdict and the cache.
+ */
+export async function fetchRateOptionsByFilter(filter: string, opts: SapGetOptions = {}, probe?: string): Promise<RatesResult> {
   const c = sapConfig();
   if (c.expand === 'off') return { unavailable: true, reason: `${UNAVAILABLE_NOTE} (switched off: SAP_EXPAND_RATE_OPTIONS=off).` };
-  const key = `${c.system}|${JSON.stringify(q)}`;
+  const pf = probe ?? probeFilter(filter, defaultQuery('B'));
+  const key = `${c.system}|${filter}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < RATES_CACHE_MS) return hit.result;
   const pending = inflight.get(key);
   if (pending) return pending;
-  const p = resolve(q, opts, c)
+  const p = resolve(filter, pf, opts, c)
     .then((result) => { cache.set(key, { at: Date.now(), result }); return result; })
     .finally(() => inflight.delete(key));
   inflight.set(key, p);
   return p;
 }
 
-async function resolve(q: CostQuery, opts: SapGetOptions, c: SapConfig): Promise<RatesResult> {
+async function resolve(q: string, pq: string, opts: SapGetOptions, c: SapConfig): Promise<RatesResult> {
   const cap = getRatesCapability(c.system);
   if (cap.state === 'unavailable') return { unavailable: true, reason: cap.reason || UNAVAILABLE_NOTE };
   if (cap.state === 'direct' || cap.state === 'expand') {
@@ -129,7 +140,6 @@ async function resolve(q: CostQuery, opts: SapGetOptions, c: SapConfig): Promise
       // SAP changed under us: re-resolve below.
     }
   }
-  const pq = probeQuery(q);
   const sameQuery = pq === q;
   const probes: RatesProbe[] = [];
   for (const kind of ['direct', 'expand'] as const) {

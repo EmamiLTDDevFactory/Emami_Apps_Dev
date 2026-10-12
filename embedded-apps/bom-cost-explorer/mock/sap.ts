@@ -19,6 +19,7 @@ const MOCK_TYPES: Record<EntitySetKey, string> = {
   COST_LINES: 'CostLine', RATES: 'RateRow', FREIGHT: 'FreightRow', RMPM: 'RmPmRow', PLANTS: 'PlantVH', MATERIALS: 'MaterialVH', CONFIG: 'ConfigItem',
 };
 import { BOMS, FX_INR, MAT, MATERIALS, NO_BOM, PLANTS, hash, optionsFor, rnd, SOURCES, type MockOption } from './data';
+import { handlePlan } from './plan';
 
 type Raw = Record<string, unknown>;
 type FieldMap = Record<string, readonly [string, FieldKind]>;
@@ -520,6 +521,16 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     const top = Number(sp.get('$top') ?? 100);
     return json({ d: { results: list.slice(0, top).map((m) => ({ ...meta('MaterialVH', `${ENTITY_SET.MATERIALS}('${m.Matnr}')`), Matnr: m.Matnr, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins })) } });
   }
+
+  // Production Plan sets (mock/plan.ts): PlanHeadSet / PlanEntrySet / PlanUploadSet / PlanCheckSet /
+  // PlanSummarySet / PlanWipSet and CostLineSet with Mode eq 'P'.
+  const planRes = await handlePlan(set, sp, init, {
+    parseFilter,
+    costLinesFor: (matnr, plant, qty, m) =>
+      costLines(params(new Map([['Mode', ['B']], ['Matnr', [matnr]], ['Werks', [plant]], ['ExplQty', [String(qty)]]])), false, m).map((r) => toSap(r, COST_LINE)),
+    json, odataError, sleep, delay,
+  });
+  if (planRes) return planRes;
 
   // MOCK_SAP_RATES picks how rate options can be read (lib/rates):
   //   expand-fails      $expand=RateOptions -> 501 (the live services today); RateOptionSet -> 404
