@@ -19,6 +19,7 @@ export default function ManageTeamPage() {
     currentUser,
     directReports,
     projects,
+    vendors,
     tasks,
     assignments,
     addProject,
@@ -32,6 +33,7 @@ export default function ManageTeamPage() {
     fetchAddEmployeeCandidates,
     unassignedEmployees,
     claimEmployee,
+    setEmployeeVendor,
     fetchPendingRequests,
     approveEmployee,
     rejectEmployee,
@@ -68,8 +70,10 @@ export default function ManageTeamPage() {
   const [candidates, setCandidates] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
+  const [selectedVendorId, setSelectedVendorId] = useState('');
   const [addingReport, setAddingReport] = useState(false);
   const [claimingUserId, setClaimingUserId] = useState<string | null>(null);
+  const [savingVendorUserId, setSavingVendorUserId] = useState<string | null>(null);
   // People who've specifically named this manager as theirs and are waiting on a yes/no -
   // distinct from unassignedEmployees below (nobody's picked those people at all yet).
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -244,13 +248,14 @@ export default function ManageTeamPage() {
     setAddingReport(true);
     try {
       if (selectedCandidate.id) {
-        await claimEmployee(selectedCandidate.id);
+        await claimEmployee(selectedCandidate.id, selectedVendorId || null);
       } else {
-        await addDirectReport(selectedCandidate.name, selectedCandidate.email);
+        await addDirectReport(selectedCandidate.name, selectedCandidate.email, selectedVendorId || null);
       }
       setCandidates((c) => c.filter((cand) => cand.email !== selectedCandidate.email));
       setSearchQuery('');
       setSelectedCandidate(null);
+      setSelectedVendorId('');
       showToast('Employee added.', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to add employee.', 'error');
@@ -272,6 +277,20 @@ export default function ManageTeamPage() {
       showToast(err.message || 'Failed to add employee - someone else may have already claimed them.', 'error');
     } finally {
       setClaimingUserId(null);
+    }
+  }
+
+  // Sets or changes an already-on-team employee's vendor - covers anyone claimed/added before a
+  // vendor was picked, or correcting a mistaken pick. Empty string clears it to "no vendor".
+  async function handleSetVendor(userId: string, vendorId: string) {
+    setSavingVendorUserId(userId);
+    try {
+      await setEmployeeVendor(userId, vendorId || null);
+      showToast('Vendor updated.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update vendor.', 'error');
+    } finally {
+      setSavingVendorUserId(null);
     }
   }
 
@@ -404,6 +423,24 @@ export default function ManageTeamPage() {
               </ul>
             )}
           </div>
+          <div className="min-w-[180px]">
+            <label htmlFor="employee-vendor" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-inkSoft">
+              Vendor
+            </label>
+            <select
+              id="employee-vendor"
+              value={selectedVendorId}
+              onChange={(e) => setSelectedVendorId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+            >
+              <option value="">No vendor</option>
+              {vendors.map((vendor: any) => (
+                <option key={vendor.code} value={vendor.code}>
+                  {vendor.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button type="submit" disabled={addingReport || !selectedCandidate} className="btn-primary self-end">
             {addingReport ? 'Adding…' : 'Add employee'}
           </button>
@@ -478,6 +515,23 @@ export default function ManageTeamPage() {
                 <div>
                   <p className="font-medium text-ink">{user.name}</p>
                   <p className="text-xs text-inkSoft">{user.email}</p>
+                  <label className="mt-1 flex items-center gap-1.5 text-xs text-inkSoft">
+                    Vendor
+                    <select
+                      aria-label={`Vendor for ${user.name}`}
+                      value={user.vendorId || ''}
+                      disabled={savingVendorUserId === user.id}
+                      onChange={(e) => handleSetVendor(user.id, e.target.value)}
+                      className="rounded-md border border-border bg-white px-2 py-0.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:opacity-50"
+                    >
+                      <option value="">No vendor</option>
+                      {vendors.map((vendor: any) => (
+                        <option key={vendor.code} value={vendor.code}>
+                          {vendor.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <span className="flex flex-wrap items-center gap-2">
                   <button

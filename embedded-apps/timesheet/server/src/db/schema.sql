@@ -144,3 +144,19 @@ FOR EACH ROW EXECUTE FUNCTION timesheet.touch_timesheet_updated_at();
 -- Vendor ID only, not the company name; leading zeros optional (SAP pads them). NULL = not
 -- maintained yet, in which case no SAP mail is sent for that employee.
 ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS vendor_id TEXT;
+
+-- The small, fixed list of vendor companies (code -> display name) a manager picks from in
+-- Manage Team - see server/src/routes/vendors.js. Kept as its own table instead of a free-text
+-- name typed per-employee so the 4 names below live in exactly one place: deleting an employee
+-- only ever removes that employee's own vendor_id value, never this table, so the vendor's name
+-- is never at risk of disappearing just because one person under it got removed.
+CREATE TABLE IF NOT EXISTS timesheet.vendors (
+  code  TEXT PRIMARY KEY,
+  name  TEXT NOT NULL
+);
+INSERT INTO timesheet.vendors (code, name) VALUES
+  ('214617', 'Infocus'),
+  ('214260', 'Maventic'),
+  ('201835', 'Infrabeat'),
+  ('226470', 'Protiviti')
+ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;

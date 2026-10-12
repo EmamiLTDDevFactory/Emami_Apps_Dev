@@ -12,6 +12,7 @@ import teamSettingsRouter from './routes/teamSettings.js'
 import timesheetsRouter from './routes/timesheets.js'
 import leaveBalancesRouter from './routes/leaveBalances.js'
 import workingDayOverridesRouter from './routes/workingDayOverrides.js'
+import vendorsRouter from './routes/vendors.js'
 
 const app = express()
 
@@ -52,6 +53,7 @@ app.use('/api/team-settings', requireAuth, teamSettingsRouter)
 app.use('/api/timesheets', requireAuth, timesheetsRouter)
 app.use('/api/leave-balances', requireAuth, leaveBalancesRouter)
 app.use('/api/working-day-overrides', requireAuth, workingDayOverridesRouter)
+app.use('/api/vendors', requireAuth, vendorsRouter)
 
 app.use((err, _req, res, _next) => {
   console.error(err)

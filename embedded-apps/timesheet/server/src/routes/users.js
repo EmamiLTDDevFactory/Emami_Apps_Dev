@@ -11,7 +11,15 @@ const router = Router()
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function mapUser(row) {
-  return { id: row.id, name: row.name, email: row.email, role: row.role, managerId: row.manager_id, status: row.status }
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    managerId: row.manager_id,
+    status: row.status,
+    vendorId: row.vendor_id,
+  }
 }
 
 /** Title-cases an email's local part as a display name when no real name is known yet — same
@@ -71,6 +79,17 @@ router.get('/', async (_req, res, next) => {
   }
 })
 
+/** Validates a client-supplied vendor code against timesheet.vendors (the fixed 4-vendor list) -
+ * an empty/missing value means "no vendor" (NULL), anything else must match a real vendor row so
+ * a typo'd or stale code can't get silently saved onto an employee. */
+async function resolveVendorId(vendorId) {
+  const trimmed = String(vendorId || '').trim()
+  if (!trimmed) return null
+  const { rows } = await pool.query('SELECT code FROM vendors WHERE code = $1', [trimmed])
+  if (!rows[0]) throw Object.assign(new Error('Unknown vendor'), { status: 400 })
+  return trimmed
+}
+
 // Adds a new direct report under the requesting manager — used by Manage Team's "Add employee"
 // form. Unlike hub-sync, this always sets manager_id up front since it's created specifically as
 // someone's report. The manager is req.user (verified by requireAuth), same reasoning as
@@ -99,13 +118,16 @@ router.post('/', async (req, res, next) => {
       })
     }
 
+    const vendorId = await resolveVendorId(req.body?.vendorId)
+
     const { rows } = await pool.query(
-      `INSERT INTO users (id, name, email, role, manager_id) VALUES ($1, $2, $3, 'employee', $4) RETURNING *`,
-      [`u_${randomUUID()}`, name, email, req.user.userId],
+      `INSERT INTO users (id, name, email, role, manager_id, vendor_id) VALUES ($1, $2, $3, 'employee', $4, $5) RETURNING *`,
+      [`u_${randomUUID()}`, name, email, req.user.userId, vendorId],
     )
     res.status(201).json(mapUser(rows[0]))
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A user with this email already exists' })
+    if (err.status) return res.status(err.status).json({ error: err.message })
     next(err)
   }
 })
@@ -168,13 +190,35 @@ router.get('/candidates', async (req, res, next) => {
 router.put('/:id/claim', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can add employees to a team' })
+    const vendorId = await resolveVendorId(req.body?.vendorId)
     const { rows } = await pool.query(
-      `UPDATE users SET manager_id = $1 WHERE id = $2 AND manager_id IS NULL RETURNING *`,
-      [req.user.userId, req.params.id],
+      `UPDATE users SET manager_id = $1, vendor_id = COALESCE($3, vendor_id) WHERE id = $2 AND manager_id IS NULL RETURNING *`,
+      [req.user.userId, req.params.id, vendorId],
     )
     if (!rows[0]) return res.status(409).json({ error: 'This employee has already been added to a team' })
     res.json(mapUser(rows[0]))
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
+    next(err)
+  }
+})
+
+// Sets or changes the vendor for someone already on the requesting manager's team - covers both
+// people claimed without picking a vendor up front, and correcting a mistaken pick later. Scoped
+// to `manager_id = req.user.userId` for the same reason as the delete routes below: a manager can
+// only touch their own direct reports. vendorId omitted/empty clears it back to "no vendor".
+router.put('/:id/vendor', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can set an employee\'s vendor' })
+    const vendorId = await resolveVendorId(req.body?.vendorId)
+    const { rows } = await pool.query(
+      `UPDATE users SET vendor_id = $1 WHERE id = $2 AND manager_id = $3 RETURNING *`,
+      [vendorId, req.params.id, req.user.userId],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message })
     next(err)
   }
 })

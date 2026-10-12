@@ -178,14 +178,14 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
     router.push('/team-approvals/');
   }
 
-  async function handleReject(actionLabel: string) {
+  async function handleReject() {
     if (!comment.trim()) {
-      setError('A comment is required to reject or request changes.');
+      setError('A comment is required to reject a timesheet.');
       return;
     }
     if (!(await saveTimes())) return;
-    rejectTimesheet(timesheet.id, comment, actionLabel);
-    showToast(`${actionLabel === 'Rejected' ? 'Rejected' : 'Requested changes to'} ${user.name}'s timesheet.`, 'success');
+    rejectTimesheet(timesheet.id, comment);
+    showToast(`Rejected ${user.name}'s timesheet.`, 'success');
     router.push('/team-approvals/');
   }
 
@@ -261,7 +261,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
           {actionable && (
             <div className="glass-card space-y-3 p-5">
               <label htmlFor="manager-comment" className="block text-sm font-semibold text-ink">
-                Comment <span className="font-normal text-inkSoft">(required to reject or request changes)</span>
+                Comment <span className="font-normal text-inkSoft">(required to reject)</span>
               </label>
               <textarea
                 id="manager-comment"
@@ -279,14 +279,7 @@ function ApprovalDetail({ userId, month }: { userId: string; month: string }) {
                 <button type="button" onClick={handleApprove} disabled={savingTimes} className="btn-success disabled:opacity-50">
                   Approve
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleReject('Changes Requested')}
-                  className="rounded-lg border border-amber bg-amberBg px-4 py-2 text-sm font-semibold text-amber hover:bg-amber/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber focus-visible:ring-offset-2"
-                >
-                  Request Changes
-                </button>
-                <button type="button" onClick={() => handleReject('Rejected')} className="btn-danger">
+                <button type="button" onClick={handleReject} className="btn-danger">
                   Reject
                 </button>
               </div>

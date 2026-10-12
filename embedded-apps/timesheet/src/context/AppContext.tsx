@@ -11,6 +11,7 @@ type AnyRecord = Record<string, any>;
 interface AppData {
   users: AnyRecord[];
   projects: AnyRecord[];
+  vendors: AnyRecord[];
   tasks: AnyRecord[];
   assignments: Record<string, string[]>;
   teamSettings: AnyRecord;
@@ -104,7 +105,7 @@ async function api(path: string, options?: RequestInit): Promise<any> {
 }
 
 async function loadAllData(): Promise<AppData> {
-  const [users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, workingDayOverrides] = await Promise.all([
+  const [users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, workingDayOverrides, vendors] = await Promise.all([
     api('/users'),
     api('/projects'),
     api('/tasks'),
@@ -113,9 +114,10 @@ async function loadAllData(): Promise<AppData> {
     api('/leave-balances'),
     api('/users/unassigned'),
     api('/working-day-overrides'),
+    api('/vendors'),
   ]);
   const timesheetsByUser = await Promise.all(users.map((u: AnyRecord) => api(`/timesheets?userId=${u.id}`)));
-  return { users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, timesheets: timesheetsByUser.flat(), workingDayOverrides };
+  return { users, projects, tasks, assignments, teamSettings, leaveBalances, unassignedEmployees, timesheets: timesheetsByUser.flat(), workingDayOverrides, vendors };
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -424,13 +426,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     upsertTimesheet(await api(`/timesheets/${timesheetId}/manager-times`, { method: 'POST', body: JSON.stringify({ times }) }));
   }
 
-  async function rejectTimesheet(timesheetId: string, comment: string, actionLabel = 'Rejected') {
+  async function rejectTimesheet(timesheetId: string, comment: string) {
     const trimmed = comment.trim();
     if (!trimmed) throw new Error('A comment is required to reject a timesheet.');
     try {
-      upsertTimesheet(
-        await api(`/timesheets/${timesheetId}/reject`, { method: 'POST', body: JSON.stringify({ comment: trimmed, actionLabel }) })
-      );
+      upsertTimesheet(await api(`/timesheets/${timesheetId}/reject`, { method: 'POST', body: JSON.stringify({ comment: trimmed }) }));
     } catch (err) {
       console.error('Failed to reject timesheet:', err);
     }
@@ -530,9 +530,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function addDirectReport(name: string, email: string) {
+  async function addDirectReport(name: string, email: string, vendorId?: string | null) {
     // No managerId in the body - the server derives it from this session's own verified token.
-    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email }) });
+    const user = await api('/users', { method: 'POST', body: JSON.stringify({ name, email, vendorId }) });
     setData((d) => ({ ...d!, users: [...d!.users, user] }));
     return user;
   }
@@ -548,13 +548,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Claims an employee who already exists (synced from a hub sign-in with no manager yet) onto
   // the current manager's team, instead of the "Add employee" form above which only ever creates
   // brand-new people. Self-service - the server 409s if someone else claimed them first.
-  async function claimEmployee(userId: string) {
-    const updated = await api(`/users/${userId}/claim`, { method: 'PUT' });
+  async function claimEmployee(userId: string, vendorId?: string | null) {
+    const updated = await api(`/users/${userId}/claim`, { method: 'PUT', body: JSON.stringify({ vendorId }) });
     setData((d) => ({
       ...d!,
       users: d!.users.map((u) => (u.id === updated.id ? updated : u)),
       unassignedEmployees: d!.unassignedEmployees.filter((u) => u.id !== userId),
     }));
+    return updated;
+  }
+
+  // Sets or changes an existing team member's vendor from Manage Team - separate from the above
+  // two since both of those only apply at the moment someone's first added to a team.
+  async function setEmployeeVendor(userId: string, vendorId: string | null) {
+    const updated = await api(`/users/${userId}/vendor`, { method: 'PUT', body: JSON.stringify({ vendorId }) });
+    setData((d) => ({ ...d!, users: d!.users.map((u) => (u.id === updated.id ? updated : u)) }));
     return updated;
   }
 
@@ -771,6 +779,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addDirectReport,
     fetchAddEmployeeCandidates,
     claimEmployee,
+    setEmployeeVendor,
     fetchManagers,
     requestManager,
     refreshUser,
