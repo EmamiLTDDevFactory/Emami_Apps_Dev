@@ -84,8 +84,31 @@ const getAuditors = async () => {
     }));
 };
 
+/** Depots offered on Create / Edit Audit: every depot that has at least one
+ * active Depot user (see sql/seed-depots.js). audits.depot stores the name. */
+const getDepots = async () => {
+    const result = await pool.query(
+        `
+        SELECT depot, MIN(location) AS location, MIN(sap_id) AS sap_id
+        FROM audit_capa.users
+        WHERE role = 'Depot'
+          AND is_active = TRUE
+          AND depot IS NOT NULL
+        GROUP BY depot
+        ORDER BY depot
+        `
+    );
+
+    return result.rows.map((row) => ({
+        name: row.depot,
+        location: row.location,
+        sapId: row.sap_id,
+    }));
+};
+
 module.exports = {
     getAuditors,
+    getDepots,
     findUserByEmail,
     upsertUserFromHub,
     deactivateUserByEmail

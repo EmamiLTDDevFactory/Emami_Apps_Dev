@@ -14,8 +14,9 @@ import {
 import emamiLogo from '../assets/emami-logo.jpg';
 import { useEffect, useState } from "react";
 
-import depots from "../data/depots";
-import { getAuditors } from "../api/userApi";
+// Fixed depot codes: only used for the 4-char plant code in the SAP audit flag.
+import depotCodes from "../data/depots";
+import { getAuditors, getDepots } from "../api/userApi";
 import { generateAuditNumber } from "../utils/auditGenerator";
 
 import { LocalizationProvider } from "@mui/x-date-pickers";
@@ -51,8 +52,11 @@ export default function CreateAudit() {
     const [auditor, setAuditor] =
         useState("");
 
-    // Active CQA auditors from the backend (users flagged is_auditor).
+    // Active CQA auditors and depots (with an active Depot user) from the backend.
     const [auditors, setAuditors] =
+        useState([]);
+
+    const [depots, setDepots] =
         useState([]);
 
     useEffect(() => {
@@ -61,6 +65,13 @@ export default function CreateAudit() {
             .catch((error) => {
                 console.error("Unable to load auditors:", error);
                 showMessage("Unable to load the auditor list.", "error");
+            });
+
+        getDepots()
+            .then(setDepots)
+            .catch((error) => {
+                console.error("Unable to load depots:", error);
+                showMessage("Unable to load the depot list.", "error");
             });
     }, []);
 
@@ -154,7 +165,7 @@ export default function CreateAudit() {
         }
 
         const selectedDepot =
-            depots.find(
+            depotCodes.find(
                 (d) => d.name === depot
             );
 
@@ -430,7 +441,7 @@ export default function CreateAudit() {
                                 >
                                     {depots.map((d) => (
                                         <MenuItem
-                                            key={d.code}
+                                            key={d.name}
                                             value={d.name}
                                         >
                                             {d.name}

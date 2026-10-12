@@ -128,14 +128,16 @@ async function runMigrations() {
     }
 
     // Auditor list for Create/Edit Audit: CQA users flagged is_auditor, with
-    // employee code and location. Additive + nullable; existing users stay NULL
-    // (= not offered as auditor) and keep their login unchanged.
+    // employee code and location; depot users also carry their SAP ID. Additive +
+    // nullable; existing users stay NULL (= not offered as auditor) and keep their
+    // login unchanged.
     try {
         await pool.query(`
             ALTER TABLE audit_capa.users
                 ADD COLUMN IF NOT EXISTS is_auditor boolean,
                 ADD COLUMN IF NOT EXISTS employee_code character varying,
-                ADD COLUMN IF NOT EXISTS location character varying;
+                ADD COLUMN IF NOT EXISTS location character varying,
+                ADD COLUMN IF NOT EXISTS sap_id character varying;
         `);
         console.log("[postgres] audit_capa.users schema up to date (auditor columns).");
     } catch (err) {
