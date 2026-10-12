@@ -3,10 +3,23 @@ const API_BASE_URL =
 
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
+// The app's own session JWT (issued by /api/auth/login, stored by Layout.js / App.js). Sent on
+// every API call so the backend can tell who is asking — see backend/middleware/requireAuth.js.
+// localStorage can throw (private mode / blocked storage), in which case we just send nothing.
+export const getAuthHeader = () => {
+  try {
+    const token = localStorage.getItem("authToken");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch (_) {
+    return {};
+  }
+};
+
 const request = async (path, options = {}) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeader(),
       ...(options.headers || {}),
     },
     ...options,

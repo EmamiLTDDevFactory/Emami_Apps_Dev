@@ -8,6 +8,9 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import theme from "./theme";
 
+// Production builds ship without source maps — GENERATE_SOURCEMAP=false is set for this app's
+// build in the repo root amplify.yml, so the original source isn't published alongside the bundle.
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   // <React.StrictMode>

@@ -4,6 +4,7 @@ import {
   apiPatch,
   apiPost,
   API_ORIGIN,
+  getAuthHeader,
 } from "../api/client";
 import { withChecklistCompliance } from "./complianceUtils";
 
@@ -128,6 +129,8 @@ const postEvidenceFiles = async (url, files, fields) => {
 
   const response = await fetch(url, {
     method: "POST",
+    // Auth header only — no Content-Type, so the browser sets the multipart boundary itself.
+    headers: getAuthHeader(),
     body: formData
   });
 
