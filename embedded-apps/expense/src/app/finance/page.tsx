@@ -71,7 +71,6 @@ export default function FinancePage() {
   const handleSelectFiscalYear = (year: number) => {
     setYearSlideDirection(year >= selectedFiscalYear ? 'right' : 'left');
     setSelectedFiscalYear(year);
-    setSelectedGroupKey(null);
   };
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
