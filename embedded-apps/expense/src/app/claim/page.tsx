@@ -290,7 +290,10 @@ function ClaimDetailInner() {
     const type = ln.ZglName || ln.ExpenseType || 'Other';
     const desc = ln.Description || '';
     const existing = groupedLines.find((g) => g.type === type && g.desc === desc);
-    const attachment = (ln.Filename || ln.Value) ? { Filename: ln.Filename, Value: ln.Value, Mimetype: ln.Mimetype, ClaimId: ln.ClaimId, ItemNo: ln.ItemNo } : null;
+    // Both fields are required, not just one - ln.Value also doubles as the amount fallback
+    // below, so an OR here falsely flagged ordinary no-attachment lines as having one (see
+    // create.tsx's resubmit-load and ClaimContext.tsx's claim mapping, which already require both).
+    const attachment = (ln.Filename && ln.Value) ? { Filename: ln.Filename, Value: ln.Value, Mimetype: ln.Mimetype, ClaimId: ln.ClaimId, ItemNo: ln.ItemNo } : null;
     if (existing) {
       if (attachment) existing.attachments.push(attachment);
       existing.amount += parseFloat(ln.Amount || ln.Value || 0);
