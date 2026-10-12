@@ -73,6 +73,9 @@ export default function ManageTeamPage() {
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [addingReport, setAddingReport] = useState(false);
   const [claimingUserId, setClaimingUserId] = useState<string | null>(null);
+  // Per-row vendor pick for "Waiting to be added to a team" - keyed by candidate userId, since
+  // each row needs its own independent selection before its own "Add to my team" button works.
+  const [claimVendorIds, setClaimVendorIds] = useState<Record<string, string>>({});
   const [savingVendorUserId, setSavingVendorUserId] = useState<string | null>(null);
   // People who've specifically named this manager as theirs and are waiting on a yes/no -
   // distinct from unassignedEmployees below (nobody's picked those people at all yet).
@@ -245,12 +248,16 @@ export default function ManageTeamPage() {
   async function handleAddReport(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedCandidate) return;
+    if (!selectedVendorId) {
+      showToast('Select a vendor before adding this employee.', 'error');
+      return;
+    }
     setAddingReport(true);
     try {
       if (selectedCandidate.id) {
-        await claimEmployee(selectedCandidate.id, selectedVendorId || null);
+        await claimEmployee(selectedCandidate.id, selectedVendorId);
       } else {
-        await addDirectReport(selectedCandidate.name, selectedCandidate.email, selectedVendorId || null);
+        await addDirectReport(selectedCandidate.name, selectedCandidate.email, selectedVendorId);
       }
       setCandidates((c) => c.filter((cand) => cand.email !== selectedCandidate.email));
       setSearchQuery('');
@@ -269,9 +276,14 @@ export default function ManageTeamPage() {
   // them first; refetch-on-refresh isn't needed since the list is already scoped to whoever's
   // still unassigned as of the last load.
   async function handleClaim(userId: string) {
+    const vendorId = claimVendorIds[userId];
+    if (!vendorId) {
+      showToast('Select a vendor before adding this employee.', 'error');
+      return;
+    }
     setClaimingUserId(userId);
     try {
-      await claimEmployee(userId);
+      await claimEmployee(userId, vendorId);
       showToast('Employee added to your team.', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to add employee - someone else may have already claimed them.', 'error');
@@ -425,7 +437,7 @@ export default function ManageTeamPage() {
           </div>
           <div className="min-w-[180px]">
             <label htmlFor="employee-vendor" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-inkSoft">
-              Vendor
+              Vendor <span className="font-normal normal-case text-inkSoft">(required)</span>
             </label>
             <select
               id="employee-vendor"
@@ -433,7 +445,7 @@ export default function ManageTeamPage() {
               onChange={(e) => setSelectedVendorId(e.target.value)}
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-rust"
             >
-              <option value="">No vendor</option>
+              <option value="">Select vendor…</option>
               {vendors.map((vendor: any) => (
                 <option key={vendor.code} value={vendor.code}>
                   {vendor.name}
@@ -441,7 +453,7 @@ export default function ManageTeamPage() {
               ))}
             </select>
           </div>
-          <button type="submit" disabled={addingReport || !selectedCandidate} className="btn-primary self-end">
+          <button type="submit" disabled={addingReport || !selectedCandidate || !selectedVendorId} className="btn-primary self-end">
             {addingReport ? 'Adding…' : 'Add employee'}
           </button>
         </form>
@@ -494,14 +506,29 @@ export default function ManageTeamPage() {
                     <p className="text-sm font-medium text-ink">{user.name}</p>
                     <p className="text-xs text-inkSoft">{user.email}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleClaim(user.id)}
-                    disabled={claimingUserId === user.id}
-                    className="btn-primary px-3 py-1.5 text-xs"
-                  >
-                    {claimingUserId === user.id ? 'Adding…' : 'Add to my team'}
-                  </button>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <select
+                      aria-label={`Vendor for ${user.name}`}
+                      value={claimVendorIds[user.id] || ''}
+                      onChange={(e) => setClaimVendorIds((prev) => ({ ...prev, [user.id]: e.target.value }))}
+                      className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust"
+                    >
+                      <option value="">Select vendor…</option>
+                      {vendors.map((vendor: any) => (
+                        <option key={vendor.code} value={vendor.code}>
+                          {vendor.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleClaim(user.id)}
+                      disabled={claimingUserId === user.id || !claimVendorIds[user.id]}
+                      className="btn-primary px-3 py-1.5 text-xs"
+                    >
+                      {claimingUserId === user.id ? 'Adding…' : 'Add to my team'}
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>

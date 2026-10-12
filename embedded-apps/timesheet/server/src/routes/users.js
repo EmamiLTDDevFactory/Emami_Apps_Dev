@@ -119,6 +119,7 @@ router.post('/', async (req, res, next) => {
     }
 
     const vendorId = await resolveVendorId(req.body?.vendorId)
+    if (!vendorId) return res.status(400).json({ error: 'Select a vendor for this employee' })
 
     const { rows } = await pool.query(
       `INSERT INTO users (id, name, email, role, manager_id, vendor_id) VALUES ($1, $2, $3, 'employee', $4, $5) RETURNING *`,
@@ -191,8 +192,9 @@ router.put('/:id/claim', async (req, res, next) => {
   try {
     if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can add employees to a team' })
     const vendorId = await resolveVendorId(req.body?.vendorId)
+    if (!vendorId) return res.status(400).json({ error: 'Select a vendor for this employee' })
     const { rows } = await pool.query(
-      `UPDATE users SET manager_id = $1, vendor_id = COALESCE($3, vendor_id) WHERE id = $2 AND manager_id IS NULL RETURNING *`,
+      `UPDATE users SET manager_id = $1, vendor_id = $3 WHERE id = $2 AND manager_id IS NULL RETURNING *`,
       [req.user.userId, req.params.id, vendorId],
     )
     if (!rows[0]) return res.status(409).json({ error: 'This employee has already been added to a team' })
