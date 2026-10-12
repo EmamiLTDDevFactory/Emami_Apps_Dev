@@ -53,6 +53,8 @@ apiRouter.use(require('./hub-auth'));
 apiRouter.use(require('./magicLink'));
 apiRouter.use(require('./saml-sso'));
 apiRouter.use(require('./userProfile'));
+// Job title, department and phones from Microsoft Entra ID (Graph) for My Profile - see orgProfile.js.
+apiRouter.use(require('./orgProfile'));
 apiRouter.use(require('./stockQuote'));
 // Development Tracker (SAP ABAP dev item tracking) — own dev_tracker schema, own routes under
 // /dev-tracker, self-contained in devTracker.js. Purely additive: doesn't touch any route above.

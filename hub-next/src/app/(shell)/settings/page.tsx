@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Camera, LogOut, Pencil, Check, X, Mail, Phone, ShieldCheck, Crown, Eye, Clock, LogIn, Layers,
   MousePointerClick, Star, Download, Timer, Search, ChevronRight, ChevronDown, Lock, KeyRound, LifeBuoy,
-  History, Sparkles, Copy, CheckCircle2, Circle, Settings2, Info,
+  History, Sparkles, Copy, CheckCircle2, Circle, Settings2, Info, Briefcase, Building2, Smartphone,
 } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
 import StageBadge from '../../../components/StageBadge';
@@ -13,7 +13,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useFavorites } from '../../../context/FavoritesContext';
 import { useAppStages } from '../../../context/AppStagesContext';
 import { useIsWideScreen } from '../../../hooks/useIsWideScreen';
-import { uploadProfilePhoto, updateMobile, getRecentApps, logEvent } from '../../../lib/authApi';
+import { uploadProfilePhoto, updateMobile, getRecentApps, logEvent, getOrgProfile, type OrgProfile } from '../../../lib/authApi';
 import { cropAndResizeImageToDataUri } from '../../../lib/imageUtils';
 import { storage } from '../../../lib/storage';
 import { APPS, appById } from '../../../data/mockData';
@@ -82,11 +82,20 @@ export default function ProfilePage() {
   const [showLocked, setShowLocked] = useState(false);
   const [recent, setRecent] = useState<{ appId: string; lastOpenedAt: string }[] | null>(null);
   const [loginMethod, setLoginMethod] = useState<string | null>(null);
+  // Microsoft Entra ID (Graph) details: undefined = loading, null = not configured / no directory record.
+  const [org, setOrg] = useState<OrgProfile | null | undefined>(undefined);
+  const [orgError, setOrgError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (userEmail) getRecentApps(userEmail).then(setRecent);
     setLoginMethod(storage.getItem('emami_apps_login_method'));
+    if (userEmail) {
+      getOrgProfile().then((r) => {
+        setOrg(r.org);
+        setOrgError(r.ok || !r.configured ? null : r.error ?? null);
+      });
+    }
   }, [userEmail]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────────────────
@@ -209,7 +218,12 @@ export default function ProfilePage() {
 
           <div style={{ flex: 1, minWidth: 220 }}>
             <p style={{ margin: 0, fontSize: 12.5, fontFamily: fonts.sansMedium, color: 'rgba(255,255,255,0.7)' }}>{greeting()}, {firstName}</p>
-            <h1 style={{ margin: '4px 0 10px', fontSize: isWide ? 26 : 21, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.white, letterSpacing: -0.3 }}>{name || <Skeleton width={200} height={24} />}</h1>
+            <h1 style={{ margin: org?.jobTitle || org?.department ? '4px 0 2px' : '4px 0 10px', fontSize: isWide ? 26 : 21, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.white, letterSpacing: -0.3 }}>{name || <Skeleton width={200} height={24} />}</h1>
+            {(org?.jobTitle || org?.department) && (
+              <p style={{ margin: '0 0 10px', fontSize: 13, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: 'rgba(255,255,255,0.82)' }}>
+                {[org.jobTitle, org.department].filter(Boolean).join(' · ')}
+              </p>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {level && levelInfo && (
                 <HeroPill>
@@ -473,6 +487,23 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* ── Organisation (Microsoft Entra ID) ── */}
+      {(org || orgError) && (
+        <div style={{ ...cardStyle, padding: isWide ? 20 : 16, marginTop: 16 }}>
+          <CardHead icon={Building2} accent="#2563EB" title="Organisation" sub="From your Emami Microsoft account (Entra ID) - ask IT to correct anything here" />
+          {orgError ? (
+            <p style={{ margin: 0, fontSize: 12.5, color: colors.inkSoft }}>{orgError}</p>
+          ) : org ? (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isWide ? 220 : 200}px, 1fr))`, gap: 12 }}>
+              <InfoTile icon={Briefcase} accent="#2563EB" title="Job title" text={org.jobTitle || 'Not set in the directory'} />
+              <InfoTile icon={Building2} accent="#7C3AED" title="Department" text={org.department || 'Not set in the directory'} />
+              <InfoTile icon={Phone} accent="#0D9488" title="Business phone" text={org.businessPhones.length ? org.businessPhones.join(', ') : 'Not set in the directory'} />
+              <InfoTile icon={Smartphone} accent="#EA580C" title="Mobile (directory)" text={org.mobilePhone || 'Not set in the directory'} />
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* ── Account & security ── */}
       <div style={{ ...cardStyle, padding: isWide ? 20 : 16, marginTop: 16 }}>

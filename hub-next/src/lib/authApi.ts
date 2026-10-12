@@ -272,3 +272,25 @@ export async function getMyActivity(): Promise<{ ok: boolean; activity?: MyActiv
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }
 }
+
+/** Job title, department and phones from Microsoft Entra ID, for the signed-in person only (backend/orgProfile.js). */
+export interface OrgProfile {
+  id: string | null;
+  displayName: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  businessPhones: string[];
+  mobilePhone: string | null;
+}
+
+/** null org = not configured on the server, or no directory record for this person. */
+export async function getOrgProfile(): Promise<{ ok: boolean; configured: boolean; org: OrgProfile | null; error?: string }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/me/org-profile`, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, configured: data?.configured !== false, org: null, error: data?.error || 'Could not load your organisation details.' };
+    return { ok: true, configured: data.configured !== false, org: data.found ? (data.org as OrgProfile) : null };
+  } catch {
+    return { ok: false, configured: true, org: null, error: 'Could not reach the server.' };
+  }
+}
