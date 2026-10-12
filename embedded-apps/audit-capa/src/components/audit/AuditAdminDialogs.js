@@ -14,7 +14,7 @@ import {
 import dayjs from "dayjs";
 
 import depots from "../../data/depots";
-import auditors from "../../data/users";
+import { getAuditors } from "../../api/userApi";
 
 const toInputDate = (value) =>
     value && dayjs(value).isValid() ? dayjs(value).format("YYYY-MM-DD") : "";
@@ -29,6 +29,15 @@ export function EditAuditDialog({ audit, onClose, onSave }) {
 
     const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [auditors, setAuditors] = useState([]);
+
+    useEffect(() => {
+        if (!audit) return;
+
+        getAuditors()
+            .then(setAuditors)
+            .catch((error) => console.error("Unable to load auditors:", error));
+    }, [audit]);
 
     useEffect(() => {
         if (!audit) return;

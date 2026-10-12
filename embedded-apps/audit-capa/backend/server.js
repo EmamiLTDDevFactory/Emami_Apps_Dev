@@ -10,6 +10,7 @@ const notificationRoutes = require("./routes/notifications");
 const sapNotifyRoutes = require("./routes/sapNotify");
 const authRoutes = require("./routes/auth");
 const internalRoutes = require("./routes/internal");
+const userRoutes = require("./routes/users");
 const pool = require("./postgres");
 
 // Fire-and-forget on module load — idempotent, so a request racing ahead of it is harmless.
@@ -83,6 +84,7 @@ app.use("/api/audits", auditRoutes);
 app.use("/api/capas", capaRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/sap-notify", sapNotifyRoutes);
+app.use("/api/users", userRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

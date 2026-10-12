@@ -60,7 +60,32 @@ const deactivateUserByEmail = async (email) => {
     );
 };
 
+/** Auditors offered on Create / Edit Audit: active CQA users flagged is_auditor
+ * (see sql/seed-auditors.js). audits.auditor stores the name, which is also how
+ * auditor notifications find the user (notificationModel.resolveAuditorRecipient). */
+const getAuditors = async () => {
+    const result = await pool.query(
+        `
+        SELECT id, email, name, employee_code, location
+        FROM audit_capa.users
+        WHERE role = 'CQA'
+          AND is_active = TRUE
+          AND is_auditor = TRUE
+        ORDER BY name
+        `
+    );
+
+    return result.rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        name: row.name,
+        employeeCode: row.employee_code,
+        location: row.location,
+    }));
+};
+
 module.exports = {
+    getAuditors,
     findUserByEmail,
     upsertUserFromHub,
     deactivateUserByEmail

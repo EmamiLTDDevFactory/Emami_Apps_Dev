@@ -12,10 +12,10 @@ import {
     CardContent,
 } from "@mui/material";
 import emamiLogo from '../assets/emami-logo.jpg';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import depots from "../data/depots";
-import auditors from "../data/users";
+import { getAuditors } from "../api/userApi";
 import { generateAuditNumber } from "../utils/auditGenerator";
 
 import { LocalizationProvider } from "@mui/x-date-pickers";
@@ -50,6 +50,19 @@ export default function CreateAudit() {
 
     const [auditor, setAuditor] =
         useState("");
+
+    // Active CQA auditors from the backend (users flagged is_auditor).
+    const [auditors, setAuditors] =
+        useState([]);
+
+    useEffect(() => {
+        getAuditors()
+            .then(setAuditors)
+            .catch((error) => {
+                console.error("Unable to load auditors:", error);
+                showMessage("Unable to load the auditor list.", "error");
+            });
+    }, []);
 
     const [auditDate, setAuditDate] =
         useState(dayjs());
