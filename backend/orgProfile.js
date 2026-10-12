@@ -71,7 +71,9 @@ router.get('/me/org-profile', async (req, res) => {
     const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
     let email = '';
     try {
-        email = match && JWT_SECRET ? String(jwt.verify(match[1].trim(), JWT_SECRET)?.email || '').trim().toLowerCase() : '';
+        // Session tokens only: HS256, and no `purpose` claim (magic-link tokens share the secret but carry one).
+        const payload = match && JWT_SECRET ? jwt.verify(match[1].trim(), JWT_SECRET, { algorithms: ['HS256'] }) : null;
+        email = payload && !payload.purpose ? String(payload.email || '').trim().toLowerCase() : '';
     } catch {
         email = '';
     }
