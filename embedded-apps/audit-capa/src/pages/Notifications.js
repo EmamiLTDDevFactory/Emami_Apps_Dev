@@ -17,6 +17,9 @@ import {
   markAllAsRead,
 } from "../utils/notifications";
 
+import { getAudits, getCAPAs } from "../utils/storage";
+import { getFindingNo } from "../utils/findingUtils";
+
 import { useNavigate } from "react-router-dom";
 import CheckCircleIcon
   from "@mui/icons-material/CheckCircle";
@@ -39,6 +42,47 @@ export default function Notifications() {
   );
 
   const [notifications, setNotifications] = useState([]);
+
+  // Audit No / Finding No shown on each CAPA notification. Looked up from the
+  // audit and CAPA records, so notifications sent before this existed show it too.
+  const [audits, setAudits] = useState([]);
+  const [capas, setCapas] = useState([]);
+
+  useEffect(() => {
+    getAudits()
+      .then((rows) => setAudits(Array.isArray(rows) ? rows : []))
+      .catch((error) => console.error("Unable to load audits:", error));
+
+    getCAPAs()
+      .then((rows) => setCapas(Array.isArray(rows) ? rows : []))
+      .catch((error) => console.error("Unable to load CAPAs:", error));
+  }, []);
+
+  const getReferenceNos = (notification) => {
+    const auditNo =
+      audits.find((audit) => String(audit.id) === String(notification.auditId))
+        ?.auditNo || "";
+
+    // The CAPA: by its id when the notification stores one, otherwise by the
+    // CAPA No. in the message (e.g. "CAPA CAPA/F02/10/26/0002 has been ...").
+    const capaNo =
+      /CAPA\/F\d+\/[\w/]+/.exec(notification.message || "")?.[0] || "";
+
+    const capa =
+      capas.find((c) => notification.capaId && String(c.id) === String(notification.capaId)) ||
+      capas.find(
+        (c) =>
+          capaNo &&
+          c.capaNo === capaNo &&
+          String(c.auditId) === String(notification.auditId)
+      );
+
+    const findingNo = capaNo || capa
+      ? getFindingNo(capa || { capaNo }, auditNo)
+      : "";
+
+    return { auditNo, findingNo };
+  };
 
   useEffect(() => {
     // Opening this page is the "read" moment — mark everything read first so
@@ -211,6 +255,22 @@ export default function Notifications() {
                   {notification.title}
                 </Typography>
               </Box>
+
+              {(() => {
+                const { auditNo, findingNo } = getReferenceNos(notification);
+
+                return (auditNo || findingNo) && (
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ mb: 0.5, color: "#4338CA" }}
+                  >
+                    {auditNo && `Audit No: ${auditNo}`}
+                    {auditNo && findingNo && "  ·  "}
+                    {findingNo && `Finding No: ${findingNo}`}
+                  </Typography>
+                );
+              })()}
 
               <Typography color="text.secondary">
                 {
