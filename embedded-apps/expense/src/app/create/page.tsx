@@ -1,7 +1,7 @@
 'use client';
 
 import axios from 'axios';
-import { AlertCircle, Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Card, Chip, Field, Input, InfoField, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
@@ -20,7 +20,6 @@ import {
 import { getDocumentAsync } from '../../lib/documentPicker';
 import { ensurePdfAttachmentUnderLimit } from '../../lib/pdfAttachment';
 import { Attachment } from '../../types';
-import { formatCurrency } from '../../utils/currency';
 
 const COST_CENTERS = ['CC-SA', 'CC-ENG-GLOBAL', 'CC-MARKETING-UK', 'CC-FINANCE-HQ', 'CC-IT-INFRA'];
 
@@ -57,7 +56,7 @@ function CreateClaimInner() {
   const searchParams = useSearchParams();
   const { currentUser } = useAuth() as { currentUser: any };
   const editingClaimId = searchParams.get('claimId') || '';
-  const { addClaim, policyLimit, autoApprovalThreshold, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims } = useClaim();
+  const { addClaim, policyLimit, expenseTypes, fetchExpenseTypes, getClaimById, tempClaimForResubmit, setTempClaimForResubmit, claims, fetchAreas, fetchClaims } = useClaim();
 
   useEffect(() => {
     fetchExpenseTypes();
@@ -146,8 +145,6 @@ function CreateClaimInner() {
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
 
-  const [duplicateWarnModal, setDuplicateWarnModal] = useState(false);
-  const [pendingDraftFlag, setPendingDraftFlag] = useState(false);
   const [existingClaimId, setExistingClaimId] = useState('');
 
   const [successModalVisible, setSuccessModalVisible] = useState(false);
@@ -174,8 +171,6 @@ function CreateClaimInner() {
     setPreviewModalVisible(false);
     setAmountError('');
     setFormError('');
-    setDuplicateWarnModal(false);
-    setPendingDraftFlag(false);
     setExistingClaimId('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, expenseTypes]);
@@ -368,10 +363,11 @@ function CreateClaimInner() {
   }, [gstinChoice, normalizedGstin]);
 
   const parsedAmount = parseFloat(amountStr) || 0;
-  const isAutoApprove = parsedAmount > 0 && parsedAmount < autoApprovalThreshold;
   // ExptypeSet.Flag = 'X' on the selected expense type means an attachment isn't required for it
   // (mirrors the same check ClaimContext's addClaim/updateDraft enforce server-submission-side).
-  const attachmentOptionalForType = expenseTypes.find((et: any) => et.name === expenseType)?.noAttachmentRequired === true;
+  // Forced to false for now - attachment is mandatory for every expense type until the Flag X
+  // rule is revisited; noAttachmentRequired itself is left untouched on the expense type data.
+  const attachmentOptionalForType = false;
 
   useEffect(() => {
     if (parsedAmount > 20000) {
@@ -497,7 +493,11 @@ function CreateClaimInner() {
     setFormError('');
   };
 
-  const handleSubmit = async (isDraft: boolean, ignoreDuplicateWarn = false) => {
+  const handleSubmit = async (isDraft: boolean) => {
+    if (parsedAmount <= 0) {
+      setAmountError('Amount must be greater than 0');
+      return;
+    }
     if (parsedAmount > 20000) {
       setAmountError('Amount cannot exceed ₹20,000');
       return;
@@ -530,23 +530,17 @@ function CreateClaimInner() {
       hsnSac: gstinChoice === 'yes' ? (hsnSac.trim() || null) : null,
     };
 
-    const result = await addClaim(claimData, isDraft, ignoreDuplicateWarn, existingClaimId);
+    const result = await addClaim(claimData, isDraft, existingClaimId);
 
     if (!result.success) {
-      if (result.warning?.startsWith('DUPLICATE_DETECTED')) {
-        setPendingDraftFlag(isDraft);
-        setDuplicateWarnModal(true);
-        return;
-      } else {
-        setFormError(result.warning || 'Unable to submit claim. Please review the form and try again.');
-        return;
-      }
+      setFormError(result.warning || 'Unable to submit claim. Please review the form and try again.');
+      return;
     }
 
     setSuccessMessage(
       isDraft
         ? 'Your expense claim has been saved as a draft.'
-        : `Your claim has been successfully submitted.${isAutoApprove ? ' Amount is below threshold (₹100), claim has been auto-approved!' : ''}`
+        : 'Your claim has been successfully submitted.'
     );
     setSuccessModalVisible(true);
     // Refresh claims in the background so Dashboard/My Claims already show the new submission by
@@ -695,11 +689,6 @@ function CreateClaimInner() {
                 <Banner type="error">{amountError}</Banner>
               </div>
             )}
-            {isAutoApprove && (
-              <div className="mt-2">
-                <Banner type="success">Claim is under ₹100 threshold. Will be automatically approved upon submission!</Banner>
-              </div>
-            )}
           </Field>
 
           <Field label="Cost Center" required>
@@ -792,27 +781,6 @@ function CreateClaimInner() {
               </button>
             ))
           )}
-        </div>
-      </Modal>
-
-      {/* Duplicate Warning Modal */}
-      <Modal
-        open={duplicateWarnModal}
-        title="Potential Duplicate Detected"
-        onClose={() => setDuplicateWarnModal(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setDuplicateWarnModal(false)}>Cancel</Button>
-            <Button variant="danger" onClick={() => { setDuplicateWarnModal(false); handleSubmit(pendingDraftFlag, true); }}>Continue Submission</Button>
-          </>
-        }
-      >
-        <div className="flex flex-col items-center gap-3 py-2 text-center">
-          <AlertCircle size={44} className="text-red" />
-          <p className="text-sm text-ink">
-            A claim with the exact same Employee ID ({currentUser.employeeId}), Claim Date ({claimDate}), and Amount (₹{formatCurrency(parsedAmount)}) already exists in the system.
-          </p>
-          <p className="text-sm font-semibold text-ink">Do you wish to proceed and create this claim anyway?</p>
         </div>
       </Modal>
 

@@ -12,10 +12,9 @@ interface ClaimContextType {
   errors: SAPError[];
   historyEntries: any[];
   kpis: ClaimKPIs;
-  autoApprovalThreshold: number;
   policyLimit: number;
   // Claim Actions
-  addClaim: (claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>, isDraft: boolean, ignoreDuplicateWarn?: boolean, existingClaimId?: string) => Promise<{ success: boolean; warning?: string; claimId?: string }>;
+  addClaim: (claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>, isDraft: boolean, existingClaimId?: string) => Promise<{ success: boolean; warning?: string; claimId?: string }>;
   updateDraft: (id: string, claimData: Partial<ExpenseClaim>, isDraft: boolean) => { success: boolean; warning?: string };
   deleteClaim: (id: string) => void;
   // Manager Actions
@@ -161,7 +160,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [tempClaimForResubmit, setTempClaimForResubmit] = useState<any | null>(null);
   const { currentUser } = useAuth();
 
-  const autoApprovalThreshold = 100.0;
   const policyLimit = 1000.0;
 
   const handleSetTempClaimForResubmit = (claim: any | null) => {
@@ -454,11 +452,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return now.toISOString().replace('T', ' ').substring(0, 16);
   };
 
-  // BR-002, BR-003, BR-004, BR-005, BR-006: Create Claim Logic
+  // BR-002, BR-003, BR-004, BR-006: Create Claim Logic
   const addClaim = async (
     claimData: Omit<ExpenseClaim, 'id' | 'status' | 'workflowHistory'>,
     isDraft: boolean,
-    ignoreDuplicateWarn = false,
     existingClaimId: string = ''
   ) => {
     // 1. Local Validation
@@ -466,9 +463,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!claimData.claimDate || !claimData.expenseType || claimData.expenseType === 'Select Expense Type' || !claimData.amount || !claimData.costCenter) {
         return { success: false, warning: 'Please fill in all mandatory fields before submitting.' };
       }
-      // BR-003: Mandatory attachment check — skipped when the chosen expense type's ExptypeSet
-      // record has Flag = 'X' (that type doesn't require a supporting document).
-      const attachmentsOptionalForType = expenseTypes.find((et) => et.name === claimData.expenseType)?.noAttachmentRequired === true;
+      // BR-003: Mandatory attachment check — normally skipped when the chosen expense type's
+      // ExptypeSet record has Flag = 'X' (that type doesn't require a supporting document).
+      // Forced to false for now - attachment is mandatory for every expense type until the
+      // Flag X rule is revisited.
+      const attachmentsOptionalForType = false;
       if (!attachmentsOptionalForType && (!claimData.attachments || claimData.attachments.length === 0)) {
         return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
       }
@@ -481,21 +480,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (invalidAttachment) {
         return { success: false, warning: 'Unsupported attachment type. Allowed file types: PDF, PNG, JPG, JPEG, XLS, XLSX, CSV, TXT.' };
-      }
-
-      // BR-005: Duplicate claim check (Local Optimistic Check)
-      if (!ignoreDuplicateWarn) {
-        const isDuplicate = claims.some(
-          (c) =>
-            c.employeeId === claimData.employeeId &&
-            c.claimDate === claimData.claimDate &&
-            c.amount === claimData.amount &&
-            c.status !== 'Draft' &&
-            c.status !== 'Rejected'
-        );
-        if (isDuplicate) {
-          return { success: false, warning: 'DUPLICATE_DETECTED: A claim with the exact same Employee ID, Claim Date, and Amount already exists. Do you wish to continue?' };
-        }
       }
     }
 
@@ -663,7 +647,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!merged.claimDate || !merged.expenseType || !merged.amount || !merged.costCenter) {
         return { success: false, warning: 'Please fill in all mandatory fields before submitting.' };
       }
-      const attachmentsOptionalForType = expenseTypes.find((et) => et.name === merged.expenseType)?.noAttachmentRequired === true;
+      // Forced to false for now - attachment is mandatory for every expense type until the
+      // Flag X rule is revisited.
+      const attachmentsOptionalForType = false;
       if (!attachmentsOptionalForType && (!merged.attachments || merged.attachments.length === 0)) {
         return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
       }
@@ -1170,7 +1156,6 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         errors,
         historyEntries,
         kpis,
-        autoApprovalThreshold,
         policyLimit,
         addClaim,
         updateDraft,
