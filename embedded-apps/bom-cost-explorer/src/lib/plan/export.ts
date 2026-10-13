@@ -103,7 +103,7 @@ export const wipCols = (rows: PlanWip[]): XCol[] => [
   { header: 'Total', dp: 3, get: (i) => num(rows[i].Qtot) },
 ];
 
-export async function exportPlanWorkbook(p: { query: PlanCostQuery; cost: PlanCostLine[] | null; summary: PlanSummary[] | null; checks: PlanCheck[] | null; wip: PlanWip[] | null; messages: SapMessage[] }) {
+export async function exportPlanWorkbook(p: { plants?: string[]; query: PlanCostQuery; cost: PlanCostLine[] | null; summary: PlanSummary[] | null; checks: PlanCheck[] | null; wip: PlanWip[] | null; messages: SapMessage[] }) {
   const cost = p.cost ?? [];
   const extra: { name: string; cols: XCol[]; count: number }[] = [];
   if (p.summary) extra.push({ name: 'Requirement', cols: summaryCols(p.summary), count: p.summary.length });
@@ -118,7 +118,7 @@ export async function exportPlanWorkbook(p: { query: PlanCostQuery; cost: PlanCo
     messages: p.messages,
     extraSheets: extra,
     extraParams: [
-      ...planParams(p.query),
+      ...planParams({ ...p.query, plants: p.plants ?? p.query.plants }),
       ['Breakup', p.cost ? `${cost.length} rows (CostLineSet Mode P)` : 'not loaded (Run in SAP on Breakup & cost)'],
       ['Requirement', loaded(p.summary)],
       ['Checks', loaded(p.checks)],

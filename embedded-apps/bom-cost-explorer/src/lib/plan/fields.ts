@@ -3,7 +3,7 @@
  * lib/sap/fields.ts: internal key -> [SAP property name, kind]. Verify against $metadata on the target
  * system (NGQ for DEV, NWP for PRD) and change only the SAP names here.
  *
- *   PlanHeadSet     GET                Plan1, RowCnt, PlantCnt, Total
+ *   PlanHeadSet     GET                one row per plan AND plant: key Plan1+Werks, WerksTxt, RowCnt, Total; filter Plan1, Werks
  *   PlanEntrySet    GET / PUT / DELETE key Plan1+Matnr+Werks+Land1; filter Plan1, Matnr, Werks
  *   PlanUploadSet   POST (deep insert) Plan1, UpdMode 'M'|'R', Dryrun, Entries[] -> Status 'E'|'V'|'S', Saved, Errors, MsgTxt
  *   CostLineSet     Mode eq 'P'        plan breakup + cost (no $expand; rate options via lib/rates)
@@ -40,10 +40,12 @@ export const FISCAL_MONTHS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', '
 const months = <P extends string>(prefix: P, kind: FieldKind) =>
   Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`${prefix}${i + 1}`, [`${prefix}${i + 1}`, kind] as const])) as Record<`${P}${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12}`, readonly [string, FieldKind]>;
 
+/** One row per plan AND plant (key Plan1 + Werks). RowCnt = materials of the plan in that plant. */
 export const PLAN_HEAD = def({
   Plan1: ['Plan1', 's'],
+  Werks: ['Werks', 's'],
+  WerksTxt: ['WerksTxt', 's'],
   RowCnt: ['RowCnt', 'i'],
-  PlantCnt: ['PlantCnt', 'i'],
   Total: ['Total', 'd'],
 });
 

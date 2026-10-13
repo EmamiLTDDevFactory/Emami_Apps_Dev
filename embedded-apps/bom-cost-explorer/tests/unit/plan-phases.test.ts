@@ -99,13 +99,13 @@ describe('writes', () => {
 describe('delete', () => {
   it('DELETE when the gateway forwards it', async () => {
     const all = (await fetchPlanEntries('FY27-BASE')).rows;
-    expect(await deletePlanEntryWithFallback(all[0], all, 'me@x')).toBe('deleted');
+    expect(await deletePlanEntryWithFallback(all[0], 'me@x')).toBe('deleted');
     expect((await fetchPlanEntries('FY27-BASE')).rows).toHaveLength(all.length - 1);
   });
   it('gateway without DELETE: plan saved again with Replace minus the row (check first)', async () => {
     process.env.MOCK_SAP_NO_DELETE = 'true';
     const all = (await fetchPlanEntries('FY27-BASE')).rows;
-    expect(await deletePlanEntryWithFallback(all[1], all, 'me@x')).toBe('replaced');
+    expect(await deletePlanEntryWithFallback(all[1], 'me@x')).toBe('replaced');
     const left = (await fetchPlanEntries('FY27-BASE')).rows.map(entryKeyPath);
     expect(left).toHaveLength(all.length - 1);
     expect(left).not.toContain(entryKeyPath(all[1]));

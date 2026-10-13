@@ -20,7 +20,7 @@ export default function ChecksTab({ ws }: { ws: PlanWorkspace }) {
     setLoading(true);
     setError('');
     try {
-      ws.setLoaded({ checks: { ...(await fetchPlanChecks(ws.plan, item)), itemCheck: item } });
+      ws.setLoaded({ checks: { ...(await fetchPlanChecks(ws.plan, item, ws.plants)), itemCheck: item } });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -46,7 +46,7 @@ export default function ChecksTab({ ws }: { ws: PlanWorkspace }) {
     return { groups: [...g.values()].sort((a, b) => a.werks.localeCompare(b.werks) || a.matnr.localeCompare(b.matnr)), byMsg: [...m].sort((a, b) => b[1] - a[1]) };
   }, [data]);
 
-  const doExport = () => data && void exportTable({ fmt: 'xlsx', name: 'Checks', cols: checkCols(data.rows), count: data.rows.length, extraParams: [...planParams(ws.query), ['Item check', itemCheck ? 'Yes' : 'No']] });
+  const doExport = () => data && void exportTable({ fmt: 'xlsx', name: 'Checks', cols: checkCols(data.rows), count: data.rows.length, extraParams: [...planParams(ws.query), ['Item check', itemCheck ? 'Yes' : 'No'], ['Plants', ws.plants.join(', ') || 'all']] });
 
   return (
     <div className="flex flex-col gap-3">

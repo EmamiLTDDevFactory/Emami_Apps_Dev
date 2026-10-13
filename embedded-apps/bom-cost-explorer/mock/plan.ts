@@ -107,10 +107,19 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
 
   if (set === 'PlanHeadSet' && method === 'GET') {
     await deps.sleep(deps.delay(), signal);
-    const rows = [...store.entries()].map(([plan, m]) => {
-      const list = [...m.values()];
-      return { __metadata: { type: 'ZMM_BOM_COST_SRV.PlanHead' }, Plan1: plan, RowCnt: list.length, PlantCnt: new Set(list.map((e) => e.Werks)).size, Total: n3(list.reduce((a, e) => a + e.m.reduce((x, y) => x + y, 0), 0)) };
-    });
+    // One row per plan AND plant (key Plan1 + Werks); $filter on Plan1 and Werks.
+    const plans = f.get('Plan1') ?? [];
+    const werks = (f.get('Werks') ?? []).map((x) => x.toUpperCase());
+    const rows: Raw[] = [];
+    for (const [plan, m] of store.entries()) {
+      if (plans.length && !plans.includes(plan)) continue;
+      const by = new Map<string, Entry[]>();
+      for (const e of m.values()) by.set(e.Werks, [...(by.get(e.Werks) ?? []), e]);
+      for (const [w, list] of [...by].sort((a, b) => a[0].localeCompare(b[0]))) {
+        if (werks.length && !werks.includes(w)) continue;
+        rows.push({ __metadata: { type: 'ZMM_BOM_COST_SRV.PlanHead' }, Plan1: plan, Werks: w, WerksTxt: PLANTS.find((p) => p.Werks === w)?.Name1 ?? '', RowCnt: list.length, Total: n3(list.reduce((a, e) => a + e.m.reduce((x, y) => x + y, 0), 0)) });
+      }
+    }
     return deps.json({ d: { results: rows } });
   }
 
@@ -179,7 +188,7 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     await deps.sleep(deps.delay(), signal);
     const item = f.get('ItemCheck')?.[0] === 'true';
     const rows: Raw[] = [];
-    for (const e of store.get(plan)?.values() ?? []) {
+    for (const e of matchEntries(f)) {
       const b = bomSource(e.Matnr, e.Werks);
       if (b.src === 'LASTPROD') rows.push({ Kind: 'FG', Plan1: plan, Matnr: e.Matnr, Werks: e.Werks, Comp: '', Msg: `No BOM in plant ${e.Werks}; BOM from plant ${b.plant} (last production 12.08.2026)` });
       if (item) rows.push({ Kind: 'ITEM', Plan1: plan, Matnr: e.Matnr, Werks: e.Werks, Comp: 'RM0003', Msg: 'No valid rate in the look-back window' });
@@ -201,7 +210,7 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     if (!plan) return deps.odataError(400, 'ZPLAN/001', 'Filter Plan1 is required');
     const rows = matchEntries(f);
     if (set !== 'PlanWipSet' && rows.length > PLAN_MAX_ROWS_PER_REQUEST) {
-      return deps.odataError(400, 'ZPLAN/030', `${rows.length} plan rows selected; at most ${PLAN_MAX_ROWS_PER_REQUEST} per request. Filter by plant or material.`);
+      return deps.odataError(400, 'ZPLAN/030', `${rows.length} plan rows selected; maximum ${PLAN_MAX_ROWS_PER_REQUEST} plan rows per request. Restrict the selection by plant or material.`);
     }
     await deps.sleep(deps.delay() + 30 * rows.length, signal);
     const msgs: Msg[] = [];

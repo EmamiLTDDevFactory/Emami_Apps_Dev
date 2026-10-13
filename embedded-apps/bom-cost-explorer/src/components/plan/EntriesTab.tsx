@@ -28,11 +28,11 @@ export default function EntriesTab({ ws }: { ws: PlanWorkspace }) {
   const load = useCallback((signal?: AbortSignal) => {
     setLoading(true);
     setError('');
-    fetchPlanEntries(ws.plan, {}, { signal })
+    fetchPlanEntries(ws.plan, { plants: ws.plants }, { signal })
       .then((r) => { setRows(r.rows); setDraft({}); })
       .catch((e) => { if (!signal?.aborted) setError((e as Error).message); })
       .finally(() => { if (!signal?.aborted) setLoading(false); });
-  }, [ws.plan]);
+  }, [ws.plan, ws.plants]);
   useEffect(() => {
     const c = new AbortController();
     load(c.signal);
@@ -85,7 +85,7 @@ export default function EntriesTab({ ws }: { ws: PlanWorkspace }) {
     const k = entryKeyPath(e);
     setRowState((s) => ({ ...s, [k]: { status: 'saving', msg: '' } }));
     try {
-      await deletePlanEntryWithFallback(e, rows ?? [], ws.user);
+      await deletePlanEntryWithFallback(e, ws.user);
       setRows((r) => (r ?? []).filter((x) => entryKeyPath(x) !== k));
       ws.changed();
     } catch (err) {
@@ -114,7 +114,7 @@ export default function EntriesTab({ ws }: { ws: PlanWorkspace }) {
             <input aria-label="Search entries" className={cx(inputBase, 'h-9 w-full pl-8')} placeholder="Material, plant, country…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <Button size="sm" variant="ghost" onClick={() => load()} disabled={loading} title="Reload"><RefreshCw size={14} className={cx(loading && 'animate-spin')} /></Button>
-          {rows && <span className="ml-auto text-xs text-muted">{shown.length} of {rows.length} rows · quantities in the material&apos;s base unit</span>}
+          {rows && <span className="ml-auto text-xs text-muted">{shown.length} of {rows.length} rows{ws.plants.length ? ` in ${ws.plants.join(', ')}` : ' (all plants)'} · quantities in the material&apos;s base unit</span>}
         </div>
         <ErrorNote error={error} />
         {!rows && loading ? <Skeleton rows={6} /> : rows && !rows.length ? <Empty title="This plan has no rows">Upload rows from the Upload plan page.</Empty> : rows ? (

@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, Download, FileUp, Save, ShieldCheck } from 'lucide-react';
 import PlanFrame from './PlanFrame';
 import { ErrorNote, RoleNote, tdCls, tdNum, thCls, thNum } from './common';
-import { planHref } from './PlansPage';
+import { planHref } from '@/lib/plan/plants';
 import { Button, Card, Modal, Pill, Segmented, Spinner, cx } from '../ui';
 import { PENDING_UPLOAD_KEY, cleanMonths, downloadTemplate, groupByPlan, parseWorkbook, validateRows, type ParsedRow, type RowIssue } from '@/lib/plan/upload';
 import { uploadPlan, type PlanRowInput } from '@/lib/plan/write';
@@ -174,7 +174,13 @@ export default function UploadPage() {
                   </div>
                   {r?.result && <p className="mt-1 text-xs text-muted">{r.result.MsgTxt || `${r.result.Saved} saved, ${r.result.Errors} errors`}</p>}
                   {r?.error && <p className="mt-1 text-xs text-bad">{r.error}</p>}
-                  {phase === 'saved' && r?.result?.Status === 'S' && <Link href={planHref(plan)} className="mt-1 inline-block text-xs font-bold text-accent hover:underline">Open plan →</Link>}
+                  {phase === 'saved' && r?.result?.Status === 'S' && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      {[...new Set(list.map((x) => x.werks.toUpperCase()))].sort().map((w) => (
+                        <Link key={w} href={planHref(plan, [w])} className="text-xs font-bold text-accent hover:underline">Open {w} →</Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

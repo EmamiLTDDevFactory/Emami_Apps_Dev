@@ -22,11 +22,11 @@ async function read<T>(req: { entitySet: string; params: Record<string, string |
   return { rows: r.rows.map((raw) => normalizeEntity<T>(raw, map)), messages: r.messages, ms: r.ms };
 }
 
-export const fetchPlanHeads = (opts: SapGetOptions = {}) => read<PlanHead>(planHeadsRequest(), PLAN_HEAD, opts);
+export const fetchPlanHeads = (f: { plans?: string[]; plants?: string[] } = {}, opts: SapGetOptions = {}) => read<PlanHead>(planHeadsRequest(f), PLAN_HEAD, opts);
 export const fetchPlanEntries = (plan: string, f: Partial<PlanFilters> = {}, opts: SapGetOptions = {}) => read<PlanEntry>(planEntriesRequest(plan, f), PLAN_ENTRY, opts);
-export const fetchPlanChecks = (plan: string, itemCheck: boolean, opts: SapGetOptions = {}) => read<PlanCheck>(planChecksRequest(plan, itemCheck), PLAN_CHECK, opts);
+export const fetchPlanChecks = (plan: string, itemCheck: boolean, plants: string[] = [], opts: SapGetOptions = {}) => read<PlanCheck>(planChecksRequest(plan, itemCheck, plants), PLAN_CHECK, opts);
 export const fetchPlanSummary = (q: PlanCostQuery, opts: SapGetOptions = {}) => read<PlanSummary>(planSummaryRequest(q), PLAN_SUMMARY, opts);
-export const fetchPlanWip = (plan: string, opts: SapGetOptions = {}) => read<PlanWip>(planWipRequest(plan), PLAN_WIP, opts);
+export const fetchPlanWip = (plan: string, plants: string[] = [], opts: SapGetOptions = {}) => read<PlanWip>(planWipRequest(plan, plants), PLAN_WIP, opts);
 
 /** CostLineSet Mode P: one SAP run, rows in Seqnr order (SAP's depth-first order made explicit). */
 export async function fetchPlanCostLines(q: PlanCostQuery, opts: SapGetOptions = {}): Promise<PlanResult<PlanCostLine>> {

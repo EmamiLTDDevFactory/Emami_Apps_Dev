@@ -18,9 +18,11 @@ import WipTab from './WipTab';
 import ScenariosTab from './ScenariosTab';
 import { ls } from '@/lib/client/storage';
 import { readHubSession } from '@/lib/client/session';
+import { readPlanUrl } from '@/lib/plan/plants';
 import { usePlanWorkspace } from '@/lib/plan/workspace';
 import { exportPlanWorkbook } from '@/lib/plan/export';
 import { Button, Card, Empty, Pill, Spinner, Tabs } from '../ui';
+import { PlantChips, SelectPlants } from './common';
 
 export type PlanTab = 'entries' | 'breakup' | 'requirement' | 'checks' | 'wip' | 'scenarios';
 
@@ -37,10 +39,13 @@ const TAB_KEY = 'plan:last-tab';
 
 export default function PlanDetail() {
   const [plan, setPlan] = useState<string | null>(null);
+  const [werks, setWerks] = useState<string[]>([]);
   const [tab, setTab] = useState<PlanTab>('entries');
   const [email, setEmail] = useState('');
   useEffect(() => {
-    setPlan((new URLSearchParams(window.location.search).get('plan') ?? '').trim());
+    const u = readPlanUrl(window.location.search);
+    setWerks(u.werks);
+    setPlan(u.plan);
     setEmail(readHubSession()?.email ?? '');
     const t = ls.get<PlanTab>(TAB_KEY, 'entries');
     if (PLAN_TABS.some((x) => x.id === t)) setTab(t);
@@ -58,19 +63,19 @@ export default function PlanDetail() {
           <Card><Empty title="No plan chosen">Open a plan from the Plans list.</Empty></Card>
         </>
       ) : plan ? (
-        <PlanView plan={plan} email={email} tab={tab} onTab={pick} />
+        <PlanView key={plan} plan={plan} werks={werks} email={email} tab={tab} onTab={pick} />
       ) : null}
     </PlanFrame>
   );
 }
 
-function PlanView({ plan, email, tab, onTab }: { plan: string; email: string; tab: PlanTab; onTab: (t: PlanTab) => void }) {
-  const ws = usePlanWorkspace(plan, email);
+function PlanView({ plan, werks, email, tab, onTab }: { plan: string; werks: string[]; email: string; tab: PlanTab; onTab: (t: PlanTab) => void }) {
+  const ws = usePlanWorkspace(plan, email, werks);
   const [exporting, setExporting] = useState(false);
   const doExport = async () => {
     setExporting(true);
     try {
-      await exportPlanWorkbook({ query: ws.cost.ranQuery ?? ws.query, cost: ws.cost.status === 'done' || ws.cost.rows.length ? ws.cost.rows : null, summary: ws.loaded.summary?.rows ?? null, checks: ws.loaded.checks?.rows ?? null, wip: ws.loaded.wip?.rows ?? null, messages: ws.cost.messages });
+      await exportPlanWorkbook({ plants: ws.plants, query: ws.cost.ranQuery ?? ws.query, cost: ws.cost.status === 'done' || ws.cost.rows.length ? ws.cost.rows : null, summary: ws.loaded.summary?.rows ?? null, checks: ws.loaded.checks?.rows ?? null, wip: ws.loaded.wip?.rows ?? null, messages: ws.cost.messages });
     } finally {
       setExporting(false);
     }
@@ -87,13 +92,19 @@ function PlanView({ plan, email, tab, onTab }: { plan: string; email: string; ta
           {exporting ? <Spinner className="h-3.5 w-3.5" /> : <FileSpreadsheet size={14} />} Excel
         </Button>
       </div>
+      <PlantChips ws={ws} />
       <Tabs label="Plan views" tabs={PLAN_TABS.map((t) => ({ id: t.id, label: t.label }))} value={tab} onChange={onTab} />
       {tab === 'entries' && <EntriesTab ws={ws} />}
-      {tab === 'breakup' && <BreakupTab ws={ws} />}
-      {tab === 'requirement' && <RequirementTab ws={ws} />}
-      {tab === 'checks' && <ChecksTab ws={ws} />}
-      {tab === 'wip' && <WipTab ws={ws} />}
-      {tab === 'scenarios' && <ScenariosTab ws={ws} />}
+      {/* Heavy tabs: no SAP call until a plant is chosen when the plan has several plants. */}
+      {tab !== 'entries' && ws.needsPlant ? <SelectPlants ws={ws} /> : (
+        <>
+          {tab === 'breakup' && <BreakupTab ws={ws} />}
+          {tab === 'requirement' && <RequirementTab ws={ws} />}
+          {tab === 'checks' && <ChecksTab ws={ws} />}
+          {tab === 'wip' && <WipTab ws={ws} />}
+          {tab === 'scenarios' && <ScenariosTab ws={ws} />}
+        </>
+      )}
     </>
   );
 }

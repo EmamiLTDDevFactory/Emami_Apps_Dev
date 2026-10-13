@@ -54,16 +54,20 @@ function needPlan(plan: string) {
   if (!plan.trim()) throw new PlanQueryError('Choose a plan first.');
 }
 
-export const planHeadsRequest = () => ({ entitySet: PLAN_SET.HEADS, params: {} as Record<string, string | undefined> });
+/** PlanHeadSet: one row per plan and plant; optional filters on Plan1 and Werks. */
+export function planHeadsRequest(f: { plans?: string[]; plants?: string[] } = {}) {
+  const filter = and(eq('Plan1', (f.plans ?? []).map((p) => p.trim()).filter(Boolean)), eq('Werks', upper(f.plants ?? [])));
+  return { entitySet: PLAN_SET.HEADS, params: (filter ? { $filter: filter } : {}) as Record<string, string | undefined> };
+}
 
 export function planEntriesRequest(plan: string, f: Partial<PlanFilters> = {}) {
   needPlan(plan);
   return { entitySet: PLAN_SET.ENTRIES, params: { $filter: and(eq('Plan1', plan.trim()), eq('Matnr', upper(f.materials ?? [])), eq('Werks', upper(f.plants ?? []))) } as Record<string, string | undefined> };
 }
 
-export function planChecksRequest(plan: string, itemCheck: boolean) {
+export function planChecksRequest(plan: string, itemCheck: boolean, plants: string[] = []) {
   needPlan(plan);
-  return { entitySet: PLAN_SET.CHECKS, params: { $filter: and(eq('Plan1', plan.trim()), eq('ItemCheck', itemCheck)) } as Record<string, string | undefined> };
+  return { entitySet: PLAN_SET.CHECKS, params: { $filter: and(eq('Plan1', plan.trim()), eq('Werks', upper(plants)), eq('ItemCheck', itemCheck)) } as Record<string, string | undefined> };
 }
 
 export function planSummaryRequest(q: PlanCostQuery) {
@@ -71,9 +75,9 @@ export function planSummaryRequest(q: PlanCostQuery) {
   return { entitySet: PLAN_SET.SUMMARY, params: { $filter: costFilter(q, false) } as Record<string, string | undefined> };
 }
 
-export function planWipRequest(plan: string) {
+export function planWipRequest(plan: string, plants: string[] = []) {
   needPlan(plan);
-  return { entitySet: PLAN_SET.WIP, params: { $filter: eq('Plan1', plan.trim())! } as Record<string, string | undefined> };
+  return { entitySet: PLAN_SET.WIP, params: { $filter: and(eq('Plan1', plan.trim()), eq('Werks', upper(plants))) } as Record<string, string | undefined> };
 }
 
 /** CostLineSet Mode P filter. `withMode` false = the same filters for PlanSummarySet. */

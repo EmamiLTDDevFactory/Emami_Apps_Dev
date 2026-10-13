@@ -56,11 +56,13 @@ describe('requests', () => {
 });
 
 describe('client against the mock plan sets', () => {
-  it('PlanHeadSet lists the seeded plans', async () => {
+  it('PlanHeadSet lists the seeded plans, one row per plan and plant', async () => {
     const r = await fetchPlanHeads();
-    const base = r.rows.find((h) => h.Plan1 === 'FY27-BASE')!;
-    expect(base).toMatchObject({ RowCnt: 5, PlantCnt: 4 });
-    expect(D(base.Total).gt(0)).toBe(true);
+    const base = r.rows.filter((h) => h.Plan1 === 'FY27-BASE');
+    expect(base.map((h) => h.Werks)).toEqual(['1000', '1100', '1200', 'BD10']);
+    expect(base.find((h) => h.Werks === '1000')).toMatchObject({ RowCnt: 2, WerksTxt: 'Kolkata Plant' });
+    expect(base.every((h) => D(h.Total).gt(0))).toBe(true);
+    expect(base[0]).not.toHaveProperty('PlantCnt');
   });
   it('PlanEntrySet filters by plant; months are decimal strings April..March', async () => {
     const r = await fetchPlanEntries('FY27-BASE', { plants: ['1000'] });
@@ -90,7 +92,7 @@ describe('client against the mock plan sets', () => {
     const unique = rows.map((r, i) => ({ ...r, Land1: `X${String(i).padStart(2, '0')}` }));
     const res = await upload({ Plan1: 'BIG', UpdMode: 'R', Dryrun: false, Entries: unique });
     expect(res.d.Status).toBe('S');
-    await expect(fetchPlanCostLines(defaultPlanCostQuery('BIG'))).rejects.toThrow(/at most 30 per request.*Filter by plant or material/);
+    await expect(fetchPlanCostLines(defaultPlanCostQuery('BIG'))).rejects.toThrow(/maximum 30 plan rows per request/);
   });
   it('PlanCheckSet, PlanSummarySet and PlanWipSet answer', async () => {
     const checks = await fetchPlanChecks('FY27-BASE', true);
@@ -113,7 +115,7 @@ describe('mock PlanUploadSet deep insert', () => {
     expect((await fetchPlanHeads()).rows.some((h) => h.Plan1 === 'NEW-PLAN')).toBe(false);
     const save = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: false, Entries: [row('FG1001', '1000')] });
     expect(save.d).toMatchObject({ Status: 'S', Saved: 1 });
-    expect((await fetchPlanHeads()).rows.find((h) => h.Plan1 === 'NEW-PLAN')?.RowCnt).toBe(1);
+    expect((await fetchPlanHeads({ plans: ['NEW-PLAN'] })).rows).toMatchObject([{ Plan1: 'NEW-PLAN', Werks: '1000', RowCnt: 1 }]);
     const bad = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: false, Entries: [row('FG1001', 'XX'), { ...row('FG1002', '1000'), Mth3: '-5.000' }] });
     expect(bad.d).toMatchObject({ Status: 'E', Saved: 0, Errors: 2 });
   });

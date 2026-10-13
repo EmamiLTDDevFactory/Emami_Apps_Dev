@@ -9,6 +9,7 @@ import { normalizeEntity } from '../sap/normalize';
 import { odataString } from '../sap/filter';
 import { NAV_UPLOAD_ENTRIES, PLAN_ENTRY, PLAN_SET, PLAN_UPLOAD, monthKeys, type PlanEntry, type PlanUploadResult } from './fields';
 import { D } from '../cost/decimal';
+import { fetchPlanEntries } from './client';
 
 export interface PlanRowInput {
   plan: string;
@@ -55,9 +56,10 @@ export async function deletePlanEntry(e: PlanEntry, opts: SapGetOptions = {}) {
 /**
  * Delete that also works when the gateway does not forward DELETE (it answers its own 404, mapped to 501):
  * the plan is saved again with Replace and every row except the deleted one, after a passing check run.
- * `all` must be every row of the plan (unfiltered), or Replace would drop the rows not passed.
+ * The whole plan is read from SAP here (all plants): Replace with only the rows on screen (one plant)
+ * would drop every other plant's rows.
  */
-export async function deletePlanEntryWithFallback(e: PlanEntry, all: PlanEntry[], user: string, opts: SapGetOptions = {}): Promise<'deleted' | 'replaced'> {
+export async function deletePlanEntryWithFallback(e: PlanEntry, user: string, opts: SapGetOptions = {}): Promise<'deleted' | 'replaced'> {
   try {
     await deletePlanEntry(e, opts);
     return 'deleted';
@@ -65,6 +67,7 @@ export async function deletePlanEntryWithFallback(e: PlanEntry, all: PlanEntry[]
     if ((err as { status?: number }).status !== 501) throw err;
   }
   const k = entryKeyPath(e);
+  const all = (await fetchPlanEntries(e.Plan1, {}, opts)).rows;
   const keep = all.filter((x) => entryKeyPath(x) !== k).map((x) => ({ plan: x.Plan1, matnr: x.Matnr, werks: x.Werks, land1: x.Land1, months: monthKeys('Mth').map((m) => (x as unknown as Record<string, string>)[m]) }));
   if (!keep.length) throw new Error('This is the last row of the plan, and the SAP gateway does not pass DELETE on yet, so it cannot be removed from here.');
   const check = await uploadPlan(e.Plan1, 'R', true, keep, user, opts);

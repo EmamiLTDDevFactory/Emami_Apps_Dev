@@ -26,7 +26,7 @@ export default function WipTab({ ws }: { ws: PlanWorkspace }) {
     setLoading(true);
     setError('');
     try {
-      ws.setLoaded({ wip: await fetchPlanWip(ws.plan) });
+      ws.setLoaded({ wip: await fetchPlanWip(ws.plan, ws.plants) });
     } catch (e) {
       setError((e as Error).message);
     } finally {
