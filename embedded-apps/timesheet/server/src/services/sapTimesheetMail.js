@@ -10,7 +10,8 @@ import { pool } from '../db/pool.js'
 // skipped for any employee with no vendor_id maintained in timesheet.users.
 //
 // Payload shape (property names/formats confirmed against the live service):
-//   { Lifnr, MailId, Flag: 'A' | 'R', NAV_EMPTOMAIL: [one row per calendar day of the month] }
+//   { Lifnr, MailId, Flag: 'A' | 'R', Comment, NAV_EMPTOMAIL: [one row per calendar day of the month] }
+// Comment carries the manager's rejection reason (blank on approval) for SAP's mail body.
 
 const SAP_TIMESHEET_URL =
   process.env.SAP_TIMESHEET_URL ||
@@ -87,7 +88,7 @@ function buildDayRows(monthStartDate, entries, taskNames, overrides) {
 
 async function buildPayload(timesheetId, flag) {
   const { rows: tsRows } = await pool.query(
-    `SELECT ts.month_start_date, u.email, u.vendor_id, u.manager_id
+    `SELECT ts.month_start_date, ts.manager_comment, u.email, u.vendor_id, u.manager_id
      FROM timesheets ts JOIN users u ON u.id = ts.user_id
      WHERE ts.id = $1`,
     [timesheetId],
@@ -112,6 +113,7 @@ async function buildPayload(timesheetId, flag) {
       Lifnr: ts.vendor_id,
       MailId: ts.email,
       Flag: flag,
+      Comment: flag === 'R' ? ts.manager_comment || '' : '',
       NAV_EMPTOMAIL: buildDayRows(ts.month_start_date, entries, taskNames, overrides),
     },
   }
