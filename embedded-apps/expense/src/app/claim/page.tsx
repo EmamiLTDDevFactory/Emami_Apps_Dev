@@ -179,7 +179,7 @@ function ClaimDetailInner() {
 
   const handlePreviewAttachment = (ln: any) => {
     const mimetype = ln.Mimetype || 'application/pdf';
-    const filename = getDisplayFilename(ln.Filename || 'attachment', mimetype);
+    const filename = ln.Filename || 'attachment';
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     setPreviewAttachment({ filename, mimetype, dataUri: `data:${mimetype};base64,${value}`, raw: ln });
@@ -187,7 +187,7 @@ function ClaimDetailInner() {
 
   const handleOpenAttachment = (ln: any) => {
     const mimetype = ln.Mimetype || 'application/pdf';
-    const filename = getDisplayFilename(ln.Filename || 'attachment.pdf', mimetype);
+    const filename = ln.Filename || 'attachment.pdf';
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     const dataUri = `data:${mimetype};base64,${value}`;
