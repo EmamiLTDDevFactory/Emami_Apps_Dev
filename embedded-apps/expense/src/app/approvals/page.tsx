@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { getCategoryStyle } from '../../utils/category-style';
+import { formatClaimDisplayDate } from '../../utils/claim-date';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { isGstClaim } from '../../utils/claim-gst';
@@ -21,8 +22,8 @@ const formatHistoryDate = (value?: string) => {
   if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
   if (Number.isNaN(d.getTime())) return value;
   const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dd}-${mm}-${d.getFullYear()}`;
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
 };
 
 // HistorySet rows come back in SAP's own order (effectively oldest-first) with no sort applied —
@@ -439,7 +440,7 @@ export default function ApprovalsPage() {
                   </div>
                   <div className="mt-2 flex justify-between text-2xs font-medium text-inkFaint">
                     <span>Cost Center: {claim.costCenter}</span>
-                    <span>Date: {claim.claimDate}</span>
+                    <span>Date: {formatClaimDisplayDate(claim)}</span>
                   </div>
                   {getPersistedTaxSplit(claim) && (
                     <div className="mt-1 flex justify-between text-2xs font-medium text-inkFaint">

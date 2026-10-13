@@ -114,6 +114,10 @@ function ClaimDetailInner() {
   const [taxSearch, setTaxSearch] = useState('');
   const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<{ filename: string; mimetype: string; dataUri: string; raw: any } | null>(null);
+  // Parsed lazily (dynamic import, only when an Excel attachment is actually opened) so the xlsx
+  // library never loads into the bundle for users who never preview a spreadsheet. 'loading' while
+  // the parse is in flight, 'error' if the file can't be read, otherwise the first sheet's rows.
+  const [excelPreview, setExcelPreview] = useState<{ status: 'loading' } | { status: 'error' } | { status: 'ready'; rows: any[][] } | null>(null);
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
 
   const loadClaim = async () => {
@@ -177,12 +181,28 @@ function ClaimDetailInner() {
     (normalizedHeaderStatus === 'N' || normalizedHeaderStatus === 'SUBMITTED' || normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED');
   const showFinanceActions = isFinanceRole && (normalizedHeaderStatus === 'A' || normalizedHeaderStatus === 'APPROVED' || normalizedHeaderStatus === 'H' || normalizedHeaderStatus === 'PENDING RELEASE' || isTopLevelPending);
 
+  const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
   const handlePreviewAttachment = (ln: any) => {
     const mimetype = ln.Mimetype || 'application/pdf';
     const filename = ln.Filename || 'attachment';
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     setPreviewAttachment({ filename, mimetype, dataUri: `data:${mimetype};base64,${value}`, raw: ln });
+
+    if (EXCEL_MIME_TYPES.includes(mimetype)) {
+      setExcelPreview({ status: 'loading' });
+      import('xlsx').then((XLSX) => {
+        const workbook = XLSX.read(value, { type: 'base64' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, blankrows: false });
+        setExcelPreview({ status: 'ready', rows: rows.slice(0, 500) });
+      }).catch(() => {
+        setExcelPreview({ status: 'error' });
+      });
+    } else {
+      setExcelPreview(null);
+    }
   };
 
   const handleOpenAttachment = (ln: any) => {
@@ -533,16 +553,44 @@ function ClaimDetailInner() {
         )}
       </Modal>
 
-      <Modal open={!!previewAttachment} title={previewAttachment?.filename || 'Attachment'} onClose={() => setPreviewAttachment(null)} size="lg"
+      <Modal open={!!previewAttachment} title={previewAttachment?.filename || 'Attachment'} onClose={() => { setPreviewAttachment(null); setExcelPreview(null); }} size="lg"
         footer={<Button variant="success" icon={Download} onClick={() => previewAttachment && handleOpenAttachment(previewAttachment.raw)}>Download</Button>}>
-        <div className="flex h-[60vh] items-center justify-center bg-appBg">
+        <div className="h-[60vh] bg-appBg">
           {previewAttachment?.mimetype.startsWith('image/') ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={previewAttachment.dataUri} alt={previewAttachment.filename} className="max-h-full max-w-full object-contain" />
+            <div className="flex h-full items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewAttachment.dataUri} alt={previewAttachment.filename} className="max-h-full max-w-full object-contain" />
+            </div>
           ) : previewAttachment?.mimetype === 'application/pdf' ? (
             <iframe src={previewAttachment.dataUri} className="h-full w-full border-0" title={previewAttachment.filename} />
+          ) : previewAttachment && EXCEL_MIME_TYPES.includes(previewAttachment.mimetype) ? (
+            <div className="h-full overflow-auto p-2">
+              {excelPreview?.status === 'loading' && (
+                <div className="flex h-full items-center justify-center gap-2 text-sm text-inkSoft"><Spinner size={16} /> Loading spreadsheet…</div>
+              )}
+              {excelPreview?.status === 'error' && (
+                <div className="flex h-full items-center justify-center"><p className="text-sm text-inkSoft">Couldn't preview this spreadsheet. Try downloading it instead.</p></div>
+              )}
+              {excelPreview?.status === 'ready' && (
+                excelPreview.rows.length === 0 ? (
+                  <div className="flex h-full items-center justify-center"><p className="text-sm text-inkSoft">This spreadsheet appears to be empty.</p></div>
+                ) : (
+                  <table className="w-full border-collapse text-xs">
+                    <tbody>
+                      {excelPreview.rows.map((row, rIdx) => (
+                        <tr key={rIdx}>
+                          {row.map((cell, cIdx) => (
+                            <td key={cIdx} className="whitespace-nowrap border border-line px-2 py-1 text-ink">{cell ?? ''}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              )}
+            </div>
           ) : (
-            <p className="text-sm text-inkSoft">Preview not available for this file type.</p>
+            <div className="flex h-full items-center justify-center"><p className="text-sm text-inkSoft">Preview not available for this file type.</p></div>
           )}
         </div>
       </Modal>

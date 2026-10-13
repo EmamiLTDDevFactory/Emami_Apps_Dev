@@ -42,7 +42,7 @@ export default function RootPage() {
   const kpiCards = [
     { label: 'Total Claims', value: kpis.total, icon: FileStack, accent: 'text-brand', href: '/my-claims/?status=All' },
     { label: 'Pending Approval', value: kpis.pending, icon: Clock, accent: 'text-amber', href: '/my-claims/?status=Submitted' },
-    { label: 'Approved / Pending Pay', value: kpis.approved, icon: CheckCircle2, accent: 'text-green', href: '/my-claims/?status=Approved' },
+    { label: 'Pending Pay', value: kpis.approved, icon: CheckCircle2, accent: 'text-green', href: `/my-claims/?status=${encodeURIComponent('Pending Pay')}` },
     { label: 'Paid Claims', value: kpis.paid, icon: IndianRupee, accent: 'text-green', href: '/my-claims/?status=Paid' },
     { label: 'Rejected', value: kpis.rejected, icon: XCircle, accent: 'text-red', href: '/my-claims/?status=Rejected' },
     { label: 'Last 3 Months Total', value: `₹${formatCurrency(kpis.last3MonthsTotal || 0)}`, icon: BarChart3, accent: 'text-green', href: '/my-claims/?status=Paid&period=last3months' },

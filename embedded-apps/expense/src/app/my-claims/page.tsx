@@ -15,7 +15,11 @@ import { Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } f
 
 const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Pending at finance', 'Paid', 'Rejected'];
 
-const getStatusParamValue = (statusParam: string | null) => (statusParam && STATUSES.includes(statusParam) ? statusParam : 'All');
+// 'Pending Pay' is a synthetic combined status the Dashboard KPI card links to (Pending at finance
+// + Parked) - not one of the real SAP statuses in STATUSES, so it's accepted separately here
+// without being offered as its own selectable filter chip.
+const getStatusParamValue = (statusParam: string | null) =>
+  statusParam && (STATUSES.includes(statusParam) || statusParam === 'Pending Pay') ? statusParam : 'All';
 
 // Fiscal-year filter reads the same "Submitted" timestamp shown on each card (createdOn/
 // createdTime, falling back to claimDate) — not claim.claimDate — per the stakeholder requirement.

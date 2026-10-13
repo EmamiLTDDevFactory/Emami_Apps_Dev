@@ -431,7 +431,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (c.status !== 'Draft') total++;
       if (c.status === 'Submitted') pending++;
-      if (c.status === 'Approved' || c.status === 'Pending Release' || c.status === 'Pending at finance') approved++;
+      if (c.status === 'Pending Release' || c.status === 'Pending at finance') approved++;
       if (c.status === 'Rejected') rejected++;
       if (c.status === 'Paid') paid++;
     });
@@ -1147,9 +1147,13 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (c.expenseType !== expenseType) return false;
         }
 
-        // Filter by status
+        // Filter by status - 'Pending Pay' is a synthetic combined status (not a real SAP status)
+        // matching the Dashboard KPI card of the same name, covering both claims sitting at
+        // Finance review and claims already Parked awaiting payment release.
         if (status && status !== 'All') {
-          if (c.status !== status) return false;
+          if (status === 'Pending Pay') {
+            if (c.status !== 'Pending at finance' && c.status !== 'Pending Release') return false;
+          } else if (c.status !== status) return false;
         }
 
         return true;
