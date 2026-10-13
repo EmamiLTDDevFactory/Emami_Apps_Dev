@@ -354,8 +354,8 @@ function ClaimDetailInner() {
           <div><p className="text-2xs font-bold text-inkSoft">Cost Center</p><p className="text-sm font-extrabold text-ink">{header.CostCenter ? `${header.CostCenter}${header.Ltext ? ` (${header.Ltext})` : ''}` : '-'}</p></div>
           <div><p className="text-2xs font-bold text-inkSoft">Department</p><p className="text-sm font-extrabold text-ink">{header.Department || '-'}</p></div>
           <div><p className="text-2xs font-bold text-inkSoft">Designation</p><p className="text-sm font-extrabold text-ink">{header.Designation || '-'}</p></div>
-          {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Posting Document</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
-          {fiscalYear && <div><p className="text-2xs font-bold text-inkSoft">Fiscal Year</p><p className="text-sm font-extrabold text-ink">{fiscalYear}</p></div>}
+          {postingDoc && <div><p className="text-2xs font-bold text-inkSoft">Document Number</p><p className="text-sm font-extrabold text-ink">{postingDoc}</p></div>}
+          {fiscalYear && <div><p className="text-2xs font-bold text-inkSoft">Financial Year</p><p className="text-sm font-extrabold text-ink">{fiscalYear}</p></div>}
           {hasPersistedTaxSplit && (
             <>
               <div><p className="text-2xs font-bold text-inkSoft">Expense Amount</p><p className="text-sm font-extrabold text-ink">₹{formatCurrency(persistedExpenseAmt)}</p></div>
