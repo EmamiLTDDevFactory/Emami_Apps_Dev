@@ -100,6 +100,10 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
   const set = seg.replace(/\(.*$/, '');
   const f = deps.parseFilter(sp.get('$filter') ?? '');
   const signal = init?.signal ?? undefined;
+  // AllBoms / Scrap / Fallback / ItemCheck are Edm.String (CHAR1): a boolean literal is refused like SAP does.
+  for (const k of ['AllBoms', 'Scrap', 'Fallback', 'ItemCheck']) {
+    if ((f.get(k) ?? []).some((v) => v === 'true' || v === 'false')) return deps.odataError(400, '/IWBEP/CM_MGW_RT/001', "Invalid parametertype used at function 'eq'");
+  }
   // Like the live Azure gateway today: DELETE is not forwarded, the gateway answers its own 404 page.
   if (method === 'DELETE' && process.env.MOCK_SAP_NO_DELETE === 'true') {
     return new Response(`<pre>Cannot DELETE /api/${seg}</pre>`, { status: 404, headers: { 'content-type': 'text/html' } });
@@ -153,7 +157,9 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     const plan = String(body.Plan1 ?? '').trim();
     const entries = (Array.isArray(body.Entries) ? body.Entries : body.Entries?.results) ?? [];
     if (!plan || plan.length > PLAN_NAME_MAX) return deps.odataError(400, 'ZPLAN/010', `Plan name must be 1 to ${PLAN_NAME_MAX} characters`);
-    if (typeof body.Dryrun !== 'boolean') return deps.odataError(400, 'ZPLAN/011', 'Dryrun must be a boolean');
+    // Dryrun is CHAR1 on the service: 'X' = check only, '' = save. A JSON boolean is refused, like SAP does.
+    if (body.Dryrun !== 'X' && body.Dryrun !== '') return deps.odataError(400, '/IWBEP/CM_MGW_RT/004', "Dryrun must be 'X' or '' (CHAR1)");
+    const dryrun = body.Dryrun === 'X';
     await deps.sleep(deps.delay(), signal);
     const seen = new Set<string>();
     const out: Raw[] = entries.map((e): Raw => {
@@ -168,7 +174,7 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     });
     const errors = out.filter((r) => r.Status === 'E').length;
     let saved = 0;
-    if (!errors && !body.Dryrun) {
+    if (!errors && !dryrun) {
       const m = body.UpdMode === 'R' ? new Map<string, Entry>() : store.get(plan) ?? new Map<string, Entry>();
       for (const r of out) {
         const e: Entry = { Plan1: plan, Matnr: r.Matnr as string, Werks: r.Werks as string, Land1: r.Land1 as string, m: Array.from({ length: 12 }, (_, i) => Number(r[`Mth${i + 1}`])), Status: '', Msg: '' };
@@ -177,8 +183,8 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
       }
       store.set(plan, m);
     }
-    const status = errors ? 'E' : body.Dryrun ? 'V' : 'S';
-    const msgTxt = errors ? `${errors} row(s) have errors; nothing was saved` : body.Dryrun ? `Check passed: ${out.length} row(s) can be saved` : `${saved} row(s) saved in plan ${plan}${body.UpdMode === 'R' ? ' (plan replaced)' : ''}`;
+    const status = errors ? 'E' : dryrun ? 'V' : 'S';
+    const msgTxt = errors ? `${errors} row(s) have errors; nothing was saved` : dryrun ? `Check passed: ${out.length} row(s) can be saved` : `${saved} row(s) saved in plan ${plan}${body.UpdMode === 'R' ? ' (plan replaced)' : ''}`;
     return deps.json({ d: { Plan1: plan, UpdMode: body.UpdMode ?? 'M', Dryrun: body.Dryrun, Status: status, Saved: saved, Errors: errors, MsgTxt: msgTxt, Entries: { results: out } } }, 201);
   }
 
@@ -186,7 +192,7 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     const plan = f.get('Plan1')?.[0] ?? '';
     if (!plan) return deps.odataError(400, 'ZPLAN/001', 'Filter Plan1 is required');
     await deps.sleep(deps.delay(), signal);
-    const item = f.get('ItemCheck')?.[0] === 'true';
+    const item = f.get('ItemCheck')?.[0] === 'X';
     const rows: Raw[] = [];
     for (const e of matchEntries(f)) {
       const b = bomSource(e.Matnr, e.Werks);

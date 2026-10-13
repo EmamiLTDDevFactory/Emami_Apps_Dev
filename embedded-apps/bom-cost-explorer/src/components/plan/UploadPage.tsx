@@ -2,7 +2,7 @@
 /**
  * /plan/upload - upload wizard. The file is read and checked in the browser (template columns, required
  * cells, plant format, numbers >= 0, duplicates, plan name length, row limit); rows are grouped by plan and
- * sent one request per plan: Step 1 "Check with SAP" (Dryrun true), Step 2 "Save" (Dryrun false, only after
+ * sent one request per plan: Step 1 "Check with SAP" (Dryrun 'X'), Step 2 "Save" (Dryrun '', only after
  * the check passed). Merge (default) keeps the plan's other rows; Replace deletes them first.
  * The WIP tab hands rows over through sessionStorage "plan:pending-upload".
  */

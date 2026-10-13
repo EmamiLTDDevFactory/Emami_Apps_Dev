@@ -83,7 +83,7 @@ describe('plant filter in every detail filter string', () => {
     expect(costFilter(one)).toContain("Werks eq 'UN13'");
     expect(costFilter(two)).toContain(OR);
     expect(planSummaryRequest(two).params.$filter).toContain(OR);
-    expect(planChecksRequest('FY27 BASE', true, ['UN13', 'UN14']).params.$filter).toBe(`Plan1 eq 'FY27 BASE' and ${OR} and ItemCheck eq true`);
+    expect(planChecksRequest('FY27 BASE', true, ['UN13', 'UN14']).params.$filter).toBe(`Plan1 eq 'FY27 BASE' and ${OR} and ItemCheck eq 'X'`);
     expect(planWipRequest('FY27 BASE', ['UN13']).params.$filter).toBe("Plan1 eq 'FY27 BASE' and Werks eq 'UN13'");
     expect(planHeadsRequest({ plans: ['FY27 BASE'], plants: ['un13'] }).params.$filter).toBe("Plan1 eq 'FY27 BASE' and Werks eq 'UN13'");
     expect(planHeadsRequest().params.$filter).toBeUndefined();

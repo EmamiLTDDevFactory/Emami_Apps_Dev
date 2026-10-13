@@ -5,9 +5,9 @@
  *
  *   PlanHeadSet     GET                one row per plan AND plant: key Plan1+Werks, WerksTxt, RowCnt, Total; filter Plan1, Werks
  *   PlanEntrySet    GET / PUT / DELETE key Plan1+Matnr+Werks+Land1; filter Plan1, Matnr, Werks
- *   PlanUploadSet   POST (deep insert) Plan1, UpdMode 'M'|'R', Dryrun, Entries[] -> Status 'E'|'V'|'S', Saved, Errors, MsgTxt
+ *   PlanUploadSet   POST (deep insert) Plan1, UpdMode 'M'|'R', Dryrun 'X'|'' (CHAR1), Entries[] -> Status 'E'|'V'|'S', Saved, Errors, MsgTxt
  *   CostLineSet     Mode eq 'P'        plan breakup + cost (no $expand; rate options via lib/rates)
- *   PlanCheckSet    GET                Plan1, ItemCheck -> Kind 'FG'|'ITEM', Matnr, Werks, Comp, Msg
+ *   PlanCheckSet    GET                Plan1, Werks, ItemCheck 'X' (CHAR1; absent = FG check) -> Kind 'FG'|'ITEM', Matnr, Werks, Comp, Msg
  *   PlanSummarySet  GET                requirement vs stock / PO
  *   PlanWipSet      GET                WIP requirement per FG
  *
@@ -61,7 +61,8 @@ export const PLAN_ENTRY = def({
   Msg: ['Msg', 's'],
 });
 
-/** PlanUploadSet header (request and response). Dryrun is Edm.Boolean; decimals travel as strings. */
+/** PlanUploadSet header (request and response). Dryrun is CHAR1: sent as planFlagValue() ('X' / ''); read back with
+ * kind 'b', which accepts 'X' and true. Decimals travel as strings. */
 export const PLAN_UPLOAD = def({
   Plan1: ['Plan1', 's'],
   UpdMode: ['UpdMode', 's'],
@@ -133,10 +134,11 @@ export const PLAN_SELECTION = def({
   Werks: ['Werks', 's'],
   Matnr: ['Matnr', 's'],
   MtartFilter: ['MtartFilter', 's'], // 'A' all | 'P' packing | 'R' RM + WIP
-  AllBoms: ['AllBoms', 'b'],
+  // AllBoms, Scrap, Fallback and ItemCheck are Edm.String (CHAR1): always built with planFlag(), never literal().
+  AllBoms: ['AllBoms', 's'],
   BasePlant: ['BasePlant', 's'],
-  Scrap: ['Scrap', 'b'],
-  Fallback: ['Fallback', 'b'],
+  Scrap: ['Scrap', 's'],
+  Fallback: ['Fallback', 's'],
   InclFrt: ['InclFrt', 'b'],
   StdFrt: ['StdFrt', 'b'],
   InclBudget: ['InclBudget', 'b'],
@@ -148,9 +150,29 @@ export const PLAN_SELECTION = def({
   FreightDays: ['FreightDays', 'i'],
   BudatFrom: ['BudatFrom', 't'],
   BudatTo: ['BudatTo', 't'],
-  ItemCheck: ['ItemCheck', 'b'],
+  ItemCheck: ['ItemCheck', 's'],
   Year: ['Year', 's'],
 });
+
+/**
+ * How the plan CHAR1 flags (AllBoms, Scrap, Fallback, ItemCheck in filters; Dryrun in the upload body) are sent.
+ * "string" (the service today: Edm.String CHAR1): on = 'X', off = left out of the filter / '' in a body
+ * (SAP treats a missing flag as false; "AllBoms eq true" fails with 400 "Invalid parametertype used at
+ * function 'eq'"). "boolean": the old Edm.Boolean form, eq true / eq false. The costing flags (InclFrt, StdFrt,
+ * InclBudget, InclCover) are Edm.Boolean and never go through this.
+ */
+export const PLAN_FLAG_STYLE: 'string' | 'boolean' = 'string';
+
+/** Filter clause for a plan CHAR1 flag, or null when it is left out (style "string", flag off). */
+export function planFlag(name: string, on: boolean, style: 'string' | 'boolean' = PLAN_FLAG_STYLE): string | null {
+  if (style === 'boolean') return `${name} eq ${on ? 'true' : 'false'}`;
+  return on ? `${name} eq 'X'` : null;
+}
+
+/** Value of a plan CHAR1 flag in a write body: 'X' / '' (style "string"), true / false (style "boolean"). */
+export function planFlagValue(on: boolean, style: 'string' | 'boolean' = PLAN_FLAG_STYLE): string | boolean {
+  return style === 'boolean' ? on : on ? 'X' : '';
+}
 
 export type PlanHead = RowOf<typeof PLAN_HEAD>;
 export type PlanEntry = RowOf<typeof PLAN_ENTRY>;

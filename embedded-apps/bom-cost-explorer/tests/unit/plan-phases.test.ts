@@ -70,9 +70,9 @@ describe('upload parsing and checks', () => {
 });
 
 describe('writes', () => {
-  it('deep insert body: decimals as 3-dp strings, Entries navigation, Dryrun boolean', () => {
+  it('deep insert body: decimals as 3-dp strings, Entries navigation, Dryrun CHAR1', () => {
     const b = uploadBody(' P1 ', 'M', true, [{ plan: 'P1', matnr: 'fg1', werks: '1000', land1: 'in', months: m12(2) }]);
-    expect(b).toMatchObject({ Plan1: 'P1', UpdMode: 'M', Dryrun: true });
+    expect(b).toMatchObject({ Plan1: 'P1', UpdMode: 'M', Dryrun: 'X' });
     expect(b.Entries[0]).toMatchObject({ Matnr: 'FG1', Land1: 'IN', Mth1: '2.000', Mth12: '2.000' });
   });
   it('key path has no "+" and quotes values', () => {
@@ -154,7 +154,8 @@ describe('scenarios', () => {
   });
   it('SAP what-ifs become query options', () => {
     const q = scenarioQuery(defaultPlanCostQuery('P'), { fallback: false, donorPlant: 'ub01', prio: 'MBEW,CONTRACT' });
-    expect(costFilter(q)).toMatch(/Fallback eq false.*Prio eq 'MBEW,CONTRACT'.*DonorPlant eq 'UB01'/);
+    expect(costFilter(q)).toMatch(/Prio eq 'MBEW,CONTRACT'.*DonorPlant eq 'UB01'/);
+    expect(costFilter(q)).not.toContain('Fallback'); // off CHAR1 flag is left out
   });
   it('WIP plan: grouped by component + plant + country, months summed, name capped at 30', async () => {
     const wip = (await fetchPlanWip('FY27-BASE')).rows;

@@ -41,7 +41,7 @@ describe('requests', () => {
     const q = { ...defaultPlanCostQuery('FY27 BASE'), plants: ['1000', '1100'], materials: ['fg1001'] };
     const f = costFilter(q);
     expect(f.startsWith("Mode eq 'P' and Plan1 eq 'FY27 BASE' and (Werks eq '1000' or Werks eq '1100') and Matnr eq 'FG1001' and MtartFilter eq 'A'")).toBe(true);
-    expect(f).toContain('Fallback eq true');
+    expect(f).toContain("Fallback eq 'X'");
     const r = planCostRequest(q, OPTIONAL_PROPS);
     expect(r.entitySet).toBe('CostLineSet');
     expect(r.params.$expand).toBeUndefined();
@@ -90,7 +90,7 @@ describe('client against the mock plan sets', () => {
     const rows = Array.from({ length: PLAN_MAX_ROWS_PER_REQUEST + 1 }, (_, i) => row(i % 2 ? 'FG1001' : 'FG3001', ['1000', '1100', '1200', '1300'][i % 4]));
     // make every row unique by country so 31 survive the duplicate check
     const unique = rows.map((r, i) => ({ ...r, Land1: `X${String(i).padStart(2, '0')}` }));
-    const res = await upload({ Plan1: 'BIG', UpdMode: 'R', Dryrun: false, Entries: unique });
+    const res = await upload({ Plan1: 'BIG', UpdMode: 'R', Dryrun: '', Entries: unique });
     expect(res.d.Status).toBe('S');
     await expect(fetchPlanCostLines(defaultPlanCostQuery('BIG'))).rejects.toThrow(/maximum 30 plan rows per request/);
   });
@@ -108,15 +108,15 @@ describe('client against the mock plan sets', () => {
 
 describe('mock PlanUploadSet deep insert', () => {
   it('dry run checks without saving; save merges; errors save nothing', async () => {
-    const dry = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: true, Entries: [row('FG1001', '1000'), row('FG5001', 'BD10')] });
+    const dry = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: 'X', Entries: [row('FG1001', '1000'), row('FG5001', 'BD10')] });
     expect(dry.status).toBe(201);
     expect(dry.d).toMatchObject({ Status: 'V', Saved: 0, Errors: 0 });
     expect((dry.d.Entries as { results: { Status: string }[] }).results.map((e) => e.Status)).toEqual(['S', 'W']);
     expect((await fetchPlanHeads()).rows.some((h) => h.Plan1 === 'NEW-PLAN')).toBe(false);
-    const save = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: false, Entries: [row('FG1001', '1000')] });
+    const save = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: '', Entries: [row('FG1001', '1000')] });
     expect(save.d).toMatchObject({ Status: 'S', Saved: 1 });
     expect((await fetchPlanHeads({ plans: ['NEW-PLAN'] })).rows).toMatchObject([{ Plan1: 'NEW-PLAN', Werks: '1000', RowCnt: 1 }]);
-    const bad = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: false, Entries: [row('FG1001', 'XX'), { ...row('FG1002', '1000'), Mth3: '-5.000' }] });
+    const bad = await upload({ Plan1: 'NEW-PLAN', UpdMode: 'M', Dryrun: '', Entries: [row('FG1001', 'XX'), { ...row('FG1002', '1000'), Mth3: '-5.000' }] });
     expect(bad.d).toMatchObject({ Status: 'E', Saved: 0, Errors: 2 });
   });
 });
