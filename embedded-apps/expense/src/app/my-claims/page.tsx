@@ -10,6 +10,7 @@ import { displayStatusLabel } from '../../utils/claim-status';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { isGstClaim } from '../../utils/claim-gst';
 import { formatCurrency } from '../../utils/currency';
+import { buildSpreadsheetMLWorkbook } from '../../utils/history-excel';
 import { Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
 const STATUSES = ['All', 'Draft', 'Submitted', 'Approved', 'Pending Release', 'Pending at finance', 'Paid', 'Rejected'];
@@ -22,13 +23,6 @@ const getSubmittedYear = (claim: ExpenseClaim) => {
   const ts = getClaimCreatedTimestamp(claim);
   return ts ? new Date(ts).getFullYear() : null;
 };
-
-const escapeExcelCell = (value: unknown) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 
 const formatAttachmentNames = (claim: ExpenseClaim) => claim.attachments?.map((a) => a.name).filter(Boolean).join(', ') || '';
 
@@ -52,27 +46,7 @@ const buildClaimsExcelHtml = (claims: ExpenseClaim[]) => {
     formatAttachmentNames(claim), getLastWorkflowAction(claim),
   ]);
 
-  const headerHtml = headers.map((h) => `<th>${escapeExcelCell(h)}</th>`).join('');
-  const rowsHtml = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeExcelCell(cell)}</td>`).join('')}</tr>`).join('');
-
-  return `
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <style>
-          table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
-          th { background: #005A9E; color: #FFFFFF; font-weight: 700; }
-          th, td { border: 1px solid #CBD5E1; padding: 8px; mso-number-format: "\\@"; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <thead><tr>${headerHtml}</tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </body>
-    </html>
-  `;
+  return buildSpreadsheetMLWorkbook(headers, rows);
 };
 
 const STATUS_BADGE_TONE: Record<string, 'green' | 'amber' | 'blue' | 'red' | 'neutral'> = {

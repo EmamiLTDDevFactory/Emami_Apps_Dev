@@ -10,9 +10,19 @@ import { useClaim } from '../../context/ClaimContext';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { formatSapErrorMessage } from '../../utils/sap-error';
+import { MIME_TO_EXTENSION } from '../../lib/attachmentCompression';
 import { Banner, Button, LoadingBlock, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
 const sapClient = axios.create({ validateStatus: () => true });
+
+// SAP's stored Filename never includes an extension (see MIME_TO_EXTENSION's own comment) - this
+// reconstructs one from the attachment's mimetype so the user can actually tell a PDF from an
+// image from an Excel file wherever a filename is shown, same fix Create/Resubmit already apply.
+const getDisplayFilename = (filename: string, mimetype?: string): string => {
+  if (!filename || filename.includes('.')) return filename;
+  const ext = MIME_TO_EXTENSION[mimetype || ''] || 'pdf';
+  return `${filename}.${ext}`;
+};
 
 const formatDate = (value?: string) => {
   if (!value) return '';
@@ -169,7 +179,7 @@ function ClaimDetailInner() {
 
   const handlePreviewAttachment = (ln: any) => {
     const mimetype = ln.Mimetype || 'application/pdf';
-    const filename = ln.Filename || 'attachment';
+    const filename = getDisplayFilename(ln.Filename || 'attachment', mimetype);
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     setPreviewAttachment({ filename, mimetype, dataUri: `data:${mimetype};base64,${value}`, raw: ln });
@@ -177,7 +187,7 @@ function ClaimDetailInner() {
 
   const handleOpenAttachment = (ln: any) => {
     const mimetype = ln.Mimetype || 'application/pdf';
-    const filename = ln.Filename || 'attachment.pdf';
+    const filename = getDisplayFilename(ln.Filename || 'attachment.pdf', mimetype);
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
     const dataUri = `data:${mimetype};base64,${value}`;
@@ -402,10 +412,7 @@ function ClaimDetailInner() {
         const palette = getStatusPalette(lineStatus === 'Approved' ? 'approved' : lineStatus === 'Submitted' ? 'submitted' : lineStatus === 'Rejected' ? 'rejected' : '');
         return (
           <div key={idx} className="rounded-lg border p-3" style={{ backgroundColor: palette.bg, borderColor: palette.border }}>
-            <div className="flex items-center justify-between">
-              <p className="font-bold text-ink">{ln.type}</p>
-              <p className="font-extrabold text-ink">₹{formatCurrency(ln.amount)}</p>
-            </div>
+            <p className="font-bold text-ink">{ln.type}</p>
             <p className="mt-2 text-sm text-inkSoft">{ln.desc}</p>
             {ln.date && <p className="mt-1 text-xs text-inkFaint">Date: {formatDate(ln.date)}</p>}
             {canEdit && ln.rejReason && <p className="mt-1 text-sm font-semibold text-red">{ln.rejReason}</p>}
@@ -413,7 +420,7 @@ function ClaimDetailInner() {
               <div className="mt-2 flex flex-col gap-1">
                 {ln.attachments.map((att: any, aIdx: number) => (
                   <div key={aIdx} className="flex items-center gap-2 text-sm text-brand">
-                    <span className="truncate">{att.Filename ? `Attachment: ${att.Filename}` : `Attachment ${aIdx + 1}`}</span>
+                    <span className="truncate">{att.Filename ? `Attachment: ${getDisplayFilename(att.Filename, att.Mimetype)}` : `Attachment ${aIdx + 1}`}</span>
                     <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="Preview"><Eye size={16} className="text-brand" /></button>
                     <button type="button" onClick={() => handleOpenAttachment(att)} aria-label="Download"><Download size={16} className="text-green" /></button>
                   </div>
