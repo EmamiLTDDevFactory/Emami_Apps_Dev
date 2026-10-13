@@ -372,7 +372,7 @@ function ClaimDetailInner() {
               router.push(`/create/?claimId=${encodeURIComponent(header.ClaimId)}`);
             }}
           >
-            Edit / Resubmit
+            Resubmit
           </Button>
         )}
       </div>
