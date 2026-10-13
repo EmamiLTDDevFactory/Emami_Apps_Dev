@@ -388,14 +388,20 @@ function CreateClaimInner() {
   }, [parsedAmount]);
 
   // Shared by both attachment sections (Supporting Documents and Manager Approved Attachment) -
-  // each list carries its own independent size budget rather than sharing one combined budget
-  // across both sections.
-  const pickAttachmentInto = async (
-    list: Attachment[],
-    sources: Record<string, { uri: string; mimeType: string }>,
-    setList: (next: Attachment[]) => void,
-    setSources: (updater: (prev: Record<string, { uri: string; mimeType: string }>) => Record<string, { uri: string; mimeType: string }>) => void,
-  ) => {
+  // both sections ride in the SAME SAP submission payload (see ClaimContext's allAttachments),
+  // so they share ONE combined size budget across both lists, not one budget each — two
+  // independent 70KB budgets would let a claim carry up to 140KB of raw attachments, well past
+  // what the backend proxy's request-size limit accepts (confirmed: PayloadTooLargeError).
+  const pickAttachmentInto = async (target: 'standard' | 'managerApproved') => {
+    const isStandard = target === 'standard';
+    const list = isStandard ? attachments : managerApprovedAttachments;
+    const sources = isStandard ? originalSources : managerApprovedOriginalSources;
+    const setList = isStandard ? setAttachments : setManagerApprovedAttachments;
+    const setSources = isStandard ? setOriginalSources : setManagerApprovedOriginalSources;
+    const otherList = isStandard ? managerApprovedAttachments : attachments;
+    const otherSources = isStandard ? managerApprovedOriginalSources : originalSources;
+    const setOtherList = isStandard ? setManagerApprovedAttachments : setAttachments;
+
     try {
       setFormError('');
       const result = await getDocumentAsync({ multiple: false });
@@ -414,14 +420,19 @@ function CreateClaimInner() {
       const isRecompressible = attachmentMimeType.startsWith('image/') || attachmentMimeType === 'application/pdf';
       const newId = `att-${Date.now()}`;
 
+      // Budget math runs across BOTH lists combined - everything already on the claim, in
+      // either section, counts against the one shared ceiling.
+      const combinedExisting = [...list, ...otherList];
+      const combinedSources = { ...sources, ...otherSources };
+
       // Attachments that can't be (further) shrunk — resubmit-loaded attachments, and any
       // non-image/PDF file already on the claim — are a fixed cost against the shared budget.
       // Everything else (image/PDF attachments picked this session) gets re-targeted below.
-      const reservedBytes = list.reduce(
-        (sum, a) => (sources[a.id] ? sum : sum + (a.size || 0)),
+      const reservedBytes = combinedExisting.reduce(
+        (sum, a) => (combinedSources[a.id] ? sum : sum + (a.size || 0)),
         0,
       );
-      const recompressibleCount = list.filter((a) => sources[a.id]).length + (isRecompressible ? 1 : 0);
+      const recompressibleCount = combinedExisting.filter((a) => combinedSources[a.id]).length + (isRecompressible ? 1 : 0);
       const targetBytes = recompressibleCount > 0 ? getPerFileTargetBytes(recompressibleCount, reservedBytes) : null;
 
       if (isRecompressible && targetBytes === null) {
@@ -461,14 +472,16 @@ function CreateClaimInner() {
 
       const newAtt: Attachment = { id: newId, name: asset.name || 'document', uri: finalUri, size: finalSize, type: finalType };
 
-      // Existing session-picked image/PDF attachments were compressed against a looser
-      // (fewer-attachments) target — re-derive each from its pristine source against the same
-      // tighter target this new attachment uses, so the combined total actually stays in budget.
-      let finalAttachments: Attachment[];
+      // Existing session-picked image/PDF attachments — in EITHER section — were compressed
+      // against a looser (fewer-attachments) target; re-derive each from its pristine source
+      // against the same tighter target this new attachment uses, so the combined total across
+      // both sections actually stays in budget. Recompressed results are split back into their
+      // original section below.
+      let finalCombined: Attachment[];
       if (isRecompressible && recompressibleCount > 1) {
-        finalAttachments = await Promise.all(
-          list.map(async (a) => {
-            const original = sources[a.id];
+        finalCombined = await Promise.all(
+          combinedExisting.map(async (a) => {
+            const original = combinedSources[a.id];
             if (!original) return a;
             if (original.mimeType.startsWith('image/')) {
               const recompressed = await compressAttachmentImage(original.uri, targetBytes as number);
@@ -478,20 +491,25 @@ function CreateClaimInner() {
             return recompressed ? { ...a, uri: recompressed.uri, size: recompressed.size } : a;
           }),
         );
-        finalAttachments.push(newAtt);
       } else {
-        finalAttachments = [...list, newAtt];
+        finalCombined = combinedExisting;
       }
 
       // Final safety net against the real combined ceiling, using the actual post-compression
       // sizes rather than the predicted target — catches any edge case the math above missed.
-      const finalTotal = finalAttachments.reduce((sum, a) => sum + (a.size || 0), 0);
+      const finalTotal = finalCombined.reduce((sum, a) => sum + (a.size || 0), 0) + finalSize;
       if (finalTotal > SAFE_COMBINED_RAW_ATTACHMENT_BYTES) {
         setFormError(`Combined attachment size would exceed the safe upload limit (${MAX_ATTACHMENTS_TOTAL_LABEL}). Please remove an attachment or use a smaller file.`);
         return;
       }
 
-      setList(finalAttachments);
+      // Split the (possibly recompressed) combined set back into each section's own list by id.
+      const otherIds = new Set(otherList.map((a) => a.id));
+      const recompressedOther = finalCombined.filter((a) => otherIds.has(a.id));
+      const recompressedThis = finalCombined.filter((a) => !otherIds.has(a.id));
+
+      setList([...recompressedThis, newAtt]);
+      if (recompressedOther.length > 0) setOtherList(recompressedOther);
       if (isRecompressible) {
         setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
       }
@@ -500,9 +518,8 @@ function CreateClaimInner() {
     }
   };
 
-  const handlePickAttachment = () => pickAttachmentInto(attachments, originalSources, setAttachments, setOriginalSources);
-  const handlePickManagerApprovedAttachment = () =>
-    pickAttachmentInto(managerApprovedAttachments, managerApprovedOriginalSources, setManagerApprovedAttachments, setManagerApprovedOriginalSources);
+  const handlePickAttachment = () => pickAttachmentInto('standard');
+  const handlePickManagerApprovedAttachment = () => pickAttachmentInto('managerApproved');
 
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
