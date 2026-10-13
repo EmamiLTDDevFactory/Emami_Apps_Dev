@@ -45,9 +45,11 @@ const formatExcelDate = (value?: string) => {
   const m = value.match(/(\d+)/);
   if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
   if (Number.isNaN(d.getTime())) return value;
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dd}-${mm}-${d.getFullYear()}`;
+  // SAP's date-only values are midnight UTC for the intended calendar day - UTC getters keep the
+  // exported day from shifting based on the viewer's local timezone.
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}-${mm}-${d.getUTCFullYear()}`;
 };
 
 export const buildHistoryExcelHtml = (

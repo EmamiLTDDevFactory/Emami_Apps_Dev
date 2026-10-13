@@ -1,9 +1,13 @@
 import { ExpenseClaim } from '../types';
 
+// SAP's date-only values are serialized as midnight UTC for the intended calendar day. Formatting
+// without pinning timeZone: 'UTC' here used the viewer's local timezone instead, so anyone west of
+// UTC could see the day roll back and anyone east of UTC could see it roll forward a day.
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: 'long',
   year: 'numeric',
+  timeZone: 'UTC',
 });
 
 const parseSapDateValue = (value?: string) => {

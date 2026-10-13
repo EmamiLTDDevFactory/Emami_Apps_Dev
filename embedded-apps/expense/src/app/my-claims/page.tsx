@@ -25,7 +25,9 @@ const getStatusParamValue = (statusParam: string | null) =>
 // createdTime, falling back to claimDate) — not claim.claimDate — per the stakeholder requirement.
 const getSubmittedYear = (claim: ExpenseClaim) => {
   const ts = getClaimCreatedTimestamp(claim);
-  return ts ? new Date(ts).getFullYear() : null;
+  // UTC getter: this timestamp is SAP's midnight-UTC date-only value, so a local-timezone getter
+  // could misfile a claim made right at a year boundary into the wrong fiscal year.
+  return ts ? new Date(ts).getUTCFullYear() : null;
 };
 
 const formatAttachmentNames = (claim: ExpenseClaim) => claim.attachments?.map((a) => a.name).filter(Boolean).join(', ') || '';

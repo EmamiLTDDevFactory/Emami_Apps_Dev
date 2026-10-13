@@ -23,9 +23,11 @@ const formatHistoryDate = (value?: string) => {
   const m = value.match(/(\d+)/);
   if (m && value.includes('/Date(')) d = new Date(parseInt(m[1], 10));
   if (Number.isNaN(d.getTime())) return value;
-  const dd = String(d.getDate()).padStart(2, '0');
+  // SAP's date-only values are midnight UTC for the intended calendar day - UTC getters keep the
+  // displayed day from shifting based on the viewer's local timezone.
+  const dd = String(d.getUTCDate()).padStart(2, '0');
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  return `${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  return `${dd} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 };
 
 // HistorySet rows come back in SAP's own order (effectively oldest-first) with no sort applied —
