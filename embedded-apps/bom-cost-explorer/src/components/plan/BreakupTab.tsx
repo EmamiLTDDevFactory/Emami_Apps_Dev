@@ -148,7 +148,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 z-10 bg-panel shadow-[0_1px_0_var(--line,#e5e7eb)]">
                     <tr>
-                      <th className={cx(thCls, 'sticky left-0 z-20 min-w-[280px] bg-panel')}>Structure</th>
+                      <th className={cx(thCls, STICKY_COL, 'z-20 bg-panel')}>Structure</th>
                       <th className={thNum}>Lvl</th>
                       {FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}
                       <th className={thNum}>Total qty</th>
@@ -197,23 +197,33 @@ function RatesPending({ status, note, request, retest }: { status: string; note:
   );
 }
 
+/** Frozen Structure column: fixed width, opaque background (rows scrolled sideways must not show through)
+ * and a divider on its right edge. */
+const STICKY_COL = 'sticky left-0 w-[340px] min-w-[340px] max-w-[340px] shadow-[inset_-1px_0_0_rgb(var(--line))]';
+/** Solid tints (a translucent class would let the month cells show through the frozen column). */
+const GROUP_BG: Record<Group['kind'], string> = {
+  country: 'color-mix(in srgb, rgb(var(--plum-deep)) 7%, rgb(var(--panel)))',
+  plant: 'rgb(var(--sunken))',
+  header: 'color-mix(in srgb, rgb(var(--accent)) 5%, rgb(var(--panel)))',
+};
+
 function GroupRow({ g, open, onToggle, months }: { g: Group; open: boolean; onToggle: () => void; months: Months }) {
   const r = g.rollup;
   const Chevron = open ? ChevronDown : ChevronRight;
-  const bg = g.kind === 'country' ? 'bg-plum-deep/[0.06]' : g.kind === 'plant' ? 'bg-sunken' : 'bg-accent/[0.04]';
+  const background = GROUP_BG[g.kind];
   return (
-    <tr className={cx('border-t border-line/70 font-semibold', bg)}>
-      <td className={cx(tdCls, 'sticky left-0 z-[5]', bg, 'bg-clip-padding')} style={{ paddingLeft: 8 + g.depth * 16 }}>
-        <button type="button" onClick={onToggle} aria-expanded={open} className="inline-flex items-center gap-1 text-left">
-          <Chevron size={13} />
-          <span className={cx(g.kind !== 'country' && 'font-mono')}>{g.label}</span>
-          <span className="max-w-[220px] truncate font-normal text-muted">{g.sub}</span>
+    <tr className="border-t border-line/70 font-semibold" style={{ background }}>
+      <td className={cx('px-2 py-1 align-top', STICKY_COL, 'z-[5]')} style={{ paddingLeft: 8 + g.depth * 16, background }}>
+        <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full min-w-0 items-center gap-1 text-left" title={`${g.label} ${g.sub}`.trim()}>
+          <Chevron size={13} className="shrink-0" />
+          <span className={cx('shrink-0', g.kind !== 'country' && 'font-mono')}>{g.label}</span>
+          <span className="min-w-0 truncate font-normal text-muted">{g.sub}</span>
         </button>
         {r && (
-          <span className="ml-2 inline-flex items-center gap-1.5 font-normal">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-4 font-normal">
             {r.bomSrc === 'LASTPROD' ? <span title={BOM_SOURCE_RULE}><Pill tone="warn">{bomSourceLabel(r)}</Pill></span> : <span title={BOM_SOURCE_RULE}><Pill>OWN</Pill></span>}
             <span className="text-2xs text-muted">Plan {fmtQty(r.planQty)} · {r.perPiece ? <>{fmtRate(r.perPiece)} /pc · {fmtNum(r.per1000, 2)} /1000</> : 'no plan qty'}</span>
-          </span>
+          </div>
         )}
       </td>
       <td />
@@ -235,9 +245,13 @@ function LineRow({ l, months, onOpen }: { l: PlanCostLine; months: Months; onOpe
   const cost = months === 'cost' ? monthlyCost(l) : null;
   const v = actVariancePct(l);
   return (
-    <tr className={cx('cursor-pointer border-t border-line/40 hover:bg-sunken/60', !leaf && 'text-muted')} onClick={onOpen}>
-      <td className={cx(tdCls, 'sticky left-0 z-[5] bg-panel')} style={{ paddingLeft: 40 + Math.max(0, l.Level - 1) * 14 }}>
-        <span className="font-mono">{l.Idnrk}</span> <span className="text-muted">{l.Maktx}</span> {l.Mtart && <span className="text-2xs text-faint">{l.Mtart}</span>}
+    <tr className={cx('group cursor-pointer border-t border-line/40 hover:bg-sunken', !leaf && 'text-muted')} onClick={onOpen}>
+      <td className={cx('px-2 py-1', STICKY_COL, 'z-[5] bg-panel group-hover:bg-sunken')} style={{ paddingLeft: 40 + Math.max(0, l.Level - 1) * 14 }} title={`${l.Idnrk} ${l.Maktx} ${l.Mtart}`.trim()}>
+        <div className="flex min-w-0 items-baseline gap-1">
+          <span className="shrink-0 font-mono">{l.Idnrk}</span>
+          <span className="min-w-0 truncate text-muted">{l.Maktx}</span>
+          {l.Mtart && <span className="shrink-0 text-2xs text-faint">{l.Mtart}</span>}
+        </div>
       </td>
       <td className={tdNum}>{l.Level}</td>
       {(cost ?? qty).map((q, i) => <td key={i} className={tdNum}>{leaf || months === 'qty' ? (cost ? fmtNum(q, 0) : fmtNum(q, 2, 'X')) : ''}</td>)}
