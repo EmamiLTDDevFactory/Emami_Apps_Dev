@@ -526,8 +526,8 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   // PlanSummarySet / PlanWipSet and CostLineSet with Mode eq 'P'.
   const planRes = await handlePlan(set, sp, init, {
     parseFilter,
-    costLinesFor: (matnr, plant, qty, m, expand = false) =>
-      costLines(params(new Map([['Mode', ['B']], ['Matnr', [matnr]], ['Werks', [plant]], ['ExplQty', [String(qty)]]])), expand, m).map((r) => toSap(r, COST_LINE, RATE_OPTION)),
+    costLinesFor: (matnr, plant, qty, m, expand = false, budget = null) =>
+      costLines(params(new Map([['Mode', ['B']], ['Matnr', [matnr]], ['Werks', [plant]], ['ExplQty', [String(qty)]], ...(budget ? [['InclBudget', ['true']], ['BudgetYr', [budget.year]]] as [string, string[]][] : [])])), expand, m).map((r) => toSap(r, COST_LINE, RATE_OPTION)),
     json, odataError, sleep, delay,
   });
   if (planRes) return planRes;

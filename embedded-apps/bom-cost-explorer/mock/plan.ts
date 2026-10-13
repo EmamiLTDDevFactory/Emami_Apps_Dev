@@ -11,7 +11,7 @@ interface Msg { code: string; message: string; severity: 'warning' | 'info' | 'e
 
 export interface PlanDeps {
   parseFilter: (f: string) => Map<string, string[]>;
-  costLinesFor: (matnr: string, plant: string, qty: number, msgs: Msg[], expand?: boolean) => Raw[];
+  costLinesFor: (matnr: string, plant: string, qty: number, msgs: Msg[], expand?: boolean, budget?: { year: string } | null) => Raw[];
   json: (body: unknown, status?: number, msgs?: Msg[]) => Response;
   odataError: (status: number, code: string, message: string) => Response;
   sleep: (ms: number, signal?: AbortSignal | null) => Promise<void>;
@@ -226,7 +226,8 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
       const qtyTot = e.m.reduce((a, b) => a + b, 0);
       const b = bomSource(e.Matnr, e.Werks);
       if (b.src === 'LASTPROD') msgs.push({ code: 'ZPLAN/040', message: `${e.Matnr} ${e.Werks}: BOM from plant ${b.plant} (last production 12.08.2026)`, severity: 'warning' });
-      const exploded = deps.costLinesFor(e.Matnr, b.plant, qtyTot || 1, msgs, wantsExpand || set === 'RateOptionSet');
+      const budget = f.get('InclBudget')?.[0] === 'true' ? { year: f.get('BudgetYr')?.[0] ?? String(new Date().getFullYear()) } : null;
+      const exploded = deps.costLinesFor(e.Matnr, b.plant, qtyTot || 1, msgs, wantsExpand || set === 'RateOptionSet', budget);
       for (const r of exploded) {
         seq++;
         const share = (i: number) => (qtyTot ? (Number(r.ProdQty) * e.m[i]) / qtyTot : 0);

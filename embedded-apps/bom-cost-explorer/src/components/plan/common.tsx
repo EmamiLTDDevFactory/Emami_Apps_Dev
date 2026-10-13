@@ -96,6 +96,13 @@ export function PlanQueryBar({ query, onChange, onRun, onCancel, running, ms, ru
         <Toggle label="All BOMs" checked={query.allBoms} onChange={(v) => set({ allBoms: v })} />
         <Toggle label="Scrap" checked={query.scrap} onChange={(v) => set({ scrap: v })} />
         <Toggle label="Fallback (BOM of last producing plant)" checked={query.fallback} onChange={(v) => set({ fallback: v })} />
+        <Toggle label="Budget rates" checked={query.inclBudget} onChange={(v) => set({ inclBudget: v })} />
+        {query.inclBudget && (
+          <label className="flex items-center gap-2 text-sm">
+            Budget year
+            <input className={cx(inputCls, '!h-8 !w-20')} inputMode="numeric" maxLength={4} value={query.budgetYr} onChange={(e) => set({ budgetYr: e.target.value.replace(/\D/g, '') })} />
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm">
           Base plant
           <input className={cx(inputCls, '!h-8 !w-24')} value={query.basePlant} maxLength={4} onChange={(e) => set({ basePlant: e.target.value.toUpperCase() })} />

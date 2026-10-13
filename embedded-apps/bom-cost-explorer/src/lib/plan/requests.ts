@@ -11,7 +11,8 @@ export interface PlanFilters {
   materials: string[];
 }
 
-/** Mode P breakup + cost options (fallback on by default, all material types). */
+/** Mode P breakup + cost options (fallback on by default, all material types, budget rates on for the
+ * "As per Budget" figures, budget year = current year like the costing screen). */
 export interface PlanCostQuery extends PlanFilters {
   plan: string;
   mtartFilter: 'A' | 'P' | 'R';
@@ -34,7 +35,7 @@ export interface PlanCostQuery extends PlanFilters {
 
 export const defaultPlanCostQuery = (plan: string): PlanCostQuery => ({
   plan, plants: [], materials: [], mtartFilter: 'A', allBoms: false, basePlant: '', scrap: false, fallback: true,
-  inclFrt: true, stdFrt: false, inclBudget: false, budgetYr: '', inclCover: false, prio: '', donorPlant: '',
+  inclFrt: true, stdFrt: false, inclBudget: true, budgetYr: String(new Date().getFullYear()), inclCover: false, prio: '', donorPlant: '',
   lookback: 365, freightDays: 0, budatFrom: '', budatTo: '',
 });
 

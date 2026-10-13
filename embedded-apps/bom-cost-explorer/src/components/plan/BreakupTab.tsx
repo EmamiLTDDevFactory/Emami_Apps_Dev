@@ -16,6 +16,8 @@ import type { PlanWorkspace } from '@/lib/plan/workspace';
 import { BOM_SOURCE_RULE, actVariancePct, bomSourceLabel, headerKey, headerRollups, monthlyCost, monthQty, planTotals, type PlanHeaderRollup } from '@/lib/plan/maths';
 import { costFilter } from '@/lib/plan/requests';
 import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
+import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } from '@/lib/plan/sources';
+import FgPerPiece from './FgPerPiece';
 import { useRateOptionsByFilter } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import { defaultQuery } from '@/lib/query/schema';
@@ -25,11 +27,11 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import type { CostLine } from '@/lib/sap/fields';
 import { fmtCompactInr, fmtDate, fmtNum, fmtPct, fmtQty, fmtRate } from '@/lib/format';
 
-type View = 'tree' | 'charts' | 'rates';
+type View = 'tree' | 'fg' | 'charts' | 'rates';
 type Months = 'qty' | 'cost';
 const ROW_CAP = 3000;
 
-interface Group { key: string; kind: 'country' | 'plant' | 'header'; depth: number; label: string; sub: string; total: Decimal; months: Decimal[]; rollup?: PlanHeaderRollup; rows: number[] }
+interface Group { key: string; kind: 'country' | 'plant' | 'header'; depth: number; label: string; sub: string; total: Decimal; months: Decimal[]; rollup?: PlanHeaderRollup; rows: number[]; stlal?: string }
 
 function buildGroups(rows: PlanCostLine[], rollups: Map<string, PlanHeaderRollup>) {
   const countries = new Map<string, Map<string, Map<string, number[]>>>();
@@ -53,7 +55,7 @@ function buildGroups(rows: PlanCostLine[], rollups: Map<string, PlanHeaderRollup
       for (const [head, idx] of heads) {
         const r = rollups.get(headerKey({ Hwerks: plant, Headmat: head }))!;
         pRolls.push(r);
-        out.push({ key: `h|${land}|${plant}|${head}`, kind: 'header', depth: 2, label: head, sub: r.headtxt, total: r.total, months: r.months, rollup: r, rows: idx });
+        out.push({ key: `h|${land}|${plant}|${head}`, kind: 'header', depth: 2, label: head, sub: r.headtxt, total: r.total, months: r.months, rollup: r, rows: idx, stlal: idx.map((i) => rows[i].Stlal).find(Boolean) ?? '' });
       }
       const t = sumOf(pRolls);
       out[pIdx] = { ...out[pIdx], total: t.total, months: t.months, sub: `${heads.size} plan material${heads.size === 1 ? '' : 's'}` };
@@ -84,6 +86,10 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   const totals = useMemo(() => planTotals(rollups.values()), [rollups]);
   const lastProd = useMemo(() => [...rollups.values()].filter((h) => h.bomSrc === 'LASTPROD'), [rollups]);
   const withRates = useMemo(() => (rates.status === 'ready' && rates.rows ? attachRateOptions(rows as unknown as CostLine[], rates.rows) : (rows as unknown as CostLine[])), [rows, rates.status, rates.rows]);
+  const lines = withRates as unknown as PlanLineWithOptions[];
+  const fg = useMemo(() => fgSources(lines), [lines]);
+  const fgByKey = useMemo(() => new Map(fg.map((f) => [f.key, f])), [fg]);
+  const optionsLoaded = rates.status === 'ready';
 
   const t = search.trim().toLowerCase();
   const matches = (l: PlanCostLine) => (!t || `${l.Idnrk} ${l.Maktx} ${l.Headmat} ${l.Headtxt}`.toLowerCase().includes(t)) && (!leafOnly || isLeafRow(l));
@@ -129,7 +135,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           </div>
           <Warnings messages={cost.messages} />
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }]} />
+            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'fg', label: 'FG per pc' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }]} />
             {view === 'tree' && (
               <>
                 <div className="w-44"><Segmented<Months> size="sm" label="Monthly columns" value={months} onChange={setMonths} options={[{ value: 'qty', label: 'Qty / month' }, { value: 'cost', label: 'Cost / month' }]} /></div>
@@ -153,23 +159,32 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
                       {FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}
                       <th className={thNum}>Total qty</th>
                       <th className={thCls}>Source</th>
-                      <th className={thNum}>Rate/pc INR</th>
+                      <th className={thNum} title="Rate SAP selected, INR per component unit (on plan-material rows: per FG piece incl. freight)">Selected/pc</th>
                       <th className={thNum}>Freight/pc</th>
                       <th className={thNum}>Total/pc</th>
                       <th className={thNum}>Total cost INR</th>
-                      <th className={thNum}>Budget landed</th>
+                      <th className={thNum} title="As per Budget: SAP budget landed rate (on plan-material rows: per FG piece)">Budget/pc</th>
+                      <th className={thNum} title="As per MBEW (on plan-material rows: per FG piece)">MBEW/pc</th>
+                      <th className={thNum} title="As per Consumption (on plan-material rows: per FG piece)">Consumption/pc</th>
                       <th className={thNum}>Actual rate/pc</th>
                       <th className={thNum}>Var %</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} /> : <LineRow key={`${v.i}`} l={rows[v.i]} months={months} onOpen={() => setDrawer(v.i)} />))}
+                    {visible.list.map((v) => ('g' in v ? <GroupRow key={v.g.key} g={v.g} open={isOpen(v.g)} onToggle={() => toggle(v.g)} months={months} fg={v.g.rollup ? fgByKey.get(v.g.rollup.key) : undefined} optionsLoaded={optionsLoaded} /> : <LineRow key={`${v.i}`} l={lines[v.i]} months={months} optionsLoaded={optionsLoaded} onOpen={() => setDrawer(v.i)} />))}
                   </tbody>
                 </table>
                 {visible.capped && <p className="px-3 py-2 text-xs text-warn">Showing the first {ROW_CAP.toLocaleString('en-IN')} component rows. Filter or collapse to see the rest (the export has every row).</p>}
               </div>
             </Card>
           )}
+          {view === 'tree' && !optionsLoaded && (
+            <p className="-mt-1 text-xs text-muted">
+              MBEW and Consumption rates come from SAP&apos;s rate options, loaded on request.{' '}
+              {rates.status === 'loading' ? 'Loading…' : rates.status === 'unavailable' || rates.status === 'error' ? <>{rates.note} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></> : <button type="button" className="font-semibold text-accent underline" onClick={rates.request}>Load MBEW / Consumption rates</button>}
+            </p>
+          )}
+          {view === 'fg' && <FgPerPiece rows={fg} rates={rates} query={cost.ranQuery ?? ws.query} lines={lines} />}
           {view === 'charts' && <PlanCharts rows={rows} />}
           {view === 'rates' && (
             <Card bodyClass="p-0 h-[70vh]">
@@ -207,7 +222,14 @@ const GROUP_BG: Record<Group['kind'], string> = {
   header: 'color-mix(in srgb, rgb(var(--accent)) 5%, rgb(var(--panel)))',
 };
 
-function GroupRow({ g, open, onToggle, months }: { g: Group; open: boolean; onToggle: () => void; months: Months }) {
+const pcCell = (f: FgSources | undefined, k: 'BUDGET' | 'MBEW' | 'CONSUMP', loaded = true) => {
+  const x = f?.sources[k];
+  if (!x || (!loaded && k !== 'BUDGET')) return '';
+  if (!x.perPc) return <span className="text-faint">—</span>;
+  return <span title={`${x.priced} of ${x.leaves} components priced`} className={cx(x.priced < x.leaves && 'text-warn')}>{fmtRate(x.perPc)}{x.priced < x.leaves ? '*' : ''}</span>;
+};
+
+function GroupRow({ g, open, onToggle, months, fg, optionsLoaded }: { g: Group; open: boolean; onToggle: () => void; months: Months; fg?: FgSources; optionsLoaded: boolean }) {
   const r = g.rollup;
   const Chevron = open ? ChevronDown : ChevronRight;
   const background = GROUP_BG[g.kind];
@@ -222,6 +244,7 @@ function GroupRow({ g, open, onToggle, months }: { g: Group; open: boolean; onTo
         {r && (
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-4 font-normal">
             {r.bomSrc === 'LASTPROD' ? <span title={BOM_SOURCE_RULE}><Pill tone="warn">{bomSourceLabel(r)}</Pill></span> : <span title={BOM_SOURCE_RULE}><Pill>OWN</Pill></span>}
+            {g.stlal && <span title="Alternative BOM SAP used for this plan material"><Pill tone="accent">Alt BOM {g.stlal}</Pill></span>}
             <span className="text-2xs text-muted">Plan {fmtQty(r.planQty)} · {r.perPiece ? <>{fmtRate(r.perPiece)} /pc · {fmtNum(r.per1000, 2)} /1000</> : 'no plan qty'}</span>
           </div>
         )}
@@ -234,12 +257,16 @@ function GroupRow({ g, open, onToggle, months }: { g: Group; open: boolean; onTo
       <td />
       <td />
       <td className={tdNum}>{fmtNum(g.total, 2)}</td>
-      <td /><td /><td />
+      <td className={tdNum}>{pcCell(fg, 'BUDGET')}</td>
+      <td className={tdNum}>{pcCell(fg, 'MBEW', optionsLoaded)}</td>
+      <td className={tdNum}>{pcCell(fg, 'CONSUMP', optionsLoaded)}</td>
+      <td /><td />
     </tr>
   );
 }
 
-function LineRow({ l, months, onOpen }: { l: PlanCostLine; months: Months; onOpen: () => void }) {
+function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions; months: Months; onOpen: () => void; optionsLoaded: boolean }) {
+  const rate = (k: 'MBEW' | 'CONSUMP') => { const r = componentRate(l, k); return r ? fmtRate(r) : optionsLoaded ? <span className="text-faint">—</span> : ''; };
   const leaf = isLeafRow(l);
   const qty = monthQty(l);
   const cost = months === 'cost' ? monthlyCost(l) : null;
@@ -262,6 +289,8 @@ function LineRow({ l, months, onOpen }: { l: PlanCostLine; months: Months; onOpe
       <td className={tdNum}>{leaf ? fmtRate(l.TotCostPcInr) : ''}</td>
       <td className={cx(tdNum, leaf && 'font-semibold')}>{leaf ? fmtNum(l.TotCostInr, 2) : ''}</td>
       <td className={tdNum}>{leaf && D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : ''}</td>
+      <td className={tdNum}>{leaf ? rate('MBEW') : ''}</td>
+      <td className={tdNum}>{leaf ? rate('CONSUMP') : ''}</td>
       <td className={tdNum}>{leaf && D(l.ActRatePcInr).gt(0) ? fmtRate(l.ActRatePcInr) : ''}</td>
       <td className={cx(tdNum, v && v.gt(0) && 'text-bad', v && v.lt(0) && 'text-good')}>{leaf && v ? fmtPct(v) : ''}</td>
     </tr>
@@ -285,7 +314,10 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
     ['Freight/pc INR', `${fmtRate(l.FrtPcInr)} (${l.FrtSrc || '—'})`],
     ['Total/pc INR', fmtRate(l.TotCostPcInr)],
     ['Total cost INR', fmtNum(l.TotCostInr, 2)],
-    ['Budget landed', D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : '—'],
+    ['Alt BOM (FG / item)', `${l.Stlal || '—'} / ${l.ItemStlal || '—'}`],
+    ['As per Budget', D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : '—'],
+    ['As per MBEW', componentRate(l, 'MBEW') ? fmtRate(componentRate(l, 'MBEW')) : '—'],
+    ['As per Consumption', componentRate(l, 'CONSUMP') ? fmtRate(componentRate(l, 'CONSUMP')) : '—'],
     ['Actual rate/pc INR', D(l.ActRatePcInr).gt(0) ? `${fmtRate(l.ActRatePcInr)} (${fmtPct(actVariancePct(l))} vs SAP rate)` : '—'],
     ['Delivered as of', fmtDate(l.DelvAsof) || '—'],
   ];
