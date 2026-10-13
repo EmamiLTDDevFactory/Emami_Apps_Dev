@@ -87,8 +87,10 @@ option currency differs from the plant currency.
 **Switch.** Off unless the build sets `PLAN_MODULE_ENABLED=true` (or `NEXT_PUBLIC_PLAN_MODULE_ENABLED=true`;
 next.config.mjs maps the first onto the second). Off = no "Production plan" nav section, no plan
 requests, and no plan code in the costing page's scripts (each plan route loads its screen with a
-dynamic import only when the flag is on). To show it on DEV, set `PLAN_MODULE_ENABLED=true` in the Amplify
-environment of the DEV app and rebuild; it needs the plan entity sets active on NGQ (PRD: NWP).
+dynamic import only when the flag is on). This DEV repo turns it ON for deployed builds
+(`DEPLOYED_PLAN_MODULE` in next.config.mjs, like the NGQ pin); the PRD copy (apps-new) keeps it off.
+`PLAN_MODULE_ENABLED=false` at build time switches it off again. It needs the plan entity sets active on NGQ
+(PRD: NWP).
 
 | Env var | Meaning |
 |---|---|

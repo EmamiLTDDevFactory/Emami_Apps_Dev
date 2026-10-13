@@ -14,6 +14,9 @@ const basePath = '/apps/bom-cost-explorer';
 const isBuild = process.env.NODE_ENV === 'production';
 const DEPLOYED_SAP_SYSTEM = 'NGQ';
 const DEPLOYED_APP_ENV = 'qa';
+// Production Plan module: ON for the deployed DEV build (user's request, 2026-10-13). The PRD copy keeps it
+// off. `next dev` and the tests stay off unless PLAN_MODULE_ENABLED is set.
+const DEPLOYED_PLAN_MODULE = 'true';
 const sapEnv = isBuild
   ? {
       NEXT_PUBLIC_SAP_SYSTEM: process.env.NEXT_PUBLIC_SAP_SYSTEM || DEPLOYED_SAP_SYSTEM,
@@ -35,8 +38,8 @@ const nextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
   reactStrictMode: true,
-  // Production Plan module: off unless PLAN_MODULE_ENABLED / NEXT_PUBLIC_PLAN_MODULE_ENABLED is 'true' at build time.
-  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv, NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || 'false' },
+  // Production Plan module: PLAN_MODULE_ENABLED / NEXT_PUBLIC_PLAN_MODULE_ENABLED win; else on for deployed DEV builds.
+  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv, NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || (isBuild ? DEPLOYED_PLAN_MODULE : 'false') },
 };
 
 export default nextConfig;
