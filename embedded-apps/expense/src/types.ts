@@ -34,6 +34,7 @@ export interface ExpenseClaim {
   costCenter: string;
   justification: string;
   attachments: Attachment[];
+  managerApprovedAttachments?: Attachment[];
   lifnr?: string;
   name1?: string;
   stcd3?: string;

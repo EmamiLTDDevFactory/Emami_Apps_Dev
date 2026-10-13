@@ -134,6 +134,11 @@ function CreateClaimInner() {
   // file to re-derive, so their already-fixed size is treated as a sunk cost against the shared
   // budget instead.
   const [originalSources, setOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
+  // Second, separate attachment required when the selected expense type's ExptypeSet.Flag comes
+  // back blank (not 'X') - see requiresManagerApprovedAttachment below. Own size budget, kept
+  // independent from the Supporting Documents list above rather than sharing one combined budget.
+  const [managerApprovedAttachments, setManagerApprovedAttachments] = useState<Attachment[]>([]);
+  const [managerApprovedOriginalSources, setManagerApprovedOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
   const filteredAreas = availableAreas.filter((area) =>
     `${area.Bland || ''} ${area.Bezei || ''}`.toLowerCase().includes(areaSearch.toLowerCase())
@@ -167,6 +172,8 @@ function CreateClaimInner() {
     setJustification('');
     setAttachments([]);
     setOriginalSources({});
+    setManagerApprovedAttachments([]);
+    setManagerApprovedOriginalSources({});
     setPreviewAttachment(null);
     setPreviewModalVisible(false);
     setAmountError('');
@@ -368,6 +375,9 @@ function CreateClaimInner() {
   // Forced to false for now - attachment is mandatory for every expense type until the Flag X
   // rule is revisited; noAttachmentRequired itself is left untouched on the expense type data.
   const attachmentOptionalForType = false;
+  // Same Flag field, different value: blank means this expense type needs a second, separate
+  // Manager Approved Attachment - see requiresManagerApprovedAttachment in ClaimContext.tsx.
+  const requiresManagerApprovedAttachment = expenseTypes.find((et: any) => et.name === expenseType)?.requiresManagerApprovedAttachment === true;
 
   useEffect(() => {
     if (parsedAmount > 20000) {
@@ -377,7 +387,15 @@ function CreateClaimInner() {
     }
   }, [parsedAmount]);
 
-  const handlePickAttachment = async () => {
+  // Shared by both attachment sections (Supporting Documents and Manager Approved Attachment) -
+  // each list carries its own independent size budget rather than sharing one combined budget
+  // across both sections.
+  const pickAttachmentInto = async (
+    list: Attachment[],
+    sources: Record<string, { uri: string; mimeType: string }>,
+    setList: (next: Attachment[]) => void,
+    setSources: (updater: (prev: Record<string, { uri: string; mimeType: string }>) => Record<string, { uri: string; mimeType: string }>) => void,
+  ) => {
     try {
       setFormError('');
       const result = await getDocumentAsync({ multiple: false });
@@ -399,11 +417,11 @@ function CreateClaimInner() {
       // Attachments that can't be (further) shrunk — resubmit-loaded attachments, and any
       // non-image/PDF file already on the claim — are a fixed cost against the shared budget.
       // Everything else (image/PDF attachments picked this session) gets re-targeted below.
-      const reservedBytes = attachments.reduce(
-        (sum, a) => (originalSources[a.id] ? sum : sum + (a.size || 0)),
+      const reservedBytes = list.reduce(
+        (sum, a) => (sources[a.id] ? sum : sum + (a.size || 0)),
         0,
       );
-      const recompressibleCount = attachments.filter((a) => originalSources[a.id]).length + (isRecompressible ? 1 : 0);
+      const recompressibleCount = list.filter((a) => sources[a.id]).length + (isRecompressible ? 1 : 0);
       const targetBytes = recompressibleCount > 0 ? getPerFileTargetBytes(recompressibleCount, reservedBytes) : null;
 
       if (isRecompressible && targetBytes === null) {
@@ -449,8 +467,8 @@ function CreateClaimInner() {
       let finalAttachments: Attachment[];
       if (isRecompressible && recompressibleCount > 1) {
         finalAttachments = await Promise.all(
-          attachments.map(async (a) => {
-            const original = originalSources[a.id];
+          list.map(async (a) => {
+            const original = sources[a.id];
             if (!original) return a;
             if (original.mimeType.startsWith('image/')) {
               const recompressed = await compressAttachmentImage(original.uri, targetBytes as number);
@@ -462,7 +480,7 @@ function CreateClaimInner() {
         );
         finalAttachments.push(newAtt);
       } else {
-        finalAttachments = [...attachments, newAtt];
+        finalAttachments = [...list, newAtt];
       }
 
       // Final safety net against the real combined ceiling, using the actual post-compression
@@ -473,18 +491,33 @@ function CreateClaimInner() {
         return;
       }
 
-      setAttachments(finalAttachments);
+      setList(finalAttachments);
       if (isRecompressible) {
-        setOriginalSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
+        setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
       }
     } catch (err) {
       setFormError('Unable to add attachment. Please try again with a supported file.');
     }
   };
 
+  const handlePickAttachment = () => pickAttachmentInto(attachments, originalSources, setAttachments, setOriginalSources);
+  const handlePickManagerApprovedAttachment = () =>
+    pickAttachmentInto(managerApprovedAttachments, managerApprovedOriginalSources, setManagerApprovedAttachments, setManagerApprovedOriginalSources);
+
   const handleRemoveAttachment = (id: string) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
     setOriginalSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setFormError('');
+  };
+
+  const handleRemoveManagerApprovedAttachment = (id: string) => {
+    setManagerApprovedAttachments((prev) => prev.filter((a) => a.id !== id));
+    setManagerApprovedOriginalSources((prev) => {
       if (!(id in prev)) return prev;
       const next = { ...prev };
       delete next[id];
@@ -523,6 +556,7 @@ function CreateClaimInner() {
       costCenter,
       justification,
       attachments,
+      managerApprovedAttachments,
       lifnr: gstinChoice === 'yes' ? (selectedGst?.item?.Lifnr || selectedGst?.item?.lifnr || null) : null,
       name1: gstinChoice === 'yes' ? (selectedGst?.item?.Name1 || selectedGst?.item?.name1 || null) : null,
       stcd3: gstinChoice === 'yes' ? (selectedGst?.item?.Stcd3 || selectedGst?.item?.stcd3 || null) : null,
@@ -730,12 +764,48 @@ function CreateClaimInner() {
         </button>
       </Card>
 
+      {/* Manager Approved Attachment - only for expense types whose ExptypeSet.Flag comes back blank */}
+      {requiresManagerApprovedAttachment && (
+        <Card className="mb-3">
+          <p className="mb-3 text-sm font-semibold text-red/60">Manager Approved attachment is mandatory for 1st Telephone Claim</p>
+          <h2 className="text-sm font-bold text-ink">Manager Approved Attachment *</h2>
+          <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
+          <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
+
+          {managerApprovedAttachments.map((att) => (
+            <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+              <FileText size={20} className="shrink-0 text-brand" />
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">{att.name}</span>
+              <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+                <Eye size={18} />
+              </button>
+              <button type="button" onClick={() => handleRemoveManagerApprovedAttachment(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={handlePickManagerApprovedAttachment}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+          >
+            <CloudUpload size={18} /> Add Manager Approved Attachment
+          </button>
+        </Card>
+      )}
+
       {/* Actions */}
       <div className="flex gap-3">
         <Button variant="secondary" className="flex-1" onClick={() => { resetForm(); router.back(); }}>
           <X size={18} /> Cancel
         </Button>
-        <Button variant="primary" className="flex-1" onClick={() => handleSubmit(false)}>
+        <Button
+          variant="primary"
+          className="flex-1"
+          disabled={requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0}
+          onClick={() => handleSubmit(false)}
+        >
           <Send size={16} /> Submit Claim
         </Button>
       </div>

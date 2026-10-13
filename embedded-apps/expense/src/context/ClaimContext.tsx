@@ -186,6 +186,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // ExptypeSet.Flag = 'X' means this expense type doesn't require a supporting-document
           // attachment to submit — the mandatory-attachment rule (BR-003) is skipped for it.
           noAttachmentRequired: item.Flag === 'X',
+          // Same Flag field, different value: blank (neither 'X' nor anything else) means this
+          // expense type additionally needs a separate Manager Approved Attachment - currently
+          // only true for the "1st Telephone Claim" ExptypeSet record.
+          requiresManagerApprovedAttachment: !item.Flag,
         }));
         setExpenseTypes(mappedTypes);
       }
@@ -481,6 +485,14 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (invalidAttachment) {
         return { success: false, warning: 'Unsupported attachment type. Allowed file types: PDF, PNG, JPG, JPEG, XLS, XLSX, CSV, TXT.' };
       }
+
+      // Second, separate attachment required when the chosen expense type's ExptypeSet.Flag
+      // comes back blank - see requiresManagerApprovedAttachment in fetchExpenseTypes above.
+      const requiresManagerApprovedAttachment = expenseTypes.find((et) => et.name === claimData.expenseType)?.requiresManagerApprovedAttachment === true;
+      const managerApprovedAttachments = (claimData as any).managerApprovedAttachments || [];
+      if (requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0) {
+        return { success: false, warning: 'Manager Approved attachment is mandatory for 1st Telephone Claim.' };
+      }
     }
 
     // Find the selected SAP expense type object
@@ -489,7 +501,10 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2. Build the exact Deep Entity payload SAP expects
     const empIdNumeric = claimData.employeeId.replace(/\D/g, '').padStart(8, '0');
 
-    const numAttachments = claimData.attachments && claimData.attachments.length > 0 ? claimData.attachments.length : 1;
+    // SAP has no separate document-type field for the Manager Approved Attachment - it travels
+    // alongside the regular supporting documents as just another CLAIMNAV line/attachment.
+    const allAttachments = [...(claimData.attachments || []), ...((claimData as any).managerApprovedAttachments || [])];
+    const numAttachments = allAttachments.length > 0 ? allAttachments.length : 1;
 
     const claimNavItems: any[] = [];
     for (let i = 0; i < numAttachments; i++) {
@@ -535,9 +550,9 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Attachments travel as base64 inside the JSON body rather than a raw multipart upload.
     try {
       const attachmentsPayload: { fieldName: string; name: string; type: string; base64: string }[] = [];
-      if (claimData.attachments && claimData.attachments.length > 0) {
-        for (let i = 0; i < claimData.attachments.length; i++) {
-          const att = claimData.attachments[i];
+      if (allAttachments.length > 0) {
+        for (let i = 0; i < allAttachments.length; i++) {
+          const att = allAttachments[i];
           const base64 = await readAttachmentAsBase64(att.uri);
           attachmentsPayload.push({
             fieldName: `receipt_${i}`,
@@ -652,6 +667,12 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const attachmentsOptionalForType = false;
       if (!attachmentsOptionalForType && (!merged.attachments || merged.attachments.length === 0)) {
         return { success: false, warning: 'Supporting documents (at least 1 attachment) are mandatory for submitting a claim.' };
+      }
+
+      const requiresManagerApprovedAttachment = expenseTypes.find((et) => et.name === merged.expenseType)?.requiresManagerApprovedAttachment === true;
+      const managerApprovedAttachments = (merged as any).managerApprovedAttachments || [];
+      if (requiresManagerApprovedAttachment && managerApprovedAttachments.length === 0) {
+        return { success: false, warning: 'Manager Approved attachment is mandatory for 1st Telephone Claim.' };
       }
     }
 
