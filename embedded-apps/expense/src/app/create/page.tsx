@@ -73,10 +73,16 @@ function CreateClaimInner() {
   const recentExpenseTypeNames = useMemo(() => {
     const seen = new Set<string>();
     const recent: string[] = [];
+    // Exact-match lookup set for the CURRENT live SAP expense-type list - a past claim's saved
+    // expenseType string is only ever shown as a "recent" chip if it still matches a live entry
+    // byte-for-byte. Otherwise clicking it would setExpenseType to a name expenseTypes.find()
+    // can never match, so Flag-driven logic (Manager Approved Attachment, attachment-optional)
+    // would silently stay stuck on the previous selection for that one chip only.
+    const liveNames = new Set(dynamicExpenseTypes.map((t) => t.name));
 
     [...claims].reverse().forEach((claim) => {
       const name = (claim.expenseType || '').toString().trim();
-      if (name && !seen.has(name) && recent.length < 5) {
+      if (name && liveNames.has(name) && !seen.has(name) && recent.length < 5) {
         seen.add(name);
         recent.push(name);
       }
