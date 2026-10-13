@@ -158,6 +158,7 @@ function CreateClaimInner() {
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
 
   const [existingClaimId, setExistingClaimId] = useState('');
 
@@ -821,7 +822,7 @@ function CreateClaimInner() {
 
       {/* Actions */}
       <div className="flex gap-3">
-        <Button variant="secondary" className="flex-1" onClick={() => { resetForm(); router.back(); }}>
+        <Button variant="secondary" className="flex-1" onClick={() => setCancelConfirmVisible(true)}>
           <X size={18} /> Cancel
         </Button>
         <Button
@@ -931,6 +932,14 @@ function CreateClaimInner() {
             )
           )}
         </div>
+      </Modal>
+
+      <Modal open={cancelConfirmVisible} title="Cancel Claim?" onClose={() => setCancelConfirmVisible(false)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelConfirmVisible(false)}>Keep Editing</Button>
+          <Button variant="danger" onClick={() => { setCancelConfirmVisible(false); resetForm(); router.back(); }}>Yes, Cancel</Button>
+        </>}>
+        <p className="text-sm text-inkSoft">Are you sure you want to cancel? Any details you've entered will be lost.</p>
       </Modal>
 
       <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
