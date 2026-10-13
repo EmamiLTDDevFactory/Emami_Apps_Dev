@@ -106,15 +106,8 @@ function CreateClaimInner() {
   // Form State
   const [claimDate, setClaimDate] = useState(new Date().toISOString().split('T')[0]);
   const [expenseDate, setExpenseDate] = useState('');
-  const [expenseType, setExpenseType] = useState(dynamicExpenseTypes[0]?.name || 'Select Expense Type');
+  const [expenseType, setExpenseType] = useState('Select Expense Type');
   const [itemNo, setItemNo] = useState('000001');
-
-  useEffect(() => {
-    if (expenseTypes.length > 0 && expenseType === 'Select Expense Type') {
-      setExpenseType(expenseTypes[0].name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenseTypes]);
 
   const [amountStr, setAmountStr] = useState('');
   const [costCenter, setCostCenter] = useState(
@@ -172,10 +165,9 @@ function CreateClaimInner() {
   const [successMessage, setSuccessMessage] = useState('');
 
   const resetForm = useCallback(() => {
-    const defaultExpenseType = expenseTypes.length > 0 ? expenseTypes[0].name : 'Select Expense Type';
     setClaimDate(new Date().toISOString().split('T')[0]);
     setExpenseDate('');
-    setExpenseType(defaultExpenseType);
+    setExpenseType('Select Expense Type');
     setItemNo('000001');
     setAmountStr('');
     setCostCenter(currentUser?.CostCenter || currentUser?.costCenter || currentUser?.costcenter || COST_CENTERS[0]);
@@ -566,6 +558,11 @@ function CreateClaimInner() {
     }
     if (parsedAmount > 20000) {
       setAmountError('Amount cannot exceed ₹20,000');
+      return;
+    }
+
+    if (!expenseType || expenseType === 'Select Expense Type') {
+      setFormError('Please select an Expense Type.');
       return;
     }
 
