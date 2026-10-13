@@ -116,7 +116,7 @@ export default function RootPage() {
               </span>
             )}
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-sm font-extrabold text-ink">Claim Id:{displayClaimNumber(claim.id)}</span>
+              <span className="shrink-0 text-sm font-extrabold text-ink">Claim ID:{displayClaimNumber(claim.id)}</span>
               {claim.expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{claim.expenseType}</Chip>}
             </div>
             <p className="truncate text-sm text-ink">{claim.justification}</p>

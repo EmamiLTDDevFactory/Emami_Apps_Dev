@@ -249,16 +249,11 @@ function MyClaimsInner() {
               key={claim.id}
               type="button"
               onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)}
-              className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} relative flex flex-col gap-2.5 p-3 text-left transition-shadow hover:shadow-lift`}
+              className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} flex flex-col gap-2.5 p-3 text-left transition-shadow hover:shadow-lift`}
             >
-              {isGstClaim(claim) && (
-                <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
-                  GST
-                </span>
-              )}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink">Claim Id:{displayClaimNumber(claim.id)}</p>
+                  <p className="truncate text-sm font-bold text-ink">Claim ID:{displayClaimNumber(claim.id)}</p>
                   <p className="truncate text-xs font-medium text-inkSoft">{claim.expenseType}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
@@ -269,8 +264,15 @@ function MyClaimsInner() {
 
               <p className="line-clamp-2 text-xs text-inkSoft">{claim.justification}</p>
 
-              <div className="flex items-center justify-between border-t border-line pt-2 text-2xs font-medium text-inkFaint">
-                <span>Cost Center: {claim.costCenter}</span>
+              <div className="flex items-start justify-between border-t border-line pt-2 text-2xs font-medium text-inkFaint">
+                <div className="flex flex-col items-start gap-1">
+                  <span>Cost Center: {claim.costCenter}</span>
+                  {isGstClaim(claim) && (
+                    <span className="w-fit rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                      GST
+                    </span>
+                  )}
+                </div>
                 <span>Submitted: {formatClaimDisplayDate(claim)}</span>
               </div>
             </button>

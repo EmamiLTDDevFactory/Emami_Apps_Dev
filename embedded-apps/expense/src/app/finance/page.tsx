@@ -507,7 +507,7 @@ export default function FinancePage() {
                         </span>
                       )}
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-sm font-bold text-ink">Claim Id:{displayClaimNumber(entry.ClaimId)}</span>
+                        <span className="shrink-0 text-sm font-bold text-ink">Claim ID:{displayClaimNumber(entry.ClaimId)}</span>
                       </div>
                       {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                       <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -536,12 +536,7 @@ export default function FinancePage() {
       ) : (
         <div className="flex flex-col gap-3">
           {financeClaims.map((claim) => (
-            <div key={claim.id} className="card relative flex items-stretch gap-0 overflow-hidden !p-0">
-              {isGstClaim(claim) && (
-                <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
-                  GST
-                </span>
-              )}
+            <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
               {isBulkReleaseUser && (claim.status === 'Pending Release' || isBPendingRelease(claim)) && (
                 <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
                   {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
@@ -551,12 +546,19 @@ export default function FinancePage() {
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-ink">Claim Id:{displayClaimNumber(claim.id)}</p>
+                      <p className="text-sm font-bold text-ink">Claim ID:{displayClaimNumber(claim.id)}</p>
                       <p className="text-xs font-semibold text-brand">{claim.employeeName} ({claim.department})</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <p className="text-base font-extrabold text-ink">₹{formatCurrency(claim.amount)}</p>
-                      <Chip tone={STATUS_TONE[getDisplayStatus(claim)] || 'neutral'}>{displayStatusLabel(getDisplayStatus(claim))}</Chip>
+                      <div className="flex items-center gap-1">
+                        {isGstClaim(claim) && (
+                          <span className="rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                            GST
+                          </span>
+                        )}
+                        <Chip tone={STATUS_TONE[getDisplayStatus(claim)] || 'neutral'}>{displayStatusLabel(getDisplayStatus(claim))}</Chip>
+                      </div>
                     </div>
                   </div>
                   <div className="mt-2 rounded-lg border border-line bg-appBg p-2">

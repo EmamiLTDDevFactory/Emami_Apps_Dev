@@ -330,7 +330,7 @@ function ClaimDetailInner() {
 
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-extrabold text-ink">Claim {displayClaimNumber(header.ClaimId)}</h1>
+          <h1 className="text-lg font-extrabold text-ink">Claim ID:{displayClaimNumber(header.ClaimId)}</h1>
           <p className="text-sm text-inkSoft">{header.EmpName} • {formatDate(header.ClaimDate || header.CreatedOn)}</p>
         </div>
         {canEdit && (
