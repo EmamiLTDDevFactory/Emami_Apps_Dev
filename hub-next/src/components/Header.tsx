@@ -12,6 +12,7 @@ import { useIsScrolling } from '../hooks/useScrollActivity';
 import Avatar from './Avatar';
 import { useOrgProfile } from '../hooks/useOrgProfile';
 import EmpAppMark from './EmpAppMark';
+import OrgHierarchy from './OrgHierarchy';
 
 const SEARCH_EXAMPLES = ['Dispatch Tracker', 'Recruitment Consultant Management Portal', 'Non CTC Expense', 'Mould Health Inspection'];
 
@@ -161,7 +162,9 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
               position: 'absolute',
               top: 56,
               right: isMobile ? 8 : 16,
-              width: org ? 'min(300px, calc(100vw - 16px))' : 'min(240px, calc(100vw - 16px))',
+              width: org ? 'min(340px, calc(100vw - 16px))' : 'min(260px, calc(100vw - 16px))',
+              maxHeight: 'calc(100vh - 72px)',
+              overflowY: 'auto',
               backgroundColor: colors.white,
               borderRadius: radii.lg,
               border: `1px solid ${colors.border}`,
@@ -170,24 +173,24 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
               zIndex: 50,
             }}
           >
-            <div style={{ padding: 14, borderBottom: `1px solid ${colors.border}` }}>
-              <p style={{ fontSize: 13.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.ink, margin: 0 }}>{currentUser.name}</p>
-              <p style={{ fontSize: 11.5, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 2, marginBottom: 0, overflowWrap: 'anywhere' }}>{currentUser.email}</p>
-              {orgLine && <p style={{ fontSize: 12, color: colors.ink, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, marginTop: 6, marginBottom: 0 }}>{orgLine}</p>}
-            </div>
-            {!!org?.managers?.length && (
-              <div style={{ padding: '10px 14px', borderBottom: `1px solid ${colors.border}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {org.managers.map((m) => (
-                  <div key={m.level} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <span style={{ flexShrink: 0, marginTop: 1, fontSize: 10, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.rust, backgroundColor: `${colors.rust}12`, borderRadius: 6, padding: '2px 6px' }}>L{m.level}</span>
-                    <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 12.5, color: colors.ink, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold }}>{m.displayName || '—'}</span>
-                      {m.jobTitle && <span style={{ display: 'block', fontSize: 11, color: colors.inkSoft, fontFamily: fonts.sansRegular, marginTop: 1 }}>{m.jobTitle}</span>}
-                    </span>
-                  </div>
-                ))}
+            {/* Blue header card: who you are and your reporting line (Microsoft Entra ID). */}
+            <div style={{ position: 'relative', overflow: 'hidden', margin: 8, padding: 14, borderRadius: radii.lg, background: `linear-gradient(125deg, ${colors.plumDeep} 0%, #2A2070 50%, ${colors.rust} 100%)` }}>
+              <div aria-hidden style={{ position: 'absolute', right: -50, top: -60, width: 160, height: 160, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,124,255,0.5), transparent 70%)' }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <Avatar name={currentUser.name} size={40} photoUrl={profile?.photoUrl} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 14, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: colors.white, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{currentUser.name}</p>
+                  <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.72)', fontFamily: fonts.sansRegular, margin: '1px 0 0', overflowWrap: 'anywhere' }}>{currentUser.email}</p>
+                  {orgLine && <p style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.88)', fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, margin: '3px 0 0' }}>{orgLine}</p>}
+                </div>
               </div>
-            )}
+              {!!org?.managers?.length && (
+                <div style={{ position: 'relative', marginTop: 12 }}>
+                  <p style={{ margin: '0 0 6px', fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: 'rgba(255,255,255,0.6)' }}>Reporting line</p>
+                  <OrgHierarchy compact tone="dark" managers={org.managers} me={{ name: currentUser.name, jobTitle: org.jobTitle, department: org.department }} />
+                </div>
+              )}
+            </div>
             <MenuRow icon={<User size={15} color={colors.inkSoft} />} label="Profile" onClick={() => { setProfileOpen(false); onOpenSettings(); }} />
             <MenuRow icon={<LogOut size={15} color={colors.inkSoft} />} label="Sign out" onClick={() => { setProfileOpen(false); logout(); }} />
           </div>
