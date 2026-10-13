@@ -108,11 +108,15 @@ export default function RootPage() {
             key={claim.id}
             type="button"
             onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)}
-            className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} flex flex-col gap-2 p-3.5 text-left transition-shadow hover:shadow-lift`}
+            className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} relative flex flex-col gap-2 p-3.5 text-left transition-shadow hover:shadow-lift`}
           >
+            {isGstClaim(claim) && (
+              <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                GST
+              </span>
+            )}
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-sm font-extrabold text-ink">{displayClaimNumber(claim.id)}</span>
-              {isGstClaim(claim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
+              <span className="shrink-0 text-sm font-extrabold text-ink">Claim Id:{displayClaimNumber(claim.id)}</span>
               {claim.expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{claim.expenseType}</Chip>}
             </div>
             <p className="truncate text-sm text-ink">{claim.justification}</p>

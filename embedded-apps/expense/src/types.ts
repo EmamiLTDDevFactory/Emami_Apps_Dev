@@ -39,6 +39,8 @@ export interface ExpenseClaim {
   name1?: string;
   stcd3?: string;
   bezei?: string;
+  expenseAmt?: number;
+  taxAmaount?: number;
   status: ClaimStatus;
   workflowHistory: WorkflowEvent[];
   currentApprover?: string;

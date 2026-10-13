@@ -10,6 +10,7 @@ import { getCategoryStyle } from '../../utils/category-style';
 import { formatCurrency } from '../../utils/currency';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { isGstClaim } from '../../utils/claim-gst';
+import { getPersistedTaxSplit } from '../../utils/claim-tax-split';
 import { buildHistoryExcelHtml } from '../../utils/history-excel';
 import { Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
@@ -373,11 +374,15 @@ export default function ApprovalsPage() {
                       key={`${entry.ClaimId}-${idx}`}
                       type="button"
                       onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                      className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                      className={`relative flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                     >
+                      {matchedClaim && isGstClaim(matchedClaim) && (
+                        <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                          GST
+                        </span>
+                      )}
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-sm font-bold text-ink">{displayClaimNumber(entry.ClaimId)}</span>
-                        {matchedClaim && isGstClaim(matchedClaim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
+                        <span className="shrink-0 text-sm font-bold text-ink">Claim Id:{displayClaimNumber(entry.ClaimId)}</span>
                       </div>
                       {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                       <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -406,7 +411,12 @@ export default function ApprovalsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {pendingClaims.map((claim) => (
-            <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
+            <div key={claim.id} className="card relative flex items-stretch gap-0 overflow-hidden !p-0">
+              {isGstClaim(claim) && (
+                <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                  GST
+                </span>
+              )}
               {isBulkReleaseUser && (
                 <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
                   {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
@@ -416,10 +426,7 @@ export default function ApprovalsPage() {
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-ink">
-                        {displayClaimNumber(claim.id)}
-                        {isGstClaim(claim) && <span className="ml-1.5 text-[10px] font-bold text-brand">GST</span>}
-                      </p>
+                      <p className="text-sm font-bold text-ink">Claim Id:{displayClaimNumber(claim.id)}</p>
                       <p className="text-xs font-semibold text-brand">{claim.employeeName} ({claim.designation})</p>
                     </div>
                     <p className="text-base font-extrabold text-ink">₹{formatCurrency(claim.amount)}</p>
@@ -432,6 +439,12 @@ export default function ApprovalsPage() {
                     <span>Cost Center: {claim.costCenter}</span>
                     <span>Date: {claim.claimDate}</span>
                   </div>
+                  {getPersistedTaxSplit(claim) && (
+                    <div className="mt-1 flex justify-between text-2xs font-medium text-inkFaint">
+                      <span>Expense Amount: ₹{formatCurrency(getPersistedTaxSplit(claim)!.expenseAmt)}</span>
+                      <span>Tax Amount: ₹{formatCurrency(getPersistedTaxSplit(claim)!.taxAmt)}</span>
+                    </div>
+                  )}
                   {claim.attachments.length > 0 && (
                     <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-cream px-2.5 py-1.5 text-xs font-semibold text-brand">
                       <FileText size={14} /> View Attached Receipt: {claim.attachments[0].name}

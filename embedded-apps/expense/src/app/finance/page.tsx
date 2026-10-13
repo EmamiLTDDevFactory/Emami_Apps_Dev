@@ -10,6 +10,7 @@ import { getCategoryStyle } from '../../utils/category-style';
 import { displayStatusLabel } from '../../utils/claim-status';
 import { displayClaimNumber } from '../../utils/claim-number';
 import { isGstClaim } from '../../utils/claim-gst';
+import { getPersistedTaxSplit } from '../../utils/claim-tax-split';
 import { formatCurrency } from '../../utils/currency';
 import { buildHistoryExcelHtml } from '../../utils/history-excel';
 import { formatSapErrorMessage } from '../../utils/sap-error';
@@ -124,7 +125,7 @@ export default function FinancePage() {
   const taxPreviewCacheRef = useRef(taxPreviewCache);
   useEffect(() => { taxPreviewCacheRef.current = taxPreviewCache; }, [taxPreviewCache]);
 
-  const gstFinanceClaimIds = financeClaims.filter((c) => isGstClaim(c)).map((c) => c.id).join(',');
+  const gstFinanceClaimIds = financeClaims.filter((c) => isGstClaim(c) && !getPersistedTaxSplit(c)).map((c) => c.id).join(',');
   useEffect(() => {
     const ids = gstFinanceClaimIds ? gstFinanceClaimIds.split(',') : [];
     const missing = ids.filter((id) => !(id in taxPreviewCacheRef.current));
@@ -498,11 +499,15 @@ export default function FinancePage() {
                       key={`${entry.ClaimId}-${idx}`}
                       type="button"
                       onClick={() => router.push(`/claim/?id=${encodeURIComponent(entry.ClaimId)}`)}
-                      className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
+                      className={`relative flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                     >
+                      {matchedClaim && isGstClaim(matchedClaim) && (
+                        <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                          GST
+                        </span>
+                      )}
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-sm font-bold text-ink">{displayClaimNumber(entry.ClaimId)}</span>
-                        {matchedClaim && isGstClaim(matchedClaim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
+                        <span className="shrink-0 text-sm font-bold text-ink">Claim Id:{displayClaimNumber(entry.ClaimId)}</span>
                       </div>
                       {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                       <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -531,7 +536,12 @@ export default function FinancePage() {
       ) : (
         <div className="flex flex-col gap-3">
           {financeClaims.map((claim) => (
-            <div key={claim.id} className="card flex items-stretch gap-0 overflow-hidden !p-0">
+            <div key={claim.id} className="card relative flex items-stretch gap-0 overflow-hidden !p-0">
+              {isGstClaim(claim) && (
+                <span className="pointer-events-none absolute right-2 top-2 rounded-full border border-brand bg-white px-2 py-0.5 text-[10px] font-bold text-brand">
+                  GST
+                </span>
+              )}
               {isBulkReleaseUser && (claim.status === 'Pending Release' || isBPendingRelease(claim)) && (
                 <button type="button" onClick={() => toggleClaimSelection(claim.id)} className="flex items-center justify-center border-r border-line bg-appBg px-4">
                   {selectedClaimIds.includes(claim.id) ? <CheckSquare size={20} className="text-brand" /> : <Square size={20} className="text-inkFaint" />}
@@ -541,10 +551,7 @@ export default function FinancePage() {
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-ink">
-                        {displayClaimNumber(claim.id)}
-                        {isGstClaim(claim) && <span className="ml-1.5 text-[10px] font-bold text-brand">GST</span>}
-                      </p>
+                      <p className="text-sm font-bold text-ink">Claim Id:{displayClaimNumber(claim.id)}</p>
                       <p className="text-xs font-semibold text-brand">{claim.employeeName} ({claim.department})</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -560,12 +567,15 @@ export default function FinancePage() {
                     <span>Cost Center: {claim.costCenter}</span>
                     <span>Date: {claim.claimDate}</span>
                   </div>
-                  {isGstClaim(claim) && taxPreviewCache[claim.id] && (
-                    <div className="mt-1 flex justify-between text-2xs font-medium text-inkFaint">
-                      <span>Expense Amount: ₹{formatCurrency(taxPreviewCache[claim.id]!.expenseAmt)}</span>
-                      <span>Tax Amount: ₹{formatCurrency(taxPreviewCache[claim.id]!.taxAmt)}</span>
-                    </div>
-                  )}
+                  {isGstClaim(claim) && (getPersistedTaxSplit(claim) || taxPreviewCache[claim.id]) && (() => {
+                    const split = getPersistedTaxSplit(claim) || taxPreviewCache[claim.id]!;
+                    return (
+                      <div className="mt-1 flex justify-between text-2xs font-medium text-inkFaint">
+                        <span>Expense Amount: ₹{formatCurrency(split.expenseAmt)}</span>
+                        <span>Tax Amount: ₹{formatCurrency(split.taxAmt)}</span>
+                      </div>
+                    );
+                  })()}
                 </button>
                 <div className="border-t border-line bg-appBg p-2">
                   {claim.status === 'Approved' ? (

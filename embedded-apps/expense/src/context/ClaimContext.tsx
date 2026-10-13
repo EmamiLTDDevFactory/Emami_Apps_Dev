@@ -325,6 +325,11 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           rawStatus: sap.Status || '',
           stcd3: sap.Stcd3 || '',
           lifnr: sap.Lifnr || '',
+          // Persisted on the claim itself once it's gone through a GST tax-code release — SAP
+          // leaves these at '0.000' for claims that never had a tax code applied (see claim/
+          // page.tsx's identical persistedExpenseAmt/persistedTaxAmount read of this same header).
+          expenseAmt: parseFloat(sap.ExpenseAmt || '0') || 0,
+          taxAmaount: parseFloat(sap.TaxAmaount || '0') || 0,
           workflowHistory: [],
         };
       });
