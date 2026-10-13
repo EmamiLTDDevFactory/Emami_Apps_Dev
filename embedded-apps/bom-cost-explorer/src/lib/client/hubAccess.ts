@@ -23,3 +23,16 @@ export async function fetchIsAdmin(email: string): Promise<boolean> {
     return false;
   }
 }
+
+/** This app's Manage Access role for the person ('' = none / unknown). Fails closed. Used by the
+ * Production Plan module: writes need 'Planner' (or 'Admin'). */
+export async function fetchAppRole(email: string): Promise<string> {
+  if (process.env.NEXT_PUBLIC_MOCK_SAP === 'true') return 'Admin'; // local development
+  try {
+    const res = await fetch(`${accessApiBase()}/access/me?email=${encodeURIComponent(email)}`, { cache: 'no-store' });
+    const data = (await res.json()) as { apps?: { appId: string; role: string }[] };
+    return data.apps?.find((a) => a.appId === APP_ID)?.role ?? '';
+  } catch {
+    return '';
+  }
+}

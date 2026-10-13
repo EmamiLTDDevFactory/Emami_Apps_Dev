@@ -82,28 +82,67 @@ set, or (expand) `RatePcInr x ProdQty + line FrtPcInr x ProdQty`. RatePcInr is u
 `RatePc x FxInr` because it already includes the option-to-plant FX (`Fx`), so it stays right when the
 option currency differs from the plant currency.
 
-### Production Plan module (`lib/plan/`, `components/plan/`, phase 2 of 5: scaffolding)
+### Production Plan module (`lib/plan/`, `components/plan/`)
 
-Off unless the build sets `PLAN_MODULE_ENABLED=true` (or `NEXT_PUBLIC_PLAN_MODULE_ENABLED=true`;
+**Switch.** Off unless the build sets `PLAN_MODULE_ENABLED=true` (or `NEXT_PUBLIC_PLAN_MODULE_ENABLED=true`;
 next.config.mjs maps the first onto the second). Off = no "Production plan" nav section, no plan
 requests, and no plan code in the costing page's scripts (each plan route loads its screen with a
-dynamic import only when the flag is on; checked in the built `dist/`).
+dynamic import only when the flag is on). To show it on DEV, set `PLAN_MODULE_ENABLED=true` in the Amplify
+environment of the DEV app and rebuild; it needs the plan entity sets active on NGQ (PRD: NWP).
 
-Routes: `/plan` (plans), `/plan/upload` (upload wizard) and `/plan/view/?plan=<name>` (one plan, with its
-own tab bar: Entries | Breakup & cost | Requirement | Checks | WIP | Scenarios). A static export cannot have
-a dynamic `/plan/[plan]` route for plan names unknown at build time, so the plan name is a query parameter.
-Reads go browser -> gateway like every costing read; writes (phase 3) will go the same way, the gateway
-doing the CSRF handshake (as Gate Entry's saves do). All SAP names live in `lib/plan/fields.ts`
-(PlanHeadSet, PlanEntrySet, PlanUploadSet deep insert, PlanCheckSet, PlanSummarySet, PlanWipSet, and the
-Mode P fields of CostLineSet); requests in `lib/plan/requests.ts` (Mode P never sends `$expand`), reads in
-`lib/plan/client.ts`. The lazy rate-options layer accepts any CostLineSet filter
-(`fetchRateOptionsByFilter`) so the plan breakup can reuse it. Browser storage keys start with `plan:`.
-Status in phase 2: nav, routes, client and mock only; every tab is an empty placeholder.
+| Env var | Meaning |
+|---|---|
+| `PLAN_MODULE_ENABLED` | `true` turns the Production Plan module on (build time) |
+| `NEXT_PUBLIC_RATES_PROBE_MATNR` / `NEXT_PUBLIC_RATES_PROBE_WERKS` | material / plant of the tiny probe that decides how rate options are read (RateOptionSet or `$expand`) |
 
-The mock (`mock/plan.ts`) seeds plans FY27-BASE (5 rows, including FG5001 in BD10, which has no BOM of its
-own and is costed with plant 1000's BOM: the LASTPROD example) and FY27-EXPORT, and answers every plan set,
-the PlanUploadSet deep insert (dry run and save, merge / replace, per-row status), entry PUT / DELETE, and
-the 30-plan-rows-per-request limit.
+**Routes.** `/plan` (plans: PlanHeadSet with search, open, template download), `/plan/upload` (upload
+wizard) and `/plan/view/?plan=<name>` (Entries | Breakup & cost | Requirement | Checks | WIP | Scenarios).
+A static export cannot have a dynamic `/plan/[plan]` route, so the plan name is a query parameter.
+
+**SAP path.** Reads and writes go browser -> Azure gateway (the gateway does the CSRF handshake, as for Gate
+Entry's saves). All SAP names live in `lib/plan/fields.ts`; requests in `lib/plan/requests.ts` (Mode P never
+sends `$expand`); reads in `lib/plan/client.ts`; writes in `lib/plan/write.ts` (`sapWrite` in
+`lib/sap/client.ts`: no retry; the gateway's own "Cannot DELETE /" page becomes "gateway route missing", a
+CSRF 403 says the proxy must forward x-csrf-token and cookies).
+
+**Upload** (`lib/plan/upload.ts`, `UploadPage.tsx`): template A Material, B Plant, C Plan, D Country, E..P
+Apr..Mar; header row detected and skipped; browser checks (required cells, plant 4 characters, months
+numeric >= 0, duplicates, plan name <= 30, <= 2000 rows) with row numbers; rows grouped by plan, one
+PlanUploadSet deep insert per plan; Merge (default) or Replace with a confirmation; Step 1 "Check with SAP"
+(Dryrun true), Step 2 "Save" (only after the check passed); per-row status / message from SAP. Every upload
+is logged in this browser (`plan:audit`; there is no app server for a central log).
+
+**Role.** Uploading and editing need the hub Manage Access role **Planner** (or Admin) on BOM Simulator,
+checked in the UI; SAP's authority check is the real gate. `backend/server.js` accepts the role.
+
+**Entries.** Editable monthly grid, one PUT per changed row, delete per row. The Azure gateway does not
+forward DELETE today: then the plan is saved again with Replace and every other row (check run first).
+
+**Breakup & cost** (CostLineSet Mode P, one SAP call): tree Country > Plant > Plan material > components,
+monthly quantity or cost (QtyMn x TotCostPcInr), total quantity with unit, rate source, rate / freight /
+total per piece, total cost, budget landed, actual rate with variance. Header rows: plan quantity, cost
+per FG piece and per 1000 (leaf rows only, blank when PlanQty is 0) and the BOM source (OWN, or "From
+plant X (last production dd.mm.yyyy)" for LASTPROD). SAP warnings in a collapsible panel; SAP's 30 plan
+rows per request limit is shown with "filter by plant or material". Sub-views: charts (monthly cost by rate
+source and by material type, top components) and Rate sources (lazy rate options for the same filter).
+
+**Requirement** (PlanSummarySet): shortage = requirement - (valuated stock + open PO), "only shortages";
+units are SAP's base units, not converted. **Checks** (PlanCheckSet): grouped by plant and material, counts
+per message, Excel. **WIP** (PlanWipSet): "Save as WIP plan" groups by component + plant + country, sums
+the months, names it "WIP <plan>" and opens the upload wizard with those rows (check, then save).
+
+**Scenarios** (`lib/plan/scenarios.ts`, stored in `plan:scenarios`): SAP what-ifs (fallback, material
+types, rate priority, donor plant) run SAP again; client what-ifs (quantity x overall / per month, shift
+between months, % by rate source, % on freight, FX shock per currency, rate per row) are marked
+simulated. Baseline vs scenario per month, plan material and component.
+
+**Excel** (button on the plan page): sheets Breakup, Requirement, Checks, WIP (what has been loaded) and
+Parameters.
+
+The mock (`mock/plan.ts`) seeds plans FY27-BASE (5 rows, including FG5001 in BD10, costed with plant 1000's
+BOM: the LASTPROD example) and FY27-EXPORT, and answers every plan set, the deep insert (dry run / save,
+merge / replace, per-row status), entry PUT / DELETE (`MOCK_SAP_NO_DELETE=true` behaves like today's
+gateway), Mode P rate options (following `MOCK_SAP_RATES`) and the 30-rows limit.
 
 ### Connection diagnostics (`/admin/connection`)
 

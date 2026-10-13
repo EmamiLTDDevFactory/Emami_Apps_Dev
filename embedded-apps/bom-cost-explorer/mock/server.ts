@@ -18,7 +18,7 @@ const pass = process.env.MOCK_SAP_PASSWORD ?? '';
 const cors = (origin: string | undefined): Record<string, string> => ({
   'Access-Control-Allow-Origin': origin || '*',
   'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Methods': 'GET,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Accept,Authorization,Content-Type',
   'Access-Control-Expose-Headers': 'sap-message',
   Vary: 'Origin',
@@ -38,9 +38,13 @@ http
       }
     }
     const ctl = new AbortController();
-    req.on('close', () => !res.writableEnded && ctl.abort());
+    // res, not req: req emits 'close' as soon as a request body has been read (POST / PUT).
+    res.on('close', () => !res.writableEnded && ctl.abort());
     try {
-      const r = await mockSapFetch(`http://localhost:${port}${req.url}`, { signal: ctl.signal });
+      // Production Plan writes (POST / PUT / DELETE) carry a JSON body.
+      const chunks: Buffer[] = [];
+      if (req.method !== 'GET') for await (const c of req) chunks.push(c as Buffer);
+      const r = await mockSapFetch(`http://localhost:${port}${req.url}`, { signal: ctl.signal, method: req.method, body: chunks.length ? Buffer.concat(chunks).toString('utf8') : undefined });
       const headers: Record<string, string> = cors(req.headers.origin);
       r.headers.forEach((v, k) => (headers[k] = v));
       res.writeHead(r.status, headers);

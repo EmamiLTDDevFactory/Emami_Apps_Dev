@@ -126,8 +126,9 @@ async function requireAccessManager(req, res, next) {
  * (payment-tracking) adds a third role, Finance, on top of the generic pair — see that app's own
  * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Approval
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
- * 'User' role. */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'] };
+ * 'User' role. BOM Simulator (bom-cost-explorer) adds Planner: may upload and edit production plans
+ * (Admin may too; SAP's own authority check still applies). */
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

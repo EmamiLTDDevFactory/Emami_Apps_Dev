@@ -1,16 +1,26 @@
 'use client';
 /**
  * /plan/view/?plan=<name> - one plan, with its own tab bar (not the costing tab bar):
- * Entries | Breakup & cost | Requirement | Checks | WIP | Scenarios. Phase 2 scaffold: empty tabs.
+ * Entries | Breakup & cost | Requirement | Checks | WIP | Scenarios. The tabs share one workspace (the Mode P
+ * run, the filters, what each tab loaded) so switching tabs never re-runs SAP.
  * (A static export cannot have a dynamic /plan/[plan] route for plan names unknown at build time,
  * so the plan name is a query parameter.)
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet } from 'lucide-react';
 import PlanFrame from './PlanFrame';
+import EntriesTab from './EntriesTab';
+import BreakupTab from './BreakupTab';
+import RequirementTab from './RequirementTab';
+import ChecksTab from './ChecksTab';
+import WipTab from './WipTab';
+import ScenariosTab from './ScenariosTab';
 import { ls } from '@/lib/client/storage';
-import { Card, Empty, Tabs } from '../ui';
+import { readHubSession } from '@/lib/client/session';
+import { usePlanWorkspace } from '@/lib/plan/workspace';
+import { exportPlanWorkbook } from '@/lib/plan/export';
+import { Button, Card, Empty, Pill, Spinner, Tabs } from '../ui';
 
 export type PlanTab = 'entries' | 'breakup' | 'requirement' | 'checks' | 'wip' | 'scenarios';
 
@@ -28,8 +38,10 @@ const TAB_KEY = 'plan:last-tab';
 export default function PlanDetail() {
   const [plan, setPlan] = useState<string | null>(null);
   const [tab, setTab] = useState<PlanTab>('entries');
+  const [email, setEmail] = useState('');
   useEffect(() => {
     setPlan((new URLSearchParams(window.location.search).get('plan') ?? '').trim());
+    setEmail(readHubSession()?.email ?? '');
     const t = ls.get<PlanTab>(TAB_KEY, 'entries');
     if (PLAN_TABS.some((x) => x.id === t)) setTab(t);
   }, []);
@@ -37,24 +49,51 @@ export default function PlanDetail() {
     setTab(t);
     ls.set(TAB_KEY, t);
   };
-  const current = PLAN_TABS.find((t) => t.id === tab)!;
 
   return (
     <PlanFrame active="plans">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link href="/plan/" className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline"><ArrowLeft size={13} /> Plans</Link>
-        <h2 className="text-lg font-extrabold">{plan === null ? '' : plan || 'No plan chosen'}</h2>
-      </div>
       {plan === '' ? (
-        <Card><Empty title="No plan chosen">Open a plan from the Plans list.</Empty></Card>
-      ) : plan ? (
         <>
-          <Tabs label="Plan views" tabs={PLAN_TABS.map((t) => ({ id: t.id, label: t.label }))} value={tab} onChange={pick} />
-          <Card>
-            <Empty title={current.label} icon="▦">{current.what} Comes in a later phase.</Empty>
-          </Card>
+          <Link href="/plan/" className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline"><ArrowLeft size={13} /> Plans</Link>
+          <Card><Empty title="No plan chosen">Open a plan from the Plans list.</Empty></Card>
         </>
+      ) : plan ? (
+        <PlanView plan={plan} email={email} tab={tab} onTab={pick} />
       ) : null}
     </PlanFrame>
+  );
+}
+
+function PlanView({ plan, email, tab, onTab }: { plan: string; email: string; tab: PlanTab; onTab: (t: PlanTab) => void }) {
+  const ws = usePlanWorkspace(plan, email);
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      await exportPlanWorkbook({ query: ws.cost.ranQuery ?? ws.query, cost: ws.cost.status === 'done' || ws.cost.rows.length ? ws.cost.rows : null, summary: ws.loaded.summary?.rows ?? null, checks: ws.loaded.checks?.rows ?? null, wip: ws.loaded.wip?.rows ?? null, messages: ws.cost.messages });
+    } finally {
+      setExporting(false);
+    }
+  };
+  const running = ws.cost.status === 'running';
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-3">
+        <Link href="/plan/" className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline"><ArrowLeft size={13} /> Plans</Link>
+        <h2 className="text-lg font-extrabold">{plan}</h2>
+        {ws.role && <Pill tone={ws.canWrite ? 'accent' : 'neutral'} title="Your Manage Access role for BOM Simulator">{ws.role}</Pill>}
+        {running && <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Spinner className="h-3.5 w-3.5" /> SAP is costing the plan…</span>}
+        <Button size="sm" className="ml-auto" disabled={exporting} onClick={() => void doExport()} title="Excel: Breakup, Requirement, Checks, WIP and Parameters (what you have loaded)">
+          {exporting ? <Spinner className="h-3.5 w-3.5" /> : <FileSpreadsheet size={14} />} Excel
+        </Button>
+      </div>
+      <Tabs label="Plan views" tabs={PLAN_TABS.map((t) => ({ id: t.id, label: t.label }))} value={tab} onChange={onTab} />
+      {tab === 'entries' && <EntriesTab ws={ws} />}
+      {tab === 'breakup' && <BreakupTab ws={ws} />}
+      {tab === 'requirement' && <RequirementTab ws={ws} />}
+      {tab === 'checks' && <ChecksTab ws={ws} />}
+      {tab === 'wip' && <WipTab ws={ws} />}
+      {tab === 'scenarios' && <ScenariosTab ws={ws} />}
+    </>
   );
 }

@@ -188,3 +188,60 @@ export async function sapGetMetadata(opts: SapGetOptions = {}): Promise<string> 
     throw err;
   }
 }
+
+/**
+ * POST / PUT / DELETE through the same gateway path as the reads (Production Plan writes only). The Azure
+ * gateway does the CSRF handshake with SAP; this sends JSON and turns SAP's error body into a SapError. No
+ * retry: a write must never run twice. The gateway answers its own 404 HTML ("Cannot DELETE /api/...") for a
+ * method it does not forward - that is reported as such, not as a SAP error.
+ */
+export async function sapWrite(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, opts: SapGetOptions = {}): Promise<SapRawResponse> {
+  const c = sapConfig();
+  const doFetch = await transport(c);
+  const url = buildUrl(path, {}, c);
+  const started = Date.now();
+  const timeout = opts.timeoutMs ?? c.timeoutMs;
+  const link = linkedSignal(opts.signal, timeout);
+  let res: Response;
+  try {
+    res = await doFetch(url, {
+      method,
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...authHeaders(c) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: link.signal,
+      cache: 'no-store',
+    });
+  } catch {
+    if (opts.signal?.aborted) throw new SapError('Request cancelled.', 'aborted', 499);
+    if (link.timedOut()) throw new SapError(`SAP did not answer within ${Math.round(timeout / 1000)} s. ${AZURE_LIMIT_HINT}`, 'timeout', 504);
+    throw new SapError('Could not reach the SAP gateway. Check your network / VPN and try again.', 'network', 502);
+  } finally {
+    link.done();
+  }
+  const ms = Date.now() - started;
+  const header = res.headers.get('sap-message');
+  const messages = parseSapMessageHeader(header);
+  const text = await res.text();
+  let parsed: unknown;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = undefined;
+  }
+  logLine(c, `${method} ${path.replace(/\(.*$/, '(...)')}`, {}, ms, res.status);
+  if (!res.ok) {
+    if (res.status === 404 && /Cannot (POST|PUT|DELETE) \//.test(text)) {
+      throw new SapError(`The SAP gateway does not pass ${method} requests on to SAP yet (gateway route missing).`, 'http', 501, messages, 404);
+    }
+    if (res.status === 403 && /csrf/i.test(`${text} ${res.headers.get('x-csrf-token') ?? ''}`)) {
+      throw new SapError('SAP refused the CSRF token: the gateway proxy must forward the x-csrf-token header and the SAP session cookies.', 'http', 403, messages, 403);
+    }
+    const fallback = res.status === 401 || res.status === 403 ? 'SAP refused the change (not authorised).' : `SAP returned HTTP ${res.status}.`;
+    let message = fallback;
+    let details: SapMessage[] = [];
+    if (parsed && typeof parsed === 'object') ({ message, details } = parseODataError(parsed, fallback));
+    else if (text) message = htmlToText(text) || fallback;
+    throw new SapError(message, 'http', res.status >= 500 ? 502 : 400, [...details, ...messages], res.status);
+  }
+  return { body: parsed ?? null, messages, sapMessageHeader: header !== null, ms, status: res.status };
+}

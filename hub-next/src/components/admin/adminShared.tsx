@@ -30,6 +30,7 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function roleOptionsFor(appId: string): AppRole[] {
   if (appId === AUDIT_CAPA_APP_ID) return ['Depot', 'View', 'CQA'];
   if (appId === PAYMENT_TRACKING_APP_ID) return ['User', 'Admin', 'Finance'];
+  if (appId === 'bom-cost-explorer') return ['User', 'Admin', 'Planner']; // Planner: upload / edit production plans
   if (SINGLE_GRANT_APP_IDS.has(appId)) return ['User'];
   return ['User', 'Admin'];
 }

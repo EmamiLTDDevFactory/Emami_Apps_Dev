@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CostQuery } from '../query/schema';
-import { fetchRateOptions, clearRatesCache, UNAVAILABLE_NOTE } from './options';
+import { fetchRateOptions, fetchRateOptionsByFilter, clearRatesCache, UNAVAILABLE_NOTE, type RatesResult } from './options';
 import { getRatesCapability, resetRatesCapability } from './capability';
 import type { RateOptionRow } from './fields';
 
@@ -21,12 +21,24 @@ export interface RatesState {
   retest: () => void;
 }
 
+/** Lazy rate options for a BOM costing query (mode B). */
 export function useRateOptions(query: CostQuery | null, system: string): RatesState {
+  const key = query ? JSON.stringify(query) : '';
+  return useLazyRates(key, system, (signal) => fetchRateOptions(query as CostQuery, { signal }));
+}
+
+/** Same for any CostLineSet filter (Production Plan Mode P). */
+export function useRateOptionsByFilter(filter: string | null, system: string): RatesState {
+  return useLazyRates(filter ?? '', system, (signal) => fetchRateOptionsByFilter(filter as string, { signal }));
+}
+
+function useLazyRates(qKey: string, system: string, loader: (signal: AbortSignal) => Promise<RatesResult>): RatesState {
   const [state, setState] = useState<Omit<RatesState, 'request' | 'retest'>>({ status: 'idle', rows: null, mode: null, note: '' });
   const ctl = useRef<AbortController | null>(null);
   const statusRef = useRef<RatesStatus>('idle');
   statusRef.current = state.status;
-  const qKey = query ? JSON.stringify(query) : '';
+  const loaderRef = useRef(loader);
+  loaderRef.current = loader;
 
   // A new query starts from scratch; a remembered "unavailable" is shown without a request.
   useEffect(() => {
@@ -38,12 +50,12 @@ export function useRateOptions(query: CostQuery | null, system: string): RatesSt
   }, [qKey, system]);
 
   const load = useCallback(() => {
-    if (!query) return;
+    if (!qKey) return;
     ctl.current?.abort();
     const c = new AbortController();
     ctl.current = c;
     setState((s) => ({ ...s, status: 'loading', note: '' }));
-    fetchRateOptions(query, { signal: c.signal })
+    loaderRef.current(c.signal)
       .then((r) => {
         if (c.signal.aborted) return;
         if ('unavailable' in r) setState({ status: 'unavailable', rows: null, mode: null, note: r.reason });
@@ -53,8 +65,6 @@ export function useRateOptions(query: CostQuery | null, system: string): RatesSt
         if (c.signal.aborted || (e as Error)?.name === 'AbortError') return;
         setState({ status: 'error', rows: null, mode: null, note: (e as Error)?.message || 'Could not load rate options.' });
       });
-    // qKey stands for query
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qKey]);
 
   const request = useCallback(() => {

@@ -52,7 +52,8 @@ const csvCell = (v: unknown) => {
 export interface ExportSpec {
   fmt: 'xlsx' | 'csv';
   name: string;
-  query: CostQuery;
+  /** omitted by the Production Plan export, which passes its own parameters in extraParams */
+  query?: CostQuery;
   cols: XCol[];
   count: number;
   extraParams?: [string, string][];
@@ -91,7 +92,7 @@ export async function exportTable(spec: ExportSpec) {
   const ps = wb.addWorksheet('Parameters');
   ps.columns = [{ header: 'Parameter', width: 28 }, { header: 'Value', width: 90 }];
   ps.getRow(1).font = { bold: true };
-  for (const [k, v] of describeQuery(spec.query)) ps.addRow([k, sanitizeCell(v)]);
+  for (const [k, v] of spec.query ? describeQuery(spec.query) : []) ps.addRow([k, sanitizeCell(v)]);
   ps.addRow(['Exported at', new Date().toLocaleString('en-IN')]);
   for (const [k, v] of spec.extraParams ?? []) ps.addRow([k, sanitizeCell(v)]);
   if (spec.messages?.length) {

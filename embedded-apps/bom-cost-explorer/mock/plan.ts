@@ -11,7 +11,7 @@ interface Msg { code: string; message: string; severity: 'warning' | 'info' | 'e
 
 export interface PlanDeps {
   parseFilter: (f: string) => Map<string, string[]>;
-  costLinesFor: (matnr: string, plant: string, qty: number, msgs: Msg[]) => Raw[];
+  costLinesFor: (matnr: string, plant: string, qty: number, msgs: Msg[], expand?: boolean) => Raw[];
   json: (body: unknown, status?: number, msgs?: Msg[]) => Response;
   odataError: (status: number, code: string, message: string) => Response;
   sleep: (ms: number, signal?: AbortSignal | null) => Promise<void>;
@@ -71,7 +71,8 @@ function entryError(e: Raw): string {
   const w = String(e.Werks ?? '').toUpperCase();
   if (!m) return 'Material is missing';
   if (!MAT.has(m)) return `Material ${m} does not exist`;
-  if (MAT.get(m)!.Mtart !== 'FERT') return `Material ${m} is not a finished good`;
+  // WIP plans ("WIP <plan>", from PlanWipSet) hold semi-finished materials.
+  if (!['FERT', 'HALB'].includes(MAT.get(m)!.Mtart)) return `Material ${m} is not a finished or semi-finished good`;
   if (!/^[A-Z0-9]{4}$/.test(w)) return `Plant ${w || '(blank)'} is not a 4-character plant`;
   if (!PLANTS.some((p) => p.Werks === w)) return `Plant ${w} does not exist or is not authorised`;
   for (let i = 1; i <= 12; i++) {
@@ -99,6 +100,10 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
   const set = seg.replace(/\(.*$/, '');
   const f = deps.parseFilter(sp.get('$filter') ?? '');
   const signal = init?.signal ?? undefined;
+  // Like the live Azure gateway today: DELETE is not forwarded, the gateway answers its own 404 page.
+  if (method === 'DELETE' && process.env.MOCK_SAP_NO_DELETE === 'true') {
+    return new Response(`<pre>Cannot DELETE /api/${seg}</pre>`, { status: 404, headers: { 'content-type': 'text/html' } });
+  }
 
   if (set === 'PlanHeadSet' && method === 'GET') {
     await deps.sleep(deps.delay(), signal);
@@ -182,7 +187,16 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     return deps.json({ d: { results: rows } });
   }
 
-  if ((set === 'PlanSummarySet' || set === 'PlanWipSet' || (set === 'CostLineSet' && f.get('Mode')?.[0] === 'P')) && method === 'GET') {
+  const modeP = f.get('Mode')?.[0] === 'P';
+  const ratesMode = process.env.MOCK_SAP_RATES || '';
+  const wantsExpand = (sp.get('$expand') ?? '').includes('RateOptions');
+  if (set === 'CostLineSet' && modeP && wantsExpand && (ratesMode === 'expand-fails' || ratesMode === 'direct-works' || process.env.MOCK_SAP_EXPAND_501 === 'true')) {
+    return deps.odataError(501, '/IWBEP/CM_MGW_RT/021', "Method 'RATEOPTIONSET_GET_ENTITYSET' not implemented in data provider class.");
+  }
+  if (set === 'RateOptionSet' && modeP && ratesMode !== 'direct-works') {
+    return deps.odataError(404, '/IWBEP/CM_MGW_RT/020', "Resource not found for segment 'RateOptionSet'");
+  }
+  if ((set === 'PlanSummarySet' || set === 'PlanWipSet' || ((set === 'CostLineSet' || set === 'RateOptionSet') && modeP)) && method === 'GET') {
     const plan = f.get('Plan1')?.[0] ?? '';
     if (!plan) return deps.odataError(400, 'ZPLAN/001', 'Filter Plan1 is required');
     const rows = matchEntries(f);
@@ -197,16 +211,29 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
       const qtyTot = e.m.reduce((a, b) => a + b, 0);
       const b = bomSource(e.Matnr, e.Werks);
       if (b.src === 'LASTPROD') msgs.push({ code: 'ZPLAN/040', message: `${e.Matnr} ${e.Werks}: BOM from plant ${b.plant} (last production 12.08.2026)`, severity: 'warning' });
-      const exploded = deps.costLinesFor(e.Matnr, b.plant, qtyTot || 1, msgs);
+      const exploded = deps.costLinesFor(e.Matnr, b.plant, qtyTot || 1, msgs, wantsExpand || set === 'RateOptionSet');
       for (const r of exploded) {
         seq++;
         const share = (i: number) => (qtyTot ? (Number(r.ProdQty) * e.m[i]) / qtyTot : 0);
         lines.push({
-          ...r, Seqnr: seq, Hwerks: e.Werks, Plan1: plan, Stlal: '01', ItemStlal: '01', BomPlant: b.plant, BomSrc: b.src, BomSrcDate: b.date ? dt(b.date) : null,
+          ...r, Seqnr: seq, Hwerks: e.Werks, Plan1: plan,
+          ...(r.RateOptions && typeof r.RateOptions === 'object' && 'results' in (r.RateOptions as Raw)
+            ? { RateOptions: { results: ((r.RateOptions as { results: Raw[] }).results).map((o) => ({ ...o, Seqnr: seq, Hwerks: e.Werks })) } }
+            : {}), Stlal: '01', ItemStlal: '01', BomPlant: b.plant, BomSrc: b.src, BomSrcDate: b.date ? dt(b.date) : null,
           PlanQty: n3(qtyTot), ...Object.fromEntries(e.m.map((_, i) => [`QtyM${i + 1}`, n3(share(i))])), QtyTot: r.ProdQty,
           ActRatePc: n3(Number(r.SelRatePc ?? 0) * 0.97), ActRatePcInr: n3(Number(r.SelRatePcInr ?? 0) * 0.97),
         });
       }
+    }
+    if (set === 'RateOptionSet') {
+      const flat: Raw[] = [];
+      for (const l of lines) {
+        for (const o of ((l.RateOptions as { results?: Raw[] } | undefined)?.results ?? [])) {
+          const q = Number(l.ProdQty ?? 0);
+          flat.push({ ...o, TotCostInr: n3(Number(o.RatePcInr ?? 0) * q + Number(l.FrtPcInr ?? 0) * q), TotCostLoc: n3(Number(o.RatePcLoc ?? 0) * q + Number(l.FrtPcLoc ?? 0) * q), Selected: o.Source === l.SelSource ? 'X' : '', Idnrk: l.Idnrk, Maktx: l.Maktx, ProdQty: l.ProdQty });
+        }
+      }
+      return deps.json({ d: { results: flat } }, 200, msgs);
     }
     if (set === 'CostLineSet') {
       const select = (sp.get('$select') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
