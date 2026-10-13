@@ -7,6 +7,8 @@ import { useClaim } from '../context/ClaimContext';
 import { ExpenseClaim } from '../types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../utils/claim-date';
 import { displayStatusLabel } from '../utils/claim-status';
+import { displayClaimNumber } from '../utils/claim-number';
+import { isGstClaim } from '../utils/claim-gst';
 import { formatCurrency } from '../utils/currency';
 import { Chip } from '../components/ui';
 
@@ -109,7 +111,8 @@ export default function RootPage() {
             className={`card-accent ${ACCENT_BORDER[claim.status] || 'border-l-blue'} flex flex-col gap-2 p-3.5 text-left transition-shadow hover:shadow-lift`}
           >
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-sm font-extrabold text-ink">{claim.id}</span>
+              <span className="shrink-0 text-sm font-extrabold text-ink">{displayClaimNumber(claim.id)}</span>
+              {isGstClaim(claim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
               {claim.expenseType && <Chip tone="blue" className="min-w-0 shrink truncate">{claim.expenseType}</Chip>}
             </div>
             <p className="truncate text-sm text-ink">{claim.justification}</p>

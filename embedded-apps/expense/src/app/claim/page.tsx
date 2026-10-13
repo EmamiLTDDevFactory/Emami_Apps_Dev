@@ -8,6 +8,7 @@ import { SAP_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import { formatCurrency } from '../../utils/currency';
+import { displayClaimNumber } from '../../utils/claim-number';
 import { formatSapErrorMessage } from '../../utils/sap-error';
 import { Banner, Button, LoadingBlock, MessageModal, type MessageModalState, Modal, Spinner } from '../../components/ui';
 
@@ -193,7 +194,7 @@ function ClaimDetailInner() {
     if (!result.success) { setMessageModal({ title: 'Approval Failed', message: result.error || 'Failed to approve claim.', type: 'error' }); return; }
     await loadClaim();
     fetchClaims();
-    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been approved successfully.`, type: 'success' });
+    setMessageModal({ title: 'Success', message: `Claim ${displayClaimNumber(claimId)} has been approved successfully.`, type: 'success' });
   };
 
   const handleOpenManagerReject = () => {
@@ -236,7 +237,7 @@ function ClaimDetailInner() {
     }
     await loadClaim();
     fetchClaims();
-    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been paid successfully and workflow updated.`, type: 'success' });
+    setMessageModal({ title: 'Success', message: `Claim ${displayClaimNumber(claimId)} has been paid successfully and workflow updated.`, type: 'success' });
   };
 
   const handleConfirmReleaseWithTax = () => {
@@ -270,7 +271,7 @@ function ClaimDetailInner() {
     setActionModalVisible(false);
     await loadClaim();
     fetchClaims();
-    setMessageModal({ title: 'Success', message: `Claim ${claimId} has been rejected successfully.`, type: 'success' });
+    setMessageModal({ title: 'Success', message: `Claim ${displayClaimNumber(claimId)} has been rejected successfully.`, type: 'success' });
   };
 
   const normalizedStatus =
@@ -329,7 +330,7 @@ function ClaimDetailInner() {
 
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-extrabold text-ink">Claim {header.ClaimId}</h1>
+          <h1 className="text-lg font-extrabold text-ink">Claim {displayClaimNumber(header.ClaimId)}</h1>
           <p className="text-sm text-inkSoft">{header.EmpName} • {formatDate(header.ClaimDate || header.CreatedOn)}</p>
         </div>
         {canEdit && (

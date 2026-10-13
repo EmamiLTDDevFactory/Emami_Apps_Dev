@@ -7,6 +7,8 @@ import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { formatClaimDisplayDate, getClaimCreatedTimestamp } from '../../utils/claim-date';
 import { displayStatusLabel } from '../../utils/claim-status';
+import { displayClaimNumber } from '../../utils/claim-number';
+import { isGstClaim } from '../../utils/claim-gst';
 import { formatCurrency } from '../../utils/currency';
 import { Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
@@ -251,7 +253,10 @@ function MyClaimsInner() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-ink">{claim.id}</p>
+                  <p className="truncate text-sm font-bold text-ink">
+                    {displayClaimNumber(claim.id)}
+                    {isGstClaim(claim) && <span className="ml-1.5 text-[10px] font-bold text-brand">GST</span>}
+                  </p>
                   <p className="truncate text-xs font-medium text-inkSoft">{claim.expenseType}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">

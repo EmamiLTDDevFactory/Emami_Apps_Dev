@@ -41,7 +41,7 @@ interface ClaimContextType {
   // them), so already-processed claims silently vanish from it. This fetches/caches each claim's
   // own ClaimHeaderSet record instead — the same call the claim detail page already relies on.
   // NOT YET VERIFIED AGAINST REAL SAP IN THIS REWRITE — slice 5 (Approvals).
-  claimSummaryCache: Record<string, { amount: number; expenseType: string; employeeName: string }>;
+  claimSummaryCache: Record<string, { amount: number; expenseType: string; employeeName: string; lifnr?: string }>;
   fetchClaimSummaries: (claimIds: string[]) => Promise<void>;
   expenseTypes: any[];
   fetchExpenseTypes: () => Promise<void>;
@@ -392,6 +392,7 @@ export const ClaimProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             amount: parseFloat(sap.TotalAmount || '0') || 0,
             expenseType: claimNavResults[0]?.ZglName || '',
             employeeName: sap.EmpName || '',
+            lifnr: sap.Lifnr || '',
           },
         };
       } catch (e) {

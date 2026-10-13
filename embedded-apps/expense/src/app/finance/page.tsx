@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Briefcase, CheckCircle2, CheckSquare, ChevronDown, ChevronUp, CreditCard, Download, FileText, IndianRupee, Search, ShieldCheck, Square, X, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -8,6 +8,8 @@ import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { getCategoryStyle } from '../../utils/category-style';
 import { displayStatusLabel } from '../../utils/claim-status';
+import { displayClaimNumber } from '../../utils/claim-number';
+import { isGstClaim } from '../../utils/claim-gst';
 import { formatCurrency } from '../../utils/currency';
 import { buildHistoryExcelHtml } from '../../utils/history-excel';
 import { formatSapErrorMessage } from '../../utils/sap-error';
@@ -113,6 +115,42 @@ export default function FinancePage() {
   const bulkReleaseClaims = financeClaims.filter((c) => c.status === 'Pending Release' || isBPendingRelease(c));
   const allBulkSelected = bulkReleaseClaims.length > 0 && bulkReleaseClaims.every((c) => selectedClaimIds.includes(c.id));
 
+  // Purely informational Expense/Tax split shown directly on each GST pending card, so Finance
+  // doesn't have to open the tax-code picker just to see the breakdown. Reuses the same SAP tax
+  // engine the picker calls, auto-applying the first (and in practice only) tax code TaxSet
+  // returns for that specific claim/region - never used to actually select the tax code sent to
+  // releasePayment(), which still happens via the existing picker flow.
+  const [taxPreviewCache, setTaxPreviewCache] = useState<Record<string, { expenseAmt: number; taxAmt: number } | null>>({});
+  const taxPreviewCacheRef = useRef(taxPreviewCache);
+  useEffect(() => { taxPreviewCacheRef.current = taxPreviewCache; }, [taxPreviewCache]);
+
+  const gstFinanceClaimIds = financeClaims.filter((c) => isGstClaim(c)).map((c) => c.id).join(',');
+  useEffect(() => {
+    const ids = gstFinanceClaimIds ? gstFinanceClaimIds.split(',') : [];
+    const missing = ids.filter((id) => !(id in taxPreviewCacheRef.current));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(missing.map(async (id) => {
+        const claim = financeClaims.find((c) => c.id === id);
+        if (!claim) return { id, preview: null };
+        const taxes = await fetchTaxes(id);
+        const code = taxes[0];
+        if (!code) return { id, preview: null };
+        const preview = await calculateTax(claim.amount, 'INR', code.Mwskz);
+        return { id, preview };
+      }));
+      if (cancelled) return;
+      setTaxPreviewCache((prev) => {
+        const next = { ...prev };
+        results.forEach((r) => { next[r.id] = r.preview; });
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gstFinanceClaimIds]);
+
   const statFilteredHistoryItems =
     selectedStat === 'Approved' ? financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'APPROVE') :
     selectedStat === 'Rejected' ? financeHistoryEntries.filter((e: any) => (e.Action || '').toUpperCase() === 'REJECT') :
@@ -208,13 +246,13 @@ export default function FinancePage() {
   const handleValidate = (id: string) => {
     setMessageModal({
       title: 'Simulate SAP Financial Validation',
-      message: `Run simulated SAP compliance checks and verify posting readiness for claim ${id}?`,
+      message: `Run simulated SAP compliance checks and verify posting readiness for claim ${displayClaimNumber(id)}?`,
       cancelLabel: 'Cancel',
       confirmLabel: 'Validate Claim',
       onConfirm: () => {
         setMessageModal(null);
         validateClaimFinance(id);
-        showScreenMessage(`Claim ${id} passed financial checks. Status changed to Parked.`, 'success');
+        showScreenMessage(`Claim ${displayClaimNumber(id)} passed financial checks. Status changed to Parked.`, 'success');
       },
     });
   };
@@ -286,7 +324,7 @@ export default function FinancePage() {
     }
     await refreshHistoryStats();
     await fetchClaims();
-    showScreenMessage(`Claim ${id} has been paid successfully and workflow updated.`, 'success', 'Payment Released');
+    showScreenMessage(`Claim ${displayClaimNumber(id)} has been paid successfully and workflow updated.`, 'success', 'Payment Released');
   };
 
   const handleReject = (id: string) => { setRejectClaimId(id); setRejectRemarks(''); setRejectModalVisible(true); };
@@ -301,7 +339,7 @@ export default function FinancePage() {
     await refreshHistoryStats();
     await fetchClaims();
     setRejectModalVisible(false);
-    showScreenMessage(`Claim ${rejectClaimId} has been rejected successfully and the reason has been saved.`, 'success', 'Claim Rejected');
+    showScreenMessage(`Claim ${displayClaimNumber(rejectClaimId)} has been rejected successfully and the reason has been saved.`, 'success', 'Claim Rejected');
   };
 
   const toggleClaimSelection = (id: string) => setSelectedClaimIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
@@ -463,7 +501,8 @@ export default function FinancePage() {
                       className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                        <span className="shrink-0 text-sm font-bold text-ink">{displayClaimNumber(entry.ClaimId)}</span>
+                        {matchedClaim && isGstClaim(matchedClaim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
                       </div>
                       {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                       <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -502,7 +541,10 @@ export default function FinancePage() {
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-ink">{claim.id}</p>
+                      <p className="text-sm font-bold text-ink">
+                        {displayClaimNumber(claim.id)}
+                        {isGstClaim(claim) && <span className="ml-1.5 text-[10px] font-bold text-brand">GST</span>}
+                      </p>
                       <p className="text-xs font-semibold text-brand">{claim.employeeName} ({claim.department})</p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -518,6 +560,12 @@ export default function FinancePage() {
                     <span>Cost Center: {claim.costCenter}</span>
                     <span>Date: {claim.claimDate}</span>
                   </div>
+                  {isGstClaim(claim) && taxPreviewCache[claim.id] && (
+                    <div className="mt-1 flex justify-between text-2xs font-medium text-inkFaint">
+                      <span>Expense Amount: ₹{formatCurrency(taxPreviewCache[claim.id]!.expenseAmt)}</span>
+                      <span>Tax Amount: ₹{formatCurrency(taxPreviewCache[claim.id]!.taxAmt)}</span>
+                    </div>
+                  )}
                 </button>
                 <div className="border-t border-line bg-appBg p-2">
                   {claim.status === 'Approved' ? (
@@ -552,7 +600,7 @@ export default function FinancePage() {
           <Button variant="secondary" onClick={closeReleaseConfirm}>Cancel</Button>
           <Button variant="success" onClick={confirmReleasePayment}>Release Payment</Button>
         </>}>
-        <p className="text-sm text-inkSoft">Authorize payment release and post the payment document in SAP FI for claim {releaseConfirmClaimId}?</p>
+        <p className="text-sm text-inkSoft">Authorize payment release and post the payment document in SAP FI for claim {displayClaimNumber(releaseConfirmClaimId)}?</p>
       </Modal>
 
       <Modal open={taxModalVisible} title="Select Tax Code" subtitle="This claim has a GSTIN. Please select the applicable tax code to release payment." onClose={closeReleaseConfirm}
@@ -621,7 +669,7 @@ export default function FinancePage() {
           <Button variant="secondary" onClick={() => setRejectModalVisible(false)}>Cancel</Button>
           <Button variant="danger" onClick={confirmReject}>Reject Claim</Button>
         </>}>
-        <p className="mb-3 text-sm text-inkSoft">Please provide the reason for rejecting claim {rejectClaimId}.</p>
+        <p className="mb-3 text-sm text-inkSoft">Please provide the reason for rejecting claim {displayClaimNumber(rejectClaimId)}.</p>
         <textarea className="input" rows={4} value={rejectRemarks} onChange={(e) => setRejectRemarks(e.target.value)} placeholder="Enter rejection reason" />
       </Modal>
 

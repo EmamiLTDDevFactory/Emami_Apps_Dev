@@ -8,6 +8,8 @@ import { useClaim } from '../../context/ClaimContext';
 import { ExpenseClaim } from '../../types';
 import { getCategoryStyle } from '../../utils/category-style';
 import { formatCurrency } from '../../utils/currency';
+import { displayClaimNumber } from '../../utils/claim-number';
+import { isGstClaim } from '../../utils/claim-gst';
 import { buildHistoryExcelHtml } from '../../utils/history-excel';
 import { Button, Card, Chip, EmptyState, MessageModal, type MessageModalState, Modal } from '../../components/ui';
 
@@ -220,14 +222,14 @@ export default function ApprovalsPage() {
       if (!result.success) { setMessageModal({ title: 'Release Failed', message: result.error || 'Failed to release payment.', type: 'error' }); return; }
       await refreshHistoryStats();
       await fetchClaims();
-      setSuccessMessage(`Claim ${id} has been released successfully.`);
+      setSuccessMessage(`Claim ${displayClaimNumber(id)} has been released successfully.`);
       setSuccessModalVisible(true);
       return;
     }
     await approveClaim(id);
     await refreshHistoryStats();
     await fetchClaims();
-    setSuccessMessage(`Claim ${id} has been approved successfully.`);
+    setSuccessMessage(`Claim ${displayClaimNumber(id)} has been approved successfully.`);
     setSuccessModalVisible(true);
   };
 
@@ -239,14 +241,14 @@ export default function ApprovalsPage() {
     await refreshHistoryStats();
     await fetchClaims();
     setRejectModalVisible(false);
-    setSuccessMessage(`Claim ${selectedClaimId} has been rejected. Remarks saved to audit log.`);
+    setSuccessMessage(`Claim ${displayClaimNumber(selectedClaimId)} has been rejected. Remarks saved to audit log.`);
     setSuccessModalVisible(true);
   };
 
   const handleConfirmClarify = () => {
     requestClarification(selectedClaimId, clarificationRemarks);
     setClarifyModalVisible(false);
-    setMessageModal({ title: 'Clarification Requested', message: `A clarification request has been sent to the employee for claim ${selectedClaimId}.`, type: 'success' });
+    setMessageModal({ title: 'Clarification Requested', message: `A clarification request has been sent to the employee for claim ${displayClaimNumber(selectedClaimId)}.`, type: 'success' });
   };
 
   return (
@@ -374,7 +376,8 @@ export default function ApprovalsPage() {
                       className={`flex flex-col gap-1 rounded-xl2 border-l-4 p-3 text-left ${isApprove ? 'border-l-green bg-greenBg' : 'border-l-red bg-redBg'}`}
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="shrink-0 text-sm font-bold text-ink">{entry.ClaimId}</span>
+                        <span className="shrink-0 text-sm font-bold text-ink">{displayClaimNumber(entry.ClaimId)}</span>
+                        {matchedClaim && isGstClaim(matchedClaim) && <span className="shrink-0 text-[10px] font-bold text-brand">GST</span>}
                       </div>
                       {matchedClaim?.employeeName && <p className="truncate text-xs font-bold text-ink">By: {matchedClaim.employeeName}</p>}
                       <p className="text-xs font-semibold text-inkSoft">{formatHistoryDate(entry.ActionDate)}</p>
@@ -413,7 +416,10 @@ export default function ApprovalsPage() {
                 <button type="button" onClick={() => router.push(`/claim/?id=${encodeURIComponent(claim.id)}`)} className="block w-full p-3.5 text-left">
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-bold text-ink">{claim.id}</p>
+                      <p className="text-sm font-bold text-ink">
+                        {displayClaimNumber(claim.id)}
+                        {isGstClaim(claim) && <span className="ml-1.5 text-[10px] font-bold text-brand">GST</span>}
+                      </p>
                       <p className="text-xs font-semibold text-brand">{claim.employeeName} ({claim.designation})</p>
                     </div>
                     <p className="text-base font-extrabold text-ink">₹{formatCurrency(claim.amount)}</p>
@@ -442,7 +448,7 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      <Modal open={rejectModalVisible} title={`Reject Claim ${selectedClaimId}`} onClose={() => setRejectModalVisible(false)}
+      <Modal open={rejectModalVisible} title={`Reject Claim ${displayClaimNumber(selectedClaimId)}`} onClose={() => setRejectModalVisible(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setRejectModalVisible(false)}>Cancel</Button>
           <Button variant="danger" onClick={handleConfirmReject}>Confirm Rejection</Button>
@@ -461,7 +467,7 @@ export default function ApprovalsPage() {
           <Button variant="secondary" onClick={() => setClarifyModalVisible(false)}>Cancel</Button>
           <Button variant="primary" onClick={handleConfirmClarify}>Send Request</Button>
         </>}>
-        <p className="mb-3 text-sm text-inkSoft">Send a message to the employee requesting additional documentation or explanation for claim {selectedClaimId}.</p>
+        <p className="mb-3 text-sm text-inkSoft">Send a message to the employee requesting additional documentation or explanation for claim {displayClaimNumber(selectedClaimId)}.</p>
         <textarea className="input" rows={4} value={clarificationRemarks} onChange={(e) => setClarificationRemarks(e.target.value)} placeholder="What details or documents do you need?" />
       </Modal>
 
