@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText, Send, Trash2, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Card, Chip, Field, Input, InfoField, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
+import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
 import { SAP_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
@@ -150,7 +150,17 @@ function CreateClaimInner() {
     `${area.Bland || ''} ${area.Bezei || ''}`.toLowerCase().includes(areaSearch.toLowerCase())
   );
   const [amountError, setAmountError] = useState('');
-  const [formError, setFormError] = useState('');
+  const [messageModal, setMessageModal] = useState<MessageModalState>(null);
+  // Every submission/validation error - including attachment and mandatory-field messages -
+  // now shows as the same standard error popup used on other screens, instead of an inline
+  // banner at the top of the page. An empty string closes the popup, same as before.
+  const setFormError = (message: string) => {
+    if (!message) {
+      setMessageModal(null);
+      return;
+    }
+    setMessageModal({ title: 'Error', message, type: 'error' });
+  };
 
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
@@ -611,12 +621,6 @@ function CreateClaimInner() {
     <div className="pb-10">
       <h1 className="mb-3 text-lg font-extrabold text-ink">Create Expense Claim</h1>
 
-      {formError && (
-        <div className="mb-3">
-          <Banner type="error">{formError}</Banner>
-        </div>
-      )}
-
       {/* Employee Information */}
       <Card className="mb-3">
         <h2 className="mb-2 text-sm font-bold text-ink">Employee Information</h2>
@@ -931,6 +935,8 @@ function CreateClaimInner() {
           )}
         </div>
       </Modal>
+
+      <MessageModal state={messageModal} onClose={() => setMessageModal(null)} />
     </div>
   );
 }
