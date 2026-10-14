@@ -24,6 +24,27 @@ const getDisplayFilename = (filename: string, mimetype?: string): string => {
   return `${filename}.${ext}`;
 };
 
+// SAP's Mimetype field on an attachment line item isn't reliably populated (PDFs only "work" by
+// accident, via the 'application/pdf' fallback below) - sniffing the base64 payload's own file
+// signature is the only trustworthy way to tell an Excel/PDF/image apart from SAP's metadata.
+const sniffMimeTypeFromBase64 = (base64Value?: string): string | null => {
+  if (!base64Value) return null;
+  const head = base64Value.slice(0, 8);
+  if (head.startsWith('UEsD') || head.startsWith('UEsF') || head.startsWith('UEsG')) {
+    // ZIP container signature (PK\x03\x04 / PK\x05\x06 / PK\x07\x08) - the only ZIP-based
+    // attachment type this app allows is .xlsx.
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }
+  if (head.startsWith('0M8R')) {
+    // OLE2 compound-file signature - legacy .xls.
+    return 'application/vnd.ms-excel';
+  }
+  if (head.startsWith('JVBERi')) return 'application/pdf';
+  if (head.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (head.startsWith('/9j/')) return 'image/jpeg';
+  return null;
+};
+
 const formatDate = (value?: string) => {
   if (!value) return '';
   let d = new Date(value);
@@ -186,7 +207,7 @@ function ClaimDetailInner() {
   const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 
   const handlePreviewAttachment = (ln: any) => {
-    const mimetype = ln.Mimetype || 'application/pdf';
+    const mimetype = sniffMimeTypeFromBase64(ln.Value) || ln.Mimetype || 'application/pdf';
     const filename = ln.Filename || 'attachment';
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
@@ -208,7 +229,7 @@ function ClaimDetailInner() {
   };
 
   const handleOpenAttachment = (ln: any) => {
-    const mimetype = ln.Mimetype || 'application/pdf';
+    const mimetype = sniffMimeTypeFromBase64(ln.Value) || ln.Mimetype || 'application/pdf';
     const filename = ln.Filename || 'attachment.pdf';
     const value = ln.Value;
     if (!value) { setMessageModal({ title: 'Attachment', message: 'No attachment data available', type: 'error' }); return; }
@@ -442,7 +463,7 @@ function ClaimDetailInner() {
               <div className="mt-2 flex flex-col gap-1">
                 {ln.attachments.map((att: any, aIdx: number) => (
                   <div key={aIdx} className="flex items-center gap-2 text-sm text-brand">
-                    <span className="truncate">{att.Filename ? `Attachment: ${getDisplayFilename(att.Filename, att.Mimetype)}` : `Attachment ${aIdx + 1}`}</span>
+                    <span className="truncate">{att.Filename ? `Attachment: ${getDisplayFilename(att.Filename, sniffMimeTypeFromBase64(att.Value) || att.Mimetype)}` : `Attachment ${aIdx + 1}`}</span>
                     <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="Preview"><Eye size={16} className="text-brand" /></button>
                     <button type="button" onClick={() => handleOpenAttachment(att)} aria-label="Download"><Download size={16} className="text-green" /></button>
                   </div>

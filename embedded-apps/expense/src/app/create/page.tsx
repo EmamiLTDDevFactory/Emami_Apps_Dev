@@ -28,6 +28,8 @@ const COST_CENTERS = ['CC-SA', 'CC-ENG-GLOBAL', 'CC-MARKETING-UK', 'CC-FINANCE-H
 const MAX_ATTACHMENTS_TOTAL_BYTES = SAFE_COMBINED_RAW_ATTACHMENT_BYTES;
 const MAX_ATTACHMENTS_TOTAL_LABEL = `${Math.round(SAFE_COMBINED_RAW_ATTACHMENT_BYTES / 1024)} KB`;
 
+const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
 const getMimeTypeForFile = (fileName?: string, mimeType?: string) => {
   if (mimeType) return mimeType;
   if (!fileName) return 'application/octet-stream';
@@ -153,6 +155,10 @@ function CreateClaimInner() {
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  // Parsed lazily (dynamic import, only when an Excel attachment is actually opened) so the xlsx
+  // library never loads into the bundle for users who never preview a spreadsheet - same approach
+  // as the Claim detail page's attachment preview.
+  const [excelPreview, setExcelPreview] = useState<{ status: 'loading' } | { status: 'error' } | { status: 'ready'; rows: any[][] } | null>(null);
   const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
 
   const [existingClaimId, setExistingClaimId] = useState('');
@@ -180,6 +186,7 @@ function CreateClaimInner() {
     setManagerApprovedOriginalSources({});
     setPreviewAttachment(null);
     setPreviewModalVisible(false);
+    setExcelPreview(null);
     setAmountError('');
     setFormError('');
     setExistingClaimId('');
@@ -189,6 +196,24 @@ function CreateClaimInner() {
   const handlePreviewAttachment = (att: Attachment) => {
     setPreviewAttachment(att);
     setPreviewModalVisible(true);
+
+    if (EXCEL_MIME_TYPES.includes(att.type || '')) {
+      setExcelPreview({ status: 'loading' });
+      (async () => {
+        try {
+          const [XLSX, res] = await Promise.all([import('xlsx'), fetch(att.uri)]);
+          const buffer = await res.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows: any[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1, blankrows: false });
+          setExcelPreview({ status: 'ready', rows: rows.slice(0, 500) });
+        } catch {
+          setExcelPreview({ status: 'error' });
+        }
+      })();
+    } else {
+      setExcelPreview(null);
+    }
   };
 
   const mapSAPClaimToFormData = (sapClaim: any) => {
@@ -898,7 +923,7 @@ function CreateClaimInner() {
         open={previewModalVisible}
         title={previewAttachment?.name || 'Document Preview'}
         subtitle={previewAttachment?.type}
-        onClose={() => setPreviewModalVisible(false)}
+        onClose={() => { setPreviewModalVisible(false); setExcelPreview(null); }}
         size="lg"
         footer={
           <>
@@ -907,7 +932,7 @@ function CreateClaimInner() {
                 <Download size={16} /> Open in New Tab
               </Button>
             )}
-            <Button variant="secondary" onClick={() => setPreviewModalVisible(false)}>Close</Button>
+            <Button variant="secondary" onClick={() => { setPreviewModalVisible(false); setExcelPreview(null); }}>Close</Button>
           </>
         }
       >
@@ -916,6 +941,32 @@ function CreateClaimInner() {
             previewAttachment.type?.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes((previewAttachment.name.split('.').pop() || '').toLowerCase()) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewAttachment.uri} alt={previewAttachment.name} className="h-full w-full object-contain" />
+            ) : previewAttachment.type && EXCEL_MIME_TYPES.includes(previewAttachment.type) ? (
+              <div className="h-full overflow-auto p-2">
+                {excelPreview?.status === 'loading' && (
+                  <div className="flex h-full items-center justify-center gap-2 text-sm text-inkSoft"><Spinner size={16} /> Loading spreadsheet…</div>
+                )}
+                {excelPreview?.status === 'error' && (
+                  <div className="flex h-full items-center justify-center"><p className="text-sm text-inkSoft">Couldn't preview this spreadsheet. Try "Open in New Tab" instead.</p></div>
+                )}
+                {excelPreview?.status === 'ready' && (
+                  excelPreview.rows.length === 0 ? (
+                    <div className="flex h-full items-center justify-center"><p className="text-sm text-inkSoft">This spreadsheet appears to be empty.</p></div>
+                  ) : (
+                    <table className="w-full border-collapse text-xs">
+                      <tbody>
+                        {excelPreview.rows.map((row, rIdx) => (
+                          <tr key={rIdx}>
+                            {row.map((cell, cIdx) => (
+                              <td key={cIdx} className="whitespace-nowrap border border-line px-2 py-1 text-ink">{cell ?? ''}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                )}
+              </div>
             ) : (
               <iframe src={previewAttachment.uri} className="h-full w-full rounded-lg border-none" title={previewAttachment.name} />
             )
