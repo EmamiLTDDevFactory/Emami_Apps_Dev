@@ -5,10 +5,10 @@
  * sets are fetched from SAP once per selection (paged with $top/$skip/$inlinecount) and then
  * searched, sorted, totalled and paged here, so paging never calls SAP again.
  */
-import type { CostLine, MaterialHierarchyRow, MaterialRow, PlantRow } from '../sap/fields';
+import type { CostLine, MaterialRow, PlantRow } from '../sap/fields';
 import type { SapMessage } from '../sap/messages';
 import { costQuerySchema, pageSchema, type CostQuery, type PageRequest } from '../query/schema';
-import { fetchConfig, fetchCostLines, fetchMaterialHierarchy, fetchMaterials, fetchPagedSet, fetchPlants } from '../sap/service';
+import { fetchConfig, fetchCostLines, fetchMaterials, fetchPagedSet, fetchPlants } from '../sap/service';
 import { SapError } from '../sap/client';
 import { FilterError } from '../sap/filter';
 import type { ExpandCapability } from '../sap/capability';
@@ -115,13 +115,7 @@ export const api = {
   },
 
   /** Finished goods with Brand / Product / CRS for the cascading pickers (cached 10 min). */
-  async materialHierarchy(): Promise<{ materials: MaterialHierarchyRow[] }> {
-    try {
-      return { materials: await cached('mat-hierarchy', TEN_MIN, () => fetchMaterialHierarchy({ timeoutMs: 120_000 })) };
-    } catch (e) {
-      return wrap(e);
-    }
-  },
+
 
   async config(): Promise<Record<string, string>> {
     try {
