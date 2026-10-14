@@ -54,7 +54,7 @@ describe('component cost simulation', () => {
   });
 
   it('component % wins over category %; new cost / unit wins over both, in every product', () => {
-    const s: CompSimSettings = { catPct: { RM: 10 }, compPct: { RM1: -20 }, compPc: { BOT: '4' } };
+    const s: CompSimSettings = { catPct: { RM: 10 }, compPct: { RM1: -20 }, compPc: { BOT: '4' }, fgPct: {}, fgPc: {} };
     expect(lineChange(rows[1], s)).toEqual({ kind: 'pct', pct: -20, from: 'component' });
     const r = simulateComponents(rows, s);
     // RM1: 3000 x -20% = -600; BOT: 1000 x (4 - 3) = +1000
@@ -78,5 +78,65 @@ describe('component cost simulation', () => {
     const ref = headerRollups(rows, (l) => simLineCost(l, s).total);
     for (const p of r.products) expect(p.sim.eq(ref.get(p.key)!.total)).toBe(true);
     expect(r.simMonths.reduce((a, v) => a + v.toNumber(), 0)).toBe(r.sim.toNumber());
+  });
+});
+
+import { abc, plantSummary, planKpis, savings } from '@/lib/plan/costInsights';
+import { fgCompKey } from '@/lib/plan/componentSim';
+
+describe('per-FG changes, where used, analytics', () => {
+  it('a change for one FG wins over the component and category changes, and touches only that FG', () => {
+    const fg2Rm = rows.find((l) => l.Headmat === 'FG2' && l.Idnrk === 'RM1')!;
+    const s: CompSimSettings = { catPct: { RM: 10 }, compPct: { RM1: -20 }, compPc: {}, fgPct: { [fgCompKey(fg2Rm)]: 50 }, fgPc: {} };
+    expect(lineChange(fg2Rm, s)).toEqual({ kind: 'pct', pct: 50, from: 'fg' });
+    expect(lineChange(rows[1], s)).toEqual({ kind: 'pct', pct: -20, from: 'component' });
+    const r = simulateComponents(rows, s);
+    expect(r.products.find((p) => p.key === 'IN|1000|FG2')!.delta.toNumber()).toBe(1000); // 2000 x +50 %
+    expect(r.products.find((p) => p.headmat === 'FG1')!.delta.toNumber()).toBe(-200); // RM1 1000 x -20 %
+    const s2: CompSimSettings = { ...emptyCompSim(), fgPc: { [fgCompKey(fg2Rm)]: '150' } };
+    expect(simulateComponents(rows, s2).delta.toNumber()).toBe(1000); // 20 x (150 - 100)
+  });
+
+  it('where used: every FG of a component with its qty, cost and share of the FG', () => {
+    const rm1 = simulateComponents(rows, emptyCompSim()).components.find((c) => c.idnrk === 'RM1')!;
+    expect(rm1.usedIn.map((w) => w.key)).toEqual(['IN|1000|FG2', 'IN|1000|FG1']); // costliest first
+    expect(rm1.usedIn[1].qty.toNumber()).toBe(10);
+    expect(rm1.usedIn[1].shareOfFg!.toFixed(2)).toBe('16.67'); // 1000 / 6000
+  });
+
+  it('plant summary rolls FGs up per costed plant', () => {
+    const r = simulateComponents(rows, { ...emptyCompSim(), catPct: { PM: 10 } });
+    const p = plantSummary(rows, r);
+    expect(p).toHaveLength(1);
+    expect(p[0].fgs).toBe(3);
+    expect(p[0].base.toNumber()).toBe(9000);
+    expect(p[0].delta.toNumber()).toBe(400); // BOT 3000 + CAP 1000, +10 %
+    expect(p[0].mix.PM.toNumber()).toBe(4000);
+  });
+
+  it('savings vs budget / actual only where the benchmark is lower; exposure where the actual is higher', () => {
+    const lines = [
+      leaf('A', 10, 100, { SelRatePcInr: '100', BudLanded: '90', ActRatePcInr: '120' }),
+      leaf('B', 5, 50, { SelRatePcInr: '50', BudLanded: '60', ActRatePcInr: '40' }),
+    ] as never[];
+    const res = savings(lines);
+    const a = res.rows.find((r) => r.idnrk === 'A')!;
+    expect(a.byBenchmark.BUDGET!.saving.toNumber()).toBe(100);
+    expect(a.byBenchmark.ACTUAL).toBeUndefined();
+    expect(a.exposure.toNumber()).toBe(200);
+    const b = res.rows.find((r) => r.idnrk === 'B')!;
+    expect(b.best).toEqual(expect.objectContaining({ benchmark: 'ACTUAL' }));
+    expect(b.best!.saving.toNumber()).toBe(50);
+    expect(res.potential.toNumber()).toBe(150);
+  });
+
+  it('ABC: A covers the first 80 % of cost; KPIs add up', () => {
+    const r = simulateComponents(rows, emptyCompSim());
+    const x = abc(r);
+    expect(x.rows[0].cls).toBe('A');
+    expect(x.counts.A + x.counts.B + x.counts.C).toBe(r.components.length);
+    const k = planKpis(rows, r);
+    expect(k.landed.toNumber()).toBe(9000);
+    expect(k.fgs).toBe(3);
   });
 });

@@ -1,7 +1,8 @@
 'use client';
 /** Requirement tab: PlanSummarySet - monthly component requirement vs valuated stock, PO, delivered and open
  * PO. Shortage = requirement - (stock + open PO). Units are SAP's base units and are not converted. */
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { ErrorNote, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
 import { Card, Empty, Skeleton, Stat, cx, inputBase } from '../ui';
 import { fetchPlanSummary } from '@/lib/plan/client';
@@ -9,7 +10,8 @@ import { shortage, summaryMonths } from '@/lib/plan/maths';
 import { FISCAL_MONTHS } from '@/lib/plan/fields';
 import type { PlanCostQuery } from '@/lib/plan/requests';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
-import { ZERO } from '@/lib/cost/decimal';
+import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
+import { isLeafRow } from '@/lib/cost/tree';
 import { fmtCompactInr, fmtMs, fmtNum } from '@/lib/format';
 
 export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
@@ -38,6 +40,26 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
       .filter(({ r, short }) => (!onlyShort || short.gt(0)) && (!t || `${r.Comp} ${r.CompTxt} ${r.Werks}`.toLowerCase().includes(t)))
       .sort((a, b) => b.short.cmp(a.short));
   }, [data, onlyShort, search]);
+  // Where used: the FGs whose exploded BOM (Breakup & cost run) contains the component, per component plant.
+  const [openRow, setOpenRow] = useState<string | null>(null);
+  const costRows = ws.cost.rows;
+  const whereUsed = useMemo(() => {
+    const m = new Map<string, Map<string, { key: string; land1: string; hwerks: string; headmat: string; headtxt: string; qty: Decimal }>>();
+    for (const l of costRows) {
+      if (!isLeafRow(l)) continue;
+      for (const k of [`${l.Werks}|${l.Idnrk}`, `*|${l.Idnrk}`]) {
+        const fgs = m.get(k) ?? new Map();
+        const hk = `${l.Land1}|${l.Hwerks}|${l.Headmat}`;
+        const f = fgs.get(hk) ?? { key: hk, land1: l.Land1, hwerks: l.Hwerks, headmat: l.Headmat, headtxt: l.Headtxt, qty: ZERO };
+        f.qty = f.qty.plus(D(l.QtyTot));
+        fgs.set(hk, f);
+        m.set(k, fgs);
+      }
+    }
+    return m;
+  }, [costRows]);
+  const usedIn = (werks: string, comp: string) => [...(whereUsed.get(`${werks}|${comp}`) ?? whereUsed.get(`*|${comp}`) ?? new Map()).values()].sort((a, b) => b.qty.cmp(a.qty));
+  const hasCost = costRows.some(isLeafRow);
   const shortCount = useMemo(() => (data?.rows ?? []).filter((r) => shortage(r).gt(0)).length, [data]);
   const stockValue = useMemo(() => (data?.rows ?? []).reduce((a, r) => a.plus(r.Salk3 || '0'), ZERO), [data]);
 
@@ -70,16 +92,28 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 z-10 bg-panel">
                     <tr>
-                      <th className={thCls}>Plant</th><th className={thCls}>Component</th><th className={thCls}>Type</th><th className={thCls}>Unit</th>
+                      <th className={thCls}>Plant</th><th className={thCls}>Component</th><th className={thNum} title={hasCost ? 'FGs whose BOM uses the component (from the Breakup & cost run) - click to list them' : 'Run Breakup & cost to see the FGs that use each component'}>Used in</th><th className={thCls}>Type</th><th className={thCls}>Unit</th>
                       {FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}
                       <th className={thNum}>Requirement</th><th className={thNum}>Stock</th><th className={thNum}>PO</th><th className={thNum}>Delivered</th><th className={thNum}>Open PO</th><th className={thNum}>Shortage</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.slice(0, 3000).map(({ r, short }) => (
-                      <tr key={`${r.Werks}|${r.Comp}`} className={cx('border-t border-line/50', short.gt(0) && 'bg-bad/[0.04]')}>
+                    {rows.slice(0, 3000).map(({ r, short }) => {
+                      const rk = `${r.Werks}|${r.Comp}`;
+                      const fgs = hasCost ? usedIn(r.Werks, r.Comp) : [];
+                      const totalQty = fgs.reduce((a, f) => a.plus(f.qty), ZERO);
+                      return (
+                      <Fragment key={rk}>
+                      <tr className={cx('border-t border-line/50', short.gt(0) && 'bg-bad/[0.04]')}>
                         <td className={cx(tdCls, 'font-mono')}>{r.Werks}</td>
                         <td className={tdCls}><span className="font-mono font-semibold">{r.Comp}</span> <span className="text-muted">{r.CompTxt}</span></td>
+                        <td className={tdNum}>
+                          {!hasCost ? <span className="text-faint" title="Run Breakup & cost first">—</span> : fgs.length ? (
+                            <button type="button" className="inline-flex items-center gap-0.5 font-semibold text-accent hover:underline" onClick={() => setOpenRow(openRow === rk ? null : rk)} aria-expanded={openRow === rk}>
+                              {openRow === rk ? <ChevronDown size={11} /> : <ChevronRight size={11} />}{fgs.length} FG{fgs.length === 1 ? '' : 's'}
+                            </button>
+                          ) : <span className="text-faint">not in run</span>}
+                        </td>
                         <td className={tdCls}>{r.Mtart}</td>
                         <td className={tdCls}>{r.Meins}</td>
                         {summaryMonths(r).map((q, i) => <td key={i} className={tdNum}>{fmtNum(q, 0, 'X')}</td>)}
@@ -90,7 +124,29 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
                         <td className={tdNum}>{fmtNum(r.RemQty, 3, 'X')}</td>
                         <td className={cx(tdNum, 'font-bold', short.gt(0) ? 'text-bad' : 'text-good')}>{short.gt(0) ? fmtNum(short, 3, 'X') : '—'}</td>
                       </tr>
-                    ))}
+                      {openRow === rk && (
+                        <tr className="bg-sunken/50">
+                          <td colSpan={23} className="px-3 py-2">
+                            <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">{r.Comp} is used in {fgs.length} FG{fgs.length === 1 ? '' : 's'} (from the Breakup &amp; cost run)</div>
+                            <table className="text-2xs">
+                              <thead><tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th><th className={thNum}>Component qty</th><th className={thNum}>Share of requirement</th></tr></thead>
+                              <tbody>
+                                {fgs.map((f) => (
+                                  <tr key={f.key} className="border-t border-line/40">
+                                    <td className={tdCls}><span className="font-mono font-semibold">{f.headmat}</span> <span className="text-muted">{f.headtxt}</span></td>
+                                    <td className={cx(tdCls, 'font-mono')}>{f.land1} · {f.hwerks}</td>
+                                    <td className={tdNum}>{fmtNum(f.qty, 3, 'X')} {r.Meins}</td>
+                                    <td className={tdNum}>{totalQty.gt(0) ? `${f.qty.div(totalQty).times(100).toFixed(1)}%` : '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

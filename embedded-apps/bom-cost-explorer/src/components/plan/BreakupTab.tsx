@@ -235,7 +235,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
             </p>
           )}
           {view === 'fg' && <FgPerPiece rows={fg} rates={rates} query={cost.ranQuery ?? ws.query} lines={lines} />}
-          {view === 'sim' && <ComponentSimulator rows={rows} query={cost.ranQuery ?? ws.query} />}
+          {view === 'sim' && <ComponentSimulator rows={rows} query={cost.ranQuery ?? ws.query} lines={lines} rates={rates} />}
           {view === 'charts' && <PlanCharts rows={rows} />}
           {view === 'coverage' && (
             <Card bodyClass="p-0 h-[70vh]">

@@ -2,9 +2,9 @@
  * Production Plan > Breakup & cost > Simulate: what happens to each product's cost (and the whole plan) when
  * component costs go up or down. Browser-only, on top of the SAP Mode P result (always marked simulated).
  *
- * Changes, most specific first (one wins per component):
- *   1. new cost per unit for a component (landed INR per component unit, every plant)
- *   2. % change for a component
+ * Changes, most specific first (one wins per line):
+ *   1. for ONE FG: new cost per unit, else % change            (key Land1|Hwerks|Headmat|Idnrk)
+ *   2. for a component code in every FG: new cost per unit, else % change   (key Idnrk)
  *   3. % change for its category (RM / Perfume / PM / Other)
  *
  *   simulated line cost  = TotCostInr x (new cost per unit / TotCostPcInr)     (TotCostPcInr 0: QtyTot x new cost)
@@ -24,19 +24,30 @@ export interface CompSimSettings {
   catPct: Partial<Record<CostCategory, number>>;
   compPct: Record<string, number>; // Idnrk -> %
   compPc: Record<string, string>; // Idnrk -> new landed cost per unit, INR
+  fgPct: Record<string, number>; // Land1|Hwerks|Headmat|Idnrk -> % (this FG only)
+  fgPc: Record<string, string>; // Land1|Hwerks|Headmat|Idnrk -> new landed cost per unit (this FG only)
 }
 
-export const emptyCompSim = (): CompSimSettings => ({ catPct: {}, compPct: {}, compPc: {} });
+export const emptyCompSim = (): CompSimSettings => ({ catPct: {}, compPct: {}, compPc: {}, fgPct: {}, fgPc: {} });
 
+const anyPc = (m: Record<string, string>) => Object.values(m).some((v) => v !== '' && v !== undefined);
 export const isCompSimIdentity = (s: CompSimSettings) =>
-  !Object.values(s.catPct).some(Boolean) && !Object.values(s.compPct).some(Boolean) && !Object.values(s.compPc).some((v) => v !== '' && v !== undefined);
+  !Object.values(s.catPct).some(Boolean) && !Object.values(s.compPct).some(Boolean) && !anyPc(s.compPc) && !Object.values(s.fgPct ?? {}).some(Boolean) && !anyPc(s.fgPc ?? {});
+
+/** Key of a component inside one FG (plan country + plant + plan material + component). */
+export const fgCompKey = (l: Pick<PlanCostLine, 'Land1' | 'Hwerks' | 'Headmat' | 'Idnrk'>) => `${l.Land1}|${l.Hwerks}|${l.Headmat}|${l.Idnrk}`;
+export type ChangeScope = 'fg' | 'component' | 'category';
 
 const lineCat = (l: PlanCostLine) => costCategory(l as unknown as { Mtart: string; Matkl: string });
 
 /** What changes a component's cost, or null when nothing does. */
-export function lineChange(l: PlanCostLine, s: CompSimSettings): { kind: 'pc'; pc: Decimal } | { kind: 'pct'; pct: number; from: 'component' | 'category' } | null {
+export function lineChange(l: PlanCostLine, s: CompSimSettings): { kind: 'pc'; pc: Decimal; from: 'fg' | 'component' } | { kind: 'pct'; pct: number; from: ChangeScope } | null {
+  const fk = fgCompKey(l);
+  const fpc = s.fgPc?.[fk];
+  if (fpc !== undefined && fpc !== '' && D(fpc).gte(0)) return { kind: 'pc', pc: D(fpc), from: 'fg' };
+  if (s.fgPct?.[fk]) return { kind: 'pct', pct: s.fgPct[fk], from: 'fg' };
   const pc = s.compPc[l.Idnrk];
-  if (pc !== undefined && pc !== '' && D(pc).gte(0)) return { kind: 'pc', pc: D(pc) };
+  if (pc !== undefined && pc !== '' && D(pc).gte(0)) return { kind: 'pc', pc: D(pc), from: 'component' };
   if (s.compPct[l.Idnrk]) return { kind: 'pct', pct: s.compPct[l.Idnrk], from: 'component' };
   const c = s.catPct[lineCat(l)];
   if (c) return { kind: 'pct', pct: c, from: 'category' };
@@ -77,6 +88,18 @@ export interface ProductImpact {
   changedLines: number;
 }
 
+export interface WhereUsed {
+  key: string; // Land1|Hwerks|Headmat
+  land1: string;
+  hwerks: string;
+  headmat: string;
+  headtxt: string;
+  qty: Decimal;
+  base: Decimal;
+  sim: Decimal;
+  shareOfFg: Decimal | null; // component cost / FG cost, %
+}
+
 export interface ComponentRow {
   idnrk: string;
   maktx: string;
@@ -90,6 +113,7 @@ export interface ComponentRow {
   simPc: Decimal | null;
   products: number;
   plants: string[];
+  usedIn: WhereUsed[];
 }
 
 export interface CompSimResult {
@@ -125,19 +149,26 @@ export function simulateComponents(rows: PlanCostLine[], s: CompSimSettings): Co
     };
   });
 
-  const comps = new Map<string, ComponentRow & { heads: Set<string>; plantSet: Set<string> }>();
+  const comps = new Map<string, ComponentRow & { heads: Set<string>; plantSet: Set<string>; where: Map<string, WhereUsed> }>();
   rows.forEach((l, i) => {
     if (!isLeafRow(l)) return;
     let c = comps.get(l.Idnrk);
-    if (!c) comps.set(l.Idnrk, (c = { idnrk: l.Idnrk, maktx: l.Maktx, cat: lineCat(l), meins: l.Meins, qty: ZERO, base: ZERO, sim: ZERO, delta: ZERO, basePc: null, simPc: null, products: 0, plants: [], heads: new Set(), plantSet: new Set() }));
+    if (!c) comps.set(l.Idnrk, (c = { idnrk: l.Idnrk, maktx: l.Maktx, cat: lineCat(l), meins: l.Meins, qty: ZERO, base: ZERO, sim: ZERO, delta: ZERO, basePc: null, simPc: null, products: 0, plants: [], usedIn: [], heads: new Set(), plantSet: new Set(), where: new Map() }));
     c.qty = c.qty.plus(D(l.QtyTot));
     c.base = c.base.plus(D(l.TotCostInr));
     c.sim = c.sim.plus(cache[i]!.total);
     c.heads.add(`${l.Land1}|${l.Hwerks}|${l.Headmat}`);
     c.plantSet.add(l.Werks || l.Hwerks);
+    const hk = `${l.Land1}|${l.Hwerks}|${l.Headmat}`;
+    const w = c.where.get(hk) ?? { key: hk, land1: l.Land1, hwerks: l.Hwerks, headmat: l.Headmat, headtxt: l.Headtxt, qty: ZERO, base: ZERO, sim: ZERO, shareOfFg: null };
+    w.qty = w.qty.plus(D(l.QtyTot));
+    w.base = w.base.plus(D(l.TotCostInr));
+    w.sim = w.sim.plus(cache[i]!.total);
+    c.where.set(hk, w);
   });
-  const components = [...comps.values()].map(({ heads, plantSet, ...c }) => ({
+  const components = [...comps.values()].map(({ heads, plantSet, where, ...c }) => ({
     ...c, delta: c.sim.minus(c.base), products: heads.size, plants: [...plantSet].sort(),
+    usedIn: [...where.values()].map((w) => { const fg = baseR.get(w.key)?.total; return { ...w, shareOfFg: fg && fg.gt(0) ? w.base.div(fg).times(100) : null }; }).sort((a, b) => b.base.cmp(a.base)),
     basePc: c.qty.gt(0) ? c.base.div(c.qty) : null, simPc: c.qty.gt(0) ? c.sim.div(c.qty) : null,
   })).sort((a, b) => b.base.cmp(a.base));
 

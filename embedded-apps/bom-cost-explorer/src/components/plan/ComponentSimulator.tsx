@@ -9,7 +9,7 @@ import { ChevronDown, ChevronRight, FileSpreadsheet, RotateCcw } from 'lucide-re
 import { tdCls, tdNum, thCls, thNum } from './common';
 import { Button, Card, Empty, Pill, SimTag, Stat, cx, inputBase } from '../ui';
 import { CATEGORIES, CATEGORY_LABEL, type CostCategory } from '@/lib/cost/categories';
-import { emptyCompSim, isCompSimIdentity, lineChange, loadCompSim, saveCompSim, simLineCost, simulateComponents, type CompSimSettings, type ProductImpact } from '@/lib/plan/componentSim';
+import { emptyCompSim, fgCompKey, isCompSimIdentity, lineChange, loadCompSim, saveCompSim, simLineCost, simulateComponents, type ComponentRow, type CompSimSettings, type ProductImpact } from '@/lib/plan/componentSim';
 import { headerKey } from '@/lib/plan/maths';
 import type { PlanCostLine } from '@/lib/plan/fields';
 import type { PlanCostQuery } from '@/lib/plan/requests';
@@ -18,6 +18,10 @@ import { exportTable, type XCol } from '@/lib/client/export';
 import { isLeafRow } from '@/lib/cost/tree';
 import { D, type Decimal } from '@/lib/cost/decimal';
 import { fmtCompactInr, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
+import type { PlanLineWithOptions } from '@/lib/plan/sources';
+import type { RatesState } from '@/lib/rates/useRateOptions';
+import { PRESETS } from '@/lib/plan/costInsights';
+import { KpiView, PlantDrill, SavingsView } from './CostAnalytics';
 
 const COMP_CAP = 300;
 const n = (d: Decimal | null | undefined, dp = 4) => (d ? Number(d.toFixed(dp)) : null);
@@ -26,7 +30,16 @@ const signedPct = (d: Decimal | null) => (d === null ? '—' : `${d.gt(0) ? '+' 
 const tone = (d: Decimal | null | undefined) => (!d || d.isZero() ? '' : d.gt(0) ? 'text-bad' : 'text-good');
 const rowTint = (d: Decimal) => (d.isZero() ? '' : d.gt(0) ? 'bg-bad/[0.05]' : 'bg-good/[0.06]');
 
-export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine[]; query: PlanCostQuery }) {
+type SimTab = 'simulate' | 'plants' | 'savings' | 'kpis';
+const SIM_TABS: { value: SimTab; label: string }[] = [
+  { value: 'simulate', label: 'Simulate (FG & component)' },
+  { value: 'plants', label: 'Plant drill-down' },
+  { value: 'savings', label: 'Savings & exposure' },
+  { value: 'kpis', label: 'KPIs, sensitivity & scenarios' },
+];
+
+export default function ComponentSimulator({ rows, query, lines, rates }: { rows: PlanCostLine[]; query: PlanCostQuery; lines?: PlanLineWithOptions[]; rates?: RatesState }) {
+  const [tab, setTab] = useState<SimTab>('simulate');
   const plan = query.plan;
   const [s, setS] = useState<CompSimSettings>(() => loadCompSim(plan));
   useEffect(() => { setS(loadCompSim(plan)); }, [plan]);
@@ -44,6 +57,10 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
   const setCatPct = (c: CostCategory, v: string) => setS((x) => ({ ...x, catPct: { ...x.catPct, [c]: v === '' ? 0 : Number(v) } }));
   const setCompPct = (id: string, v: string) => setS((x) => { const compPct = { ...x.compPct }; if (v === '' || !Number(v)) delete compPct[id]; else compPct[id] = Number(v); return { ...x, compPct }; });
   const setCompPc = (id: string, v: string) => setS((x) => { const compPc = { ...x.compPc }; if (v === '') delete compPc[id]; else compPc[id] = v; return { ...x, compPc }; });
+  const setFgPct = (k: string, v: string) => setS((x) => { const fgPct = { ...x.fgPct }; if (v === '' || !Number(v)) delete fgPct[k]; else fgPct[k] = Number(v); return { ...x, fgPct }; });
+  const setFgPc = (k: string, v: string) => setS((x) => { const fgPc = { ...x.fgPc }; if (v === '') delete fgPc[k]; else fgPc[k] = v; return { ...x, fgPc }; });
+  const resetFg = (k: string) => setS((x) => { const fgPct = { ...x.fgPct }; const fgPc = { ...x.fgPc }; delete fgPct[k]; delete fgPc[k]; return { ...x, fgPct, fgPc }; });
+  const [openComp, setOpenComp] = useState<string | null>(null);
   const resetComp = (id: string) => setS((x) => { const compPct = { ...x.compPct }; const compPc = { ...x.compPc }; delete compPct[id]; delete compPc[id]; return { ...x, compPct, compPc }; });
 
   const products = onlyAffected ? r.products.filter((p) => !p.delta.isZero()) : r.products;
@@ -91,7 +108,8 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
         ...planParams(query),
         ['Simulation', 'Simulated in the browser on the SAP result - not an SAP figure'],
         ['Category changes', CATEGORIES.map((c) => `${CATEGORY_LABEL[c]} ${s.catPct[c] ? signedPct(D(s.catPct[c]!)) : '0%'}`).join(', ')],
-        ['Component changes', `${Object.keys(s.compPct).length} by %, ${Object.keys(s.compPc).length} with a new cost per unit`],
+        ['Component changes (all FGs)', `${Object.keys(s.compPct).length} by %, ${Object.keys(s.compPc).length} with a new cost per unit`],
+        ['Component changes (one FG)', `${Object.keys(s.fgPct ?? {}).length} by %, ${Object.keys(s.fgPc ?? {}).length} with a new cost per unit`],
         ['Overall: SAP plan cost INR', r.base.toFixed(2)],
         ['Overall: simulated plan cost INR', r.sim.toFixed(2)],
         ['Overall impact INR', `${r.delta.toFixed(2)} (${signedPct(r.deltaPct)})`],
@@ -117,7 +135,14 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
               <input type="number" step="0.1" aria-label={`${CATEGORY_LABEL[c]} cost change %`} className={cx(inputBase, 'h-8 w-24 text-right text-xs normal-case', s.catPct[c] ? 'border-sim font-bold text-sim' : '')} placeholder="0" value={s.catPct[c] || ''} onChange={(e) => setCatPct(c, e.target.value)} />
             </label>
           ))}
-          <p className="min-w-[220px] flex-1 text-xs text-muted">Enter + for an increase, − for a decrease. A component&apos;s own % or new cost per unit (table below) wins over its category %.</p>
+          <p className="min-w-[220px] flex-1 text-xs text-muted">Enter + for an increase, − for a decrease. Most specific wins: a change for one FG, then a component code (all FGs), then its category.</p>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-2xs font-semibold uppercase tracking-wide text-muted">Quick scenarios</span>
+          {PRESETS.map((pr) => (
+            <button key={pr.id} type="button" title={pr.hint} onClick={() => setS((x) => ({ ...x, catPct: { ...pr.catPct } }))}
+              className={cx('rounded-full border px-2.5 py-0.5 font-semibold', JSON.stringify(s.catPct) === JSON.stringify(pr.catPct) ? 'border-sim bg-sim/10 text-sim' : 'border-line text-muted hover:text-ink')}>{pr.label}</button>
+          ))}
         </div>
       </Card>
 
@@ -128,6 +153,18 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
         <Stat label="Products affected" value={`${r.affected} / ${r.products.length}`} sub={identity ? 'no change entered' : `${r.components.filter((c) => !c.delta.isZero()).length} components changed`} tone={r.affected ? 'warn' : undefined} />
       </div>
 
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Simulation views">
+        {SIM_TABS.map((t) => (
+          <button key={t.value} type="button" role="tab" aria-selected={tab === t.value} onClick={() => setTab(t.value)}
+            className={cx('rounded-lg border px-3 py-1.5 text-xs font-semibold', tab === t.value ? 'border-accent bg-accent text-white' : 'border-line bg-panel text-muted hover:text-ink')}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'plants' && <PlantDrill rows={rows} r={r} />}
+      {tab === 'savings' && <SavingsView lines={lines ?? (rows as PlanLineWithOptions[])} rates={rates} query={query} />}
+      {tab === 'kpis' && <KpiView rows={rows} r={r} s={s} plan={plan} onApply={(x) => setS(x)} />}
+
+      {tab === 'simulate' && (<>
       {r.countries.length > 1 && (
         <Card title="Impact by plan country" bodyClass="p-0">
           <div className="scroll-thin overflow-x-auto">
@@ -174,7 +211,7 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
             <tbody>
               {products.map((p) => (
                 <Fragment key={p.key}>
-                  <tr className={cx('cursor-pointer border-t border-line/60 hover:bg-sunken', rowTint(p.delta), !p.delta.isZero() && 'font-semibold')} onClick={() => setOpenProd(openProd === p.key ? null : p.key)}>
+                  <tr id={`fg-${p.key}`} className={cx('cursor-pointer border-t border-line/60 hover:bg-sunken', rowTint(p.delta), !p.delta.isZero() && 'font-semibold')} onClick={() => setOpenProd(openProd === p.key ? null : p.key)}>
                     <td className={tdCls}>
                       <span className="inline-flex items-center gap-1">{openProd === p.key ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono">{p.headmat}</span></span>
                       <div className="max-w-[260px] truncate pl-4 font-normal text-muted">{p.headtxt}</div>
@@ -190,7 +227,7 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
                     <td className={cx(tdNum, tone(p.delta))}>{p.delta.isZero() ? '—' : fmtSigned(p.delta, 2)}</td>
                     <td className={tdCls}><ImpactBar p={p} max={maxAbs} /></td>
                   </tr>
-                  {openProd === p.key && <ProductLines rows={rows} pkey={p.key} s={ds} />}
+                  {openProd === p.key && <ProductLines rows={rows} pkey={p.key} s={s} onPct={setFgPct} onPc={setFgPc} onReset={resetFg} />}
                 </Fragment>
               ))}
             </tbody>
@@ -199,7 +236,7 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
         </div>
       </Card>
 
-      <Card title="Components" bodyClass="p-0" actions={
+      <Card title={<span>Components <span className="ml-1 text-2xs font-normal text-muted">component code wise · changes apply to every FG · click a code to see where it is used</span></span>} bodyClass="p-0" actions={
         <div className="flex flex-wrap items-center gap-2">
           <input aria-label="Filter components" className={cx(inputBase, 'h-8 w-52 text-xs')} placeholder="Component / description…" value={q} onChange={(e) => setQ(e.target.value)} />
           <select aria-label="Category" className={cx(inputBase, 'h-8 text-xs')} value={cat} onChange={(e) => setCat(e.target.value as CostCategory | '')}>
@@ -215,11 +252,11 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
               <tr>
                 <th className={thCls}>Component</th>
                 <th className={thCls}>Cat.</th>
-                <th className={thNum}>Products</th>
+                <th className={thNum} title="Click to see the FGs that use the component">Used in</th>
                 <th className={thNum}>Plan qty</th>
                 <th className={thNum} title="Weighted landed cost per component unit (incl. freight), SAP">SAP cost / unit</th>
-                <th className={thNum}>Change %</th>
-                <th className={thNum} title="New landed cost per unit, INR - applies in every plant">New cost / unit</th>
+                <th className={thNum} title="Applies to this component code in every FG">Change % (all FGs)</th>
+                <th className={thNum} title="New landed cost per unit, INR - applies to this component code in every FG and plant">New cost / unit (all FGs)</th>
                 <th className={thNum}>Simulated / unit</th>
                 <th className={thNum}>SAP cost INR</th>
                 <th className={thNum}>Impact INR</th>
@@ -231,10 +268,18 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
                 const own = s.compPct[c.idnrk] !== undefined || s.compPc[c.idnrk] !== undefined;
                 const viaCat = !own && !!s.catPct[c.cat];
                 return (
-                  <tr key={c.idnrk} className={cx('border-t border-line/60', rowTint(c.delta))}>
-                    <td className={tdCls}><span className="font-mono font-semibold">{c.idnrk}</span><div className="max-w-[260px] truncate text-muted">{c.maktx}</div></td>
+                  <Fragment key={c.idnrk}>
+                  <tr className={cx('border-t border-line/60', rowTint(c.delta))}>
+                    <td className={tdCls}>
+                      <button type="button" className="inline-flex items-center gap-1 text-left" onClick={() => setOpenComp(openComp === c.idnrk ? null : c.idnrk)} aria-expanded={openComp === c.idnrk} title="Show the FGs that use this component">
+                        {openComp === c.idnrk ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<span className="font-mono font-semibold">{c.idnrk}</span>
+                      </button>
+                      <div className="max-w-[260px] truncate pl-4 text-muted">{c.maktx}</div>
+                    </td>
                     <td className={tdCls}>{CATEGORY_LABEL[c.cat]}</td>
-                    <td className={tdNum} title={c.plants.join(', ')}>{c.products}</td>
+                    <td className={tdNum} title={c.plants.join(', ')}>
+                      <button type="button" className="font-semibold text-accent hover:underline" onClick={() => setOpenComp(openComp === c.idnrk ? null : c.idnrk)}>{c.products} FG{c.products === 1 ? '' : 's'}</button>
+                    </td>
                     <td className={tdNum}>{fmtQty(c.qty)} <span className="text-faint">{c.meins}</span></td>
                     <td className={tdNum}>{c.basePc ? fmtRate(c.basePc) : '—'}</td>
                     <td className={tdNum}>
@@ -250,6 +295,8 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
                       {own ? <button type="button" className="text-accent hover:underline" onClick={() => resetComp(c.idnrk)}>Reset</button> : viaCat ? <Pill tone="sim" title="Changed by its category %">category</Pill> : null}
                     </td>
                   </tr>
+                  {openComp === c.idnrk && <WhereUsedRow c={c} onOpenFg={(k) => { setOpenProd(k); document.getElementById(`fg-${k}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }} />}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -258,6 +305,7 @@ export default function ComponentSimulator({ rows, query }: { rows: PlanCostLine
           {!comps.length && <p className="px-3 py-3 text-xs text-muted">No component matches.</p>}
         </div>
       </Card>
+      </>)}
     </div>
   );
 }
@@ -279,34 +327,93 @@ function ImpactBar({ p, max }: { p: ProductImpact; max: Decimal }) {
   );
 }
 
-/** The changed component lines of one product (what drives its impact). */
-function ProductLines({ rows, pkey, s }: { rows: PlanCostLine[]; pkey: string; s: CompSimSettings }) {
-  const lines = rows.filter((l) => isLeafRow(l) && headerKey(l) === pkey && lineChange(l, s));
+/** Components of one FG: per-FG change (% or new cost per unit, this FG only) and what applies to each. */
+function ProductLines({ rows, pkey, s, onPct, onPc, onReset }: { rows: PlanCostLine[]; pkey: string; s: CompSimSettings; onPct: (k: string, v: string) => void; onPc: (k: string, v: string) => void; onReset: (k: string) => void }) {
+  const [onlyChanged, setOnlyChanged] = useState(false);
+  const comps = useMemo(() => {
+    const m = new Map<string, { key: string; l: PlanCostLine; qty: Decimal; base: Decimal; sim: Decimal; plants: Set<string> }>();
+    for (const l of rows) {
+      if (!isLeafRow(l) || headerKey(l) !== pkey) continue;
+      const k = fgCompKey(l);
+      const x = simLineCost(l, s);
+      const c = m.get(k) ?? { key: k, l, qty: D(0), base: D(0), sim: D(0), plants: new Set<string>() };
+      c.qty = c.qty.plus(D(l.QtyTot));
+      c.base = c.base.plus(D(l.TotCostInr));
+      c.sim = c.sim.plus(x.total);
+      c.plants.add(l.Werks || l.Hwerks);
+      m.set(k, c);
+    }
+    return [...m.values()].sort((a, b) => b.base.cmp(a.base));
+  }, [rows, pkey, s]);
+  const total = comps.reduce((a, c) => a.plus(c.base), D(0));
+  const shown = onlyChanged ? comps.filter((c) => !c.sim.eq(c.base)) : comps;
+  const SCOPE: Record<string, string> = { fg: 'this FG', component: 'all FGs', category: 'category' };
   return (
     <tr className="bg-sunken/50">
       <td colSpan={11} className="px-3 py-2">
-        {!lines.length ? <p className="text-xs text-muted">No component of this product is changed.</p> : (
+        <div className="mb-1.5 flex flex-wrap items-center gap-3 text-2xs text-muted">
+          <span className="font-bold uppercase tracking-wide">Components of this FG · {comps.length}</span>
+          <span>Change % or new cost here applies to <b>this FG only</b> (wins over the all-FG and category changes).</span>
+          <label className="ml-auto flex items-center gap-1"><input type="checkbox" checked={onlyChanged} onChange={(e) => setOnlyChanged(e.target.checked)} /> Only changed</label>
+        </div>
+        <div className="scroll-thin max-h-[50vh] overflow-auto">
           <table className="w-full text-2xs">
-            <thead><tr><th className={thCls}>Component</th><th className={thNum}>Qty</th><th className={thNum}>SAP cost / unit</th><th className={thNum}>Simulated / unit</th><th className={thNum}>SAP cost INR</th><th className={thNum}>Simulated INR</th><th className={thNum}>Impact INR</th></tr></thead>
+            <thead><tr><th className={thCls}>Component</th><th className={thNum}>Qty</th><th className={thNum}>Share</th><th className={thNum}>SAP / unit</th><th className={thNum}>Change % (this FG)</th><th className={thNum}>New cost / unit (this FG)</th><th className={thCls}>Applied</th><th className={thNum}>Simulated / unit</th><th className={thNum}>SAP INR</th><th className={thNum}>Impact INR</th><th className={thCls} /></tr></thead>
             <tbody>
-              {lines.map((l, i) => {
-                const x = simLineCost(l, s);
-                const d = x.total.minus(D(l.TotCostInr));
+              {shown.map((c) => {
+                const ch = lineChange(c.l, s);
+                const d = c.sim.minus(c.base);
+                const own = s.fgPct?.[c.key] !== undefined || s.fgPc?.[c.key] !== undefined;
                 return (
-                  <tr key={i} className="border-t border-line/40">
-                    <td className={tdCls}><span className="font-mono">{l.Idnrk}</span> <span className="text-muted">{l.Maktx}</span> <span className="text-faint">· {l.Werks}</span></td>
-                    <td className={tdNum}>{fmtQty(D(l.QtyTot))} {l.Meins}</td>
-                    <td className={tdNum}>{fmtRate(D(l.TotCostPcInr))}</td>
-                    <td className={cx(tdNum, 'sim-val')}>{fmtRate(x.pc)}</td>
-                    <td className={tdNum}>{fmtNum(D(l.TotCostInr), 2)}</td>
-                    <td className={cx(tdNum, 'sim-val')}>{fmtNum(x.total, 2)}</td>
-                    <td className={cx(tdNum, 'font-semibold', tone(d))}>{fmtSigned(d, 2)}</td>
+                  <tr key={c.key} className={cx('border-t border-line/40', rowTint(d))}>
+                    <td className={tdCls}><span className="font-mono font-semibold">{c.l.Idnrk}</span> <span className="text-muted">{c.l.Maktx}</span> <span className="text-faint">· {[...c.plants].join(', ')}</span></td>
+                    <td className={tdNum}>{fmtQty(c.qty)} {c.l.Meins}</td>
+                    <td className={tdNum}>{total.gt(0) ? `${c.base.div(total).times(100).toFixed(1)}%` : '—'}</td>
+                    <td className={tdNum}>{c.qty.gt(0) ? fmtRate(c.base.div(c.qty)) : '—'}</td>
+                    <td className={tdNum}><input type="number" step="0.1" aria-label={`Change % for ${c.l.Idnrk} in this FG`} className={cx(inputBase, 'h-6 w-16 px-1.5 text-right text-2xs', s.fgPct?.[c.key] ? 'border-sim font-bold text-sim' : '')} placeholder="0" value={s.fgPct?.[c.key] ?? ''} disabled={s.fgPc?.[c.key] !== undefined} onChange={(e) => onPct(c.key, e.target.value)} /></td>
+                    <td className={tdNum}><input type="number" step="0.0001" min="0" aria-label={`New cost per unit for ${c.l.Idnrk} in this FG`} className={cx(inputBase, 'h-6 w-20 px-1.5 text-right text-2xs', s.fgPc?.[c.key] !== undefined ? 'border-sim font-bold text-sim' : '')} placeholder="—" value={s.fgPc?.[c.key] ?? ''} onChange={(e) => onPc(c.key, e.target.value)} /></td>
+                    <td className={tdCls}>{ch ? <Pill tone="sim">{ch.kind === 'pct' ? signedPct(D(ch.pct)) : `= ${ch.pc.toFixed(2)}`} · {SCOPE[ch.from]}</Pill> : <span className="text-faint">—</span>}</td>
+                    <td className={cx(tdNum, !d.isZero() && 'sim-val')}>{c.qty.gt(0) ? fmtRate(c.sim.div(c.qty)) : '—'}</td>
+                    <td className={tdNum}>{fmtNum(c.base, 2)}</td>
+                    <td className={cx(tdNum, 'font-semibold', tone(d))}>{d.isZero() ? '—' : fmtSigned(d, 2)}</td>
+                    <td className={tdCls}>{own && <button type="button" className="text-accent hover:underline" onClick={() => onReset(c.key)}>Reset</button>}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** Where a component is used: every FG (plan country, plant, plan material) with its quantity, cost and share. */
+function WhereUsedRow({ c, onOpenFg }: { c: ComponentRow; onOpenFg: (key: string) => void }) {
+  return (
+    <tr className="bg-sunken/50">
+      <td colSpan={11} className="px-3 py-2">
+        <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">Used in {c.usedIn.length} FG{c.usedIn.length === 1 ? '' : 's'}</div>
+        <table className="w-full text-2xs">
+          <thead><tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th><th className={thNum}>Component qty</th><th className={thNum}>Component cost INR</th><th className={thNum}>Share of FG cost</th><th className={thNum}>Simulated INR</th><th className={thNum}>Impact INR</th><th className={thCls} /></tr></thead>
+          <tbody>
+            {c.usedIn.map((w) => {
+              const d = w.sim.minus(w.base);
+              return (
+                <tr key={w.key} className={cx('border-t border-line/40', rowTint(d))}>
+                  <td className={tdCls}><span className="font-mono font-semibold">{w.headmat}</span> <span className="text-muted">{w.headtxt}</span></td>
+                  <td className={cx(tdCls, 'font-mono')}>{w.land1} · {w.hwerks}</td>
+                  <td className={tdNum}>{fmtQty(w.qty)} {c.meins}</td>
+                  <td className={tdNum}>{fmtNum(w.base, 2)}</td>
+                  <td className={tdNum}>{w.shareOfFg ? `${w.shareOfFg.toFixed(1)}%` : '—'}</td>
+                  <td className={cx(tdNum, !d.isZero() && 'sim-val')}>{fmtNum(w.sim, 2)}</td>
+                  <td className={cx(tdNum, 'font-semibold', tone(d))}>{d.isZero() ? '—' : fmtSigned(d, 2)}</td>
+                  <td className={tdCls}><button type="button" className="text-accent hover:underline" onClick={() => onOpenFg(w.key)}>Open FG</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </td>
     </tr>
   );
