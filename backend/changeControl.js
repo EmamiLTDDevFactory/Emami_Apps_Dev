@@ -262,7 +262,7 @@ const DEV_LEVEL = { 1: 'Low', 2: 'Medium', 3: 'High' };
 const istDate = (d) => (d ? new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : null);
 
 /**
- * Once CAB (or ECAB) approves a change, the work lands in the Development Tracker as a
+ * Once a change is approved (by CAB, ECAB, or pre-approved as Standard), the work lands in the Development Tracker as a
  * 'Not Started' assignment, written straight into dev_tracker.items inside the approval's own
  * transaction — so an approved change never exists without its assignment, and vice versa.
  * Columns mirror devTracker.js's POST /items (developer/spoc fields are display names there).
@@ -294,7 +294,9 @@ async function createDevTrackerAssignment(db, c, approverEmail) {
         startDate: istDate(c.plannedStart),
         targetDate: istDate(c.plannedEnd),
         labels: `CAB, ${c.crNo}`,
-        remarks: `Auto-created from ${c.crNo} on CAB approval by ${approver}.`,
+        remarks: c.changeType === 'standard'
+            ? `Auto-created from ${c.crNo} (pre-approved Standard change, raised by ${approver}).`
+            : `Auto-created from ${c.crNo} on CAB approval by ${approver}.`,
         rank: Date.now(),
     };
     const keys = Object.keys(row);
@@ -307,6 +309,17 @@ async function createDevTrackerAssignment(db, c, approverEmail) {
     await db.query(
         `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, '__created__', NULL, $2, $3)`,
         [rows[0].id, row.devList, approver]
+    );
+    return rows[0];
+}
+
+/** Creates the change's assignment if it has none yet; returns the updated change row. */
+async function linkDevTrackerAssignment(db, change, actorEmail) {
+    if (change.status !== 'approved' || change.devTrackerItemId) return change;
+    const item = await createDevTrackerAssignment(db, change, actorEmail);
+    const { rows } = await db.query(
+        'UPDATE change_control.changes SET "devTrackerItemId" = $1, "devTrackerIssueNo" = $2 WHERE id = $3 RETURNING *',
+        [item.id, item.issueNo, change.id]
     );
     return rows[0];
 }
@@ -523,8 +536,9 @@ router.post('/changes', async (req, res) => {
                  RETURNING *`,
                 keys.map((k) => cols[k])
             );
-            await logHistory(db, { changeId: rows[0].id, actorEmail: req.verifiedEmail, actorRole: req.ccbRole, action: 'created', toStatus: status });
-            return rows[0];
+            const change = await linkDevTrackerAssignment(db, rows[0], req.verifiedEmail);
+            await logHistory(db, { changeId: change.id, actorEmail: req.verifiedEmail, actorRole: req.ccbRole, action: 'created', toStatus: status, details: change.devTrackerIssueNo != null ? { devTrackerIssueNo: change.devTrackerIssueNo } : null });
+            return change;
         });
         res.json({ success: true, change: created });
     } catch (err) {
@@ -582,14 +596,9 @@ router.post('/changes/:id/transition', async (req, res) => {
                 [...keys.map((k) => patch[k]), id, c.status]
             );
             if (!upd.rows.length) return null;
-            if (['approve', 'emergency_approve'].includes(action) && !c.devTrackerItemId) {
-                const item = await createDevTrackerAssignment(db, upd.rows[0], req.verifiedEmail);
-                const linked = await db.query(
-                    'UPDATE change_control.changes SET "devTrackerItemId" = $1, "devTrackerIssueNo" = $2 WHERE id = $3 RETURNING *',
-                    [item.id, item.issueNo, id]
-                );
-                upd.rows[0] = linked.rows[0];
-                details.devTrackerIssueNo = item.issueNo;
+            if (to === 'approved') {
+                upd.rows[0] = await linkDevTrackerAssignment(db, upd.rows[0], req.verifiedEmail);
+                if (upd.rows[0].devTrackerIssueNo != null) details.devTrackerIssueNo = upd.rows[0].devTrackerIssueNo;
             }
             if (note) await db.query('INSERT INTO change_control.comments ("changeId", "authorEmail", body) VALUES ($1, $2, $3)', [id, req.verifiedEmail, note]);
             await logHistory(db, { changeId: id, actorEmail: req.verifiedEmail, actorRole: req.ccbRole, action, fromStatus: c.status, toStatus: to, details });
