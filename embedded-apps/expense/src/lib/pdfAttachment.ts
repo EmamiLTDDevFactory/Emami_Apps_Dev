@@ -36,9 +36,12 @@ function base64ToBytes(b64: string): Uint8Array {
 
 // Tried largest/highest-quality first, only stepping down when the previous combination didn't
 // fit — a 1-3 page invoice/receipt PDF (the common case) usually fits well before reaching the
-// floor.
-const RENDER_SCALES = [1.5, 1.0, 0.75, 0.5];
-const JPEG_QUALITIES = [0.7, 0.5, 0.35, 0.2];
+// first few steps. The steps below the old floor (0.5 / 0.2) exist for much larger source files
+// (many pages, and/or high-resolution scans up to ~10MB) that need to shrink far harder to land
+// under the real combined attachment ceiling - existing small/few-page PDFs are unaffected since
+// they already succeed at one of the original first four combinations, never reaching these.
+const RENDER_SCALES = [1.5, 1.0, 0.75, 0.5, 0.35, 0.25, 0.18, 0.12];
+const JPEG_QUALITIES = [0.7, 0.5, 0.35, 0.2, 0.12, 0.08, 0.05, 0.03];
 
 type RenderedPage = { width: number; height: number; jpegsByQuality: Map<number, Uint8Array> };
 
