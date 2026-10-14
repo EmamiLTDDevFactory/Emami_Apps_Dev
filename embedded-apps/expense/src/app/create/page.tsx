@@ -136,24 +136,33 @@ function CreateClaimInner() {
   // Auto-matched from the GST lookup's Regio field against AreaSet.Bland (see lookupGstByGstin
   // below) - no longer a user-pickable dropdown, same treatment as the read-only Cost Center field.
   const [selectedArea, setSelectedArea] = useState<any | null>(null);
-  // Document-extraction result state (see extractDocumentDetails) - set once per Supporting
-  // Documents upload attempt. hsnAutoFillMissing specifically means "we tried, GST was detected,
+  // Document-extraction result state (see extractDocumentDetails) - set once per Original Expense
+  // Document upload attempt. hsnAutoFillMissing specifically means "we tried, GST was detected,
   // but no HSN was readable from the document" - the user must key it in manually at that point.
   const [documentExtractionLoading, setDocumentExtractionLoading] = useState(false);
   const [documentExtractionError, setDocumentExtractionError] = useState('');
   const [hsnAutoFillMissing, setHsnAutoFillMissing] = useState(false);
   const [justification, setJustification] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // The receipt/invoice itself - capped at exactly 1 file (enforced in pickAttachmentInto and the
+  // JSX below). This is the only attachment document extraction (GSTIN/HSN/Amount OCR) runs on,
+  // and the only one that's mandatory.
+  const [originalExpenseDocument, setOriginalExpenseDocument] = useState<Attachment[]>([]);
+  // Any other related document (optional, any number of files) - rendered after Business
+  // Justification, same position this section held before document extraction was built. Combined
+  // with originalExpenseDocument into one `attachments` array at submit time (see handleSubmit) so
+  // ClaimContext/SAP still see exactly the same single list they always have - no backend changes.
+  const [supportingDocuments, setSupportingDocuments] = useState<Attachment[]>([]);
   // Pristine, pre-compression source for every attachment picked THIS session (keyed by attachment
   // id) — the only way to recompress an already-added file to a tighter shared target when a new
   // attachment arrives, without compounding quality loss by re-encoding an already-compressed copy.
   // Attachments loaded from an existing claim (resubmit) have no entry here — there's no original
   // file to re-derive, so their already-fixed size is treated as a sunk cost against the shared
   // budget instead.
-  const [originalSources, setOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
+  const [originalExpenseDocumentSources, setOriginalExpenseDocumentSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
+  const [supportingDocumentSources, setSupportingDocumentSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   // Second, separate attachment required when the selected expense type's ExptypeSet.Flag comes
-  // back blank (not 'X') - see requiresManagerApprovedAttachment below. Own size budget, kept
-  // independent from the Supporting Documents list above rather than sharing one combined budget.
+  // back blank (not 'X') - see requiresManagerApprovedAttachment below. Shares the same combined
+  // size budget as the two lists above (see pickAttachmentInto).
   const [managerApprovedAttachments, setManagerApprovedAttachments] = useState<Attachment[]>([]);
   const [managerApprovedOriginalSources, setManagerApprovedOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
@@ -201,8 +210,10 @@ function CreateClaimInner() {
     setDocumentExtractionLoading(false);
     setDocumentExtractionError('');
     setJustification('');
-    setAttachments([]);
-    setOriginalSources({});
+    setOriginalExpenseDocument([]);
+    setOriginalExpenseDocumentSources({});
+    setSupportingDocuments([]);
+    setSupportingDocumentSources({});
     setManagerApprovedAttachments([]);
     setManagerApprovedOriginalSources({});
     setPreviewAttachment(null);
@@ -350,8 +361,13 @@ function CreateClaimInner() {
         setAmountStr(String(formData.amount || 0));
         setCostCenter(formData.costCenter);
         setJustification(formData.justification);
-        setAttachments(formData.attachments);
-        setOriginalSources({});
+        // A claim submitted before this two-section split simply had one combined attachment
+        // list - split it back out so nothing is lost: first file is treated as the Original
+        // Expense Document, everything else as Supporting Document(s).
+        setOriginalExpenseDocument(formData.attachments.slice(0, 1));
+        setSupportingDocuments(formData.attachments.slice(1));
+        setOriginalExpenseDocumentSources({});
+        setSupportingDocumentSources({});
       }
       return;
     }
@@ -368,8 +384,11 @@ function CreateClaimInner() {
     setAmountStr(String(claim.amount));
     setCostCenter(claim.costCenter);
     setJustification(claim.justification);
-    setAttachments(claim.attachments || []);
-    setOriginalSources({});
+    const loadedAttachments = claim.attachments || [];
+    setOriginalExpenseDocument(loadedAttachments.slice(0, 1));
+    setSupportingDocuments(loadedAttachments.slice(1));
+    setOriginalExpenseDocumentSources({});
+    setSupportingDocumentSources({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingClaimId, getClaimById, tempClaimForResubmit, expenseTypes]);
 
@@ -505,20 +524,57 @@ function CreateClaimInner() {
     }
   };
 
-  // Shared by both attachment sections (Supporting Documents and Manager Approved Attachment) -
-  // both sections ride in the SAME SAP submission payload (see ClaimContext's allAttachments),
-  // so they share ONE combined size budget across both lists, not one budget each — two
-  // independent 70KB budgets would let a claim carry up to 140KB of raw attachments, well past
-  // what the backend proxy's request-size limit accepts (confirmed: PayloadTooLargeError).
-  const pickAttachmentInto = async (target: 'standard' | 'managerApproved') => {
-    const isStandard = target === 'standard';
-    const list = isStandard ? attachments : managerApprovedAttachments;
-    const sources = isStandard ? originalSources : managerApprovedOriginalSources;
-    const setList = isStandard ? setAttachments : setManagerApprovedAttachments;
-    const setSources = isStandard ? setOriginalSources : setManagerApprovedOriginalSources;
-    const otherList = isStandard ? managerApprovedAttachments : attachments;
-    const otherSources = isStandard ? managerApprovedOriginalSources : originalSources;
-    const setOtherList = isStandard ? setManagerApprovedAttachments : setAttachments;
+  type AttachmentSectionKey = 'original' | 'supporting' | 'managerApproved';
+
+  // Shared by all three attachment sections (Original Expense Document, Supporting Document, and
+  // Manager Approved Attachment) - all three ride in the SAME SAP submission payload (see
+  // handleSubmit's combined `attachments` and ClaimContext's allAttachments), so they share ONE
+  // combined size budget across all lists, not one budget each — independent 70KB budgets per
+  // section would let a claim carry far more than the backend proxy's request-size limit accepts
+  // (confirmed: PayloadTooLargeError).
+  const pickAttachmentInto = async (target: AttachmentSectionKey) => {
+    const sections: Record<AttachmentSectionKey, {
+      list: Attachment[];
+      setList: (updater: Attachment[] | ((prev: Attachment[]) => Attachment[])) => void;
+      sources: Record<string, { uri: string; mimeType: string }>;
+      setSources: (updater: Record<string, { uri: string; mimeType: string }> | ((prev: Record<string, { uri: string; mimeType: string }>) => Record<string, { uri: string; mimeType: string }>)) => void;
+      maxFiles: number;
+    }> = {
+      original: {
+        list: originalExpenseDocument,
+        setList: setOriginalExpenseDocument,
+        sources: originalExpenseDocumentSources,
+        setSources: setOriginalExpenseDocumentSources,
+        maxFiles: 1,
+      },
+      supporting: {
+        list: supportingDocuments,
+        setList: setSupportingDocuments,
+        sources: supportingDocumentSources,
+        setSources: setSupportingDocumentSources,
+        maxFiles: Infinity,
+      },
+      managerApproved: {
+        list: managerApprovedAttachments,
+        setList: setManagerApprovedAttachments,
+        sources: managerApprovedOriginalSources,
+        setSources: setManagerApprovedOriginalSources,
+        maxFiles: Infinity,
+      },
+    };
+
+    const current = sections[target];
+    if (current.list.length >= current.maxFiles) {
+      setFormError('Remove the current document before adding another.');
+      return;
+    }
+
+    const otherKeys = (Object.keys(sections) as AttachmentSectionKey[]).filter((k) => k !== target);
+    const otherList = otherKeys.flatMap((k) => sections[k].list);
+    const otherSources = otherKeys.reduce(
+      (acc, k) => ({ ...acc, ...sections[k].sources }),
+      {} as Record<string, { uri: string; mimeType: string }>,
+    );
 
     try {
       setFormError('');
@@ -538,10 +594,10 @@ function CreateClaimInner() {
       const isRecompressible = attachmentMimeType.startsWith('image/') || attachmentMimeType === 'application/pdf';
       const newId = `att-${Date.now()}`;
 
-      // Budget math runs across BOTH lists combined - everything already on the claim, in
-      // either section, counts against the one shared ceiling.
-      const combinedExisting = [...list, ...otherList];
-      const combinedSources = { ...sources, ...otherSources };
+      // Budget math runs across ALL THREE lists combined - everything already on the claim, in
+      // any section, counts against the one shared ceiling.
+      const combinedExisting = [...current.list, ...otherList];
+      const combinedSources = { ...current.sources, ...otherSources };
 
       // Attachments that can't be (further) shrunk — resubmit-loaded attachments, and any
       // non-image/PDF file already on the claim — are a fixed cost against the shared budget.
@@ -590,10 +646,10 @@ function CreateClaimInner() {
 
       const newAtt: Attachment = { id: newId, name: asset.name || 'document', uri: finalUri, size: finalSize, type: finalType };
 
-      // Existing session-picked image/PDF attachments — in EITHER section — were compressed
+      // Existing session-picked image/PDF attachments — in ANY section — were compressed
       // against a looser (fewer-attachments) target; re-derive each from its pristine source
       // against the same tighter target this new attachment uses, so the combined total across
-      // both sections actually stays in budget. Recompressed results are split back into their
+      // all sections actually stays in budget. Recompressed results are split back into their
       // original section below.
       let finalCombined: Attachment[];
       if (isRecompressible && recompressibleCount > 1) {
@@ -622,19 +678,22 @@ function CreateClaimInner() {
       }
 
       // Split the (possibly recompressed) combined set back into each section's own list by id.
-      const otherIds = new Set(otherList.map((a) => a.id));
-      const recompressedOther = finalCombined.filter((a) => otherIds.has(a.id));
-      const recompressedThis = finalCombined.filter((a) => !otherIds.has(a.id));
+      otherKeys.forEach((k) => {
+        const ownIds = new Set(sections[k].list.map((a) => a.id));
+        const recompressedForSection = finalCombined.filter((a) => ownIds.has(a.id));
+        if (recompressedForSection.length > 0) sections[k].setList(recompressedForSection);
+      });
+      const thisSectionIds = new Set(current.list.map((a) => a.id));
+      const recompressedThis = finalCombined.filter((a) => thisSectionIds.has(a.id));
 
-      setList([...recompressedThis, newAtt]);
-      if (recompressedOther.length > 0) setOtherList(recompressedOther);
+      current.setList([...recompressedThis, newAtt]);
       if (isRecompressible) {
-        setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
+        current.setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
       }
 
-      // Only the primary Supporting Documents upload is a candidate receipt to read GST/HSN/
-      // Amount off of - not the separate Manager Approved Attachment.
-      if (isStandard) {
+      // Only the Original Expense Document is a candidate receipt to read GST/HSN/Amount off of -
+      // not Supporting Document or the separate Manager Approved Attachment.
+      if (target === 'original') {
         extractDocumentDetails(newAtt);
       }
     } catch (err) {
@@ -642,12 +701,24 @@ function CreateClaimInner() {
     }
   };
 
-  const handlePickAttachment = () => pickAttachmentInto('standard');
+  const handlePickOriginalExpenseDocument = () => pickAttachmentInto('original');
+  const handlePickSupportingDocument = () => pickAttachmentInto('supporting');
   const handlePickManagerApprovedAttachment = () => pickAttachmentInto('managerApproved');
 
-  const handleRemoveAttachment = (id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-    setOriginalSources((prev) => {
+  const handleRemoveOriginalExpenseDocument = (id: string) => {
+    setOriginalExpenseDocument((prev) => prev.filter((a) => a.id !== id));
+    setOriginalExpenseDocumentSources((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setFormError('');
+  };
+
+  const handleRemoveSupportingDocument = (id: string) => {
+    setSupportingDocuments((prev) => prev.filter((a) => a.id !== id));
+    setSupportingDocumentSources((prev) => {
       if (!(id in prev)) return prev;
       const next = { ...prev };
       delete next[id];
@@ -682,6 +753,11 @@ function CreateClaimInner() {
       return;
     }
 
+    if (!attachmentOptionalForType && originalExpenseDocument.length === 0) {
+      setFormError('Please upload the Original Expense Document.');
+      return;
+    }
+
     if (gstinChoice === 'yes' && !selectedGst) {
       setFormError('Enter a valid 15-digit GSTIN and wait for lookup before submitting.');
       return;
@@ -711,7 +787,9 @@ function CreateClaimInner() {
       amount: parsedAmount,
       costCenter,
       justification,
-      attachments,
+      // ClaimContext/SAP still see one single combined list, exactly as before the two-section
+      // split - no backend/data-flow changes needed.
+      attachments: [...originalExpenseDocument, ...supportingDocuments],
       managerApprovedAttachments,
       lifnr: gstinChoice === 'yes' ? (selectedGst?.item?.Lifnr || selectedGst?.item?.lifnr || null) : null,
       name1: gstinChoice === 'yes' ? (selectedGst?.item?.Name1 || selectedGst?.item?.name1 || null) : null,
@@ -762,34 +840,39 @@ function CreateClaimInner() {
         </div>
       </Card>
 
-      {/* Attachments - moved ahead of Claim Details so uploading the receipt first can auto-fill
-          GSTIN/Region, HSN, and Amount below via extractDocumentDetails. */}
+      {/* Original Expense Document - moved ahead of Claim Details so uploading the receipt first
+          can auto-fill GSTIN/Region, HSN, and Amount below via extractDocumentDetails. Capped at
+          exactly 1 file - this is the receipt/invoice itself, not a general attachment bucket. */}
       <Card className="mb-3">
-        <h2 className="text-sm font-bold text-ink">Supporting Documents{attachmentOptionalForType ? '' : ' *'}</h2>
-        <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'At least 1 attachment is mandatory'}</p>
+        <h2 className="text-sm font-bold text-ink">Original Expense Document{attachmentOptionalForType ? '' : ' *'}</h2>
+        <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'Mandatory — upload the receipt or invoice for this expense'}</p>
         <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
         <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
 
-        {attachments.map((att) => (
+        {originalExpenseDocument.map((att) => (
           <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
             <FileText size={20} className="shrink-0 text-brand" />
             <span className="min-w-0 flex-1 truncate text-sm text-ink">{att.name}</span>
             <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
               <Eye size={18} />
             </button>
-            <button type="button" onClick={() => handleRemoveAttachment(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+            <button type="button" onClick={() => handleRemoveOriginalExpenseDocument(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
               <Trash2 size={18} />
             </button>
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={handlePickAttachment}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
-        >
-          <CloudUpload size={18} /> Add Attachment / Scanned Receipt
-        </button>
+        {originalExpenseDocument.length === 0 ? (
+          <button
+            type="button"
+            onClick={handlePickOriginalExpenseDocument}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+          >
+            <CloudUpload size={18} /> Add Attachment / Scanned Receipt
+          </button>
+        ) : (
+          <p className="text-xs text-inkSoft">Remove the current document to upload a different one.</p>
+        )}
 
         {documentExtractionLoading && (
           <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading GST, HSN and amount details from the document…</div>
@@ -921,6 +1004,36 @@ function CreateClaimInner() {
         <Field label="Business Justification">
           <TextArea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="State the business purpose for this expense..." />
         </Field>
+      </Card>
+
+      {/* Supporting Document - optional, any number of additional related documents. No
+          extraction/OCR runs on these; only the Original Expense Document above feeds that. */}
+      <Card className="mb-3">
+        <h2 className="text-sm font-bold text-ink">Supporting Document</h2>
+        <p className="text-xs text-inkSoft">Optional — upload any other related document</p>
+        <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
+        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
+
+        {supportingDocuments.map((att) => (
+          <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+            <FileText size={20} className="shrink-0 text-brand" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">{att.name}</span>
+            <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+              <Eye size={18} />
+            </button>
+            <button type="button" onClick={() => handleRemoveSupportingDocument(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+              <Trash2 size={18} />
+            </button>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          onClick={handlePickSupportingDocument}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+        >
+          <CloudUpload size={18} /> Add Attachment
+        </button>
       </Card>
 
       {/* Manager Approved Attachment - only for expense types whose ExptypeSet.Flag comes back blank */}
