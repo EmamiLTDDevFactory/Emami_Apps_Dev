@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
-import { Avatar, Blocker, Button, Card, CcbShell, Field, Loading, Modal, PageHeader, RoleBadge, useCcbMe, useToast } from './ui.jsx';
+import { Avatar, Blocker, Button, Card, CcbShell, Field, Loading, PageHeader, RoleBadge, useCcbMe, useToast } from './ui.jsx';
 import { PROCESS_STEPS, ROLES, ROLE_META } from './model.js';
-import { AlertIcon, BoltIcon, CalendarIcon, PlusIcon, SettingsIcon, UsersIcon, XIcon } from '../shared/icons.jsx';
+import { BoltIcon, ExternalIcon, SettingsIcon, UsersIcon } from '../shared/icons.jsx';
+
+/** CCB roles are assigned in the Emami Apps Admin Center (hub Manage Access), not here. */
+const ADMIN_CENTER = '/manage-access/';
+const adminCenterUser = (email) => `${ADMIN_CENTER}?tab=people&user=${encodeURIComponent(email)}`;
+const adminCenterApp = `${ADMIN_CENTER}?tab=people&app=dev-tracker`;
 
 export default function Governance() {
   const { me, error, loading, reload } = useCcbMe();
@@ -15,7 +20,6 @@ export default function Governance() {
 
 function Content({ me }) {
   const [data, setData] = useState({ loading: true, roles: [], settings: null, error: null });
-  const [adding, setAdding] = useState(false);
   const [toast, showToast] = useToast();
 
   const load = useCallback(() => {
@@ -37,16 +41,6 @@ function Content({ me }) {
   const board = byPerson.filter((p) => p.roles.some((r) => ['CCB Member', 'CCB Secretary'].includes(r)));
   const others = byPerson.filter((p) => !board.includes(p));
 
-  async function remove(email, role) {
-    try {
-      await ccbApi.removeRole(email, role);
-      showToast(`${role} role removed.`);
-      load();
-    } catch (e) {
-      showToast(e.message, 'error');
-    }
-  }
-
   if (data.loading) return <Loading />;
   if (data.error) return <Blocker error={data.error} onRetry={load} />;
   const s = data.settings;
@@ -61,11 +55,11 @@ function Content({ me }) {
           {p.roles.map((r) => (
             <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
               <RoleBadge role={r} />
-              {me.can.manageRoles && <button type="button" className="ccb-icon-btn" style={{ width: 18, height: 18 }} title={`Remove ${r}`} onClick={() => remove(p.email, r)}><XIcon size={10} /></button>}
             </span>
           ))}
         </div>
-        {!p.hasAccess && <div className="warn">No SAP Change & Development access — grant it in Manage Access.</div>}
+        {!p.hasAccess && <div className="warn">No SAP Change & Development access — grant it in the Emami Apps Admin Center.</div>}
+        {me.can.manageRoles && <a href={adminCenterUser(p.email)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, marginTop: 4 }}>Change roles in Admin Center <ExternalIcon size={10} /></a>}
       </div>
     </div>
   );
@@ -73,12 +67,12 @@ function Content({ me }) {
   return (
     <>
       <PageHeader eyebrow="Change Control Board" title="Governance" sub="Composition of the board, who does what, what needs CCB approval, and how meetings run.">
-        {me.can.manageRoles && <Button variant="primary" icon={PlusIcon} onClick={() => setAdding(true)}>Assign a role</Button>}
+        <a className="ccb-btn primary" style={{ textDecoration: 'none' }} href={adminCenterApp}><UsersIcon size={15} /> Assign roles in Admin Center</a>
       </PageHeader>
 
       <Card title="CCB composition" sub={`${board.filter((p) => p.roles.includes('CCB Member')).length} members · quorum ${s.quorum} · meets on the 3rd Friday of every month or on an emergency basis, online or offline`}>
         {board.length === 0 ? (
-          <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No board members assigned yet.{me.can.manageRoles ? ' Use “Assign a role” to add the CCB members and Secretary.' : ''}</p>
+          <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No board members assigned yet. CCB roles are assigned in the Emami Apps Admin Center (Manage Access › person › SAP Change & Development).</p>
         ) : <div className="ccb-members">{board.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
@@ -141,7 +135,7 @@ function Content({ me }) {
 
       <SettingsCard settings={s} canEdit={me.can.manageRoles} onSaved={() => { showToast('Settings saved.'); load(); }} onError={(m) => showToast(m, 'error')} />
 
-      {adding && <AssignDialog onClose={() => setAdding(false)} onDone={(role) => { setAdding(false); showToast(`${role} assigned.`); load(); }} />}
+      <div className="ccb-callout tone-indigo" style={{ marginTop: 16 }}><UsersIcon size={15} /><span><strong>Role assignment is controlled from the Emami Apps Admin Center.</strong> A Super Admin or Admin opens the person in Manage Access and picks their CCB roles under SAP Change &amp; Development. Every change is recorded in the Admin Center&apos;s change history and the CCB audit trail.</span></div>
       {toast}
     </>
   );
@@ -186,43 +180,5 @@ function SettingsCard({ settings, canEdit, onSaved, onError }) {
         </Field>
       </div>
     </Card>
-  );
-}
-
-function AssignDialog({ onClose, onDone }) {
-  const [people, setPeople] = useState([]);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('CCB Member');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(() => { ccbApi.people().then((d) => setPeople(d.people)).catch(() => {}); }, []);
-
-  async function go() {
-    setBusy(true);
-    setError('');
-    try {
-      await ccbApi.assignRole(email.trim().toLowerCase(), role);
-      onDone(role);
-    } catch (e) {
-      setError(e.message);
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal title="Assign a CCB role" sub="People need SAP Change & Development access (Manage Access) to sign in. A person can hold more than one role." onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" icon={UsersIcon} busy={busy} disabled={!email || !role} onClick={go}>Assign</Button></>}>
-      <Field label="Person" required hint="Pick from people with access, or type an Emami email.">
-        <input className="ccb-input" list="ccb-people" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@emamigroup.com" />
-        <datalist id="ccb-people">{people.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}</datalist>
-      </Field>
-      <Field label="Role" required group>
-        <div className="ccb-chips">
-          {ROLES.map((r) => <button key={r} type="button" className={`ccb-chip-toggle${role === r ? ' on' : ''}`} onClick={() => setRole(r)}>{r}</button>)}
-        </div>
-      </Field>
-      <div className="ccb-callout tone-indigo"><CalendarIcon size={15} /><span>{ROLE_META[role].duty}</span></div>
-      {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
-    </Modal>
   );
 }

@@ -841,6 +841,8 @@ apiRouter.get('/access/history', requireAccessManager, async (req, res) => {
 
 // Release status per app tile (Admin Center's App status tab) — own table and routes, see appStages.js.
 apiRouter.use(require('./appStages').appStagesRouter(requireAccessManager));
+// CCB roles (Change Control) are assigned from the Admin Center: GET/PUT /access/users/:email/ccb-roles.
+apiRouter.use(require('./changeControl').ccbRolesAdminRouter(requireAccessManager));
 
 apiRouter.get('/health', (req, res) => res.json({ success: true }));
 

@@ -170,3 +170,30 @@ export async function setAccessLevel(email: string, accessLevel: AccessLevel, ac
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }
 }
+
+/** CCB roles (SAP Change & Development > Change Control Board), assigned here instead of inside the app.
+ * `available: null` when this server has no Change Control (the drawer then hides the section). */
+export const CCB_APP_ID = 'dev-tracker';
+export async function getCcbRoles(email: string): Promise<{ ok: boolean; roles: string[]; available: string[] | null; error?: string }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/ccb-roles`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, roles: [], available: null, error: data?.error };
+    return { ok: true, roles: data.roles || [], available: data.available || [] };
+  } catch {
+    return { ok: false, roles: [], available: null };
+  }
+}
+
+export async function setCcbRoles(email: string, roles: string[]): Promise<ApiResult> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/ccb-roles`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roles }),
+    });
+    return await parseResult(res);
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}

@@ -5,7 +5,7 @@ import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Sa
 import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../types';
 import { getMyProfile, type UserProfile } from '../../lib/authApi';
 import { getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
-import { getAccessHistory, removeAuthorizedUser, setAccessLevel, setAppAccess, setUserActive } from '../../lib/accessApi';
+import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, setAccessLevel, setAppAccess, setCcbRoles, setUserActive } from '../../lib/accessApi';
 import { exportUserReportToExcel } from '../../lib/exportAdminExcel';
 import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
@@ -74,6 +74,17 @@ export default function UserDrawer({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
+  // CCB roles (SAP Change & Development): null available = this server has no Change Control, section hidden.
+  const [ccb, setCcb] = useState<{ saved: string[]; draft: string[]; available: string[] | null }>({ saved: [], draft: [], available: null });
+  useEffect(() => {
+    let live = true;
+    setCcb({ saved: [], draft: [], available: null });
+    getCcbRoles(user.email).then((r) => { if (live && r.ok) setCcb({ saved: r.roles, draft: r.roles, available: r.available }); });
+    return () => { live = false; };
+  }, [user.email]);
+  const toggleCcb = (role: string) => setCcb((c) => ({ ...c, draft: c.draft.includes(role) ? c.draft.filter((r) => r !== role) : [...c.draft, role] }));
+  const ccbChanged = !!ccb.available && !!draft.roles[CCB_APP_ID] && [...ccb.draft].sort().join('|') !== [...ccb.saved].sort().join('|');
+
   // Re-seed the draft when a different person is opened, or after a save lands new data.
   useEffect(() => {
     setDraft(draftFrom(user));
@@ -105,7 +116,7 @@ export default function UserDrawer({
   const changedAppIds = SORTED_APPS.filter(
     (a) => draft.roles[a.id] !== roleOf(user, a.id) || (draft.roles[a.id] && draft.depots[a.id] !== depotOf(user, a.id))
   ).map((a) => a.id);
-  const changeCount = changedAppIds.length + (draft.isActive !== user.isActive ? 1 : 0) + (draft.accessLevel !== user.accessLevel ? 1 : 0);
+  const changeCount = changedAppIds.length + (ccbChanged ? 1 : 0) + (draft.isActive !== user.isActive ? 1 : 0) + (draft.accessLevel !== user.accessLevel ? 1 : 0);
   const dirty = changeCount > 0;
   const grantedCount = SORTED_APPS.filter((a) => draft.roles[a.id]).length;
 
@@ -156,6 +167,12 @@ export default function UserDrawer({
         calls.push(setAppAccess(user.email, appId, role, role ? draft.depots[appId] : null, actingEmail || undefined));
       }
       const results = await Promise.all(calls);
+      // CCB roles after the grants: they need the SAP Change & Development grant to exist first.
+      if (ccbChanged) {
+        const r = await setCcbRoles(user.email, ccb.draft);
+        results.push(r);
+        if (r.ok) setCcb((c) => ({ ...c, saved: c.draft }));
+      }
       const failed = results.find((r) => !r.ok);
       if (failed) {
         setError(failed.error || 'Some changes could not be saved. Please try again.');
@@ -349,6 +366,27 @@ export default function UserDrawer({
                         onChange={(r) => setRole(app.id, r)}
                       />
                     </div>
+                    {app.id === CCB_APP_ID && ccb.available && (role || ccb.saved.length > 0) && (
+                      <div style={{ marginTop: 10, paddingLeft: 40 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ ...labelStyle, fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            CCB roles
+                            {ccbChanged && <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F59E0B' }} title="Edited" />}
+                          </span>
+                          {ccb.available.map((r) => (
+                            <button key={r} type="button" disabled={!role} onClick={() => toggleCcb(r)} aria-pressed={ccb.draft.includes(r)}
+                              style={{ ...chipStyle(ccb.draft.includes(r), accent), padding: '4px 10px', fontSize: 11.5, opacity: role ? 1 : 0.5, cursor: role ? 'pointer' : 'not-allowed' }}>
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                        <p style={{ margin: '6px 0 0', fontSize: 10.5, color: colors.inkSoft, fontFamily: fonts.sansRegular }}>
+                          {role
+                            ? 'Change Control Board roles. A person can hold more than one; nobody approves a request they logged.'
+                            : `Still holds ${ccb.saved.join(', ')}. These apply again if access is re-granted; grant access to change them.`}
+                        </p>
+                      </div>
+                    )}
                     {app.id === AUDIT_CAPA_APP_ID && auditCapaRoleNeedsDepot(role) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, paddingLeft: 40, flexWrap: 'wrap' }}>
                         <span style={{ ...labelStyle, fontSize: 10 }}>Depot</span>

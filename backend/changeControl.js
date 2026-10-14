@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
 const teams = require('./ccbTeams');
+const { recordAccessChange } = require('./accessHistory');
 
 /*
    CHANGE CONTROL BOARD (CCB) — the governance half of "SAP Change & Development" (the Dev Tracker
@@ -23,7 +24,7 @@ const teams = require('./ccbTeams');
         approval creates the Dev Tracker assignment in the same transaction.
 
    Access: anyone with a Dev Tracker grant (Manage Access) can open the CCB register. What they may
-   do comes from their CCB roles (ccb.roles, managed in the app by Dev Tracker admins):
+   do comes from their CCB roles (ccb.roles, assigned in the Emami Apps Admin Center - ccbRolesAdminRouter):
      IT SPOC              log, categorise, submit and withdraw requests
      SAP Module Lead      same as IT SPOC (logs on behalf of a function), named owner of delivery
      IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
@@ -451,7 +452,7 @@ router.get('/me', async (req, res) => {
         success: true,
         me: {
             email: req.verifiedEmail, name: names[req.verifiedEmail] || req.verifiedEmail, roles: req.roles, isAdmin: req.isAdmin,
-            can: { log: has(req, ...LOGGER_ROLES), review: has(req, 'IT Application Head'), runMeetings: canRunMeetings(req), manageRoles: req.isAdmin },
+            can: { log: has(req, ...LOGGER_ROLES), review: has(req, 'IT Application Head'), runMeetings: canRunMeetings(req), manageRoles: req.isAdmin, assignRoles: false },
         },
         categories: CATEGORIES,
     });
@@ -485,36 +486,11 @@ router.get('/roles', async (req, res) => {
     }
 });
 
-router.post('/roles', async (req, res) => {
-    if (!req.isAdmin) return res.status(403).json({ success: false, error: 'Only a Dev Tracker admin can assign CCB roles.' });
-    const email = str(req.body?.email, 200).toLowerCase();
-    const role = req.body?.role;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !ROLES.includes(role)) return res.status(400).json({ success: false, error: 'Choose a person and a role.' });
-    try {
-        await withTransaction(async (db) => {
-            const ins = await db.query('INSERT INTO ccb.roles (email, role, "assignedBy") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING email', [email, role, req.verifiedEmail]);
-            if (ins.rows.length) await logHistory(db, { actorEmail: req.verifiedEmail, action: 'role_assigned', details: { email, role } });
-        });
-        res.json({ success: true });
-    } catch (err) {
-        fail(res, err, 'Could not assign the role.');
-    }
-});
-
-router.delete('/roles', async (req, res) => {
-    if (!req.isAdmin) return res.status(403).json({ success: false, error: 'Only a Dev Tracker admin can remove CCB roles.' });
-    const email = str(req.body?.email, 200).toLowerCase();
-    const role = req.body?.role;
-    try {
-        await withTransaction(async (db) => {
-            const del = await db.query('DELETE FROM ccb.roles WHERE email = $1 AND role = $2 RETURNING email', [email, role]);
-            if (del.rows.length) await logHistory(db, { actorEmail: req.verifiedEmail, action: 'role_removed', details: { email, role } });
-        });
-        res.json({ success: true });
-    } catch (err) {
-        fail(res, err, 'Could not remove the role.');
-    }
-});
+// CCB roles are assigned in the Emami Apps Admin Center (Manage Access), not in the app: see ccbRolesAdminRouter below.
+const ROLES_IN_ADMIN_CENTER = 'CCB roles are assigned in the Emami Apps Admin Center (Manage Access > user > SAP Change & Development).';
+// Assigning / removing in the app is closed; the Admin Center does it (same ccb.roles store).
+router.post('/roles', (req, res) => res.status(403).json({ success: false, error: ROLES_IN_ADMIN_CENTER }));
+router.delete('/roles', (req, res) => res.status(403).json({ success: false, error: ROLES_IN_ADMIN_CENTER }));
 
 router.put('/settings', async (req, res) => {
     if (!req.isAdmin) return res.status(403).json({ success: false, error: 'Only a Dev Tracker admin can change CCB settings.' });
@@ -1223,5 +1199,72 @@ router.get('/overview', async (req, res) => {
     }
 });
 
+/* ---------- Admin Center (hub Manage Access) ---------- */
+
+/**
+ * CCB roles, controlled from the Emami Apps Admin Center. Mounted by server.js on the hub API with its own
+ * requireAccessManager (Super Admin / Admin), like appStages.js:
+ *
+ *   GET /access/users/:email/ccb-roles   -> { roles: [...held], available: ROLES, hasAccess }
+ *   PUT /access/users/:email/ccb-roles   { roles: [...] }  sets exactly these roles
+ *
+ * ccb.roles stays the one store every CCB rule reads. Each change is written to ccb.history (role_assigned /
+ * role_removed, via 'admin-center') and to the Admin Center's change history (APP_ROLE on dev-tracker).
+ */
+function ccbRolesAdminRouter(requireAccessManager) {
+    const admin = express.Router();
+    const emailOf = (req) => String(req.params.email || '').trim().toLowerCase();
+
+    admin.get('/access/users/:email/ccb-roles', requireAccessManager, async (req, res) => {
+        const email = emailOf(req);
+        try {
+            await ready;
+            const [roles, access] = await Promise.all([
+                pool.query('SELECT role FROM ccb.roles WHERE email = $1 ORDER BY array_position($2::text[], role)', [email, ROLES]),
+                pool.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, HOST_APP_ID]),
+            ]);
+            res.json({ success: true, roles: roles.rows.map((r) => r.role), available: ROLES, hasAccess: access.rows.length > 0 });
+        } catch (err) {
+            fail(res, err, 'Could not load CCB roles.');
+        }
+    });
+
+    admin.put('/access/users/:email/ccb-roles', requireAccessManager, async (req, res) => {
+        const email = emailOf(req);
+        const wanted = Array.isArray(req.body?.roles) ? [...new Set(req.body.roles)] : null;
+        if (!wanted || wanted.some((r) => !ROLES.includes(r))) return res.status(400).json({ success: false, error: `Roles must be from: ${ROLES.join(', ')}.` });
+        try {
+            await ready;
+            const out = await withTransaction(async (db) => {
+                if (wanted.length) {
+                    const access = await db.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, HOST_APP_ID]);
+                    if (!access.rows.length) throw new HttpError(400, 'Grant SAP Change & Development access first, then assign CCB roles.');
+                }
+                const before = (await db.query('SELECT role FROM ccb.roles WHERE email = $1 FOR UPDATE', [email])).rows.map((r) => r.role);
+                const add = wanted.filter((r) => !before.includes(r));
+                const remove = before.filter((r) => !wanted.includes(r));
+                for (const role of add) {
+                    await db.query('INSERT INTO ccb.roles (email, role, "assignedBy") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [email, role, req.verifiedEmail]);
+                    await logHistory(db, { actorEmail: req.verifiedEmail, action: 'role_assigned', details: { email, role, via: 'admin-center' } });
+                }
+                for (const role of remove) {
+                    await db.query('DELETE FROM ccb.roles WHERE email = $1 AND role = $2', [email, role]);
+                    await logHistory(db, { actorEmail: req.verifiedEmail, action: 'role_removed', details: { email, role, via: 'admin-center' } });
+                }
+                return { before, add, remove };
+            });
+            if (out.add.length || out.remove.length) {
+                const label = (list) => (list.length ? `CCB: ${[...list].sort((a, b) => ROLES.indexOf(a) - ROLES.indexOf(b)).join(', ')}` : 'CCB: none');
+                recordAccessChange({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: HOST_APP_ID, oldValue: label(out.before), newValue: label(wanted) });
+            }
+            res.json({ success: true, roles: wanted.sort((a, b) => ROLES.indexOf(a) - ROLES.indexOf(b)), added: out.add, removed: out.remove });
+        } catch (err) {
+            fail(res, err, 'Could not save CCB roles.');
+        }
+    });
+    return admin;
+}
+
 module.exports = router;
 module.exports.CATEGORIES = CATEGORIES;
+module.exports.ccbRolesAdminRouter = ccbRolesAdminRouter;

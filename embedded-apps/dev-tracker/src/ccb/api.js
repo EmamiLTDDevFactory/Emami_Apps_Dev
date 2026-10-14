@@ -53,7 +53,5 @@ export const ccbApi = {
   cancelMeeting: (id, note) => call(`/meetings/${id}/cancel`, { method: 'POST', body: { note } }),
   syncTeams: (id) => call(`/meetings/${id}/teams`, { method: 'POST', body: {} }),
   roles: () => call('/roles'),
-  assignRole: (email, role) => call('/roles', { method: 'POST', body: { email, role } }),
-  removeRole: (email, role) => call('/roles', { method: 'DELETE', body: { email, role } }),
   saveSettings: (fields) => call('/settings', { method: 'PUT', body: fields }),
 };
