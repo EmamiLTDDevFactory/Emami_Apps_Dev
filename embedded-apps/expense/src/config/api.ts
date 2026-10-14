@@ -3,13 +3,13 @@
  */
 
 const getBaseUrl = (): string => {
-  // Environment variable override (local dev against a different backend instance, etc.)
-  if (
-    process.env.NEXT_PUBLIC_API_URL &&
-    process.env.NEXT_PUBLIC_API_URL.trim() !== ''
-  ) {
-    return process.env.NEXT_PUBLIC_API_URL.trim().replace(/\/+$/, '');
-  }
+  // No environment-variable override here on purpose. `NEXT_PUBLIC_API_URL` is already a name
+  // claimed at the Amplify app level for the hub's own login flow (points at the hub-auth
+  // Lambda) — checking the same name here meant this app silently inherited THAT Lambda's URL
+  // in production (confirmed live: requests were hitting emami-apps-hub-auth-dev's Lambda
+  // Function URL instead of this app's backend, 403ing since that Lambda has no
+  // /api/expense/extract-document route or CORS for this origin). Always use the hardcoded
+  // backend URL below instead.
 
   // Hardcoded (not origin-derived) on purpose, same convention as SAP_BASE_URL below — this app's
   // frontend (Amplify, HTTPS) and its backend (172.17.2.21) are two separate hosts, so "same
