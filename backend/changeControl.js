@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
@@ -130,6 +131,9 @@ async function initSchema() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS history_change_idx ON change_control.history ("changeId")');
+    // Link to the Development Tracker assignment auto-created when CAB approves the change.
+    await pool.query('ALTER TABLE change_control.changes ADD COLUMN IF NOT EXISTS "devTrackerItemId" text');
+    await pool.query('ALTER TABLE change_control.changes ADD COLUMN IF NOT EXISTS "devTrackerIssueNo" int');
 }
 
 // Awaited inside every handler (appStages.js's pattern) so the first request after a cold start
@@ -249,6 +253,62 @@ async function withTransaction(fn) {
     } finally {
         client.release();
     }
+}
+
+/* ---------- Development Tracker hand-off ---------- */
+
+const DEV_PRIORITY = { critical: 'P1', high: 'P1', medium: 'P2', low: 'P3' };
+const DEV_LEVEL = { 1: 'Low', 2: 'Medium', 3: 'High' };
+const istDate = (d) => (d ? new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : null);
+
+/**
+ * Once CAB (or ECAB) approves a change, the work lands in the Development Tracker as a
+ * 'Not Started' assignment, written straight into dev_tracker.items inside the approval's own
+ * transaction — so an approved change never exists without its assignment, and vice versa.
+ * Columns mirror devTracker.js's POST /items (developer/spoc fields are display names there).
+ */
+async function createDevTrackerAssignment(db, c, approverEmail) {
+    const names = await namesFor([c.requesterEmail, c.implementerEmail, approverEmail]);
+    const nameOf = (e) => (e ? names[e] || e : null);
+    const implementer = nameOf(c.implementerEmail || c.requesterEmail);
+    const approver = nameOf(approverEmail);
+    const description = [
+        c.description,
+        `Business justification:\n${c.justification}`,
+        `Affected systems: ${c.affectedSystems}${c.affectedLocations ? ` (${c.affectedLocations})` : ''}`,
+        `Implementation plan:\n${c.implementationPlan}`,
+        `Rollback plan:\n${c.rollbackPlan}`,
+        c.testPlan && `Test plan:\n${c.testPlan}`,
+    ].filter(Boolean).join('\n\n');
+    const row = {
+        devList: `${c.crNo}: ${c.title}`,
+        status: 'Not Started',
+        issueType: 'Task',
+        priority: DEV_PRIORITY[c.priority] || null,
+        impact: DEV_LEVEL[c.impact] || null,
+        description,
+        developer: implementer,
+        spocIT: implementer,
+        spocFunction: nameOf(c.requesterEmail),
+        reporter: approver,
+        startDate: istDate(c.plannedStart),
+        targetDate: istDate(c.plannedEnd),
+        labels: `CAB, ${c.crNo}`,
+        remarks: `Auto-created from ${c.crNo} on CAB approval by ${approver}.`,
+        rank: Date.now(),
+    };
+    const keys = Object.keys(row);
+    const { rows } = await db.query(
+        `INSERT INTO dev_tracker.items (id, ${keys.map(q).join(', ')}) VALUES ($1, ${keys.map((_, i) => `$${i + 2}`).join(', ')})
+         RETURNING id, "issueNo"`,
+        [crypto.randomUUID(), ...keys.map((k) => row[k])]
+    );
+    // Same "__created__" sentinel devTracker.js writes, so the tracker's activity feed shows it.
+    await db.query(
+        `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, '__created__', NULL, $2, $3)`,
+        [rows[0].id, row.devList, approver]
+    );
+    return rows[0];
 }
 
 function fail(res, err, message) {
@@ -522,6 +582,15 @@ router.post('/changes/:id/transition', async (req, res) => {
                 [...keys.map((k) => patch[k]), id, c.status]
             );
             if (!upd.rows.length) return null;
+            if (['approve', 'emergency_approve'].includes(action) && !c.devTrackerItemId) {
+                const item = await createDevTrackerAssignment(db, upd.rows[0], req.verifiedEmail);
+                const linked = await db.query(
+                    'UPDATE change_control.changes SET "devTrackerItemId" = $1, "devTrackerIssueNo" = $2 WHERE id = $3 RETURNING *',
+                    [item.id, item.issueNo, id]
+                );
+                upd.rows[0] = linked.rows[0];
+                details.devTrackerIssueNo = item.issueNo;
+            }
             if (note) await db.query('INSERT INTO change_control.comments ("changeId", "authorEmail", body) VALUES ($1, $2, $3)', [id, req.verifiedEmail, note]);
             await logHistory(db, { changeId: id, actorEmail: req.verifiedEmail, actorRole: req.ccbRole, action, fromStatus: c.status, toStatus: to, details });
             return upd.rows[0];

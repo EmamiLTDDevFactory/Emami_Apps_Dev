@@ -151,6 +151,13 @@ export default function ChangeDetail({ id, me, onChanged }: { id: number; me: Me
               {c.actualStart && <Row label="Actual window">{fmtDateTime(c.actualStart)} – {fmtDateTime(c.actualEnd)}</Row>}
               <Row label="Submitted">{fmtDateTime(c.submittedAt)}</Row>
               <Row label="Decided">{fmtDateTime(c.decidedAt)}</Row>
+              {c.devTrackerIssueNo != null && (
+                <Row label="Dev Tracker">
+                  <a href={`/apps/dev-tracker/?issue=Assignment-${c.devTrackerIssueNo}`} className="font-semibold text-accent hover:underline">
+                    Assignment-{c.devTrackerIssueNo}
+                  </a>
+                </Row>
+              )}
               {c.closedAt && <Row label="Closed">{fmtDateTime(c.closedAt)}</Row>}
             </dl>
           </Card>

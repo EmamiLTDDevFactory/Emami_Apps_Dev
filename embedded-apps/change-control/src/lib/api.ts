@@ -59,6 +59,9 @@ export interface Change {
   submittedAt: string | null;
   decidedAt: string | null;
   closedAt: string | null;
+  /** Development Tracker assignment auto-created on CAB approval. */
+  devTrackerItemId: string | null;
+  devTrackerIssueNo: number | null;
   createdAt: string;
   updatedAt: string;
 }
