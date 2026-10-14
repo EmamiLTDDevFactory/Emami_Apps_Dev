@@ -8,6 +8,7 @@ import {
   History, Sparkles, Copy, CheckCircle2, Circle, Settings2, Info, Briefcase, Building2, Smartphone, UserRound,
 } from 'lucide-react';
 import Avatar from '../../../components/Avatar';
+import OrgHierarchy from '../../../components/OrgHierarchy';
 import StageBadge from '../../../components/StageBadge';
 import { useAuth } from '../../../context/AuthContext';
 import { useFavorites } from '../../../context/FavoritesContext';
@@ -299,6 +300,33 @@ export default function ProfilePage() {
             <span style={contactValueStyle}>{loginMethod === 'sso' ? 'Microsoft (Emami account)' : loginMethod === 'direct' ? 'Email sign-in link' : '—'}</span>
           </ContactTile>
         </div>
+
+        {/* Organisation (Microsoft Entra ID), inside the hero: reporting line as a tree + directory details. */}
+        {(org || orgError) && (
+          <div style={{ position: 'relative', marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.14)' }}>
+            <div style={{ margin: '0 0 10px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, rowGap: 2 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: 'rgba(255,255,255,0.65)' }}><Building2 size={13} /> Organisation</span>
+              <span style={{ flexBasis: isWide ? 'auto' : '100%', fontSize: 11, fontFamily: fonts.sansRegular, color: 'rgba(255,255,255,0.5)' }}>From your Emami Microsoft account - ask IT to correct anything here</span>
+            </div>
+            {orgError ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: '#FDA4AF', fontFamily: fonts.sansMedium }}>{orgError}</p>
+            ) : org ? (
+              <div style={{ display: 'grid', gridTemplateColumns: isWide ? 'minmax(0, 1.25fr) minmax(0, 1fr)' : 'minmax(0, 1fr)', gap: isWide ? 18 : 12, alignItems: 'start' }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 11.5, fontFamily: fonts.sansSemiBold, fontWeight: fontWeights.sansSemiBold, color: 'rgba(255,255,255,0.8)' }}>Reporting line</p>
+                  <OrgHierarchy tone="dark" compact={!isWide} managers={org.managers} me={{ name: name || userEmail || '', jobTitle: org.jobTitle, department: org.department }} />
+                  {!org.managers?.length && <p style={{ margin: '8px 0 0', fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>No manager is set for you in the directory.</p>}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isWide ? 200 : 180}px, 1fr))`, gap: 10, minWidth: 0 }}>
+                  <ContactTile icon={Briefcase} label="Job title"><span style={contactValueStyle}>{org.jobTitle || 'Not set in the directory'}</span></ContactTile>
+                  <ContactTile icon={Building2} label="Department"><span style={contactValueStyle}>{org.department || 'Not set in the directory'}</span></ContactTile>
+                  <ContactTile icon={Phone} label="Business phone"><span style={contactValueStyle}>{org.businessPhones.length ? org.businessPhones.join(', ') : 'Not set in the directory'}</span></ContactTile>
+                  <ContactTile icon={Smartphone} label="Mobile (directory)"><span style={contactValueStyle}>{org.mobilePhone || 'Not set in the directory'}</span></ContactTile>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* ── Stats ── */}
@@ -487,35 +515,6 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
-
-      {/* ── Organisation (Microsoft Entra ID) ── */}
-      {(org || orgError) && (
-        <div style={{ ...cardStyle, padding: isWide ? 20 : 16, marginTop: 16 }}>
-          <CardHead icon={Building2} accent="#2563EB" title="Organisation" sub="From your Emami Microsoft account (Entra ID) - ask IT to correct anything here" />
-          {orgError ? (
-            <p style={{ margin: 0, fontSize: 12.5, color: colors.inkSoft }}>{orgError}</p>
-          ) : org ? (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${isWide ? 220 : 200}px, 1fr))`, gap: 12 }}>
-              <InfoTile icon={Briefcase} accent="#2563EB" title="Job title" text={org.jobTitle || 'Not set in the directory'} />
-              <InfoTile icon={Building2} accent="#7C3AED" title="Department" text={org.department || 'Not set in the directory'} />
-              <InfoTile icon={Phone} accent="#0D9488" title="Business phone" text={org.businessPhones.length ? org.businessPhones.join(', ') : 'Not set in the directory'} />
-              <InfoTile icon={Smartphone} accent="#EA580C" title="Mobile (directory)" text={org.mobilePhone || 'Not set in the directory'} />
-              {[1, 2].map((level) => {
-                const m = org.managers?.find((x) => x.level === level);
-                return (
-                  <InfoTile
-                    key={level}
-                    icon={UserRound}
-                    accent={level === 1 ? '#0EA5E9' : '#64748B'}
-                    title={`L${level} manager${m?.displayName ? ` · ${m.displayName}` : ''}`}
-                    text={m ? [m.jobTitle || 'Designation not set', m.department, m.mail].filter(Boolean).join(' · ') : 'Not set in the directory'}
-                  />
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      )}
 
       {/* ── Account & security ── */}
       <div style={{ ...cardStyle, padding: isWide ? 20 : 16, marginTop: 16 }}>

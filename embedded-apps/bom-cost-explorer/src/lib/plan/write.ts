@@ -7,7 +7,7 @@
 import { sapWrite, type SapGetOptions } from '../sap/client';
 import { normalizeEntity } from '../sap/normalize';
 import { odataString } from '../sap/filter';
-import { NAV_UPLOAD_ENTRIES, PLAN_ENTRY, PLAN_SET, PLAN_UPLOAD, monthKeys, type PlanEntry, type PlanUploadResult } from './fields';
+import { NAV_UPLOAD_ENTRIES, PLAN_ENTRY, PLAN_SET, PLAN_UPLOAD, monthKeys, planFlagValue, type PlanEntry, type PlanUploadResult } from './fields';
 import { D } from '../cost/decimal';
 import { fetchPlanEntries } from './client';
 
@@ -26,10 +26,11 @@ const monthProps = (months: (string | number)[]) => Object.fromEntries(monthKeys
 export const entryPayload = (r: PlanRowInput) => ({ Plan1: r.plan.trim(), Matnr: r.matnr.trim().toUpperCase(), Werks: r.werks.trim().toUpperCase(), Land1: r.land1.trim().toUpperCase(), ...monthProps(r.months) });
 
 export function uploadBody(plan: string, updMode: 'M' | 'R', dryrun: boolean, rows: PlanRowInput[]) {
-  return { Plan1: plan.trim(), UpdMode: updMode, Dryrun: dryrun, [NAV_UPLOAD_ENTRIES]: rows.map(entryPayload) };
+  // Dryrun is CHAR1: 'X' = check only, '' = save (never a JSON boolean).
+  return { Plan1: plan.trim(), UpdMode: updMode, Dryrun: planFlagValue(dryrun), [NAV_UPLOAD_ENTRIES]: rows.map(entryPayload) };
 }
 
-/** Deep insert into PlanUploadSet: Dryrun true = check only, false = save. */
+/** Deep insert into PlanUploadSet: Dryrun 'X' = check only, '' = save. */
 export async function uploadPlan(plan: string, updMode: 'M' | 'R', dryrun: boolean, rows: PlanRowInput[], user: string, opts: SapGetOptions = {}): Promise<PlanUploadResult> {
   const r = await sapWrite('POST', PLAN_SET.UPLOAD, uploadBody(plan, updMode, dryrun, rows), opts);
   const d = ((r.body as { d?: Record<string, unknown> } | null)?.d ?? r.body ?? {}) as Record<string, unknown>;

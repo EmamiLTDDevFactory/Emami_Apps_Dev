@@ -4,14 +4,15 @@
  * decimals with the m suffix, booleans true/false).
  */
 import { literal } from '../sap/filter';
-import { PLAN_COST_LINE, PLAN_COST_MODE, PLAN_SELECTION, PLAN_SET } from './fields';
+import { PLAN_COST_LINE, PLAN_COST_MODE, PLAN_SELECTION, PLAN_SET, planFlag } from './fields';
 
 export interface PlanFilters {
   plants: string[];
   materials: string[];
 }
 
-/** Mode P breakup + cost options (fallback on by default, all material types). */
+/** Mode P breakup + cost options (fallback on by default, all material types, budget rates on for the
+ * "As per Budget" figures, budget year = current year like the costing screen). */
 export interface PlanCostQuery extends PlanFilters {
   plan: string;
   mtartFilter: 'A' | 'P' | 'R';
@@ -34,7 +35,7 @@ export interface PlanCostQuery extends PlanFilters {
 
 export const defaultPlanCostQuery = (plan: string): PlanCostQuery => ({
   plan, plants: [], materials: [], mtartFilter: 'A', allBoms: false, basePlant: '', scrap: false, fallback: true,
-  inclFrt: true, stdFrt: false, inclBudget: false, budgetYr: '', inclCover: false, prio: '', donorPlant: '',
+  inclFrt: true, stdFrt: false, inclBudget: true, budgetYr: String(new Date().getFullYear()), inclCover: false, prio: '', donorPlant: '',
   lookback: 365, freightDays: 0, budatFrom: '', budatTo: '',
 });
 
@@ -46,7 +47,10 @@ function eq(key: SelKey, values: unknown | unknown[]): string | null {
   if (!lits.length) return null;
   return lits.length === 1 ? `${name} eq ${lits[0]}` : `(${lits.map((l) => `${name} eq ${l}`).join(' or ')})`;
 }
+/** Joins filter parts with " and ", dropping null / false / '' (an off CHAR1 flag is null). */
 const and = (...parts: (string | null | false)[]) => parts.filter(Boolean).join(' and ');
+/** CHAR1 plan flags (AllBoms, Scrap, Fallback, ItemCheck): planFlag(), never eq() / literal(). */
+const flag = (key: 'AllBoms' | 'Scrap' | 'Fallback' | 'ItemCheck', on: boolean) => planFlag(PLAN_SELECTION[key][0], on);
 const upper = (v: string[]) => v.map((x) => x.trim().toUpperCase()).filter(Boolean);
 
 export class PlanQueryError extends Error {}
@@ -67,7 +71,7 @@ export function planEntriesRequest(plan: string, f: Partial<PlanFilters> = {}) {
 
 export function planChecksRequest(plan: string, itemCheck: boolean, plants: string[] = []) {
   needPlan(plan);
-  return { entitySet: PLAN_SET.CHECKS, params: { $filter: and(eq('Plan1', plan.trim()), eq('Werks', upper(plants)), eq('ItemCheck', itemCheck)) } as Record<string, string | undefined> };
+  return { entitySet: PLAN_SET.CHECKS, params: { $filter: and(eq('Plan1', plan.trim()), eq('Werks', upper(plants)), flag('ItemCheck', itemCheck)) } as Record<string, string | undefined> };
 }
 
 export function planSummaryRequest(q: PlanCostQuery) {
@@ -89,10 +93,10 @@ export function costFilter(q: PlanCostQuery, withMode = true): string {
     eq('Werks', upper(q.plants)),
     eq('Matnr', upper(q.materials)),
     eq('MtartFilter', q.mtartFilter),
-    eq('AllBoms', q.allBoms),
+    flag('AllBoms', q.allBoms),
     q.basePlant.trim() ? eq('BasePlant', q.basePlant.trim().toUpperCase()) : null,
-    eq('Scrap', q.scrap),
-    eq('Fallback', q.fallback),
+    flag('Scrap', q.scrap),
+    flag('Fallback', q.fallback),
     withMode && eq('InclFrt', q.inclFrt),
     withMode && eq('StdFrt', q.stdFrt),
     withMode && eq('InclBudget', q.inclBudget),

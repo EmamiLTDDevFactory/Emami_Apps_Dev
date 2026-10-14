@@ -37,9 +37,12 @@ export function breakupCols(rows: PlanCostLine[]): XCol[] {
   const QTY = monthKeys('QtyM');
   return [
     { header: 'Country', get: (i) => rows[i].Land1 },
+    { header: 'Country name', get: (i) => rows[i].Landx },
     { header: 'Plant', get: (i) => rows[i].Hwerks },
     { header: 'Plan material', get: (i) => rows[i].Headmat },
     { header: 'Plan material text', width: 28, get: (i) => rows[i].Headtxt },
+    { header: 'Alt BOM', get: (i) => rows[i].Stlal },
+    { header: 'Item alt BOM', get: (i) => rows[i].ItemStlal },
     { header: 'BOM source', get: (i) => rows[i].BomSrc },
     { header: 'BOM plant', get: (i) => rows[i].BomPlant },
     { header: 'BOM source date', get: (i) => rows[i].BomSrcDate ?? '' },
@@ -124,6 +127,7 @@ export async function exportPlanWorkbook(p: { plants?: string[]; query: PlanCost
       ['Checks', loaded(p.checks)],
       ['WIP', loaded(p.wip)],
       ['Monthly cost', 'QtyMn x TotCostPcInr'],
+      ['FG per pc on 4 rate bases', 'Breakup & cost > FG per pc > Excel (needs the rate options for MBEW / Consumption)'],
       ['Cost per FG piece', 'Sum of leaf TotCostInr / PlanQty'],
       ['Shortage', 'Requirement - (valuated stock + open PO); units as SAP sends them (not converted)'],
     ],
