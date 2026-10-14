@@ -47,7 +47,7 @@ export interface SourceFigure {
 }
 
 export interface FgSources {
-  key: string; // Hwerks|Headmat
+  key: string; // Land1|Hwerks|Headmat (plan country)
   land1: string;
   landx: string;
   hwerks: string;
@@ -69,7 +69,7 @@ const emptyFig = (): SourceFigure => ({ perPc: null, total: ZERO, priced: 0, lea
 export function fgSources(lines: PlanLineWithOptions[]): FgSources[] {
   const by = new Map<string, FgSources & { frt: Decimal }>();
   for (const l of lines) {
-    const key = `${l.Hwerks}|${l.Headmat}`;
+    const key = `${l.Land1}|${l.Hwerks}|${l.Headmat}`;
     let g = by.get(key);
     if (!g) {
       g = {

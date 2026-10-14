@@ -417,7 +417,7 @@ const TreeRow = memo(function TreeRow({
         )}
         <span className={cx('shrink-0 font-mono text-xs', n.kind !== 'line' && 'text-ink')}>{n.kind === 'country' ? n.sub : n.label}</span>
         <span className="min-w-0 truncate text-xs text-muted">{n.kind === 'country' ? n.label : n.sub}</span>
-        {r?.Donor && <span className="ml-1 shrink-0 rounded bg-warn/15 px-1 text-[10px] font-bold text-warn" title={`Rate from donor plant ${r.Donor}`}>DONOR</span>}
+        {r?.Donor && <span className="ml-1 shrink-0 rounded bg-warn/15 px-1 text-[10px] font-bold text-warn" title={`Rate from donor plant ${r.Donor}`}>Donor plant {r.Donor}</span>}
         {s?.overridden && <span className="ml-1 shrink-0 rounded bg-sim/15 px-1 text-[10px] font-bold text-sim">OVERRIDE</span>}
       </div>
       {cols.map((c) => (

@@ -56,7 +56,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
       { header: 'Lowest complete source', get: (i) => (shown[i].lowest ? PLAN_SOURCE_LABEL[shown[i].lowest!] : '') },
     ];
     const keys = new Set(shown.map((r) => r.key));
-    const comp = lines.filter((l) => isLeafRow(l) && keys.has(`${l.Hwerks}|${l.Headmat}`));
+    const comp = lines.filter((l) => isLeafRow(l) && keys.has(`${l.Land1}|${l.Hwerks}|${l.Headmat}`));
     const compCols: XCol[] = [
       { header: 'Country', get: (i) => comp[i].Land1 },
       { header: 'Plant', get: (i) => comp[i].Hwerks },

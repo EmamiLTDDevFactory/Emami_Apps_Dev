@@ -3,7 +3,8 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, ChevronDown, ChevronUp, Coins, Factory, Gauge, Package, Play, RefreshCw, SlidersHorizontal, Square, Truck, Wallet, type LucideIcon } from 'lucide-react';
 import type { PlantRow } from '@/lib/sap/fields';
 import { costQuerySchema, MAX_MATERIALS, MODE_LABEL, RATE_SOURCES, usesField, type CostQuery, type QueryField } from '@/lib/query/schema';
-import { MaterialHierarchyPicker, MaterialPicker, PlantPicker, PriorityList } from './Pickers';
+import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from './Pickers';
+import SourcePriorityEditor from './rates/SourcePriorityEditor';
 import { MODE_ICON } from './Shell';
 import { Button, cx, Field, inputBase, inputCls, Segmented } from './ui';
 
@@ -179,13 +180,13 @@ export default function FilterPanel({
               <Block icon={Coins} title="Rates" className="lg:col-span-4">
                 {u('lookback') && (
                   <Field label="Rate look-back" error={show('lookback')}>
-                    {(id) => <QuickNumber id={id} value={String(query.lookback)} onChange={(v) => set('lookback', int(v, 365))} picks={[90, 180, 365, 730]} suffix="days" />}
+                    {(id) => <QuickNumber id={id} value={String(query.lookback)} onChange={(v) => set('lookback', int(v, 365))} picks={[365, 730, 1095]} suffix="days" />}
                   </Field>
                 )}
                 {u('donorPlant') && (
                   <Field label="Donor plant" hint="Rates are taken from here when a plant has none">
                     {(id) => (
-                      <select id={id} className={inputCls} value={query.donorPlant} onChange={(e) => set('donorPlant', e.target.value)}>
+                      <select id={id} data-field="donor-plant" className={inputCls} value={query.donorPlant} onChange={(e) => set('donorPlant', e.target.value)}>
                         <option value="">No donor plant</option>
                         {plants.plants.map((p) => <option key={p.Werks} value={p.Werks}>{p.Werks} · {p.Name1}</option>)}
                       </select>
@@ -193,8 +194,8 @@ export default function FilterPanel({
                   </Field>
                 )}
                 {u('prio') && (
-                  <Field label="Rate source priority" error={show('prio')} hint="Drag to reorder, or Alt + ↑/↓">
-                    {() => <PriorityList value={query.prio} onChange={(v) => set('prio', v as CostQuery['prio'])} all={RATE_SOURCES} />}
+                  <Field label="Rate source priority" error={show('prio')} hint="Tick the sources SAP may use; drag (or Alt + ↑/↓) to set the order">
+                    {() => <SourcePriorityEditor value={query.prio} onChange={(v) => set('prio', v as CostQuery['prio'])} />}
                   </Field>
                 )}
               </Block>

@@ -18,6 +18,9 @@ export interface PlanDeps {
   delay: () => number;
 }
 
+/** Plan country names (Mode P returns the plan row's country, not the plant's). */
+const COUNTRY_NAME: Record<string, string> = { IN: 'India', AE: 'United Arab Emirates', BD: 'Bangladesh', NP: 'Nepal', LK: 'Sri Lanka' };
+
 interface Entry { Plan1: string; Matnr: string; Werks: string; Land1: string; m: number[]; Status: string; Msg: string }
 
 const n3 = (v: number) => (Number.isFinite(v) ? v : 0).toFixed(3);
@@ -232,9 +235,9 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
         seq++;
         const share = (i: number) => (qtyTot ? (Number(r.ProdQty) * e.m[i]) / qtyTot : 0);
         lines.push({
-          ...r, Seqnr: seq, Hwerks: e.Werks, Plan1: plan,
+          ...r, Seqnr: seq, Hwerks: e.Werks, Plan1: plan, Land1: e.Land1, Landx: COUNTRY_NAME[e.Land1] ?? e.Land1, // plan country
           ...(r.RateOptions && typeof r.RateOptions === 'object' && 'results' in (r.RateOptions as Raw)
-            ? { RateOptions: { results: ((r.RateOptions as { results: Raw[] }).results).map((o) => ({ ...o, Seqnr: seq, Hwerks: e.Werks })) } }
+            ? { RateOptions: { results: ratesMode === 'expand-empty' ? [] : ((r.RateOptions as { results: Raw[] }).results).map((o) => ({ ...o, Seqnr: seq, Hwerks: e.Werks })) } }
             : {}), Stlal: '01', ItemStlal: '01', BomPlant: b.plant, BomSrc: b.src, BomSrcDate: b.date ? dt(b.date) : null,
           PlanQty: n3(qtyTot), ...Object.fromEntries(e.m.map((_, i) => [`QtyM${i + 1}`, n3(share(i))])), QtyTot: r.ProdQty,
           ActRatePc: n3(Number(r.SelRatePc ?? 0) * 0.97), ActRatePcInr: n3(Number(r.SelRatePcInr ?? 0) * 0.97),

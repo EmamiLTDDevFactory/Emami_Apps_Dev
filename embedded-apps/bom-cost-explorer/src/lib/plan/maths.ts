@@ -26,7 +26,7 @@ export function monthlyCost(l: PlanCostLine, ratePc?: Decimal, mult?: number[]):
 }
 
 export interface PlanHeaderRollup {
-  key: string; // Hwerks|Headmat
+  key: string; // Land1|Hwerks|Headmat (plan country first: one FG from one plant can be planned for several countries)
   hwerks: string;
   headmat: string;
   headtxt: string;
@@ -43,9 +43,9 @@ export interface PlanHeaderRollup {
   noRate: number;
 }
 
-export const headerKey = (l: Pick<PlanCostLine, 'Hwerks' | 'Headmat'>) => `${l.Hwerks}|${l.Headmat}`;
+export const headerKey = (l: Pick<PlanCostLine, 'Land1' | 'Hwerks' | 'Headmat'>) => `${l.Land1}|${l.Hwerks}|${l.Headmat}`;
 
-/** Roll-ups per plan material in a plant, from LEAF rows only (HasChild blank). */
+/** Roll-ups per plan country + plant + plan material, from LEAF rows only (HasChild blank). */
 export function headerRollups(lines: PlanCostLine[], lineTotal?: (l: PlanCostLine, i: number) => Decimal, lineMonths?: (l: PlanCostLine, i: number) => Decimal[]): Map<string, PlanHeaderRollup> {
   const out = new Map<string, PlanHeaderRollup>();
   lines.forEach((l, i) => {

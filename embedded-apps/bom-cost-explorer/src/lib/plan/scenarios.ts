@@ -60,12 +60,12 @@ export const scenarioQuery = (base: PlanCostQuery, s: PlanSapWhatIf): PlanCostQu
   ...base,
   ...(s.fallback !== undefined ? { fallback: s.fallback } : {}),
   ...(s.mtartFilter ? { mtartFilter: s.mtartFilter } : {}),
-  ...(s.prio !== undefined && s.prio !== '' ? { prio: s.prio } : {}),
+  ...(s.prio !== undefined && s.prio !== '' ? { prio: s.prio } : {}), // a priority list, comma separated
   ...(s.donorPlant ? { donorPlant: s.donorPlant.toUpperCase() } : {}),
 });
 
 /** Stable key of a plan cost line across runs (Seqnr can differ between runs; the path does not). */
-export const lineKey = (l: Pick<PlanCostLine, 'Hwerks' | 'Headmat' | 'Parent' | 'Idnrk' | 'Level'>) => `${l.Hwerks}|${l.Headmat}|${l.Level}|${l.Parent}|${l.Idnrk}`;
+export const lineKey = (l: Pick<PlanCostLine, 'Land1' | 'Hwerks' | 'Headmat' | 'Parent' | 'Idnrk' | 'Level'>) => `${l.Land1}|${l.Hwerks}|${l.Headmat}|${l.Level}|${l.Parent}|${l.Idnrk}`;
 
 /** Monthly quantities after shifts and multipliers. */
 export function scenarioMonths(base: Decimal[], c: PlanClientWhatIf): Decimal[] {
@@ -137,12 +137,12 @@ export function compare(baseRows: PlanCostLine[], scenRows: PlanCostLine[], c: P
   for (const l of baseRows) {
     if (!isLeafRow(l)) continue;
     const b = baselineLine(l);
-    for (const r of [touch(heads, `${l.Hwerks}|${l.Headmat}`, l.Headmat, `${l.Hwerks} · ${l.Headtxt}`), touch(comps, `${l.Hwerks}|${l.Idnrk}`, l.Idnrk, `${l.Hwerks} · ${l.Maktx}`)]) r.base = add(r.base, b.months);
+    for (const r of [touch(heads, `${l.Land1}|${l.Hwerks}|${l.Headmat}`, l.Headmat, `${l.Land1} · ${l.Hwerks} · ${l.Headtxt}`), touch(comps, `${l.Hwerks}|${l.Idnrk}`, l.Idnrk, `${l.Hwerks} · ${l.Maktx}`)]) r.base = add(r.base, b.months);
   }
   for (const l of scenRows) {
     if (!isLeafRow(l)) continue;
     const s = simulateLine(l, c);
-    for (const r of [touch(heads, `${l.Hwerks}|${l.Headmat}`, l.Headmat, `${l.Hwerks} · ${l.Headtxt}`), touch(comps, `${l.Hwerks}|${l.Idnrk}`, l.Idnrk, `${l.Hwerks} · ${l.Maktx}`)]) r.scen = add(r.scen, s.months);
+    for (const r of [touch(heads, `${l.Land1}|${l.Hwerks}|${l.Headmat}`, l.Headmat, `${l.Land1} · ${l.Hwerks} · ${l.Headtxt}`), touch(comps, `${l.Hwerks}|${l.Idnrk}`, l.Idnrk, `${l.Hwerks} · ${l.Maktx}`)]) r.scen = add(r.scen, s.months);
   }
   const fin = (m: Map<string, CompareRow>) =>
     [...m.values()].map((r) => {

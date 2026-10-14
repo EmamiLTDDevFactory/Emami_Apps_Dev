@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { prioString } from '../rates/priority';
 import { SELECTION, sel, selectionField, type FieldKind } from './fields';
 import { MODE_TO_SET_KEY, type EntitySetKey } from './entities';
 import { usesField, type CostQuery } from '../query/schema';
@@ -70,7 +71,7 @@ export function buildSelectionFilter(q: CostQuery): string {
   if (u('maxLevel') && q.maxLevel > 0) c.push(eq('MaxLevel', q.maxLevel));
   if (u('lookback')) c.push(eq('Lookback', q.lookback));
   if (u('freightDays')) c.push(eq('FreightDays', q.freightDays));
-  if (u('prio')) c.push(eq('Prio', q.prio.join(',')));
+  if (u('prio')) c.push(eq('Prio', prioString(q.prio)));
   if (u('donorPlant') && q.donorPlant) c.push(eq('DonorPlant', q.donorPlant));
   if (u('inclFrt')) c.push(eq('InclFrt', q.inclFrt));
   if (u('stdFrt')) c.push(eq('StdFrt', q.stdFrt));

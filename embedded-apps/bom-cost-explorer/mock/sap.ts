@@ -536,6 +536,7 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   //   expand-fails      $expand=RateOptions -> 501 (the live services today); RateOptionSet -> 404
   //   direct-works      RateOptionSet answers flat rows; $expand -> 501
   //   only-expand-works $expand works; RateOptionSet -> 404
+  //   expand-empty      $expand answers {results: []} on every line although SrcCount > 0 (SAP bug); RateOptionSet -> 404
   //   (unset)           as before: $expand works, RateOptionSet -> 404
   const ratesMode = process.env.MOCK_SAP_RATES || '';
   const known = [ENTITY_SET.COST_LINES, ENTITY_SET.RATES, ENTITY_SET.FREIGHT, ENTITY_SET.RMPM, ...(ratesMode === 'direct-works' ? ['RateOptionSet'] : [])] as string[];
@@ -564,6 +565,7 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
       const rows = costLines(p, (sp.get('$expand') ?? '').includes(NAV_RATE_OPTIONS), msgs);
       msgs.unshift({ code: 'ZBOM/000', message: `Costing finished: ${rows.length} line(s)`, severity: 'info' });
       let out = rows.map((r) => toSap(r, COST_LINE, RATE_OPTION));
+      if (ratesMode === 'expand-empty') out = out.map((r) => (NAV_RATE_OPTIONS in r ? { ...r, [NAV_RATE_OPTIONS]: { results: [] } } : r));
       // $select like SAP: only the listed properties; an expanded navigation only if selected;
       // an unknown property is a 400.
       const select = (sp.get('$select') ?? '').split(',').map((x) => x.trim()).filter(Boolean);

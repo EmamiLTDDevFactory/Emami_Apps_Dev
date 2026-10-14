@@ -13,7 +13,11 @@ import type { RatesState } from '@/lib/rates/useRateOptions';
 import { buildSourcesModel, type SourceOptionRow } from '@/lib/rates/sources';
 import { exportTable, type XCol } from '@/lib/client/export';
 import { fmtDate, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
-import { Button, cx, Segmented, Skeleton, SourceBadge, sourceColorVar } from '../ui';
+import { Button, cx, Segmented, SimTag, Skeleton, SourceBadge, sourceColorVar } from '../ui';
+import { ALL_RATE_SOURCES, prioLabel } from '@/lib/rates/priority';
+import { ratesIntegrity } from '@/lib/rates/integrity';
+import IntegrityBanner from './IntegrityBanner';
+import RateCompare from './RateCompare';
 
 type ColSet = 'compact' | 'report' | 'local';
 
@@ -54,12 +58,14 @@ const SETS: Record<ColSet, string[]> = {
   local: ['comp', 'desc', 'plant', 'locCurr', 'ratePcLoc', 'qty', 'costLoc', 'frtLoc', 'totLoc'],
 };
 
-type Item = { kind: 'block'; source: string; lines: number; total: string } | { kind: 'head' } | { kind: 'row'; row: SourceOptionRow };
+type Item = { kind: 'block'; source: string; lines: number; total: string } | { kind: 'head' } | { kind: 'row'; row: SourceOptionRow } | { kind: 'empty'; source: string };
 
 const ROW_H = 30;
 
-export default function RateSources({ rows, rates, query, onOpenRow }: { rows: CostLine[]; rates: RatesState; query: CostQuery; onOpenRow?: (i: number) => void }) {
+export default function RateSources({ rows, rates, query, onOpenRow, prio }: { rows: CostLine[]; rates: RatesState; query: CostQuery; onOpenRow?: (i: number) => void; /** priority of the run (for "none" cells and the label); default = query.prio */ prio?: string[] }) {
   const [set, setSet] = useState<ColSet>('compact');
+  const [view, setView] = useState<'blocks' | 'compare'>('blocks');
+  const runPrio = prio ?? query.prio ?? [];
   const { request } = rates;
   useEffect(() => { request(); }, [request]);
 
@@ -68,7 +74,12 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
   const items = useMemo<Item[]>(() => {
     if (!model) return [];
     const out: Item[] = [];
-    for (const b of model.blocks) {
+    // All five sources always (an empty block = no rate from that source, not an error), then any other.
+    const bySource = new Map(model.blocks.map((b) => [b.source, b]));
+    const order = [...ALL_RATE_SOURCES, ...model.blocks.map((b) => b.source).filter((x) => !ALL_RATE_SOURCES.includes(x))];
+    for (const src of order) {
+      const b = bySource.get(src);
+      if (!b) { out.push({ kind: 'block', source: src, lines: 0, total: '' }, { kind: 'empty', source: src }); continue; }
       out.push({ kind: 'block', source: b.source, lines: b.lines, total: fmtNum(b.total, 2) }, { kind: 'head' });
       for (const r of b.rows) out.push({ kind: 'row', row: r });
     }
@@ -78,6 +89,7 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
   const v = useVirtualizer({ count: items.length, getScrollElement: () => scrollRef.current, estimateSize: (i) => (items[i]?.kind === 'block' ? 40 : ROW_H), overscan: 20 });
 
   const srcCounts = useMemo(() => rows.filter((r) => !r.HasChild?.trim()).map((r) => r.SrcCount || 0), [rows]);
+  const integrity = useMemo(() => (rates.status === 'ready' ? ratesIntegrity(rows.filter((r) => !r.HasChild?.trim())) : null), [rates.status, rows]);
 
   if (rates.status === 'idle' || rates.status === 'loading') {
     return <div className="p-4"><p className="mb-3 text-sm text-muted">Loading rate options from SAP…</p><Skeleton rows={10} /></div>;
@@ -100,9 +112,7 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
       </div>
     );
   }
-  if (!model || !model.blocks.length) {
-    return <div className="p-5 text-sm text-muted">SAP returned no rate options for these components.</div>;
-  }
+  if (!model) return null;
 
   const doExport = () => {
     const flat = model.blocks.flatMap((b) => b.rows);
@@ -147,19 +157,23 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
   const width = cols.reduce((n, c) => n + c.width, 0) + 120;
   return (
     <div className="flex h-full flex-col">
+      <IntegrityBanner integrity={integrity} className="mx-3 mt-2" />
       <div className="flex flex-wrap items-center gap-3 border-b border-line px-3 py-2">
         <Summary label="Used (SAP)" value={fmtNum(model.usedTotal, 2)} />
-        <Summary label="Cheapest" value={fmtNum(model.cheapestTotal, 2)} />
+        <Summary label="Cheapest" value={fmtNum(model.cheapestTotal, 2)} sim />
         <Summary label="Saving" value={fmtSigned(model.saving, 2)} tone={model.saving.gt(0) ? 'good' : undefined} />
         <span className="text-xs text-muted">
+          Priority: <b className="text-ink">{prioLabel(runPrio)}</b> ·{' '}
           {model.linesWithOptions.toLocaleString('en-IN')} of {model.leafLines.toLocaleString('en-IN')} leaf components have options
           {model.noRateLines ? ` · ${model.noRateLines} without a rate (freight only)` : ''}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <Segmented<ColSet> size="sm" label="Columns" value={set} onChange={setSet} options={[{ value: 'compact', label: 'Compact' }, { value: 'report', label: 'Report' }, { value: 'local', label: 'Local currency' }]} />
+          <Segmented<'blocks' | 'compare'> size="sm" label="Rate sources view" value={view} onChange={setView} options={[{ value: 'blocks', label: 'By source' }, { value: 'compare', label: 'Compare' }]} />
+          {view === 'blocks' && <Segmented<ColSet> size="sm" label="Columns" value={set} onChange={setSet} options={[{ value: 'compact', label: 'Compact' }, { value: 'report', label: 'Report' }, { value: 'local', label: 'Local currency' }]} />}
           <Button size="sm" onClick={doExport} title="Excel: every option, all columns"><FileSpreadsheet size={14} /> Excel</Button>
         </div>
       </div>
+      {view === 'compare' ? <div className="min-h-0 flex-1"><RateCompare rows={rows} prio={runPrio} onOpenRow={onOpenRow} /></div> : (
       <div ref={scrollRef} className="scroll-thin min-h-0 flex-1 overflow-auto">
         <div style={{ height: v.getTotalSize(), width, position: 'relative' }}>
           {v.getVirtualItems().map((vi) => {
@@ -170,9 +184,13 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
                 <div key={vi.key} style={{ ...style, borderLeft: `4px solid ${sourceColorVar(it.source)}`, background: `color-mix(in srgb, ${sourceColorVar(it.source)} 10%, transparent)` }} className="flex items-center gap-3 px-3 text-sm">
                   <SourceBadge source={it.source} />
                   <span className="text-muted">{it.lines.toLocaleString('en-IN')} component(s)</span>
-                  <span className="ml-auto font-semibold"><span className="text-2xs text-faint">best of source, total </span><span className="num">{it.total}</span> <span className="text-2xs text-faint">INR</span></span>
+                  {!runPrio.includes(it.source) && <span className="text-2xs text-faint">not in priority</span>}
+                  {it.total && <span className="ml-auto font-semibold"><span className="text-2xs text-faint">best of source, total </span><span className="num">{it.total}</span> <span className="text-2xs text-faint">INR</span></span>}
                 </div>
               );
+            }
+            if (it.kind === 'empty') {
+              return <div key={vi.key} style={style} className="flex items-center px-4 text-xs text-faint">No rate from {it.source} for these components{runPrio.includes(it.source) ? ' (in the priority: shown as "none" in Compare)' : ''}.</div>;
             }
             if (it.kind === 'head') {
               return (
@@ -201,14 +219,15 @@ export default function RateSources({ rows, rates, query, onOpenRow }: { rows: C
           })}
         </div>
       </div>
+      )}
     </div>
   );
 }
 
-function Summary({ label, value, tone }: { label: string; value: string; tone?: 'good' }) {
+function Summary({ label, value, tone, sim }: { label: string; value: string; tone?: 'good'; sim?: boolean }) {
   return (
     <div className="rounded-xl border border-line bg-panel px-3 py-1.5">
-      <div className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">{label}</div>
+      <div className="flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">{label}{sim && <SimTag />}</div>
       <div className={cx('num text-sm font-extrabold', tone === 'good' && 'text-good')}>{value} <span className="text-2xs font-semibold text-muted">INR</span></div>
     </div>
   );

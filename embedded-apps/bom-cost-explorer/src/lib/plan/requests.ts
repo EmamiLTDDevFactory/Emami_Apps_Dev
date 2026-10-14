@@ -5,6 +5,7 @@
  */
 import { literal } from '../sap/filter';
 import { PLAN_COST_LINE, PLAN_COST_MODE, PLAN_SELECTION, PLAN_SET, planFlag } from './fields';
+import { PRIO_PRESETS, prioString } from '../rates/priority';
 
 export interface PlanFilters {
   plants: string[];
@@ -35,7 +36,7 @@ export interface PlanCostQuery extends PlanFilters {
 
 export const defaultPlanCostQuery = (plan: string): PlanCostQuery => ({
   plan, plants: [], materials: [], mtartFilter: 'A', allBoms: false, basePlant: '', scrap: false, fallback: true,
-  inclFrt: true, stdFrt: false, inclBudget: true, budgetYr: String(new Date().getFullYear()), inclCover: false, prio: '', donorPlant: '',
+  inclFrt: true, stdFrt: false, inclBudget: true, budgetYr: String(new Date().getFullYear()), inclCover: false, prio: prioString(PRIO_PRESETS[0].prio), donorPlant: '',
   lookback: 365, freightDays: 0, budatFrom: '', budatTo: '',
 });
 
@@ -102,9 +103,9 @@ export function costFilter(q: PlanCostQuery, withMode = true): string {
     withMode && eq('InclBudget', q.inclBudget),
     withMode && q.inclBudget && q.budgetYr ? eq('BudgetYr', q.budgetYr) : null,
     withMode && eq('InclCover', q.inclCover),
-    withMode && q.prio ? eq('Prio', q.prio) : null,
+    withMode && prioString(q.prio.split(',')) ? eq('Prio', prioString(q.prio.split(','))) : null,
     withMode && q.donorPlant ? eq('DonorPlant', q.donorPlant.toUpperCase()) : null,
-    withMode && eq('Lookback', q.lookback),
+    withMode && q.lookback > 0 ? eq('Lookback', q.lookback) : null,
     withMode && q.freightDays ? eq('FreightDays', q.freightDays) : null,
     withMode && q.budatFrom ? eq('BudatFrom', q.budatFrom) : null,
     withMode && q.budatTo ? eq('BudatTo', q.budatTo) : null,

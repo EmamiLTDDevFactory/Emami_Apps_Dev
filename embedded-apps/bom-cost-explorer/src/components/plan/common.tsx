@@ -1,12 +1,16 @@
 'use client';
 /** Small pieces shared by the Production Plan screens. */
-import type { ReactNode } from 'react';
-import { AlertTriangle, Lock, Play, Square } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, ChevronDown, ChevronRight, Lock, Play, Square } from 'lucide-react';
 import { Button, Field, Segmented, Spinner, Toggle, cx, inputCls } from '../ui';
 import { MaterialPicker } from '../Pickers';
 import type { PlanCostQuery } from '@/lib/plan/requests';
 import type { PlanWorkspace } from '@/lib/plan/workspace';
 import { fmtMs } from '@/lib/format';
+import SourcePriorityEditor from '../rates/SourcePriorityEditor';
+import { parsePrio, prioLabel, prioString } from '@/lib/rates/priority';
+
+const LOOKBACK_CHOICES = [365, 730, 1095];
 
 export function ErrorNote({ error, children }: { error: string; children?: ReactNode }) {
   if (!error) return null;
@@ -83,6 +87,7 @@ export function RoleNote({ ws }: { ws: Pick<PlanWorkspace, 'canWrite' | 'role'> 
 /** Filters for the Mode P runs (Breakup, Requirement, Scenarios). */
 export function PlanQueryBar({ query, onChange, onRun, onCancel, running, ms, runLabel = 'Run in SAP', extra }: { query: PlanCostQuery; onChange: (q: PlanCostQuery) => void; onRun: (q: PlanCostQuery) => void; onCancel?: () => void; running: boolean; ms?: number; runLabel?: string; extra?: ReactNode }) {
   const set = (p: Partial<PlanCostQuery>) => onChange({ ...query, ...p });
+  const [ratesOpen, setRatesOpen] = useState(false);
   return (
     <div className="grid gap-3 rounded-2xl border border-line bg-panel p-3 shadow-card md:grid-cols-[1.6fr_auto]">
       <Field label="Materials" hint={`Empty = every material of the plan${query.plants.length ? ` in ${query.plants.join(', ')}` : ''} · plants are chosen at the top of the page`}>
@@ -108,6 +113,10 @@ export function PlanQueryBar({ query, onChange, onRun, onCancel, running, ms, ru
           <input className={cx(inputCls, '!h-8 !w-24')} value={query.basePlant} maxLength={4} onChange={(e) => set({ basePlant: e.target.value.toUpperCase() })} />
         </label>
         {extra}
+        <button type="button" onClick={() => setRatesOpen(!ratesOpen)} aria-expanded={ratesOpen} className="inline-flex items-center gap-1 text-sm font-semibold text-accent">
+          {ratesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Rate sources
+          <span className="font-normal text-muted">({prioLabel(parsePrio(query.prio))} · {query.lookback || 'SAP default'}{query.lookback ? ' days' : ''}{query.donorPlant ? ` · donor ${query.donorPlant}` : ''})</span>
+        </button>
         <div className="ml-auto flex items-center gap-2">
           {ms ? <span className="text-2xs text-faint">last run {fmtMs(ms)}</span> : null}
           {running && onCancel && <Button size="sm" variant="ghost" onClick={onCancel}><Square size={13} /> Cancel</Button>}
@@ -116,6 +125,25 @@ export function PlanQueryBar({ query, onChange, onRun, onCancel, running, ms, ru
           </Button>
         </div>
       </div>
+      {ratesOpen && (
+        <div className="grid gap-4 border-t border-line pt-3 md:col-span-2 md:grid-cols-[minmax(0,320px)_auto_auto]">
+          <div>
+            <p className="mb-1 text-xs font-bold text-muted">Rate source priority <span className="font-normal">(tick the sources SAP may use; drag to order)</span></p>
+            <SourcePriorityEditor value={parsePrio(query.prio)} onChange={(v) => set({ prio: prioString(v) })} compact />
+          </div>
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            Donor plant
+            <input data-field="plan-donor-plant" className={cx(inputCls, '!h-8 !w-28 font-normal')} placeholder="optional" maxLength={4} value={query.donorPlant} onChange={(e) => set({ donorPlant: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
+            <span className="font-normal text-faint">Rates from here when a plant has none</span>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            Look-back
+            <select className={cx(inputCls, '!h-8 !w-32 font-normal')} value={query.lookback} onChange={(e) => set({ lookback: Number(e.target.value) })}>
+              {[...new Set([...LOOKBACK_CHOICES, query.lookback])].filter((n) => n > 0).sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n} days</option>)}
+            </select>
+          </label>
+        </div>
+      )}
     </div>
   );
 }

@@ -93,7 +93,7 @@ describe('budget in the plan run', () => {
       expect(f.sources.BUDGET.perPc!.gt(0)).toBe(true);
       expect(f.sources.SELECTED.perPc!.gt(0)).toBe(true);
       expect(f.sources.MBEW.priced).toBeGreaterThan(0);
-      const sel = lines.filter((l) => isLeafRow(l) && `${l.Hwerks}|${l.Headmat}` === f.key && l.SelSource).reduce((a, l) => a.plus(D(l.SelRatePcInr).times(D(l.QtyTot))), ZERO);
+      const sel = lines.filter((l) => isLeafRow(l) && `${l.Land1}|${l.Hwerks}|${l.Headmat}` === f.key && l.SelSource).reduce((a, l) => a.plus(D(l.SelRatePcInr).times(D(l.QtyTot))), ZERO);
       expect(f.sources.SELECTED.perPc!.minus(sel.div(f.planQty)).abs().lt(1e-12)).toBe(true);
     }
   });

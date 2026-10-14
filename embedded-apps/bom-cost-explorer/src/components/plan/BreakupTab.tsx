@@ -18,6 +18,8 @@ import { costFilter } from '@/lib/plan/requests';
 import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
 import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } from '@/lib/plan/sources';
 import FgPerPiece from './FgPerPiece';
+import RateCoverage from '../rates/RateCoverage';
+import { parsePrio, prioLabel } from '@/lib/rates/priority';
 import { useRateOptionsByFilter } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import { defaultQuery } from '@/lib/query/schema';
@@ -27,7 +29,7 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import type { CostLine } from '@/lib/sap/fields';
 import { fmtCompactInr, fmtDate, fmtNum, fmtPct, fmtQty, fmtRate } from '@/lib/format';
 
-type View = 'tree' | 'fg' | 'charts' | 'rates';
+type View = 'tree' | 'fg' | 'charts' | 'rates' | 'coverage';
 type Months = 'qty' | 'cost';
 const ROW_CAP = 3000;
 
@@ -53,7 +55,7 @@ function buildGroups(rows: PlanCostLine[], rollups: Map<string, PlanHeaderRollup
       const pRolls: PlanHeaderRollup[] = [];
       const pIdx = out.push({ key: `p|${land}|${plant}`, kind: 'plant', depth: 1, label: plant, sub: '', total: ZERO, months: [], rows: [] }) - 1;
       for (const [head, idx] of heads) {
-        const r = rollups.get(headerKey({ Hwerks: plant, Headmat: head }))!;
+        const r = rollups.get(headerKey({ Land1: land, Hwerks: plant, Headmat: head }))!;
         pRolls.push(r);
         out.push({ key: `h|${land}|${plant}|${head}`, kind: 'header', depth: 2, label: head, sub: r.headtxt, total: r.total, months: r.months, rollup: r, rows: idx, stlal: idx.map((i) => rows[i].Stlal).find(Boolean) ?? '' });
       }
@@ -85,6 +87,23 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
   const groups = useMemo(() => buildGroups(rows, rollups), [rows, rollups]);
   const totals = useMemo(() => planTotals(rollups.values()), [rollups]);
   const lastProd = useMemo(() => [...rollups.values()].filter((h) => h.bomSrc === 'LASTPROD'), [rollups]);
+  // Plan-country segregation: summary per plan country (cost, plan materials, plants) and a country filter for the tree.
+  const [country, setCountry] = useState('');
+  const byCountry = useMemo(() => {
+    const m = new Map<string, { land1: string; landx: string; heads: number; plants: Set<string>; total: Decimal; leaves: number; noRate: number }>();
+    for (const h of rollups.values()) {
+      const c = m.get(h.land1) ?? { land1: h.land1, landx: rows.find((l) => l.Land1 === h.land1)?.Landx ?? '', heads: 0, plants: new Set<string>(), total: ZERO, leaves: 0, noRate: 0 };
+      c.heads++;
+      c.plants.add(h.hwerks);
+      c.total = c.total.plus(h.total);
+      c.leaves += h.leaves;
+      c.noRate += h.noRate;
+      m.set(h.land1, c);
+    }
+    return [...m.values()];
+  }, [rollups, rows]);
+  const ranPrio = parsePrio(cost.ranQuery?.prio ?? ws.query.prio);
+  const donorRows = useMemo(() => rows.filter((l) => isLeafRow(l) && !!l.Donor).length, [rows]);
   const withRates = useMemo(() => (rates.status === 'ready' && rates.rows ? attachRateOptions(rows as unknown as CostLine[], rates.rows) : (rows as unknown as CostLine[])), [rows, rates.status, rates.rows]);
   const lines = withRates as unknown as PlanLineWithOptions[];
   const fg = useMemo(() => fgSources(lines), [lines]);
@@ -105,6 +124,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
     let hideBelow = Infinity;
     let budget = ROW_CAP;
     for (const g of groups) {
+      if (country && g.key.split('|')[1] !== country) continue;
       if (g.depth > hideBelow) continue;
       hideBelow = Infinity;
       if (g.kind === 'header' && t && !g.rows.some((i) => matches(rows[i]))) continue;
@@ -114,7 +134,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
     }
     return { list: out, capped: budget < 0 };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, open, closed, t, leafOnly, rows]);
+  }, [groups, open, closed, t, leafOnly, rows, country]);
 
   const running = cost.status === 'running';
   return (
@@ -129,13 +149,42 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Plan cost" value={fmtCompactInr(Number(totals.total.toFixed(2)))} sub={`${fmtNum(totals.total, 2)} INR`} />
-            <Stat label="Plan materials" value={rollups.size} sub={`${new Set([...rollups.values()].map((h) => h.hwerks)).size} plants`} />
+            <Stat label="Plan materials" value={rollups.size} sub={`${new Set([...rollups.values()].map((h) => h.hwerks)).size} plants · ${byCountry.length} plan countr${byCountry.length === 1 ? 'y' : 'ies'}`} />
             <Stat label="Leaf components" value={totals.leaves.toLocaleString('en-IN')} sub={totals.noRate ? `${totals.noRate} without a rate (freight only)` : 'all priced'} tone={totals.noRate ? 'warn' : undefined} />
             <Stat label="BOM from another plant" value={lastProd.length} sub={lastProd.length ? lastProd.slice(0, 2).map((h) => `${h.headmat}@${h.hwerks}`).join(', ') : 'every plant has its own BOM'} title={BOM_SOURCE_RULE} />
           </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <span title="Rate source priority SAP used for this result">Priority: <b className="text-ink">{prioLabel(ranPrio)}</b></span>
+            <span>· Look-back {cost.ranQuery?.lookback || 'SAP default'}{cost.ranQuery?.lookback ? ' days' : ''}</span>
+            {cost.ranQuery?.donorPlant && <span>· Donor plant {cost.ranQuery.donorPlant}</span>}
+            {donorRows > 0 && <Pill tone="warn">{donorRows} leaf row{donorRows === 1 ? '' : 's'} from a donor plant</Pill>}
+          </div>
+          {byCountry.length > 0 && (
+            <Card title="By plan country" bodyClass="p-0">
+              <div className="scroll-thin overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr><th className={thCls}>Plan country</th><th className={thNum}>Plan materials</th><th className={thNum}>Plants</th><th className={thNum}>Plan cost INR</th><th className={thNum}>Share</th><th className={thNum}>Leaf components</th><th className={thCls} /></tr></thead>
+                  <tbody>
+                    {byCountry.map((c) => (
+                      <tr key={c.land1} className={cx('cursor-pointer border-t border-line/60 hover:bg-sunken', country === c.land1 && 'bg-accent/[0.06] font-semibold')} onClick={() => setCountry(country === c.land1 ? '' : c.land1)}>
+                        <td className={tdCls}><span className="font-mono font-semibold">{c.land1}</span> <span className="text-muted">{c.landx}</span></td>
+                        <td className={tdNum}>{c.heads}</td>
+                        <td className={tdNum}>{c.plants.size}</td>
+                        <td className={tdNum}>{fmtNum(c.total, 2)}</td>
+                        <td className={tdNum}>{totals.total.gt(0) ? `${c.total.div(totals.total).times(100).toFixed(1)}%` : '—'}</td>
+                        <td className={tdNum}>{c.leaves}{c.noRate ? <span className="text-warn"> ({c.noRate} no rate)</span> : ''}</td>
+                        <td className={cx(tdCls, 'text-right text-accent')}>{country === c.land1 ? 'Showing only this ✕' : 'Show only'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
           <Warnings messages={cost.messages} />
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'fg', label: 'FG per pc' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }]} />
+            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'fg', label: 'FG per pc' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }, { value: 'coverage', label: 'Rate coverage' }]} />
+            {country && <button type="button" onClick={() => setCountry('')} className="rounded-full border border-accent bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">Plan country {country} ✕</button>}
             {view === 'tree' && (
               <>
                 <div className="w-44"><Segmented<Months> size="sm" label="Monthly columns" value={months} onChange={setMonths} options={[{ value: 'qty', label: 'Qty / month' }, { value: 'cost', label: 'Cost / month' }]} /></div>
@@ -186,10 +235,23 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           )}
           {view === 'fg' && <FgPerPiece rows={fg} rates={rates} query={cost.ranQuery ?? ws.query} lines={lines} />}
           {view === 'charts' && <PlanCharts rows={rows} />}
+          {view === 'coverage' && (
+            <Card bodyClass="p-0 h-[70vh]">
+              <RateCoverage
+                lines={withRates}
+                rates={rates}
+                prio={ranPrio}
+                lookback={cost.ranQuery?.lookback ?? ws.query.lookback}
+                onOpenRow={setDrawer}
+                onLookback={(days) => { const q = { ...ws.query, lookback: days }; ws.setQuery(q); void ws.runCost(q); }}
+                onAddDonor={() => { const el = document.querySelector<HTMLInputElement>('[data-field="plan-donor-plant"]'); el?.scrollIntoView({ block: 'center' }); el?.focus(); }}
+              />
+            </Card>
+          )}
           {view === 'rates' && (
             <Card bodyClass="p-0 h-[70vh]">
               {rates.status === 'ready' ? (
-                <RateSources rows={withRates} rates={rates} query={{ ...defaultQuery('B'), materials: cost.ranQuery?.materials ?? [], plants: cost.ranQuery?.plants ?? [] }} onOpenRow={setDrawer} />
+                <RateSources rows={withRates} rates={rates} query={{ ...defaultQuery('B'), materials: cost.ranQuery?.materials ?? [], plants: cost.ranQuery?.plants ?? [] }} onOpenRow={setDrawer} prio={ranPrio} />
               ) : (
                 <RatesPending status={rates.status} note={rates.note} request={rates.request} retest={rates.retest} />
               )}
@@ -278,6 +340,7 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
           <span className="shrink-0 font-mono">{l.Idnrk}</span>
           <span className="min-w-0 truncate text-muted">{l.Maktx}</span>
           {l.Mtart && <span className="shrink-0 text-2xs text-faint">{l.Mtart}</span>}
+          {l.Donor && <span className="shrink-0 rounded bg-warn/15 px-1 text-[10px] font-bold text-warn" title={`Rate taken from donor plant ${l.Donor}`}>Donor plant {l.Donor}</span>}
         </div>
       </td>
       <td className={tdNum}>{l.Level}</td>

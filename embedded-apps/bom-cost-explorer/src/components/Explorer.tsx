@@ -6,6 +6,8 @@ import { loadSapConfig } from '@/lib/sap/config';
 import { useRateOptions } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import RateSources from './rates/RateSources';
+import RateCoverage from './rates/RateCoverage';
+import { prioLabel } from '@/lib/rates/priority';
 import type { PlantRow } from '@/lib/sap/fields';
 import { defaultQuery, MODE_LABEL, type CostQuery, type Mode } from '@/lib/query/schema';
 import { decodeQuery, encodeQuery } from '@/lib/query/url';
@@ -37,7 +39,7 @@ import Warnings from './Warnings';
 import PrintView from './PrintView';
 import { Button, cx, Empty, Pill, SimTag, Skeleton, Tabs } from './ui';
 
-type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates';
+type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates' | 'coverage';
 
 const lastQueryKey = (u: string) => `bce:last-query:${u}`;
 const lastMsKey = (m: Mode) => `bce:last-ms:${m}`;
@@ -146,6 +148,8 @@ export default function Explorer() {
   const rows = tree ? tree.rows : result?.rows ?? [];
   /** Rate options are loaded (mode B): the re-pick what-ifs and the drawer's options table can use them. */
   const rateOptions = mode === 'B' && rates.status === 'ready';
+  // KPI: leaf rows SAP costed with rates from the donor plant (Donor set on the line).
+  const donorRows = useMemo(() => (result?.rows ?? []).filter((r) => !r.HasChild?.trim() && !!r.Donor).length, [result]);
   const { request: requestRates } = rates;
   useEffect(() => {
     if (drawer !== null && mode === 'B') requestRates();
@@ -255,6 +259,7 @@ export default function Explorer() {
           { id: 'dq', label: 'Data quality', badge: dqCount ? <Pill tone="warn">{dqCount}</Pill> : undefined },
           { id: 'scen', label: 'Scenarios' },
           { id: 'rates', label: 'Rate sources' },
+          { id: 'coverage', label: 'Rate coverage' },
         ]
       : mode === 'C'
         ? [
@@ -370,6 +375,8 @@ export default function Explorer() {
                 <strong className="num text-lg font-extrabold">{fmtNum(total, 2)}</strong>
                 <span className="text-xs font-semibold text-muted">{groupCurr}</span>
                 {simTotal && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(simTotal, 2)}</strong></>}
+                <span className="text-2xs text-muted" title="Rate source priority SAP used for this result">Priority: <b className="text-ink">{prioLabel(ranQuery.prio)}</b></span>
+                {donorRows > 0 && <Pill tone="warn" title={`Leaf rows costed with rates from donor plant ${ranQuery.donorPlant || ''}`}>{donorRows} donor row{donorRows === 1 ? '' : 's'}</Pill>}
               </div>
             )}
           </div>
@@ -419,7 +426,20 @@ export default function Explorer() {
               plantNames={plantNames}
             />
           ) : activeTab === 'rates' && ranQuery ? (
-            <RateSources rows={rows} rates={rates} query={ranQuery} onOpenRow={setDrawer} />
+            <RateSources rows={rows} rates={rates} query={ranQuery} onOpenRow={setDrawer} prio={ranQuery.prio} />
+          ) : activeTab === 'coverage' && ranQuery ? (
+            <RateCoverage
+              lines={rows}
+              rates={rates}
+              prio={ranQuery.prio}
+              lookback={ranQuery.lookback}
+              onOpenRow={setDrawer}
+              onLookback={(days) => { const q = { ...ranQuery, lookback: days }; setQuery(q); run(q); }}
+              onAddDonor={() => {
+                setCollapsed(false);
+                setTimeout(() => { const el = document.querySelector<HTMLSelectElement>('[data-field="donor-plant"]'); el?.scrollIntoView({ block: 'center' }); el?.focus(); }, 60);
+              }}
+            />
           ) : activeTab === 'dq' ? (
             <DataQuality rows={rows} onOpenRow={openRow} />
           ) : null}
