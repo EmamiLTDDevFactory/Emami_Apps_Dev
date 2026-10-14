@@ -119,11 +119,9 @@ function CreateClaimInner() {
   const [gstLookupError, setGstLookupError] = useState('');
   const [gstinChoice, setGstinChoice] = useState<'yes' | 'no'>('no');
   const [hsnSac, setHsnSac] = useState('');
-  const [availableAreas, setAvailableAreas] = useState<any[]>([]);
-  const [areasLoading, setAreasLoading] = useState(false);
+  // Auto-matched from the GST lookup's Regio field against AreaSet.Bland (see lookupGstByGstin
+  // below) - no longer a user-pickable dropdown, same treatment as the read-only Cost Center field.
   const [selectedArea, setSelectedArea] = useState<any | null>(null);
-  const [areaModalVisible, setAreaModalVisible] = useState(false);
-  const [areaSearch, setAreaSearch] = useState('');
   const [justification, setJustification] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Pristine, pre-compression source for every attachment picked THIS session (keyed by attachment
@@ -139,9 +137,6 @@ function CreateClaimInner() {
   const [managerApprovedAttachments, setManagerApprovedAttachments] = useState<Attachment[]>([]);
   const [managerApprovedOriginalSources, setManagerApprovedOriginalSources] = useState<Record<string, { uri: string; mimeType: string }>>({});
   const normalizedGstin = gstinInput.replace(/\s+/g, '').toUpperCase();
-  const filteredAreas = availableAreas.filter((area) =>
-    `${area.Bland || ''} ${area.Bezei || ''}`.toLowerCase().includes(areaSearch.toLowerCase())
-  );
   const [amountError, setAmountError] = useState('');
   const [messageModal, setMessageModal] = useState<MessageModalState>(null);
   // Every submission/validation error - including attachment and mandatory-field messages -
@@ -342,6 +337,7 @@ function CreateClaimInner() {
       setGstLookupLoading(true);
       setGstLookupError('');
       setSelectedGst(null);
+      setSelectedArea(null);
 
       try {
         // Basis has opened GstSet for direct anonymous GET access. Filter is pre-encoded into the
@@ -368,6 +364,21 @@ function CreateClaimInner() {
 
         const display = `${matchingItem.Lifnr || matchingItem.lifnr || ''} • ${matchingItem.Name1 || matchingItem.name1 || ''} • ${matchingItem.Stcd3 || matchingItem.stcd3 || matchingItem.GSTIN || matchingItem.gstin || ''}`.trim();
         setSelectedGst({ value: matchingItem.Lifnr || matchingItem.lifnr || display, display, item: matchingItem });
+
+        // Auto-bind Region from this GST record's own Regio, matched against AreaSet.Bland -
+        // the user no longer picks a region manually, same as Cost Center.
+        const regio = (matchingItem.Regio || matchingItem.regio || '').toString().trim().toUpperCase();
+        if (regio) {
+          const areas = await fetchAreas();
+          const matchedArea = areas.find((area: any) => (area.Bland || '').toString().trim().toUpperCase() === regio);
+          if (matchedArea) {
+            setSelectedArea(matchedArea);
+          } else {
+            setGstLookupError('GST details found, but no matching region could be determined for this GSTIN.');
+          }
+        } else {
+          setGstLookupError('GST details found, but this record has no region to auto-fill.');
+        }
       } catch (e) {
         setGstLookupError('Failed to lookup GSTIN. Please try again.');
       } finally {
@@ -572,6 +583,11 @@ function CreateClaimInner() {
       return;
     }
 
+    if (gstinChoice === 'yes' && selectedGst && !selectedArea) {
+      setFormError('Unable to determine Region for this GSTIN. Please re-enter the GSTIN or contact support.');
+      return;
+    }
+
     setAmountError('');
     setFormError('');
     const claimData: any = {
@@ -670,7 +686,7 @@ function CreateClaimInner() {
         <Field label="GSTIN Available (Select Yes in Case of Gst)" required className="mb-3">
           <YesNo
             value={gstinChoice === 'yes'}
-            onChange={async (v) => {
+            onChange={(v) => {
               if (v) {
                 setGstinChoice('yes');
                 setGstinInput('');
@@ -678,10 +694,6 @@ function CreateClaimInner() {
                 setGstLookupError('');
                 setSelectedArea(null);
                 setHsnSac('');
-                setAreasLoading(true);
-                const areas = await fetchAreas();
-                setAvailableAreas(areas);
-                setAreasLoading(false);
               } else {
                 setGstinChoice('no');
                 setGstinInput('');
@@ -689,7 +701,6 @@ function CreateClaimInner() {
                 setGstLookupError('');
                 setSelectedArea(null);
                 setHsnSac('');
-                setAvailableAreas([]);
               }
             }}
           />
@@ -705,7 +716,7 @@ function CreateClaimInner() {
                     const normalized = e.target.value.replace(/\s+/g, '').toUpperCase();
                     setGstinInput(normalized);
                     setGstLookupError('');
-                    if (normalized.length !== 15) setSelectedGst(null);
+                    if (normalized.length !== 15) { setSelectedGst(null); setSelectedArea(null); }
                   }}
                   placeholder="Enter 15-digit GSTIN"
                   maxLength={15}
@@ -718,11 +729,11 @@ function CreateClaimInner() {
               </Field>
 
               <Field label="Region" required>
-                <button type="button" onClick={() => setAreaModalVisible(true)} className="input flex items-center justify-between text-left">
-                  <span className="truncate">{selectedArea ? `${selectedArea.Bland}${selectedArea.Bezei ? ` (${selectedArea.Bezei})` : ''}` : 'Select Region...'}</span>
-                  <ChevronDown size={16} className="shrink-0 text-inkSoft" />
-                </button>
-                {areasLoading && <p className="mt-1 text-xs text-inkSoft">Loading regions…</p>}
+                <Input
+                  value={selectedArea ? `${selectedArea.Bland}${selectedArea.Bezei ? ` (${selectedArea.Bezei})` : ''}` : ''}
+                  placeholder={gstLookupLoading ? 'Determining region…' : 'Auto-filled from GSTIN'}
+                  disabled
+                />
               </Field>
             </div>
 
@@ -851,28 +862,6 @@ function CreateClaimInner() {
               >
                 {type.name}
                 {expenseType === type.name && <Check size={16} className="text-brand" />}
-              </button>
-            ))
-          )}
-        </div>
-      </Modal>
-
-      {/* Region Modal */}
-      <Modal open={areaModalVisible} title="Select Region" onClose={() => setAreaModalVisible(false)}>
-        <Input value={areaSearch} onChange={(e) => setAreaSearch(e.target.value)} placeholder="Search regions" className="mb-3" />
-        <div className="max-h-80 overflow-y-auto">
-          {filteredAreas.length === 0 ? (
-            <p className="py-3 text-sm text-inkSoft">No matching regions</p>
-          ) : (
-            filteredAreas.map((area, index) => (
-              <button
-                key={`${area.Bland}-${index}`}
-                type="button"
-                onClick={() => { setSelectedArea(area); setAreaModalVisible(false); }}
-                className="flex w-full items-center justify-between border-b border-line py-2.5 text-left text-sm text-ink last:border-b-0 hover:bg-cream"
-              >
-                {area.Bland}{area.Bezei ? ` (${area.Bezei})` : ''}
-                {selectedArea?.Bland === area.Bland && <Check size={16} className="text-brand" />}
               </button>
             ))
           )}
