@@ -28,4 +28,9 @@ export const ROUTES = {
   changeLog: `${BASE_PATH}/change-log/`,
   importCenter: `${BASE_PATH}/import-center/`,
   settings: `${BASE_PATH}/settings/`,
+  // Change Control Board — governance pages ahead of development (see src/ccb).
+  ccbOverview: `${BASE_PATH}/ccb/`,
+  ccbRequests: `${BASE_PATH}/ccb/requests/`,
+  ccbMeetings: `${BASE_PATH}/ccb/meetings/`,
+  ccbGovernance: `${BASE_PATH}/ccb/governance/`,
 };

@@ -628,3 +628,11 @@ textarea.pm-inline-input { resize: vertical; line-height: 1.45; }
    inline-flex wrapper with a %-max-width child otherwise collapses and breaks "FI-AR" at the hyphen. */
 .pm-field-value > .pm-rel { max-width: 100%; }
 .pm-field-value .pm-inline-view { max-width: none; }
+
+/* Back-link from a CCB-approved assignment to its change request (IssueView CcbLink). */
+.pm-ccb-link {
+  display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; padding: 8px 12px; border-radius: 10px; font-size: 12px;
+  color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in oklch, var(--accent) 22%, transparent);
+}
+.pm-ccb-link:hover { color: var(--accent-2); border-color: var(--accent); }
+.pm-ccb-link-go { margin-left: auto; font-weight: 600; white-space: nowrap; }

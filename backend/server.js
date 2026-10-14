@@ -62,8 +62,9 @@ apiRouter.use('/dev-tracker', require('./devTracker'));
 // Salescode (SAP SD master/transactional data for products sold through Salescode, via OData) — own routes under /salescode,
 // self-contained in salescode.js. Purely additive, same as Dev Tracker above.
 apiRouter.use('/salescode', require('./salescode'));
-// IT Change Control Board (raise / CAB-approve / implement / close IT changes) — own change_control
-// schema, own routes under /change-control, self-contained in changeControl.js. Purely additive.
+// SAP Change Control Board (the governance half of the Dev Tracker app: requests, feasibility review,
+// CCB meetings, approvals → Dev Tracker assignments) — own ccb schema, own routes under /change-control,
+// self-contained in changeControl.js. Access rides on the dev-tracker grant; CCB roles live in ccb.roles.
 apiRouter.use('/change-control', require('./changeControl'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -130,9 +131,8 @@ async function requireAccessManager(req, res, next) {
  * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Approval
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. BOM Simulator (bom-cost-explorer) adds Planner: may upload and edit production plans
- * (Admin may too; SAP's own authority check still applies). IT Change Control Board (change-control)
- * adds the CAB roles — User is the requester; see changeControl.js for what each role may do. */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'change-control': ['User', 'Change Manager', 'CAB Member', 'CAB Chair', 'Admin'] };
+ * (Admin may too; SAP's own authority check still applies). */
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

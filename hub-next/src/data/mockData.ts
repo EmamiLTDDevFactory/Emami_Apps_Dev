@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, GitPullRequestArrow,
+  Bot, DoorOpen, UserCog,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -28,7 +28,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   expense: '/apps/expense', // Non CTC Expense
   'audit-capa': '/apps/audit-capa', // Audit & CAPA
   'market-rate': '/apps/market-rate', // Market Rate
-  'dev-tracker': '/apps/dev-tracker', // Development Tracker
+  'dev-tracker': '/apps/dev-tracker', // SAP Change & Development (Change Control Board + Development Tracker)
   'po-followup': '/apps/po-followup', // PO Followup
   // IBD Provision Tracking (see embedded-apps/payment-tracking — folder/id kept as
   // "payment-tracking" for routing stability) is PO Followup's sibling app.
@@ -48,7 +48,6 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'shelf-life-deviation': '/apps/shelf-life-deviation', // Shelf Life Deviation (CPD approval + CADE Z-Report)
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
-  'change-control': '/apps/change-control', // IT Change Control Board (raise, CAB approval, implement, close)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -58,7 +57,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Packaging', icon: Activity, uses: 29, stage: 'UAT' },
   { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'CQA', icon: ClipboardCheck, uses: 0, stage: 'UAT' },
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0, stage: 'Live' },
-  { id: 'dev-tracker', name: 'Development Tracker', desc: 'Track SAP ABAP development items — status, timelines, and delays across SD, FI-AR, and other modules.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
+  { id: 'dev-tracker', name: 'SAP Change & Development', desc: 'SAP change governance and delivery in one place — Change Control Board requests, meetings and approvals flowing straight into development tracking, UAT and go-live.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0, stage: 'UAT' },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0, stage: 'WIP' },
@@ -75,7 +74,6 @@ const RAW_APPS: AppItem[] = [
   { id: 'sap-agent', name: 'SAP Agent', desc: 'AI agent that builds, fixes and tests ABAP objects on the SAP development system through ADT, with a policy guard, typed approvals and a full audit log. Admins only.', cat: 'IT', icon: Bot, uses: 0 },
   { id: 'gate-entry', name: 'Gate Entry', desc: 'Inward truck gate entry against purchase orders or ASNs on SAP, with gate pass print, truck out time and cancellation.', cat: 'Supply Chain', icon: DoorOpen, uses: 0, stage: 'UAT' },
   { id: 'access-tracker', name: 'Access Tracker', desc: 'Who has access to which app, every grant and revoke from Manage Access, and sign-in and app-usage activity, with Excel-ready exports. Admins only.', cat: 'IT', icon: UserCog, uses: 0, stage: 'Live' },
-  { id: 'change-control', name: 'IT Change Control Board', desc: 'Raise IT changes, assess risk, get CAB approval, and track implementation to closure, with a full audit trail.', cat: 'IT', icon: GitPullRequestArrow, uses: 0, stage: 'WIP' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
 ];
 

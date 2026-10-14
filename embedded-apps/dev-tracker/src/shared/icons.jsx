@@ -58,3 +58,11 @@ export const HeadsetIcon = (p) => <Icon {...p}><path d="M4 13v-1a8 8 0 0 1 16 0v
 export const StarIcon = (p) => <Icon {...p} fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6 6.6.8-4.8 4.6 1.2 6.6L12 17.4 6.1 20.5l1.2-6.6-4.8-4.6 6.6-.8L12 2.5Z" /></Icon>;
 export const ListIcon = (p) => <Icon {...p}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></Icon>;
 export const TimelineIcon = (p) => <Icon {...p}><path d="M3 5h9M7 12h11M5 19h8" strokeWidth="3" /></Icon>;
+export const GavelIcon = (p) => <Icon {...p}><path d="m14.5 3.5 6 6" /><path d="m11.5 6.5 6 6" /><path d="m13 5 4.5 4.5-3 3L10 8l3-3Z" /><path d="m11.8 10.8-7.3 7.3a1.5 1.5 0 0 0 2.1 2.1l7.3-7.3" /><path d="M3 21h8" /></Icon>;
+export const ClipboardIcon = (p) => <Icon {...p}><rect x="5" y="4" width="14" height="17" rx="2.5" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" /><path d="M8.5 11h7M8.5 15h4.5" /></Icon>;
+export const LandmarkIcon = (p) => <Icon {...p}><path d="M3 9.5 12 4l9 5.5" /><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" /><path d="M3 20.5h18" /></Icon>;
+export const CompassIcon = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z" /></Icon>;
+export const PrinterIcon = (p) => <Icon {...p}><path d="M7 9V3h10v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></Icon>;
+export const XIcon = (p) => <Icon {...p} strokeWidth="2.4"><path d="M6 6l12 12M18 6 6 18" /></Icon>;
+export const ExternalIcon = (p) => <Icon {...p}><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></Icon>;
+export const BoltIcon = (p) => <Icon {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></Icon>;

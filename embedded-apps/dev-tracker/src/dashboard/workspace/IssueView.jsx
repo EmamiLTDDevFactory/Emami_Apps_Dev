@@ -5,7 +5,8 @@ import { FIELD_LABELS } from '../../shared/constants.js';
 import { fmtDate, relativeTime, revisedTarget, isOverdue, riskLevel } from '../../shared/utils.js';
 import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, statusCategory, byRank, rankBetween, parseLabels, points, fmtPoints } from '../../shared/pm.js';
 import { RISK_META } from '../../shared/constants.js';
-import { ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon } from '../../shared/icons.jsx';
+import { ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon, GavelIcon } from '../../shared/icons.jsx';
+import { ROUTES } from '../../shared/routes.js';
 
 const PM_LABELS = {
   issueType: 'Issue Type', description: 'Description', storyPoints: 'Story Points', epicId: 'Epic',
@@ -142,6 +143,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
         <div className="pm-issue-cols">
           <div className="pm-issue-main">
             <InlineText className="pm-issue-summary" value={it.devList} onSave={(v) => v.trim() && save({ devList: v.trim() })} required />
+            <CcbLink item={it} />
 
             <section className="pm-issue-block">
               <h3>Description</h3>
@@ -648,5 +650,19 @@ function Comment({ c, canDelete, onSave, onDelete, onError }) {
         )}
       </div>
     </div>
+  );
+}
+
+// Assignments created by a Change Control Board approval carry their CR number as a label
+// (backend/changeControl.js) — link back to the request, its decision and audit trail.
+function CcbLink({ item }) {
+  const crNo = parseLabels(item.labels).find((l) => /^CCB-\d{4}-\d+$/i.test(l));
+  if (!crNo) return null;
+  return (
+    <a className="pm-ccb-link" href={`${ROUTES.ccbRequests}?cr=${encodeURIComponent(crNo)}`}>
+      <GavelIcon size={14} />
+      <span>Approved through the Change Control Board · <b>{crNo}</b></span>
+      <span className="pm-ccb-link-go">View request →</span>
+    </a>
   );
 }

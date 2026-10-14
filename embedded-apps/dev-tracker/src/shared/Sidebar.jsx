@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ROUTES } from './routes.js';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon, ListIcon, TimelineIcon, TableIcon, BarChartIcon } from './icons.jsx';
+import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon, ListIcon, TimelineIcon, TableIcon, BarChartIcon, CompassIcon, ClipboardIcon, GavelIcon, LandmarkIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
 function backToEmamiApps() {
@@ -21,6 +21,10 @@ function goBack() {
 // project sidebar. `section` starts a labelled group above that row.
 const NAV = [
   { key: 'home', label: 'Home', href: () => ROUTES.home, icon: HomeIcon, color: '#4F3FD6' },
+  { key: 'ccbOverview', label: 'CCB Overview', href: () => ROUTES.ccbOverview, icon: CompassIcon, color: '#7C3AED', section: 'Change Control Board' },
+  { key: 'ccbRequests', label: 'Change Requests', href: () => ROUTES.ccbRequests, icon: ClipboardIcon, color: '#4F3FD6' },
+  { key: 'ccbMeetings', label: 'CCB Meetings', href: () => ROUTES.ccbMeetings, icon: GavelIcon, color: '#C026D3' },
+  { key: 'ccbGovernance', label: 'Governance', href: () => ROUTES.ccbGovernance, icon: LandmarkIcon, color: '#0F766E' },
   { key: 'board', label: 'Board', href: () => ROUTES.board, icon: BoardIcon, color: '#0EA5E9', section: 'SAP Development' },
   { key: 'backlog', label: 'Backlog', href: () => ROUTES.backlog, icon: ListIcon, color: '#2563EB' },
   { key: 'timeline', label: 'Timeline', href: () => ROUTES.timeline, icon: TimelineIcon, color: '#7C3AED' },
@@ -68,24 +72,24 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
         <button type="button" className="sidebar-menu-btn" aria-label="Open navigation menu" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>
-        <a className="sidebar-mobilebar-brand" href={ROUTES.home} title="Emami Apps — Dev Tracker">
+        <a className="sidebar-mobilebar-brand" href={ROUTES.home} title="Emami Apps — SAP Change & Development">
           <img src={emamiLogo} alt="Emami Apps" />
-          <span>Dev Tracker</span>
+          <span>SAP Change & Dev</span>
         </a>
         {activeItem && <span className="sidebar-mobilebar-page">{activeItem.label}</span>}
       </div>
 
       {drawerOpen && <div className="sidebar-backdrop" onClick={() => setDrawerOpen(false)} />}
 
-      <aside className={`sidebar${drawerOpen ? ' is-open' : ''}`} aria-label="Dev Tracker navigation">
+      <aside className={`sidebar${drawerOpen ? ' is-open' : ''}`} aria-label="SAP Change & Development navigation">
         <button type="button" className="sidebar-close-btn" aria-label="Close navigation menu" onClick={() => setDrawerOpen(false)}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
 
-        <a className="sidebar-brand" href={ROUTES.home} title="Emami Apps — Dev Tracker">
+        <a className="sidebar-brand" href={ROUTES.home} title="Emami Apps — SAP Change & Development">
           <img src={emamiLogo} alt="Emami Apps" className="sidebar-logo" />
         </a>
-        <div className="sidebar-app-name">Dev Tracker</div>
+        <div className="sidebar-app-name">SAP Change &amp; Development</div>
         {subtitle && <div className="sidebar-subtitle">{subtitle}</div>}
 
         <nav className="sidebar-nav">
