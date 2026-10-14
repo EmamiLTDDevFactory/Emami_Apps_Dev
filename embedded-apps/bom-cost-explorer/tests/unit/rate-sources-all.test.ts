@@ -7,6 +7,7 @@ import { resetPlanMock } from '../../mock/plan';
 import { defaultQuery, type CostQuery } from '@/lib/query/schema';
 import { resetRatesCapability } from '@/lib/rates/capability';
 import { attachRateOptions, clearRatesCache, directRequest, expandRequest, fetchRateOptions } from '@/lib/rates/options';
+import { rateOptionFilter } from '@/lib/rates/optionFilter';
 import { PRIO_PRESETS, parsePrio, prioFromItems, prioItems, prioLabel, prioString } from '@/lib/rates/priority';
 import { integrityMessage, ratesIntegrity } from '@/lib/rates/integrity';
 import { MBEW_ONLY_HINT, rateCoverage } from '@/lib/rates/coverage';
@@ -80,7 +81,7 @@ describe('donor plant and look-back appear only when set', () => {
 });
 
 describe('rate options loading against the mock', () => {
-  it('direct set works: RateOptionSet with the costing filter byte for byte, no "+" in URLs', async () => {
+  it('direct set works: RateOptionSet with the costing filter (only the CHAR1 flags rewritten), no "+" in URLs', async () => {
     process.env.MOCK_SAP_RATES = 'direct-works';
     const query = q({ plants: ['1000', '1100'], donorPlant: '1200', lookback: 730 });
     const cost = await fetchCostLines(query);
@@ -88,8 +89,8 @@ describe('rate options loading against the mock', () => {
     expect('rows' in r && r.mode).toBe('direct');
     const costing = mockRequestLog.find((u) => path(u).endsWith('/CostLineSet') && !u.includes('expand'))!;
     const direct = mockRequestLog.filter((u) => path(u).endsWith('/RateOptionSet')).at(-1)!;
-    expect(filterOf(direct)).toBe(filterOf(costing));
-    expect(directRequest(query).params.$filter).toBe(buildSelectionFilter(query));
+    expect(filterOf(direct)).toBe(rateOptionFilter(filterOf(costing)));
+    expect(directRequest(query).params.$filter).toBe(rateOptionFilter(buildSelectionFilter(query)));
     expect(expandRequest(query).params.$filter).toBe(buildSelectionFilter(query));
     expect(mockRequestLog.every((u) => !u.includes('+'))).toBe(true);
     const lines = attachRateOptions(cost.rows, 'rows' in r ? r.rows : []);
@@ -117,7 +118,7 @@ describe('rate options loading against the mock', () => {
     // The coverage panel still works without options (MBEW-only uses SrcCount / SelSource only).
     expect(rateCoverage(lines, query.prio, true).leafRows).toBe(lines.length);
   });
-  it('plan Mode P: RateOptionSet filter equals the Mode P costing filter', async () => {
+  it('plan Mode P: RateOptionSet filter = the Mode P costing filter with the CHAR1 flags rewritten', async () => {
     process.env.MOCK_SAP_RATES = 'direct-works';
     const pq = { ...defaultPlanCostQuery('FY27-BASE'), plants: ['1000'] };
     await fetchPlanCostLines(pq);
@@ -125,7 +126,7 @@ describe('rate options loading against the mock', () => {
     await fetchRateOptionsByFilter(costFilter(pq));
     const costing = mockRequestLog.find((u) => path(u).endsWith('/CostLineSet'))!;
     const direct = mockRequestLog.filter((u) => path(u).endsWith('/RateOptionSet')).at(-1)!;
-    expect(filterOf(direct)).toBe(filterOf(costing));
+    expect(filterOf(direct)).toBe(rateOptionFilter(filterOf(costing)));
   });
 });
 

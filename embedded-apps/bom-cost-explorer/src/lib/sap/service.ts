@@ -1,14 +1,13 @@
 import {
   CONFIG, CONFIG_KEYS, COST_LINE, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
   type ConfigRow, type CostLine, type MaterialRow, type PlantRow,
-  MATERIAL_HIERARCHY, type MaterialHierarchyRow,
 } from './fields';
 import { NAV_RATE_OPTIONS } from './entities';
 import { sapConfig } from './config';
 import { type ExpandCapability } from './capability';
 import { getRatesCapability } from '../rates/capability';
 import { SapError, sapGetCollection, type SapGetOptions } from './client';
-import { configRequest, costRequest, materialHierarchyRequest, materialSearchRequest, pagedRequest, plantsRequest } from './requests';
+import { configRequest, costRequest, materialSearchRequest, pagedRequest, plantsRequest } from './requests';
 import { normalizeEntity } from './normalize';
 import type { SapMessage } from './messages';
 import type { CostQuery, Mode } from '../query/schema';
@@ -93,12 +92,6 @@ export async function fetchMaterials(term: string, opts: SapGetOptions = {}): Pr
   return r.rows.map((raw) => normalizeEntity<MaterialRow>(raw, MATERIAL)).slice(0, 50);
 }
 
-/** Every finished good with its Brand / Product / CRS hierarchy (one call, cascaded in the browser). */
-export async function fetchMaterialHierarchy(opts: SapGetOptions = {}): Promise<MaterialHierarchyRow[]> {
-  const { entitySet, params } = materialHierarchyRequest();
-  const r = await sapGetCollection(entitySet, params, opts);
-  return r.rows.map((raw) => normalizeEntity<MaterialHierarchyRow>(raw, MATERIAL_HIERARCHY));
-}
 
 /** ConfigItemSet -> { GROUP_CURR, DEFAULT_PRIO, MAX_HEADS } (+ any other keys SAP sends). */
 export async function fetchConfig(opts: SapGetOptions = {}): Promise<Record<string, string>> {

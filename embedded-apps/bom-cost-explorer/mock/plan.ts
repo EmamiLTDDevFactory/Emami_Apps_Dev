@@ -229,7 +229,7 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
       const qtyTot = e.m.reduce((a, b) => a + b, 0);
       const b = bomSource(e.Matnr, e.Werks);
       if (b.src === 'LASTPROD') msgs.push({ code: 'ZPLAN/040', message: `${e.Matnr} ${e.Werks}: BOM from plant ${b.plant} (last production 12.08.2026)`, severity: 'warning' });
-      const budget = f.get('InclBudget')?.[0] === 'true' ? { year: f.get('BudgetYr')?.[0] ?? String(new Date().getFullYear()) } : null;
+      const budget = ['true', 'X'].includes(f.get('InclBudget')?.[0] ?? '') ? { year: f.get('BudgetYr')?.[0] ?? String(new Date().getFullYear()) } : null;
       const exploded = deps.costLinesFor(e.Matnr, b.plant, qtyTot || 1, msgs, wantsExpand || set === 'RateOptionSet', budget);
       for (const r of exploded) {
         seq++;

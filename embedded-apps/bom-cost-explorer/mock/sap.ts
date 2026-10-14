@@ -7,6 +7,7 @@
  * Used in-process when MOCK_SAP=true (lib/sap/client.ts swaps fetch for mockSapFetch) and as a
  * standalone HTTP server for Playwright (mock/server.ts).
  */
+import { handleHier } from './hier';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
   SELECTION, CONFIG, selectionField, type FieldKind,
@@ -511,8 +512,18 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     const cfg = { GROUP_CURR: 'INR', DEFAULT_PRIO: 'CONTRACT,INFOREC,MARKT,CONSUMP,MBEW', MAX_HEADS: '50' };
     return json({ d: { results: Object.entries(cfg).map(([k, v]) => ({ ...meta('ConfigItem', `${ENTITY_SET.CONFIG}('${k}')`), [CONFIG.CfgKey[0]]: k, [CONFIG.CfgVal[0]]: v })) } });
   }
+  // RateOption: InclFrt, StdFrt, InclBudget, InclCover, UseAsof, LatestOnly are Edm.String (CHAR1) - a boolean
+  // literal is refused like SAP does (CostLine keeps them as Edm.Boolean).
+  if (set === 'RateOptionSet' && /\b(InclFrt|StdFrt|InclBudget|InclCover|UseAsof|LatestOnly) eq (true|false)\b/.test(sp.get('$filter') ?? '')) {
+    return odataError(400, '/IWBEP/CM_MGW_RT/001', "Invalid parametertype used at function 'eq'");
+  }
+  // HierVHSet + MaterialVHSet filtered by Brand / Product / CRS (mock/hier.ts).
+  const hierRes = handleHier(set, sp, { json, odataError, parseFilter });
+  if (hierRes) { await sleep(60, signal); return hierRes; }
   if (set === ENTITY_SET.MATERIALS) {
     await sleep(80, signal);
+    // Like SAP: no search term and no filter -> empty list by design.
+    if (!(sp.get('search') ?? sp.get('$search') ?? '').trim() && !(sp.get('$filter') ?? '').trim()) return json({ d: { results: [] } });
     const term = (sp.get('search') ?? sp.get('$search') ?? '').toLowerCase();
     const exact = parseFilter(sp.get('$filter') ?? '').get(MATERIAL.Matnr[0]) ?? [];
     let list = MATERIALS;
