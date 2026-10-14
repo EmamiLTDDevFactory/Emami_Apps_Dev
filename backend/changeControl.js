@@ -3,6 +3,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
+const teams = require('./ccbTeams');
 
 /*
    CHANGE CONTROL BOARD (CCB) — the governance half of "SAP Change & Development" (the Dev Tracker
@@ -199,6 +200,18 @@ async function initSchema() {
         )
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS ccb_history_request_idx ON ccb.history ("requestId")');
+    // Microsoft Teams link of a meeting (ccbTeams.js). Additive columns; existing meetings keep teamsStatus 'none'.
+    await pool.query(`
+        ALTER TABLE ccb.meetings
+            ADD COLUMN IF NOT EXISTS "durationMin" int NOT NULL DEFAULT 60,
+            ADD COLUMN IF NOT EXISTS "teamsStatus" text NOT NULL DEFAULT 'none',
+            ADD COLUMN IF NOT EXISTS "teamsEventId" text,
+            ADD COLUMN IF NOT EXISTS "teamsOrganizer" text,
+            ADD COLUMN IF NOT EXISTS "teamsJoinUrl" text NOT NULL DEFAULT '',
+            ADD COLUMN IF NOT EXISTS "teamsWebLink" text NOT NULL DEFAULT '',
+            ADD COLUMN IF NOT EXISTS "teamsError" text NOT NULL DEFAULT '',
+            ADD COLUMN IF NOT EXISTS "teamsSyncedAt" timestamptz
+    `);
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
         await pool.query('INSERT INTO ccb.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, value]);
     }
@@ -850,22 +863,100 @@ router.post('/meetings', async (req, res) => {
     const mode = ['online', 'offline', 'hybrid'].includes(b.mode) ? b.mode : 'online';
     const isEmergency = !!b.isEmergency;
     const monthLabel = scheduledAt.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' });
+    const durationMin = Math.min(480, Math.max(15, Math.round(Number(b.durationMinutes) || 60)));
     const title = str(b.title, 200) || (isEmergency ? `Emergency CCB meeting — ${scheduledAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}` : `CCB meeting — ${monthLabel}`);
     try {
         const meeting = await withTransaction(async (db) => {
             const { rows } = await db.query(
-                `INSERT INTO ccb.meetings ("meetingNo", title, "scheduledAt", mode, venue, "isEmergency", "createdBy")
-                 VALUES ('MTG-' || to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYY') || '-' || lpad(nextval('ccb.meeting_no_seq')::text, 3, '0'), $1, $2, $3, $4, $5, $6)
+                `INSERT INTO ccb.meetings ("meetingNo", title, "scheduledAt", mode, venue, "isEmergency", "createdBy", "durationMin")
+                 VALUES ('MTG-' || to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYY') || '-' || lpad(nextval('ccb.meeting_no_seq')::text, 3, '0'), $1, $2, $3, $4, $5, $6, $7)
                  RETURNING *`,
-                [title, scheduledAt, mode, str(b.venue, 300), isEmergency, req.verifiedEmail]
+                [title, scheduledAt, mode, str(b.venue, 300), isEmergency, req.verifiedEmail, durationMin]
             );
             const added = await addToAgenda(db, rows[0].id, await pendingAgenda(db, rows[0].id));
             await logHistory(db, { meetingId: rows[0].id, actorEmail: req.verifiedEmail, action: 'meeting_scheduled', details: { scheduledAt, agendaItems: added } });
             return rows[0];
         });
-        res.json({ success: true, meeting });
+        // The meeting is saved; the Teams meeting is added on top and never undoes the scheduling.
+        res.json({ success: true, meeting: await syncTeams(meeting.id, 'create', req.verifiedEmail) || meeting });
     } catch (err) {
         fail(res, err, 'Could not schedule the meeting.');
+    }
+});
+
+/* ---------- Microsoft Teams (ccbTeams.js) ---------- */
+
+/** Who gets the invitation: everyone holding a CCB board role. */
+async function boardEmails() {
+    const { rows } = await pool.query(`SELECT DISTINCT email FROM ccb.roles WHERE role IN ('CCB Member', 'CCB Secretary', 'IT Application Head')`);
+    return rows.map((r) => r.email);
+}
+
+async function agendaOf(meetingId) {
+    const { rows } = await pool.query(
+        `SELECT r."crNo", r.title, mi.kind FROM ccb.meeting_items mi JOIN ccb.requests r ON r.id = mi."requestId"
+          WHERE mi."meetingId" = $1 ORDER BY mi.kind = 'decision', mi.position`, [meetingId]);
+    return rows;
+}
+
+/**
+ * Create, update or cancel the meeting's Teams meeting and store the outcome on the meeting row. Never throws:
+ * a Graph failure leaves the CCB meeting as it is and records teamsStatus 'failed' + teamsError. Returns the
+ * fresh meeting row (null if it could not be read).
+ */
+async function syncTeams(meetingId, action, actorEmail, note) {
+    try {
+        const m = await loadMeeting(meetingId);
+        if (!m) return null;
+        if (!teams.configured()) return m;
+        if (action === 'cancel') {
+            if (!m.teamsEventId || m.teamsStatus === 'cancelled') return m;
+        } else if (action === 'update' && !m.teamsEventId) {
+            return m;
+        }
+        let set;
+        try {
+            if (action === 'create') {
+                const [attendees, agenda] = await Promise.all([boardEmails(), agendaOf(m.id)]);
+                const r = await teams.createMeeting(m, { organizer: actorEmail, attendees, agenda });
+                set = { teamsStatus: 'created', teamsEventId: r.eventId, teamsOrganizer: r.organizer, teamsJoinUrl: r.joinUrl, teamsWebLink: r.webLink, teamsError: '' };
+            } else if (action === 'update') {
+                const [attendees, agenda] = await Promise.all([boardEmails(), agendaOf(m.id)]);
+                const r = await teams.updateMeeting(m, { attendees, agenda });
+                set = { teamsStatus: 'created', teamsJoinUrl: r.joinUrl, teamsError: '' };
+            } else {
+                await teams.cancelMeeting(m, note);
+                set = { teamsStatus: 'cancelled', teamsError: '' };
+            }
+        } catch (err) {
+            console.error(`[change-control] Teams ${action} for ${m.meetingNo} failed:`, err.message);
+            set = { teamsError: String(err.message || err).slice(0, 1000), ...(m.teamsEventId ? {} : { teamsStatus: 'failed' }) };
+        }
+        set.teamsSyncedAt = new Date();
+        const keys = Object.keys(set);
+        const { rows } = await pool.query(`UPDATE ccb.meetings SET ${keys.map((k, i) => `${q(k)} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING *`, [...keys.map((k) => set[k]), m.id]);
+        await logHistory(pool, { meetingId: m.id, actorEmail, action: set.teamsError ? 'teams_failed' : `teams_${action === 'create' ? 'created' : action === 'update' ? 'updated' : 'cancelled'}`, details: set.teamsError ? { error: set.teamsError } : { joinUrl: rows[0].teamsJoinUrl || undefined } });
+        return rows[0];
+    } catch (err) {
+        console.error('[change-control] Teams sync error:', err.message);
+        return null;
+    }
+}
+
+/** Create the Teams meeting again (after a failure, e.g. before the Graph permission was granted) or re-send the invitation. */
+router.post('/meetings/:id/teams', async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+        requireRunner(req);
+        if (!teams.configured()) throw new HttpError(503, 'Microsoft Teams is not set up on this server.');
+        const m = await loadMeeting(id);
+        if (!m) throw new HttpError(404, 'Meeting not found.');
+        if (!['scheduled', 'in_progress'].includes(m.status)) throw new HttpError(409, `This meeting is ${m.status.replace('_', ' ')}.`);
+        const out = await syncTeams(id, m.teamsEventId ? 'update' : 'create', req.verifiedEmail);
+        if (!out) throw new Error('Teams sync failed.');
+        res.json({ success: true, meeting: out });
+    } catch (err) {
+        fail(res, err, 'Could not create the Teams meeting.');
     }
 });
 
@@ -904,6 +995,7 @@ router.get('/meetings/:id', async (req, res) => {
                 quorum: { required: settings.quorum, present: presentMembers, met: presentMembers >= settings.quorum },
                 notOnAgenda: pending.length,
                 canRun: canRunMeetings(req),
+                teamsConfigured: teams.configured(),
             },
         });
     } catch (err) {
@@ -935,6 +1027,7 @@ router.put('/meetings/:id', async (req, res) => {
                 if (b.title !== undefined && str(b.title, 200)) patch.title = str(b.title, 200);
                 if (b.venue !== undefined) patch.venue = str(b.venue, 300);
                 if (b.mode !== undefined && ['online', 'offline', 'hybrid'].includes(b.mode)) patch.mode = b.mode;
+                if (b.durationMinutes !== undefined && Number(b.durationMinutes) >= 15) patch.durationMin = Math.min(480, Math.round(Number(b.durationMinutes)));
                 if (b.scheduledAt !== undefined && m.status === 'scheduled') {
                     const d = new Date(b.scheduledAt);
                     if (isNaN(d)) throw new HttpError(400, 'Invalid date.');
@@ -944,9 +1037,11 @@ router.put('/meetings/:id', async (req, res) => {
             const keys = Object.keys(patch);
             const { rows } = await db.query(`UPDATE ccb.meetings SET ${keys.map((k, i) => `${q(k)} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING *`, [...keys.map((k) => patch[k]), id]);
             if (keys.some((k) => k !== 'updatedAt' && k !== 'minutes')) await logHistory(db, { meetingId: id, actorEmail: req.verifiedEmail, action: 'meeting_updated', details: { fields: keys.filter((k) => k !== 'updatedAt') } });
-            return rows[0];
+            return { meeting: rows[0], invite: keys.some((k) => ['title', 'venue', 'mode', 'scheduledAt', 'durationMin'].includes(k)) };
         });
-        res.json({ success: true, meeting: out });
+        // Keep the Teams invitation in step with the app (new time, title, venue or mode).
+        const synced = out.invite && out.meeting.teamsEventId && out.meeting.status !== 'completed' ? await syncTeams(id, 'update', req.verifiedEmail) : null;
+        res.json({ success: true, meeting: synced || out.meeting });
     } catch (err) {
         fail(res, err, 'Could not save the meeting.');
     }
@@ -1100,6 +1195,7 @@ router.post('/meetings/:id/cancel', async (req, res) => {
             await db.query(`UPDATE ccb.meetings SET status = 'cancelled', minutes = $2, "updatedAt" = now() WHERE id = $1`, [id, `Cancelled: ${note}`]);
             await logHistory(db, { meetingId: id, actorEmail: req.verifiedEmail, action: 'meeting_cancelled', details: { note } });
         });
+        await syncTeams(id, 'cancel', req.verifiedEmail, note);
         res.json({ success: true });
     } catch (err) {
         fail(res, err, 'Could not cancel the meeting.');

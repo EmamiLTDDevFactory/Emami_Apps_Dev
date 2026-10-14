@@ -158,6 +158,7 @@ function Dashboard({ me, ov, onCreate }) {
                 {pendingAgenda > 0 && <span className="chip">+{pendingAgenda} waiting</span>}
               </div>
               <a className="ccb-btn" href={meetingLink(next.id)}>{next.status === 'in_progress' ? 'Join meeting room' : 'Open agenda'} <ArrowRightIcon size={13} /></a>
+              {next.teamsJoinUrl && next.teamsStatus === 'created' && <a className="ccb-btn" style={{ marginTop: 8 }} href={next.teamsJoinUrl} target="_blank" rel="noreferrer">Join Teams meeting <ArrowRightIcon size={13} /></a>}
             </div>
           ) : (
             <Card title="Next CCB meeting">

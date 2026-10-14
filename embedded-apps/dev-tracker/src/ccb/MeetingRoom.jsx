@@ -40,7 +40,9 @@ export default function MeetingRoom({ id, me, onBack }) {
   if (state.loading) return <Loading label="Opening meeting room…" />;
   if (state.error) return <Blocker error={state.error} onRetry={load} />;
 
-  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun } = state.detail;
+  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun, teamsConfigured } = state.detail;
+  const open = ['scheduled', 'in_progress'].includes(m.status);
+  const teamsLive = open && m.teamsStatus === 'created' && !!m.teamsJoinUrl;
   const nameOf = (e) => (e ? names[e] || e : '');
   const present = new Set(attendance.filter((a) => a.present).map((a) => a.email));
   const live = m.status === 'in_progress';
@@ -110,6 +112,7 @@ export default function MeetingRoom({ id, me, onBack }) {
           </p>
         </div>
         <div className="ccb-head-actions">
+          {teamsLive && <a className="ccb-btn primary ccb-no-print" style={{ textDecoration: 'none' }} href={m.teamsJoinUrl} target="_blank" rel="noreferrer"><ExternalIcon size={13} /> Join Teams meeting</a>}
           {canRun && ['scheduled', 'in_progress'].includes(m.status) && notOnAgenda > 0 && (
             <Button icon={RefreshIcon} busy={busy === 'refresh'} onClick={() => run('refresh', () => ccbApi.refreshAgenda(m.id), 'Agenda updated.')}>Add {notOnAgenda} waiting</Button>
           )}
@@ -120,6 +123,16 @@ export default function MeetingRoom({ id, me, onBack }) {
         </div>
       </div>
 
+      {open && canRun && teamsConfigured && m.mode !== 'offline' && (m.teamsStatus === 'failed' || m.teamsStatus === 'none' || (m.teamsError && m.teamsEventId)) && (
+        <div className="ccb-banner warn ccb-no-print">
+          <AlertIcon size={15} />
+          <span className="grow">
+            <strong>{m.teamsEventId ? 'The Teams invitation could not be updated.' : m.teamsStatus === 'failed' ? 'No Teams meeting yet.' : 'This meeting has no Teams meeting.'}</strong>{' '}
+            {m.teamsError || 'Create one to send the board a Teams invitation.'}
+          </span>
+          <Button icon={RefreshIcon} busy={busy === 'teams'} onClick={() => run('teams', () => ccbApi.syncTeams(m.id), m.teamsEventId ? 'Teams invitation updated.' : 'Teams meeting created and sent to the board.')}>{m.teamsEventId ? 'Update invitation' : 'Create Teams meeting'}</Button>
+        </div>
+      )}
       {live && !quorum.met && (
         <div className="ccb-banner warn ccb-no-print"><AlertIcon size={15} /><span className="grow"><strong>Quorum not met.</strong> Mark at least {quorum.required} CCB members present before recording decisions ({quorum.present} so far).</span></div>
       )}

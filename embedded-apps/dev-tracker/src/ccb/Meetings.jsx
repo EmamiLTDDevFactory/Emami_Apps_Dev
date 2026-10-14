@@ -83,7 +83,7 @@ function MeetingList({ me, autoSchedule, onOpen }) {
       )}
 
       {scheduling && (
-        <ScheduleDialog settings={s} pending={data.pendingCount} onClose={() => setScheduling(false)} onDone={(m) => { setScheduling(false); showToast(`${m.meetingNo} scheduled.`); onOpen(m.id); }} />
+        <ScheduleDialog settings={s} pending={data.pendingCount} onClose={() => setScheduling(false)} onDone={(m) => { setScheduling(false); showToast(m.teamsJoinUrl ? `${m.meetingNo} scheduled. Teams meeting sent to the board.` : m.teamsStatus === 'failed' ? `${m.meetingNo} scheduled, but the Teams meeting could not be created. See the meeting page.` : `${m.meetingNo} scheduled.`, m.teamsStatus === 'failed' ? 'error' : 'ok'); onOpen(m.id); }} />
       )}
       {toast}
     </>
@@ -104,6 +104,7 @@ function MeetingCard({ m, onOpen }) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
             <Meta meta={MEETING_STATUS_META} value={m.status} />
             {m.isEmergency && <Pill tone="red"><BoltIcon size={11} /> Emergency</Pill>}
+            {m.teamsJoinUrl && m.teamsStatus !== 'cancelled' && <Pill tone="purple" title="Microsoft Teams meeting">Teams</Pill>}
           </div>
           <h3>{m.title}</h3>
           <div className="sub"><span className="ccb-mono">{m.meetingNo}</span> · {fmtTime(m.scheduledAt)} · {m.mode === 'online' ? 'Online' : m.mode === 'offline' ? 'In person' : 'Hybrid'}</div>
@@ -125,7 +126,7 @@ function MeetingCard({ m, onOpen }) {
 }
 
 function ScheduleDialog({ settings, pending, onClose, onDone }) {
-  const [form, setForm] = useState({ date: isoOf(nextThirdFriday()), time: settings.meetingTime || '15:00', mode: settings.meetingMode || 'online', venue: '', title: '', isEmergency: false });
+  const [form, setForm] = useState({ date: isoOf(nextThirdFriday()), time: settings.meetingTime || '15:00', mode: settings.meetingMode || 'online', venue: '', title: '', isEmergency: false, duration: '60' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
@@ -136,7 +137,7 @@ function ScheduleDialog({ settings, pending, onClose, onDone }) {
     setError('');
     try {
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
-      const d = await ccbApi.scheduleMeeting({ scheduledAt, mode: form.mode, venue: form.venue, title: form.title, isEmergency: form.isEmergency });
+      const d = await ccbApi.scheduleMeeting({ scheduledAt, mode: form.mode, venue: form.venue, title: form.title, isEmergency: form.isEmergency, durationMinutes: Number(form.duration) });
       onDone(d.meeting);
     } catch (e) {
       setError(e.message);
@@ -154,6 +155,11 @@ function ScheduleDialog({ settings, pending, onClose, onDone }) {
         <Field label="Time" required>
           <input className="ccb-input" type="time" value={form.time} onChange={set('time')} />
         </Field>
+        <Field label="Duration">
+          <select className="ccb-input" value={form.duration} onChange={set('duration')}>
+            {[['30', '30 minutes'], ['45', '45 minutes'], ['60', '1 hour'], ['90', '1 hour 30 minutes'], ['120', '2 hours'], ['180', '3 hours']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </Field>
         <Field label="Mode" group>
           <div className="ccb-chips">
             {[['online', 'Online'], ['offline', 'In person'], ['hybrid', 'Hybrid']].map(([k, l]) => (
@@ -161,8 +167,8 @@ function ScheduleDialog({ settings, pending, onClose, onDone }) {
             ))}
           </div>
         </Field>
-        <Field label={form.mode === 'offline' ? 'Venue' : 'Meeting link / venue'}>
-          <input className="ccb-input" value={form.venue} onChange={set('venue')} placeholder={form.mode === 'offline' ? 'e.g. Board room, Emami Tower' : 'Teams link'} />
+        <Field label="Venue" hint={form.mode === 'offline' ? 'An Outlook invitation goes to the board.' : 'A Microsoft Teams meeting is created and sent to the board automatically.'}>
+          <input className="ccb-input" value={form.venue} onChange={set('venue')} placeholder={form.mode === 'online' ? 'Optional' : 'e.g. Board room, Emami Tower'} />
         </Field>
         <Field label="Title" hint="Leave blank for “CCB meeting — <month>”." wide>
           <input className="ccb-input" value={form.title} onChange={set('title')} />
