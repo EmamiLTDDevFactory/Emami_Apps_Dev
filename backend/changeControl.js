@@ -71,7 +71,10 @@ const ITEM_DECISIONS = {
     decision: ['approved', 'approved_with_modifications', 'rejected', 'deferred'],
     ratification: ['ratified', 'not_ratified'],
 };
-const DEFAULT_SETTINGS = { quorum: '3', informDays: '5', meetingTime: '15:00', meetingMode: 'online' };
+const DEFAULT_SETTINGS = { quorum: '3', informDays: '5', meetingTime: '15:00', meetingMode: 'online', reviewSlaDays: '5', ccbSlaDays: '30' };
+const REVIEW_POSITIONS = ['support', 'concerns', 'oppose'];
+const ACTION_STATUSES = ['open', 'done', 'dropped'];
+const BOARD_ROLES = ['CCB Member', 'CCB Secretary', 'IT Application Head'];
 const OPEN_MEETING = `('scheduled', 'in_progress')`;
 
 async function initSchema() {
@@ -213,6 +216,36 @@ async function initSchema() {
             ADD COLUMN IF NOT EXISTS "teamsError" text NOT NULL DEFAULT '',
             ADD COLUMN IF NOT EXISTS "teamsSyncedAt" timestamptz
     `);
+    // Board members' positions on agenda items before / during the meeting (advisory; the decision stays the board's).
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS ccb.reviews (
+            id serial PRIMARY KEY,
+            "meetingItemId" int NOT NULL REFERENCES ccb.meeting_items(id) ON DELETE CASCADE,
+            email text NOT NULL,
+            position text NOT NULL CHECK (position IN (${sqlList(REVIEW_POSITIONS)})),
+            note text NOT NULL DEFAULT '',
+            "updatedAt" timestamptz NOT NULL DEFAULT now(),
+            UNIQUE ("meetingItemId", email)
+        )
+    `);
+    // Action items raised in CCB meetings, tracked to closure across meetings.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS ccb.action_items (
+            id serial PRIMARY KEY,
+            "meetingId" int REFERENCES ccb.meetings(id) ON DELETE SET NULL,
+            "requestId" int REFERENCES ccb.requests(id) ON DELETE SET NULL,
+            title text NOT NULL,
+            owner text NOT NULL,
+            "dueDate" date,
+            status text NOT NULL DEFAULT 'open' CHECK (status IN (${sqlList(ACTION_STATUSES)})),
+            "closeNote" text NOT NULL DEFAULT '',
+            "createdBy" text NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "closedBy" text,
+            "closedAt" timestamptz
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS ccb_action_items_status_idx ON ccb.action_items (status)');
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
         await pool.query('INSERT INTO ccb.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, value]);
     }
@@ -246,7 +279,10 @@ async function getSettings(db = pool) {
     const { rows } = await db.query('SELECT key, value FROM ccb.settings');
     const out = { ...DEFAULT_SETTINGS };
     rows.forEach((r) => { out[r.key] = r.value; });
-    return { quorum: Number(out.quorum) || 3, informDays: Number(out.informDays) || 5, meetingTime: out.meetingTime, meetingMode: out.meetingMode };
+    return {
+        quorum: Number(out.quorum) || 3, informDays: Number(out.informDays) || 5, meetingTime: out.meetingTime, meetingMode: out.meetingMode,
+        reviewSlaDays: Number(out.reviewSlaDays) || 5, ccbSlaDays: Number(out.ccbSlaDays) || 30,
+    };
 }
 
 async function logHistory(db, e) {
@@ -452,7 +488,7 @@ router.get('/me', async (req, res) => {
         success: true,
         me: {
             email: req.verifiedEmail, name: names[req.verifiedEmail] || req.verifiedEmail, roles: req.roles, isAdmin: req.isAdmin,
-            can: { log: has(req, ...LOGGER_ROLES), review: has(req, 'IT Application Head'), runMeetings: canRunMeetings(req), manageRoles: req.isAdmin, assignRoles: false },
+            can: { log: has(req, ...LOGGER_ROLES), review: has(req, 'IT Application Head'), runMeetings: canRunMeetings(req), manageRoles: req.isAdmin, assignRoles: false, reviewAgenda: has(req, ...BOARD_ROLES) },
         },
         categories: CATEGORIES,
     });
@@ -514,6 +550,16 @@ router.put('/settings', async (req, res) => {
         if (!['online', 'offline', 'hybrid'].includes(b.meetingMode)) return res.status(400).json({ success: false, error: 'Invalid meeting mode.' });
         next.meetingMode = b.meetingMode;
     }
+    if (b.reviewSlaDays !== undefined) {
+        const n = Math.round(Number(b.reviewSlaDays));
+        if (!(n >= 1 && n <= 60)) return res.status(400).json({ success: false, error: 'Feasibility review target must be 1 to 60 business days.' });
+        next.reviewSlaDays = String(n);
+    }
+    if (b.ccbSlaDays !== undefined) {
+        const n = Math.round(Number(b.ccbSlaDays));
+        if (!(n >= 1 && n <= 180)) return res.status(400).json({ success: false, error: 'CCB decision target must be 1 to 180 days.' });
+        next.ccbSlaDays = String(n);
+    }
     try {
         await withTransaction(async (db) => {
             for (const [key, value] of Object.entries(next)) {
@@ -540,7 +586,7 @@ router.get('/requests', async (req, res) => {
     try {
         const { rows } = await pool.query(`${REQUEST_LIST_SQL} ORDER BY r.id DESC`);
         const names = await namesFor(rows.flatMap((r) => [r.loggedBy, r.decidedBy, r.moduleLeadEmail]));
-        res.json({ success: true, requests: rows, names });
+        res.json({ success: true, requests: rows, names, settings: await getSettings() });
     } catch (err) {
         fail(res, err, 'Could not load change requests.');
     }
@@ -961,9 +1007,13 @@ router.get('/meetings/:id', async (req, res) => {
                          WHERE r.role IN ('CCB Member', 'CCB Secretary', 'IT Application Head') GROUP BY r.email, u.name ORDER BY 3`),
             ['scheduled', 'in_progress'].includes(m.status) ? pendingAgenda(pool, id) : [],
         ]);
+        const [reviews, actions] = await Promise.all([
+            pool.query(`SELECT v.* FROM ccb.reviews v JOIN ccb.meeting_items mi ON mi.id = v."meetingItemId" WHERE mi."meetingId" = $1 ORDER BY v."updatedAt"`, [id]),
+            pool.query(`SELECT a.*, r."crNo" FROM ccb.action_items a LEFT JOIN ccb.requests r ON r.id = a."requestId" WHERE a."meetingId" = $1 ORDER BY a.id`, [id]),
+        ]);
         const present = new Set(attendance.rows.filter((a) => a.present).map((a) => a.email));
         const presentMembers = members.rows.filter((p) => p.roles.includes('CCB Member') && present.has(p.email)).length;
-        const names = await namesFor([m.createdBy, ...items.rows.flatMap((i) => [i.decidedBy, i.loggedBy, i.requestDecidedBy])]);
+        const names = await namesFor([m.createdBy, ...items.rows.flatMap((i) => [i.decidedBy, i.loggedBy, i.requestDecidedBy]), ...reviews.rows.map((v) => v.email), ...actions.rows.map((a) => a.owner)]);
         res.json({
             success: true,
             detail: {
@@ -972,6 +1022,9 @@ router.get('/meetings/:id', async (req, res) => {
                 notOnAgenda: pending.length,
                 canRun: canRunMeetings(req),
                 teamsConfigured: teams.configured(),
+                reviews: reviews.rows,
+                actions: actions.rows,
+                canReview: has(req, ...BOARD_ROLES),
             },
         });
     } catch (err) {
@@ -1178,6 +1231,151 @@ router.post('/meetings/:id/cancel', async (req, res) => {
     }
 });
 
+/* ---------- Board members' review of agenda items ---------- */
+
+/** A board member's position on an undecided agenda item (advisory input for the meeting). Empty position = withdraw. */
+router.put('/meetings/:id/items/:itemId/review', async (req, res) => {
+    const id = Number(req.params.id);
+    const itemId = Number(req.params.itemId);
+    const position = String(req.body?.position || '');
+    const note = str(req.body?.note, 2000);
+    try {
+        if (!has(req, ...BOARD_ROLES)) throw new HttpError(403, 'Only CCB members, the Secretary and the IT Application Head can record a review.');
+        if (position && !REVIEW_POSITIONS.includes(position)) throw new HttpError(400, 'Choose support, concerns or oppose.');
+        if (position && position !== 'support' && !note) throw new HttpError(400, 'Say briefly what the concern or objection is.');
+        await withTransaction(async (db) => {
+            await lockMeeting(db, id, ['scheduled', 'in_progress']);
+            const item = (await db.query('SELECT * FROM ccb.meeting_items WHERE id = $1 AND "meetingId" = $2', [itemId, id])).rows[0];
+            if (!item) throw new HttpError(404, 'Agenda item not found.');
+            if (item.decision) throw new HttpError(409, 'This item has already been decided.');
+            if (!position) {
+                await db.query('DELETE FROM ccb.reviews WHERE "meetingItemId" = $1 AND email = $2', [itemId, req.verifiedEmail]);
+            } else {
+                await db.query(
+                    `INSERT INTO ccb.reviews ("meetingItemId", email, position, note) VALUES ($1, $2, $3, $4)
+                     ON CONFLICT ("meetingItemId", email) DO UPDATE SET position = EXCLUDED.position, note = EXCLUDED.note, "updatedAt" = now()`,
+                    [itemId, req.verifiedEmail, position, note]);
+            }
+            await logHistory(db, { requestId: item.requestId, meetingId: id, actorEmail: req.verifiedEmail, action: position ? 'member_review' : 'member_review_withdrawn', details: position ? { position, note } : null });
+        });
+        res.json({ success: true });
+    } catch (err) {
+        fail(res, err, 'Could not save your review.');
+    }
+});
+
+/* ---------- Action items ---------- */
+
+const canManageActions = (req) => canRunMeetings(req);
+
+router.get('/actions', async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT a.*, r."crNo", r.title AS "requestTitle", m."meetingNo"
+              FROM ccb.action_items a
+              LEFT JOIN ccb.requests r ON r.id = a."requestId"
+              LEFT JOIN ccb.meetings m ON m.id = a."meetingId"
+             ORDER BY a.status = 'open' DESC, a."dueDate" NULLS LAST, a.id DESC`);
+        const names = await namesFor(rows.flatMap((a) => [a.owner, a.createdBy, a.closedBy]));
+        res.json({ success: true, actions: rows, names, canManage: canManageActions(req) });
+    } catch (err) {
+        fail(res, err, 'Could not load action items.');
+    }
+});
+
+router.post('/actions', async (req, res) => {
+    const b = req.body || {};
+    const title = str(b.title, 500);
+    const owner = str(b.owner, 200).toLowerCase();
+    try {
+        if (!canManageActions(req)) throw new HttpError(403, 'Only the CCB Secretary or IT Application Head can raise action items.');
+        if (!title) throw new HttpError(400, 'Describe the action.');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(owner)) throw new HttpError(400, 'Choose who owns the action.');
+        const due = b.dueDate ? String(b.dueDate).slice(0, 10) : null;
+        if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) throw new HttpError(400, 'Invalid due date.');
+        const meetingId = b.meetingId ? Number(b.meetingId) : null;
+        const requestId = b.requestId ? Number(b.requestId) : null;
+        const action = await withTransaction(async (db) => {
+            if (meetingId) await lockMeeting(db, meetingId, ['scheduled', 'in_progress', 'completed']);
+            const { rows } = await db.query(
+                `INSERT INTO ccb.action_items ("meetingId", "requestId", title, owner, "dueDate", "createdBy") VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+                [meetingId, requestId, title, owner, due, req.verifiedEmail]);
+            await logHistory(db, { requestId, meetingId, actorEmail: req.verifiedEmail, action: 'action_raised', details: { id: rows[0].id, title, owner, dueDate: due } });
+            return rows[0];
+        });
+        res.json({ success: true, action });
+    } catch (err) {
+        fail(res, err, 'Could not add the action item.');
+    }
+});
+
+/** Close / reopen / reassign an action. The owner can close their own; the Secretary / IT Application Head can do anything. */
+router.put('/actions/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    const b = req.body || {};
+    try {
+        const out = await withTransaction(async (db) => {
+            const a = (await db.query('SELECT * FROM ccb.action_items WHERE id = $1 FOR UPDATE', [id])).rows[0];
+            if (!a) throw new HttpError(404, 'Action item not found.');
+            const manager = canManageActions(req);
+            if (!manager && a.owner !== req.verifiedEmail) throw new HttpError(403, 'Only the owner or the CCB Secretary can update this action.');
+            const patch = {};
+            if (b.status !== undefined) {
+                if (!ACTION_STATUSES.includes(b.status)) throw new HttpError(400, 'Invalid status.');
+                if (b.status === 'dropped' && !manager) throw new HttpError(403, 'Only the CCB Secretary or IT Application Head can drop an action.');
+                patch.status = b.status;
+                patch.closeNote = str(b.closeNote, 2000);
+                patch.closedBy = b.status === 'open' ? null : req.verifiedEmail;
+                patch.closedAt = b.status === 'open' ? null : new Date();
+            }
+            if (manager) {
+                if (b.title !== undefined && str(b.title, 500)) patch.title = str(b.title, 500);
+                if (b.owner !== undefined && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str(b.owner, 200))) patch.owner = str(b.owner, 200).toLowerCase();
+                if (b.dueDate !== undefined) patch.dueDate = b.dueDate ? String(b.dueDate).slice(0, 10) : null;
+            }
+            const keys = Object.keys(patch);
+            if (!keys.length) return a;
+            const { rows } = await db.query(`UPDATE ccb.action_items SET ${keys.map((k, i) => `${q(k)} = $${i + 1}`).join(', ')} WHERE id = $${keys.length + 1} RETURNING *`, [...keys.map((k) => patch[k]), id]);
+            await logHistory(db, { requestId: a.requestId, meetingId: a.meetingId, actorEmail: req.verifiedEmail, action: 'action_updated', details: { id, ...patch, closedAt: undefined } });
+            return rows[0];
+        });
+        res.json({ success: true, action: out });
+    } catch (err) {
+        fail(res, err, 'Could not update the action item.');
+    }
+});
+
+/* ---------- Insights ---------- */
+
+/** Raw facts for the Insights page (the browser aggregates): request milestones and meeting outcomes. */
+router.get('/insights', async (req, res) => {
+    try {
+        const [requests, meetings, actions] = await Promise.all([
+            pool.query(`
+                SELECT r.id, r."crNo", r.title, r.category, r."requestingFunction", r."sapModules", r."sapSystem", r.priority, r.status,
+                       r."approvalRoute", r.decision, r."isEmergency", r."ratificationStatus", r."createdAt", r."submittedAt", r."reviewedAt",
+                       r."decidedAt", r."closedAt", r."informDueBy", r."ccbInformedAt", i.status AS "devStatus", i."completedDate" AS "devCompletedDate"
+                  FROM ccb.requests r LEFT JOIN dev_tracker.items i ON i.id = r."devTrackerItemId"`),
+            pool.query(`
+                SELECT m.id, m."meetingNo", m."scheduledAt", m.status, m."isEmergency",
+                       COUNT(DISTINCT mi.id)::int AS items,
+                       COUNT(DISTINCT mi.id) FILTER (WHERE mi.decision IS NOT NULL)::int AS decided,
+                       COUNT(DISTINCT mi.id) FILTER (WHERE mi.decision IN ('approved', 'approved_with_modifications', 'ratified'))::int AS approved,
+                       COUNT(DISTINCT mi.id) FILTER (WHERE mi.decision IN ('rejected', 'not_ratified'))::int AS rejected,
+                       COUNT(DISTINCT mi.id) FILTER (WHERE mi.decision = 'deferred')::int AS deferred,
+                       (SELECT COUNT(*)::int FROM ccb.attendance a WHERE a."meetingId" = m.id AND a.present
+                           AND EXISTS (SELECT 1 FROM ccb.roles r WHERE r.email = a.email AND r.role = 'CCB Member')) AS "membersPresent"
+                  FROM ccb.meetings m LEFT JOIN ccb.meeting_items mi ON mi."meetingId" = m.id
+                 GROUP BY m.id ORDER BY m."scheduledAt"`),
+            pool.query('SELECT status, "dueDate", "createdAt", "closedAt" FROM ccb.action_items'),
+        ]);
+        const members = (await pool.query(`SELECT COUNT(DISTINCT email)::int AS n FROM ccb.roles WHERE role = 'CCB Member'`)).rows[0].n;
+        res.json({ success: true, insights: { requests: requests.rows, meetings: meetings.rows, actions: actions.rows, members, settings: await getSettings(), categories: CATEGORIES } });
+    } catch (err) {
+        fail(res, err, 'Could not load insights.');
+    }
+});
+
 /* ---------- Overview ---------- */
 
 router.get('/overview', async (req, res) => {
@@ -1193,7 +1391,9 @@ router.get('/overview', async (req, res) => {
         ]);
         const pending = await pendingAgenda(pool);
         const names = await namesFor([...requests.rows.flatMap((r) => [r.loggedBy, r.decidedBy]), ...recent.rows.map((h) => h.actorEmail)]);
-        res.json({ success: true, overview: { requests: requests.rows, upcoming: meetings.rows, recent: recent.rows, pendingAgenda: pending.length, settings, names } });
+        const openActions = (await pool.query(`SELECT a.id, a.title, a.owner, a."dueDate", r."crNo" FROM ccb.action_items a LEFT JOIN ccb.requests r ON r.id = a."requestId" WHERE a.status = 'open' ORDER BY a."dueDate" NULLS LAST, a.id LIMIT 50`)).rows;
+        Object.assign(names, await namesFor(openActions.map((a) => a.owner)));
+        res.json({ success: true, overview: { requests: requests.rows, upcoming: meetings.rows, recent: recent.rows, pendingAgenda: pending.length, settings, names, openActions } });
     } catch (err) {
         fail(res, err, 'Could not load the CCB overview.');
     }

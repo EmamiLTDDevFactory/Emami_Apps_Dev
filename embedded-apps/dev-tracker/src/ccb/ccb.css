@@ -418,3 +418,41 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
   .ccb-card, .ccb-agenda-item { box-shadow: none !important; break-inside: avoid; }
   .ccb-grid.two { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- Board review on agenda items ---------- */
+.ccb-reviews { margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--bg-alt); }
+.ccb-reviews-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ccb-reviews-head .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted, #6b7280); margin-right: 2px; }
+.ccb-reviews-mine { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ccb-reviews-mine .ccb-chip-toggle.on { background: var(--ts); border-color: var(--t); color: var(--t); font-weight: 700; }
+.ccb-review-line { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-top: 6px; line-height: 1.45; }
+.ccb-linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.ccb-linkbtn:hover { text-decoration: underline; }
+
+/* ---------- Action items ---------- */
+.ccb-action-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.ccb-action-row:first-child { border-top: 0; padding-top: 0; }
+.ccb-action-row .t { font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.ccb-action-row .s { font-size: 11.5px; color: var(--text-muted, #6b7280); margin-top: 2px; }
+
+/* ---------- Insights ---------- */
+.ccb-bars { display: flex; align-items: flex-end; gap: 8px; height: 190px; padding: 6px 2px 0; overflow-x: auto; }
+.ccb-bar-col { flex: 1 0 34px; display: flex; flex-direction: column; align-items: center; height: 100%; }
+.ccb-bar-pair { flex: 1; width: 100%; max-width: 64px; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.ccb-bar { display: block; width: 100%; border-radius: 4px 4px 0 0; min-height: 0; font-size: 10px; color: #fff; text-align: center; font-weight: 700; }
+.ccb-bar.logged { width: 45%; background: var(--st-indigo); padding-top: 2px; }
+.ccb-bar-stack { width: 45%; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; }
+.ccb-bar.approved { background: var(--st-green); border-radius: 0; }
+.ccb-bar.rejected { background: var(--st-red); border-radius: 0; }
+.ccb-bar-lbl { font-size: 10.5px; color: var(--text-muted, #6b7280); margin-top: 4px; white-space: nowrap; }
+.ccb-stage { margin-bottom: 12px; }
+.ccb-stage-top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+.ccb-stage-top .over { color: var(--st-red); font-weight: 700; }
+.ccb-stage-track { position: relative; height: 10px; border-radius: 6px; background: var(--bg-alt); border: 1px solid var(--border); margin-bottom: 3px; }
+.ccb-stage-fill { position: absolute; inset: 0 auto 0 0; border-radius: 6px; background: var(--st-teal); }
+.ccb-stage-fill.over { background: var(--st-red); }
+.ccb-stage-target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text, #111); opacity: .55; }
+.ccb-hbar, .ccb-minibar { display: inline-block; vertical-align: middle; width: 60%; max-width: 140px; height: 7px; border-radius: 4px; background: var(--bg-alt); overflow: hidden; margin-right: 6px; }
+.ccb-minibar { width: 70px; }
+.ccb-hbar > span, .ccb-minibar > span { display: block; height: 100%; border-radius: 4px; background: var(--st-indigo); }
+@media print { .ccb-reviews-mine { display: none; } }

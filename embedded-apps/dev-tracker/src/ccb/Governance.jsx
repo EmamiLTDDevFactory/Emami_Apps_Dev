@@ -178,6 +178,12 @@ function SettingsCard({ settings, canEdit, onSaved, onError }) {
             <option value="hybrid">Hybrid</option>
           </select>
         </Field>
+        <Field label="Feasibility review target (business days)" hint="IT Application Head, from submission.">
+          <input className="ccb-input" type="number" min={1} max={60} value={form.reviewSlaDays ?? 5} onChange={set('reviewSlaDays')} disabled={!canEdit} />
+        </Field>
+        <Field label="CCB decision target (days)" hint="From recommendation to the board's decision.">
+          <input className="ccb-input" type="number" min={1} max={180} value={form.ccbSlaDays ?? 30} onChange={set('ccbSlaDays')} disabled={!canEdit} />
+        </Field>
       </div>
     </Card>
   );

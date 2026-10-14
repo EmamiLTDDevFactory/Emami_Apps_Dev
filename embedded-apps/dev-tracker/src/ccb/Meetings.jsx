@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ccbApi } from './api.js';
 import MeetingRoom from './MeetingRoom.jsx';
 import { Blocker, Button, CcbShell, Empty, Field, Loading, Meta, Modal, PageHeader, Pill, useCcbMe, useToast } from './ui.jsx';
-import { MEETING_STATUS_META, fmtDate, fmtTime, isoOf, meetingLink, nextThirdFriday } from './model.js';
-import { AlertIcon, BoltIcon, CalendarIcon, GavelIcon, InfoIcon, PlusIcon } from '../shared/icons.jsx';
+import { ACTION_STATUS_META, MEETING_STATUS_META, actionOverdue, fmtDate, fmtTime, isoOf, meetingLink, nextThirdFriday, requestLink } from './model.js';
+import { AlertIcon, BoltIcon, CalendarIcon, CheckIcon, ClipboardIcon, GavelIcon, InfoIcon, PlusIcon, RefreshIcon } from '../shared/icons.jsx';
 
 function readParams() {
   const p = new URLSearchParams(window.location.search);
@@ -76,6 +76,8 @@ function MeetingList({ me, autoSchedule, onOpen }) {
       ) : (
         <div className="ccb-meetings">{upcoming.map((m) => <MeetingCard key={m.id} m={m} onOpen={onOpen} />)}</div>
       )}
+
+      <ActionTracker me={me} onOpenMeeting={onOpen} />
 
       <h3 className="ccb-section-label" style={{ marginTop: 22 }}>Past meetings</h3>
       {past.length === 0 ? <p className="ccb-muted" style={{ fontSize: 12.5 }}>No past meetings yet.</p> : (
@@ -181,5 +183,77 @@ function ScheduleDialog({ settings, pending, onClose, onDone }) {
       <div className="ccb-callout tone-indigo"><GavelIcon size={15} /><span><strong>{pending}</strong> request{pending === 1 ? '' : 's'} will be added to the agenda. You can refresh the agenda until the meeting closes.</span></div>
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>
+  );
+}
+
+/** Every action item the board has raised, open first; owners close their own, the Secretary manages all. */
+function ActionTracker({ me, onOpenMeeting }) {
+  const [data, setData] = useState({ loading: true, actions: [], names: {}, canManage: false, error: null });
+  const [filter, setFilter] = useState('open');
+  const [busy, setBusy] = useState(null);
+  const [toast, showToast] = useToast();
+  const load = useCallback(() => {
+    ccbApi.actions()
+      .then((d) => setData({ loading: false, actions: d.actions, names: d.names, canManage: d.canManage, error: null }))
+      .catch((e) => setData((s) => ({ ...s, loading: false, error: e })));
+  }, []);
+  useEffect(load, [load]);
+  const nameOf = (e) => (e ? data.names[e] || e : '');
+  async function setStatus(a, status) {
+    setBusy(a.id);
+    try {
+      await ccbApi.updateAction(a.id, { status });
+      showToast(status === 'done' ? 'Action marked done.' : status === 'open' ? 'Action reopened.' : 'Action dropped.');
+      load();
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  }
+  if (data.loading || data.error) return null;
+  const mine = (a) => a.owner === me.email;
+  const shown = data.actions.filter((a) => (filter === 'open' ? a.status === 'open' : filter === 'mine' ? mine(a) && a.status === 'open' : true));
+  const openCount = data.actions.filter((a) => a.status === 'open').length;
+  const overdue = data.actions.filter(actionOverdue).length;
+  return (
+    <>
+      <h3 className="ccb-section-label" style={{ marginTop: 22, display: 'flex', alignItems: 'center', gap: 8 }}>
+        Action items <span className="ccb-muted" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>{openCount} open{overdue ? ` · ${overdue} overdue` : ''}</span>
+      </h3>
+      <div className="ccb-card" style={{ padding: 0 }}>
+        <div className="ccb-toolbar">
+          {[['open', 'Open'], ['mine', 'Mine'], ['all', 'All']].map(([k, l]) => (
+            <button key={k} type="button" className={`ccb-chip-toggle${filter === k ? ' on' : ''}`} onClick={() => setFilter(k)}>{l}</button>
+          ))}
+        </div>
+        {shown.length === 0 ? (
+          <Empty icon={ClipboardIcon} title={data.actions.length ? 'Nothing here' : 'No action items yet'}>Action items are added in the meeting room, with an owner and a due date.</Empty>
+        ) : (
+          <div className="ccb-table-wrap">
+            <table className="ccb-table">
+              <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th>From</th><th>Status</th><th /></tr></thead>
+              <tbody>
+                {shown.map((a) => (
+                  <tr key={a.id} style={{ cursor: 'default' }}>
+                    <td className="title-cell"><strong>{a.title}</strong>{a.crNo && <small><a href={requestLink(a.crNo)}>{a.crNo}</a> · {a.requestTitle}</small>}</td>
+                    <td className="nowrap">{nameOf(a.owner)}</td>
+                    <td className="nowrap">{a.dueDate ? fmtDate(a.dueDate) : '—'}</td>
+                    <td className="nowrap">{a.meetingNo ? <a href={meetingLink(a.meetingId)} onClick={(e) => { e.preventDefault(); onOpenMeeting(a.meetingId); }}>{a.meetingNo}</a> : '—'}</td>
+                    <td className="nowrap">{actionOverdue(a) ? <Pill tone="red">Overdue</Pill> : <Meta meta={ACTION_STATUS_META} value={a.status} />}</td>
+                    <td className="nowrap" style={{ textAlign: 'right' }}>
+                      {a.status === 'open' && (data.canManage || mine(a)) && <Button size="sm" variant="ghost" icon={CheckIcon} busy={busy === a.id} onClick={() => setStatus(a, 'done')}>Done</Button>}
+                      {a.status === 'open' && data.canManage && <Button size="sm" variant="ghost" onClick={() => setStatus(a, 'dropped')}>Drop</Button>}
+                      {a.status !== 'open' && data.canManage && <Button size="sm" variant="ghost" icon={RefreshIcon} onClick={() => setStatus(a, 'open')}>Reopen</Button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {toast}
+    </>
   );
 }

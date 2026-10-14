@@ -236,3 +236,54 @@ export function fiscalYearStart(d = new Date()) {
   const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
   return new Date(y, 3, 1);
 }
+
+/* ---------- Ageing & service levels ---------- */
+
+/** Mon–Fri days between two dates (start day excluded), for SLA ageing. */
+export function businessDaysBetween(from, to = new Date()) {
+  const d = new Date(from);
+  const end = new Date(to);
+  d.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  let n = 0;
+  while (d < end) {
+    d.setDate(d.getDate() + 1);
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
+}
+
+/**
+ * Where an open request is waiting and for how long, against the board's targets (Governance settings):
+ *   feasibility_review  business days since submission  vs reviewSlaDays (IT Application Head)
+ *   awaiting_ccb        calendar days since recommended vs ccbSlaDays   (the board)
+ * Returns null for stages without a target. state: 'ok' | 'due' (last 20 % of the window) | 'over'.
+ */
+export function slaOf(r, settings) {
+  if (!settings) return null;
+  let since; let used; let limit; let unit; let who;
+  if (r.status === 'feasibility_review' && r.submittedAt) {
+    since = r.submittedAt; used = businessDaysBetween(since); limit = settings.reviewSlaDays || 5; unit = 'business day'; who = 'IT Application Head';
+  } else if (r.status === 'awaiting_ccb') {
+    since = r.reviewedAt || r.submittedAt || r.updatedAt; if (!since) return null;
+    used = Math.max(0, -daysUntil(since)); limit = settings.ccbSlaDays || 30; unit = 'day'; who = 'CCB';
+  } else {
+    return null;
+  }
+  const state = used > limit ? 'over' : used >= Math.ceil(limit * 0.8) ? 'due' : 'ok';
+  return { since, used, limit, unit, who, state, label: `${used} of ${limit} ${unit}${limit === 1 ? '' : 's'}` };
+}
+export const SLA_TONE = { ok: 'green', due: 'amber', over: 'red' };
+
+export const REVIEW_META = {
+  support: { label: 'Support', tone: 'green' },
+  concerns: { label: 'Concerns', tone: 'amber' },
+  oppose: { label: 'Oppose', tone: 'red' },
+};
+export const ACTION_STATUS_META = {
+  open: { label: 'Open', tone: 'blue' },
+  done: { label: 'Done', tone: 'green' },
+  dropped: { label: 'Dropped', tone: 'gray' },
+};
+export const actionOverdue = (a) => a.status === 'open' && a.dueDate && daysUntil(a.dueDate) < 0;

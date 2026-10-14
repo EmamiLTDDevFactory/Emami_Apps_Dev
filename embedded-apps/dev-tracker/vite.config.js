@@ -40,6 +40,7 @@ export default defineConfig({
         ccbRequests: resolve(__dirname, 'ccb/requests/index.html'),
         ccbMeetings: resolve(__dirname, 'ccb/meetings/index.html'),
         ccbGovernance: resolve(__dirname, 'ccb/governance/index.html'),
+        ccbInsights: resolve(__dirname, 'ccb/insights/index.html'),
       },
     },
   },

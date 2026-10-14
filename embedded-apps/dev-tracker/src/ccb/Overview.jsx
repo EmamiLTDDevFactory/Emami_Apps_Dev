@@ -4,7 +4,7 @@ import RequestForm from './RequestForm.jsx';
 import { Blocker, Button, Card, CcbShell, Empty, KpiTile, Loading, Meta, PageHeader, Person, Pill, RoleBadge, useCcbMe } from './ui.jsx';
 import {
   DECISION_META, MEETING_STATUS_META, PROCESS_STEPS, STATUS_META, currentStepIndex, daysUntil, devTrackerLink, fiscalYearStart, fmtDate, fmtTime,
-  informOverdue, isClosed, isInDelivery, meetingLink, nextThirdFriday, relative, requestLink, stageLabel,
+  informOverdue, isClosed, isInDelivery, meetingLink, nextThirdFriday, relative, requestLink, stageLabel, slaOf, SLA_TONE, actionOverdue,
 } from './model.js';
 import { ROUTES } from '../shared/routes.js';
 import {
@@ -41,7 +41,7 @@ export default function Overview() {
 }
 
 function Dashboard({ me, ov, onCreate }) {
-  const { requests, upcoming, recent, pendingAgenda, settings, names } = ov;
+  const { requests, upcoming, recent, pendingAgenda, settings, names, openActions = [] } = ov;
   const nameOf = (e) => (e ? names[e] || e : '');
   const fyStart = fiscalYearStart();
 
@@ -78,10 +78,17 @@ function Dashboard({ me, ov, onCreate }) {
       requests.filter((r) => r.approvalRoute === 'emergency' && !r.ccbInformedAt && r.status === 'approved')
         .forEach((r) => out.push({ r, tone: informOverdue(r) ? 'red' : 'purple', icon: BoltIcon, text: `Inform CCB of emergency approval by ${fmtDate(r.informDueBy)}` }));
     }
+    openActions.filter((a) => a.owner === me.email).forEach((a) => out.push({
+      r: { id: `a${a.id}`, title: a.title, crNo: a.crNo || 'Action item' }, tone: actionOverdue(a) ? 'red' : 'blue', icon: ClipboardIcon,
+      text: a.dueDate ? `Your CCB action, due ${fmtDate(a.dueDate)}` : 'Your CCB action', href: `${ROUTES.ccbMeetings}`,
+    }));
     requests.filter((r) => r.status === 'approved' && r.moduleLeadEmail === me.email && !r.devDeveloper && r.devStatus === 'Not Started')
       .forEach((r) => out.push({ r, tone: 'teal', icon: BoardIcon, text: 'Assign a developer in Dev Tracker', href: devTrackerLink(r.devTrackerIssueNo) }));
     return out;
-  }, [requests, me]);
+  }, [requests, me, openActions]);
+
+  const late = useMemo(() => requests.map((r) => ({ r, sla: slaOf(r, settings) })).filter((x) => x.sla && x.sla.state !== 'ok').sort((a, b) => (b.sla.used / b.sla.limit) - (a.sla.used / a.sla.limit)), [requests, settings]);
+  const overdueActions = openActions.filter(actionOverdue);
 
   const delivery = requests.filter(isInDelivery).slice(0, 8);
   const next = upcoming[0];
@@ -101,7 +108,7 @@ function Dashboard({ me, ov, onCreate }) {
       <div className="ccb-banner">
         <UsersIcon size={15} />
         <span className="grow">
-          {me.roles.length ? <>Signed in as <strong>{me.name}</strong> · your CCB roles: </> : <>Signed in as <strong>{me.name}</strong> · you have view access to the register.{me.isAdmin ? ' Assign CCB roles under Governance.' : ' Ask a Dev Tracker admin for a CCB role.'}</>}
+          {me.roles.length ? <>Signed in as <strong>{me.name}</strong> · your CCB roles: </> : <>Signed in as <strong>{me.name}</strong> · you have view access to the register.{' CCB roles are assigned in the Emami Apps Admin Center — ask a Super Admin or Admin.'}</>}
           {me.roles.map((r) => <span key={r} style={{ marginLeft: 6 }}><RoleBadge role={r} /></span>)}
         </span>
         <a href={ROUTES.ccbGovernance} style={{ fontWeight: 600, fontSize: 12 }}>Governance <ArrowRightIcon size={12} /></a>
@@ -188,6 +195,45 @@ function Dashboard({ me, ov, onCreate }) {
           </Card>
         </div>
       </div>
+
+      {(late.length > 0 || openActions.length > 0) && (
+        <div className="ccb-grid halves" style={{ marginTop: 16 }}>
+          <Card title="Service levels" sub={`Targets: feasibility review ${settings.reviewSlaDays} business days · CCB decision ${settings.ccbSlaDays} days`}
+            actions={late.some((x) => x.sla.state === 'over') ? <a className="ccb-btn sm quiet" href={ROUTES.ccbRequests}>Register <ArrowRightIcon size={12} /></a> : null}>
+            {late.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>Every open request is within its target.</p> : (
+              <ul className="ccb-list">
+                {late.slice(0, 6).map(({ r, sla }) => (
+                  <li key={r.id}>
+                    <span className={`ccb-action-ico tone-${SLA_TONE[sla.state]}`}><ClockIcon size={14} /></span>
+                    <div className="ccb-list-main">
+                      <a className="ccb-list-title" href={requestLink(r.crNo)} style={{ display: 'block', whiteSpace: 'nowrap' }}>{r.title}</a>
+                      <div className="ccb-list-sub"><span className="ccb-mono">{r.crNo}</span> · waiting on {sla.who} · {sla.label}</div>
+                    </div>
+                    <Pill tone={SLA_TONE[sla.state]}>{sla.state === 'over' ? 'Over target' : 'Due soon'}</Pill>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          <Card title="Open action items" sub={`${openActions.length} open${overdueActions.length ? ` · ${overdueActions.length} overdue` : ''}`}
+            actions={<a className="ccb-btn sm quiet" href={ROUTES.ccbMeetings}>Tracker <ArrowRightIcon size={12} /></a>}>
+            {openActions.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No open action items.</p> : (
+              <ul className="ccb-list">
+                {openActions.slice(0, 6).map((a) => (
+                  <li key={a.id}>
+                    <Person name={nameOf(a.owner)} size={26} />
+                    <div className="ccb-list-main">
+                      <span className="ccb-list-title" style={{ display: 'block', whiteSpace: 'nowrap' }}>{a.title}</span>
+                      <div className="ccb-list-sub">{nameOf(a.owner)}{a.crNo ? <> · <span className="ccb-mono">{a.crNo}</span></> : ''}{a.dueDate ? ` · due ${fmtDate(a.dueDate)}` : ''}</div>
+                    </div>
+                    {actionOverdue(a) && <Pill tone="red">Overdue</Pill>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
 
       <div className="ccb-grid halves" style={{ marginTop: 16 }}>
         <Card title="Recent decisions & movements" actions={<a className="ccb-btn sm quiet" href={ROUTES.ccbRequests}>Register <ArrowRightIcon size={12} /></a>}>

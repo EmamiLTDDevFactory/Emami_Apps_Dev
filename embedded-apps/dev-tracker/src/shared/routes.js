@@ -33,4 +33,5 @@ export const ROUTES = {
   ccbRequests: `${BASE_PATH}/ccb/requests/`,
   ccbMeetings: `${BASE_PATH}/ccb/meetings/`,
   ccbGovernance: `${BASE_PATH}/ccb/governance/`,
+  ccbInsights: `${BASE_PATH}/ccb/insights/`,
 };

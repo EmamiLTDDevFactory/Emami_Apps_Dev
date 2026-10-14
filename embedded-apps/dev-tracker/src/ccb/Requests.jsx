@@ -3,8 +3,8 @@ import { ccbApi } from './api.js';
 import RequestForm from './RequestForm.jsx';
 import RequestDetail from './RequestDetail.jsx';
 import { Blocker, Button, Card, CcbShell, Empty, Loading, Meta, PageHeader, Person, Pill, ScopePill, Tabs, useCcbMe, useToast } from './ui.jsx';
-import { CATEGORY_META, PRIORITY_META, STATUS_META, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, stageLabel } from './model.js';
-import { BoltIcon, ClipboardIcon, DownloadIcon, PlusIcon, SearchIcon } from '../shared/icons.jsx';
+import { CATEGORY_META, PRIORITY_META, SLA_TONE, STATUS_META, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, slaOf, stageLabel } from './model.js';
+import { BoltIcon, ClipboardIcon, ClockIcon, DownloadIcon, PlusIcon, SearchIcon } from '../shared/icons.jsx';
 
 const TABS = [
   { key: 'all', label: 'All', test: () => true },
@@ -56,7 +56,8 @@ export default function Requests() {
 }
 
 function Register({ me, initialTab, onOpen, onCreate }) {
-  const [data, setData] = useState({ loading: true, requests: [], names: {}, error: null });
+  const [data, setData] = useState({ loading: true, requests: [], names: {}, settings: null, error: null });
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [tab, setTab] = useState(TABS.some((t) => t.key === initialTab) ? initialTab : 'all');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -66,7 +67,7 @@ function Register({ me, initialTab, onOpen, onCreate }) {
 
   const load = useCallback(() => {
     ccbApi.requests()
-      .then((d) => setData({ loading: false, requests: d.requests, names: d.names, error: null }))
+      .then((d) => setData({ loading: false, requests: d.requests, names: d.names, settings: d.settings || null, error: null }))
       .catch((e) => setData((s) => ({ ...s, loading: false, error: e })));
   }, []);
   useEffect(load, [load]);
@@ -76,10 +77,12 @@ function Register({ me, initialTab, onOpen, onCreate }) {
     if (category && r.category !== category) return false;
     if (fn && r.requestingFunction !== fn) return false;
     if (mine && r.loggedBy !== me.email) return false;
+    if (overdueOnly && slaOf(r, data.settings)?.state !== 'over') return false;
     const q = search.trim().toLowerCase();
     if (q && !`${r.crNo} ${r.title} ${r.requestingFunction} ${r.requestedBy} ${(r.sapModules || []).join(' ')}`.toLowerCase().includes(q)) return false;
     return true;
-  }), [data.requests, category, fn, mine, search, me.email]);
+  }), [data.requests, category, fn, mine, search, me.email, overdueOnly, data.settings]);
+  const overdueCount = useMemo(() => data.requests.filter((r) => slaOf(r, data.settings)?.state === 'over').length, [data.requests, data.settings]);
   const rows = useMemo(() => base.filter(TABS.find((t) => t.key === tab).test), [base, tab]);
   const nameOf = (e) => (e ? data.names[e] || e : '');
 
@@ -94,6 +97,8 @@ function Register({ me, initialTab, onOpen, onCreate }) {
         Decision: r.decision || '', 'Decision notes': r.decisionNotes || '', Meeting: r.meetingNo || '', 'Decided on': r.decidedAt ? fmtDate(r.decidedAt) : '',
         'Dev Tracker': r.devTrackerIssueNo != null ? `Assignment-${r.devTrackerIssueNo}` : '', Developer: r.devDeveloper || '',
         'IT SPOC': nameOf(r.loggedBy), 'Logged on': fmtDate(r.createdAt), 'Required by': r.requiredBy ? fmtDate(r.requiredBy) : '',
+        'Waiting on': slaOf(r, data.settings)?.who || '', 'Days in stage': slaOf(r, data.settings)?.used ?? '', 'Target': slaOf(r, data.settings) ? `${slaOf(r, data.settings).limit} ${slaOf(r, data.settings).unit}s` : '',
+        'Service level': ({ ok: 'On track', due: 'Due soon', over: 'Over target' })[slaOf(r, data.settings)?.state] || '',
       })));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, sheet, 'CCB register');
@@ -128,6 +133,11 @@ function Register({ me, initialTab, onOpen, onCreate }) {
           {me.can.log && (
             <button type="button" className={`ccb-chip-toggle${mine ? ' on' : ''}`} onClick={() => setMine((m) => !m)}>Logged by me</button>
           )}
+          {(overdueCount > 0 || overdueOnly) && (
+            <button type="button" className={`ccb-chip-toggle${overdueOnly ? ' on' : ''}`} onClick={() => setOverdueOnly((v) => !v)} title="Waiting longer than the targets set in Governance">
+              <ClockIcon size={12} /> Over target ({overdueCount})
+            </button>
+          )}
         </div>
         {data.loading ? <Loading /> : data.error ? <Blocker error={data.error} onRetry={load} /> : rows.length === 0 ? (
           <Empty icon={ClipboardIcon} title={data.requests.length ? 'Nothing matches these filters' : 'No change requests yet'}
@@ -153,6 +163,7 @@ function Register({ me, initialTab, onOpen, onCreate }) {
                     <td><Meta meta={STATUS_META} value={r.status} /></td>
                     <td className="stage-cell">
                       {r.devTrackerIssueNo != null ? <span>{stageLabel(r)} <small className="ccb-muted ccb-mono">· A-{r.devTrackerIssueNo}</small></span> : <span className="ccb-muted">{stageLabel(r)}</span>}
+                      <SlaBadge sla={slaOf(r, data.settings)} />
                     </td>
                     <td className="nowrap"><Person name={nameOf(r.loggedBy)} size={20} /></td>
                     <td className="nowrap ccb-muted">{relative(r.updatedAt)}</td>
@@ -165,10 +176,22 @@ function Register({ me, initialTab, onOpen, onCreate }) {
       </Card>
       {!me.can.log && (
         <p className="ccb-muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-          You can view the register. Logging requests needs the IT SPOC, SAP Module Lead or IT Application Head role — see Governance.
+          You can view the register. Logging requests needs the IT SPOC, SAP Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
         </p>
       )}
       {toast}
     </>
+  );
+}
+
+/** "4 of 5 business days" against the Governance target; red once over. */
+export function SlaBadge({ sla }) {
+  if (!sla) return null;
+  return (
+    <div style={{ marginTop: 3 }}>
+      <Pill tone={SLA_TONE[sla.state]} title={`Waiting on ${sla.who} since ${fmtDate(sla.since)} · target ${sla.limit} ${sla.unit}s`}>
+        <ClockIcon size={10} /> {sla.state === 'over' ? `${sla.used - sla.limit} ${sla.unit}${sla.used - sla.limit === 1 ? '' : 's'} over` : sla.label}
+      </Pill>
+    </div>
   );
 }

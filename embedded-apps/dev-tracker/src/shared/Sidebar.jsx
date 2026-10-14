@@ -24,6 +24,7 @@ const NAV = [
   { key: 'ccbOverview', label: 'CCB Overview', href: () => ROUTES.ccbOverview, icon: CompassIcon, color: '#7C3AED', section: 'Change Control Board' },
   { key: 'ccbRequests', label: 'Change Requests', href: () => ROUTES.ccbRequests, icon: ClipboardIcon, color: '#4F3FD6' },
   { key: 'ccbMeetings', label: 'CCB Meetings', href: () => ROUTES.ccbMeetings, icon: GavelIcon, color: '#C026D3' },
+  { key: 'ccbInsights', label: 'Insights', href: () => ROUTES.ccbInsights, icon: BarChartIcon, color: '#B45309' },
   { key: 'ccbGovernance', label: 'Governance', href: () => ROUTES.ccbGovernance, icon: LandmarkIcon, color: '#0F766E' },
   { key: 'board', label: 'Board', href: () => ROUTES.board, icon: BoardIcon, color: '#0EA5E9', section: 'SAP Development' },
   { key: 'backlog', label: 'Backlog', href: () => ROUTES.backlog, icon: ListIcon, color: '#2563EB' },

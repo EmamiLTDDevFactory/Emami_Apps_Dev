@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ccbApi } from './api.js';
 import { Blocker, Button, Card, DefinitionList, Field, Loading, Meta, Modal, Person, Pill, RoleBadge, ScopePill, useToast } from './ui.jsx';
-import { CATEGORY_META, DECISION_META, FEASIBILITY_META, MEETING_STATUS_META, PRIORITY_META, devTrackerLink, fmtDate, fmtDateTime, fmtTime, requestLink } from './model.js';
+import { ACTION_STATUS_META, CATEGORY_META, DECISION_META, FEASIBILITY_META, MEETING_STATUS_META, PRIORITY_META, REVIEW_META, actionOverdue, devTrackerLink, fmtDate, fmtDateTime, fmtTime, isoOf, requestLink } from './model.js';
 import { ROUTES } from '../shared/routes.js';
 import {
-  AlertIcon, BoltIcon, CheckCircleIcon, CheckIcon, ChevronLeftIcon, ClockIcon, GavelIcon, PlayIcon, PrinterIcon, RefreshIcon, TrashIcon, XIcon, ExternalIcon,
+  AlertIcon, BoltIcon, CheckCircleIcon, CheckIcon, ChevronLeftIcon, ClockIcon, GavelIcon, PlayIcon, PlusIcon, PrinterIcon, RefreshIcon, TrashIcon, XIcon, ExternalIcon,
 } from '../shared/icons.jsx';
 
 const DECISION_BUTTONS = {
@@ -29,6 +29,8 @@ export default function MeetingRoom({ id, me, onBack }) {
   const [savingMinutes, setSavingMinutes] = useState(false);
   const [busy, setBusy] = useState('');
   const [toast, showToast] = useToast();
+  const [reviewing, setReviewing] = useState(null); // { it, position }
+  const [addingAction, setAddingAction] = useState(false);
 
   const load = useCallback(() => {
     return ccbApi.meeting(id)
@@ -40,7 +42,9 @@ export default function MeetingRoom({ id, me, onBack }) {
   if (state.loading) return <Loading label="Opening meeting room…" />;
   if (state.error) return <Blocker error={state.error} onRetry={load} />;
 
-  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun, teamsConfigured } = state.detail;
+  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun, teamsConfigured, reviews = [], actions = [], canReview } = state.detail;
+  const reviewsOf = (itemId) => reviews.filter((v) => v.meetingItemId === itemId);
+  const myEmail = (me?.email || '').toLowerCase();
   const open = ['scheduled', 'in_progress'].includes(m.status);
   const teamsLive = open && m.teamsStatus === 'created' && !!m.teamsJoinUrl;
   const nameOf = (e) => (e ? names[e] || e : '');
@@ -94,6 +98,7 @@ export default function MeetingRoom({ id, me, onBack }) {
         <h1 style={{ margin: '4px 0' }}>Minutes — {m.title}</h1>
         <div style={{ fontSize: 12 }}>{m.meetingNo} · {fmtDateTime(m.scheduledAt)} · {m.mode}{m.venue ? ` · ${m.venue}` : ''}</div>
         <div style={{ fontSize: 12, marginTop: 6 }}><b>Present:</b> {people.filter((p) => present.has(p.email)).map((p) => p.name).join(', ') || '—'}</div>
+        {actions.length > 0 && <div style={{ fontSize: 12 }}><b>Action items:</b> {actions.map((a) => `${a.title} (${nameOf(a.owner)}${a.dueDate ? `, due ${fmtDate(a.dueDate)}` : ''}${a.status !== 'open' ? `, ${a.status}` : ''})`).join('; ')}</div>}
         <div style={{ fontSize: 12 }}><b>Quorum:</b> {quorum.present} of {quorum.required} required CCB members {quorum.met ? '(met)' : '(not met)'}</div>
       </div>
 
@@ -149,6 +154,8 @@ export default function MeetingRoom({ id, me, onBack }) {
             <Card title="For ratification" sub="Emergency approvals given by the IT Application Head since the last meeting" className="ccb-no-break">
               {ratifications.map((it, i) => (
                 <AgendaItem key={it.id} it={it} n={`R${i + 1}`} live={live} canDecide={canRun && live && quorum.met} canRemove={canRun && ['scheduled', 'in_progress'].includes(m.status)} nameOf={nameOf}
+                  reviews={reviewsOf(it.id)} myEmail={myEmail} canReview={canReview && open && !it.decision}
+                  onReview={(position) => (position === 'support' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, 'support', ''), 'Your support is recorded.') : position === '' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, '', ''), 'Your review is withdrawn.') : setReviewing({ it, position }))}
                   onDecide={(d) => setDeciding({ it, d })} onRemove={() => run(`rm${it.id}`, () => ccbApi.removeAgendaItem(m.id, it.id), 'Removed from agenda.')} />
               ))}
             </Card>
@@ -157,6 +164,8 @@ export default function MeetingRoom({ id, me, onBack }) {
             <Card title="For decision" sub={`${decisions.length} change request${decisions.length > 1 ? 's' : ''} recommended by the IT Application Head`}>
               {decisions.map((it, i) => (
                 <AgendaItem key={it.id} it={it} n={i + 1} live={live} canDecide={canRun && live && quorum.met} canRemove={canRun && ['scheduled', 'in_progress'].includes(m.status)} nameOf={nameOf}
+                  reviews={reviewsOf(it.id)} myEmail={myEmail} canReview={canReview && open && !it.decision}
+                  onReview={(position) => (position === 'support' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, 'support', ''), 'Your support is recorded.') : position === '' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, '', ''), 'Your review is withdrawn.') : setReviewing({ it, position }))}
                   onDecide={(d) => setDeciding({ it, d })} onRemove={() => run(`rm${it.id}`, () => ccbApi.removeAgendaItem(m.id, it.id), 'Removed from agenda.')} />
               ))}
             </Card>
@@ -182,6 +191,22 @@ export default function MeetingRoom({ id, me, onBack }) {
                 ) : m.status === 'completed' ? (
                   <Pill tone={present.has(p.email) ? 'green' : 'gray'}>{present.has(p.email) ? 'Present' : 'Absent'}</Pill>
                 ) : null}
+              </div>
+            ))}
+          </Card>
+
+          <Card title="Action items" sub={`${actions.filter((a) => a.status === 'open').length} open · tracked to closure on the Meetings page`} className="ccb-no-break"
+            actions={canRun && m.status !== 'cancelled' ? <Button size="sm" icon={PlusIcon} className="ccb-no-print" onClick={() => setAddingAction(true)}>Add</Button> : null}>
+            {actions.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No action items{canRun && m.status !== 'cancelled' ? ' yet. Add follow-ups the board agrees, with an owner and a due date.' : '.'}</p> : actions.map((a) => (
+              <div key={a.id} className="ccb-action-row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="t">{a.title}</div>
+                  <div className="s">{nameOf(a.owner)}{a.dueDate ? ` · due ${fmtDate(a.dueDate)}` : ''}{a.crNo ? ` · ${a.crNo}` : ''}</div>
+                </div>
+                {actionOverdue(a) ? <Pill tone="red">Overdue</Pill> : <Meta meta={ACTION_STATUS_META} value={a.status} />}
+                {a.status === 'open' && (canRun || a.owner === myEmail) && (
+                  <Button size="sm" variant="ghost" icon={CheckIcon} className="ccb-no-print" busy={busy === `ac${a.id}`} onClick={() => run(`ac${a.id}`, () => ccbApi.updateAction(a.id, { status: 'done' }), 'Action marked done.')}>Done</Button>
+                )}
               </div>
             ))}
           </Card>
@@ -229,13 +254,20 @@ export default function MeetingRoom({ id, me, onBack }) {
           <Field label="Minutes"><textarea className="ccb-textarea" style={{ minHeight: 140 }} value={minutes} onChange={(e) => setMinutes(e.target.value)} /></Field>
         </Modal>
       )}
+      {reviewing && (
+        <ReviewDialog meeting={m} item={reviewing.it} position={reviewing.position} current={reviewsOf(reviewing.it.id).find((v) => v.email === myEmail)}
+          onClose={() => setReviewing(null)} onDone={() => { setReviewing(null); showToast('Your review is recorded.'); load(); }} />
+      )}
+      {addingAction && (
+        <ActionDialog meeting={m} items={items} people={people} onClose={() => setAddingAction(false)} onDone={() => { setAddingAction(false); showToast('Action item added.'); load(); }} />
+      )}
       {confirm === 'cancel' && <CancelDialog meeting={m} onClose={() => setConfirm(null)} onDone={() => { setConfirm(null); showToast('Meeting cancelled. Its agenda items return to the queue.'); load(); }} />}
       {toast}
     </>
   );
 }
 
-function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRemove }) {
+function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRemove, reviews = [], myEmail, canReview, onReview }) {
   const ratification = it.kind === 'ratification';
   return (
     <div className={`ccb-agenda-item kind-${it.kind} ${it.decision ? 'is-decided' : 'is-open'}${canDecide && !it.decision ? ' can-decide' : ''}`}>
@@ -271,6 +303,7 @@ function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRem
         {it.financialImpact && <div><label>Financial impact</label><p>{it.financialImpact}</p></div>}
         {it.requiredBy && <div><label>Required by</label><p>{fmtDate(it.requiredBy)}</p></div>}
       </div>
+      <MemberReviews reviews={reviews} nameOf={nameOf} myEmail={myEmail} canReview={canReview} onReview={onReview} />
       {it.decision ? (
         <div className="ccb-outcome">
           <Meta meta={DECISION_META} value={it.decision} strong />
@@ -344,6 +377,106 @@ function CancelDialog({ meeting, onClose, onDone }) {
     <Modal title={`Cancel ${meeting.meetingNo}`} sub="Agenda items go back to the queue for the next meeting." onClose={onClose}
       footer={<><Button onClick={onClose}>Keep meeting</Button><Button variant="danger-solid" busy={busy} onClick={go}>Cancel meeting</Button></>}>
       <Field label="Reason" required><textarea className="ccb-textarea" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+      {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
+    </Modal>
+  );
+}
+
+/** Board members' positions on an agenda item: tally, who said what, and the caller's own buttons. */
+function MemberReviews({ reviews, nameOf, myEmail, canReview, onReview }) {
+  const [open, setOpen] = useState(false);
+  if (!reviews.length && !canReview) return null;
+  const count = (p) => reviews.filter((v) => v.position === p).length;
+  const mine = reviews.find((v) => v.email === myEmail);
+  const flagged = reviews.filter((v) => v.position !== 'support');
+  return (
+    <div className="ccb-reviews">
+      <div className="ccb-reviews-head">
+        <span className="lbl">Board review</span>
+        {reviews.length === 0 ? <span className="ccb-muted" style={{ fontSize: 11.5 }}>No positions yet</span> : Object.keys(REVIEW_META).map((p) => count(p) > 0 && (
+          <Pill key={p} tone={REVIEW_META[p].tone}>{count(p)} {REVIEW_META[p].label.toLowerCase()}</Pill>
+        ))}
+        {reviews.length > 0 && <button type="button" className="ccb-linkbtn ccb-no-print" onClick={() => setOpen((o) => !o)}>{open ? 'Hide' : 'Show'} who</button>}
+        {canReview && (
+          <span className="ccb-reviews-mine ccb-no-print">
+            {Object.entries(REVIEW_META).map(([p, meta]) => (
+              <button key={p} type="button" className={`ccb-chip-toggle tone-${meta.tone}${mine?.position === p ? ' on' : ''}`} onClick={() => onReview(p)}>{meta.label}</button>
+            ))}
+            {mine && <button type="button" className="ccb-linkbtn" onClick={() => onReview('')}>Withdraw</button>}
+          </span>
+        )}
+      </div>
+      {(open ? reviews : flagged).map((v) => (
+        <div key={v.id} className="ccb-review-line">
+          <Pill tone={REVIEW_META[v.position].tone}>{REVIEW_META[v.position].label}</Pill>
+          <span><b>{nameOf(v.email)}</b>{v.note ? ` — ${v.note}` : ''}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReviewDialog({ meeting, item, position, current, onClose, onDone }) {
+  const [note, setNote] = useState(current?.position === position ? current.note : '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function go() {
+    setBusy(true);
+    setError('');
+    try {
+      await ccbApi.reviewItem(meeting.id, item.id, position, note);
+      onDone();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title={`${REVIEW_META[position].label} — ${item.crNo}`} sub={`${item.title}. Your position is advisory input for the meeting; the decision stays with the board.`} onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" busy={busy} disabled={!note.trim()} onClick={go}>Record</Button></>}>
+      <Field label={position === 'oppose' ? 'Why you oppose it' : 'Your concern'} required>
+        <textarea className="ccb-textarea" value={note} onChange={(e) => setNote(e.target.value)} placeholder={position === 'oppose' ? 'e.g. Duplicates the standard report ZFI_xx…' : 'e.g. Needs a regression test of the MM–FI postings…'} />
+      </Field>
+      {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
+    </Modal>
+  );
+}
+
+function ActionDialog({ meeting, items, people, onClose, onDone }) {
+  const week = new Date();
+  week.setDate(week.getDate() + 7);
+  const [form, setForm] = useState({ title: '', owner: '', dueDate: isoOf(week), requestId: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  async function go() {
+    setBusy(true);
+    setError('');
+    try {
+      await ccbApi.addAction({ ...form, owner: form.owner.trim().toLowerCase(), meetingId: meeting.id, requestId: form.requestId || null });
+      onDone();
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Add an action item" sub={`${meeting.meetingNo} · tracked until the owner closes it`} onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" icon={PlusIcon} busy={busy} disabled={!form.title.trim() || !form.owner.trim()} onClick={go}>Add</Button></>}>
+      <Field label="Action" required><textarea className="ccb-textarea" style={{ minHeight: 70 }} value={form.title} onChange={set('title')} placeholder="e.g. Share the impact analysis on GST reports before the next meeting" /></Field>
+      <div className="ccb-form-grid">
+        <Field label="Owner" required hint="A board member or any Emami email.">
+          <input className="ccb-input" list="ccb-action-owners" value={form.owner} onChange={set('owner')} placeholder="name@emamigroup.com" />
+          <datalist id="ccb-action-owners">{people.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}</datalist>
+        </Field>
+        <Field label="Due date"><input className="ccb-input" type="date" value={form.dueDate} onChange={set('dueDate')} /></Field>
+        <Field label="Change request" wide>
+          <select className="ccb-input" value={form.requestId} onChange={set('requestId')}>
+            <option value="">General (not tied to a request)</option>
+            {items.map((it) => <option key={it.id} value={it.requestId}>{it.crNo} — {it.title}</option>)}
+          </select>
+        </Field>
+      </div>
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>
   );
