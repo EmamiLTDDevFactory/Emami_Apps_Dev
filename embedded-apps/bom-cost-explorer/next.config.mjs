@@ -39,7 +39,9 @@ const nextConfig = {
   images: { unoptimized: true },
   reactStrictMode: true,
   // Production Plan module: PLAN_MODULE_ENABLED / NEXT_PUBLIC_PLAN_MODULE_ENABLED win; else on for deployed DEV builds.
-  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv, NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || (isBuild ? DEPLOYED_PLAN_MODULE : 'false') },
+  env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv,
+    // RateOptionSet CHAR1 flags: 'string' (default, 'X' / '') or 'boolean' (lib/rates/optionFilter.ts).
+    NEXT_PUBLIC_RATEOPTION_BOOL_STYLE: process.env.RATEOPTION_BOOL_STYLE || process.env.NEXT_PUBLIC_RATEOPTION_BOOL_STYLE || 'string', NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || (isBuild ? DEPLOYED_PLAN_MODULE : 'false') },
 };
 
 export default nextConfig;

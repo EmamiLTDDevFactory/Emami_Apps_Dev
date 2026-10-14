@@ -20,6 +20,7 @@ import { normalizeEntity } from '../sap/normalize';
 import { defaultQuery, type CostQuery } from '../query/schema';
 import { getRatesCapability, setRatesCapability, type RatesProbe } from './capability';
 import { EXPAND_PARENT, RATE_OPTION_DIRECT, RATE_OPTION_SET, optionKey, type RateOptionRow } from './fields';
+import { rateOptionFilter } from './optionFilter';
 
 export type RatesResult =
   | { rows: RateOptionRow[]; mode: 'direct' | 'expand' }
@@ -37,9 +38,11 @@ export function isRatesShapeMissing(e: unknown): boolean {
   return NOT_THERE.test(`${e.message} ${e.details.map((d) => d.message).join(' ')}`);
 }
 
-/** The probe / fetch request for each shape. Same filter builder as the costing call. */
+/** The probe / fetch request for each shape. Same filter builder as the costing call; RateOptionSet gets the
+ * six CHAR1 flags as 'X' / '' (rateOptionFilter, RATEOPTION_BOOL_STYLE); the $expand route is a CostLineSet call
+ * and keeps the costing filter unchanged. */
 export function directRequest(q: CostQuery | string) {
-  return { entitySet: RATE_OPTION_SET, params: { $filter: typeof q === 'string' ? q : buildSelectionFilter(q) } as Record<string, string | undefined> };
+  return { entitySet: RATE_OPTION_SET, params: { $filter: rateOptionFilter(typeof q === 'string' ? q : buildSelectionFilter(q)) } as Record<string, string | undefined> };
 }
 export function expandRequest(q: CostQuery | string) {
   return {

@@ -512,6 +512,11 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     const cfg = { GROUP_CURR: 'INR', DEFAULT_PRIO: 'CONTRACT,INFOREC,MARKT,CONSUMP,MBEW', MAX_HEADS: '50' };
     return json({ d: { results: Object.entries(cfg).map(([k, v]) => ({ ...meta('ConfigItem', `${ENTITY_SET.CONFIG}('${k}')`), [CONFIG.CfgKey[0]]: k, [CONFIG.CfgVal[0]]: v })) } });
   }
+  // RateOption: InclFrt, StdFrt, InclBudget, InclCover, UseAsof, LatestOnly are Edm.String (CHAR1) - a boolean
+  // literal is refused like SAP does (CostLine keeps them as Edm.Boolean).
+  if (set === 'RateOptionSet' && /\b(InclFrt|StdFrt|InclBudget|InclCover|UseAsof|LatestOnly) eq (true|false)\b/.test(sp.get('$filter') ?? '')) {
+    return odataError(400, '/IWBEP/CM_MGW_RT/001', "Invalid parametertype used at function 'eq'");
+  }
   // HierVHSet + MaterialVHSet filtered by Brand / Product / CRS (mock/hier.ts).
   const hierRes = handleHier(set, sp, { json, odataError, parseFilter });
   if (hierRes) { await sleep(60, signal); return hierRes; }
