@@ -6,3 +6,7 @@ next-env.d.ts
 .env*.local
 .DS_Store
 *.tsbuildinfo
+
+# Backend server
+server/node_modules
+server/.env

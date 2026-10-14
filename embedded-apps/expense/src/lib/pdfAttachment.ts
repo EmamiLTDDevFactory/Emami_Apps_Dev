@@ -40,26 +40,7 @@ function base64ToBytes(b64: string): Uint8Array {
 const RENDER_SCALES = [1.5, 1.0, 0.75, 0.5];
 const JPEG_QUALITIES = [0.7, 0.5, 0.35, 0.2];
 
-async function renderPageCanvases(pdfjsLib: any, bytes: Uint8Array, scale: number): Promise<HTMLCanvasElement[]> {
-  // pdf.js transfers (not copies) this buffer to its worker, detaching it afterward — the caller
-  // loops over multiple scales reusing the same `bytes`, so each call needs its own fresh copy or
-  // every call after the first throws "ArrayBuffer is detached".
-  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
-  const canvases: HTMLCanvasElement[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D context unavailable.');
-    // eslint-disable-next-line no-await-in-loop
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    canvases.push(canvas);
-  }
-  return canvases;
-}
+type RenderedPage = { width: number; height: number; jpegsByQuality: Map<number, Uint8Array> };
 
 function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -70,15 +51,50 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8
   });
 }
 
-async function buildPdfFromCanvases(PDFDocument: any, canvases: HTMLCanvasElement[], quality: number): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  for (const canvas of canvases) {
+// Renders one page at a time and immediately JPEG-encodes it at every candidate quality before
+// moving to the next page, instead of rendering every page's full-resolution canvas up front and
+// holding them all in memory simultaneously (what previously made this throw partway through a
+// multi-page PDF — each page's raw canvas bitmap is tens of MB, while a JPEG of the same page is
+// 50-200x smaller, so holding N pages' JPEGs instead of N pages' canvases is the fix). The canvas
+// is explicitly zeroed out right after encoding so its backing store is released immediately
+// rather than waiting on garbage collection to catch up mid-loop.
+async function renderPageJpegsAtAllQualities(pdfjsLib: any, bytes: Uint8Array, scale: number): Promise<RenderedPage[]> {
+  // pdf.js transfers (not copies) this buffer to its worker, detaching it afterward — the caller
+  // loops over multiple scales reusing the same `bytes`, so each call needs its own fresh copy or
+  // every call after the first throws "ArrayBuffer is detached".
+  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const pages: RenderedPage[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context unavailable.');
     // eslint-disable-next-line no-await-in-loop
-    const jpeg = await canvasToJpeg(canvas, quality);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const jpegsByQuality = new Map<number, Uint8Array>();
+    for (const quality of JPEG_QUALITIES) {
+      // eslint-disable-next-line no-await-in-loop
+      jpegsByQuality.set(quality, await canvasToJpeg(canvas, quality));
+    }
+    pages.push({ width: canvas.width, height: canvas.height, jpegsByQuality });
+    canvas.width = 0;
+    canvas.height = 0;
+  }
+  return pages;
+}
+
+async function buildPdfFromJpegPages(PDFDocument: any, pages: RenderedPage[], quality: number): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  for (const p of pages) {
+    const jpeg = p.jpegsByQuality.get(quality)!;
     // eslint-disable-next-line no-await-in-loop
     const img = await doc.embedJpg(jpeg);
-    const page = doc.addPage([canvas.width, canvas.height]);
-    page.drawImage(img, { x: 0, y: 0, width: canvas.width, height: canvas.height });
+    const page = doc.addPage([p.width, p.height]);
+    page.drawImage(img, { x: 0, y: 0, width: p.width, height: p.height });
   }
   return doc.save();
 }
@@ -107,10 +123,10 @@ export async function compressPdfToMaxBytes(bytes: Uint8Array, maxBytes: number)
   let smallest: Uint8Array | null = null;
   for (const scale of RENDER_SCALES) {
     // eslint-disable-next-line no-await-in-loop
-    const canvases = await renderPageCanvases(pdfjsLib, bytes, scale);
+    const pages = await renderPageJpegsAtAllQualities(pdfjsLib, bytes, scale);
     for (const quality of JPEG_QUALITIES) {
       // eslint-disable-next-line no-await-in-loop
-      const rebuilt = await buildPdfFromCanvases(pdfLib.PDFDocument, canvases, quality);
+      const rebuilt = await buildPdfFromJpegPages(pdfLib.PDFDocument, pages, quality);
       if (!smallest || rebuilt.byteLength < smallest.byteLength) smallest = rebuilt;
       if (rebuilt.byteLength <= maxBytes) return rebuilt;
     }

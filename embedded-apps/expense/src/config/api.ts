@@ -3,7 +3,7 @@
  */
 
 const getBaseUrl = (): string => {
-  // Environment variable override
+  // Environment variable override (local dev against a different backend instance, etc.)
   if (
     process.env.NEXT_PUBLIC_API_URL &&
     process.env.NEXT_PUBLIC_API_URL.trim() !== ''
@@ -11,22 +11,17 @@ const getBaseUrl = (): string => {
     return process.env.NEXT_PUBLIC_API_URL.trim().replace(/\/+$/, '');
   }
 
-  // Web: construct backend URL based on current origin
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    const port = window.location.port;
-
-    // In production or when already running on backend port 3000, use same origin
-    if (port === '3000' || process.env.NODE_ENV === 'production') {
-      return window.location.origin;
-    }
-
-    return `${protocol}//${hostname}:3000`;
-  }
-
-  // Default fallback
-  return 'http://172.17.2.21:3000';
+  // Hardcoded (not origin-derived) on purpose, same convention as SAP_BASE_URL below — this app's
+  // frontend (Amplify, HTTPS) and its backend (172.17.2.21) are two separate hosts, so "same
+  // origin as the page" is never correct here, and a plain http://172.17.2.21:4102 URL would be
+  // blocked by the browser as mixed content from an HTTPS page anyway. Instead this goes through
+  // the SAME nginx HTTPS reverse proxy every other embedded app's backend uses on this box
+  // (audit-capa-api.emamiapps.in — a shared/misleadingly-named domain, not audit-capa-specific;
+  // see e.g. timesheet's AppContext.tsx for the identical pattern), which strips the /dev-api/
+  // expense/ prefix and forwards to localhost:4102 (the expense-api-dev PM2 process — see
+  // embedded-apps/expense/server). Dev-only for now, same reasoning as SAP_BASE_URL below
+  // pointing at NGQ, not NWP: no prod expense-api process or /api/expense/ nginx route exists yet.
+  return 'https://audit-capa-api.emamiapps.in/dev-api/expense';
 };
 
 export const API_BASE_URL = getBaseUrl();

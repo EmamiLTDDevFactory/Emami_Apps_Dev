@@ -5,7 +5,7 @@ import { Check, CheckCircle2, ChevronDown, CloudUpload, Download, Eye, FileText,
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Banner, Button, Card, Chip, Field, Input, InfoField, MessageModal, type MessageModalState, Modal, Spinner, TextArea, YesNo } from '../../components/ui';
-import { SAP_BASE_URL } from '../../config/api';
+import { API_BASE_URL, SAP_BASE_URL } from '../../config/api';
 import { useAuth } from '../../context/AuthContext';
 import { useClaim } from '../../context/ClaimContext';
 import {
@@ -29,6 +29,18 @@ const MAX_ATTACHMENTS_TOTAL_BYTES = SAFE_COMBINED_RAW_ATTACHMENT_BYTES;
 const MAX_ATTACHMENTS_TOTAL_LABEL = `${Math.round(SAFE_COMBINED_RAW_ATTACHMENT_BYTES / 1024)} KB`;
 
 const EXCEL_MIME_TYPES = ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
+// Standard 15-character GSTIN format - gates auto-flipping "GSTIN Available" to Yes off a
+// document-extraction result, so a bad OCR read on a non-GST receipt can't force someone into
+// the GST flow (Region/HSN fields) for a value that isn't actually a real GSTIN.
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onloadend = () => resolve(((reader.result as string) || '').split(',')[1] || '');
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
 
 const getMimeTypeForFile = (fileName?: string, mimeType?: string) => {
   if (mimeType) return mimeType;
@@ -124,6 +136,12 @@ function CreateClaimInner() {
   // Auto-matched from the GST lookup's Regio field against AreaSet.Bland (see lookupGstByGstin
   // below) - no longer a user-pickable dropdown, same treatment as the read-only Cost Center field.
   const [selectedArea, setSelectedArea] = useState<any | null>(null);
+  // Document-extraction result state (see extractDocumentDetails) - set once per Supporting
+  // Documents upload attempt. hsnAutoFillMissing specifically means "we tried, GST was detected,
+  // but no HSN was readable from the document" - the user must key it in manually at that point.
+  const [documentExtractionLoading, setDocumentExtractionLoading] = useState(false);
+  const [documentExtractionError, setDocumentExtractionError] = useState('');
+  const [hsnAutoFillMissing, setHsnAutoFillMissing] = useState(false);
   const [justification, setJustification] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Pristine, pre-compression source for every attachment picked THIS session (keyed by attachment
@@ -179,6 +197,9 @@ function CreateClaimInner() {
     setGstLookupError('');
     setGstinChoice('no');
     setHsnSac('');
+    setHsnAutoFillMissing(false);
+    setDocumentExtractionLoading(false);
+    setDocumentExtractionError('');
     setJustification('');
     setAttachments([]);
     setOriginalSources({});
@@ -432,6 +453,58 @@ function CreateClaimInner() {
     }
   }, [parsedAmount]);
 
+  // Reads GSTIN / HSN / total amount off the first Supporting Document the user uploads, via a
+  // backend endpoint that calls Claude's document understanding (not live yet - the backend
+  // returns 503 until ANTHROPIC_API_KEY is configured there, in which case this just no-ops and
+  // the user fills everything in manually exactly as before). A detected GSTIN only auto-flips
+  // "GSTIN Available" to Yes when it matches the real 15-character GSTIN format, so a bad OCR
+  // read on a non-GST receipt can't force the GST flow (Region/HSN fields) on someone by mistake.
+  const extractDocumentDetails = async (attachment: Attachment) => {
+    setDocumentExtractionLoading(true);
+    setDocumentExtractionError('');
+    try {
+      const fileRes = await fetch(attachment.uri);
+      const blob = await fileRes.blob();
+      const base64 = await blobToBase64(blob);
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/expense/extract-document`,
+        { mimeType: attachment.type || blob.type, data: base64 },
+        { validateStatus: () => true },
+      );
+
+      if (response.status === 503) return; // Not configured on the backend yet - silent no-op.
+      if (response.status < 200 || response.status >= 300) {
+        setDocumentExtractionError("Couldn't read details from this document automatically. Please fill them in manually.");
+        return;
+      }
+
+      const { gstin, hsnSac: extractedHsn, totalAmount } = response.data || {};
+      const normalizedExtractedGstin = (gstin || '').toString().replace(/\s+/g, '').toUpperCase();
+      const isRealGstin = GSTIN_PATTERN.test(normalizedExtractedGstin);
+
+      if (isRealGstin) {
+        setGstinChoice('yes');
+        setGstinInput(normalizedExtractedGstin);
+      }
+
+      if (extractedHsn) {
+        setHsnSac(extractedHsn.toString().replace(/\s+/g, '').toUpperCase());
+        setHsnAutoFillMissing(false);
+      } else if (isRealGstin) {
+        setHsnAutoFillMissing(true);
+      }
+
+      if (totalAmount && Number(totalAmount) > 0) {
+        setAmountStr(Number(totalAmount).toString());
+      }
+    } catch (e) {
+      setDocumentExtractionError("Couldn't read details from this document automatically. Please fill them in manually.");
+    } finally {
+      setDocumentExtractionLoading(false);
+    }
+  };
+
   // Shared by both attachment sections (Supporting Documents and Manager Approved Attachment) -
   // both sections ride in the SAME SAP submission payload (see ClaimContext's allAttachments),
   // so they share ONE combined size budget across both lists, not one budget each — two
@@ -558,6 +631,12 @@ function CreateClaimInner() {
       if (isRecompressible) {
         setSources((prev) => ({ ...prev, [newId]: { uri: asset.uri, mimeType: attachmentMimeType } }));
       }
+
+      // Only the primary Supporting Documents upload is a candidate receipt to read GST/HSN/
+      // Amount off of - not the separate Manager Approved Attachment.
+      if (isStandard) {
+        extractDocumentDetails(newAtt);
+      }
     } catch (err) {
       setFormError('Unable to add attachment. Please try again with a supported file.');
     }
@@ -610,6 +689,11 @@ function CreateClaimInner() {
 
     if (gstinChoice === 'yes' && selectedGst && !selectedArea) {
       setFormError('Unable to determine Region for this GSTIN. Please re-enter the GSTIN or contact support.');
+      return;
+    }
+
+    if (gstinChoice === 'yes' && !hsnSac.trim()) {
+      setFormError("HSN Code couldn't be auto-detected from the document. Please enter it manually before submitting.");
       return;
     }
 
@@ -678,6 +762,43 @@ function CreateClaimInner() {
         </div>
       </Card>
 
+      {/* Attachments - moved ahead of Claim Details so uploading the receipt first can auto-fill
+          GSTIN/Region, HSN, and Amount below via extractDocumentDetails. */}
+      <Card className="mb-3">
+        <h2 className="text-sm font-bold text-ink">Supporting Documents{attachmentOptionalForType ? '' : ' *'}</h2>
+        <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'At least 1 attachment is mandatory'}</p>
+        <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
+        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
+
+        {attachments.map((att) => (
+          <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
+            <FileText size={20} className="shrink-0 text-brand" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">{att.name}</span>
+            <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
+              <Eye size={18} />
+            </button>
+            <button type="button" onClick={() => handleRemoveAttachment(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
+              <Trash2 size={18} />
+            </button>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          onClick={handlePickAttachment}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+        >
+          <CloudUpload size={18} /> Add Attachment / Scanned Receipt
+        </button>
+
+        {documentExtractionLoading && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Reading GST, HSN and amount details from the document…</div>
+        )}
+        {documentExtractionError && (
+          <p className="mt-2 text-xs font-semibold text-red">{documentExtractionError}</p>
+        )}
+      </Card>
+
       {/* Claim Details */}
       <Card className="mb-3">
         <h2 className="mb-2 text-sm font-bold text-ink">Claim Details</h2>
@@ -719,6 +840,7 @@ function CreateClaimInner() {
                 setGstLookupError('');
                 setSelectedArea(null);
                 setHsnSac('');
+                setHsnAutoFillMissing(false);
               } else {
                 setGstinChoice('no');
                 setGstinInput('');
@@ -726,6 +848,7 @@ function CreateClaimInner() {
                 setGstLookupError('');
                 setSelectedArea(null);
                 setHsnSac('');
+                setHsnAutoFillMissing(false);
               }
             }}
           />
@@ -763,10 +886,14 @@ function CreateClaimInner() {
             </div>
 
             <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="HSN Code">
+              <Field
+                label="HSN Code"
+                required={hsnAutoFillMissing}
+                error={hsnAutoFillMissing ? "Couldn't auto-detect this from the document — please enter it manually." : undefined}
+              >
                 <Input
                   value={hsnSac}
-                  onChange={(e) => setHsnSac(e.target.value.replace(/\s+/g, '').toUpperCase())}
+                  onChange={(e) => { setHsnSac(e.target.value.replace(/\s+/g, '').toUpperCase()); setHsnAutoFillMissing(false); }}
                   placeholder="Enter HSN/SAC code"
                   maxLength={16}
                 />
@@ -794,35 +921,6 @@ function CreateClaimInner() {
         <Field label="Business Justification">
           <TextArea value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="State the business purpose for this expense..." />
         </Field>
-      </Card>
-
-      {/* Attachments */}
-      <Card className="mb-3">
-        <h2 className="text-sm font-bold text-ink">Supporting Documents{attachmentOptionalForType ? '' : ' *'}</h2>
-        <p className="text-xs text-inkSoft">{attachmentOptionalForType ? 'Optional for this expense type' : 'At least 1 attachment is mandatory'}</p>
-        <p className="text-xs text-inkSoft">Allowed: {ALLOWED_ATTACHMENT_LABEL}</p>
-        <p className="mb-3 text-xs text-inkSoft">Images/PDFs are compressed automatically; combined size after compression: {MAX_ATTACHMENTS_TOTAL_LABEL}</p>
-
-        {attachments.map((att) => (
-          <div key={att.id} className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2">
-            <FileText size={20} className="shrink-0 text-brand" />
-            <span className="min-w-0 flex-1 truncate text-sm text-ink">{att.name}</span>
-            <button type="button" onClick={() => handlePreviewAttachment(att)} aria-label="View document" className="rounded p-1.5 text-brand hover:bg-cream">
-              <Eye size={18} />
-            </button>
-            <button type="button" onClick={() => handleRemoveAttachment(att.id)} aria-label="Remove document" className="rounded p-1.5 text-red hover:bg-redBg">
-              <Trash2 size={18} />
-            </button>
-          </div>
-        ))}
-
-        <button
-          type="button"
-          onClick={handlePickAttachment}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
-        >
-          <CloudUpload size={18} /> Add Attachment / Scanned Receipt
-        </button>
       </Card>
 
       {/* Manager Approved Attachment - only for expense types whose ExptypeSet.Flag comes back blank */}
