@@ -112,6 +112,43 @@ export async function handlePlan(seg: string, sp: URLSearchParams, init: Request
     return new Response(`<pre>Cannot DELETE /api/${seg}</pre>`, { status: 404, headers: { 'content-type': 'text/html' } });
   }
 
+  // The two feeds SAP is adding (src/lib/plan/sapFeeds.ts). MOCK_SAP_FEEDS=missing -> 404 like a system without them.
+  if ((set === 'BudgetRateSet' || set === 'ProdActualSet') && method === 'GET') {
+    if (process.env.MOCK_SAP_FEEDS === 'missing') return deps.odataError(404, '/IWBEP/CM_MGW_RT/020', `Resource not found for segment '${set}'`);
+    await deps.sleep(deps.delay(), signal);
+    const werks = (f.get('Werks') ?? []).map((x) => x.toUpperCase());
+    const year = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+    const entries = [...store.values()].flatMap((m) => [...m.values()]).filter((e) => !werks.length || werks.includes(e.Werks));
+    const out: Raw[] = [];
+    if (set === 'BudgetRateSet') {
+      // H1 = the budget landed rate, H2 revised +6 %: two validity records per component plant + component.
+      const seen = new Set<string>();
+      for (const e of entries) {
+        for (const l of deps.costLinesFor(e.Matnr, e.Werks, 1000, [], false, { year: String(year) })) {
+          const k = `${l.Werks}|${l.Idnrk}`;
+          if (l.Haschild || seen.has(k) || !(Number(l.BudLanded) > 0)) continue;
+          seen.add(k);
+          const rate = Number(l.BudLanded);
+          for (const [from, to, r] of [[`${year}0401`, `${year}0930`, rate], [`${year}1001`, `${year + 1}0331`, rate * 1.06]] as [string, string, number][]) {
+            out.push({ __metadata: { type: 'ZMM_BOM_COST_SRV.BudgetRate' }, Matnr: l.Idnrk, Werks: l.Werks, Datab: from, Datbi: to, Rate: r.toFixed(4), Waers: 'INR', RateInr: r.toFixed(4), Peinh: '1', Meins: l.Meins });
+          }
+        }
+      }
+    } else {
+      // Production Apr..Sep at 95 % of plan, valued 3 % below the landed cost per piece.
+      for (const e of entries) {
+        const lines = deps.costLinesFor(e.Matnr, e.Werks, 1000, [], false, null).filter((l) => !l.Haschild);
+        const perPc = lines.reduce((a, l) => a + Number(l.TotCostInr || 0), 0) / 1000;
+        for (let m = 0; m < 6; m++) {
+          const qty = (e.m[m] ?? 0) * 0.95;
+          if (!qty) continue;
+          out.push({ __metadata: { type: 'ZMM_BOM_COST_SRV.ProdActual' }, Matnr: e.Matnr, Werks: e.Werks, Spmon: `${year}${String(4 + m).padStart(2, '0')}`, Menge: qty.toFixed(3), Meins: 'PC', Value: (qty * perPc * 0.97).toFixed(2), Waers: 'INR', ValueInr: (qty * perPc * 0.97).toFixed(2) });
+        }
+      }
+    }
+    return deps.json({ d: { results: out } });
+  }
+
   if (set === 'PlanHeadSet' && method === 'GET') {
     await deps.sleep(deps.delay(), signal);
     // One row per plan AND plant (key Plan1 + Werks); $filter on Plan1 and Werks.

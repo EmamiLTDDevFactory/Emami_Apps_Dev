@@ -18,9 +18,10 @@ import { FISCAL_MONTHS } from '@/lib/plan/fields';
 import type { PlanLineWithOptions } from '@/lib/plan/sources';
 import { planParams } from '@/lib/plan/export';
 import {
-  H2_START, budgetPlan, elapsedMonths, groupSavings, isActive, isSimIdentity, loadBudget, saveBudget, savingsEstimate,
-  type ActualBasis, type BudgetResult, type BudgetSettings, type ComponentQty, type RateChange, type SavingsGroup,
+  H2_START, actualSavings, budgetPlan, elapsedMonths, groupActual, groupSavings, isActive, isSimIdentity, loadBudget, saveBudget, savingsEstimate,
+  type ActualBasis, type ActualGroup, type BudgetResult, type BudgetSettings, type ComponentQty, type RateChange, type RateContext, type SavingsGroup,
 } from '@/lib/plan/budgetSim';
+import { BUDGET_RATE_SET, PROD_ACTUAL_SET, actualsByFg, fetchBudgetRates, fetchProdActuals, rateLookup, type ActualCell, type BudgetRateRow, type Feed, type ProdActualRow } from '@/lib/plan/sapFeeds';
 import { useRateOptionsByFilter, type RatesState } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import { loadSapConfig } from '@/lib/sap/config';
@@ -34,7 +35,7 @@ const VIEWS: { value: View; label: string }[] = [
   { value: 'qty', label: 'Quantity & where used' },
   { value: 'sim', label: 'Rate simulation' },
   { value: 'h2', label: 'Budget rates H1 / H2' },
-  { value: 'savings', label: 'Savings vs actual (estimate)' },
+  { value: 'savings', label: 'Savings vs actual' },
 ];
 const ROW_CAP = 2000;
 const signedPct = (d: Decimal | null) => (d === null ? '—' : `${d.gt(0) ? '+' : d.lt(0) ? '−' : ''}${d.abs().toFixed(2)}%`);
@@ -56,7 +57,22 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
   const ranFilter = cost.status === 'done' && cost.ranQuery ? costFilter(cost.ranQuery) : null;
   const rates = useRateOptionsByFilter(ranFilter, system);
   const lines = useMemo(() => (rates.status === 'ready' && rates.rows ? attachRateOptions(cost.rows as unknown as CostLine[], rates.rows) : (cost.rows as unknown as CostLine[])) as unknown as PlanLineWithOptions[], [cost.rows, rates.status, rates.rows]);
-  const r = useMemo(() => budgetPlan(lines, ds), [lines, ds]);
+  // SAP feeds: budget rates with validity, and FG production actuals (sapFeeds.ts); null while loading.
+  const fyStart = useMemo(() => { const y = Number(cost.ranQuery?.budgetYr ?? ws.query.budgetYr); const now = new Date(); return y > 2000 ? y : now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; }, [cost.ranQuery?.budgetYr, ws.query.budgetYr]);
+  const [rateFeed, setRateFeed] = useState<Feed<BudgetRateRow> | null>(null);
+  const [actFeed, setActFeed] = useState<Feed<ProdActualRow> | null>(null);
+  useEffect(() => {
+    if (cost.status !== 'done' || !cost.rows.length) return;
+    const plants = [...new Set(cost.rows.flatMap((l) => [l.Werks, l.Hwerks]).filter(Boolean))];
+    const c = new AbortController();
+    setRateFeed(null); setActFeed(null);
+    fetchBudgetRates(plants, { signal: c.signal }).then(setRateFeed).catch(() => {});
+    fetchProdActuals([...new Set(cost.rows.map((l) => l.Hwerks))], fyStart, { signal: c.signal }).then(setActFeed).catch(() => {});
+    return () => c.abort();
+  }, [cost.status, cost.at, cost.rows, fyStart]);
+  const ctx: RateContext = useMemo(() => ({ rates: rateFeed?.status === 'ready' ? rateLookup(rateFeed.rows) : null, fyStart }), [rateFeed, fyStart]);
+  const actuals = useMemo(() => (actFeed?.status === 'ready' ? actualsByFg(actFeed.rows, fyStart) : null), [actFeed, fyStart]);
+  const r = useMemo(() => budgetPlan(lines, ds, ctx), [lines, ds, ctx]);
   const running = cost.status === 'running';
   const hasRows = cost.rows.length > 0;
   const simCount = Object.values(s.sim).filter(isActive).length;
@@ -77,6 +93,12 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
             <Stat label="Simulated plan cost" sim value={inr(r.sim)} sub={isSimIdentity(s) ? 'no rate change entered' : `${simCount} component rate${simCount === 1 ? '' : 's'} changed`} />
             <Stat label="Overall impact" sim tone={r.delta.gt(0) ? 'bad' : r.delta.lt(0) ? 'good' : undefined} value={fmtSigned(r.delta, 0)} sub={`${signedPct(r.deltaPct)} · ${r.affected} of ${r.fgs.length} FGs affected`} />
           </div>
+          <p className="flex flex-wrap items-start gap-1.5 text-xs text-muted"><Info size={13} className="mt-0.5 shrink-0" />
+            {rateFeed === null ? <span>Checking SAP for budget rates with validity ({BUDGET_RATE_SET})…</span>
+              : rateFeed.status === 'ready' ? <span><b className="text-ink">Budget rates from SAP {BUDGET_RATE_SET}</b> by validity (valid from / to) for {r.sapRateLines.toLocaleString('en-IN')} component lines; others use the budget rate on the cost line{s.h2Pct || Object.keys(s.h2).length ? ' and the H2 revision' : ''}.</span>
+              : <span>{rateFeed.note} Using the budget rate on the cost line for every month{s.h2Pct || Object.keys(s.h2).length ? ', with the H2 revision entered here' : ''}.</span>}
+            <span>· Amounts in INR (group currency) and the plant&apos;s local currency.</span>
+          </p>
           {(r.noBudgetLines > 0 || r.fallbackLines > 0) && (
             <p className="flex flex-wrap items-start gap-1.5 text-xs text-muted"><Info size={13} className="mt-0.5 shrink-0" />
               {r.fallbackLines > 0 && <span>{r.fallbackLines} component line{r.fallbackLines === 1 ? ' has' : 's have'} no budget rate and use the selected SAP rate (marked *).</span>}
@@ -92,8 +114,8 @@ export default function RequirementTab({ ws }: { ws: PlanWorkspace }) {
           </div>
           {view === 'qty' && <QtyView comps={r.components} s={s} onSimulate={(c) => { setFocus(c.idnrk); setView('sim'); }} />}
           {view === 'sim' && <SimView r={r} s={s} initial={focus} onChange={(id, c) => setChange('sim', id, c)} onReset={() => setS((x) => ({ ...x, sim: {} }))} query={cost.ranQuery ?? ws.query} />}
-          {view === 'h2' && <H2View r={r} s={s} onPct={(v) => setS((x) => ({ ...x, h2Pct: v }))} onChange={(id, c) => setChange('h2', id, c)} />}
-          {view === 'savings' && <SavingsView lines={lines} s={ds} rates={rates} query={cost.ranQuery ?? ws.query} />}
+          {view === 'h2' && <H2View r={r} s={s} sapRates={rateFeed?.status === 'ready'} onPct={(v) => setS((x) => ({ ...x, h2Pct: v }))} onChange={(id, c) => setChange('h2', id, c)} />}
+          {view === 'savings' && <SavingsView lines={lines} s={ds} rates={rates} query={cost.ranQuery ?? ws.query} ctx={ctx} r={r} actuals={actuals} actFeed={actFeed} />}
         </>
       )}
     </div>
@@ -122,6 +144,8 @@ function QtyView({ comps, s, onSimulate }: { comps: ComponentQty[]; s: BudgetSet
       ...FISCAL_MONTHS.map((m, k): XCol => ({ header: m, dp: 3, get: (i) => n(flat[i].f.months[k], 3) })),
       { header: 'Total qty', dp: 3, get: (i) => n(flat[i].f.qty, 3) },
       { header: 'Budget cost INR', dp: 2, curr: 'INR', get: (i) => n(flat[i].f.budget) },
+      { header: 'Local currency', get: (i) => flat[i].f.curr },
+      { header: 'Budget cost local', dp: 2, get: (i) => n(flat[i].f.budgetLoc) },
     ];
     void exportTable({ fmt: 'xlsx', name: 'Component requirement where used', cols, count: flat.length, extraParams: [['Rates', 'Budget rate per month (H1 SAP budget, H2 revised in the app)']] });
   };
@@ -140,7 +164,7 @@ function QtyView({ comps, s, onSimulate }: { comps: ComponentQty[]; s: BudgetSet
             <tr>
               <th className={thCls}>Plant</th><th className={thCls}>Component</th><th className={thNum}>Used in</th><th className={thCls}>Unit</th>
               {FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}
-              <th className={thNum}>Total qty</th><th className={thNum} title="Budget rate per unit: H1 / H2">Budget rate H1 / H2</th><th className={thNum}>Budget cost INR</th><th className={thCls} />
+              <th className={thNum}>Total qty</th><th className={thNum} title="Budget rate per unit (INR): first month / last month">Budget rate Apr / Mar</th><th className={thNum}>Budget cost INR</th><th className={thNum}>Budget cost local</th><th className={thCls} />
             </tr>
           </thead>
           <tbody>
@@ -157,16 +181,17 @@ function QtyView({ comps, s, onSimulate }: { comps: ComponentQty[]; s: BudgetSet
                   <td className={tdCls}>{c.meins}</td>
                   {c.months.map((v, i) => <td key={i} className={tdNum}>{fmtNum(v, 0, 'X')}</td>)}
                   <td className={cx(tdNum, 'font-semibold')}>{q3(c.qty)}</td>
-                  <td className={tdNum}>{c.h1Rate ? <>{fmtRate(c.h1Rate)}{c.h2Rate && !c.h2Rate.eq(c.h1Rate) ? <span className="text-warn"> / {fmtRate(c.h2Rate)}</span> : ''}</> : <span className="text-faint">no rate</span>}{c.rateSource === 'selected' && <span className="text-faint" title="No budget rate: selected SAP rate"> *</span>}</td>
+                  <td className={tdNum}>{c.h1Rate ? <>{fmtRate(c.h1Rate)}{c.h2Rate && !c.h2Rate.eq(c.h1Rate) ? <span className="text-warn"> / {fmtRate(c.h2Rate)}</span> : ''}</> : <span className="text-faint">no rate</span>}{c.rateSource === 'selected' && <span className="text-faint" title="No budget rate: selected SAP rate"> *</span>}{c.rateSource === 'sap' && <span className="text-faint" title={`SAP ${BUDGET_RATE_SET} by validity`}> ᵛ</span>}</td>
                   <td className={tdNum}>{fmtNum(c.budget, 2)}</td>
+                  <td className={tdNum}>{c.budgetLoc ? <>{fmtNum(c.budgetLoc, 2)} <span className="text-faint">{c.curr}</span></> : '—'}</td>
                   <td className={tdCls}><button type="button" className="inline-flex items-center gap-1 whitespace-nowrap text-accent hover:underline" onClick={() => onSimulate(c)}><SlidersHorizontal size={11} /> Simulate</button></td>
                 </tr>
                 {open === c.key && (
                   <tr className="bg-sunken/50">
-                    <td colSpan={20} className="px-3 py-2">
+                    <td colSpan={21} className="px-3 py-2">
                       <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">{c.idnrk} is used in {c.fgs.length} FG{c.fgs.length === 1 ? '' : 's'}</div>
                       <table className="w-full text-2xs">
-                        <thead><tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th>{FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}<th className={thNum}>Total qty</th><th className={thNum}>Share</th><th className={thNum}>Budget cost INR</th></tr></thead>
+                        <thead><tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th>{FISCAL_MONTHS.map((m) => <th key={m} className={thNum}>{m}</th>)}<th className={thNum}>Total qty</th><th className={thNum}>Share</th><th className={thNum}>Budget cost INR</th><th className={thNum}>Budget cost local</th></tr></thead>
                         <tbody>
                           {c.fgs.map((f) => (
                             <tr key={f.key} className="border-t border-line/40">
@@ -176,6 +201,7 @@ function QtyView({ comps, s, onSimulate }: { comps: ComponentQty[]; s: BudgetSet
                               <td className={cx(tdNum, 'font-semibold')}>{q3(f.qty)}</td>
                               <td className={tdNum}>{c.qty.gt(0) ? `${f.qty.div(c.qty).times(100).toFixed(1)}%` : '—'}</td>
                               <td className={tdNum}>{fmtNum(f.budget, 2)}</td>
+                              <td className={tdNum}>{f.budgetLoc ? <>{fmtNum(f.budgetLoc, 2)} <span className="text-faint">{f.curr}</span></> : '—'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -223,6 +249,8 @@ function SimView({ r, s, initial, onChange, onReset, query }: { r: BudgetResult;
       { header: 'Budget cost / pc', dp: 4, curr: 'INR', get: (i) => n(F[i].budgetPc, 4) }, { header: 'Simulated / pc', dp: 4, curr: 'INR', get: (i) => n(F[i].simPc, 4) },
       { header: 'Change / pc', dp: 4, curr: 'INR', get: (i) => n(F[i].deltaPc, 4) }, { header: 'Change %', dp: 2, get: (i) => n(F[i].deltaPct) },
       { header: 'Budget cost INR', dp: 2, curr: 'INR', get: (i) => n(F[i].budget) }, { header: 'Simulated INR', dp: 2, curr: 'INR', get: (i) => n(F[i].sim) }, { header: 'Impact INR', dp: 2, curr: 'INR', get: (i) => n(F[i].delta) },
+      { header: 'Local currency', get: (i) => F[i].curr }, { header: 'Budget / pc local', dp: 4, get: (i) => n(F[i].budgetPcLoc, 4) }, { header: 'Simulated / pc local', dp: 4, get: (i) => n(F[i].simPcLoc, 4) },
+      { header: 'Impact local', dp: 2, get: (i) => (F[i].simLoc && F[i].budgetLoc ? n(F[i].simLoc!.minus(F[i].budgetLoc!)) : null) },
     ];
     void exportTable({ fmt: 'xlsx', name: 'Component rate simulation', cols, count: F.length, extraParams: [...planParams(query), ['Rate changes', active.map(([id, c]) => `${id}: ${c.pc ? `rate ${c.pc}` : `${(c.pct ?? 0) > 0 ? '+' : ''}${c.pct}%`}`).join('; ') || 'none'], ['Overall impact INR', `${r.delta.toFixed(2)} (${signedPct(r.deltaPct)})`], ['Basis', 'Monthly budget rates (H1 SAP budget, H2 revised in the app)']] });
   };
@@ -276,7 +304,7 @@ function SimView({ r, s, initial, onChange, onReset, query }: { r: BudgetResult;
         <div className="scroll-thin max-h-[60vh] overflow-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-panel shadow-[0_1px_0_rgb(var(--line))]">
-              <tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th><th className={thNum}>Plan qty</th><th className={thNum}>Budget / pc</th><th className={thNum}>Simulated / pc</th><th className={thNum}>Change / pc</th><th className={thNum}>Change %</th><th className={thNum}>Budget cost INR</th><th className={thNum}>Simulated INR</th><th className={thNum}>Impact INR</th><th className={cx(thCls, 'w-32')}>Impact</th></tr>
+              <tr><th className={thCls}>FG</th><th className={thCls}>Country · Plant</th><th className={thNum}>Plan qty</th><th className={thNum}>Budget / pc</th><th className={thNum}>Simulated / pc</th><th className={thNum}>Change / pc</th><th className={thNum}>Change %</th><th className={thNum}>Budget cost INR</th><th className={thNum}>Simulated INR</th><th className={thNum}>Impact INR</th><th className={thNum}>Budget / pc local</th><th className={thNum}>Impact local</th><th className={cx(thCls, 'w-32')}>Impact</th></tr>
             </thead>
             <tbody>
               {fgs.map((f) => (
@@ -291,6 +319,8 @@ function SimView({ r, s, initial, onChange, onReset, query }: { r: BudgetResult;
                   <td className={tdNum}>{fmtNum(f.budget, 2)}</td>
                   <td className={cx(tdNum, !f.delta.isZero() && 'sim-val')}>{fmtNum(f.sim, 2)}</td>
                   <td className={cx(tdNum, tone(f.delta))}>{f.delta.isZero() ? '—' : fmtSigned(f.delta, 2)}</td>
+                  <td className={tdNum}>{f.budgetPcLoc ? <>{fmtRate(f.budgetPcLoc)} <span className="text-faint">{f.curr}</span></> : '—'}</td>
+                  <td className={cx(tdNum, tone(f.delta))}>{f.delta.isZero() || !f.simLoc || !f.budgetLoc ? '—' : <>{fmtSigned(f.simLoc.minus(f.budgetLoc), 2)} <span className="text-faint">{f.curr}</span></>}</td>
                   <td className={tdCls}>{!f.delta.isZero() && maxAbs.gt(0) && <div className="h-2 w-28 overflow-hidden rounded-full bg-sunken"><div className={cx('h-full rounded-full', f.delta.gt(0) ? 'bg-bad' : 'bg-good')} style={{ width: `${Math.max(3, Number(f.delta.abs().div(maxAbs).times(100).toFixed(0)))}%` }} /></div>}</td>
                 </tr>
               ))}
@@ -299,7 +329,7 @@ function SimView({ r, s, initial, onChange, onReset, query }: { r: BudgetResult;
                 <td className={tdNum}>{fmtNum(r.budget, 2)}</td>
                 <td className={cx(tdNum, !r.delta.isZero() && 'sim-val')}>{fmtNum(r.sim, 2)}</td>
                 <td className={cx(tdNum, tone(r.delta))}>{r.delta.isZero() ? '—' : `${fmtSigned(r.delta, 2)} (${signedPct(r.deltaPct)})`}</td>
-                <td className={tdCls} />
+                <td className={tdCls} colSpan={3} />
               </tr>
             </tbody>
           </table>
@@ -312,7 +342,7 @@ function SimView({ r, s, initial, onChange, onReset, query }: { r: BudgetResult;
 
 /* ======================= Budget rates H1 / H2 ======================= */
 
-function H2View({ r, s, onPct, onChange }: { r: BudgetResult; s: BudgetSettings; onPct: (v: number) => void; onChange: (id: string, c: RateChange | null) => void }) {
+function H2View({ r, s, sapRates, onPct, onChange }: { r: BudgetResult; s: BudgetSettings; sapRates: boolean; onPct: (v: number) => void; onChange: (id: string, c: RateChange | null) => void }) {
   const [search, setSearch] = useState('');
   const t = search.trim().toLowerCase();
   const codes = useMemo(() => {
@@ -340,7 +370,9 @@ function H2View({ r, s, onPct, onChange }: { r: BudgetResult; s: BudgetSettings;
             <div className="rounded-xl border border-line px-3 py-2"><div className="text-2xs font-semibold uppercase text-muted">Full year</div><div className="num text-lg font-bold">{inr(r.budget)}</div></div>
           </div>
         </div>
-        <p className="mt-2 text-xs text-muted">The SAP budget rate applies from April; the revision here applies from October. A component&apos;s own H2 rate or % below wins over the all-component %. Kept in your browser until SAP sends month-level budget rates.</p>
+        <p className="mt-2 text-xs text-muted">{sapRates
+          ? <>SAP sends budget rates with validity ({BUDGET_RATE_SET}); components SAP covers use the rate valid in each month (marked ᵛ) and the revision here does not apply to them. The revision below only applies to components without SAP validity rates.</>
+          : <>The budget rate on the cost line applies from April; the revision here applies from October. A component&apos;s own H2 rate or % wins over the all-component %. Kept in your browser until SAP sends the budget rates with validity ({BUDGET_RATE_SET}).</>}</p>
       </Card>
       <Card title="Per component H2 rate" bodyClass="p-0" actions={<input aria-label="Filter components" className={cx(inputBase, 'h-8 w-52 text-xs')} placeholder="Component…" value={search} onChange={(e) => setSearch(e.target.value)} />}>
         <div className="scroll-thin max-h-[60vh] overflow-auto">
@@ -351,11 +383,11 @@ function H2View({ r, s, onPct, onChange }: { r: BudgetResult; s: BudgetSettings;
                 const own = s.h2[c.idnrk];
                 return (
                   <tr key={c.idnrk} className={cx('border-t border-line/60', isActive(own) && 'bg-warn/[0.06]')}>
-                    <td className={tdCls}><span className="font-mono font-semibold">{c.idnrk}</span> <span className="text-muted">{c.maktx}</span>{c.source === 'selected' && <span className="text-faint" title="No budget rate: selected SAP rate"> *</span>}</td>
+                    <td className={tdCls}><span className="font-mono font-semibold">{c.idnrk}</span> <span className="text-muted">{c.maktx}</span>{c.source === 'selected' && <span className="text-faint" title="No budget rate: selected SAP rate"> *</span>}{c.source === 'sap' && <span className="text-faint" title={`SAP ${BUDGET_RATE_SET} by validity`}> ᵛ</span>}</td>
                     <td className={tdNum}>{q3(c.h1Qty)}</td>
                     <td className={tdNum}>{q3(c.h2Qty)}</td>
                     <td className={tdNum}>{c.h1 ? fmtRate(c.h1) : '—'}</td>
-                    <td className={tdNum}><input type="number" step="0.1" aria-label={`H2 percent for ${c.idnrk}`} className={cx(inputBase, 'h-7 w-20 px-2 text-right text-xs')} value={own?.pct ?? ''} placeholder={s.h2Pct ? String(s.h2Pct) : '0'} disabled={!!own?.pc} onChange={(e) => onChange(c.idnrk, e.target.value === '' ? null : { pct: Number(e.target.value) })} /></td>
+                    <td className={tdNum}><input type="number" step="0.1" aria-label={`H2 percent for ${c.idnrk}`} title={c.source === 'sap' ? 'SAP validity rate applies' : undefined} className={cx(inputBase, 'h-7 w-20 px-2 text-right text-xs')} value={own?.pct ?? ''} placeholder={s.h2Pct ? String(s.h2Pct) : '0'} disabled={!!own?.pc} onChange={(e) => onChange(c.idnrk, e.target.value === '' ? null : { pct: Number(e.target.value) })} /></td>
                     <td className={tdNum}><input type="number" step="0.0001" min="0" aria-label={`H2 rate for ${c.idnrk}`} className={cx(inputBase, 'h-7 w-28 px-2 text-right text-xs')} value={own?.pc ?? ''} placeholder="—" onChange={(e) => onChange(c.idnrk, e.target.value === '' ? null : { pc: e.target.value })} /></td>
                     <td className={cx(tdNum, c.h2 && c.h1 && !c.h2.eq(c.h1) && 'font-semibold text-warn')}>{c.h2 ? fmtRate(c.h2) : '—'}</td>
                     <td className={tdCls}>{isActive(own) && <button type="button" className="text-accent hover:underline" onClick={() => onChange(c.idnrk, null)}>Reset</button>}</td>
@@ -374,13 +406,107 @@ function H2View({ r, s, onPct, onChange }: { r: BudgetResult; s: BudgetSettings;
 
 const GROUP_LABEL: Record<SavingsGroup, string> = { component: 'By component', fg: 'By FG', plant: 'By plant', month: 'By month' };
 const GROUP_COL: Record<SavingsGroup, string> = { component: 'Component', fg: 'FG', plant: 'Plant', month: 'Month' };
+const AGROUP_LABEL: Record<ActualGroup, string> = { fg: 'By FG', plant: 'By plant', country: 'By plan country', month: 'By month' };
+const AGROUP_COL: Record<ActualGroup, string> = { fg: 'FG (plan country · plant)', plant: 'Plant', country: 'Plan country', month: 'Month' };
+type Mode = 'actual' | 'estimate';
 
-function SavingsView({ lines, s, rates, query }: { lines: PlanLineWithOptions[]; s: BudgetSettings; rates: RatesState; query: PlanCostQuery }) {
-  const [upTo, setUpTo] = useState(() => Math.max(1, elapsedMonths()));
+function SavingsView({ lines, s, rates, query, ctx, r, actuals, actFeed }: { lines: PlanLineWithOptions[]; s: BudgetSettings; rates: RatesState; query: PlanCostQuery; ctx: RateContext; r: BudgetResult; actuals: Map<string, ActualCell[]> | null; actFeed: Feed<ProdActualRow> | null }) {
+  const elapsed = elapsedMonths();
+  const [upTo, setUpTo] = useState(() => Math.max(1, elapsed));
+  const [mode, setMode] = useState<Mode>(actuals ? 'actual' : 'estimate');
+  useEffect(() => { if (actuals) setMode('actual'); }, [actuals]);
+  const months = useMemo(() => Array.from({ length: upTo }, (_, i) => i), [upTo]);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <label className="flex items-center gap-2"><span className="text-2xs font-semibold uppercase tracking-wide text-muted">Months passed</span>
+          <select aria-label="Up to month" className={cx(inputBase, 'h-8 text-xs')} value={upTo} onChange={(ev) => setUpTo(Number(ev.target.value))}>
+            {FISCAL_MONTHS.map((m, i) => <option key={m} value={i + 1}>Apr – {m}{i + 1 === elapsed ? ' (passed)' : ''}</option>)}
+          </select>
+        </label>
+        <span className="flex gap-1">
+          <button type="button" disabled={!actuals} onClick={() => setMode('actual')} title={actuals ? undefined : actFeed?.note || 'Checking SAP…'} className={cx('rounded-full border px-2.5 py-0.5 font-semibold disabled:opacity-50', mode === 'actual' ? 'border-accent bg-accent text-white' : 'border-line text-muted')}>Actual production (SAP)</button>
+          <button type="button" onClick={() => setMode('estimate')} className={cx('rounded-full border px-2.5 py-0.5 font-semibold', mode === 'estimate' ? 'border-accent bg-accent text-white' : 'border-line text-muted')}>Estimate</button>
+        </span>
+        {!actuals && <span className="text-muted">{actFeed === null ? `Checking SAP for ${PROD_ACTUAL_SET}…` : actFeed.note}</span>}
+      </div>
+      {mode === 'actual' && actuals ? <ActualSavingsView r={r} actuals={actuals} s={s} ctx={ctx} months={months} upTo={upTo} query={query} />
+        : <EstimateView lines={lines} s={s} rates={rates} query={query} ctx={ctx} months={months} upTo={upTo} />}
+    </div>
+  );
+}
+
+/** Savings on actual FG production from SAP (ProdActualSet): budget cost of the output vs its production value. */
+function ActualSavingsView({ r, actuals, s, ctx, months, upTo, query }: { r: BudgetResult; actuals: Map<string, ActualCell[]>; s: BudgetSettings; ctx: RateContext; months: number[]; upTo: number; query: PlanCostQuery }) {
+  const [by, setBy] = useState<ActualGroup>('fg');
+  const a = useMemo(() => actualSavings(r, actuals, s, months, ctx), [r, actuals, s, months, ctx]);
+  const rows = useMemo(() => groupActual(a, by, FISCAL_MONTHS), [a, by]);
+  const exportXlsx = () => {
+    const R = a.rows;
+    const cols: XCol[] = [
+      { header: 'Plan country', get: (i) => R[i].land1 }, { header: 'Plant', get: (i) => R[i].hwerks }, { header: 'FG', get: (i) => R[i].headmat }, { header: 'Description', width: 28, get: (i) => R[i].headtxt },
+      { header: 'Month', get: (i) => FISCAL_MONTHS[R[i].month] }, { header: 'Produced qty', dp: 3, get: (i) => n(R[i].qty, 3) },
+      { header: 'Budget cost INR', dp: 2, curr: 'INR', get: (i) => n(R[i].budget) }, { header: 'Actual value INR', dp: 2, curr: 'INR', get: (i) => n(R[i].actual) }, { header: 'Saving INR', dp: 2, curr: 'INR', get: (i) => n(R[i].budget.minus(R[i].actual)) },
+      { header: 'Local currency', get: (i) => R[i].curr }, { header: 'Budget cost local', dp: 2, get: (i) => n(R[i].budgetLoc) }, { header: 'Actual value local', dp: 2, get: (i) => n(R[i].actualLoc) },
+      { header: 'Saving local', dp: 2, get: (i) => (R[i].budgetLoc && R[i].actualLoc ? n(R[i].budgetLoc!.minus(R[i].actualLoc!)) : null) },
+    ];
+    void exportTable({ fmt: 'xlsx', name: 'Savings vs budget (actual production)', cols, count: R.length, extraParams: [...planParams(query), ['Months', `${FISCAL_MONTHS[0]}–${FISCAL_MONTHS[upTo - 1]}`], ['Actual', `SAP ${PROD_ACTUAL_SET}: production quantity and value of the FG`], ['Budget cost', 'produced qty x budget cost per FG piece of the month (component qty per piece x monthly budget rate)'], ['Saving', 'budget cost - actual value; negative = overspend'], ['Several plan countries from one plant', 'the plant\u2019s production is shared by each country\u2019s planned quantity of the month']] });
+  };
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted">Saving = budget cost of the FG produced (qty × budget cost per piece of that month) − its actual production value from SAP.</span>
+        <span className="ml-auto flex flex-wrap gap-1">
+          {(Object.keys(AGROUP_LABEL) as ActualGroup[]).map((g) => <button key={g} type="button" onClick={() => setBy(g)} className={cx('rounded-full border px-2.5 py-0.5 font-semibold', by === g ? 'border-accent bg-accent text-white' : 'border-line text-muted')}>{AGROUP_LABEL[g]}</button>)}
+        </span>
+        <Button size="sm" variant="ghost" onClick={exportXlsx}><FileSpreadsheet size={14} /> Excel</Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Budget cost of actual output" value={inr(a.budget)} sub={`Apr – ${FISCAL_MONTHS[upTo - 1]} · monthly budget rates`} />
+        <Stat label="Actual production value" value={inr(a.actual)} sub={`SAP ${PROD_ACTUAL_SET}`} />
+        <Stat label={a.saving.gte(0) ? 'Saving vs budget' : 'Overspend vs budget'} tone={a.saving.gt(0) ? 'good' : a.saving.lt(0) ? 'bad' : undefined} value={fmtSigned(a.saving, 0)} sub={`${signedPct(a.savingPct)} of budget · INR`} />
+        <Stat label="FGs with production" value={`${a.fgsWithActual} / ${a.fgsWithActual + a.fgsWithout}`} sub={a.fgsWithout ? `${a.fgsWithout} planned FGs without production in SAP` : 'every planned FG produced'} tone={a.fgsWithout ? 'warn' : undefined} />
+      </div>
+      <Card title={`Savings ${AGROUP_LABEL[by].replace('By ', 'by ')}`} bodyClass="p-0">
+        <div className="scroll-thin max-h-[60vh] overflow-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-panel shadow-[0_1px_0_rgb(var(--line))]"><tr><th className={thCls}>{AGROUP_COL[by]}</th>{by === 'fg' && <th className={thNum}>Produced qty</th>}<th className={thNum}>Budget INR</th><th className={thNum}>Actual INR</th><th className={thNum}>Saving INR</th><th className={thNum}>Saving %</th><th className={thNum}>Budget local</th><th className={thNum}>Actual local</th><th className={thNum}>Saving local</th></tr></thead>
+            <tbody>
+              {rows.slice(0, ROW_CAP).map((x) => {
+                const sl = x.budgetLoc && x.actualLoc ? x.budgetLoc.minus(x.actualLoc) : null;
+                return (
+                  <tr key={x.key} className="border-t border-line/60">
+                    <td className={tdCls}><span className="font-mono font-semibold">{x.label}</span> {x.sub && <span className="text-muted">{x.sub}</span>}</td>
+                    {by === 'fg' && <td className={tdNum}>{x.qty ? q3(x.qty) : ''}</td>}
+                    <td className={tdNum}>{fmtNum(x.budget, 2)}</td>
+                    <td className={tdNum}>{fmtNum(x.actual, 2)}</td>
+                    <td className={cx(tdNum, 'font-semibold', x.saving.gt(0) ? 'text-good' : x.saving.lt(0) ? 'text-bad' : '')}>{fmtSigned(x.saving, 2)}</td>
+                    <td className={cx(tdNum, x.saving.gt(0) ? 'text-good' : x.saving.lt(0) ? 'text-bad' : '')}>{signedPct(x.savingPct)}</td>
+                    <td className={tdNum}>{x.budgetLoc ? <>{fmtNum(x.budgetLoc, 2)} <span className="text-faint">{x.curr}</span></> : '—'}</td>
+                    <td className={tdNum}>{x.actualLoc ? fmtNum(x.actualLoc, 2) : '—'}</td>
+                    <td className={cx(tdNum, sl && (sl.gt(0) ? 'text-good' : sl.lt(0) ? 'text-bad' : ''))}>{sl ? fmtSigned(sl, 2) : '—'}</td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t-2 border-line bg-sunken/60 font-bold">
+                <td className={tdCls}>Total (INR)</td>{by === 'fg' && <td className={tdNum} />}
+                <td className={tdNum}>{fmtNum(a.budget, 2)}</td><td className={tdNum}>{fmtNum(a.actual, 2)}</td>
+                <td className={cx(tdNum, a.saving.gt(0) ? 'text-good' : a.saving.lt(0) ? 'text-bad' : '')}>{fmtSigned(a.saving, 2)}</td><td className={tdNum}>{signedPct(a.savingPct)}</td><td className={tdCls} colSpan={3} />
+              </tr>
+            </tbody>
+          </table>
+          {!rows.length && <Empty title="No production in these months" icon="▦">SAP reports no production of the plan&apos;s FGs for the months chosen.</Empty>}
+        </div>
+      </Card>
+    </>
+  );
+}
+
+/** Interim estimate: planned quantity of the months passed x (budget rate - average actual / consumption rate). */
+function EstimateView({ lines, s, rates, query, ctx, months, upTo }: { lines: PlanLineWithOptions[]; s: BudgetSettings; rates: RatesState; query: PlanCostQuery; ctx: RateContext; months: number[]; upTo: number }) {
   const [basis, setBasis] = useState<ActualBasis>('ACTUAL');
   const [by, setBy] = useState<SavingsGroup>('component');
-  const months = useMemo(() => Array.from({ length: upTo }, (_, i) => i), [upTo]);
-  const e = useMemo(() => savingsEstimate(lines, s, months, basis), [lines, s, months, basis]);
+  const e = useMemo(() => savingsEstimate(lines, s, months, basis, ctx), [lines, s, months, basis, ctx]);
   const rows = useMemo(() => groupSavings(e, by, FISCAL_MONTHS), [e, by]);
   const { request } = rates;
   useEffect(() => { if (basis === 'CONSUMP') request(); }, [basis, request]);
@@ -394,21 +520,16 @@ function SavingsView({ lines, s, rates, query }: { lines: PlanLineWithOptions[];
       { header: 'Budget rate (avg)', dp: 4, curr: 'INR', get: (i) => n(L[i].budgetRate, 4) }, { header: 'Actual rate', dp: 4, curr: 'INR', get: (i) => n(L[i].actualRate, 4) },
       { header: 'Budget cost INR', dp: 2, curr: 'INR', get: (i) => n(L[i].budget) }, { header: 'Actual cost INR', dp: 2, curr: 'INR', get: (i) => n(L[i].actual) }, { header: 'Saving INR', dp: 2, curr: 'INR', get: (i) => n(L[i].saving) },
     ];
-    void exportTable({ fmt: 'xlsx', name: 'Savings vs budget (estimate)', cols, count: L.length, extraParams: [...planParams(query), ['Months', `${FISCAL_MONTHS[0]}–${FISCAL_MONTHS[upTo - 1]}`], ['Actual rate', basis === 'ACTUAL' ? 'Average actual rate (ActRatePcInr)' : 'Consumption rate option'], ['ESTIMATE', 'Consumption quantity = planned quantity of these months until SAP provides actual goods issues'], ['Saving', '(budget rate - actual rate) x qty; negative = overspend']] });
+    void exportTable({ fmt: 'xlsx', name: 'Savings vs budget (estimate)', cols, count: L.length, extraParams: [...planParams(query), ['Months', `${FISCAL_MONTHS[0]}–${FISCAL_MONTHS[upTo - 1]}`], ['Actual rate', basis === 'ACTUAL' ? 'Average actual rate (ActRatePcInr)' : 'Consumption rate option'], ['ESTIMATE', 'Consumption quantity = planned quantity of these months'], ['Saving', '(budget rate - actual rate) x qty; negative = overspend']] });
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <>
       <div className="flex items-start gap-2 rounded-xl border border-warn/40 bg-warn/[0.07] px-3 py-2 text-xs">
         <Info size={14} className="mt-0.5 shrink-0 text-warn" />
-        <span><b>Estimate.</b> Until SAP provides actual consumption (goods issues per component, plant and month), the consumed quantity is the <b>planned</b> quantity of the months chosen, and the actual rate is {basis === 'ACTUAL' ? 'SAP’s average actual rate' : 'the Consumption rate option'}. Saving = (budget rate − actual rate) × quantity; negative is an overspend.</span>
+        <span><b>Estimate.</b> The consumed quantity is the <b>planned</b> quantity of the months chosen, and the actual rate is {basis === 'ACTUAL' ? 'SAP\u2019s average actual rate' : 'the Consumption rate option'}. Saving = (budget rate − actual rate) × quantity; negative is an overspend. Switches to actual production once SAP sends {PROD_ACTUAL_SET}.</span>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs">
-        <label className="flex items-center gap-2"><span className="text-2xs font-semibold uppercase tracking-wide text-muted">Months</span>
-          <select aria-label="Up to month" className={cx(inputBase, 'h-8 text-xs')} value={upTo} onChange={(ev) => setUpTo(Number(ev.target.value))}>
-            {FISCAL_MONTHS.map((m, i) => <option key={m} value={i + 1}>Apr – {m}{i + 1 === elapsedMonths() ? ' (elapsed)' : ''}</option>)}
-          </select>
-        </label>
         <label className="flex items-center gap-2"><span className="text-2xs font-semibold uppercase tracking-wide text-muted">Actual rate</span>
           <select aria-label="Actual rate basis" className={cx(inputBase, 'h-8 text-xs')} value={basis} onChange={(ev) => setBasis(ev.target.value as ActualBasis)}>
             <option value="ACTUAL">Average actual rate</option>
@@ -429,7 +550,7 @@ function SavingsView({ lines, s, rates, query }: { lines: PlanLineWithOptions[];
         <Stat label={e.saving.gte(0) ? 'Saving vs budget' : 'Overspend vs budget'} tone={e.saving.gt(0) ? 'good' : e.saving.lt(0) ? 'bad' : undefined} value={fmtSigned(e.saving, 0)} sub={`${signedPct(e.savingPct)} of budget`} />
         <Stat label="Coverage" value={`${e.lines.length.toLocaleString('en-IN')} lines`} sub={`${e.noActual} without an actual rate · ${e.noBudget} without a budget rate (excluded)`} tone={e.noActual + e.noBudget ? 'warn' : undefined} />
       </div>
-      <Card title={`Savings ${GROUP_LABEL[by].toLowerCase()}`} bodyClass="p-0">
+      <Card title={`Savings ${GROUP_LABEL[by].replace('By ', 'by ')} (estimate)`} bodyClass="p-0">
         <div className="scroll-thin max-h-[60vh] overflow-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-panel shadow-[0_1px_0_rgb(var(--line))]"><tr><th className={thCls}>{GROUP_COL[by]}</th>{by === 'component' && <th className={thNum}>Qty (est.)</th>}<th className={thNum}>Budget cost INR</th><th className={thNum}>Actual cost INR</th><th className={thNum}>Saving INR</th><th className={thNum}>Saving %</th></tr></thead>
@@ -454,6 +575,6 @@ function SavingsView({ lines, s, rates, query }: { lines: PlanLineWithOptions[];
           {!rows.length && <Empty title="Nothing to compare" icon="▦">No component has both a budget and an actual rate for these months.</Empty>}
         </div>
       </Card>
-    </div>
+    </>
   );
 }

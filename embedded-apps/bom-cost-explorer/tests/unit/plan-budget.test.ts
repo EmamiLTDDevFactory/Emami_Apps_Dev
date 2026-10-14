@@ -70,3 +70,57 @@ describe('requirement: monthly budget rates, rate simulation, where used, saving
     expect(elapsedMonths(new Date(2027, 2, 1))).toBe(11);
   });
 });
+
+import { actualSavings, groupActual } from '@/lib/plan/budgetSim';
+import { actualsByFg, rateLookup, sapDay } from '@/lib/plan/sapFeeds';
+
+describe('SAP feeds: budget rates by validity, local currency, actual production', () => {
+  const ctxFor = (rows: Parameters<typeof rateLookup>[0]) => ({ rates: rateLookup(rows), fyStart: 2026 });
+  const rec = (from: string, to: string, inr: string, extra: Record<string, string> = {}) => ({ Matnr: '100003292', Werks: '1000', Datab: from, Datbi: to, Rate: inr, Waers: 'INR', RateInr: inr, Peinh: '1', Meins: 'KG', ...extra });
+
+  it('dates: /Date(ms)/, YYYYMMDD and ISO', () => {
+    expect(sapDay('20261001')).toBe(20261001);
+    expect(sapDay('2026-10-01T00:00:00')).toBe(20261001);
+    expect(sapDay(`/Date(${Date.UTC(2026, 9, 1)})/`)).toBe(20261001);
+  });
+
+  it('the record valid on the 1st of each month drives that month (H1 100, revised H2 120)', () => {
+    const ctx = ctxFor([rec('20260401', '20260930', '100'), rec('20261001', '20270331', '120')]);
+    const rates = monthRates(rows[0], S({ h2Pct: 50 }), ctx); // the app's H2 % does not apply to SAP-covered components
+    expect(rates.source).toBe('sap');
+    expect(rates.rates.map((x) => x.toNumber())).toEqual([...Array(6).fill(100), ...Array(6).fill(120)]);
+    const r = budgetPlan(rows, S(), ctx);
+    expect(r.budget.toNumber()).toBe(25800 + 2 * 60 * 20);
+    expect(r.sapRateLines).toBe(2);
+  });
+
+  it('price unit and a month without a valid record (falls back to the cost-line budget rate)', () => {
+    const ctx = ctxFor([rec('20260601', '20270331', '1000', { Peinh: '10' })]); // 100 per unit from June
+    const m = monthRates(rows[0], S(), ctx).rates.map((x) => x.toNumber());
+    expect(m[0]).toBe(100); // April: BudLanded fallback
+    expect(m[2]).toBe(100); // June: 1000 / 10
+  });
+
+  it('local currency: INR / (TotCostPcInr / TotCostPcLoc)', () => {
+    const bd = [L({ Idnrk: 'X', BudLanded: '70', LocCurr: 'BDT', TotCostPcInr: '0.7', TotCostPcLoc: '1', Land1: 'BD', Hwerks: 'BD10' })];
+    const r = budgetPlan(bd, S());
+    expect(r.fgs[0].curr).toBe('BDT');
+    expect(r.fgs[0].budget.toNumber()).toBe(8400); // 120 x 70
+    expect(r.fgs[0].budgetLoc!.toNumber()).toBe(12000); // / 0.7
+  });
+
+  it('savings on actual production = produced qty x budget cost per piece - production value', () => {
+    // FG1: 3 components per piece 0.1 x 100 + 0.1 x 10 + 0.1 x 5 = 11.5 / pc (plan qty 1200, QtyTot 120)
+    const r = budgetPlan(rows, S());
+    const actuals = actualsByFg([
+      { Matnr: 'FG1', Werks: '1000', Spmon: '202604', Menge: '100', Meins: 'PC', Value: '1000', Waers: 'INR', ValueInr: '1000' },
+      { Matnr: 'FG1', Werks: '1000', Spmon: '202610', Menge: '100', Meins: 'PC', Value: '1000', Waers: 'INR', ValueInr: '1000' }, // October: outside the months passed
+    ], 2026);
+    const a = actualSavings(r, actuals, S(), [0, 1, 2, 3, 4, 5]);
+    expect(a.rows).toHaveLength(1);
+    expect(a.budget.toNumber()).toBe(1150); // 100 x 11.5
+    expect(a.saving.toNumber()).toBe(150);
+    expect(a.fgsWithout).toBe(1); // FG2 not produced
+    expect(groupActual(a, 'country', [])[0].saving.toNumber()).toBe(150);
+  });
+});
