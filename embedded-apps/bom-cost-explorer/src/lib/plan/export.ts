@@ -7,6 +7,8 @@ import { exportTable, type XCol } from '../client/export';
 import { D } from '../cost/decimal';
 import { FISCAL_MONTHS, monthKeys, type PlanCheck, type PlanCostLine, type PlanSummary, type PlanWip } from './fields';
 import { shortage } from './maths';
+import { budgetPlan, loadBudget, type ComponentQty } from './budgetSim';
+import type { PlanLineWithOptions } from './sources';
 import type { PlanCostQuery } from './requests';
 import type { SapMessage } from '../sap/messages';
 
@@ -85,6 +87,23 @@ export function summaryCols(rows: PlanSummary[]): XCol[] {
   ];
 }
 
+export function requirementCols(rows: ComponentQty[]): XCol[] {
+  return [
+    { header: 'Component plant', get: (i) => rows[i].werks },
+    { header: 'Component', get: (i) => rows[i].idnrk },
+    { header: 'Description', width: 30, get: (i) => rows[i].maktx },
+    { header: 'Type', get: (i) => rows[i].mtart },
+    { header: 'Unit', get: (i) => rows[i].meins },
+    ...FISCAL_MONTHS.map((m, k) => ({ header: m, dp: 3, get: (i: number) => Number(rows[i].months[k].toFixed(3)) })),
+    { header: 'Total qty', dp: 3, get: (i) => Number(rows[i].qty.toFixed(3)) },
+    { header: 'Budget rate H1', dp: 4, curr: 'INR', get: (i) => (rows[i].h1Rate ? Number(rows[i].h1Rate!.toFixed(4)) : null) },
+    { header: 'Budget rate H2', dp: 4, curr: 'INR', get: (i) => (rows[i].h2Rate ? Number(rows[i].h2Rate!.toFixed(4)) : null) },
+    { header: 'Budget cost INR', dp: 2, curr: 'INR', get: (i) => Number(rows[i].budget.toFixed(2)) },
+    { header: 'Used in FGs', get: (i) => rows[i].fgs.length },
+    { header: 'FGs', width: 50, get: (i) => rows[i].fgs.map((f) => `${f.headmat}@${f.hwerks}/${f.land1}`).join(', ') },
+  ];
+}
+
 export const checkCols = (rows: PlanCheck[]): XCol[] => [
   { header: 'Kind', get: (i) => rows[i].Kind },
   { header: 'Plant', get: (i) => rows[i].Werks },
@@ -109,7 +128,9 @@ export const wipCols = (rows: PlanWip[]): XCol[] => [
 export async function exportPlanWorkbook(p: { plants?: string[]; query: PlanCostQuery; cost: PlanCostLine[] | null; summary: PlanSummary[] | null; checks: PlanCheck[] | null; wip: PlanWip[] | null; messages: SapMessage[] }) {
   const cost = p.cost ?? [];
   const extra: { name: string; cols: XCol[]; count: number }[] = [];
-  if (p.summary) extra.push({ name: 'Requirement', cols: summaryCols(p.summary), count: p.summary.length });
+  // Requirement = component quantities and where used from the BOM explosion, at monthly budget rates.
+  const req = cost.length ? budgetPlan(cost as PlanLineWithOptions[], loadBudget(p.query.plan)).components : [];
+  if (req.length) extra.push({ name: 'Requirement', cols: requirementCols(req), count: req.length });
   if (p.checks) extra.push({ name: 'Checks', cols: checkCols(p.checks), count: p.checks.length });
   if (p.wip) extra.push({ name: 'WIP', cols: wipCols(p.wip), count: p.wip.length });
   const loaded = (x: unknown[] | null) => (x ? `${x.length} rows` : 'not loaded (open the tab first)');
@@ -123,13 +144,12 @@ export async function exportPlanWorkbook(p: { plants?: string[]; query: PlanCost
     extraParams: [
       ...planParams({ ...p.query, plants: p.plants ?? p.query.plants }),
       ['Breakup', p.cost ? `${cost.length} rows (CostLineSet Mode P)` : 'not loaded (Run in SAP on Breakup & cost)'],
-      ['Requirement', loaded(p.summary)],
+      ['Requirement', req.length ? `${req.length} components (from the Breakup run, budget rate per month: H1 SAP, H2 as revised in the Requirement tab)` : 'needs the Breakup run'],
       ['Checks', loaded(p.checks)],
       ['WIP', loaded(p.wip)],
       ['Monthly cost', 'QtyMn x TotCostPcInr'],
       ['FG per pc on 4 rate bases', 'Breakup & cost > FG per pc > Excel (needs the rate options for MBEW / Consumption)'],
       ['Cost per FG piece', 'Sum of leaf TotCostInr / PlanQty'],
-      ['Shortage', 'Requirement - (valuated stock + open PO); units as SAP sends them (not converted)'],
     ],
   });
 }
