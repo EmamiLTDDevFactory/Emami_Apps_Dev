@@ -1,4 +1,5 @@
 const pool = require("../postgres");
+const { DEPOTS } = require("../config/depots");
 
 const findUserByEmail = async (email) => {
     const result = await pool.query(
@@ -84,8 +85,9 @@ const getAuditors = async () => {
     }));
 };
 
-/** Depots offered on Create / Edit Audit: every depot that has at least one
- * active Depot user (see sql/seed-depots.js). audits.depot stores the name. */
+/** Depots offered on Create / Edit Audit: CQA's depot list (config/depots.js),
+ * then any other depot that has an active Depot user, so a depot granted in the
+ * hub under a name not in the list still shows. audits.depot stores the name. */
 const getDepots = async () => {
     const result = await pool.query(
         `
@@ -99,11 +101,16 @@ const getDepots = async () => {
         `
     );
 
-    return result.rows.map((row) => ({
-        name: row.depot,
-        location: row.location,
-        sapId: row.sap_id,
-    }));
+    const listed = new Set(DEPOTS.map((depot) => depot.name));
+    const extra = result.rows
+        .filter((row) => !listed.has(row.depot))
+        .map((row) => ({
+            name: row.depot,
+            location: row.location,
+            sapId: row.sap_id,
+        }));
+
+    return [...DEPOTS, ...extra];
 };
 
 module.exports = {

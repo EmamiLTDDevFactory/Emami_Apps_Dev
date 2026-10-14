@@ -17,6 +17,8 @@ const AUDITORS = [
     { name: "Sandip Karmakar", email: "sandip.karmakar@emamigroup.com", employeeCode: "90007512", location: "KOLKATA" },
     { name: "Argha Bose", email: "argha.bose@emamigroup.com", employeeCode: "90007020", location: "KOLKATA" },
     { name: "Kaushal Joshi", email: "kaushal.joshi@emamigroup.com", employeeCode: null, location: "KOLKATA" },
+    // Added 2026-10-14.
+    { name: "Girish Chand Sharma", email: "girish.sharma1@emamigroup.com", employeeCode: null, location: "KOLKATA" },
 ];
 
 async function seedAuditors() {
