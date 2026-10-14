@@ -141,6 +141,10 @@ function CreateClaimInner() {
   // but no HSN was readable from the document" - the user must key it in manually at that point.
   const [documentExtractionLoading, setDocumentExtractionLoading] = useState(false);
   const [documentExtractionError, setDocumentExtractionError] = useState('');
+  // Which attachment section (if any) is currently picking/compressing a file - there was no
+  // visual feedback during this step before, so a large file (especially a PDF needing heavy
+  // compression) made the UI look stuck/broken for however long that silently took.
+  const [pickingTarget, setPickingTarget] = useState<'original' | 'supporting' | 'managerApproved' | null>(null);
   const [hsnAutoFillMissing, setHsnAutoFillMissing] = useState(false);
   const [justification, setJustification] = useState('');
   // The receipt/invoice itself - capped at exactly 1 file (enforced in pickAttachmentInto and the
@@ -576,6 +580,7 @@ function CreateClaimInner() {
       {} as Record<string, { uri: string; mimeType: string }>,
     );
 
+    setPickingTarget(target);
     try {
       setFormError('');
       const result = await getDocumentAsync({ multiple: false });
@@ -698,6 +703,8 @@ function CreateClaimInner() {
       }
     } catch (err) {
       setFormError('Unable to add attachment. Please try again with a supported file.');
+    } finally {
+      setPickingTarget(null);
     }
   };
 
@@ -866,12 +873,17 @@ function CreateClaimInner() {
           <button
             type="button"
             onClick={handlePickOriginalExpenseDocument}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+            disabled={pickingTarget !== null}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
           >
             <CloudUpload size={18} /> Add Attachment / Scanned Receipt
           </button>
         ) : (
           <p className="text-xs text-inkSoft">Remove the current document to upload a different one.</p>
+        )}
+
+        {pickingTarget === 'original' && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document — large or multi-page files can take a little while to compress…</div>
         )}
 
         {documentExtractionLoading && (
@@ -1030,10 +1042,15 @@ function CreateClaimInner() {
         <button
           type="button"
           onClick={handlePickSupportingDocument}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+          disabled={pickingTarget !== null}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
         >
           <CloudUpload size={18} /> Add Attachment
         </button>
+
+        {pickingTarget === 'supporting' && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document — large or multi-page files can take a little while to compress…</div>
+        )}
       </Card>
 
       {/* Manager Approved Attachment - only for expense types whose ExptypeSet.Flag comes back blank */}
@@ -1060,10 +1077,15 @@ function CreateClaimInner() {
           <button
             type="button"
             onClick={handlePickManagerApprovedAttachment}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream"
+            disabled={pickingTarget !== null}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-brand/40 bg-cream/40 py-3 text-sm font-semibold text-brand hover:bg-cream disabled:opacity-60"
           >
             <CloudUpload size={18} /> Add Manager Approved Attachment
           </button>
+
+          {pickingTarget === 'managerApproved' && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-inkSoft"><Spinner size={13} /> Processing document — large or multi-page files can take a little while to compress…</div>
+          )}
         </Card>
       )}
 
