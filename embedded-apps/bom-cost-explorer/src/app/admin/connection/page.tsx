@@ -20,7 +20,7 @@ interface Probe { name: string; status: 'pending' | 'ok' | 'fail' | 'idle'; http
 async function probe(name: string, path: string, params: Record<string, string | undefined>): Promise<Probe & { body?: unknown }> {
   const t0 = performance.now();
   try {
-    const r = await sapGet(path, params, { timeoutMs: 120_000 });
+    const r = await sapGet(path, params, { timeoutMs: 230_000 });
     const rows = path === '$metadata' ? undefined : unwrapCollection(r.body).results.length;
     return { name, status: 'ok', http: r.status, ms: Math.round(r.ms), header: r.sapMessageHeader, detail: rows === undefined ? `${String(r.body).length.toLocaleString('en-IN')} bytes` : `${rows} row(s)`, body: r.body };
   } catch (e) {

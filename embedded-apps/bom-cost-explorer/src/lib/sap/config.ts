@@ -97,7 +97,7 @@ export function loadSapConfig(host = typeof window !== 'undefined' ? window.loca
     appEnv: (r.appEnv || def.appEnv).toLowerCase(),
     authMode: (r.authMode || 'none').toLowerCase(),
     client: r.client || undefined,
-    timeoutMs: r.timeoutMs || 120_000,
+    timeoutMs: r.timeoutMs || 230_000, // the Azure gateway's limit (client.ts SAP_MAX_TIMEOUT_MS)
     expand: (r.expand || 'auto').toLowerCase(),
     mock: String(r.mock).toLowerCase() === 'true',
     authUser: r.authUser,

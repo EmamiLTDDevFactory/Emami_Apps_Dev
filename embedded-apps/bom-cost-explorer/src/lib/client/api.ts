@@ -97,7 +97,7 @@ export const api = {
 
   async plants(): Promise<{ plants: PlantRow[] }> {
     try {
-      return { plants: await cached('plants', TEN_MIN, () => fetchPlants({ timeoutMs: 60_000 })) };
+      return { plants: await cached('plants', TEN_MIN, () => fetchPlants({ timeoutMs: 230_000 })) };
     } catch (e) {
       cache.delete('plants');
       return wrap(e);
@@ -108,7 +108,7 @@ export const api = {
     try {
       const t = q.trim();
       if (t.length < 2) return { materials: [] };
-      return { materials: await cached(`mat:${t.toLowerCase()}`, TEN_MIN, () => fetchMaterials(t, { signal, timeoutMs: 30_000 })) };
+      return { materials: await cached(`mat:${t.toLowerCase()}`, TEN_MIN, () => fetchMaterials(t, { signal, timeoutMs: 230_000 })) };
     } catch (e) {
       return wrap(e);
     }
@@ -119,7 +119,7 @@ export const api = {
 
   async config(): Promise<Record<string, string>> {
     try {
-      return await cached('config', TEN_MIN, () => fetchConfig({ timeoutMs: 30_000 }));
+      return await cached('config', TEN_MIN, () => fetchConfig({ timeoutMs: 230_000 }));
     } catch (e) {
       return wrap(e);
     }

@@ -73,12 +73,13 @@ export interface SapRawResponse {
 export interface SapGetOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** costing runs are never retried on timeout (they would just run twice) and wait COSTING_TIMEOUT_MS */
+  /** costing runs are never retried on timeout (they would just run twice) */
   costing?: boolean;
 }
 
-/** Costing runs wait up to 230 s - the Azure gateway's own limit (other calls use SAP_TIMEOUT_MS, default 120 s). */
-export const COSTING_TIMEOUT_MS = 230_000;
+/** Every SAP call waits up to 230 s - the Azure gateway's own limit (SAP_TIMEOUT_MS can lower it). */
+export const SAP_MAX_TIMEOUT_MS = 230_000;
+export const COSTING_TIMEOUT_MS = SAP_MAX_TIMEOUT_MS;
 
 function linkedSignal(outer: AbortSignal | undefined, ms: number) {
   const ctl = new AbortController();
@@ -183,7 +184,7 @@ export async function sapGetCollection(path: string, params: Record<string, stri
 /** $metadata as XML text. Gateway answers /IWFND/MED/170 when the service name is wrong. */
 export async function sapGetMetadata(opts: SapGetOptions = {}): Promise<string> {
   try {
-    const r = await sapGet('$metadata', {}, { ...opts, timeoutMs: opts.timeoutMs ?? 60_000 });
+    const r = await sapGet('$metadata', {}, { ...opts, timeoutMs: opts.timeoutMs ?? SAP_MAX_TIMEOUT_MS });
     return String(r.body);
   } catch (e) {
     const err = e as SapError & { code?: string };
