@@ -73,9 +73,12 @@ export interface SapRawResponse {
 export interface SapGetOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** costing runs are never retried on timeout (they would just run twice) */
+  /** costing runs are never retried on timeout (they would just run twice) and wait COSTING_TIMEOUT_MS */
   costing?: boolean;
 }
+
+/** Costing runs wait up to 230 s - the Azure gateway's own limit (other calls use SAP_TIMEOUT_MS, default 120 s). */
+export const COSTING_TIMEOUT_MS = 230_000;
 
 function linkedSignal(outer: AbortSignal | undefined, ms: number) {
   const ctl = new AbortController();
@@ -101,7 +104,7 @@ async function once(c: SapConfig, path: string, params: Record<string, string | 
   const doFetch = await transport(c);
   const url = buildUrl(path, params, c);
   const started = Date.now();
-  const timeout = opts.timeoutMs ?? c.timeoutMs;
+  const timeout = opts.timeoutMs ?? (opts.costing ? COSTING_TIMEOUT_MS : c.timeoutMs);
   const link = linkedSignal(opts.signal, timeout);
   let res: Response;
   try {

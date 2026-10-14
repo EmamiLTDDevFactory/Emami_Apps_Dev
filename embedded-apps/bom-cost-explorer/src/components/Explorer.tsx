@@ -3,6 +3,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import { useHubSession, BASE_PATH } from '@/lib/client/session';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { loadSapConfig } from '@/lib/sap/config';
+import { COSTING_TIMEOUT_MS } from '@/lib/sap/client';
 import { useRateOptions } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import RateSources from './rates/RateSources';
@@ -337,7 +338,7 @@ export default function Explorer() {
             <div className="flex items-center gap-3 text-sm">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden />
               <span className="font-bold">SAP is costing…</span>
-              <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at 120 s</span>
+              <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at {COSTING_TIMEOUT_MS / 1000} s</span>
               <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sunken">
