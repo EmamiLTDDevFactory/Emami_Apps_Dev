@@ -11,7 +11,13 @@ import { appColor, colors, fontWeights, fonts, gradients, radii, shadows } from 
  * rules, formatters and the small visual primitives every panel/drawer there reuses. */
 
 export const AUDIT_CAPA_APP_ID = 'audit-capa';
-export const AUDIT_CAPA_DEPOTS = ['Delhi Depot', 'Kolkata Depot', 'Mumbai Depot', 'Ahmedabad Depot', 'HO'];
+/** CQA's depot list (2026-10-14), in their order; must match embedded-apps/audit-capa/backend/config/depots.js. */
+export const AUDIT_CAPA_DEPOTS = [
+  'Kolkata Depot', 'Delhi Depot', 'Ambala Depot', 'Indore Depot', 'Jaipur Depot', 'Ahmedabad Depot',
+  'Mumbai Depot', 'Pune Depot', 'Nagpur Depot', 'Dehradun Depot', 'Kanpur/Unnao Depot', 'Varanasi Depot',
+  'Patna Depot', 'Bhagalpur Depot', 'Ranchi Depot', 'Raipur Depot', 'Cuttack Depot', 'Guwahati Depot',
+  'Bangalore Depot', 'Hyderabad Depot', 'Coimbatore Depot', 'Siliguri Depot', 'Jabalpur Depot', 'HO',
+];
 /** Audit & CAPA roles that belong to a depot: Depot, and View (read-only Depot-side access; a
  * View user at 'HO' sees every depot inside Audit & CAPA). */
 export const auditCapaRoleNeedsDepot = (role: string | null | undefined) => role === 'Depot' || role === 'View';
