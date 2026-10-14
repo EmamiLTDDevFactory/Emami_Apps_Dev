@@ -18,6 +18,7 @@ import { costFilter } from '@/lib/plan/requests';
 import { FISCAL_MONTHS, type PlanCostLine } from '@/lib/plan/fields';
 import { componentRate, fgSources, type FgSources, type PlanLineWithOptions } from '@/lib/plan/sources';
 import FgPerPiece from './FgPerPiece';
+import ComponentSimulator from './ComponentSimulator';
 import RateCoverage from '../rates/RateCoverage';
 import { parsePrio, prioLabel } from '@/lib/rates/priority';
 import { useRateOptionsByFilter } from '@/lib/rates/useRateOptions';
@@ -29,7 +30,7 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import type { CostLine } from '@/lib/sap/fields';
 import { fmtCompactInr, fmtDate, fmtNum, fmtPct, fmtQty, fmtRate } from '@/lib/format';
 
-type View = 'tree' | 'fg' | 'charts' | 'rates' | 'coverage';
+type View = 'tree' | 'fg' | 'sim' | 'charts' | 'rates' | 'coverage';
 type Months = 'qty' | 'cost';
 const ROW_CAP = 3000;
 
@@ -183,7 +184,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           )}
           <Warnings messages={cost.messages} />
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'fg', label: 'FG per pc' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }, { value: 'coverage', label: 'Rate coverage' }]} />
+            <Segmented<View> size="sm" label="Breakup view" value={view} onChange={setView} options={[{ value: 'tree', label: 'Breakup' }, { value: 'fg', label: 'FG per pc' }, { value: 'sim', label: 'Simulate' }, { value: 'charts', label: 'Charts' }, { value: 'rates', label: 'Rate sources' }, { value: 'coverage', label: 'Rate coverage' }]} />
             {country && <button type="button" onClick={() => setCountry('')} className="rounded-full border border-accent bg-accent px-2.5 py-0.5 text-xs font-semibold text-white">Plan country {country} ✕</button>}
             {view === 'tree' && (
               <>
@@ -234,6 +235,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
             </p>
           )}
           {view === 'fg' && <FgPerPiece rows={fg} rates={rates} query={cost.ranQuery ?? ws.query} lines={lines} />}
+          {view === 'sim' && <ComponentSimulator rows={rows} query={cost.ranQuery ?? ws.query} />}
           {view === 'charts' && <PlanCharts rows={rows} />}
           {view === 'coverage' && (
             <Card bodyClass="p-0 h-[70vh]">
