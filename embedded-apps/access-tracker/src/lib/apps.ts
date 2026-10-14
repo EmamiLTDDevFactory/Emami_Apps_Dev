@@ -25,6 +25,7 @@ export const APP_CATALOG: { id: string; name: string; cat: string }[] = [
   { id: 'gate-entry', name: 'Gate Entry', cat: 'Supply Chain' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', cat: 'CPD' },
   { id: 'access-tracker', name: 'Access Tracker', cat: 'IT' },
+  { id: 'change-control', name: 'IT Change Control Board', cat: 'IT' },
 ];
 
 const BY_ID = new Map(APP_CATALOG.map((a) => [a.id, a]));

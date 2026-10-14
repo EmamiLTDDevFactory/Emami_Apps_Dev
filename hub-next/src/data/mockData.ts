@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog,
+  Bot, DoorOpen, UserCog, GitPullRequestArrow,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -48,6 +48,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'shelf-life-deviation': '/apps/shelf-life-deviation', // Shelf Life Deviation (CPD approval + CADE Z-Report)
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
+  'change-control': '/apps/change-control', // IT Change Control Board (raise, CAB approval, implement, close)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -74,6 +75,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'sap-agent', name: 'SAP Agent', desc: 'AI agent that builds, fixes and tests ABAP objects on the SAP development system through ADT, with a policy guard, typed approvals and a full audit log. Admins only.', cat: 'IT', icon: Bot, uses: 0 },
   { id: 'gate-entry', name: 'Gate Entry', desc: 'Inward truck gate entry against purchase orders or ASNs on SAP, with gate pass print, truck out time and cancellation.', cat: 'Supply Chain', icon: DoorOpen, uses: 0, stage: 'UAT' },
   { id: 'access-tracker', name: 'Access Tracker', desc: 'Who has access to which app, every grant and revoke from Manage Access, and sign-in and app-usage activity, with Excel-ready exports. Admins only.', cat: 'IT', icon: UserCog, uses: 0, stage: 'Live' },
+  { id: 'change-control', name: 'IT Change Control Board', desc: 'Raise IT changes, assess risk, get CAB approval, and track implementation to closure, with a full audit trail.', cat: 'IT', icon: GitPullRequestArrow, uses: 0, stage: 'WIP' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
 ];
 
