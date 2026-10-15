@@ -191,7 +191,7 @@ export default function Home() {
 
         <div className="home-header-row">
           <div>
-            <h1 className="home-title">Delivery Command Centre</h1>
+            <h1 className="home-title">Change Control Board & CR Tracker</h1>
             <p className="home-header-sub">Complete visibility. Better control. On-time delivery.</p>
           </div>
           <div className="home-clock">

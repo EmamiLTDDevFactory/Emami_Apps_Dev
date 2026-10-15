@@ -219,7 +219,7 @@ function Content() {
       </div>
 
       <div className="ccb-grid halves" style={{ marginTop: 16 }}>
-        <BreakdownCard title="By SAP module (top 10)" rows={x.byModule} />
+        <BreakdownCard title="By system / module (top 10)" rows={x.byModule} />
         <Card title="Meetings" sub={`${x.completed.length} held · attendance ${x.attendanceAvg === null ? '—' : `${x.attendanceAvg}%`} · quorum met ${x.quorumMet}/${x.completed.length}`}>
           {x.completed.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No meetings held in this period.</p> : (
             <div className="ccb-table-wrap">

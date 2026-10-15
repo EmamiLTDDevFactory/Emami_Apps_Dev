@@ -91,7 +91,7 @@ function Register({ me, initialTab, onOpen, onCreate }) {
       const XLSX = await import('xlsx');
       const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({
         'CR No': r.crNo, Title: r.title, Function: r.requestingFunction, 'Raised by': r.requestedBy, 'BRD reference': r.brdReference,
-        'SAP system': r.sapSystem, Modules: (r.sapModules || []).join(', '), Category: CATEGORY_META[r.category]?.label,
+        'IT area': r.sapSystem, 'Systems / modules': (r.sapModules || []).join(', '), Category: CATEGORY_META[r.category]?.label,
         'CCB scope': CATEGORY_META[r.category]?.inScope ? 'In scope' : 'Out of scope', Priority: PRIORITY_META[r.priority]?.label,
         Emergency: r.isEmergency ? 'Yes' : 'No', Status: STATUS_META[r.status]?.label, Stage: stageLabel(r), Feasibility: r.feasibility || '',
         Decision: r.decision || '', 'Decision notes': r.decisionNotes || '', Meeting: r.meetingNo || '', 'Decided on': r.decidedAt ? fmtDate(r.decidedAt) : '',
@@ -110,7 +110,7 @@ function Register({ me, initialTab, onOpen, onCreate }) {
 
   return (
     <>
-      <PageHeader eyebrow="Change Control Board" title="Change Requests" sub="The CCB register: every SAP change request from logging through decision to delivery.">
+      <PageHeader eyebrow="Change Control Board" title="Change Requests" sub="The CCB register: every IT change request from logging through decision to delivery.">
         <Button icon={DownloadIcon} onClick={exportExcel} disabled={!rows.length}>Export Excel</Button>
         {me.can.log && <Button variant="primary" icon={PlusIcon} onClick={onCreate}>Log change request</Button>}
       </PageHeader>
@@ -176,7 +176,7 @@ function Register({ me, initialTab, onOpen, onCreate }) {
       </Card>
       {!me.can.log && (
         <p className="ccb-muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-          You can view the register. Logging requests needs the IT SPOC, SAP Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
+          You can view the register. Logging requests needs the IT SPOC, Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
         </p>
       )}
       {toast}

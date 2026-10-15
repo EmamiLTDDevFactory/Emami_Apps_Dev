@@ -94,7 +94,7 @@ export default function MeetingRoom({ id, me, onBack }) {
       <a className="ccb-back ccb-no-print" href={ROUTES.ccbMeetings} onClick={(e) => { e.preventDefault(); onBack(); }}><ChevronLeftIcon size={13} /> All meetings</a>
 
       <div className="ccb-print-only" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: '#666' }}>Emami Limited · SAP Change Control Board</div>
+        <div style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: '#666' }}>Emami Limited · Change Control Board</div>
         <h1 style={{ margin: '4px 0' }}>Minutes — {m.title}</h1>
         <div style={{ fontSize: 12 }}>{m.meetingNo} · {fmtDateTime(m.scheduledAt)} · {m.mode}{m.venue ? ` · ${m.venue}` : ''}</div>
         <div style={{ fontSize: 12, marginTop: 6 }}><b>Present:</b> {people.filter((p) => present.has(p.email)).map((p) => p.name).join(', ') || '—'}</div>
@@ -297,7 +297,7 @@ function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRem
         ) : (
           <>
             <div><label>Feasibility (IT Application Head)</label><p>{FEASIBILITY_META[it.feasibility]?.label || '—'}{it.reviewNotes ? ` — ${it.reviewNotes}` : ''}</p></div>
-            <div><label>Inter-module impact</label><p>{it.crossModuleImpact || '—'}</p></div>
+            <div><label>Impact on other systems</label><p>{it.crossModuleImpact || '—'}</p></div>
           </>
         )}
         {it.financialImpact && <div><label>Financial impact</label><p>{it.financialImpact}</p></div>}
@@ -346,7 +346,7 @@ function DecisionDialog({ meeting, item, decision, onClose, onDone }) {
     <Modal title={`${meta.label} — ${item.crNo}`} sub={item.title} onClose={onClose}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant={meta.tone === 'red' ? 'danger-solid' : meta.tone === 'amber' ? 'primary' : 'success'} busy={busy} onClick={go}>Record decision</Button></>}>
       {(decision === 'approved' || decision === 'approved_with_modifications') && (
-        <div className="ccb-callout tone-green"><CheckCircleIcon size={15} /><span>Approval creates the <strong>Dev Tracker assignment</strong> straight away, for the SAP Module Lead to assign a developer.</span></div>
+        <div className="ccb-callout tone-green"><CheckCircleIcon size={15} /><span>Approval creates the <strong>Dev Tracker assignment</strong> straight away, for the Module Lead to assign a developer.</span></div>
       )}
       {decision === 'deferred' && (
         <div className="ccb-callout tone-amber"><ClockIcon size={15} /><span>The request stays with the CCB and is added to the next meeting’s agenda.</span></div>

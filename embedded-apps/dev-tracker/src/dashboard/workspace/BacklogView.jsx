@@ -385,7 +385,7 @@ function EpicPanel({ epics, items, filters, setFilters, onOpen, onClose, onCreat
             </div>
           );
         })}
-        {!epics.length && <div className="pm-muted pm-epic-empty">No epics yet. Epics group related stories and tasks, e.g. a whole SAP rollout.</div>}
+        {!epics.length && <div className="pm-muted pm-epic-empty">No epics yet. Epics group related stories and tasks, e.g. a whole system rollout.</div>}
       </div>
       <button type="button" className="pm-quick-create-btn" onClick={onCreate}><PlusIcon size={14} /> Create epic</button>
     </aside>

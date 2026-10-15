@@ -11,18 +11,18 @@ import {
 } from '../shared/icons.jsx';
 
 // Same hub-wide support address the main Emami Apps Help screen uses (src/screens/HelpScreen.tsx)
-// — reused here instead of inventing a separate Delivery Command Center inbox nobody actually reads.
+// — reused here instead of inventing a separate Change Control Board & CR Tracker inbox nobody actually reads.
 const SUPPORT_EMAIL = 'indranil.banerjee@emamigroup.com';
 const SUPPORT_CC = 'sayontan.das@emamigroup.com';
 
 const CATEGORY_ICONS = { SendIcon, PlusIcon, GridIcon, BarChartIcon, UploadCloudIcon, ShieldIcon, DatabaseIcon, InfoIcon };
 
 function contactSupportHref() {
-  return `mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Delivery Command Center — Support request')}`;
+  return `mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Change Control Board & CR Tracker — Support request')}`;
 }
 function suggestQuestionHref() {
   const body = "Question I'd like added to QA Support:\n\n\nWhy it would help:\n";
-  return `mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Delivery Command Center QA Support — Suggested question')}&body=${encodeURIComponent(body)}`;
+  return `mailto:${SUPPORT_EMAIL}?cc=${SUPPORT_CC}&subject=${encodeURIComponent('Change Control Board & CR Tracker QA Support — Suggested question')}&body=${encodeURIComponent(body)}`;
 }
 
 export default function QaSupport() {
@@ -81,7 +81,7 @@ export default function QaSupport() {
         <div className="page-header-row">
           <div>
             <h1 className="page-title">QA Support</h1>
-            <p className="page-header-sub">Find quick answers to common questions about Delivery Command Center.</p>
+            <p className="page-header-sub">Find quick answers to common questions about Change Control Board & CR Tracker.</p>
             <p className="page-header-sub">Guides, explanations and help to make your work easier.</p>
           </div>
           <div className="qa-header-note" aria-hidden="true">
@@ -168,7 +168,7 @@ export default function QaSupport() {
             <div className="card qa-rail-card qa-tone-green">
               <div className="qa-rail-icon-circle tone-green"><HeadsetIcon size={17} /></div>
               <div className="qa-rail-card-title">Still Need Help?</div>
-              <div className="qa-rail-card-text">Can't find what you're looking for? Reach out to the Delivery Command Center support team.</div>
+              <div className="qa-rail-card-text">Can't find what you're looking for? Reach out to the Change Control Board & CR Tracker support team.</div>
               <a className="btn btn-ghost btn-sm qa-rail-btn" href={contactSupportHref()}>Contact Support</a>
             </div>
 

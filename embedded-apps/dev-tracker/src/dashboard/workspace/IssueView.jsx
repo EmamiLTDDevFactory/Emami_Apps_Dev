@@ -310,7 +310,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               </Field>
             </div>
 
-            <Collapsible title="SAP details" defaultOpen>
+            <Collapsible title="Delivery details" defaultOpen>
               <Field label="Functional area"><InlineText value={it.func || ''} placeholder="None" onSave={(v) => save({ func: v })} /></Field>
               <Field label="Business impact"><SelectField value={it.impact} options={options.impact || []} onSave={(v) => save({ impact: v })} /></Field>
               <Field label="Complexity"><SelectField value={it.complexity} options={options.complexity || []} onSave={(v) => save({ complexity: v })} /></Field>

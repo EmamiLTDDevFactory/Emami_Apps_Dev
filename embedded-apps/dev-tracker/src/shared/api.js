@@ -168,7 +168,7 @@ export async function apiActivity(email) {
 function buildDummyActivityLog() {
   const hoursAgo = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
   const items = {
-    mm: { itemId: 'demo-mm', devList: 'SAP MM — Vendor Master Automation', area: 'MM' },
+    mm: { itemId: 'demo-mm', devList: 'MM — Vendor Master Automation', area: 'MM' },
     sd: { itemId: 'demo-sd', devList: 'SD Pricing Procedure Update', area: 'SD' },
     ar: { itemId: 'demo-ar', devList: 'FI-AR Credit Memo Workflow', area: 'FI-AR' },
     wm: { itemId: 'demo-wm', devList: 'WM Bin Replenishment Fix', area: 'WM' },

@@ -98,8 +98,8 @@ function Dashboard({ me, ov, onCreate }) {
     <>
       <PageHeader
         eyebrow={<><GavelIcon size={13} /> Change Control Board</>}
-        title="SAP change governance"
-        sub="Changes to SAP ECC and BW are verified, planned, reviewed, approved and implemented in a controlled, orderly way — from the function’s requirement to transport into Production."
+        title="IT change governance"
+        sub="Changes to business applications, ERP, analytics and infrastructure are verified, planned, reviewed, approved and implemented in a controlled, orderly way — from the function’s requirement to go-live in Production."
       >
         {me.can.runMeetings && <a className="ccb-btn" href={`${ROUTES.ccbMeetings}?action=schedule`}><CalendarIcon size={15} /> Schedule meeting</a>}
         {me.can.log && <Button variant="primary" icon={PlusIcon} onClick={onCreate}>Log change request</Button>}

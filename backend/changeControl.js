@@ -9,7 +9,8 @@ const { recordAccessChange } = require('./accessHistory');
 /*
    CHANGE CONTROL BOARD (CCB) — the governance half of "Change Control Board & CR Tracker" (the Dev Tracker
    embedded app, embedded-apps/dev-tracker/src/ccb). Own `ccb` schema, own routes under
-   /change-control. Implements the SAP Change Management process approved for Emami (Oct 2026):
+   /change-control. Implements the IT change management process approved for Emami (Oct 2026) — ERP, application
+   development, analytics and infrastructure alike:
 
      1  Function raises the requirement with a BRD
      2  IT SPOC logs it here                                         -> draft
@@ -20,13 +21,13 @@ const { recordAccessChange } = require('./accessHistory');
           - urgent/critical -> emergency approval, CCB informed within 5 business days and the
                                approval ratified at the next CCB meeting
      5  CCB approves, approves with modifications, rejects or defers — in a meeting with quorum
-     6-9 SAP Module Lead assigns a developer, build, UAT, transport — tracked in Dev Tracker: every
+     6-9 Module Lead assigns a developer, build, UAT, release — tracked in Dev Tracker: every
         approval creates the Dev Tracker assignment in the same transaction.
 
    Access: anyone with a Dev Tracker grant (Manage Access) can open the CCB register. What they may
    do comes from their CCB roles (ccb.roles, assigned in the Emami Apps Admin Center - ccbRolesAdminRouter):
      IT SPOC              log, categorise, submit and withdraw requests
-     SAP Module Lead      same as IT SPOC (logs on behalf of a function), named owner of delivery
+     Module Lead          same as IT SPOC (logs on behalf of a function), named owner of delivery
      IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
                           emergency approval, edit requests after CCB discussion, terminate
      CCB Secretary        schedule meetings, run them (attendance, decisions, minutes)
@@ -51,8 +52,8 @@ function verifiedHubEmail(req) {
 const q = (col) => `"${col}"`;
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 
-const ROLES = ['IT SPOC', 'SAP Module Lead', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
-const LOGGER_ROLES = ['IT SPOC', 'SAP Module Lead', 'IT Application Head'];
+const ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
+const LOGGER_ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head'];
 const CATEGORIES = {
     major: { inScope: true, label: 'Major CR / project' },
     financial: { inScope: true, label: 'Financial impact' },
@@ -62,7 +63,9 @@ const CATEGORIES = {
     cosmetic: { inScope: false, label: 'Cosmetic change' },
 };
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
-const SAP_SYSTEMS = ['ECC', 'BW', 'ECC & BW'];
+// The CCB covers every IT change, not just ERP. The "sapSystem" / "sapModules" columns predate that and
+// now hold the IT area and the systems / modules affected; renaming the columns isn't worth the churn.
+const IT_AREAS = ['ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
 const FEASIBILITY = ['feasible', 'feasible_with_conditions', 'not_feasible'];
 const STATUSES = ['draft', 'feasibility_review', 'awaiting_ccb', 'approved', 'rejected', 'withdrawn', 'terminated'];
 const ROUTES_TAKEN = ['ccb', 'out_of_scope', 'emergency'];
@@ -119,7 +122,7 @@ async function initSchema() {
             "brdReference" text NOT NULL DEFAULT '',
             description text NOT NULL,
             justification text NOT NULL,
-            "sapSystem" text NOT NULL CHECK ("sapSystem" IN (${sqlList(SAP_SYSTEMS)})),
+            "sapSystem" text NOT NULL CHECK ("sapSystem" IN (${sqlList(IT_AREAS)})),
             "sapModules" text[] NOT NULL DEFAULT '{}',
             category text NOT NULL CHECK (category IN (${sqlList(Object.keys(CATEGORIES))})),
             "financialImpact" text NOT NULL DEFAULT '',
@@ -249,6 +252,14 @@ async function initSchema() {
     for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
         await pool.query('INSERT INTO ccb.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, value]);
     }
+    // One-off move from the SAP-only vocabulary (ECC/BW systems, "SAP Module Lead") to IT-wide areas.
+    await pool.query('ALTER TABLE ccb.requests DROP CONSTRAINT IF EXISTS "requests_sapSystem_check"');
+    await pool.query(`UPDATE ccb.requests SET "sapSystem" = CASE WHEN "sapSystem" = 'BW' THEN 'Analytics' ELSE 'ERP' END WHERE "sapSystem" IN ('ECC', 'BW', 'ECC & BW')`);
+    await pool.query(`ALTER TABLE ccb.requests ADD CONSTRAINT "requests_sapSystem_check" CHECK ("sapSystem" IN (${sqlList(IT_AREAS)}))`);
+    await pool.query('ALTER TABLE ccb.roles DROP CONSTRAINT IF EXISTS roles_role_check');
+    await pool.query(`DELETE FROM ccb.roles o WHERE o.role = 'SAP Module Lead' AND EXISTS (SELECT 1 FROM ccb.roles n WHERE n.email = o.email AND n.role = 'Module Lead')`);
+    await pool.query(`UPDATE ccb.roles SET role = 'Module Lead' WHERE role = 'SAP Module Lead'`);
+    await pool.query(`ALTER TABLE ccb.roles ADD CONSTRAINT roles_role_check CHECK (role IN (${sqlList(ROLES)}))`);
     console.log('[change-control] CCB schema up to date (ccb.requests, meetings, meeting_items, attendance, roles, history).');
 }
 
@@ -397,7 +408,7 @@ const MODULE_TO_AREA = { SD: 'SD', FI: 'FI-AR', MM: 'MM', PP: 'PP', WM: 'WM' };
 /**
  * Every approval (CCB, out-of-scope, emergency) lands in Dev Tracker as a 'Not Started' assignment,
  * written into dev_tracker.items inside the approval's own transaction — an approved request never
- * exists without its assignment. Developer is left empty: step 6 of the process is the SAP Module
+ * exists without its assignment. Developer is left empty: step 6 of the process is the Module
  * Lead assigning one in Dev Tracker. Columns mirror devTracker.js's POST /items.
  */
 async function createDevTrackerAssignment(db, r, approverEmail) {
@@ -409,16 +420,17 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         r.description,
         `Business justification:\n${r.justification}`,
         `Requesting function: ${r.requestingFunction} (${r.requestedBy})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
-        `SAP: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
-        r.crossModuleImpact && `Inter-module impact (IT Application Head):\n${r.crossModuleImpact}`,
+        `IT area: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
+        r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
-        r.moduleLeadEmail && `SAP Module Lead: ${nameOf(r.moduleLeadEmail)}`,
+        r.moduleLeadEmail && `Module Lead: ${nameOf(r.moduleLeadEmail)}`,
     ].filter(Boolean).join('\n\n');
 
     let area = null;
-    const mapped = [...new Set(r.sapModules.map((m) => MODULE_TO_AREA[m]).filter(Boolean))];
+    // Dev Tracker's Module master data is ERP-specific (SD, FI-AR, MM, …); only map ERP requests onto it.
+    const mapped = r.sapSystem === 'ERP' ? [...new Set(r.sapModules.map((m) => MODULE_TO_AREA[m]).filter(Boolean))] : [];
     if (mapped.length === 1 && r.sapModules.length === 1) area = mapped[0];
-    else if (r.sapModules.length > 1) area = 'Cross-Functional';
+    else if (r.sapSystem === 'ERP' && r.sapModules.length > 1) area = 'Cross-Functional';
     if (area) {
         const { rows } = await db.query(`SELECT 1 FROM dev_tracker.master_data WHERE category = 'area' AND value = $1`, [area]);
         if (!rows.length) area = null;
@@ -651,7 +663,7 @@ function readRequestFields(b, partial = false) {
         ('requestedBy' in f && !f.requestedBy && 'Enter who raised the requirement in the function.') ||
         ('description' in f && !f.description && 'Describe the business requirement.') ||
         ('justification' in f && !f.justification && 'Business justification is required.') ||
-        ('sapSystem' in f && !SAP_SYSTEMS.includes(f.sapSystem) && 'Choose the SAP system.') ||
+        ('sapSystem' in f && !IT_AREAS.includes(f.sapSystem) && 'Choose the IT area.') ||
         ('category' in f && !CATEGORIES[f.category] && 'Choose the CCB category.') ||
         ('priority' in f && !PRIORITIES.includes(f.priority) && 'Choose a priority.') ||
         ('requiredBy' in f && f.requiredBy && !/^\d{4}-\d{2}-\d{2}$/.test(f.requiredBy) && 'Invalid required-by date.') ||
@@ -661,7 +673,7 @@ function readRequestFields(b, partial = false) {
 }
 
 router.post('/requests', async (req, res) => {
-    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, SAP Module Lead or IT Application Head can log a change request.' });
+    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or IT Application Head can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
         const submitNow = req.body?.intent === 'submit';
@@ -757,7 +769,7 @@ router.post('/requests/:id/actions', async (req, res) => {
                     const feasibility = req.body?.feasibility;
                     const crossModuleImpact = str(req.body?.crossModuleImpact);
                     if (!FEASIBILITY.includes(feasibility) || feasibility === 'not_feasible') throw new HttpError(400, 'Record the feasibility as Feasible or Feasible with conditions.');
-                    if (!crossModuleImpact) throw new HttpError(400, 'Record the inter-module impact in SAP (write "None" if there is none).');
+                    if (!crossModuleImpact) throw new HttpError(400, 'Record the impact on other systems or modules (write "None" if there is none).');
                     const review = { feasibility, crossModuleImpact, reviewNotes: note || null, reviewedBy: req.verifiedEmail, reviewedAt: now, updatedAt: now };
                     if (action === 'recommend') {
                         updated = await patchRequest(db, id, { ...review, status: 'awaiting_ccb' });

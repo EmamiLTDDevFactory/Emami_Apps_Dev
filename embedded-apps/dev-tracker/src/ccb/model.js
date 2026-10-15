@@ -1,7 +1,7 @@
 import { ROUTES } from '../shared/routes.js';
 
 // Labels, tones and the process model for the Change Control Board. The nine steps are the
-// "Proposed Change Process with CCB" from the SAP Change Management deck (Oct 2026); steps 6-9 are
+// "Proposed Change Process with CCB" from the change management deck (Oct 2026); steps 6-9 are
 // read live from the linked Dev Tracker assignment, so one request shows its whole journey.
 
 export const CATEGORY_META = {
@@ -68,15 +68,24 @@ export const MEETING_STATUS_META = {
 
 export const ROLE_META = {
   'IT SPOC': { tone: 'blue', duty: 'Reviews the requirement, logs it in the CCB application and categorises it against the CCB scope for the next meeting.' },
-  'SAP Module Lead': { tone: 'teal', duty: 'Logs requests for their module and assigns the developer once a change is approved.' },
-  'IT Application Head': { tone: 'purple', duty: 'Checks scope and feasibility, including inter-module impact in SAP; recommends and puts items up to the CCB; updates requests after CCB discussion and initiates or terminates development.' },
+  'Module Lead': { tone: 'teal', duty: 'Logs requests for their system or module and assigns the developer once a change is approved.' },
+  'IT Application Head': { tone: 'purple', duty: 'Checks scope and feasibility, including the impact on other systems and modules; recommends and puts items up to the CCB; updates requests after CCB discussion and initiates or terminates development.' },
   'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance, decisions and minutes.' },
   'CCB Member': { tone: 'green', duty: 'Approves, rejects or modifies in-scope change requests. Counts toward quorum.' },
 };
 export const ROLES = Object.keys(ROLE_META);
 
-export const SAP_SYSTEMS = ['ECC', 'BW', 'ECC & BW'];
-export const SAP_MODULES = ['SD', 'MM', 'PP', 'QM', 'PM', 'WM', 'FI', 'CO', 'HR', 'BW', 'ABAP', 'Basis'];
+// IT area of a request (stored in the request's "sapSystem" column) and suggested systems / modules for
+// each — the CCB covers every IT change, not only ERP. Users can also type their own.
+export const IT_AREAS = ['ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
+export const AREA_MODULES = {
+  ERP: ['SD', 'MM', 'PP', 'QM', 'PM', 'WM', 'FI', 'CO', 'HR', 'BW', 'ABAP', 'Basis'],
+  'Application Development': ['Web portal', 'Mobile app', 'Emami Apps hub', 'Integration / API', 'Workflow', 'Database'],
+  Analytics: ['Power BI', 'Data warehouse', 'Data pipeline', 'Dashboards', 'Data model', 'AI / ML'],
+  Infrastructure: ['Network', 'Servers', 'Cloud', 'Storage & backup', 'End-user devices', 'Email & collaboration'],
+  Cybersecurity: ['Identity & access', 'Firewall', 'Endpoint security', 'Monitoring', 'Policies'],
+  Other: [],
+};
 
 // Dev Tracker statuses in pipeline order (see shared/constants.js STATUSES).
 const DEV_ORDER = ['Not Started', 'Requirement Discussion', 'FS Preparation', 'In Progress', 'IT Testing', 'User Testing', 'Hypercare', 'Completed'];
@@ -88,10 +97,10 @@ export const PROCESS_STEPS = [
   { key: 'categorise', label: 'Categorised against CCB scope', sub: 'IT SPOC', isNew: true },
   { key: 'feasibility', label: 'Scope & feasibility check', sub: 'IT Application Head', isNew: true },
   { key: 'ccb', label: 'CCB decision', sub: 'approve, reject or modify', isNew: true },
-  { key: 'assign', label: 'Developer assigned', sub: 'SAP Module Lead' },
+  { key: 'assign', label: 'Developer assigned', sub: 'Module Lead' },
   { key: 'build', label: 'Developer builds the change', sub: 'config, code, unit test' },
   { key: 'uat', label: 'Function performs UAT', sub: 'user acceptance' },
-  { key: 'transport', label: 'Transport imported & verified', sub: 'BASIS · Production' },
+  { key: 'transport', label: 'Deployed & verified', sub: 'release to production' },
 ];
 
 /** Per-step state for a request: done | current | todo | skipped | stopped, plus an optional note. */

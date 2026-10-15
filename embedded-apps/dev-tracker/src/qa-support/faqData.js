@@ -3,7 +3,7 @@
 // sync when that behavior changes, instead of letting it drift into stale advice.
 
 export const CATEGORIES = [
-  { key: 'gettingStarted', label: 'Getting Started', icon: 'SendIcon', blurb: 'Basics about Delivery Command Center and how to navigate through it.' },
+  { key: 'gettingStarted', label: 'Getting Started', icon: 'SendIcon', blurb: 'Basics about Change Control Board & CR Tracker and how to navigate through it.' },
   { key: 'addItem', label: 'Add Item', icon: 'PlusIcon', blurb: 'Learn how to create and manage assignments.' },
   { key: 'dashboard', label: 'Dashboard', icon: 'GridIcon', blurb: 'Board vs. table view, filters, and exporting.' },
   { key: 'resourceUtilization', label: 'Resource Utilization', icon: 'BarChartIcon', blurb: 'How allocation and utilization are actually calculated.' },
@@ -17,28 +17,28 @@ export const FAQS = [
   // --- Getting Started ---------------------------------------------------
   {
     id: 'gs-1', category: 'gettingStarted',
-    q: 'What is Delivery Command Center?',
-    a: "Delivery Command Center is Emami Apps' internal tool for tracking SAP development and change requests end to end — from requirement discussion through FS preparation, development, testing, hypercare and completion — so an item's stage, owner and dates live in one place instead of scattered across emails and spreadsheets.",
+    q: 'What is Change Control Board & CR Tracker?',
+    a: "Change Control Board & CR Tracker is Emami Apps' internal tool for governing and tracking IT change requests and development end to end — from requirement discussion through FS preparation, development, testing, hypercare and completion — so an item's stage, owner and dates live in one place instead of scattered across emails and spreadsheets.",
   },
   {
     id: 'gs-2', category: 'gettingStarted',
-    q: "Who can use Delivery Command Center, and what's the difference between a User and an Admin?",
+    q: "Who can use Change Control Board & CR Tracker, and what's the difference between a User and an Admin?",
     a: "Access is granted per person from the hub's Manage Access screen. A User can view and manage assignments on the Dashboard, and use QA Support, Change Log and Settings. An Admin additionally gets Master Data (managing dropdown values) and Import Center (bulk-loading assignments from Excel). If a page you expect is missing from the sidebar, ask an admin to check your role.",
   },
   {
     id: 'gs-3', category: 'gettingStarted',
-    q: 'What are the main sections in Delivery Command Center?',
+    q: 'What are the main sections in Change Control Board & CR Tracker?',
     a: 'Home (overview), Dashboard (create/manage assignments in Board or Table view), Master Data (admin: dropdown values), QA Support (this page), Import Center (admin: bulk import), Change Log and Settings — all reachable from the same left sidebar on every page.',
   },
   {
     id: 'gs-4', category: 'gettingStarted',
     q: 'How do I navigate through the application?',
-    a: "Use the left sidebar — it's identical on every page, with your current page highlighted. Admin-only entries (Master Data, Import Center) only appear if you've been granted the Admin role for Delivery Command Center; everyone else simply won't see them listed.",
+    a: "Use the left sidebar — it's identical on every page, with your current page highlighted. Admin-only entries (Master Data, Import Center) only appear if you've been granted the Admin role for Change Control Board & CR Tracker; everyone else simply won't see them listed.",
   },
   {
     id: 'gs-5', category: 'gettingStarted',
     q: 'Where can I get support if I face any issues?',
-    a: "Start here — search or browse by category. If your question isn't answered, use \"Suggest a Question\" to flag what's missing, or \"Contact Support\" to reach the Delivery Command Center team directly.",
+    a: "Start here — search or browse by category. If your question isn't answered, use \"Suggest a Question\" to flag what's missing, or \"Contact Support\" to reach the Change Control Board & CR Tracker team directly.",
   },
 
   // --- Add Item ------------------------------------------------------------
@@ -91,7 +91,7 @@ export const FAQS = [
   },
   {
     id: 'db-4', category: 'dashboard',
-    q: 'How does Delivery Command Center decide an item is "Overdue"?',
+    q: 'How does Change Control Board & CR Tracker decide an item is "Overdue"?',
     a: "An item is overdue the moment its Revised Target Date is in the past and its status isn't Completed or Cancelled — checked live against today's date, so nothing needs manual flagging. Overdue always shows in red, overriding whatever color its status would normally have.",
   },
   {
@@ -102,14 +102,14 @@ export const FAQS = [
   {
     id: 'db-5', category: 'dashboard',
     q: 'Who decides what color a Status or Priority pill shows?',
-    a: 'Status, Module and Priority all ship with sensible default colors, but an Admin can override any of them from Master Data — so the exact shade you see can differ from another company\'s Delivery Command Center. Overdue red is the one exception: it always wins, regardless of the status\'s own color.',
+    a: 'Status, Module and Priority all ship with sensible default colors, but an Admin can override any of them from Master Data — so the exact shade you see can differ from another company\'s Change Control Board & CR Tracker. Overdue red is the one exception: it always wins, regardless of the status\'s own color.',
   },
 
   // --- Resource Utilization --------------------------------------------------
   {
     id: 'ru-1', category: 'resourceUtilization',
     q: "How is a resource's Utilization % actually calculated?",
-    a: "It's capacity math, not headcount. For your selected date range, Delivery Command Center sums how many man-days of work overlap that range across all of a person's assignments, then divides by the number of working days (Mon–Fri) in that same range. E.g. 8 overlapping man-days in a 20-working-day month = 8 ÷ 20 = 40% utilized.",
+    a: "It's capacity math, not headcount. For your selected date range, Change Control Board & CR Tracker sums how many man-days of work overlap that range across all of a person's assignments, then divides by the number of working days (Mon–Fri) in that same range. E.g. 8 overlapping man-days in a 20-working-day month = 8 ÷ 20 = 40% utilized.",
   },
   {
     id: 'ru-2', category: 'resourceUtilization',
@@ -149,7 +149,7 @@ export const FAQS = [
   {
     id: 'ru-9', category: 'resourceUtilization',
     q: 'Does utilization account for public holidays or approved leave?',
-    a: 'No — "working day" means Monday–Friday only. There is no holiday calendar or leave data anywhere in Delivery Command Center today, so utilization can read slightly optimistic around holiday-heavy periods. This is a known, documented limitation rather than a bug.',
+    a: 'No — "working day" means Monday–Friday only. There is no holiday calendar or leave data anywhere in Change Control Board & CR Tracker today, so utilization can read slightly optimistic around holiday-heavy periods. This is a known, documented limitation rather than a bug.',
   },
   {
     id: 'ru-10', category: 'resourceUtilization',
@@ -161,7 +161,7 @@ export const FAQS = [
   {
     id: 'ie-1', category: 'importExport',
     q: 'How do I import existing assignments using Excel?',
-    a: 'From Import Center (admin only): Step 1, download the Excel template — it carries the same fields as the New Item form. Step 2, fill it in and drop it (or Choose File) into the upload area. Delivery Command Center validates every row and imports whichever ones pass immediately.',
+    a: 'From Import Center (admin only): Step 1, download the Excel template — it carries the same fields as the New Item form. Step 2, fill it in and drop it (or Choose File) into the upload area. Change Control Board & CR Tracker validates every row and imports whichever ones pass immediately.',
   },
   {
     id: 'ie-2', category: 'importExport',
@@ -175,7 +175,7 @@ export const FAQS = [
   },
   {
     id: 'ie-4', category: 'importExport',
-    q: 'How do I export data out of Delivery Command Center?',
+    q: 'How do I export data out of Change Control Board & CR Tracker?',
     a: "Dashboard's Export CSV downloads every assignment's full field set. Resource Utilization's Export downloads the current Allocation Table (resource, assignment, man-days, allocation % and status) for whatever period and filters you have selected.",
   },
   {
@@ -188,16 +188,16 @@ export const FAQS = [
   {
     id: 'qa-1', category: 'qaSupport',
     q: 'What is this QA Support page for?',
-    a: "A self-serve help center for Delivery Command Center itself — answers to \"how do I…\" and \"why does…\" questions about every other page, organized by category and searchable, so you're not stuck asking a colleague for basics.",
+    a: "A self-serve help center for Change Control Board & CR Tracker itself — answers to \"how do I…\" and \"why does…\" questions about every other page, organized by category and searchable, so you're not stuck asking a colleague for basics.",
   },
   {
     id: 'qa-2', category: 'qaSupport',
     q: "I searched and couldn't find my answer — what now?",
-    a: 'Use "Suggest a Question" to flag what\'s missing, or "Contact Support" to reach the Delivery Command Center team directly. Suggestions are exactly how new FAQ entries get added here.',
+    a: 'Use "Suggest a Question" to flag what\'s missing, or "Contact Support" to reach the Change Control Board & CR Tracker team directly. Suggestions are exactly how new FAQ entries get added here.',
   },
   {
     id: 'qa-3', category: 'qaSupport',
-    q: 'Are these answers kept up to date as Delivery Command Center changes?',
+    q: 'Are these answers kept up to date as Change Control Board & CR Tracker changes?',
     a: "They're maintained alongside the app — when a page's behavior changes, its FAQ entries here should change with it. If you spot one that's stale, that's exactly what \"Suggest a Question\" is for.",
   },
 
@@ -205,7 +205,7 @@ export const FAQS = [
   {
     id: 'md-1', category: 'masterData',
     q: 'What is Master Data, and who can access it?',
-    a: 'It\'s where an Admin manages every dropdown option used across Delivery Command Center — Status, Module/Area, Priority, Business Impact, Technical Complexity, Dev Factory and Reason for Delay. Only users granted the Admin role for Delivery Command Center can see or open this page.',
+    a: 'It\'s where an Admin manages every dropdown option used across Change Control Board & CR Tracker — Status, Module/Area, Priority, Business Impact, Technical Complexity, Dev Factory and Reason for Delay. Only users granted the Admin role for Change Control Board & CR Tracker can see or open this page.',
   },
   {
     id: 'md-2', category: 'masterData',
@@ -231,18 +231,18 @@ export const FAQS = [
   },
   {
     id: 'gen-2', category: 'general',
-    q: 'Does Delivery Command Center work well on a phone?',
+    q: 'Does Change Control Board & CR Tracker work well on a phone?',
     a: "The layout adapts down to phone width (the sidebar collapses into a horizontal strip), but it's built and tested primarily for desktop use — Excel import/export and the Resource Utilization timeline are both easiest on a larger screen.",
   },
   {
     id: 'gen-3', category: 'general',
     q: 'Is my data private to me, or shared with the team?',
-    a: 'Assignments, Master Data and Resource Utilization are shared — everyone with Delivery Command Center access sees the same underlying data, shaped only by whatever filters they personally apply. The one private thing is your notification read/cleared state, which lives only in your own browser.',
+    a: 'Assignments, Master Data and Resource Utilization are shared — everyone with Change Control Board & CR Tracker access sees the same underlying data, shaped only by whatever filters they personally apply. The one private thing is your notification read/cleared state, which lives only in your own browser.',
   },
   {
     id: 'gen-4', category: 'general',
     q: 'Who do I contact for an access request or a role change?',
-    a: "An Admin can grant or change your Delivery Command Center role from the hub's Manage Access screen. If you're not sure who that is for your team, use Contact Support below and it'll get routed to someone who can.",
+    a: "An Admin can grant or change your Change Control Board & CR Tracker role from the hub's Manage Access screen. If you're not sure who that is for your team, use Contact Support below and it'll get routed to someone who can.",
   },
 ];
 

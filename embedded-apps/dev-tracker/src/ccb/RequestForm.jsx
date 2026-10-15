@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
 import { Button, Field, Modal } from './ui.jsx';
-import { CATEGORY_HELP, CATEGORY_META, PRIORITY_META, SAP_MODULES, SAP_SYSTEMS, dateOnly } from './model.js';
+import { AREA_MODULES, CATEGORY_HELP, CATEGORY_META, IT_AREAS, PRIORITY_META, dateOnly } from './model.js';
 import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
 
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
-  sapSystem: 'ECC', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
+  sapSystem: '', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
   isEmergency: false, emergencyReason: '', moduleLeadEmail: '',
 };
 
@@ -87,21 +87,35 @@ export default function RequestForm({ request, onClose, onSaved }) {
       </div>
 
       <div className="ccb-form-section">
-        <h4><span className="ccb-step-badge">2</span>SAP landscape</h4>
-        <p>Where the change lands. The IT Application Head assesses the inter-module impact.</p>
+        <h4><span className="ccb-step-badge">2</span>IT landscape</h4>
+        <p>Where the change lands. The IT Application Head assesses the impact on other systems and modules.</p>
         <div className="ccb-form-grid">
-          <Field label="SAP system" required group>
+          <Field label="IT area" required group wide>
             <div className="ccb-chips">
-              {SAP_SYSTEMS.map((s) => (
+              {IT_AREAS.map((s) => (
                 <button key={s} type="button" className={`ccb-chip-toggle${form.sapSystem === s ? ' on' : ''}`} onClick={() => set('sapSystem')(s)}>{s}</button>
               ))}
             </div>
           </Field>
-          <Field label="SAP modules" hint="Select every module the change touches." group>
+          <Field label="Systems / modules affected" hint="Pick every system or module the change touches, or add your own." group wide>
             <div className="ccb-chips">
-              {SAP_MODULES.map((m) => (
+              {[...new Set([...(AREA_MODULES[form.sapSystem] || []), ...form.sapModules])].map((m) => (
                 <button key={m} type="button" className={`ccb-chip-toggle${form.sapModules.includes(m) ? ' on' : ''}`} onClick={() => toggleModule(m)}>{m}</button>
               ))}
+              <input
+                className="ccb-input"
+                style={{ width: 200, padding: '5px 10px', borderRadius: 999, fontSize: 11.5 }}
+                maxLength={30}
+                placeholder="+ Add another, press Enter"
+                onKeyDown={(e) => {
+                  const v = e.currentTarget.value.trim();
+                  if (e.key === 'Enter' && v) {
+                    e.preventDefault();
+                    if (!form.sapModules.includes(v)) toggleModule(v);
+                    e.currentTarget.value = '';
+                  }
+                }}
+              />
             </div>
           </Field>
         </div>
@@ -147,7 +161,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
           </Field>
-          <Field label="SAP Module Lead" hint="Assigns the developer after approval." wide>
+          <Field label="Module Lead" hint="Assigns the developer after approval." wide>
             <select className="ccb-select" value={form.moduleLeadEmail} onChange={set('moduleLeadEmail')}>
               <option value="">Not decided yet</option>
               {people.map((p) => <option key={p.email} value={p.email}>{p.name}{p.name !== p.email ? ` · ${p.email}` : ''}</option>)}

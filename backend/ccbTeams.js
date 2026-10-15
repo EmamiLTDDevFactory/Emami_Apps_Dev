@@ -91,7 +91,7 @@ function invitationHtml(m, agenda = []) {
     const items = agenda.length
         ? `<ol>${agenda.map((a) => `<li><b>${esc(a.crNo)}</b> &mdash; ${esc(a.title)}${a.kind === 'ratification' ? ' <i>(ratification)</i>' : ''}</li>`).join('')}</ol>`
         : '<p>The agenda is built from the requests awaiting the board; see the meeting page.</p>';
-    return `<p><b>${esc(m.title)}</b> (${esc(m.meetingNo)}) &mdash; SAP Change Control Board${m.isEmergency ? ', emergency meeting' : ''}.</p>`
+    return `<p><b>${esc(m.title)}</b> (${esc(m.meetingNo)}) &mdash; Change Control Board${m.isEmergency ? ', emergency meeting' : ''}.</p>`
         + `<p>Agenda:</p>${items}`
         + `<p>Meeting page, agenda and decisions: <a href="${esc(meetingUrl(m.id))}">${esc(meetingUrl(m.id))}</a></p>`
         + (m.venue && !/^https?:\/\//i.test(m.venue) ? `<p>Venue: ${esc(m.venue)}</p>` : '')

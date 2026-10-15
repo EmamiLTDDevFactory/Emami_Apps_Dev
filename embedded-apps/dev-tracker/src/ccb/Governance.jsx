@@ -35,7 +35,7 @@ function Content({ me }) {
       if (!map.has(r.email)) map.set(r.email, { email: r.email, name: r.name, hasAccess: r.hasAccess, roles: [] });
       map.get(r.email).roles.push(r.role);
     });
-    const rank = (p) => Math.min(...p.roles.map((r) => ['CCB Member', 'CCB Secretary', 'IT Application Head', 'SAP Module Lead', 'IT SPOC'].indexOf(r)));
+    const rank = (p) => Math.min(...p.roles.map((r) => ['CCB Member', 'CCB Secretary', 'IT Application Head', 'Module Lead', 'IT SPOC'].indexOf(r)));
     return [...map.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   }, [data.roles]);
   const board = byPerson.filter((p) => p.roles.some((r) => ['CCB Member', 'CCB Secretary'].includes(r)));
@@ -76,7 +76,7 @@ function Content({ me }) {
         ) : <div className="ccb-members">{board.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
-      <Card title="IT roles" sub="IT SPOCs, SAP Module Leads and the IT Application Head">
+      <Card title="IT roles" sub="IT SPOCs, Module Leads and the IT Application Head">
         {others.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No IT roles assigned yet.</p> : <div className="ccb-members">{others.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
@@ -121,7 +121,7 @@ function Content({ me }) {
         </Card>
       </div>
 
-      <Card title="Change process with CCB" sub="Highlighted steps are the CCB controls added to the existing SAP change process" className="" >
+      <Card title="Change process with CCB" sub="Highlighted steps are the CCB controls added to the existing IT change process" className="" >
         <div className="ccb-process">
           {PROCESS_STEPS.map((st, i) => (
             <div key={st.key} className={`ccb-process-step${st.isNew ? ' is-new' : ''}`}>

@@ -173,7 +173,7 @@ export default function CreateIssueModal({ ws, preset = {}, profileName, onClose
           </label>
         )}
         <details className="pm-more-fields">
-          <summary>More SAP fields</summary>
+          <summary>More delivery fields</summary>
           <div className="pm-field-row">
             <label className="pm-field"><span>Business impact</span>
               <select value={form.impact} onChange={(e) => set('impact', e.target.value)}><option value="">Select</option>{(options.impact || []).map((v) => <option key={v}>{v}</option>)}</select>

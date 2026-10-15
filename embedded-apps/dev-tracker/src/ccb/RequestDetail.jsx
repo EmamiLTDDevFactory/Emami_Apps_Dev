@@ -127,7 +127,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
               ['Requesting function', r.requestingFunction],
               ['Raised by', r.requestedBy],
               ['BRD reference', r.brdReference && (/^https?:\/\//.test(r.brdReference) ? <a href={r.brdReference} target="_blank" rel="noreferrer">{r.brdReference} <ExternalIcon size={11} /></a> : r.brdReference)],
-              ['SAP', `${r.sapSystem}${r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}`],
+              ['IT area', `${r.sapSystem}${r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}`],
               ['CCB category', <ScopePill category={r.category} categories={CATEGORY_META} />],
               ['Financial impact', r.financialImpact],
               ['Required by', r.requiredBy ? fmtDate(r.requiredBy) : null],
@@ -139,7 +139,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             {r.reviewedAt ? (
               <DefinitionList rows={[
                 ['Feasibility', <Meta meta={FEASIBILITY_META} value={r.feasibility} />],
-                ['Inter-module impact', <Prose>{r.crossModuleImpact}</Prose>],
+                ['Impact on other systems', <Prose>{r.crossModuleImpact}</Prose>],
                 ['Recommendation', r.reviewNotes && <Prose>{r.reviewNotes}</Prose>],
                 ['Reviewed by', <Person name={nameOf(r.reviewedBy)} sub={fmtDateTime(r.reviewedAt)} />],
               ]} />
@@ -213,7 +213,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             </Card>
           )}
 
-          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · Module Lead, developer, UAT, transport">
+          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · Module Lead, developer, UAT, go-live">
             {devItem ? (
               <>
                 <a className="ccb-delivery" href={devTrackerLink(devItem.issueNo)}>
@@ -328,7 +328,7 @@ function ActionDialog({ action, request: r, onClose, onDone }) {
               ))}
             </div>
           </Field>
-          <Field label="Inter-module impact in SAP" required hint='Which other modules, interfaces or reports are affected. Write "None" if there is none.'>
+          <Field label="Impact on other systems / modules" required hint='Which other modules, interfaces or reports are affected. Write "None" if there is none.'>
             <textarea className="ccb-textarea" value={impact} onChange={(e) => setImpact(e.target.value)} />
           </Field>
           <Field label={action === 'recommend' ? 'Recommendation to the board' : 'Approval notes'} hint="Optional. Shown to the board and in the audit trail.">
@@ -340,7 +340,7 @@ function ActionDialog({ action, request: r, onClose, onDone }) {
         <>
           <div className="ccb-callout tone-red"><BoltIcon size={15} /><span>Emergency approvals bypass the board. The CCB must be <strong>informed in writing</strong> and the approval <strong>ratified at the next CCB meeting</strong>.</span></div>
           {!r.reviewedAt && (
-            <Field label="Inter-module impact in SAP" hint="Optional but recommended.">
+            <Field label="Impact on other systems / modules" hint="Optional but recommended.">
               <textarea className="ccb-textarea" value={impact} onChange={(e) => setImpact(e.target.value)} />
             </Field>
           )}
