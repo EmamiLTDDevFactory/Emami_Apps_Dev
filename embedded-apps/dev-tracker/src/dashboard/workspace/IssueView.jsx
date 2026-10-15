@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Avatar, PriorityIcon, StatusPicker, TypeIcon, Popover, ProgressBar, StatusLozenge, TypeAndKey, epicColor } from './ui.jsx';
+import { Avatar, MultiPersonField, PriorityIcon, StatusPicker, TypeIcon, Popover, ProgressBar, StatusLozenge, TypeAndKey, epicColor } from './ui.jsx';
 import { apiHistory, apiComments, apiCommentCreate, apiCommentUpdate, apiCommentDelete } from '../../shared/api.js';
 import { FIELD_LABELS } from '../../shared/constants.js';
 import { fmtDate, relativeTime, revisedTarget, isOverdue, riskLevel } from '../../shared/utils.js';
-import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, statusCategory, byRank, rankBetween, parseLabels, points, fmtPoints } from '../../shared/pm.js';
-import { RISK_META } from '../../shared/constants.js';
+import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, isDone, statusCategory, byRank, rankBetween, parseLabels, points, fmtPoints } from '../../shared/pm.js';
+import { RISK_META, ASSIGNABLE_DEVELOPERS } from '../../shared/constants.js';
 import { ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon, GavelIcon } from '../../shared/icons.jsx';
 import { ROUTES } from '../../shared/routes.js';
 
@@ -54,6 +54,18 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
     if (!it) return [];
     return items.filter((c) => (isEpic(it) ? String(c.epicId) === String(it.id) : String(c.parentId) === String(it.id))).sort(byRank);
   }, [items, it]);
+
+  // Child issues are picked only from OPEN assignments: not done/cancelled, not epics, not this item, not
+  // already linked here, and (for a normal parent) not one of this item's own ancestors — no loops.
+  const childCandidates = useMemo(() => {
+    if (!it) return [];
+    const linked = new Set(children.map((c) => String(c.id)));
+    const ancestors = new Set();
+    for (let p = it.parentId; p && !ancestors.has(String(p)); p = byId.get(String(p))?.parentId) ancestors.add(String(p));
+    return items
+      .filter((c) => String(c.id) !== String(it.id) && !linked.has(String(c.id)) && !ancestors.has(String(c.id)) && !isEpic(c) && !isDone(c))
+      .sort((a, b) => (a.issueNo || 0) - (b.issueNo || 0));
+  }, [items, it, children, byId]);
 
   if (!it) {
     return (
@@ -160,14 +172,10 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
                 list={children}
                 isEpicParent={isEpic(it)}
                 onOpen={onOpen}
-                onCreateChild={async (summary) => {
-                  const last = children[children.length - 1];
-                  const fields = isEpic(it)
-                    ? { devList: summary, issueType: 'Task', epicId: it.id, area: it.area || '' }
-                    : { devList: summary, issueType: 'Sub-task', parentId: it.id, epicId: it.epicId || '', sprintId: it.sprintId || '', area: it.area || '' };
-                  try { await createItem({ ...fields, status: 'Not Started', rank: rankBetween(last, null) }); } catch (e) { onError(e.message || 'Could not create'); }
+                candidates={childCandidates}
+                onLink={async (child) => {
+                  try { await updateItem(child.id, isEpic(it) ? { epicId: it.id } : { parentId: it.id }); } catch (e) { onError(e.message || 'Could not link the assignment'); }
                 }}
-                onLinkExisting={isEpic(it) ? () => onCreate({ issueType: 'Task', epicId: it.id }) : null}
               />
             )}
 
@@ -242,13 +250,14 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
             <div className="pm-details">
               <div className="pm-details-head">Details</div>
               <Field label="Assignee">
-                <PersonField value={it.developer} people={people} onSave={(v) => save({ developer: v })} />
-                {profileName && (it.developer || '') !== profileName && (
+                <AssigneeField value={it.developer} onSave={(v) => save({ developer: v })} />
+                {profileName && ASSIGNABLE_DEVELOPERS.includes(profileName) && (it.developer || '') !== profileName && (
                   <button type="button" className="pm-link-btn pm-assign-me" onClick={() => save({ developer: profileName })}>Assign to me</button>
                 )}
               </Field>
               <Field label="Reporter">
-                {pmReady ? <PersonField value={it.reporter} people={people} onSave={(v) => save({ reporter: v })} /> : <span className="pm-muted">—</span>}
+                {/* Who raised the item — fixed once set (the server keeps it too). */}
+                {pmReady ? <span className="pm-person"><Avatar name={it.reporter} size={22} /> <span>{it.reporter || '—'}</span></span> : <span className="pm-muted">—</span>}
               </Field>
               <Field label="Priority">
                 <SelectField value={it.priority} options={options.priority || []} render={(p) => <PriorityIcon priority={p} showLabel />} onSave={(v) => save({ priority: v })} />
@@ -314,14 +323,15 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               <Field label="Functional area"><InlineText value={it.func || ''} placeholder="None" onSave={(v) => save({ func: v })} /></Field>
               <Field label="Business impact"><SelectField value={it.impact} options={options.impact || []} onSave={(v) => save({ impact: v })} /></Field>
               <Field label="Complexity"><SelectField value={it.complexity} options={options.complexity || []} onSave={(v) => save({ complexity: v })} /></Field>
-              <Field label="SPOC (Functional)"><PersonField value={it.spocFunction} people={people} onSave={(v) => save({ spocFunction: v })} /></Field>
-              <Field label="SPOC (IT)"><PersonField value={it.spocIT} people={people} onSave={(v) => save({ spocIT: v })} /></Field>
+              <Field label="Function Owner"><PersonField value={it.spocFunction} people={people} onSave={(v) => save({ spocFunction: v })} /></Field>
+              <Field label="IT Stakeholders"><MultiPersonField value={it.spocIT} people={people} onSave={(v) => save({ spocIT: v })} /></Field>
               <Field label="Dev Factory"><SelectField value={it.devFactory} options={options.devFactory || []} onSave={(v) => save({ devFactory: v })} /></Field>
               <Field label="Man-days"><InlineText type="number" value={it.devTime ?? ''} placeholder="None" onSave={(v) => save({ devTime: v })} /></Field>
               <Field label="Rework (days)"><InlineText type="number" value={it.rework ?? ''} placeholder="None" onSave={(v) => save({ rework: v })} /></Field>
               <Field label="Delay reason"><SelectField value={it.reasonCategory} options={options.reasonCategory || []} onSave={(v) => save({ reasonCategory: v })} /></Field>
               <Field label="Delay detail"><InlineText multiline value={it.reasonDelay || ''} placeholder="None" onSave={(v) => save({ reasonDelay: v })} /></Field>
-              <Field label="Remarks"><InlineText multiline value={it.remarks || ''} placeholder="None" onSave={(v) => save({ remarks: v })} /></Field>
+              {/* Remarks are set when the item is created and are read-only afterwards (the server keeps them too). */}
+              <Field label="Remarks">{it.remarks ? <span style={{ whiteSpace: 'pre-wrap' }}>{it.remarks}</span> : <span className="pm-muted">None</span>}</Field>
             </Collapsible>
 
             <Collapsible title="Stage dates">
@@ -422,6 +432,20 @@ function SelectField({ value, options, onSave, render, noneLabel = 'None', searc
           ))}
         </div>
       </Popover>
+    </span>
+  );
+}
+
+/** Assignee: only the people in ASSIGNABLE_DEVELOPERS (a legacy assignee stays visible until changed). */
+function AssigneeField({ value, onSave }) {
+  const options = value && !ASSIGNABLE_DEVELOPERS.includes(value) ? [value, ...ASSIGNABLE_DEVELOPERS] : ASSIGNABLE_DEVELOPERS;
+  return (
+    <span className="pm-person pm-assignee-select">
+      <Avatar name={value} size={22} />
+      <select className="pm-inline-input" value={value || ''} onChange={(e) => onSave(e.target.value)} aria-label="Assignee">
+        <option value="">Unassigned</option>
+        {options.map((p) => <option key={p} value={p} disabled={!ASSIGNABLE_DEVELOPERS.includes(p)}>{p}</option>)}
+      </select>
     </span>
   );
 }
@@ -535,24 +559,22 @@ function DescriptionEditor({ value, onSave }) {
   );
 }
 
-function ChildIssues({ list, isEpicParent, onOpen, onCreateChild, onLinkExisting }) {
+function ChildIssues({ list, isEpicParent, onOpen, candidates = [], onLink }) {
   const [adding, setAdding] = useState(false);
-  const [summary, setSummary] = useState('');
   const done = list.filter((c) => statusCategory(c.status) === 'done').length;
   const inprog = list.filter((c) => statusCategory(c.status) === 'inprogress').length;
   const pts = list.reduce((s, c) => s + points(c), 0);
-  async function submit() {
-    const s = summary.trim();
-    if (!s) return;
-    setSummary('');
-    await onCreateChild(s);
+  async function pick(id) {
+    const child = candidates.find((c) => String(c.id) === id);
+    if (!child) return;
+    setAdding(false);
+    await onLink(child);
   }
   return (
     <section className="pm-issue-block">
       <div className="pm-block-head">
         <h3>{isEpicParent ? 'Issues in this epic' : 'Child issues'}</h3>
         <div className="pm-block-head-actions">
-          {onLinkExisting && <button type="button" className="pm-link-btn" onClick={onLinkExisting}>Create with details</button>}
           <button type="button" className="pm-icon-btn" aria-label="Add child issue" onClick={() => setAdding(true)}><PlusIcon size={15} /></button>
         </div>
       </div>
@@ -576,9 +598,12 @@ function ChildIssues({ list, isEpicParent, onOpen, onCreateChild, onLinkExisting
       {adding && (
         <div className="pm-quick-create">
           <TypeIcon type={isEpicParent ? 'Task' : 'Sub-task'} />
-          <input autoFocus value={summary} placeholder="What needs to be done?" onChange={(e) => setSummary(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); } }}
-            onBlur={() => { if (!summary.trim()) setAdding(false); }} />
+          <select autoFocus className="pm-child-select" defaultValue="" onChange={(e) => pick(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); } }}
+            onBlur={() => setAdding(false)}>
+            <option value="" disabled>{candidates.length ? 'Select an open assignment…' : 'No open assignments to link'}</option>
+            {candidates.map((c) => <option key={c.id} value={String(c.id)}>{issueKey(c)} — {c.devList} ({c.status || 'Not Started'})</option>)}
+          </select>
         </div>
       )}
       {!list.length && !adding && <div className="pm-muted">{isEpicParent ? 'No issues in this epic yet.' : 'No child issues.'}</div>}

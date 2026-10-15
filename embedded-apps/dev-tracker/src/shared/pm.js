@@ -132,9 +132,15 @@ export function namesForMe(profileName, email) {
   if (email) out.push(String(email).split('@')[0].replace(/[._]/g, ' ').trim().toLowerCase());
   return out.filter(Boolean);
 }
+/** People fields that hold several names ("IT Stakeholders") store them comma-separated. */
+export function splitPeople(value) {
+  return String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
 export function nameMatches(value, myNames) {
-  const v = (value || '').trim().toLowerCase();
-  return !!v && myNames.some((n) => v === n || v.startsWith(n) || n.startsWith(v));
+  return splitPeople(value).some((part) => {
+    const v = part.toLowerCase();
+    return myNames.some((n) => v === n || v.startsWith(n) || n.startsWith(v));
+  });
 }
 
 // Timezone-safe day arithmetic on 'YYYY-MM-DD' strings, used by the workspace code (timeline,

@@ -194,3 +194,36 @@ export function ProgressBar({ done, inprogress = 0, total, height = 6 }) {
     </div>
   );
 }
+
+/** Several people in one field (e.g. IT Stakeholders), stored as "Name A, Name B". Pick from the list or type a name, Enter to add. */
+export function MultiPersonField({ value, people = [], onSave, placeholder = 'Add a person…' }) {
+  const names = String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const [draft, setDraft] = useState('');
+  const listId = useRef(`mp-${Math.random().toString(36).slice(2)}`).current;
+  const save = (next) => onSave(next.join(', '));
+  function add() {
+    const n = draft.trim();
+    setDraft('');
+    if (n && !names.some((x) => x.toLowerCase() === n.toLowerCase())) save([...names, n]);
+  }
+  return (
+    <div className="pm-multi-person">
+      {names.map((n) => (
+        <span className="pm-multi-chip" key={n}>
+          <Avatar name={n} size={18} /> {n}
+          <button type="button" aria-label={`Remove ${n}`} onClick={() => save(names.filter((x) => x !== n))}>×</button>
+        </span>
+      ))}
+      <input
+        className="pm-inline-input pm-multi-input"
+        list={listId}
+        value={draft}
+        placeholder={names.length ? 'Add another…' : placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+        onBlur={add}
+      />
+      <datalist id={listId}>{people.filter((p) => !names.includes(p)).map((p) => <option key={p} value={p} />)}</datalist>
+    </div>
+  );
+}

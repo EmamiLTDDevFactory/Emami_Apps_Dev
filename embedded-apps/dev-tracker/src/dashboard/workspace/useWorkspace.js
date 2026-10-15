@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiList, apiMasterData, apiUpdate, apiCreate, apiDelete, apiSprints } from '../../shared/api.js';
 import { activeValues, categoryColorMap } from '../../shared/masterData.js';
 import { CATEGORIES } from '../../shared/constants.js';
-import { buildPayload, isEpic } from '../../shared/pm.js';
+import { buildPayload, isEpic, splitPeople } from '../../shared/pm.js';
 
 // One data layer for every workspace view (board, backlog, list, timeline, reports) and the
 // issue view, so an edit made in one place is visible everywhere without a refetch.
@@ -77,7 +77,7 @@ export function useWorkspace(email) {
   const epics = useMemo(() => items.filter(isEpic), [items]);
   const people = useMemo(() => {
     const s = new Set();
-    for (const it of items) for (const v of [it.developer, it.spocIT, it.spocFunction, it.reporter]) if (v && v.trim()) s.add(v.trim());
+    for (const it of items) for (const v of [it.developer, it.spocIT, it.spocFunction, it.reporter]) for (const name of splitPeople(v)) s.add(name);
     return [...s].sort((a, b) => a.localeCompare(b));
   }, [items]);
   const activeSprint = useMemo(() => sprints.find((s) => s.state === 'active') || null, [sprints]);

@@ -418,6 +418,13 @@ router.get('/items/:id/history', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
+// The only people an item can be assigned to (Assignee = "developer"). Mirrors ASSIGNABLE_DEVELOPERS in the
+// app's shared/constants.js — add a name in both places to open it up. An existing assignee is left alone
+// until someone changes it.
+const ASSIGNABLE_DEVELOPERS = ['Indranil Banerjee'];
+const assigneeAllowed = (name) => !name || ASSIGNABLE_DEVELOPERS.includes(String(name).trim());
+const ASSIGNEE_ERROR = `Assignee must be one of: ${ASSIGNABLE_DEVELOPERS.join(', ')} (or left unassigned).`;
+
 // CREATE item
 router.post('/items', requireDevTrackerAccess, async (req, res) => {
     const id = crypto.randomUUID();
@@ -425,6 +432,7 @@ router.post('/items', requireDevTrackerAccess, async (req, res) => {
     if (!row.devList || !String(row.devList).trim()) {
         return res.status(400).json({ error: 'devList is required' });
     }
+    if (!assigneeAllowed(row.developer)) return res.status(400).json({ error: ASSIGNEE_ERROR });
     try {
         const changedBy = await resolveDisplayName(req);
         if (!row.status) row.status = 'Not Started';
@@ -469,6 +477,12 @@ router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
         });
         if (!row.devList || !String(row.devList).trim()) {
             return res.status(400).json({ error: 'devList is required' });
+        }
+        // Reporter (who raised the item) and Remarks are fixed once the item exists.
+        if (existing.reporter) row.reporter = existing.reporter;
+        row.remarks = existing.remarks ?? null;
+        if ((row.developer || null) !== (existing.developer || null) && !assigneeAllowed(row.developer)) {
+            return res.status(400).json({ error: ASSIGNEE_ERROR });
         }
         if (row.epicId && row.epicId === req.params.id) row.epicId = null;
         if (row.parentId && row.parentId === req.params.id) row.parentId = null;

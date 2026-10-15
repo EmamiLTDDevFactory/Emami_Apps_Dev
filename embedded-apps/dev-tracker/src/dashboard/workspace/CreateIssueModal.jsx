@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, TypeIcon } from './ui.jsx';
+import { Modal, MultiPersonField, TypeIcon } from './ui.jsx';
 import { ISSUE_TYPES, PROJECT_NAME, isEpic, byRank, issueKey } from '../../shared/pm.js';
 import { stageDateKeyFor } from '../../shared/utils.js';
-import { FIELD_LABELS } from '../../shared/constants.js';
+import { FIELD_LABELS, ASSIGNABLE_DEVELOPERS } from '../../shared/constants.js';
 
 // Jira's "Create issue" dialog. Required fields match what the original New Item panel required
 // (summary, status, module, functional area, priority) for anything but an epic or sub-task,
@@ -137,8 +137,11 @@ export default function CreateIssueModal({ ws, preset = {}, profileName, onClose
         </div>
         <div className="pm-field-row">
           <label className="pm-field"><span>Assignee</span>
-            <input list="create-people" value={form.developer} onChange={(e) => set('developer', e.target.value)} placeholder="Unassigned" />
-            {profileName && form.developer !== profileName && <button type="button" className="pm-link-btn pm-assign-me" onClick={() => set('developer', profileName)}>Assign to me</button>}
+            <select value={form.developer} onChange={(e) => set('developer', e.target.value)}>
+              <option value="">Unassigned</option>
+              {ASSIGNABLE_DEVELOPERS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {profileName && ASSIGNABLE_DEVELOPERS.includes(profileName) && form.developer !== profileName && <button type="button" className="pm-link-btn pm-assign-me" onClick={() => set('developer', profileName)}>Assign to me</button>}
           </label>
           {pmReady && (
             <label className="pm-field"><span>Story points</span>
@@ -183,8 +186,8 @@ export default function CreateIssueModal({ ws, preset = {}, profileName, onClose
             </label>
           </div>
           <div className="pm-field-row">
-            <label className="pm-field"><span>SPOC (Functional)</span><input list="create-people" value={form.spocFunction} onChange={(e) => set('spocFunction', e.target.value)} /></label>
-            <label className="pm-field"><span>SPOC (IT)</span><input list="create-people" value={form.spocIT} onChange={(e) => set('spocIT', e.target.value)} /></label>
+            <label className="pm-field"><span>Function Owner</span><input list="create-people" value={form.spocFunction} onChange={(e) => set('spocFunction', e.target.value)} /></label>
+            <div className="pm-field"><span>IT Stakeholders</span><MultiPersonField value={form.spocIT} people={people} onSave={(v) => set('spocIT', v)} placeholder="Add IT stakeholders…" /></div>
           </div>
           <div className="pm-field-row">
             <label className="pm-field"><span>Dev Factory</span>

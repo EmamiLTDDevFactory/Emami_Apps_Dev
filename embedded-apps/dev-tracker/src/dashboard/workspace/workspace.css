@@ -636,3 +636,17 @@ textarea.pm-inline-input { resize: vertical; line-height: 1.45; }
 }
 .pm-ccb-link:hover { color: var(--accent-2); border-color: var(--accent); }
 .pm-ccb-link-go { margin-left: auto; font-weight: 600; white-space: nowrap; }
+
+/* Assignee dropdown (restricted list — see ASSIGNABLE_DEVELOPERS). */
+.pm-assignee-select { display: inline-flex; align-items: center; gap: 8px; }
+.pm-assignee-select select { min-width: 170px; cursor: pointer; }
+
+/* IT Stakeholders: several people as removable chips plus an add box. */
+.pm-multi-person { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pm-multi-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px 2px 3px; border-radius: 999px; background: var(--bg-alt); border: 1px solid var(--border); font-size: 12px; color: var(--text); }
+.pm-multi-chip button { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; padding: 0 3px; }
+.pm-multi-chip button:hover { color: var(--st-red); }
+.pm-multi-input { flex: 1; min-width: 120px; }
+
+/* Child issues are linked from a dropdown of open assignments. */
+.pm-child-select { flex: 1; min-width: 0; border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12.5px; background: var(--surface); color: var(--text); }

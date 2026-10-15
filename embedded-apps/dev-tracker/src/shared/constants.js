@@ -38,7 +38,7 @@ export const FIELDS = [
 export const FIELD_LABELS = {
   devList: 'Development / Item Title', status: 'Status', func: 'Functional Area / Process',
   area: 'Module', priority: 'Priority', impact: 'Business Impact', complexity: 'Technical Complexity',
-  spocFunction: 'SPOC (Functional)', spocIT: 'SPOC (IT)', devFactory: 'Dev Factory', developer: 'Developer',
+  spocFunction: 'Function Owner', spocIT: 'IT Stakeholders', devFactory: 'Dev Factory', developer: 'Developer',
   startDate: 'Start Date', reqDiscussion: 'Requirement Discussion', fsPrep: 'FS Preparation',
   development: 'Development', itTesting: 'IT Testing', userTesting: 'User Testing', hypercare: 'Hypercare (Days)',
   hypercareDate: 'Hypercare Date', onHoldDate: 'On Hold Date', completedDate: 'Completed Date', cancelledDate: 'Cancelled Date',
@@ -52,6 +52,8 @@ export const FIELD_LABELS = {
 // changed was capitalisation, which the importer's case-insensitive header match absorbs.
 export const LEGACY_FIELD_LABELS = {
   area: 'Area', // now labelled 'Module'
+  spocFunction: 'SPOC (Functional)', // now labelled 'Function Owner'
+  spocIT: 'SPOC (IT)', // now 'IT Stakeholders' (several names, comma-separated)
 };
 
 // The item fields holding a calendar date, all stored as plain 'YYYY-MM-DD' strings (what
@@ -192,3 +194,7 @@ export function bandFor(n) {
 
 // Fixed donut palette (Dashboard "Status mix" chart) and default area-fallback swatches.
 export const DONUT_PALETTE = ['#5da8e0', '#3fcf9e', '#e8a33d', '#e0716d'];
+
+// The only people an assignment can be assigned to (Assignee / "developer"). Mirrors ASSIGNABLE_DEVELOPERS in
+// backend/devTracker.js, which enforces it — add a name in both places to open it up.
+export const ASSIGNABLE_DEVELOPERS = ['Indranil Banerjee'];
