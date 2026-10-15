@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
 const teams = require('./ccbTeams');
+const { notify } = require('./notifications');
 const { recordAccessChange } = require('./accessHistory');
 
 /*
@@ -21,13 +22,12 @@ const { recordAccessChange } = require('./accessHistory');
           - urgent/critical -> emergency approval, CCB informed within 5 business days and the
                                approval ratified at the next CCB meeting
      5  CCB approves, approves with modifications, rejects or defers — in a meeting with quorum
-     6-9 Module Lead assigns a developer, build, UAT, release — tracked in Dev Tracker: every
+     6-9 IT SPOC assigns a developer, build, UAT, release — tracked in Dev Tracker: every
         approval creates the Dev Tracker assignment in the same transaction.
 
    Access: anyone with a Dev Tracker grant (Manage Access) can open the CCB register. What they may
    do comes from their CCB roles (ccb.roles, assigned in the Emami Apps Admin Center - ccbRolesAdminRouter):
      IT SPOC              log, categorise, submit and withdraw requests
-     Module Lead          same as IT SPOC (logs on behalf of a function), named owner of delivery
      IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
                           emergency approval, edit requests after CCB discussion, terminate
      CCB Secretary        schedule meetings, run them (attendance, decisions, minutes)
@@ -52,8 +52,8 @@ function verifiedHubEmail(req) {
 const q = (col) => `"${col}"`;
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 
-const ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
-const LOGGER_ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head'];
+const ROLES = ['IT SPOC', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
+const LOGGER_ROLES = ['IT SPOC', 'IT Application Head'];
 const CATEGORIES = {
     major: { inScope: true, label: 'Major CR / project' },
     financial: { inScope: true, label: 'Financial impact' },
@@ -259,7 +259,12 @@ async function initSchema() {
     await pool.query('ALTER TABLE ccb.roles DROP CONSTRAINT IF EXISTS roles_role_check');
     await pool.query(`DELETE FROM ccb.roles o WHERE o.role = 'SAP Module Lead' AND EXISTS (SELECT 1 FROM ccb.roles n WHERE n.email = o.email AND n.role = 'Module Lead')`);
     await pool.query(`UPDATE ccb.roles SET role = 'Module Lead' WHERE role = 'SAP Module Lead'`);
+    // Module Lead was merged into IT SPOC (one role logs requests, owns them and assigns the developer).
+    await pool.query(`DELETE FROM ccb.roles o WHERE o.role = 'Module Lead' AND EXISTS (SELECT 1 FROM ccb.roles n WHERE n.email = o.email AND n.role = 'IT SPOC')`);
+    await pool.query(`UPDATE ccb.roles SET role = 'IT SPOC' WHERE role = 'Module Lead'`);
     await pool.query(`ALTER TABLE ccb.roles ADD CONSTRAINT roles_role_check CHECK (role IN (${sqlList(ROLES)}))`);
+    // Last Dev Tracker state the SPOC was told about (status / developer / overdue target) — see watchDelivery().
+    await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "devSeen" jsonb');
     console.log('[change-control] CCB schema up to date (ccb.requests, meetings, meeting_items, attendance, roles, history).');
 }
 
@@ -412,7 +417,7 @@ const MODULE_TO_AREA = { SD: 'SD', FI: 'FI-AR', MM: 'MM', PP: 'PP', WM: 'WM' };
  * Lead assigning one in Dev Tracker. Columns mirror devTracker.js's POST /items.
  */
 async function createDevTrackerAssignment(db, r, approverEmail) {
-    const names = await namesFor([r.loggedBy, approverEmail, r.moduleLeadEmail]);
+    const names = await namesFor([r.loggedBy, approverEmail]);
     const nameOf = (e) => (e ? names[e] || e : null);
     const approver = nameOf(approverEmail);
     const route = { ccb: 'CCB approval', out_of_scope: 'IT Application Head approval (outside CCB scope)', emergency: 'Emergency approval by IT Application Head (CCB ratification pending)' }[r.approvalRoute];
@@ -423,7 +428,6 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         `IT area: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
         r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
-        r.moduleLeadEmail && `Module Lead: ${nameOf(r.moduleLeadEmail)}`,
     ].filter(Boolean).join('\n\n');
 
     let area = null;
@@ -445,7 +449,7 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         priority: DEV_PRIORITY[r.priority] || null,
         impact: DEV_IMPACT[r.priority] || null,
         description,
-        spocIT: nameOf(r.moduleLeadEmail || r.loggedBy),
+        spocIT: nameOf(r.loggedBy),
         spocFunction: r.requestedBy,
         reporter: approver,
         startDate: istToday(),
@@ -589,7 +593,7 @@ router.put('/settings', async (req, res) => {
 
 const REQUEST_LIST_SQL = `
     SELECT r.*, i.status AS "devStatus", i.developer AS "devDeveloper", i."targetDate" AS "devTargetDate",
-           m."meetingNo" AS "meetingNo"
+           i."updatedAt" AS "devUpdatedAt", m."meetingNo" AS "meetingNo"
       FROM ccb.requests r
       LEFT JOIN dev_tracker.items i ON i.id = r."devTrackerItemId"
       LEFT JOIN ccb.meetings m ON m.id = r."meetingId"`;
@@ -615,7 +619,7 @@ router.get('/requests/:key', async (req, res) => {
         if (!/^CCB-/i.test(req.params.key) && !Number.isInteger(Number(req.params.key))) return res.status(400).json({ success: false, error: 'Invalid request.' });
         const r = await loadRequestByKey(req.params.key);
         if (!r) return res.status(404).json({ success: false, error: 'Change request not found.' });
-        const [comments, history, agenda, dev] = await Promise.all([
+        const [comments, history, agenda, dev, devHistory, devComments] = await Promise.all([
             pool.query('SELECT * FROM ccb.comments WHERE "requestId" = $1 ORDER BY "createdAt"', [r.id]),
             pool.query('SELECT * FROM ccb.history WHERE "requestId" = $1 ORDER BY "occurredAt" DESC, id DESC', [r.id]),
             pool.query(`SELECT mi.*, m."meetingNo", m.title AS "meetingTitle", m."scheduledAt", m.status AS "meetingStatus"
@@ -624,6 +628,14 @@ router.get('/requests/:key', async (req, res) => {
             r.devTrackerItemId
                 ? pool.query(`SELECT id, "issueNo", status, developer, "targetDate", "startDate", "completedDate", "updatedAt" FROM dev_tracker.items WHERE id = $1`, [r.devTrackerItemId])
                 : { rows: [] },
+            // Development progress for the IT SPOC, straight from Dev Tracker: field changes and comments.
+            r.devTrackerItemId
+                ? pool.query(`SELECT id, field, "oldValue", "newValue", "changedByUsername" AS "by", "changedAt" AS "at" FROM dev_tracker.item_history
+                               WHERE "itemId" = $1 AND field <> '__created__' ORDER BY "changedAt" DESC LIMIT 100`, [r.devTrackerItemId])
+                : { rows: [] },
+            r.devTrackerItemId
+                ? pool.query(`SELECT id, body, "authorName" AS "by", "createdAt" AS "at" FROM dev_tracker.comments WHERE "itemId" = $1 ORDER BY "createdAt" DESC LIMIT 100`, [r.devTrackerItemId]).catch(() => ({ rows: [] }))
+                : { rows: [] },
         ]);
         const names = await namesFor([
             r.loggedBy, r.reviewedBy, r.decidedBy, r.moduleLeadEmail,
@@ -631,7 +643,7 @@ router.get('/requests/:key', async (req, res) => {
         ]);
         res.json({
             success: true,
-            detail: { request: r, comments: comments.rows, history: history.rows, agenda: agenda.rows, devItem: dev.rows[0] || null, names, actions: availableActions(r, req) },
+            detail: { request: r, comments: comments.rows, history: history.rows, agenda: agenda.rows, devItem: dev.rows[0] || null, devHistory: devHistory.rows, devComments: devComments.rows, names, actions: availableActions(r, req) },
         });
     } catch (err) {
         fail(res, err, 'Could not load the change request.');
@@ -673,7 +685,7 @@ function readRequestFields(b, partial = false) {
 }
 
 router.post('/requests', async (req, res) => {
-    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or IT Application Head can log a change request.' });
+    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC or the IT Application Head can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
         const submitNow = req.body?.intent === 'submit';
@@ -813,6 +825,7 @@ router.post('/requests/:id/actions', async (req, res) => {
             await logHistory(db, { requestId: id, actorEmail: req.verifiedEmail, action, fromStatus: r.status, toStatus: updated.status, details });
             return updated;
         });
+        notifyAction(action, result, req.verifiedEmail, note);
         res.json({ success: true, request: result });
     } catch (err) {
         fail(res, err, 'Could not update the change request.');
@@ -1200,6 +1213,7 @@ router.post('/meetings/:id/items/:itemId/decision', async (req, res) => {
             await logHistory(db, { requestId: r.id, meetingId: id, actorEmail: req.verifiedEmail, action: it.kind === 'decision' ? 'ccb_decision' : 'ccb_ratification', fromStatus: r.status, toStatus: updated.status, details });
             return updated;
         });
+        notifyDecision(decision, out, req.verifiedEmail, notes);
         res.json({ success: true, request: out });
     } catch (err) {
         fail(res, err, 'Could not record the decision.');
@@ -1477,6 +1491,94 @@ function ccbRolesAdminRouter(requireAccessManager) {
     return admin;
 }
 
+/* ---------- Updates to the IT SPOC (notifications.js: Emami Apps bell + Outlook) ---------- */
+
+const requestPath = (r) => `/apps/dev-tracker/ccb/requests/?cr=${encodeURIComponent(r.crNo)}`;
+
+/** Tells the IT SPOC who logged `r` about a milestone (never about something they did themselves). */
+function notifySpoc(r, actorEmail, { kind = 'info', title, body = '', refKey = null }) {
+    if (!r?.loggedBy || r.loggedBy === actorEmail) return;
+    notify({ email: r.loggedBy, appId: HOST_APP_ID, kind, title: `${r.crNo}: ${title}`, body: body ? `${r.title}\n${body}` : r.title, link: requestPath(r), refKey });
+}
+
+function notifyAction(action, r, actorEmail, note) {
+    const assignment = r.devTrackerIssueNo != null ? ` Dev Tracker task Assignment-${r.devTrackerIssueNo} has been created.` : '';
+    const msg = {
+        return: { kind: 'action', title: 'returned for clarification', body: `Please update and resubmit.\n${note}` },
+        reject: { kind: 'bad', title: 'rejected at feasibility review', body: note },
+        recommend: { kind: 'info', title: 'recommended to the CCB', body: 'It is on the agenda for the next CCB meeting.' },
+        approve_out_of_scope: { kind: 'good', title: 'approved', body: `Approved by the IT Application Head (outside CCB scope).${assignment}` },
+        approve_emergency: { kind: 'good', title: 'emergency approval given', body: `Approved by the IT Application Head; to be ratified at the next CCB meeting.${assignment}` },
+        terminate: { kind: 'bad', title: 'development terminated', body: note },
+        withdraw: { kind: 'bad', title: 'withdrawn', body: note },
+    }[action];
+    if (msg) notifySpoc(r, actorEmail, msg);
+}
+
+function notifyDecision(decision, r, actorEmail, notes) {
+    const assignment = r.devTrackerIssueNo != null ? ` Dev Tracker task Assignment-${r.devTrackerIssueNo} has been created.` : '';
+    const msg = {
+        approved: { kind: 'good', title: 'approved by the CCB', body: `${notes ? `${notes}\n` : ''}${assignment.trim()}` },
+        approved_with_modifications: { kind: 'good', title: 'approved by the CCB with modifications', body: `${notes}\n${assignment.trim()}` },
+        rejected: { kind: 'bad', title: 'rejected by the CCB', body: notes },
+        deferred: { kind: 'info', title: 'deferred by the CCB', body: `${notes}\nIt stays on the queue for the next meeting.` },
+        not_ratified: { kind: 'bad', title: 'emergency approval not ratified by the CCB', body: notes },
+        ratified: { kind: 'good', title: 'emergency approval ratified by the CCB', body: notes },
+    }[decision];
+    if (msg) notifySpoc(r, actorEmail, msg);
+}
+
+/**
+ * Delivery milestones happen in Dev Tracker, not here — so every few minutes compare each approved
+ * request's assignment with what the SPOC was last told ("devSeen") and send what changed: developer
+ * assigned, ready for UAT, live, completed, cancelled, target date missed. The first look at a request
+ * only records a baseline, so nothing old is replayed.
+ */
+const DONE = ['Completed', 'Cancelled'];
+async function watchDelivery() {
+    try {
+        await ready;
+        const { rows } = await pool.query(`
+            SELECT r.*, i.status AS "devStatus", i.developer AS "devDeveloper", i."targetDate" AS "devTargetDate"
+              FROM ccb.requests r JOIN dev_tracker.items i ON i.id = r."devTrackerItemId"
+             WHERE r.status IN ('approved', 'terminated')`);
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        for (const r of rows) {
+            const seen = r.devSeen;
+            const now = { status: r.devStatus || '', developer: r.devDeveloper || '', overdue: seen?.overdue || null };
+            const overdue = r.devTargetDate && r.devTargetDate < today && !DONE.includes(r.devStatus) && r.devStatus !== 'Hypercare';
+            if (seen) {
+                const k = `ccb:${r.id}`;
+                if (now.developer && now.developer !== seen.developer) {
+                    notifySpoc(r, null, { kind: 'info', title: `developer assigned — ${now.developer}`, body: `Development has a named owner now (Assignment-${r.devTrackerIssueNo}).`, refKey: `${k}:developer:${now.developer}` });
+                }
+                if (now.status !== seen.status) {
+                    const m = {
+                        'User Testing': { kind: 'action', title: 'ready for user acceptance testing', body: `Please arrange UAT with ${r.requestedBy} (${r.requestingFunction}).` },
+                        Hypercare: { kind: 'good', title: 'deployed to production', body: 'The change is live and in hypercare.' },
+                        Completed: { kind: 'good', title: 'completed', body: 'Development is closed in Dev Tracker.' },
+                        Cancelled: { kind: 'bad', title: 'cancelled in Dev Tracker', body: '' },
+                        'On Hold': { kind: 'action', title: 'put on hold in Dev Tracker', body: '' },
+                    }[now.status];
+                    if (m) notifySpoc(r, null, { ...m, refKey: `${k}:status:${now.status}` });
+                }
+                if (overdue && seen.overdue !== r.devTargetDate) {
+                    notifySpoc(r, null, { kind: 'bad', title: 'target date missed', body: `Target was ${r.devTargetDate}; current stage: ${r.devStatus}.`, refKey: `${k}:overdue:${r.devTargetDate}` });
+                }
+            }
+            if (overdue) now.overdue = r.devTargetDate;
+            if (!seen || seen.status !== now.status || seen.developer !== now.developer || seen.overdue !== now.overdue) {
+                await pool.query('UPDATE ccb.requests SET "devSeen" = $2 WHERE id = $1', [r.id, JSON.stringify(now)]);
+            }
+        }
+    } catch (err) {
+        console.error('[change-control] Delivery watch failed:', err.message);
+    }
+}
+setTimeout(watchDelivery, 15_000).unref();
+setInterval(watchDelivery, 5 * 60_000).unref();
+
 module.exports = router;
+module.exports.watchDelivery = watchDelivery;
 module.exports.CATEGORIES = CATEGORIES;
 module.exports.ccbRolesAdminRouter = ccbRolesAdminRouter;

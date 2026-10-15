@@ -112,3 +112,11 @@
 }
 .topbar-hub:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 @media (max-width: 900px) { .topbar-hub { display: none; } }
+
+/* Change-request updates (Emami Apps notifications) open the request when clicked. */
+a.topbar-notif-row.is-link { color: inherit; text-decoration: none; border-left: 3px solid transparent; }
+a.topbar-notif-row.is-link:hover { background: var(--bg-alt); }
+a.topbar-notif-row.tone-good { border-left-color: var(--st-green); }
+a.topbar-notif-row.tone-bad { border-left-color: var(--st-red); }
+a.topbar-notif-row.tone-action { border-left-color: var(--st-amber); }
+a.topbar-notif-row.tone-info { border-left-color: var(--accent); }

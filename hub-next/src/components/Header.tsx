@@ -13,6 +13,7 @@ import Avatar from './Avatar';
 import { useOrgProfile } from '../hooks/useOrgProfile';
 import EmpAppMark from './EmpAppMark';
 import OrgHierarchy from './OrgHierarchy';
+import NotificationBell from './NotificationBell';
 
 const SEARCH_EXAMPLES = ['Dispatch Tracker', 'Recruitment Consultant Management Portal', 'Non CTC Expense', 'Mould Health Inspection'];
 
@@ -113,6 +114,8 @@ export default function Header({ searchValue, onSearchChange, onOpenMenu, onOpen
             <Download size={20} color={colors.inkSoft} />
           </button>
         )}
+
+        <NotificationBell />
 
         <button
           type="button"

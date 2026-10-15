@@ -4,6 +4,7 @@ import { backToEmamiApps } from './Sidebar.jsx';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
 import { SearchIcon, BellIcon, PlusIcon } from './icons.jsx';
+import { useHubNotifications } from './useHubNotifications.js';
 
 /** Slim header for pages that put identity/search up top instead of in the sidebar
  * (currently just Home — see Sidebar's `identityInTopbar`). Search is real: Enter hands
@@ -13,7 +14,10 @@ import { SearchIcon, BellIcon, PlusIcon } from './icons.jsx';
  * own display `meta` string, so this component only renders and reports back actions. */
 // `onSearch` / `onCreate` let the project workspace handle both in place; every other page falls
 // back to handing off to the workspace by URL (?aiSearch= / ?action=new).
-export default function Topbar({ email, name, roleLabel, notifications = [], onMarkAllRead, onClear, onSearch, onCreate }) {
+export default function Topbar({ email, name, roleLabel, notifications: localNotifications = [], onMarkAllRead, onClear, onSearch, onCreate }) {
+  // Change-request updates from Emami Apps notifications sit on top of the local assignment alerts.
+  const hub = useHubNotifications(email);
+  const notifications = [...hub.list, ...localNotifications];
   const [query, setQuery] = useState('');
   const [userOpen, setUserOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -75,21 +79,28 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
               <div className="topbar-notif-head">
                 <span>Notifications</span>
                 <div className="topbar-notif-actions">
-                  <button onClick={onMarkAllRead} disabled={!unreadCount}>Mark all read</button>
-                  <button onClick={onClear} disabled={!notifications.length}>Clear</button>
+                  <button onClick={() => { hub.markAllRead(); onMarkAllRead?.(); }} disabled={!unreadCount}>Mark all read</button>
+                  <button onClick={onClear} disabled={!localNotifications.length}>Clear</button>
                 </div>
               </div>
               <div className="topbar-notif-list">
-                {notifications.map((n) => (
-                  <div className={`topbar-notif-row${n.unread ? ' is-unread' : ''}`} key={n.id}>
-                    {n.unread && <span className="topbar-notif-dot" />}
-                    <div className="topbar-notif-text">
-                      <div>{n.text}</div>
-                      <div className="topbar-notif-time">{n.meta}</div>
-                    </div>
-                  </div>
-                ))}
-                {!notifications.length && <div className="topbar-notif-empty">No notifications on your assignments right now.</div>}
+                {notifications.map((n) => {
+                  const body = (
+                    <>
+                      {n.unread && <span className="topbar-notif-dot" />}
+                      <div className="topbar-notif-text">
+                        <div>{n.text}</div>
+                        <div className="topbar-notif-time">{n.meta}</div>
+                      </div>
+                    </>
+                  );
+                  return n.href ? (
+                    <a className={`topbar-notif-row is-link tone-${n.kind || 'info'}${n.unread ? ' is-unread' : ''}`} key={n.id} href={n.href} onClick={() => hub.markRead(n.hubId)}>{body}</a>
+                  ) : (
+                    <div className={`topbar-notif-row${n.unread ? ' is-unread' : ''}`} key={n.id}>{body}</div>
+                  );
+                })}
+                {!notifications.length && <div className="topbar-notif-empty">No notifications right now.</div>}
               </div>
             </div>
           )}

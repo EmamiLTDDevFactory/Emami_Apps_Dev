@@ -3,7 +3,7 @@ import { ccbApi } from './api.js';
 import RequestForm from './RequestForm.jsx';
 import RequestDetail from './RequestDetail.jsx';
 import { Blocker, Button, Card, CcbShell, Empty, Loading, Meta, PageHeader, Person, Pill, ScopePill, Tabs, useCcbMe, useToast } from './ui.jsx';
-import { CATEGORY_META, PRIORITY_META, SLA_TONE, STATUS_META, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, slaOf, stageLabel } from './model.js';
+import { CATEGORY_META, PRIORITY_META, PROCESS_STEPS, SLA_TONE, STATUS_META, currentStepIndex, dateOnly, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, slaOf, stageLabel, todayIso } from './model.js';
 import { BoltIcon, ClipboardIcon, ClockIcon, DownloadIcon, PlusIcon, SearchIcon } from '../shared/icons.jsx';
 
 const TABS = [
@@ -18,7 +18,7 @@ const TABS = [
 
 function readParams() {
   const p = new URLSearchParams(window.location.search);
-  return { cr: p.get('cr'), action: p.get('action'), tab: p.get('tab') };
+  return { cr: p.get('cr'), action: p.get('action'), tab: p.get('tab'), view: p.get('view') };
 }
 
 export default function Requests() {
@@ -43,7 +43,7 @@ export default function Requests() {
       {loading ? <Loading /> : error ? <Blocker error={error} onRetry={reload} /> : params.cr ? (
         <RequestDetail key={params.cr} crKey={params.cr} me={me} onBack={() => go(null)} />
       ) : (
-        <Register me={me} initialTab={params.tab} onOpen={go} onCreate={() => setCreating(true)} />
+        <Register me={me} initialTab={params.tab} initialView={params.view} onOpen={go} onCreate={() => setCreating(true)} />
       )}
       {creating && me && (
         <RequestForm
@@ -55,7 +55,7 @@ export default function Requests() {
   );
 }
 
-function Register({ me, initialTab, onOpen, onCreate }) {
+function Register({ me, initialTab, initialView, onOpen, onCreate }) {
   const [data, setData] = useState({ loading: true, requests: [], names: {}, settings: null, error: null });
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [tab, setTab] = useState(TABS.some((t) => t.key === initialTab) ? initialTab : 'all');
@@ -64,6 +64,8 @@ function Register({ me, initialTab, onOpen, onCreate }) {
   const [fn, setFn] = useState('');
   const [mine, setMine] = useState(false);
   const [toast, showToast] = useToast();
+  // People who log requests (IT SPOC) land on their own requests; everyone else on the register.
+  const [view, setView] = useState(initialView === 'all' || initialView === 'mine' ? initialView : me.can.log ? 'mine' : 'all');
 
   const load = useCallback(() => {
     ccbApi.requests()
@@ -115,6 +117,20 @@ function Register({ me, initialTab, onOpen, onCreate }) {
         {me.can.log && <Button variant="primary" icon={PlusIcon} onClick={onCreate}>Log change request</Button>}
       </PageHeader>
 
+      <div className="ccb-viewswitch" role="tablist">
+        <button type="button" role="tab" aria-selected={view === 'mine'} className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>
+          My requests <span>{data.requests.filter((r) => r.loggedBy === me.email).length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={view === 'all'} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>
+          All requests <span>{data.requests.length}</span>
+        </button>
+      </div>
+
+      {view === 'mine' ? (
+        data.loading ? <Loading /> : data.error ? <Blocker error={data.error} onRetry={load} /> : (
+          <MyRequests requests={data.requests.filter((r) => r.loggedBy === me.email)} names={data.names} canLog={me.can.log} onOpen={onOpen} onCreate={onCreate} />
+        )
+      ) : (
       <Card pad={false}>
         <Tabs tabs={TABS.map((t) => ({ key: t.key, label: t.label, count: base.filter(t.test).length }))} value={tab} onChange={setTab} />
         <div className="ccb-toolbar">
@@ -174,9 +190,10 @@ function Register({ me, initialTab, onOpen, onCreate }) {
           </div>
         )}
       </Card>
+      )}
       {!me.can.log && (
         <p className="ccb-muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-          You can view the register. Logging requests needs the IT SPOC, Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
+          You can view the register. Logging requests needs the IT SPOC or IT Application Head role, assigned in the Emami Apps Admin Center.
         </p>
       )}
       {toast}
@@ -192,6 +209,88 @@ export function SlaBadge({ sla }) {
       <Pill tone={SLA_TONE[sla.state]} title={`Waiting on ${sla.who} since ${fmtDate(sla.since)} · target ${sla.limit} ${sla.unit}s`}>
         <ClockIcon size={10} /> {sla.state === 'over' ? `${sla.used - sla.limit} ${sla.unit}${sla.used - sla.limit === 1 ? '' : 's'} over` : sla.label}
       </Pill>
+    </div>
+  );
+}
+
+/* ---------- My requests (IT SPOC view) ---------- */
+
+const NEEDS_ME = (r) => r.status === 'draft' || (r.status === 'approved' && r.devStatus === 'User Testing');
+const DONE = (r) => isClosed(r) || isDelivered(r) || r.devStatus === 'Cancelled';
+
+/** Who the request is with right now, in plain words. */
+function withWhom(r, nameOf) {
+  switch (r.status) {
+    case 'draft': return r.returnNote ? 'You — returned for clarification' : 'You — draft';
+    case 'feasibility_review': return 'IT Application Head — feasibility review';
+    case 'awaiting_ccb': return 'Change Control Board — next meeting';
+    case 'approved':
+      if (r.devStatus === 'User Testing') return `You & ${r.requestedBy} (${r.requestingFunction}) — UAT`;
+      if (['Hypercare', 'Completed'].includes(r.devStatus)) return 'Live in production';
+      if (r.devStatus === 'Cancelled') return 'Cancelled in Dev Tracker';
+      if (!r.devDeveloper) return 'You — assign a developer in Dev Tracker';
+      return `${r.devDeveloper} — ${r.devStatus || 'development'}`;
+    default: return 'Closed';
+  }
+}
+
+function isLate(r) {
+  const today = todayIso();
+  if (DONE(r)) return false;
+  if (r.status === 'approved' && r.devTargetDate) return dateOnly(r.devTargetDate) < today;
+  return !!r.requiredBy && dateOnly(r.requiredBy) < today;
+}
+
+function MyRequests({ requests, names, canLog, onOpen, onCreate }) {
+  const nameOf = (e) => (e ? names[e] || e : '');
+  const groups = [
+    { key: 'action', title: 'Needs your action', items: requests.filter(NEEDS_ME) },
+    { key: 'progress', title: 'In progress', items: requests.filter((r) => !NEEDS_ME(r) && !DONE(r)) },
+    { key: 'done', title: 'Delivered & closed', items: requests.filter((r) => !NEEDS_ME(r) && DONE(r)) },
+  ];
+  if (!requests.length) {
+    return (
+      <div className="ccb-card"><Empty icon={ClipboardIcon} title="You have not logged any change requests"
+        action={canLog ? <Button variant="primary" icon={PlusIcon} onClick={onCreate}>Log a change request</Button> : null}>
+        Requests you log appear here with live progress, right through development, UAT and go-live.
+      </Empty></div>
+    );
+  }
+  return (
+    <div className="ccb-my">
+      {groups.filter((g) => g.items.length).map((g) => (
+        <section key={g.key}>
+          <h3 className="ccb-section-label">{g.title} <span className="ccb-muted">· {g.items.length}</span></h3>
+          <div className="ccb-my-grid">
+            {g.items.map((r) => {
+              const step = Math.min(currentStepIndex(r), PROCESS_STEPS.length);
+              const late = isLate(r);
+              const target = r.status === 'approved' && r.devTargetDate ? r.devTargetDate : r.requiredBy;
+              const updated = [r.updatedAt, r.devUpdatedAt].filter(Boolean).sort().pop();
+              return (
+                <a key={r.id} className={`ccb-my-card${late ? ' is-late' : ''}${g.key === 'action' ? ' is-action' : ''}`} href={requestLink(r.crNo)} onClick={(e) => { e.preventDefault(); onOpen(r.crNo); }}>
+                  <div className="ccb-my-top">
+                    <span className="ccb-key">{r.crNo}</span>
+                    <Meta meta={STATUS_META} value={r.status} />
+                    {r.isEmergency && <Pill tone="red"><BoltIcon size={11} /> Emergency</Pill>}
+                    {late && <Pill tone="red" strong><ClockIcon size={11} /> Overdue</Pill>}
+                  </div>
+                  <strong className="ccb-my-title">{r.title}</strong>
+                  <div className="ccb-my-stage">{stageLabel(r)}</div>
+                  <div className="ccb-my-bar" title={`Step ${Math.min(step + 1, PROCESS_STEPS.length)} of ${PROCESS_STEPS.length}`}>
+                    {PROCESS_STEPS.map((s, i) => <i key={s.key} className={i < step ? 'on' : i === step && !DONE(r) ? 'now' : ''} />)}
+                  </div>
+                  <dl className="ccb-my-meta">
+                    <div><dt>With</dt><dd>{withWhom(r, nameOf)}</dd></div>
+                    <div><dt>Target</dt><dd className={late ? 'late' : ''}>{target ? fmtDate(target) : '—'}</dd></div>
+                    <div><dt>Updated</dt><dd>{relative(updated)}</dd></div>
+                  </dl>
+                </a>
+              );
+            })}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

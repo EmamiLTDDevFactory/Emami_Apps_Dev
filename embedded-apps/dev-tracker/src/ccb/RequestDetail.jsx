@@ -53,7 +53,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
   if (state.loading) return <Loading label="Loading change request…" />;
   if (state.error) return <Blocker error={state.error} onRetry={load} />;
 
-  const { request: r, comments, history, agenda, devItem, names, actions } = state.detail;
+  const { request: r, comments, history, agenda, devItem, devHistory = [], devComments = [], names, actions } = state.detail;
   const nameOf = (e) => (e ? names[e] || e : null);
   const category = CATEGORY_META[r.category];
   const workflowActions = ACTION_ORDER.filter((a) => actions.includes(a));
@@ -213,7 +213,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             </Card>
           )}
 
-          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · Module Lead, developer, UAT, go-live">
+          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · developer, build, UAT, go-live">
             {devItem ? (
               <>
                 <a className="ccb-delivery" href={devTrackerLink(devItem.issueNo)}>
@@ -241,10 +241,11 @@ export default function RequestDetail({ crKey, me, onBack }) {
             )}
           </Card>
 
+          {devItem && <DevProgress history={devHistory} comments={devComments} />}
+
           <Card title="People">
             <DefinitionList rows={[
               ['IT SPOC', <Person name={nameOf(r.loggedBy)} />],
-              ['Module Lead', r.moduleLeadEmail && <Person name={nameOf(r.moduleLeadEmail)} />],
               ['Reviewer', r.reviewedBy && <Person name={nameOf(r.reviewedBy)} />],
               ['Decided by', r.decidedBy && <Person name={nameOf(r.decidedBy)} />],
             ]} />
@@ -356,5 +357,43 @@ function ActionDialog({ action, request: r, onClose, onDone }) {
       )}
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>
+  );
+}
+
+// Dev Tracker labels for the fields worth showing an IT SPOC (see dev-tracker shared/constants.js).
+const DEV_FIELD_LABEL = {
+  status: 'Status', developer: 'Developer', targetDate: 'Target date', startDate: 'Start date', priority: 'Priority',
+  reqDiscussion: 'Requirement discussion', fsPrep: 'FS preparation', development: 'Development', itTesting: 'IT testing',
+  userTesting: 'User testing', hypercareDate: 'Hypercare', completedDate: 'Completed', onHoldDate: 'On hold', cancelledDate: 'Cancelled',
+  reasonDelay: 'Reason for delay', reasonCategory: 'Delay reason', remarks: 'Remarks', rework: 'Rework (days)',
+};
+
+/** What is happening in development, without opening Dev Tracker: status / owner / date changes and developer comments. */
+function DevProgress({ history, comments }) {
+  const events = [
+    ...history.filter((h) => DEV_FIELD_LABEL[h.field]).map((h) => ({ key: `h${h.id}`, at: h.at, by: h.by, field: h.field, from: h.oldValue, to: h.newValue })),
+    ...comments.map((c) => ({ key: `c${c.id}`, at: c.at, by: c.by, comment: c.body })),
+  ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 25);
+  return (
+    <Card title="Development progress" sub="Live from Dev Tracker — status changes and developer comments">
+      {events.length === 0 ? (
+        <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No development activity yet.</p>
+      ) : (
+        <ol className="ccb-timeline">
+          {events.map((e) => (
+            <li key={e.key}>
+              {e.comment ? (
+                <><strong>{e.by || 'Someone'}</strong> commented<div className="note">{e.comment}</div></>
+              ) : e.field === 'status' ? (
+                <><strong>{e.by || 'Someone'}</strong> moved it to <b>{e.to || '—'}</b>{e.from ? <span className="ccb-muted"> (from {e.from})</span> : null}</>
+              ) : (
+                <><strong>{e.by || 'Someone'}</strong> set {DEV_FIELD_LABEL[e.field].toLowerCase()} to <b>{e.to || '—'}</b></>
+              )}
+              <small>{fmtDateTime(e.at)}</small>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
   );
 }

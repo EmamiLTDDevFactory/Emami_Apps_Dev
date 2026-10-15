@@ -66,6 +66,9 @@ apiRouter.use('/salescode', require('./salescode'));
 // CCB meetings, approvals → Dev Tracker assignments) — own ccb schema, own routes under /change-control,
 // self-contained in changeControl.js. Access rides on the dev-tracker grant; CCB roles live in ccb.roles.
 apiRouter.use('/change-control', require('./changeControl'));
+// Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
+// Under /me so it rides the existing /api/me proxy rule. See notifications.js.
+apiRouter.use('/me/notifications', require('./notifications').router);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

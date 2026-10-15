@@ -7,7 +7,7 @@ import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
   sapSystem: '', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
-  isEmergency: false, emergencyReason: '', moduleLeadEmail: '',
+  isEmergency: false, emergencyReason: '',
 };
 
 /** Log (or edit) a change request. `request` set = edit mode. */
@@ -15,13 +15,11 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const editing = !!request;
   const [form, setForm] = useState(() => (editing ? {
     ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, request[k] ?? EMPTY[k]])),
-    requiredBy: dateOnly(request.requiredBy), moduleLeadEmail: request.moduleLeadEmail || '',
+    requiredBy: dateOnly(request.requiredBy),
   } : EMPTY));
-  const [people, setPeople] = useState([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => { ccbApi.people().then((d) => setPeople(d.people)).catch(() => {}); }, []);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
@@ -31,7 +29,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
     setError('');
     setBusy(intent);
     try {
-      const payload = { ...form, requiredBy: form.requiredBy || null, moduleLeadEmail: form.moduleLeadEmail || null };
+      const payload = { ...form, requiredBy: form.requiredBy || null };
       const d = editing ? await ccbApi.updateRequest(request.id, payload) : await ccbApi.createRequest(payload, intent);
       onSaved(d.request, intent);
     } catch (e) {
@@ -160,12 +158,6 @@ export default function RequestForm({ request, onClose, onSaved }) {
           </Field>
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
-          </Field>
-          <Field label="Module Lead" hint="Assigns the developer after approval." wide>
-            <select className="ccb-select" value={form.moduleLeadEmail} onChange={set('moduleLeadEmail')}>
-              <option value="">Not decided yet</option>
-              {people.map((p) => <option key={p.email} value={p.email}>{p.name}{p.name !== p.email ? ` · ${p.email}` : ''}</option>)}
-            </select>
           </Field>
         </div>
         <label className="ccb-switch" style={{ marginTop: 14 }}>

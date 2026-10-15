@@ -147,4 +147,5 @@ async function cancelMeeting(m, note) {
     await graph('POST', `/users/${encodeURIComponent(m.teamsOrganizer)}/events/${encodeURIComponent(m.teamsEventId)}/cancel`, { comment: String(note || '').slice(0, 1000) });
 }
 
-module.exports = { configured, createMeeting, updateMeeting, cancelMeeting, istLocal, eventBody, explain };
+// graphToken / APP_URL are also used by notifications.js for Outlook email (same app registration).
+module.exports = { configured, createMeeting, updateMeeting, cancelMeeting, istLocal, eventBody, explain, graphToken, APP_URL };
