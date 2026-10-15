@@ -177,7 +177,7 @@ async function initSchema() {
         CREATE TABLE IF NOT EXISTS dev_tracker.master_data (
             id text PRIMARY KEY,
             category text NOT NULL CHECK (category IN
-                ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday')),
+                ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday','requestingFunction')),
             value text NOT NULL,
             color text,
             "softColor" text,
@@ -194,7 +194,7 @@ async function initSchema() {
     await pool.query(`ALTER TABLE dev_tracker.master_data DROP CONSTRAINT IF EXISTS master_data_category_check`);
     await pool.query(`
         ALTER TABLE dev_tracker.master_data ADD CONSTRAINT master_data_category_check CHECK (category IN
-            ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday'))
+            ('status','area','priority','impact','complexity','devFactory','reasonCategory','holiday','requestingFunction'))
     `);
 
     try {
@@ -349,7 +349,23 @@ async function seedMasterDataIfEmpty() {
     console.log('[dev-tracker] Seeded default master data values.');
 }
 
-initSchema().catch((err) => console.error('[dev-tracker] Schema init failed:', err.message));
+// 'requestingFunction' (the Change Control Board's "Requesting function" dropdown) arrived after the
+// table was first seeded, so it gets its own one-time seed: only while that category is still empty.
+const DEFAULT_REQUESTING_FUNCTIONS = ['Finance', 'Commercial', 'Sales', 'Marketing', 'Supply Chain', 'Manufacturing', 'Quality', 'Procurement', 'HR', 'Audit & Control', 'IT'];
+async function seedRequestingFunctionsIfEmpty() {
+    const { rows } = await pool.query(`SELECT count(*)::int AS c FROM dev_tracker.master_data WHERE category = 'requestingFunction'`);
+    if (rows[0].c > 0) return;
+    for (const [i, value] of DEFAULT_REQUESTING_FUNCTIONS.entries()) {
+        await pool.query(
+            `INSERT INTO dev_tracker.master_data (id, category, value, color, "softColor", "sortOrder") VALUES ($1, 'requestingFunction', $2, NULL, NULL, $3)
+             ON CONFLICT (category, value) DO NOTHING`,
+            [crypto.randomUUID(), value, i]
+        );
+    }
+    console.log('[dev-tracker] Seeded default requesting functions.');
+}
+
+initSchema().then(seedRequestingFunctionsIfEmpty).catch((err) => console.error('[dev-tracker] Schema init failed:', err.message));
 
 // Gates every Dev Tracker data route (item CRUD, master-data reads, activity, AI command) to
 // users granted access to the 'dev-tracker' app (any role — User or Admin) in the hub's own
@@ -743,7 +759,7 @@ router.delete('/sprints/:id', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
-const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory', 'holiday'];
+const MASTER_DATA_CATEGORIES = ['status', 'area', 'priority', 'impact', 'complexity', 'devFactory', 'reasonCategory', 'holiday', 'requestingFunction'];
 
 // Gates the master-data WRITE routes to users granted the "Admin" role for the 'dev-tracker' app
 // in the hub's own Manage Access screen (src/screens/UserAccessScreen.tsx). Reuses the exact

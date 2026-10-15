@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
+import { apiMasterData, getCurrentUserEmail } from '../shared/api.js';
+import { activeValues } from '../shared/masterData.js';
 import { Button, Field, Modal } from './ui.jsx';
 import { AREA_MODULES, CATEGORY_HELP, CATEGORY_META, IT_AREAS, PRIORITY_META, dateOnly } from './model.js';
 import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
@@ -23,7 +25,15 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
-  const functions = useMemo(() => ['Finance', 'Commercial', 'Sales', 'Marketing', 'Supply Chain', 'Manufacturing', 'Quality', 'Procurement', 'HR', 'Audit & Control', 'IT'], []);
+  // Requesting functions are maintained by admins in Master Data (category 'requestingFunction').
+  const [functions, setFunctions] = useState(null);
+  useEffect(() => {
+    apiMasterData(getCurrentUserEmail())
+      .then((rows) => setFunctions(activeValues(rows, 'requestingFunction')))
+      .catch(() => setFunctions([]));
+  }, []);
+  // An edited request keeps its function even if an admin has since retired that value.
+  const functionOptions = functions && form.requestingFunction && !functions.includes(form.requestingFunction) ? [form.requestingFunction, ...functions] : functions || [];
 
   async function save(intent) {
     setError('');
@@ -65,9 +75,11 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Title" required wide>
             <input className="ccb-input" value={form.title} onChange={set('title')} maxLength={200} placeholder="e.g. Credit limit check on depot sales orders" />
           </Field>
-          <Field label="Requesting function" required>
-            <input className="ccb-input" list="ccb-functions" value={form.requestingFunction} onChange={set('requestingFunction')} placeholder="e.g. Finance" />
-            <datalist id="ccb-functions">{functions.map((f) => <option key={f} value={f} />)}</datalist>
+          <Field label="Requesting function" required hint={functions && !functions.length ? 'No functions set up yet — an admin adds them in Master Data › Requesting Function.' : undefined}>
+            <select className="ccb-select" value={form.requestingFunction} onChange={set('requestingFunction')} disabled={functions === null || !functionOptions.length}>
+              <option value="">{functions === null ? 'Loading…' : 'Select the function'}</option>
+              {functionOptions.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
           </Field>
           <Field label="Raised by (function)" required hint="Who raised the requirement in the function.">
             <input className="ccb-input" value={form.requestedBy} onChange={set('requestedBy')} placeholder="Name of the requester" />
