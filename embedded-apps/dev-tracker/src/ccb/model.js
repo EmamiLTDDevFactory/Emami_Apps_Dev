@@ -1,7 +1,7 @@
 import { ROUTES } from '../shared/routes.js';
 
 // Labels, tones and the process model for the Change Control Board. The nine steps are the
-// "Proposed Change Process with CCB" from the change management deck (Oct 2026); steps 6-9 are
+// "Proposed Change Process with CCB" from the change management deck (Oct 2026), plus Module Lead review; steps 7-10 are
 // read live from the linked Dev Tracker assignment, so one request shows its whole journey.
 
 export const CATEGORY_META = {
@@ -23,6 +23,7 @@ export const CATEGORY_HELP = {
 
 export const STATUS_META = {
   draft: { label: 'Draft', tone: 'gray' },
+  module_lead_review: { label: 'Module Lead review', tone: 'blue' },
   feasibility_review: { label: 'Feasibility review', tone: 'amber' },
   awaiting_ccb: { label: 'Awaiting CCB', tone: 'indigo' },
   approved: { label: 'Approved', tone: 'green' },
@@ -70,8 +71,8 @@ export const ROLE_META = {
   'IT SPOC': { tone: 'blue', duty: 'Reviews the requirement, logs it in the CCB application and categorises it against the CCB scope for the next meeting. Reports to a Module Lead.' },
   'Module Lead': { tone: 'teal', duty: 'Upline of the IT SPOCs in their module or system. Named on each request, assigns the developer once it is approved, and follows the team’s requests through delivery.' },
   'IT Application Head': { tone: 'purple', duty: 'Checks scope and feasibility, including the impact on other systems and modules; recommends and puts items up to the CCB; updates requests after CCB discussion and initiates or terminates development.' },
-  'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance, decisions and minutes.' },
-  'CCB Member': { tone: 'green', duty: 'Approves, rejects or modifies in-scope change requests. Counts toward quorum.' },
+  'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance, minutes, and records each decision the members’ majority vote supports.' },
+  'CCB Member': { tone: 'green', duty: 'Votes in the meeting to approve or reject each in-scope request (and to ratify emergency approvals). A majority of the members present decides. Counts toward quorum.' },
 };
 export const ROLES = Object.keys(ROLE_META);
 
@@ -95,6 +96,7 @@ export const PROCESS_STEPS = [
   { key: 'raise', label: 'Function raises requirement', sub: 'with BRD' },
   { key: 'log', label: 'IT SPOC logs request', sub: 'in the CCB application', isNew: true },
   { key: 'categorise', label: 'Categorised against CCB scope', sub: 'IT SPOC', isNew: true },
+  { key: 'moduleLead', label: 'Module Lead review', sub: 'send on or return', isNew: true },
   { key: 'feasibility', label: 'Scope & feasibility check', sub: 'IT Application Head', isNew: true },
   { key: 'ccb', label: 'CCB decision', sub: 'approve, reject or modify', isNew: true },
   { key: 'assign', label: 'Developer assigned', sub: 'Module Lead' },
@@ -106,42 +108,39 @@ export const PROCESS_STEPS = [
 /** Per-step state for a request: done | current | todo | skipped | stopped, plus an optional note. */
 export function processState(r) {
   const s = PROCESS_STEPS.map(() => ({ state: 'todo', note: '' }));
-  const set = (i, state, note = '') => { s[i] = { state, note }; };
-  set(0, 'done'); set(1, 'done');
-  const stoppedAt = (i, note) => { set(i, 'stopped', note); };
+  const at = Object.fromEntries(PROCESS_STEPS.map((st, i) => [st.key, i]));
+  const set = (key, state, note = '') => { s[at[key]] = { state, note }; };
+  const doneUpTo = (key) => { for (let i = 0; i < at[key]; i++) if (s[i].state === 'todo') s[i] = { state: 'done', note: s[i].note }; };
+  const stoppedAt = (key, note) => { doneUpTo(key); set(key, 'stopped', note); };
+  const moduleLeadSkipped = r.moduleLeadEmail && r.moduleLeadEmail === r.loggedBy;
+  if (moduleLeadSkipped) set('moduleLead', 'skipped', 'Logged by the Module Lead');
 
-  if (r.status === 'draft') { set(2, 'current', r.returnNote ? 'Returned for clarification' : 'Draft'); return s; }
-  set(2, 'done');
-  if (r.status === 'withdrawn') {
-    const i = r.reviewedAt ? 4 : 3;
-    for (let k = 2; k < i; k++) set(k, 'done');
-    stoppedAt(i, 'Withdrawn');
-    return s;
-  }
-  if (r.status === 'feasibility_review') { set(3, 'current', 'With IT Application Head'); return s; }
-  if (r.status === 'rejected' && !r.meetingId) { stoppedAt(3, 'Rejected at feasibility'); return s; }
-  set(3, 'done');
-  if (r.status === 'awaiting_ccb') { set(4, 'current', 'On the CCB agenda'); return s; }
-  if (r.status === 'rejected') { stoppedAt(4, 'Rejected by CCB'); return s; }
+  if (r.status === 'draft') { doneUpTo('categorise'); set('categorise', 'current', r.returnNote ? 'Returned for correction' : 'Draft'); return s; }
+  if (r.status === 'module_lead_review') { doneUpTo('moduleLead'); set('moduleLead', 'current', r.moduleLeadName ? `With ${r.moduleLeadName}` : 'With the Module Lead'); return s; }
+  if (r.status === 'withdrawn') { stoppedAt(r.reviewedAt ? 'ccb' : r.moduleLeadReviewedAt || moduleLeadSkipped ? 'feasibility' : 'moduleLead', 'Withdrawn'); return s; }
+  if (r.status === 'feasibility_review') { doneUpTo('feasibility'); set('feasibility', 'current', 'With IT Application Head'); return s; }
+  if (r.status === 'rejected' && !r.meetingId) { stoppedAt('feasibility', 'Rejected at feasibility'); return s; }
+  if (r.status === 'awaiting_ccb') { doneUpTo('ccb'); set('ccb', 'current', 'On the CCB agenda'); return s; }
+  if (r.status === 'rejected') { stoppedAt('ccb', 'Rejected by CCB'); return s; }
 
-  if (r.approvalRoute === 'out_of_scope') set(4, 'skipped', 'Not required — outside CCB scope');
-  else if (r.approvalRoute === 'emergency') set(4, r.ratificationStatus === 'ratified' ? 'done' : 'current', r.ratificationStatus === 'ratified' ? 'Emergency approval ratified' : r.ratificationStatus === 'not_ratified' ? 'Not ratified by CCB' : 'Emergency approval — ratification pending');
-  else set(4, 'done', r.decision === 'approved_with_modifications' ? 'Approved with modifications' : 'Approved');
+  doneUpTo('ccb');
+  if (r.approvalRoute === 'out_of_scope') set('ccb', 'skipped', 'Not required — outside CCB scope');
+  else if (r.approvalRoute === 'emergency') set('ccb', r.ratificationStatus === 'ratified' ? 'done' : 'current', r.ratificationStatus === 'ratified' ? 'Emergency approval ratified' : r.ratificationStatus === 'not_ratified' ? 'Not ratified by CCB' : 'Emergency approval — ratification pending');
+  else set('ccb', 'done', r.decision === 'approved_with_modifications' ? 'Approved with modifications' : 'Approved');
 
   const dev = r.devStatus;
   const di = devIndex(dev);
   const terminated = r.status === 'terminated' || dev === 'Cancelled';
   const developer = r.devDeveloper;
-  const next = (i, note) => (terminated ? stoppedAt(i, 'Development terminated') : set(i, 'current', note));
+  const next = (key, note) => (terminated ? stoppedAt(key, 'Development terminated') : (doneUpTo(key), set(key, 'current', note)));
 
-  if (!developer && di <= 0) { next(5, 'Awaiting developer'); return s; }
-  set(5, 'done', developer || '');
-  if (di <= 4) { next(6, dev === 'On Hold' ? 'On hold' : dev || 'Not started'); return s; }
-  set(6, 'done');
-  if (di === 5) { next(7, 'In UAT'); return s; }
-  set(7, 'done');
-  if (di === 6) { set(8, 'done', 'Live · hypercare'); return s; }
-  set(8, 'done', 'Delivered');
+  if (!developer && di <= 0) { next('assign', 'Awaiting developer'); return s; }
+  set('assign', 'done', developer || '');
+  if (di <= 4) { next('build', dev === 'On Hold' ? 'On hold' : dev || 'Not started'); return s; }
+  set('build', 'done');
+  if (di === 5) { next('uat', 'In UAT'); return s; }
+  set('uat', 'done');
+  set('transport', 'done', di === 6 ? 'Live · hypercare' : 'Delivered');
   return s;
 }
 
@@ -265,15 +264,20 @@ export function businessDaysBetween(from, to = new Date()) {
 
 /**
  * Where an open request is waiting and for how long, against the board's targets (Governance settings):
- *   feasibility_review  business days since submission  vs reviewSlaDays (IT Application Head)
+ *   module_lead_review  business days since submission  vs reviewSlaDays (Module Lead)
+ *   feasibility_review  business days since it reached the IT Application Head vs reviewSlaDays
  *   awaiting_ccb        calendar days since recommended vs ccbSlaDays   (the board)
  * Returns null for stages without a target. state: 'ok' | 'due' (last 20 % of the window) | 'over'.
  */
 export function slaOf(r, settings) {
   if (!settings) return null;
   let since; let used; let limit; let unit; let who;
-  if (r.status === 'feasibility_review' && r.submittedAt) {
-    since = r.submittedAt; used = businessDaysBetween(since); limit = settings.reviewSlaDays || 5; unit = 'business day'; who = 'IT Application Head';
+  if (r.status === 'module_lead_review' && r.submittedAt) {
+    since = r.submittedAt; used = businessDaysBetween(since); limit = settings.reviewSlaDays || 5; unit = 'business day'; who = 'Module Lead';
+  } else if (r.status === 'feasibility_review' && (r.moduleLeadReviewedAt || r.submittedAt)) {
+    // Clock starts when the request reached the IT Application Head (after the Module Lead's review).
+    since = r.moduleLeadReviewedAt && r.moduleLeadReviewedAt > r.submittedAt ? r.moduleLeadReviewedAt : r.submittedAt;
+    used = businessDaysBetween(since); limit = settings.reviewSlaDays || 5; unit = 'business day'; who = 'IT Application Head';
   } else if (r.status === 'awaiting_ccb') {
     since = r.reviewedAt || r.submittedAt || r.updatedAt; if (!since) return null;
     used = Math.max(0, -daysUntil(since)); limit = settings.ccbSlaDays || 30; unit = 'day'; who = 'CCB';

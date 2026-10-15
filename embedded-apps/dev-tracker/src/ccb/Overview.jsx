@@ -70,6 +70,8 @@ function Dashboard({ me, ov, onCreate }) {
 
   const myActions = useMemo(() => {
     const out = [];
+    requests.filter((r) => r.status === 'module_lead_review' && r.moduleLeadEmail === me.email && r.loggedBy !== me.email)
+      .forEach((r) => out.push({ r, tone: 'blue', icon: SearchIcon, text: 'Module Lead review — send on or return' }));
     const mineDraft = requests.filter((r) => r.status === 'draft' && r.loggedBy === me.email);
     mineDraft.forEach((r) => out.push({ r, tone: r.returnNote ? 'amber' : 'gray', icon: PencilIcon, text: r.returnNote ? 'Returned — clarify and resubmit' : 'Draft — complete and submit' }));
     if (me.can.review) {
@@ -131,7 +133,7 @@ function Dashboard({ me, ov, onCreate }) {
       </div>
 
       <div className="ccb-grid two">
-        <Card title="Process pipeline" sub="Open requests by the step they are at. Steps 2–5 are the new CCB controls.">
+        <Card title="Process pipeline" sub="Open requests by the step they are at. Steps 2–6 are the new CCB controls.">
           <div className="ccb-pipeline">
             {PROCESS_STEPS.map((s, i) => (
               <div key={s.key} className={`ccb-pipe-row${s.isNew ? ' is-new' : ''}`}>

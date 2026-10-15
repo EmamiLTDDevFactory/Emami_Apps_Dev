@@ -181,7 +181,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
           </Field>
-          <Field label="Module Lead" wide group hint="The IT SPOC’s upline — search active Emami Apps users. Assigns the developer once the request is approved and gets its updates.">
+          <Field label="Module Lead" required wide group hint="The IT SPOC’s upline — search active Emami Apps users. Reviews the request before it goes to the IT Application Head, assigns the developer once it is approved, and gets its updates.">
             <DirectoryPicker
               value={{ name: form.moduleLeadName, email: form.moduleLeadEmail }}
               onChange={(p) => setForm((f) => ({ ...f, moduleLeadName: p.name, moduleLeadEmail: p.email }))}

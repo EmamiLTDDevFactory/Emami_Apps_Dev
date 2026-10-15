@@ -15,7 +15,9 @@ import {
 
 // What each workflow action looks like and asks for. `review` = feasibility fields.
 const ACTIONS = {
-  submit: { label: 'Submit for feasibility review', variant: 'primary', icon: SendIcon, sub: 'Sends the request to the IT Application Head for the scope and feasibility check.' },
+  submit: { label: 'Submit to Module Lead', variant: 'primary', icon: SendIcon, sub: 'Sends the request to its Module Lead, who sends it on to the IT Application Head or returns it to you. (A Module Lead’s own request goes straight to the IT Application Head.)' },
+  forward_to_head: { label: 'Send to IT Application Head', variant: 'primary', icon: SendIcon, note: null, optionalNote: 'Note for the IT Application Head (optional)', sub: 'Moves the request to the IT Application Head for the scope and feasibility check.' },
+  return_to_spoc: { label: 'Return to IT SPOC', variant: 'ghost', icon: RefreshIcon, note: 'What should the IT SPOC correct?', sub: 'Sends the request back to draft so the IT SPOC can correct and resubmit it.' },
   recommend: { label: 'Recommend to CCB', variant: 'primary', icon: GavelIcon, review: true, sub: 'Records your feasibility assessment and puts the request on the next CCB meeting agenda.' },
   approve_out_of_scope: { label: 'Approve (outside CCB scope)', variant: 'success', icon: CheckCircleIcon, review: true, sub: 'Reports and cosmetic changes do not need the board. Approval creates the Dev Tracker assignment.' },
   approve_emergency: { label: 'Emergency approval', variant: 'danger', icon: BoltIcon, note: 'Written justification', sub: 'For an urgent business need or a critical system issue. The CCB must be informed within the inform window and the approval ratified at the next CCB meeting.' },
@@ -25,9 +27,10 @@ const ACTIONS = {
   mark_informed: { label: 'Mark CCB informed', variant: 'primary', icon: CheckIcon, sub: 'Confirms the board has been informed of this emergency approval in writing.' },
   terminate: { label: 'Terminate development', variant: 'danger', icon: XIcon, note: 'Reason for terminating', sub: 'Stops the change. Its Dev Tracker assignment is set to Cancelled.' },
 };
-const ACTION_ORDER = ['submit', 'recommend', 'approve_out_of_scope', 'mark_informed', 'approve_emergency', 'return', 'reject', 'terminate', 'withdraw'];
+const ACTION_ORDER = ['submit', 'forward_to_head', 'return_to_spoc', 'recommend', 'approve_out_of_scope', 'mark_informed', 'approve_emergency', 'return', 'reject', 'terminate', 'withdraw'];
 
 const HISTORY_LABEL = {
+  forward_to_head: 'sent it to the IT Application Head', return_to_spoc: 'returned it to the IT SPOC for correction', ccb_vote: 'voted', ccb_vote_withdrawn: 'withdrew their vote',
   logged: 'logged the request', submit: 'submitted it for feasibility review', edited: 'edited the request', withdraw: 'withdrew the request',
   return: 'returned it to the IT SPOC', reject: 'rejected it as not feasible', recommend: 'recommended it to the CCB',
   approve_out_of_scope: 'approved it (outside CCB scope)', approve_emergency: 'gave emergency approval', mark_informed: 'marked the CCB informed',
@@ -111,7 +114,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
         </div>
       )}
 
-      <Card title="Where this request is" sub="The CCB process, end to end — steps 6 to 9 update live from Dev Tracker." className="ccb-no-break">
+      <Card title="Where this request is" sub="The CCB process, end to end — steps 7 to 10 update live from Dev Tracker." className="ccb-no-break">
         <ProcessStepper request={r} />
       </Card>
 
@@ -213,7 +216,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             </Card>
           )}
 
-          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · Module Lead, developer, UAT, go-live">
+          <Card title="Delivery in Dev Tracker" sub="Steps 7–10 · Module Lead, developer, UAT, go-live">
             {devItem ? (
               <>
                 <a className="ccb-delivery" href={devTrackerLink(devItem.issueNo)}>
@@ -353,7 +356,12 @@ function ActionDialog({ action, request: r, onClose, onDone }) {
           <textarea className="ccb-textarea" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
       )}
-      {!A.review && !A.note && action !== 'approve_emergency' && (
+      {A.optionalNote && (
+        <Field label={A.optionalNote}>
+          <textarea className="ccb-textarea" value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+      )}
+      {!A.review && !A.note && !A.optionalNote && action !== 'approve_emergency' && (
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)' }}>Confirm to continue.</p>
       )}
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}

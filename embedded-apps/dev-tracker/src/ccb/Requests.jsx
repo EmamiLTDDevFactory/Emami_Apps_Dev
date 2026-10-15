@@ -9,6 +9,7 @@ import { BoltIcon, ClipboardIcon, ClockIcon, DownloadIcon, PlusIcon, SearchIcon 
 const TABS = [
   { key: 'all', label: 'All', test: () => true },
   { key: 'draft', label: 'Drafts', test: (r) => r.status === 'draft' },
+  { key: 'moduleLead', label: 'Module Lead review', test: (r) => r.status === 'module_lead_review' },
   { key: 'review', label: 'Feasibility review', test: (r) => r.status === 'feasibility_review' },
   { key: 'ccb', label: 'Awaiting CCB', test: (r) => r.status === 'awaiting_ccb' },
   { key: 'delivery', label: 'In delivery', test: isInDelivery },
@@ -215,13 +216,14 @@ export function SlaBadge({ sla }) {
 
 /* ---------- My requests (IT SPOC view) ---------- */
 
-const NEEDS_ME = (r) => r.status === 'draft' || (r.status === 'approved' && r.devStatus === 'User Testing');
+const NEEDS_ME = (r, me) => (r.status === 'draft' && r.loggedBy === me.email) || (r.status === 'module_lead_review' && r.moduleLeadEmail === me.email) || (r.status === 'approved' && r.devStatus === 'User Testing' && r.loggedBy === me.email);
 const DONE = (r) => isClosed(r) || isDelivered(r) || r.devStatus === 'Cancelled';
 
 /** Who the request is with right now, in plain words. */
 function withWhom(r, nameOf, me) {
   switch (r.status) {
-    case 'draft': return r.returnNote ? 'You — returned for clarification' : 'You — draft';
+    case 'draft': return r.loggedBy === me.email ? (r.returnNote ? 'You — returned for correction' : 'You — draft') : 'IT SPOC — draft';
+    case 'module_lead_review': return r.moduleLeadEmail === me.email ? 'You — Module Lead review' : `Module Lead${r.moduleLeadName ? ` (${r.moduleLeadName})` : ''} — review`;
     case 'feasibility_review': return 'IT Application Head — feasibility review';
     case 'awaiting_ccb': return 'Change Control Board — next meeting';
     case 'approved':
@@ -244,9 +246,9 @@ function isLate(r) {
 function MyRequests({ me, requests, names, canLog, onOpen, onCreate }) {
   const nameOf = (e) => (e ? names[e] || e : '');
   const groups = [
-    { key: 'action', title: 'Needs your action', items: requests.filter(NEEDS_ME) },
-    { key: 'progress', title: 'In progress', items: requests.filter((r) => !NEEDS_ME(r) && !DONE(r)) },
-    { key: 'done', title: 'Delivered & closed', items: requests.filter((r) => !NEEDS_ME(r) && DONE(r)) },
+    { key: 'action', title: 'Needs your action', items: requests.filter((r) => NEEDS_ME(r, me)) },
+    { key: 'progress', title: 'In progress', items: requests.filter((r) => !NEEDS_ME(r, me) && !DONE(r)) },
+    { key: 'done', title: 'Delivered & closed', items: requests.filter((r) => !NEEDS_ME(r, me) && DONE(r)) },
   ];
   if (!requests.length) {
     return (

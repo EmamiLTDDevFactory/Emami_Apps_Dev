@@ -105,7 +105,7 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-banner .grow { flex: 1; min-width: 200px; }
 
 /* ---------- Stepper ---------- */
-.ccb-stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 0; }
+.ccb-stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 0; }
 .ccb-step { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 4px; }
 .ccb-step::before { content: ''; position: absolute; top: 13px; left: -50%; right: 50%; height: 2px; background: var(--border); z-index: 0; }
 .ccb-step:first-child::before { display: none; }
@@ -502,3 +502,25 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-picker-text { display: flex; flex-direction: column; min-width: 0; }
 .ccb-picker-text strong { font-size: 12.5px; color: var(--text); }
 .ccb-picker-text small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Board vote (meeting room) ---------- */
+.ccb-vote { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-alt); border: 1px solid var(--border); }
+.ccb-vote-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.ccb-vote-head strong { color: var(--text); }
+.ccb-vote-yes { color: var(--st-green); }
+.ccb-vote-no { color: var(--st-red); }
+.ccb-vote-bar { position: relative; display: flex; height: 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); margin: 10px 0 8px; overflow: visible; }
+.ccb-vote-bar i { display: block; height: 100%; transition: width .3s; }
+.ccb-vote-bar i:first-child { border-radius: 999px 0 0 999px; }
+.ccb-vote-bar i.yes { background: var(--st-green); }
+.ccb-vote-bar i.no { background: var(--st-red); }
+.ccb-vote-bar i.abstain { background: var(--border-strong); }
+.ccb-vote-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); border-radius: 2px; transform: translateX(-1px); }
+.ccb-vote-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.ccb-vote-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; font-size: 12px; }
+.ccb-vote-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--text-2); }
+.ccb-vote-list em { color: var(--muted); font-style: normal; flex-basis: 100%; padding-left: 2px; }
+.ccb-vote-mine { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-strong); font-size: 12px; color: var(--text-2); font-weight: 600; }
+.ccb-chip-toggle.tone-green.on { background: var(--st-green); border-color: var(--st-green); }
+.ccb-chip-toggle.tone-red.on { background: var(--st-red); border-color: var(--st-red); }
+.ccb-chip-toggle.tone-gray.on { background: var(--st-gray); border-color: var(--st-gray); }

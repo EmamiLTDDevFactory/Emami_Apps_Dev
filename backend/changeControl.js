@@ -15,7 +15,9 @@ const { recordAccessChange } = require('./accessHistory');
 
      1  Function raises the requirement with a BRD
      2  IT SPOC logs it here                                         -> draft
-     3  IT SPOC categorises it against the CCB scope                 -> submit -> feasibility_review
+     3  IT SPOC categorises it against the CCB scope and submits it -> module_lead_review
+        The request's Module Lead sends it on to the IT Application Head -> feasibility_review,
+        or returns it to the IT SPOC for correction -> draft (skipped when the Module Lead logged it)
      4  IT Application Head checks scope, feasibility and inter-module impact
           - in scope        -> recommend to CCB                      -> awaiting_ccb
           - out of scope    -> approve directly (reports / cosmetic) -> approved
@@ -69,7 +71,7 @@ const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 // now hold the IT area and the systems / modules affected; renaming the columns isn't worth the churn.
 const IT_AREAS = ['ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
 const FEASIBILITY = ['feasible', 'feasible_with_conditions', 'not_feasible'];
-const STATUSES = ['draft', 'feasibility_review', 'awaiting_ccb', 'approved', 'rejected', 'withdrawn', 'terminated'];
+const STATUSES = ['draft', 'module_lead_review', 'feasibility_review', 'awaiting_ccb', 'approved', 'rejected', 'withdrawn', 'terminated'];
 const ROUTES_TAKEN = ['ccb', 'out_of_scope', 'emergency'];
 const MEETING_STATUSES = ['scheduled', 'in_progress', 'completed', 'cancelled'];
 const ITEM_DECISIONS = {
@@ -78,6 +80,10 @@ const ITEM_DECISIONS = {
 };
 const DEFAULT_SETTINGS = { quorum: '3', informDays: '5', meetingTime: '15:00', meetingMode: 'online', reviewSlaDays: '5', ccbSlaDays: '30' };
 const REVIEW_POSITIONS = ['support', 'concerns', 'oppose'];
+// Formal votes in the meeting. The board decides by majority of CCB Members present: an item can only be
+// recorded as approved / rejected (ratified / not ratified) when that side has more than half their votes.
+const VOTES = { decision: ['approve', 'reject', 'abstain'], ratification: ['ratify', 'not_ratify', 'abstain'] };
+const VOTE_SIDES = { decision: { yes: 'approve', no: 'reject' }, ratification: { yes: 'ratify', no: 'not_ratify' } };
 const ACTION_STATUSES = ['open', 'done', 'dropped'];
 const BOARD_ROLES = ['CCB Member', 'CCB Secretary', 'IT Application Head'];
 const OPEN_MEETING = `('scheduled', 'in_progress')`;
@@ -233,6 +239,19 @@ async function initSchema() {
             UNIQUE ("meetingItemId", email)
         )
     `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS ccb.votes (
+            id serial PRIMARY KEY,
+            "meetingItemId" int NOT NULL REFERENCES ccb.meeting_items(id) ON DELETE CASCADE,
+            email text NOT NULL,
+            vote text NOT NULL CHECK (vote IN ('approve', 'reject', 'ratify', 'not_ratify', 'abstain')),
+            note text NOT NULL DEFAULT '',
+            "votedAt" timestamptz NOT NULL DEFAULT now(),
+            UNIQUE ("meetingItemId", email)
+        )
+    `);
+    // The count behind each recorded decision, frozen when the decision is taken.
+    await pool.query('ALTER TABLE ccb.meeting_items ADD COLUMN IF NOT EXISTS "voteTally" jsonb');
     // Action items raised in CCB meetings, tracked to closure across meetings.
     await pool.query(`
         CREATE TABLE IF NOT EXISTS ccb.action_items (
@@ -267,6 +286,11 @@ async function initSchema() {
     // People picked from the directory (Entra ID) keep their email and display name with the request.
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "requestedByEmail" text');
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadName" text');
+    // Module Lead review sits between the IT SPOC's submission and the IT Application Head's feasibility review.
+    await pool.query('ALTER TABLE ccb.requests DROP CONSTRAINT IF EXISTS requests_status_check');
+    await pool.query(`ALTER TABLE ccb.requests ADD CONSTRAINT requests_status_check CHECK (status IN (${sqlList(STATUSES)}))`);
+    await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadReviewedAt" timestamptz');
+    await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadNotes" text');
     console.log('[change-control] CCB schema up to date (ccb.requests, meetings, meeting_items, attendance, roles, history).');
 }
 
@@ -385,6 +409,10 @@ function availableActions(r, req) {
     switch (r.status) {
         case 'draft':
             if (own || (logger && head)) out.push('edit', 'submit', 'withdraw');
+            break;
+        case 'module_lead_review':
+            if (r.moduleLeadEmail === email && !own) out.push('edit', 'forward_to_head', 'return_to_spoc');
+            if (own) out.push('withdraw');
             break;
         case 'feasibility_review':
             if (head && !own) {
@@ -709,6 +737,12 @@ function readRequestFields(b, partial = false) {
     return f;
 }
 
+/** Where a submitted request goes: to its Module Lead, unless the Module Lead logged it themselves. */
+function submitTarget(r) {
+    if (!r.moduleLeadEmail) throw new HttpError(400, 'Choose the Module Lead before submitting.');
+    return r.moduleLeadEmail === r.loggedBy ? 'feasibility_review' : 'module_lead_review';
+}
+
 router.post('/requests', async (req, res) => {
     if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or the IT Application Head can log a change request.' });
     try {
@@ -716,7 +750,8 @@ router.post('/requests', async (req, res) => {
         await assertActiveUsers(f);
         const submitNow = req.body?.intent === 'submit';
         const now = new Date();
-        const cols = { ...f, status: submitNow ? 'feasibility_review' : 'draft', loggedBy: req.verifiedEmail, submittedAt: submitNow ? now : null };
+        const target = submitNow ? submitTarget({ ...f, loggedBy: req.verifiedEmail }) : 'draft';
+        const cols = { ...f, status: target, loggedBy: req.verifiedEmail, submittedAt: submitNow ? now : null };
         const keys = Object.keys(cols);
         const created = await withTransaction(async (db) => {
             const { rows } = await db.query(
@@ -727,9 +762,10 @@ router.post('/requests', async (req, res) => {
                 keys.map((k) => cols[k])
             );
             await logHistory(db, { requestId: rows[0].id, actorEmail: req.verifiedEmail, action: 'logged', toStatus: 'draft' });
-            if (submitNow) await logHistory(db, { requestId: rows[0].id, actorEmail: req.verifiedEmail, action: 'submit', fromStatus: 'draft', toStatus: 'feasibility_review', details: { category: f.category } });
+            if (submitNow) await logHistory(db, { requestId: rows[0].id, actorEmail: req.verifiedEmail, action: 'submit', fromStatus: 'draft', toStatus: target, details: { category: f.category } });
             return rows[0];
         });
+        if (submitNow) notifyAction('submit', created, req.verifiedEmail, '');
         res.json({ success: true, request: created });
     } catch (err) {
         fail(res, err, 'Could not save the change request.');
@@ -765,7 +801,7 @@ router.put('/requests/:id', async (req, res) => {
     }
 });
 
-const NOTE_REQUIRED = { return: 'Say what the IT SPOC needs to clarify.', reject: 'Give the reason for rejecting.', withdraw: 'Give the reason for withdrawing.', terminate: 'Give the reason for terminating development.', approve_emergency: 'Record the written justification for the emergency approval.' };
+const NOTE_REQUIRED = { return_to_spoc: 'Say what the IT SPOC needs to correct.', return: 'Say what the IT SPOC needs to clarify.', reject: 'Give the reason for rejecting.', withdraw: 'Give the reason for withdrawing.', terminate: 'Give the reason for terminating development.', approve_emergency: 'Record the written justification for the emergency approval.' };
 
 router.post('/requests/:id/actions', async (req, res) => {
     const id = Number(req.params.id);
@@ -788,8 +824,14 @@ router.post('/requests/:id/actions', async (req, res) => {
             let updated;
             switch (action) {
                 case 'submit':
-                    updated = await patchRequest(db, id, { status: 'feasibility_review', submittedAt: now, returnNote: null, updatedAt: now });
+                    updated = await patchRequest(db, id, { status: submitTarget(r), submittedAt: now, returnNote: null, updatedAt: now });
                     details.category = r.category;
+                    break;
+                case 'forward_to_head':
+                    updated = await patchRequest(db, id, { status: 'feasibility_review', moduleLeadReviewedAt: now, moduleLeadNotes: note || null, updatedAt: now });
+                    break;
+                case 'return_to_spoc':
+                    updated = await patchRequest(db, id, { status: 'draft', returnNote: note, moduleLeadReviewedAt: now, moduleLeadNotes: note, updatedAt: now });
                     break;
                 case 'withdraw':
                     updated = await patchRequest(db, id, { status: 'withdrawn', closedAt: now, updatedAt: now });
@@ -1059,13 +1101,17 @@ router.get('/meetings/:id', async (req, res) => {
                          WHERE r.role IN ('CCB Member', 'CCB Secretary', 'IT Application Head') GROUP BY r.email, u.name ORDER BY 3`),
             ['scheduled', 'in_progress'].includes(m.status) ? pendingAgenda(pool, id) : [],
         ]);
-        const [reviews, actions] = await Promise.all([
+        const [reviews, actions, votes] = await Promise.all([
             pool.query(`SELECT v.* FROM ccb.reviews v JOIN ccb.meeting_items mi ON mi.id = v."meetingItemId" WHERE mi."meetingId" = $1 ORDER BY v."updatedAt"`, [id]),
             pool.query(`SELECT a.*, r."crNo" FROM ccb.action_items a LEFT JOIN ccb.requests r ON r.id = a."requestId" WHERE a."meetingId" = $1 ORDER BY a.id`, [id]),
+            pool.query(`SELECT v.* FROM ccb.votes v JOIN ccb.meeting_items mi ON mi.id = v."meetingItemId" WHERE mi."meetingId" = $1 ORDER BY v."votedAt"`, [id]),
         ]);
         const present = new Set(attendance.rows.filter((a) => a.present).map((a) => a.email));
-        const presentMembers = members.rows.filter((p) => p.roles.includes('CCB Member') && present.has(p.email)).length;
-        const names = await namesFor([m.createdBy, ...items.rows.flatMap((i) => [i.decidedBy, i.loggedBy, i.requestDecidedBy]), ...reviews.rows.map((v) => v.email), ...actions.rows.map((a) => a.owner)]);
+        const presentList = members.rows.filter((p) => p.roles.includes('CCB Member') && present.has(p.email)).map((p) => p.email);
+        const presentMembers = presentList.length;
+        // Live count for open items; the frozen count for decided ones.
+        const tallies = Object.fromEntries(items.rows.map((it) => [it.id, it.decision && it.voteTally ? it.voteTally : tallyOf(it.kind, votes.rows.filter((v) => v.meetingItemId === it.id), presentList)]));
+        const names = await namesFor([m.createdBy, ...items.rows.flatMap((i) => [i.decidedBy, i.loggedBy, i.requestDecidedBy]), ...reviews.rows.map((v) => v.email), ...votes.rows.map((v) => v.email), ...actions.rows.map((a) => a.owner)]);
         res.json({
             success: true,
             detail: {
@@ -1077,6 +1123,9 @@ router.get('/meetings/:id', async (req, res) => {
                 reviews: reviews.rows,
                 actions: actions.rows,
                 canReview: has(req, ...BOARD_ROLES),
+                tallies,
+                canVote: has(req, 'CCB Member') && m.status === 'in_progress' && present.has(req.verifiedEmail),
+                isMember: has(req, 'CCB Member'),
             },
         });
     } catch (err) {
@@ -1197,6 +1246,60 @@ router.put('/meetings/:id/attendance', async (req, res) => {
     }
 });
 
+/** CCB Members marked present at a meeting. */
+async function presentMembers(db, meetingId) {
+    const { rows } = await db.query(
+        `SELECT a.email FROM ccb.attendance a WHERE a."meetingId" = $1 AND a.present
+            AND EXISTS (SELECT 1 FROM ccb.roles r WHERE r.email = a.email AND r.role = 'CCB Member')`, [meetingId]);
+    return rows.map((r) => r.email);
+}
+
+/** Vote count for one agenda item: only votes of members currently present count; majority = more than half of them. */
+function tallyOf(kind, votes, present) {
+    const counted = votes.filter((v) => present.includes(v.email));
+    const sides = VOTE_SIDES[kind];
+    const n = (x) => counted.filter((v) => v.vote === x).length;
+    const yes = n(sides.yes), no = n(sides.no), abstain = n('abstain');
+    const majority = Math.floor(present.length / 2) + 1;
+    return {
+        present: present.length, majority, yes, no, abstain, voted: counted.length,
+        outcome: present.length && yes >= majority ? 'yes' : present.length && no >= majority ? 'no' : null,
+        votes: counted.map((v) => ({ email: v.email, vote: v.vote, note: v.note })),
+    };
+}
+
+router.put('/meetings/:id/items/:itemId/vote', async (req, res) => {
+    const id = Number(req.params.id);
+    const itemId = Number(req.params.itemId);
+    const vote = String(req.body?.vote || '');
+    const note = str(req.body?.note, 2000);
+    try {
+        if (!has(req, 'CCB Member')) throw new HttpError(403, 'Only CCB Members vote.');
+        await withTransaction(async (db) => {
+            await lockMeeting(db, id, ['in_progress']);
+            const it = (await db.query('SELECT mi.*, r."loggedBy" FROM ccb.meeting_items mi JOIN ccb.requests r ON r.id = mi."requestId" WHERE mi.id = $1 AND mi."meetingId" = $2 FOR UPDATE OF mi', [itemId, id])).rows[0];
+            if (!it) throw new HttpError(404, 'Agenda item not found.');
+            if (it.decision) throw new HttpError(409, 'Voting on this item has closed.');
+            if (it.loggedBy === req.verifiedEmail) throw new HttpError(403, 'You logged this request, so you cannot vote on it.');
+            if (!(await presentMembers(db, id)).includes(req.verifiedEmail)) throw new HttpError(403, 'Only members marked present can vote. Ask the CCB Secretary to mark your attendance.');
+            if (vote && !VOTES[it.kind].includes(vote)) throw new HttpError(400, 'Choose a valid vote.');
+            if (['reject', 'not_ratify'].includes(vote) && !note) throw new HttpError(400, 'Give a short reason for voting against.');
+            if (!vote) {
+                await db.query('DELETE FROM ccb.votes WHERE "meetingItemId" = $1 AND email = $2', [itemId, req.verifiedEmail]);
+            } else {
+                await db.query(
+                    `INSERT INTO ccb.votes ("meetingItemId", email, vote, note) VALUES ($1, $2, $3, $4)
+                     ON CONFLICT ("meetingItemId", email) DO UPDATE SET vote = EXCLUDED.vote, note = EXCLUDED.note, "votedAt" = now()`,
+                    [itemId, req.verifiedEmail, vote, note]);
+            }
+            await logHistory(db, { requestId: it.requestId, meetingId: id, actorEmail: req.verifiedEmail, action: vote ? 'ccb_vote' : 'ccb_vote_withdrawn', details: vote ? { vote, ...(note ? { note } : {}) } : null });
+        });
+        res.json({ success: true });
+    } catch (err) {
+        fail(res, err, 'Could not record your vote.');
+    }
+});
+
 router.post('/meetings/:id/items/:itemId/decision', async (req, res) => {
     const id = Number(req.params.id);
     const itemId = Number(req.params.itemId);
@@ -1219,6 +1322,16 @@ router.post('/meetings/:id/items/:itemId/decision', async (req, res) => {
                     AND EXISTS (SELECT 1 FROM ccb.roles r WHERE r.email = a.email AND r.role = 'CCB Member')`, [id]);
             if (q1.rows[0].n < settings.quorum) throw new HttpError(409, `Quorum not met: ${q1.rows[0].n} of the required ${settings.quorum} CCB members are marked present.`);
 
+            // Majority of members present decides; the Secretary records only what the vote supports (or defers).
+            const present = await presentMembers(db, id);
+            const votes = (await db.query('SELECT email, vote, note FROM ccb.votes WHERE "meetingItemId" = $1', [itemId])).rows;
+            const tally = tallyOf(it.kind, votes, present);
+            const wantsYes = ['approved', 'approved_with_modifications', 'ratified'].includes(decision);
+            const wantsNo = ['rejected', 'not_ratified'].includes(decision);
+            const yesLabel = it.kind === 'decision' ? 'approve' : 'ratify';
+            if (wantsYes && tally.outcome !== 'yes') throw new HttpError(409, `No majority to ${yesLabel}: ${tally.yes} of ${tally.present} members present voted to ${yesLabel}; ${tally.majority} needed.`);
+            if (wantsNo && tally.outcome !== 'no') throw new HttpError(409, `No majority against: ${tally.no} of ${tally.present} members present voted against; ${tally.majority} needed.`);
+
             const r = (await db.query('SELECT * FROM ccb.requests WHERE id = $1 FOR UPDATE', [it.requestId])).rows[0];
             const now = new Date();
             let updated = r;
@@ -1233,9 +1346,9 @@ router.post('/meetings/:id/items/:itemId/decision', async (req, res) => {
                 if (r.ratificationStatus !== 'pending') throw new HttpError(409, `${r.crNo} is not awaiting ratification.`);
                 updated = await patchRequest(db, r.id, { ratificationStatus: decision, ratifiedAt: now, ratificationMeetingId: id, updatedAt: now });
             }
-            await db.query('UPDATE ccb.meeting_items SET decision = $1, notes = $2, "decidedBy" = $3, "decidedAt" = now() WHERE id = $4', [decision, notes, req.verifiedEmail, itemId]);
+            await db.query('UPDATE ccb.meeting_items SET decision = $1, notes = $2, "decidedBy" = $3, "decidedAt" = now(), "voteTally" = $5 WHERE id = $4', [decision, notes, req.verifiedEmail, itemId, JSON.stringify(tally)]);
             if (notes) await db.query('INSERT INTO ccb.comments ("requestId", "authorEmail", body) VALUES ($1, $2, $3)', [r.id, req.verifiedEmail, `CCB ${decision.replace(/_/g, ' ')}: ${notes}`]);
-            const details = { decision, meetingId: id, ...(notes ? { note: notes } : {}) };
+            const details = { decision, meetingId: id, votes: { for: tally.yes, against: tally.no, abstain: tally.abstain, present: tally.present }, ...(notes ? { note: notes } : {}) };
             if (updated.devTrackerIssueNo != null && updated.devTrackerIssueNo !== r.devTrackerIssueNo) details.devTrackerIssueNo = updated.devTrackerIssueNo;
             await logHistory(db, { requestId: r.id, meetingId: id, actorEmail: req.verifiedEmail, action: it.kind === 'decision' ? 'ccb_decision' : 'ccb_ratification', fromStatus: r.status, toStatus: updated.status, details });
             return updated;
@@ -1530,9 +1643,27 @@ function notifySpoc(r, actorEmail, { kind = 'info', title, body = '', refKey = n
     }
 }
 
+/** A request reaching feasibility review is announced to the IT Application Head(s). */
+async function notifyNextReviewer(action, r, actorEmail) {
+    if (r.status !== 'feasibility_review') return;
+    try {
+        const { rows } = await pool.query(`SELECT email FROM ccb.roles WHERE role = 'IT Application Head'`);
+        for (const { email } of rows) {
+            if (email === actorEmail || email === r.loggedBy) continue;
+            notify({ email, appId: HOST_APP_ID, kind: 'action', title: `${r.crNo}: ready for feasibility review`, body: `${r.title}\n${r.requestingFunction} · logged by ${r.loggedBy}`, link: requestPath(r), refKey: `ccb:${r.id}:feasibility:${new Date(r.updatedAt).getTime()}` });
+        }
+    } catch (err) {
+        console.error('[change-control] Reviewer notification failed:', err.message);
+    }
+}
+
 function notifyAction(action, r, actorEmail, note) {
     const assignment = r.devTrackerIssueNo != null ? ` Dev Tracker task Assignment-${r.devTrackerIssueNo} has been created.` : '';
+    if (action === 'submit' || action === 'forward_to_head') notifyNextReviewer(action, r, actorEmail, note);
     const msg = {
+        submit: r.status === 'module_lead_review' ? { kind: 'action', title: 'submitted for Module Lead review', body: 'Please review it and send it to the IT Application Head, or return it to the IT SPOC.' } : null,
+        forward_to_head: { kind: 'info', title: 'sent to the IT Application Head by the Module Lead', body: note ? `Module Lead's note: ${note}` : 'It is now in feasibility review.' },
+        return_to_spoc: { kind: 'action', title: 'returned by the Module Lead for correction', body: `Please correct and resubmit.\n${note}` },
         return: { kind: 'action', title: 'returned for clarification', body: `Please update and resubmit.\n${note}` },
         reject: { kind: 'bad', title: 'rejected at feasibility review', body: note },
         recommend: { kind: 'info', title: 'recommended to the CCB', body: 'It is on the agenda for the next CCB meeting.' },
