@@ -112,9 +112,9 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
         </div>
       </div>
 
-      {/* Mobile shows the full app name (no truncation) — desktop/tablet keeps the
-          single-line-with-ellipsis it already had, since card width there is generous enough that
-          a long name truncating was never actually a problem there. */}
+      {/* Mobile shows the full app name (no truncation). Desktop/tablet wraps a long name onto a
+          second line (e.g. "Change Control Board & CR Tracker") instead of cutting it off with an
+          ellipsis; anything longer than two lines is clamped. */}
       <p
         style={{
           fontSize: isMobile ? 12.5 : 14.5,
@@ -123,10 +123,10 @@ export default function AppCard({ app, isFavorite, isTopUsed, locked = false, ro
           color: locked ? colors.inkSoft : colors.ink,
           marginTop: isMobile ? 8 : 14,
           marginBottom: 0,
-          lineHeight: isMobile ? '16px' : 'normal',
+          lineHeight: isMobile ? '16px' : '20px',
           ...(isMobile
             ? {}
-            : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+            : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }),
         }}
       >
         {app.name}
