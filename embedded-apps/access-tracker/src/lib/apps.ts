@@ -7,7 +7,7 @@ export const APP_CATALOG: { id: string; name: string; cat: string }[] = [
   { id: 'inventory', name: 'Mould Health Inspection', cat: 'Packaging' },
   { id: 'audit-capa', name: 'Audit & CAPA', cat: 'CQA' },
   { id: 'market-rate', name: 'Current Market Rate', cat: 'CPD' },
-  { id: 'dev-tracker', name: 'SAP Change & Development', cat: 'IT' },
+  { id: 'dev-tracker', name: 'Change Control Board & CR Tracker', cat: 'IT' },
   { id: 'po-followup', name: 'Delivery Confirmation', cat: 'CPD' },
   { id: 'payment-tracking', name: 'IBD Provision Tracking', cat: 'IBD' },
   { id: 'timesheet', name: 'TimeSheet', cat: 'IT' },

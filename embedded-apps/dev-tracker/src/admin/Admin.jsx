@@ -123,7 +123,7 @@ export default function Admin() {
 
         <div className="admin-header">
           <div>
-            <div className="eyebrow">SAP Change &amp; Development Log</div>
+            <div className="eyebrow">Change Control Board &amp; CR Tracker Log</div>
             <h1 className="h1">Manage Master Data</h1>
           </div>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', maxWidth: 280, textAlign: 'right', lineHeight: 1.5 }}>

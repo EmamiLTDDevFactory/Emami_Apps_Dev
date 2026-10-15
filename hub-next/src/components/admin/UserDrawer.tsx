@@ -74,7 +74,7 @@ export default function UserDrawer({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
-  // CCB roles (SAP Change & Development): null available = this server has no Change Control, section hidden.
+  // CCB roles (Change Control Board & CR Tracker): null available = this server has no Change Control, section hidden.
   const [ccb, setCcb] = useState<{ saved: string[]; draft: string[]; available: string[] | null }>({ saved: [], draft: [], available: null });
   useEffect(() => {
     let live = true;
@@ -167,7 +167,7 @@ export default function UserDrawer({
         calls.push(setAppAccess(user.email, appId, role, role ? draft.depots[appId] : null, actingEmail || undefined));
       }
       const results = await Promise.all(calls);
-      // CCB roles after the grants: they need the SAP Change & Development grant to exist first.
+      // CCB roles after the grants: they need the Change Control Board & CR Tracker grant to exist first.
       if (ccbChanged) {
         const r = await setCcbRoles(user.email, ccb.draft);
         results.push(r);

@@ -171,7 +171,7 @@ export async function setAccessLevel(email: string, accessLevel: AccessLevel, ac
   }
 }
 
-/** CCB roles (SAP Change & Development > Change Control Board), assigned here instead of inside the app.
+/** CCB roles (Change Control Board & CR Tracker > Change Control Board), assigned here instead of inside the app.
  * `available: null` when this server has no Change Control (the drawer then hides the section). */
 export const CCB_APP_ID = 'dev-tracker';
 export async function getCcbRoles(email: string): Promise<{ ok: boolean; roles: string[]; available: string[] | null; error?: string }> {

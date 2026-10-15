@@ -7,7 +7,7 @@ const teams = require('./ccbTeams');
 const { recordAccessChange } = require('./accessHistory');
 
 /*
-   CHANGE CONTROL BOARD (CCB) — the governance half of "SAP Change & Development" (the Dev Tracker
+   CHANGE CONTROL BOARD (CCB) — the governance half of "Change Control Board & CR Tracker" (the Dev Tracker
    embedded app, embedded-apps/dev-tracker/src/ccb). Own `ccb` schema, own routes under
    /change-control. Implements the SAP Change Management process approved for Emami (Oct 2026):
 
@@ -341,7 +341,7 @@ async function requireAccess(req, res, next) {
             pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, HOST_APP_ID]),
             pool.query('SELECT role FROM ccb.roles WHERE email = $1', [email]),
         ]);
-        if (!grant.rows.length) return res.status(403).json({ success: false, error: 'You do not have access to SAP Change & Development. Ask an admin to grant it in Manage Access.' });
+        if (!grant.rows.length) return res.status(403).json({ success: false, error: 'You do not have access to Change Control Board & CR Tracker. Ask an admin to grant it in Manage Access.' });
         req.verifiedEmail = email;
         req.isAdmin = grant.rows[0].role === 'Admin';
         req.roles = roles.rows.map((r) => r.role);
@@ -523,7 +523,7 @@ router.get('/roles', async (req, res) => {
 });
 
 // CCB roles are assigned in the Emami Apps Admin Center (Manage Access), not in the app: see ccbRolesAdminRouter below.
-const ROLES_IN_ADMIN_CENTER = 'CCB roles are assigned in the Emami Apps Admin Center (Manage Access > user > SAP Change & Development).';
+const ROLES_IN_ADMIN_CENTER = 'CCB roles are assigned in the Emami Apps Admin Center (Manage Access > user > Change Control Board & CR Tracker).';
 // Assigning / removing in the app is closed; the Admin Center does it (same ccb.roles store).
 router.post('/roles', (req, res) => res.status(403).json({ success: false, error: ROLES_IN_ADMIN_CENTER }));
 router.delete('/roles', (req, res) => res.status(403).json({ success: false, error: ROLES_IN_ADMIN_CENTER }));
@@ -1438,7 +1438,7 @@ function ccbRolesAdminRouter(requireAccessManager) {
             const out = await withTransaction(async (db) => {
                 if (wanted.length) {
                     const access = await db.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, HOST_APP_ID]);
-                    if (!access.rows.length) throw new HttpError(400, 'Grant SAP Change & Development access first, then assign CCB roles.');
+                    if (!access.rows.length) throw new HttpError(400, 'Grant Change Control Board & CR Tracker access first, then assign CCB roles.');
                 }
                 const before = (await db.query('SELECT role FROM ccb.roles WHERE email = $1 FOR UPDATE', [email])).rows.map((r) => r.role);
                 const add = wanted.filter((r) => !before.includes(r));

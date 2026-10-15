@@ -58,7 +58,7 @@ function Content({ me }) {
             </span>
           ))}
         </div>
-        {!p.hasAccess && <div className="warn">No SAP Change & Development access — grant it in the Emami Apps Admin Center.</div>}
+        {!p.hasAccess && <div className="warn">No Change Control Board & CR Tracker access — grant it in the Emami Apps Admin Center.</div>}
         {me.can.manageRoles && <a href={adminCenterUser(p.email)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, marginTop: 4 }}>Change roles in Admin Center <ExternalIcon size={10} /></a>}
       </div>
     </div>
@@ -72,7 +72,7 @@ function Content({ me }) {
 
       <Card title="CCB composition" sub={`${board.filter((p) => p.roles.includes('CCB Member')).length} members · quorum ${s.quorum} · meets on the 3rd Friday of every month or on an emergency basis, online or offline`}>
         {board.length === 0 ? (
-          <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No board members assigned yet. CCB roles are assigned in the Emami Apps Admin Center (Manage Access › person › SAP Change & Development).</p>
+          <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No board members assigned yet. CCB roles are assigned in the Emami Apps Admin Center (Manage Access › person › Change Control Board & CR Tracker).</p>
         ) : <div className="ccb-members">{board.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
@@ -135,7 +135,7 @@ function Content({ me }) {
 
       <SettingsCard settings={s} canEdit={me.can.manageRoles} onSaved={() => { showToast('Settings saved.'); load(); }} onError={(m) => showToast(m, 'error')} />
 
-      <div className="ccb-callout tone-indigo" style={{ marginTop: 16 }}><UsersIcon size={15} /><span><strong>Role assignment is controlled from the Emami Apps Admin Center.</strong> A Super Admin or Admin opens the person in Manage Access and picks their CCB roles under SAP Change &amp; Development. Every change is recorded in the Admin Center&apos;s change history and the CCB audit trail.</span></div>
+      <div className="ccb-callout tone-indigo" style={{ marginTop: 16 }}><UsersIcon size={15} /><span><strong>Role assignment is controlled from the Emami Apps Admin Center.</strong> A Super Admin or Admin opens the person in Manage Access and picks their CCB roles under Change Control Board &amp; CR Tracker. Every change is recorded in the Admin Center&apos;s change history and the CCB audit trail.</span></div>
       {toast}
     </>
   );

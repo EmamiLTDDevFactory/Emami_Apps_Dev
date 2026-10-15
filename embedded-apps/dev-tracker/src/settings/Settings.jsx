@@ -32,7 +32,7 @@ export default function Settings() {
         <ComingSoon
           icon={SettingsIcon}
           tone="teal"
-          eyebrow="SAP Change & Development Log"
+          eyebrow="Change Control Board & CR Tracker Log"
           title="Settings"
           description="Personal preferences for how Dev Tracker works for you — notifications, defaults, and display options."
           bullets={[
