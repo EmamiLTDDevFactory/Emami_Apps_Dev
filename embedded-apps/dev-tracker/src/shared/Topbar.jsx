@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ROUTES } from './routes.js';
+import { backToEmamiApps } from './Sidebar.jsx';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
 import { SearchIcon, BellIcon, PlusIcon } from './icons.jsx';
@@ -45,6 +46,10 @@ export default function Topbar({ email, name, roleLabel, notifications = [], onM
 
   return (
     <div className="topbar">
+      <button type="button" className="topbar-hub" onClick={backToEmamiApps} title="Back to Emami Apps">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+        <span>Emami Apps</span>
+      </button>
       <div className="topbar-search">
         <SearchIcon size={16} />
         <input

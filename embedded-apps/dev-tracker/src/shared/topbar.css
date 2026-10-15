@@ -103,3 +103,12 @@
 }
 .topbar-create:hover { background: var(--accent-2); }
 .topbar-create:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Always-visible way back to the Emami Apps hub, at the start of every page's top bar. */
+.topbar-hub {
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 7px 11px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.topbar-hub:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 900px) { .topbar-hub { display: none; } }

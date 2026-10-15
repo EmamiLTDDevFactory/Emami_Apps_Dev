@@ -146,3 +146,14 @@
   margin: 12px 0 5px 10px; font-size: 9.5px; font-weight: 700; letter-spacing: .09em;
   text-transform: uppercase; color: var(--muted);
 }
+
+/* Keep the footer ("Back" / "Back to Emami Apps") pinned on screen: the nav scrolls on its own
+   instead of the whole sidebar, so a long menu never pushes the way back to the hub out of view. */
+.sidebar { overflow-y: hidden; }
+.sidebar-nav { overflow-y: auto; min-height: 0; }
+.sidebar-mobilebar-hub {
+  margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2);
+  border-radius: 8px; padding: 5px 9px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.sidebar-mobilebar-hub:hover { color: var(--accent); border-color: var(--accent); }

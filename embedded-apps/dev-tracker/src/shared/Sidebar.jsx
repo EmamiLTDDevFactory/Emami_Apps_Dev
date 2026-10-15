@@ -5,7 +5,7 @@ import { initialsHome } from './utils.js';
 import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon, ListIcon, TimelineIcon, TableIcon, BarChartIcon, CompassIcon, ClipboardIcon, GavelIcon, LandmarkIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
-function backToEmamiApps() {
+export function backToEmamiApps() {
   window.location.href = '/';
 }
 
@@ -78,6 +78,10 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
           <span>CCB & CR Tracker</span>
         </a>
         {activeItem && <span className="sidebar-mobilebar-page">{activeItem.label}</span>}
+        <button type="button" className="sidebar-mobilebar-hub" onClick={backToEmamiApps} title="Back to Emami Apps" aria-label="Back to Emami Apps">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+          <span>Emami Apps</span>
+        </button>
       </div>
 
       {drawerOpen && <div className="sidebar-backdrop" onClick={() => setDrawerOpen(false)} />}
