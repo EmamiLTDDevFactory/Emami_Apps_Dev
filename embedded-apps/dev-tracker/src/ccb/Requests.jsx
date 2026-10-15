@@ -194,7 +194,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
       )}
       {!me.can.log && (
         <p className="ccb-muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-          You can view the register. Logging requests needs the IT SPOC, Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
+          You can view the register. Logging requests needs the IT SPOC or Module Lead role, assigned in the Emami Apps Admin Center.
         </p>
       )}
       {toast}

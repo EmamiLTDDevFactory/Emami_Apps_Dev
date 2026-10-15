@@ -27,6 +27,15 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
   // Requesting functions are maintained by admins in Master Data (category 'requestingFunction').
+  // IT SPOCs (and the person logging) are never the function's requester or the Module Lead.
+  const [notPickable, setNotPickable] = useState({ spocs: new Set(), leads: new Set(), me: (getCurrentUserEmail() || '').toLowerCase() });
+  useEffect(() => {
+    Promise.all([ccbApi.people('IT SPOC'), ccbApi.people('Module Lead')])
+      .then(([s, l]) => setNotPickable((n) => ({ ...n, spocs: new Set(s.people.map((p) => p.email)), leads: new Set(l.people.map((p) => p.email)) })))
+      .catch(() => {});
+  }, []);
+  // Is the person filling in the form a Module Lead? Then they are this request's Module Lead.
+  const isLead = notPickable.leads.has(notPickable.me) && (!editing || request.moduleLeadEmail === notPickable.me || !request.moduleLeadEmail);
   const [functions, setFunctions] = useState(null);
   useEffect(() => {
     apiMasterData(getCurrentUserEmail())
@@ -40,12 +49,13 @@ export default function RequestForm({ request, onClose, onSaved }) {
     setError('');
     // Older requests keep a typed name until someone changes it.
     if (form.requestedBy && !form.requestedByEmail && form.requestedBy !== request?.requestedBy) return setError('Pick the person who raised the requirement from the list of Emami Apps users.');
-    if (form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the list of Emami Apps users, or clear the field.');
+    if (!isLead && form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the list of Emami Apps users, or clear the field.');
     setBusy(intent);
     try {
       const payload = {
         ...form, requiredBy: form.requiredBy || null,
-        moduleLeadEmail: form.moduleLeadEmail || null, moduleLeadName: form.moduleLeadEmail ? form.moduleLeadName : null, requestedByEmail: form.requestedByEmail || null,
+        // A Module Lead logging a request is its Module Lead (the server sets the same).
+        moduleLeadEmail: isLead && !editing ? notPickable.me : form.moduleLeadEmail || null, moduleLeadName: isLead && !editing ? null : form.moduleLeadEmail ? form.moduleLeadName : null, requestedByEmail: form.requestedByEmail || null,
       };
       const d = editing ? await ccbApi.updateRequest(request.id, payload) : await ccbApi.createRequest(payload, intent);
       onSaved(d.request, intent);
@@ -69,7 +79,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
           ) : (
             <>
               <Button busy={busy === 'draft'} disabled={!!busy} onClick={() => save('draft')}>Save as draft</Button>
-              <Button variant="primary" icon={SendIcon} busy={busy === 'submit'} disabled={!!busy} onClick={() => save('submit')}>Submit for feasibility review</Button>
+              <Button variant="primary" icon={SendIcon} busy={busy === 'submit'} disabled={!!busy} onClick={() => save('submit')}>{isLead ? 'Submit for feasibility review' : 'Submit to Module Lead'}</Button>
             </>
           )}
         </>
@@ -91,6 +101,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Raised by (function)" required group hint="Search active Emami Apps users and pick the person who raised the requirement.">
             <DirectoryPicker
               value={{ name: form.requestedBy, email: form.requestedByEmail }}
+              exclude={(p) => notPickable.spocs.has(p.email) || p.email === notPickable.me}
               onChange={(p) => setForm((f) => ({ ...f, requestedBy: p.name, requestedByEmail: p.email }))}
             />
           </Field>
@@ -181,12 +192,22 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
           </Field>
+          {isLead ? (
+            <div className="ccb-callout tone-blue" style={{ gridColumn: '1 / -1' }}>
+              <InfoIcon size={15} />
+              {editing && request.loggedBy !== notPickable.me
+                ? <span>You are the <strong>Module Lead</strong> for this request.</span>
+                : <span>You are the <strong>Module Lead</strong> for this request, so on submission it goes straight to the <strong>IT Application Head</strong> for the feasibility review.</span>}
+            </div>
+          ) : (
           <Field label="Module Lead" required wide group hint="The IT SPOC’s upline — search active Emami Apps users. Reviews the request before it goes to the IT Application Head, assigns the developer once it is approved, and gets its updates.">
             <DirectoryPicker
               value={{ name: form.moduleLeadName, email: form.moduleLeadEmail }}
+              exclude={(p) => (notPickable.spocs.has(p.email) && !notPickable.leads.has(p.email)) || (p.email === notPickable.me && !notPickable.leads.has(p.email))}
               onChange={(p) => setForm((f) => ({ ...f, moduleLeadName: p.name, moduleLeadEmail: p.email }))}
             />
           </Field>
+          )}
         </div>
         <label className="ccb-switch" style={{ marginTop: 14 }}>
           <input type="checkbox" checked={form.isEmergency} onChange={set('isEmergency')} />

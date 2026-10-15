@@ -32,7 +32,7 @@ const { recordAccessChange } = require('./accessHistory');
      IT SPOC              log, categorise, submit and withdraw requests; reports to a Module Lead
      Module Lead          the IT SPOCs' upline: picked on each request (from the directory), assigns the developer once it is
                           approved, can log requests too, and gets the same updates as the IT SPOC
-     IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
+     IT Application Head  (does not log requests) feasibility review, recommend / return / reject, out-of-scope and
                           emergency approval, edit requests after CCB discussion, terminate
      CCB Secretary        schedule meetings, run them (attendance, decisions, minutes)
      CCB Member           counts toward quorum
@@ -57,7 +57,8 @@ const q = (col) => `"${col}"`;
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 
 const ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
-const LOGGER_ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head'];
+// Only IT SPOCs and Module Leads log requests — the IT Application Head reviews them, never raises them.
+const LOGGER_ROLES = ['IT SPOC', 'Module Lead'];
 const CATEGORIES = {
     major: { inScope: true, label: 'Major CR / project' },
     financial: { inScope: true, label: 'Financial impact' },
@@ -387,11 +388,10 @@ function availableActions(r, req) {
     const email = req.verifiedEmail;
     const own = r.loggedBy === email;
     const head = has(req, 'IT Application Head');
-    const logger = has(req, ...LOGGER_ROLES);
     const out = [];
     switch (r.status) {
         case 'draft':
-            if (own || (logger && head)) out.push('edit', 'submit', 'withdraw');
+            if (own) out.push('edit', 'submit', 'withdraw');
             break;
         case 'module_lead_review':
             if (r.moduleLeadEmail === email && !own) out.push('edit', 'forward_to_head', 'return_to_spoc');
@@ -679,6 +679,11 @@ async function assertActiveUsers(f, before = {}) {
         if (!email || email === (before[key] || null)) continue;
         const { rows } = await pool.query('SELECT 1 FROM emami_apps.authorized_users WHERE lower(email) = $1 AND is_active = true', [email]);
         if (!rows.length) throw new HttpError(400, `${label}: pick an active Emami Apps user from the list.`);
+        // IT SPOCs log requests; they are never the function's requester or the Module Lead (unless also a Module Lead).
+        const roles = (await pool.query('SELECT role FROM ccb.roles WHERE email = $1', [email])).rows.map((x) => x.role);
+        if (roles.includes('IT SPOC') && !(key === 'moduleLeadEmail' && roles.includes('Module Lead'))) {
+            throw new HttpError(400, `${label}: an IT SPOC cannot be chosen here.`);
+        }
     }
 }
 
@@ -727,9 +732,14 @@ function submitTarget(r) {
 }
 
 router.post('/requests', async (req, res) => {
-    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or the IT Application Head can log a change request.' });
+    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC or a Module Lead can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
+        // A Module Lead logging a request is its Module Lead — no picking, and it skips their own review.
+        if (has(req, 'Module Lead')) {
+            f.moduleLeadEmail = req.verifiedEmail;
+            f.moduleLeadName = (await namesFor([req.verifiedEmail]))[req.verifiedEmail] || f.moduleLeadName || req.verifiedEmail;
+        }
         await assertActiveUsers(f);
         const submitNow = req.body?.intent === 'submit';
         const now = new Date();
@@ -806,10 +816,14 @@ router.post('/requests/:id/actions', async (req, res) => {
             const details = note ? { note } : {};
             let updated;
             switch (action) {
-                case 'submit':
-                    updated = await patchRequest(db, id, { status: submitTarget(r), submittedAt: now, returnNote: null, updatedAt: now });
+                case 'submit': {
+                    // A Module Lead's own draft (e.g. one saved before this rule) takes them as its Module Lead.
+                    const self = has(req, 'Module Lead') && r.loggedBy === req.verifiedEmail && !r.moduleLeadEmail
+                        ? { moduleLeadEmail: req.verifiedEmail, moduleLeadName: (await namesFor([req.verifiedEmail]))[req.verifiedEmail] || req.verifiedEmail } : {};
+                    updated = await patchRequest(db, id, { ...self, status: submitTarget({ ...r, ...self }), submittedAt: now, returnNote: null, updatedAt: now });
                     details.category = r.category;
                     break;
+                }
                 case 'forward_to_head':
                     updated = await patchRequest(db, id, { status: 'feasibility_review', moduleLeadReviewedAt: now, moduleLeadNotes: note || null, updatedAt: now });
                     break;

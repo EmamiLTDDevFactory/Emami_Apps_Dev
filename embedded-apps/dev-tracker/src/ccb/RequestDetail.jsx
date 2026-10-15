@@ -27,6 +27,13 @@ const ACTIONS = {
   mark_informed: { label: 'Mark CCB informed', variant: 'primary', icon: CheckIcon, sub: 'Confirms the board has been informed of this emergency approval in writing.' },
   terminate: { label: 'Terminate development', variant: 'danger', icon: XIcon, note: 'Reason for terminating', sub: 'Stops the change. Its Dev Tracker assignment is set to Cancelled.' },
 };
+/** A Module Lead's own request goes straight to the IT Application Head on submission. */
+function actionFor(a, r, me) {
+  const selfLead = r.moduleLeadEmail ? r.moduleLeadEmail === r.loggedBy : me?.roles?.includes('Module Lead') && r.loggedBy === me?.email;
+  if (a === 'submit' && selfLead) return { ...ACTIONS.submit, label: 'Submit for feasibility review', sub: 'You are this request’s Module Lead, so it goes straight to the IT Application Head for the scope and feasibility check.' };
+  return ACTIONS[a];
+}
+
 const ACTION_ORDER = ['submit', 'forward_to_head', 'return_to_spoc', 'recommend', 'approve_out_of_scope', 'mark_informed', 'approve_emergency', 'return', 'reject', 'terminate', 'withdraw'];
 
 const HISTORY_LABEL = {
@@ -209,7 +216,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             <Card title="Your next step" sub={`As ${me.roles.join(', ') || 'viewer'}`} className="ccb-actions-card ccb-no-print">
               <div className="ccb-actions-list">
                 {workflowActions.map((a) => {
-                  const A = ACTIONS[a];
+                  const A = actionFor(a, r, me);
                   return <Button key={a} variant={A.variant} icon={A.icon} onClick={() => setDialog(a)}>{A.label}</Button>;
                 })}
               </div>
@@ -275,6 +282,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
         <ActionDialog
           action={dialog}
           request={r}
+          me={me}
           onClose={() => setDialog(null)}
           onDone={(updated) => {
             setDialog(null);
@@ -294,8 +302,8 @@ export default function RequestDetail({ crKey, me, onBack }) {
   );
 }
 
-function ActionDialog({ action, request: r, onClose, onDone }) {
-  const A = ACTIONS[action];
+function ActionDialog({ action, request: r, me, onClose, onDone }) {
+  const A = actionFor(action, r, me);
   const [note, setNote] = useState(action === 'approve_emergency' ? r.emergencyReason || '' : '');
   const [feasibility, setFeasibility] = useState(r.feasibility && r.feasibility !== 'not_feasible' ? r.feasibility : 'feasible');
   const [impact, setImpact] = useState(r.crossModuleImpact || '');

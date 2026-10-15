@@ -277,7 +277,8 @@ export function Prose({ children }) {
  * onChange({ name, email }). `value` is { name, email }; typing clears the email until a person is picked,
  * so a saved field always holds a directory person (name typed by hand only when the directory is unavailable).
  */
-export function DirectoryPicker({ value, onChange, placeholder = 'Search by name or email…', disabled }) {
+// `exclude(person)` hides people who must not be picked for this field (e.g. IT SPOCs).
+export function DirectoryPicker({ value, onChange, placeholder = 'Search by name or email…', disabled, exclude }) {
   const [text, setText] = useState(value?.name || '');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -301,7 +302,7 @@ export function DirectoryPicker({ value, onChange, placeholder = 'Search by name
     setState('loading');
     const t = setTimeout(() => {
       searchDirectory(q)
-        .then((d) => { if (my !== seq.current) return; setResults(d.people); setActive(0); setState(d.configured === false ? 'off' : 'done'); })
+        .then((d) => { if (my !== seq.current) return; setResults(exclude ? d.people.filter((p) => !exclude(p)) : d.people); setActive(0); setState(d.configured === false ? 'off' : 'done'); })
         .catch(() => { if (my === seq.current) { setResults([]); setState('error'); } });
     }, 250);
     return () => clearTimeout(t);
