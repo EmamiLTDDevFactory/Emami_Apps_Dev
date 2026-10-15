@@ -10,7 +10,7 @@ export function backToEmamiApps() {
 }
 
 // "Back": the previous page in this tab's history, or the Emami Apps hub when there is none.
-function goBack() {
+export function goBack() {
   if (window.history.length > 1) window.history.back();
   else window.location.href = '/';
 }
