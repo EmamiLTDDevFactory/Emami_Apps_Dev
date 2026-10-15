@@ -4,9 +4,9 @@ import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { getCurrentUserEmail } from '../shared/api.js';
-import { AlertIcon, CheckIcon, XIcon, ShieldIcon, RefreshIcon } from '../shared/icons.jsx';
+import { AlertIcon, CheckIcon, XIcon, ShieldIcon, RefreshIcon, SearchIcon } from '../shared/icons.jsx';
 import { Avatar } from '../dashboard/workspace/ui.jsx';
-import { ccbApi } from './api.js';
+import { ccbApi, searchDirectory } from './api.js';
 import { PROCESS_STEPS, processState, ROLE_META } from './model.js';
 
 export { Avatar };
@@ -270,4 +270,85 @@ export function Tabs({ tabs, value, onChange }) {
 export function Prose({ children }) {
   if (!children) return <span className="ccb-muted">—</span>;
   return <div className="ccb-prose">{children}</div>;
+}
+
+/**
+ * Type-ahead over Emami's directory (Entra ID). Typing searches live; picking a person calls
+ * onChange({ name, email }). `value` is { name, email }; typing clears the email until a person is picked,
+ * so a saved field always holds a directory person (name typed by hand only when the directory is unavailable).
+ */
+export function DirectoryPicker({ value, onChange, placeholder = 'Search by name or email…', disabled }) {
+  const [text, setText] = useState(value?.name || '');
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState('idle'); // idle | loading | done | error | off
+  const [active, setActive] = useState(0);
+  const boxRef = useRef(null);
+  const seq = useRef(0);
+
+  useEffect(() => { setText(value?.name || ''); }, [value?.name, value?.email]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  useEffect(() => {
+    const q = text.trim();
+    if (!open || q.length < 2 || (value?.email && q === value?.name)) { setResults([]); setState('idle'); return undefined; }
+    const my = ++seq.current;
+    setState('loading');
+    const t = setTimeout(() => {
+      searchDirectory(q)
+        .then((d) => { if (my !== seq.current) return; setResults(d.people); setActive(0); setState(d.configured === false ? 'off' : 'done'); })
+        .catch(() => { if (my === seq.current) { setResults([]); setState('error'); } });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [text, open, value?.email, value?.name]);
+
+  const pick = (p) => { onChange({ name: p.name, email: p.email }); setText(p.name); setOpen(false); };
+
+  return (
+    <div className="ccb-picker" ref={boxRef}>
+      <div className={`ccb-picker-input${value?.email ? ' is-picked' : ''}`}>
+        {value?.email ? <Avatar name={value.name} size={22} /> : <SearchIcon size={14} />}
+        <input
+          className="ccb-input"
+          value={text}
+          disabled={disabled}
+          placeholder={placeholder}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setText(e.target.value); setOpen(true); onChange({ name: e.target.value, email: '' }); }}
+          onKeyDown={(e) => {
+            if (!open || !results.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, results.length - 1)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+            if (e.key === 'Enter') { e.preventDefault(); pick(results[active]); }
+            if (e.key === 'Escape') setOpen(false);
+          }}
+        />
+        {value?.email && <span className="ccb-picker-mail">{value.email}</span>}
+      </div>
+      {open && text.trim().length >= 2 && !(value?.email && text === value.name) && (
+        <div className="ccb-picker-menu" role="listbox">
+          {state === 'loading' && <div className="ccb-picker-note"><span className="ccb-spin" /> Searching the directory…</div>}
+          {state === 'error' && <div className="ccb-picker-note">Directory search is unavailable right now.</div>}
+          {state === 'off' && <div className="ccb-picker-note">Directory search is not configured on this server.</div>}
+          {state === 'done' && !results.length && <div className="ccb-picker-note">No one in the directory matches “{text.trim()}”.</div>}
+          {state === 'done' && results.map((p, i) => (
+            <button type="button" role="option" aria-selected={i === active} key={p.email} className={`ccb-picker-row${i === active ? ' active' : ''}`}
+              onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>
+              <Avatar name={p.name} size={28} />
+              <span className="ccb-picker-text">
+                <strong>{p.name}</strong>
+                <small>{[p.jobTitle, p.department].filter(Boolean).join(' · ') || ' '}</small>
+                <small className="ccb-mono">{p.email}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

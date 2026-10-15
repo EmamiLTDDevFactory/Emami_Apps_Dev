@@ -12,6 +12,13 @@
  *   GET https://graph.microsoft.com/v1.0/users?$filter=mail eq '<email>' or userPrincipalName eq '<email>'
  *       &$select=id,displayName,jobTitle,department,businessPhones,mobilePhone
  *
+ * Also a people search over the same directory, for pickers such as the Change Control Board's "Raised by" and
+ * "Module Lead" fields (any signed-in Emami Apps user; enabled member accounts only, max 10):
+ *
+ *   GET /me/directory-search?q=<name or email>  -> { success, configured, people: [{ name, email, jobTitle, department }] }
+ *   (Graph: GET /users?$search="displayName:<q>" OR "mail:<q>"&$filter=accountEnabled eq true and userType eq 'Member',
+ *    with ConsistencyLevel: eventual — needs only the User.Read.All permission already granted.)
+ *
  * Env: GRAPH_TENANT_ID (defaults to Emami's tenant, the one in azure-idp-metadata.xml), GRAPH_CLIENT_ID,
  * GRAPH_CLIENT_SECRET. Without the client id/secret the route answers configured:false and the page hides the card.
  */
@@ -98,18 +105,61 @@ async function lookup(email) {
     return org;
 }
 
+const SEARCH_TTL_MS = 10 * 60 * 1000;
+const searchCache = new Map(); // query -> { at, people }
+async function searchDirectory(q) {
+    const hit = searchCache.get(q);
+    if (hit && Date.now() - hit.at < SEARCH_TTL_MS) return hit.people;
+    const term = q.replace(/["\\]/g, '');
+    const params = new URLSearchParams({
+        $search: `"displayName:${term}" OR "mail:${term}"`,
+        $filter: "accountEnabled eq true and userType eq 'Member'",
+        $select: 'displayName,mail,userPrincipalName,jobTitle,department',
+        $top: '10',
+        $count: 'true',
+    });
+    const res = await fetch(`https://graph.microsoft.com/v1.0/users?${params}`, {
+        headers: { Authorization: `Bearer ${await graphToken()}`, ConsistencyLevel: 'eventual' },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Graph ${res.status} ${data?.error?.code || ''}`.trim());
+    const people = (data.value || [])
+        .map((u) => ({ name: u.displayName || '', email: String(u.mail || u.userPrincipalName || '').toLowerCase(), jobTitle: u.jobTitle || null, department: u.department || null }))
+        .filter((p) => p.name && EMAIL_RE.test(p.email))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    if (searchCache.size > 500) searchCache.clear();
+    searchCache.set(q, { at: Date.now(), people });
+    return people;
+}
+
+/** The verified email from an Emami Apps session token, or '' (magic-link tokens carry a `purpose` and are refused). */
+function sessionEmail(req) {
+    const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
+    try {
+        const payload = match && JWT_SECRET ? jwt.verify(match[1].trim(), JWT_SECRET, { algorithms: ['HS256'] }) : null;
+        return payload && !payload.purpose ? String(payload.email || '').trim().toLowerCase() : '';
+    } catch {
+        return '';
+    }
+}
+
 const router = express.Router();
 
-router.get('/me/org-profile', async (req, res) => {
-    const match = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
-    let email = '';
+router.get('/me/directory-search', async (req, res) => {
+    if (!sessionEmail(req)) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
+    const q = String(req.query.q || '').trim().toLowerCase().slice(0, 60);
+    if (!configured()) return res.json({ success: true, configured: false, people: [] });
+    if (q.length < 2) return res.json({ success: true, configured: true, people: [] });
     try {
-        // Session tokens only: HS256, and no `purpose` claim (magic-link tokens share the secret but carry one).
-        const payload = match && JWT_SECRET ? jwt.verify(match[1].trim(), JWT_SECRET, { algorithms: ['HS256'] }) : null;
-        email = payload && !payload.purpose ? String(payload.email || '').trim().toLowerCase() : '';
-    } catch {
-        email = '';
+        res.json({ success: true, configured: true, people: await searchDirectory(q) });
+    } catch (err) {
+        console.error('[org-profile] Directory search failed:', err.message);
+        res.status(502).json({ success: false, configured: true, error: 'Could not search the directory right now.' });
     }
+});
+
+router.get('/me/org-profile', async (req, res) => {
+    const email = sessionEmail(req);
     if (!email) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
     if (!configured()) return res.json({ success: true, configured: false, found: false, org: null });
     if (!EMAIL_RE.test(email)) return res.json({ success: true, configured: true, found: false, org: null });

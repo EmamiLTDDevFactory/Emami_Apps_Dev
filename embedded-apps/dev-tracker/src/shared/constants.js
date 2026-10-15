@@ -62,7 +62,10 @@ export const DATE_FIELDS = new Set([
   'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate',
 ]);
 
+// `group` sorts the Master Data screen into sections; Change Control Board lists come first.
 export const CATEGORIES = [
+  // The Change Control Board's "Requesting function" dropdown (who raised the requirement).
+  { key: 'requestingFunction', label: 'Requesting Function', hasColor: false, group: 'Change Control Board' },
   { key: 'area', label: 'Area', hasColor: true },
   { key: 'status', label: 'Status', hasColor: true },
   { key: 'priority', label: 'Priority', hasColor: true },
@@ -73,8 +76,6 @@ export const CATEGORIES = [
   // Values are "YYYY-MM-DD Holiday name" (e.g. "2026-10-20 Diwali") — Resource Utilization's
   // working-day calendar reads the leading date; the name is for whoever's editing this list.
   { key: 'holiday', label: 'Holidays', hasColor: false },
-  // The Change Control Board's "Requesting function" dropdown (who raised the requirement).
-  { key: 'requestingFunction', label: 'Requesting Function', hasColor: false },
 ];
 
 export const STAGE_PIPELINE = [

@@ -28,7 +28,7 @@ const { recordAccessChange } = require('./accessHistory');
    Access: anyone with a Dev Tracker grant (Manage Access) can open the CCB register. What they may
    do comes from their CCB roles (ccb.roles, assigned in the Emami Apps Admin Center - ccbRolesAdminRouter):
      IT SPOC              log, categorise, submit and withdraw requests; reports to a Module Lead
-     Module Lead          the IT SPOCs' upline: picked on each request, assigns the developer once it is
+     Module Lead          the IT SPOCs' upline: picked on each request (from the directory), assigns the developer once it is
                           approved, can log requests too, and gets the same updates as the IT SPOC
      IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
                           emergency approval, edit requests after CCB discussion, terminate
@@ -264,6 +264,9 @@ async function initSchema() {
     await pool.query(`ALTER TABLE ccb.roles ADD CONSTRAINT roles_role_check CHECK (role IN (${sqlList(ROLES)}))`);
     // Last Dev Tracker state the SPOC was told about (status / developer / overdue target) — see watchDelivery().
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "devSeen" jsonb');
+    // People picked from the directory (Entra ID) keep their email and display name with the request.
+    await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "requestedByEmail" text');
+    await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadName" text');
     console.log('[change-control] CCB schema up to date (ccb.requests, meetings, meeting_items, attendance, roles, history).');
 }
 
@@ -423,10 +426,10 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
     const description = [
         r.description,
         `Business justification:\n${r.justification}`,
-        `Requesting function: ${r.requestingFunction} (${r.requestedBy})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
+        `Requesting function: ${r.requestingFunction} (${r.requestedBy}${r.requestedByEmail ? `, ${r.requestedByEmail}` : ''})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
         `IT area: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
         r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
-        r.moduleLeadEmail && `Module Lead (assigns the developer): ${nameOf(r.moduleLeadEmail)}`,
+        r.moduleLeadEmail && `Module Lead (assigns the developer): ${r.moduleLeadName || nameOf(r.moduleLeadEmail)}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
     ].filter(Boolean).join('\n\n');
 
@@ -658,13 +661,6 @@ router.get('/requests/:key', async (req, res) => {
     }
 });
 
-/** A request's Module Lead must actually hold the Module Lead role. */
-async function assertModuleLead(email) {
-    if (!email) return;
-    const { rows } = await pool.query(`SELECT 1 FROM ccb.roles WHERE email = $1 AND role = 'Module Lead'`, [email]);
-    if (!rows.length) throw new HttpError(400, 'Choose a Module Lead from the list (the person must hold the Module Lead role).');
-}
-
 /** Validates the editable request fields; `partial` allows a subset (edits). */
 function readRequestFields(b, partial = false) {
     const f = {};
@@ -684,10 +680,14 @@ function readRequestFields(b, partial = false) {
     set('isEmergency', !!b.isEmergency);
     set('emergencyReason', str(b.emergencyReason, 2000));
     set('moduleLeadEmail', str(b.moduleLeadEmail, 200).toLowerCase() || null);
+    set('moduleLeadName', str(b.moduleLeadName, 120) || null);
+    set('requestedByEmail', str(b.requestedByEmail, 200).toLowerCase() || null);
     const problem =
         ('title' in f && f.title.length < 5 && 'Title must be at least 5 characters.') ||
         ('requestingFunction' in f && !f.requestingFunction && 'Enter the requesting function.') ||
         ('requestedBy' in f && !f.requestedBy && 'Enter who raised the requirement in the function.') ||
+        ('requestedByEmail' in f && f.requestedByEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.requestedByEmail) && 'Pick the person who raised the requirement from the directory.') ||
+        ('moduleLeadEmail' in f && f.moduleLeadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.moduleLeadEmail) && 'Pick the Module Lead from the directory.') ||
         ('description' in f && !f.description && 'Describe the business requirement.') ||
         ('justification' in f && !f.justification && 'Business justification is required.') ||
         ('sapSystem' in f && !IT_AREAS.includes(f.sapSystem) && 'Choose the IT area.') ||
@@ -703,7 +703,6 @@ router.post('/requests', async (req, res) => {
     if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or the IT Application Head can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
-        await assertModuleLead(f.moduleLeadEmail);
         const submitNow = req.body?.intent === 'submit';
         const now = new Date();
         const cols = { ...f, status: submitNow ? 'feasibility_review' : 'draft', loggedBy: req.verifiedEmail, submittedAt: submitNow ? now : null };
@@ -734,7 +733,6 @@ router.put('/requests/:id', async (req, res) => {
         if (!r) return res.status(404).json({ success: false, error: 'Change request not found.' });
         if (!availableActions(r, req).includes('edit')) return res.status(403).json({ success: false, error: 'You cannot edit this request at its current stage.' });
         const f = readRequestFields(req.body || {}, true);
-        if ('moduleLeadEmail' in f && f.moduleLeadEmail !== (r.moduleLeadEmail || null)) await assertModuleLead(f.moduleLeadEmail);
         const changed = Object.keys(f).filter((k) => JSON.stringify(f[k] ?? null) !== JSON.stringify(k === 'requiredBy' && r[k] ? new Date(r[k]).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : r[k] ?? null));
         if (!changed.length) return res.json({ success: true, request: r });
         const updated = await withTransaction(async (db) => {

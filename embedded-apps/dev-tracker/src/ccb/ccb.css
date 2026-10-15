@@ -484,3 +484,21 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-my-meta dt { color: var(--muted); }
 .ccb-my-meta dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
 .ccb-my-meta dd.late { color: var(--st-red); font-weight: 700; }
+
+/* ---------- Directory picker (Entra ID people search) ---------- */
+.ccb-picker { position: relative; }
+.ccb-picker-input { position: relative; display: flex; align-items: center; }
+.ccb-picker-input > svg, .ccb-picker-input > .pm-avatar { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
+.ccb-picker-input .ccb-input { padding-left: 38px; }
+.ccb-picker-input.is-picked .ccb-input { border-color: color-mix(in oklch, var(--st-green) 45%, var(--border-strong)); background: var(--st-green-soft); font-weight: 600; padding-right: 10px; }
+.ccb-picker-mail { position: absolute; right: 10px; font-size: 10.5px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; pointer-events: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccb-picker-menu {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); max-height: 300px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 18px 36px -18px oklch(0% 0 0 / .35); padding: 4px;
+}
+.ccb-picker-note { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12px; color: var(--muted); }
+.ccb-picker-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: none; background: none; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-family: inherit; }
+.ccb-picker-row.active { background: var(--accent-soft); }
+.ccb-picker-text { display: flex; flex-direction: column; min-width: 0; }
+.ccb-picker-text strong { font-size: 12.5px; color: var(--text); }
+.ccb-picker-text small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

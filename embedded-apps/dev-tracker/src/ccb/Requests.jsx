@@ -228,7 +228,7 @@ function withWhom(r, nameOf, me) {
       if (r.devStatus === 'User Testing') return `You & ${r.requestedBy} (${r.requestingFunction}) — UAT`;
       if (['Hypercare', 'Completed'].includes(r.devStatus)) return 'Live in production';
       if (r.devStatus === 'Cancelled') return 'Cancelled in Dev Tracker';
-      if (!r.devDeveloper) return r.moduleLeadEmail === me.email ? 'You — assign a developer in Dev Tracker' : `Module Lead${r.moduleLeadEmail ? ` (${nameOf(r.moduleLeadEmail)})` : ''} — assign developer`;
+      if (!r.devDeveloper) return r.moduleLeadEmail === me.email ? 'You — assign a developer in Dev Tracker' : `Module Lead${r.moduleLeadEmail ? ` (${r.moduleLeadName || nameOf(r.moduleLeadEmail)})` : ''} — assign developer`;
       return `${r.devDeveloper} — ${r.devStatus || 'development'}`;
     default: return 'Closed';
   }

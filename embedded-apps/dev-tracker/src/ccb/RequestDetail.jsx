@@ -125,7 +125,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             <div className="ccb-section-label">Details</div>
             <DefinitionList rows={[
               ['Requesting function', r.requestingFunction],
-              ['Raised by', r.requestedBy],
+              ['Raised by', r.requestedByEmail ? <Person name={r.requestedBy} sub={r.requestedByEmail} /> : r.requestedBy],
               ['BRD reference', r.brdReference && (/^https?:\/\//.test(r.brdReference) ? <a href={r.brdReference} target="_blank" rel="noreferrer">{r.brdReference} <ExternalIcon size={11} /></a> : r.brdReference)],
               ['IT area', `${r.sapSystem}${r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}`],
               ['CCB category', <ScopePill category={r.category} categories={CATEGORY_META} />],
@@ -246,7 +246,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
           <Card title="People">
             <DefinitionList rows={[
               ['IT SPOC', <Person name={nameOf(r.loggedBy)} />],
-              ['Module Lead', r.moduleLeadEmail && <Person name={nameOf(r.moduleLeadEmail)} />],
+              ['Module Lead', r.moduleLeadEmail && <Person name={r.moduleLeadName || nameOf(r.moduleLeadEmail)} sub={r.moduleLeadEmail} />],
               ['Reviewer', r.reviewedBy && <Person name={nameOf(r.reviewedBy)} />],
               ['Decided by', r.decidedBy && <Person name={nameOf(r.decidedBy)} />],
             ]} />

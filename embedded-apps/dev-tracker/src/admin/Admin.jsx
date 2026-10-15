@@ -132,10 +132,14 @@ export default function Admin() {
         </div>
 
         <div className="card">
-        {CATEGORIES.map((cat) => {
+        {CATEGORIES.map((cat, i) => {
           const values = grouped[cat.key] || [];
+          const group = cat.group || 'Development';
+          const newGroup = i === 0 || group !== (CATEGORIES[i - 1].group || 'Development');
           return (
-            <div className="shelf" key={cat.key}>
+            <React.Fragment key={cat.key}>
+            {newGroup && <div className="shelf-group">{group}</div>}
+            <div className="shelf" id={`md-${cat.key}`}>
               <div className="shelf-head">
                 <span className="shelf-name">{cat.label}</span>
                 <span className="shelf-count">{values.length} values{cat.hasColor ? ' · drives color coding everywhere' : ''}</span>
@@ -195,6 +199,7 @@ export default function Admin() {
               </div>
               {addingCategory === cat.key && error && <div className="md-error">{error}</div>}
             </div>
+            </React.Fragment>
           );
         })}
         </div>

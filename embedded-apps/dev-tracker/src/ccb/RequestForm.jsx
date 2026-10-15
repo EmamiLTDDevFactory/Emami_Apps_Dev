@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
 import { apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
-import { Button, Field, Modal } from './ui.jsx';
+import { Button, DirectoryPicker, Field, Modal } from './ui.jsx';
 import { AREA_MODULES, CATEGORY_HELP, CATEGORY_META, IT_AREAS, PRIORITY_META, dateOnly } from './model.js';
 import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
 
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
   sapSystem: '', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
-  isEmergency: false, emergencyReason: '', moduleLeadEmail: '',
+  isEmergency: false, emergencyReason: '', moduleLeadEmail: '', moduleLeadName: '', requestedByEmail: '',
 };
 
 /** Log (or edit) a change request. `request` set = edit mode. */
@@ -18,6 +18,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const [form, setForm] = useState(() => (editing ? {
     ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, request[k] ?? EMPTY[k]])),
     requiredBy: dateOnly(request.requiredBy), moduleLeadEmail: request.moduleLeadEmail || '',
+    moduleLeadName: request.moduleLeadName || request.moduleLeadEmail || '', requestedByEmail: request.requestedByEmail || '',
   } : EMPTY));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -26,18 +27,6 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
   // Requesting functions are maintained by admins in Master Data (category 'requestingFunction').
-  // The IT SPOC's upline for this request — only people holding the Module Lead role. A Module Lead
-  // logging their own request is preselected.
-  const [moduleLeads, setModuleLeads] = useState(null);
-  useEffect(() => {
-    ccbApi.people('Module Lead')
-      .then((d) => {
-        setModuleLeads(d.people);
-        const me = getCurrentUserEmail();
-        if (!editing && d.people.some((p) => p.email === me)) setForm((f) => (f.moduleLeadEmail ? f : { ...f, moduleLeadEmail: me }));
-      })
-      .catch(() => setModuleLeads([]));
-  }, [editing]);
   const [functions, setFunctions] = useState(null);
   useEffect(() => {
     apiMasterData(getCurrentUserEmail())
@@ -49,9 +38,15 @@ export default function RequestForm({ request, onClose, onSaved }) {
 
   async function save(intent) {
     setError('');
+    // Older requests keep a typed name until someone changes it.
+    if (form.requestedBy && !form.requestedByEmail && form.requestedBy !== request?.requestedBy) return setError('Pick the person who raised the requirement from the directory list.');
+    if (form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the directory list, or clear the field.');
     setBusy(intent);
     try {
-      const payload = { ...form, requiredBy: form.requiredBy || null, moduleLeadEmail: form.moduleLeadEmail || null };
+      const payload = {
+        ...form, requiredBy: form.requiredBy || null,
+        moduleLeadEmail: form.moduleLeadEmail || null, moduleLeadName: form.moduleLeadEmail ? form.moduleLeadName : null, requestedByEmail: form.requestedByEmail || null,
+      };
       const d = editing ? await ccbApi.updateRequest(request.id, payload) : await ccbApi.createRequest(payload, intent);
       onSaved(d.request, intent);
     } catch (e) {
@@ -93,8 +88,11 @@ export default function RequestForm({ request, onClose, onSaved }) {
               {functionOptions.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </Field>
-          <Field label="Raised by (function)" required hint="Who raised the requirement in the function.">
-            <input className="ccb-input" value={form.requestedBy} onChange={set('requestedBy')} placeholder="Name of the requester" />
+          <Field label="Raised by (function)" required group hint="Search the Emami directory and pick the person who raised the requirement.">
+            <DirectoryPicker
+              value={{ name: form.requestedBy, email: form.requestedByEmail }}
+              onChange={(p) => setForm((f) => ({ ...f, requestedBy: p.name, requestedByEmail: p.email }))}
+            />
           </Field>
           <Field label="BRD reference" hint="Document number or link to the Business Requirement Document." wide>
             <input className="ccb-input" value={form.brdReference} onChange={set('brdReference')} placeholder="e.g. BRD-FIN-2026-014 or a SharePoint link" />
@@ -183,12 +181,11 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
           </Field>
-          <Field label="Module Lead" wide hint={moduleLeads && !moduleLeads.length ? 'No Module Leads set up yet — assign the role in the Emami Apps Admin Center.' : 'The IT SPOC’s upline. Assigns the developer once the request is approved and gets its updates.'}>
-            <select className="ccb-select" value={form.moduleLeadEmail} onChange={set('moduleLeadEmail')} disabled={moduleLeads === null}>
-              <option value="">{moduleLeads === null ? 'Loading…' : 'Select the Module Lead'}</option>
-              {form.moduleLeadEmail && moduleLeads && !moduleLeads.some((p) => p.email === form.moduleLeadEmail) && <option value={form.moduleLeadEmail}>{form.moduleLeadEmail}</option>}
-              {(moduleLeads || []).map((p) => <option key={p.email} value={p.email}>{p.name}{p.name !== p.email ? ` · ${p.email}` : ''}</option>)}
-            </select>
+          <Field label="Module Lead" wide group hint="The IT SPOC’s upline — search the Emami directory. Assigns the developer once the request is approved and gets its updates.">
+            <DirectoryPicker
+              value={{ name: form.moduleLeadName, email: form.moduleLeadEmail }}
+              onChange={(p) => setForm((f) => ({ ...f, moduleLeadName: p.name, moduleLeadEmail: p.email }))}
+            />
           </Field>
         </div>
         <label className="ccb-switch" style={{ marginTop: 14 }}>

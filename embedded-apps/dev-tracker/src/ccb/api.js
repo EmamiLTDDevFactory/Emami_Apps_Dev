@@ -60,3 +60,13 @@ export const ccbApi = {
   updateAction: (id, fields) => call(`/actions/${id}`, { method: 'PUT', body: fields }),
   insights: () => call('/insights'),
 };
+
+/** People search over Emami's directory (Microsoft Entra ID via the hub backend, backend/orgProfile.js). */
+export async function searchDirectory(q) {
+  let token = null;
+  try { token = localStorage.getItem(HUB_TOKEN_STORAGE_KEY); } catch { /* storage blocked */ }
+  const res = await fetch(`${ACCESS_API_BASE}/me/directory-search?q=${encodeURIComponent(q)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.success) throw new CcbError(data?.error || 'Could not search the directory.', res.status);
+  return data;
+}
