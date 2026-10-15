@@ -61,7 +61,7 @@ export const ccbApi = {
   insights: () => call('/insights'),
 };
 
-/** People search over Emami's directory (Microsoft Entra ID via the hub backend, backend/orgProfile.js). */
+/** People search over active Emami Apps users (Admin Center), names from Entra ID — backend/orgProfile.js. */
 export async function searchDirectory(q) {
   let token = null;
   try { token = localStorage.getItem(HUB_TOKEN_STORAGE_KEY); } catch { /* storage blocked */ }

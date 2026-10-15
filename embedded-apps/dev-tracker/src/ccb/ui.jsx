@@ -273,7 +273,7 @@ export function Prose({ children }) {
 }
 
 /**
- * Type-ahead over Emami's directory (Entra ID). Typing searches live; picking a person calls
+ * Type-ahead over the active Emami Apps user base (Admin Center), names from Entra ID. Typing searches live; picking a person calls
  * onChange({ name, email }). `value` is { name, email }; typing clears the email until a person is picked,
  * so a saved field always holds a directory person (name typed by hand only when the directory is unavailable).
  */
@@ -332,10 +332,10 @@ export function DirectoryPicker({ value, onChange, placeholder = 'Search by name
       </div>
       {open && text.trim().length >= 2 && !(value?.email && text === value.name) && (
         <div className="ccb-picker-menu" role="listbox">
-          {state === 'loading' && <div className="ccb-picker-note"><span className="ccb-spin" /> Searching the directory…</div>}
-          {state === 'error' && <div className="ccb-picker-note">Directory search is unavailable right now.</div>}
-          {state === 'off' && <div className="ccb-picker-note">Directory search is not configured on this server.</div>}
-          {state === 'done' && !results.length && <div className="ccb-picker-note">No one in the directory matches “{text.trim()}”.</div>}
+          {state === 'loading' && <div className="ccb-picker-note"><span className="ccb-spin" /> Searching Emami Apps users…</div>}
+          {state === 'error' && <div className="ccb-picker-note">User search is unavailable right now.</div>}
+          {state === 'off' && <div className="ccb-picker-note">User search is not available on this server.</div>}
+          {state === 'done' && !results.length && <div className="ccb-picker-note">No active Emami Apps user matches “{text.trim()}”.</div>}
           {state === 'done' && results.map((p, i) => (
             <button type="button" role="option" aria-selected={i === active} key={p.email} className={`ccb-picker-row${i === active ? ' active' : ''}`}
               onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>

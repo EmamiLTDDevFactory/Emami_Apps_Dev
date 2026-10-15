@@ -12,17 +12,20 @@
  *   GET https://graph.microsoft.com/v1.0/users?$filter=mail eq '<email>' or userPrincipalName eq '<email>'
  *       &$select=id,displayName,jobTitle,department,businessPhones,mobilePhone
  *
- * Also a people search over the same directory, for pickers such as the Change Control Board's "Raised by" and
- * "Module Lead" fields (any signed-in Emami Apps user; enabled member accounts only, max 10):
+ * Also a people search for pickers such as the Change Control Board's "Raised by" and "Module Lead" fields. It
+ * searches only the Emami Apps user base — ACTIVE people in the Admin Center (emami_apps.authorized_users) — with
+ * names, titles and departments filled in from Entra ID where the directory has them (most people in the Admin
+ * Center have never signed in, so the hub itself has no name for them). Any signed-in Emami Apps user; max 10:
  *
  *   GET /me/directory-search?q=<name or email>  -> { success, configured, people: [{ name, email, jobTitle, department }] }
- *   (Graph: GET /users?$search="displayName:<q>" OR "mail:<q>"&$filter=accountEnabled eq true and userType eq 'Member',
- *    with ConsistencyLevel: eventual — needs only the User.Read.All permission already granted.)
+ *   (Graph: GET /users?$filter=mail in ('a','b',…)&$select=mail,userPrincipalName,displayName,jobTitle,department,
+ *    7 emails per call, cached — the User.Read.All permission already granted.)
  *
  * Env: GRAPH_TENANT_ID (defaults to Emami's tenant, the one in azure-idp-metadata.xml), GRAPH_CLIENT_ID,
  * GRAPH_CLIENT_SECRET. Without the client id/secret the route answers configured:false and the page hides the card.
  */
 const express = require('express');
+const { pool } = require('./db');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./sessionAuth');
 
@@ -105,31 +108,58 @@ async function lookup(email) {
     return org;
 }
 
-const SEARCH_TTL_MS = 10 * 60 * 1000;
-const searchCache = new Map(); // query -> { at, people }
+const BASE_TTL_MS = 5 * 60 * 1000;
+let userBase = { at: 0, people: [], loading: null };
+
+/** Active Admin Center users, each with the best name we have (Entra ID, else the hub, else the email). */
+async function loadUserBase() {
+    const { rows } = await pool.query(`
+        SELECT lower(a.email) AS email, u.name
+          FROM emami_apps.authorized_users a
+          LEFT JOIN emami_apps.users u ON lower(u.email) = lower(a.email)
+         WHERE a.is_active = true`);
+    const ad = new Map();
+    if (configured()) {
+        const emails = rows.map((r) => r.email).filter((e) => EMAIL_RE.test(e));
+        // 7 emails per call: "mail in (…) or userPrincipalName in (…)" counts each email twice against Graph's 15-term limit.
+        for (let i = 0; i < emails.length; i += 7) {
+            const chunk = emails.slice(i, i + 7).map((e) => `'${e.replace(/'/g, "''")}'`).join(',');
+            const params = new URLSearchParams({ $filter: `mail in (${chunk}) or userPrincipalName in (${chunk})`, $select: 'mail,userPrincipalName,displayName,jobTitle,department' });
+            try {
+                const res = await fetch(`https://graph.microsoft.com/v1.0/users?${params}`, { headers: { Authorization: `Bearer ${await graphToken()}` } });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(`Graph ${res.status} ${data?.error?.code || ''}`.trim());
+                for (const u of data.value || []) {
+                    for (const key of [u.mail, u.userPrincipalName]) if (key) ad.set(String(key).toLowerCase(), u);
+                }
+            } catch (err) {
+                console.error('[org-profile] User base enrichment failed:', err.message);
+            }
+        }
+    }
+    const fromEmail = (e) => e.split('@')[0].split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+    return rows.map((r) => {
+        const u = ad.get(r.email);
+        return { name: u?.displayName || r.name || fromEmail(r.email), email: r.email, jobTitle: u?.jobTitle || null, department: u?.department || null };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function getUserBase() {
+    if (Date.now() - userBase.at < BASE_TTL_MS) return userBase.people;
+    if (!userBase.loading) {
+        userBase.loading = loadUserBase()
+            .then((people) => { userBase = { at: Date.now(), people, loading: null }; return people; })
+            .catch((err) => { userBase.loading = null; throw err; });
+    }
+    return userBase.loading;
+}
+
+/** Matches every word of the query against the name or the email. */
 async function searchDirectory(q) {
-    const hit = searchCache.get(q);
-    if (hit && Date.now() - hit.at < SEARCH_TTL_MS) return hit.people;
-    const term = q.replace(/["\\]/g, '');
-    const params = new URLSearchParams({
-        $search: `"displayName:${term}" OR "mail:${term}"`,
-        $filter: "accountEnabled eq true and userType eq 'Member'",
-        $select: 'displayName,mail,userPrincipalName,jobTitle,department',
-        $top: '10',
-        $count: 'true',
-    });
-    const res = await fetch(`https://graph.microsoft.com/v1.0/users?${params}`, {
-        headers: { Authorization: `Bearer ${await graphToken()}`, ConsistencyLevel: 'eventual' },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(`Graph ${res.status} ${data?.error?.code || ''}`.trim());
-    const people = (data.value || [])
-        .map((u) => ({ name: u.displayName || '', email: String(u.mail || u.userPrincipalName || '').toLowerCase(), jobTitle: u.jobTitle || null, department: u.department || null }))
-        .filter((p) => p.name && EMAIL_RE.test(p.email))
-        .sort((a, b) => a.name.localeCompare(b.name));
-    if (searchCache.size > 500) searchCache.clear();
-    searchCache.set(q, { at: Date.now(), people });
-    return people;
+    const words = q.split(/\s+/).filter(Boolean);
+    return (await getUserBase())
+        .filter((p) => { const hay = `${p.name} ${p.email}`.toLowerCase(); return words.every((w) => hay.includes(w)); })
+        .slice(0, 10);
 }
 
 /** The verified email from an Emami Apps session token, or '' (magic-link tokens carry a `purpose` and are refused). */
@@ -148,13 +178,12 @@ const router = express.Router();
 router.get('/me/directory-search', async (req, res) => {
     if (!sessionEmail(req)) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
     const q = String(req.query.q || '').trim().toLowerCase().slice(0, 60);
-    if (!configured()) return res.json({ success: true, configured: false, people: [] });
     if (q.length < 2) return res.json({ success: true, configured: true, people: [] });
     try {
         res.json({ success: true, configured: true, people: await searchDirectory(q) });
     } catch (err) {
-        console.error('[org-profile] Directory search failed:', err.message);
-        res.status(502).json({ success: false, configured: true, error: 'Could not search the directory right now.' });
+        console.error('[org-profile] User search failed:', err.message);
+        res.status(502).json({ success: false, configured: true, error: 'Could not search Emami Apps users right now.' });
     }
 });
 

@@ -661,6 +661,16 @@ router.get('/requests/:key', async (req, res) => {
     }
 });
 
+/** People picked for a request (Raised by, Module Lead) must be active users in the Emami Apps Admin Center. */
+async function assertActiveUsers(f, before = {}) {
+    for (const [key, label] of [['requestedByEmail', 'Raised by'], ['moduleLeadEmail', 'Module Lead']]) {
+        const email = f[key];
+        if (!email || email === (before[key] || null)) continue;
+        const { rows } = await pool.query('SELECT 1 FROM emami_apps.authorized_users WHERE lower(email) = $1 AND is_active = true', [email]);
+        if (!rows.length) throw new HttpError(400, `${label}: pick an active Emami Apps user from the list.`);
+    }
+}
+
 /** Validates the editable request fields; `partial` allows a subset (edits). */
 function readRequestFields(b, partial = false) {
     const f = {};
@@ -703,6 +713,7 @@ router.post('/requests', async (req, res) => {
     if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or the IT Application Head can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
+        await assertActiveUsers(f);
         const submitNow = req.body?.intent === 'submit';
         const now = new Date();
         const cols = { ...f, status: submitNow ? 'feasibility_review' : 'draft', loggedBy: req.verifiedEmail, submittedAt: submitNow ? now : null };
@@ -733,6 +744,7 @@ router.put('/requests/:id', async (req, res) => {
         if (!r) return res.status(404).json({ success: false, error: 'Change request not found.' });
         if (!availableActions(r, req).includes('edit')) return res.status(403).json({ success: false, error: 'You cannot edit this request at its current stage.' });
         const f = readRequestFields(req.body || {}, true);
+        await assertActiveUsers(f, r);
         const changed = Object.keys(f).filter((k) => JSON.stringify(f[k] ?? null) !== JSON.stringify(k === 'requiredBy' && r[k] ? new Date(r[k]).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : r[k] ?? null));
         if (!changed.length) return res.json({ success: true, request: r });
         const updated = await withTransaction(async (db) => {

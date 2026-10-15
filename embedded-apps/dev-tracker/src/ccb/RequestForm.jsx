@@ -39,8 +39,8 @@ export default function RequestForm({ request, onClose, onSaved }) {
   async function save(intent) {
     setError('');
     // Older requests keep a typed name until someone changes it.
-    if (form.requestedBy && !form.requestedByEmail && form.requestedBy !== request?.requestedBy) return setError('Pick the person who raised the requirement from the directory list.');
-    if (form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the directory list, or clear the field.');
+    if (form.requestedBy && !form.requestedByEmail && form.requestedBy !== request?.requestedBy) return setError('Pick the person who raised the requirement from the list of Emami Apps users.');
+    if (form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the list of Emami Apps users, or clear the field.');
     setBusy(intent);
     try {
       const payload = {
@@ -88,7 +88,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
               {functionOptions.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </Field>
-          <Field label="Raised by (function)" required group hint="Search the Emami directory and pick the person who raised the requirement.">
+          <Field label="Raised by (function)" required group hint="Search active Emami Apps users and pick the person who raised the requirement.">
             <DirectoryPicker
               value={{ name: form.requestedBy, email: form.requestedByEmail }}
               onChange={(p) => setForm((f) => ({ ...f, requestedBy: p.name, requestedByEmail: p.email }))}
@@ -181,7 +181,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
           </Field>
-          <Field label="Module Lead" wide group hint="The IT SPOC’s upline — search the Emami directory. Assigns the developer once the request is approved and gets its updates.">
+          <Field label="Module Lead" wide group hint="The IT SPOC’s upline — search active Emami Apps users. Assigns the developer once the request is approved and gets its updates.">
             <DirectoryPicker
               value={{ name: form.moduleLeadName, email: form.moduleLeadEmail }}
               onChange={(p) => setForm((f) => ({ ...f, moduleLeadName: p.name, moduleLeadEmail: p.email }))}
