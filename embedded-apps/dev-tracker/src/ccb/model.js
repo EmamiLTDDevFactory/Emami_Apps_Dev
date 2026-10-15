@@ -67,7 +67,8 @@ export const MEETING_STATUS_META = {
 };
 
 export const ROLE_META = {
-  'IT SPOC': { tone: 'blue', duty: 'Reviews the requirement, logs it in the CCB application and categorises it against the CCB scope; owns the request through delivery and assigns the developer once it is approved.' },
+  'IT SPOC': { tone: 'blue', duty: 'Reviews the requirement, logs it in the CCB application and categorises it against the CCB scope for the next meeting. Reports to a Module Lead.' },
+  'Module Lead': { tone: 'teal', duty: 'Upline of the IT SPOCs in their module or system. Named on each request, assigns the developer once it is approved, and follows the team’s requests through delivery.' },
   'IT Application Head': { tone: 'purple', duty: 'Checks scope and feasibility, including the impact on other systems and modules; recommends and puts items up to the CCB; updates requests after CCB discussion and initiates or terminates development.' },
   'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance, decisions and minutes.' },
   'CCB Member': { tone: 'green', duty: 'Approves, rejects or modifies in-scope change requests. Counts toward quorum.' },
@@ -96,7 +97,7 @@ export const PROCESS_STEPS = [
   { key: 'categorise', label: 'Categorised against CCB scope', sub: 'IT SPOC', isNew: true },
   { key: 'feasibility', label: 'Scope & feasibility check', sub: 'IT Application Head', isNew: true },
   { key: 'ccb', label: 'CCB decision', sub: 'approve, reject or modify', isNew: true },
-  { key: 'assign', label: 'Developer assigned', sub: 'IT SPOC' },
+  { key: 'assign', label: 'Developer assigned', sub: 'Module Lead' },
   { key: 'build', label: 'Developer builds the change', sub: 'config, code, unit test' },
   { key: 'uat', label: 'Function performs UAT', sub: 'user acceptance' },
   { key: 'transport', label: 'Deployed & verified', sub: 'release to production' },

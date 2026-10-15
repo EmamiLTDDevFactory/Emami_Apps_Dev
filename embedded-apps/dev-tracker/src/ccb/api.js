@@ -32,7 +32,7 @@ async function call(path, { method = 'GET', body } = {}) {
 
 export const ccbApi = {
   me: () => call('/me'),
-  people: () => call('/people'),
+  people: (role) => call(role ? `/people?role=${encodeURIComponent(role)}` : '/people'),
   overview: () => call('/overview'),
   requests: () => call('/requests'),
   request: (key) => call(`/requests/${encodeURIComponent(key)}`),

@@ -22,12 +22,14 @@ const { recordAccessChange } = require('./accessHistory');
           - urgent/critical -> emergency approval, CCB informed within 5 business days and the
                                approval ratified at the next CCB meeting
      5  CCB approves, approves with modifications, rejects or defers — in a meeting with quorum
-     6-9 IT SPOC assigns a developer, build, UAT, release — tracked in Dev Tracker: every
+     6-9 Module Lead assigns a developer, build, UAT, release — tracked in Dev Tracker: every
         approval creates the Dev Tracker assignment in the same transaction.
 
    Access: anyone with a Dev Tracker grant (Manage Access) can open the CCB register. What they may
    do comes from their CCB roles (ccb.roles, assigned in the Emami Apps Admin Center - ccbRolesAdminRouter):
-     IT SPOC              log, categorise, submit and withdraw requests
+     IT SPOC              log, categorise, submit and withdraw requests; reports to a Module Lead
+     Module Lead          the IT SPOCs' upline: picked on each request, assigns the developer once it is
+                          approved, can log requests too, and gets the same updates as the IT SPOC
      IT Application Head  feasibility review, recommend / return / reject, out-of-scope and
                           emergency approval, edit requests after CCB discussion, terminate
      CCB Secretary        schedule meetings, run them (attendance, decisions, minutes)
@@ -52,8 +54,8 @@ function verifiedHubEmail(req) {
 const q = (col) => `"${col}"`;
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 
-const ROLES = ['IT SPOC', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
-const LOGGER_ROLES = ['IT SPOC', 'IT Application Head'];
+const ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head', 'CCB Secretary', 'CCB Member'];
+const LOGGER_ROLES = ['IT SPOC', 'Module Lead', 'IT Application Head'];
 const CATEGORIES = {
     major: { inScope: true, label: 'Major CR / project' },
     financial: { inScope: true, label: 'Financial impact' },
@@ -259,9 +261,6 @@ async function initSchema() {
     await pool.query('ALTER TABLE ccb.roles DROP CONSTRAINT IF EXISTS roles_role_check');
     await pool.query(`DELETE FROM ccb.roles o WHERE o.role = 'SAP Module Lead' AND EXISTS (SELECT 1 FROM ccb.roles n WHERE n.email = o.email AND n.role = 'Module Lead')`);
     await pool.query(`UPDATE ccb.roles SET role = 'Module Lead' WHERE role = 'SAP Module Lead'`);
-    // Module Lead was merged into IT SPOC (one role logs requests, owns them and assigns the developer).
-    await pool.query(`DELETE FROM ccb.roles o WHERE o.role = 'Module Lead' AND EXISTS (SELECT 1 FROM ccb.roles n WHERE n.email = o.email AND n.role = 'IT SPOC')`);
-    await pool.query(`UPDATE ccb.roles SET role = 'IT SPOC' WHERE role = 'Module Lead'`);
     await pool.query(`ALTER TABLE ccb.roles ADD CONSTRAINT roles_role_check CHECK (role IN (${sqlList(ROLES)}))`);
     // Last Dev Tracker state the SPOC was told about (status / developer / overdue target) — see watchDelivery().
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "devSeen" jsonb');
@@ -417,7 +416,7 @@ const MODULE_TO_AREA = { SD: 'SD', FI: 'FI-AR', MM: 'MM', PP: 'PP', WM: 'WM' };
  * Lead assigning one in Dev Tracker. Columns mirror devTracker.js's POST /items.
  */
 async function createDevTrackerAssignment(db, r, approverEmail) {
-    const names = await namesFor([r.loggedBy, approverEmail]);
+    const names = await namesFor([r.loggedBy, approverEmail, r.moduleLeadEmail]);
     const nameOf = (e) => (e ? names[e] || e : null);
     const approver = nameOf(approverEmail);
     const route = { ccb: 'CCB approval', out_of_scope: 'IT Application Head approval (outside CCB scope)', emergency: 'Emergency approval by IT Application Head (CCB ratification pending)' }[r.approvalRoute];
@@ -427,6 +426,7 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         `Requesting function: ${r.requestingFunction} (${r.requestedBy})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
         `IT area: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
         r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
+        r.moduleLeadEmail && `Module Lead (assigns the developer): ${nameOf(r.moduleLeadEmail)}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
     ].filter(Boolean).join('\n\n');
 
@@ -513,6 +513,14 @@ router.get('/me', async (req, res) => {
 /** Everyone with a Dev Tracker grant, plus anyone already holding a CCB role. */
 router.get('/people', async (req, res) => {
     try {
+        // ?role=Module Lead -> just the people holding that CCB role (the Module Lead picker on a request).
+        if (ROLES.includes(req.query.role)) {
+            const { rows } = await pool.query(`
+                SELECT r.email, COALESCE(u.name, r.email) AS name, true AS "hasAccess"
+                  FROM ccb.roles r LEFT JOIN emami_apps.users u ON u.email = r.email
+                 WHERE r.role = $1 ORDER BY 2`, [req.query.role]);
+            return res.json({ success: true, people: rows });
+        }
         const { rows } = await pool.query(`
             SELECT p.email, COALESCE(u.name, p.email) AS name, bool_or(p.has_access) AS "hasAccess"
               FROM (SELECT email, true AS has_access FROM emami_apps.authorized_user_apps WHERE app_id = $1
@@ -650,6 +658,13 @@ router.get('/requests/:key', async (req, res) => {
     }
 });
 
+/** A request's Module Lead must actually hold the Module Lead role. */
+async function assertModuleLead(email) {
+    if (!email) return;
+    const { rows } = await pool.query(`SELECT 1 FROM ccb.roles WHERE email = $1 AND role = 'Module Lead'`, [email]);
+    if (!rows.length) throw new HttpError(400, 'Choose a Module Lead from the list (the person must hold the Module Lead role).');
+}
+
 /** Validates the editable request fields; `partial` allows a subset (edits). */
 function readRequestFields(b, partial = false) {
     const f = {};
@@ -685,9 +700,10 @@ function readRequestFields(b, partial = false) {
 }
 
 router.post('/requests', async (req, res) => {
-    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC or the IT Application Head can log a change request.' });
+    if (!has(req, ...LOGGER_ROLES)) return res.status(403).json({ success: false, error: 'Only an IT SPOC, Module Lead or the IT Application Head can log a change request.' });
     try {
         const f = readRequestFields(req.body || {});
+        await assertModuleLead(f.moduleLeadEmail);
         const submitNow = req.body?.intent === 'submit';
         const now = new Date();
         const cols = { ...f, status: submitNow ? 'feasibility_review' : 'draft', loggedBy: req.verifiedEmail, submittedAt: submitNow ? now : null };
@@ -718,6 +734,7 @@ router.put('/requests/:id', async (req, res) => {
         if (!r) return res.status(404).json({ success: false, error: 'Change request not found.' });
         if (!availableActions(r, req).includes('edit')) return res.status(403).json({ success: false, error: 'You cannot edit this request at its current stage.' });
         const f = readRequestFields(req.body || {}, true);
+        if ('moduleLeadEmail' in f && f.moduleLeadEmail !== (r.moduleLeadEmail || null)) await assertModuleLead(f.moduleLeadEmail);
         const changed = Object.keys(f).filter((k) => JSON.stringify(f[k] ?? null) !== JSON.stringify(k === 'requiredBy' && r[k] ? new Date(r[k]).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : r[k] ?? null));
         if (!changed.length) return res.json({ success: true, request: r });
         const updated = await withTransaction(async (db) => {
@@ -1495,10 +1512,12 @@ function ccbRolesAdminRouter(requireAccessManager) {
 
 const requestPath = (r) => `/apps/dev-tracker/ccb/requests/?cr=${encodeURIComponent(r.crNo)}`;
 
-/** Tells the IT SPOC who logged `r` about a milestone (never about something they did themselves). */
+/** Tells the IT SPOC who logged `r`, and their Module Lead, about a milestone (never about something they did themselves). */
 function notifySpoc(r, actorEmail, { kind = 'info', title, body = '', refKey = null }) {
-    if (!r?.loggedBy || r.loggedBy === actorEmail) return;
-    notify({ email: r.loggedBy, appId: HOST_APP_ID, kind, title: `${r.crNo}: ${title}`, body: body ? `${r.title}\n${body}` : r.title, link: requestPath(r), refKey });
+    for (const email of new Set([r?.loggedBy, r?.moduleLeadEmail].filter(Boolean))) {
+        if (email === actorEmail) continue;
+        notify({ email, appId: HOST_APP_ID, kind, title: `${r.crNo}: ${title}`, body: body ? `${r.title}\n${body}` : r.title, link: requestPath(r), refKey });
+    }
 }
 
 function notifyAction(action, r, actorEmail, note) {

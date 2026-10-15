@@ -9,7 +9,7 @@ import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
   sapSystem: '', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
-  isEmergency: false, emergencyReason: '',
+  isEmergency: false, emergencyReason: '', moduleLeadEmail: '',
 };
 
 /** Log (or edit) a change request. `request` set = edit mode. */
@@ -17,7 +17,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const editing = !!request;
   const [form, setForm] = useState(() => (editing ? {
     ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, request[k] ?? EMPTY[k]])),
-    requiredBy: dateOnly(request.requiredBy),
+    requiredBy: dateOnly(request.requiredBy), moduleLeadEmail: request.moduleLeadEmail || '',
   } : EMPTY));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -26,6 +26,18 @@ export default function RequestForm({ request, onClose, onSaved }) {
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
   // Requesting functions are maintained by admins in Master Data (category 'requestingFunction').
+  // The IT SPOC's upline for this request — only people holding the Module Lead role. A Module Lead
+  // logging their own request is preselected.
+  const [moduleLeads, setModuleLeads] = useState(null);
+  useEffect(() => {
+    ccbApi.people('Module Lead')
+      .then((d) => {
+        setModuleLeads(d.people);
+        const me = getCurrentUserEmail();
+        if (!editing && d.people.some((p) => p.email === me)) setForm((f) => (f.moduleLeadEmail ? f : { ...f, moduleLeadEmail: me }));
+      })
+      .catch(() => setModuleLeads([]));
+  }, [editing]);
   const [functions, setFunctions] = useState(null);
   useEffect(() => {
     apiMasterData(getCurrentUserEmail())
@@ -39,7 +51,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
     setError('');
     setBusy(intent);
     try {
-      const payload = { ...form, requiredBy: form.requiredBy || null };
+      const payload = { ...form, requiredBy: form.requiredBy || null, moduleLeadEmail: form.moduleLeadEmail || null };
       const d = editing ? await ccbApi.updateRequest(request.id, payload) : await ccbApi.createRequest(payload, intent);
       onSaved(d.request, intent);
     } catch (e) {
@@ -170,6 +182,13 @@ export default function RequestForm({ request, onClose, onSaved }) {
           </Field>
           <Field label="Required by">
             <input className="ccb-input" type="date" value={form.requiredBy} onChange={set('requiredBy')} />
+          </Field>
+          <Field label="Module Lead" wide hint={moduleLeads && !moduleLeads.length ? 'No Module Leads set up yet — assign the role in the Emami Apps Admin Center.' : 'The IT SPOC’s upline. Assigns the developer once the request is approved and gets its updates.'}>
+            <select className="ccb-select" value={form.moduleLeadEmail} onChange={set('moduleLeadEmail')} disabled={moduleLeads === null}>
+              <option value="">{moduleLeads === null ? 'Loading…' : 'Select the Module Lead'}</option>
+              {form.moduleLeadEmail && moduleLeads && !moduleLeads.some((p) => p.email === form.moduleLeadEmail) && <option value={form.moduleLeadEmail}>{form.moduleLeadEmail}</option>}
+              {(moduleLeads || []).map((p) => <option key={p.email} value={p.email}>{p.name}{p.name !== p.email ? ` · ${p.email}` : ''}</option>)}
+            </select>
           </Field>
         </div>
         <label className="ccb-switch" style={{ marginTop: 14 }}>

@@ -64,7 +64,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
   const [fn, setFn] = useState('');
   const [mine, setMine] = useState(false);
   const [toast, showToast] = useToast();
-  // People who log requests (IT SPOC) land on their own requests; everyone else on the register.
+  // People who log requests (IT SPOC / Module Lead) land on their own and their team's requests; everyone else on the register.
   const [view, setView] = useState(initialView === 'all' || initialView === 'mine' ? initialView : me.can.log ? 'mine' : 'all');
 
   const load = useCallback(() => {
@@ -119,7 +119,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
 
       <div className="ccb-viewswitch" role="tablist">
         <button type="button" role="tab" aria-selected={view === 'mine'} className={view === 'mine' ? 'active' : ''} onClick={() => setView('mine')}>
-          My requests <span>{data.requests.filter((r) => r.loggedBy === me.email).length}</span>
+          My requests <span>{data.requests.filter((r) => r.loggedBy === me.email || r.moduleLeadEmail === me.email).length}</span>
         </button>
         <button type="button" role="tab" aria-selected={view === 'all'} className={view === 'all' ? 'active' : ''} onClick={() => setView('all')}>
           All requests <span>{data.requests.length}</span>
@@ -128,7 +128,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
 
       {view === 'mine' ? (
         data.loading ? <Loading /> : data.error ? <Blocker error={data.error} onRetry={load} /> : (
-          <MyRequests requests={data.requests.filter((r) => r.loggedBy === me.email)} names={data.names} canLog={me.can.log} onOpen={onOpen} onCreate={onCreate} />
+          <MyRequests me={me} requests={data.requests.filter((r) => r.loggedBy === me.email || r.moduleLeadEmail === me.email)} names={data.names} canLog={me.can.log} onOpen={onOpen} onCreate={onCreate} />
         )
       ) : (
       <Card pad={false}>
@@ -193,7 +193,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
       )}
       {!me.can.log && (
         <p className="ccb-muted" style={{ fontSize: 11.5, marginTop: 12 }}>
-          You can view the register. Logging requests needs the IT SPOC or IT Application Head role, assigned in the Emami Apps Admin Center.
+          You can view the register. Logging requests needs the IT SPOC, Module Lead or IT Application Head role, assigned in the Emami Apps Admin Center.
         </p>
       )}
       {toast}
@@ -219,7 +219,7 @@ const NEEDS_ME = (r) => r.status === 'draft' || (r.status === 'approved' && r.de
 const DONE = (r) => isClosed(r) || isDelivered(r) || r.devStatus === 'Cancelled';
 
 /** Who the request is with right now, in plain words. */
-function withWhom(r, nameOf) {
+function withWhom(r, nameOf, me) {
   switch (r.status) {
     case 'draft': return r.returnNote ? 'You — returned for clarification' : 'You — draft';
     case 'feasibility_review': return 'IT Application Head — feasibility review';
@@ -228,7 +228,7 @@ function withWhom(r, nameOf) {
       if (r.devStatus === 'User Testing') return `You & ${r.requestedBy} (${r.requestingFunction}) — UAT`;
       if (['Hypercare', 'Completed'].includes(r.devStatus)) return 'Live in production';
       if (r.devStatus === 'Cancelled') return 'Cancelled in Dev Tracker';
-      if (!r.devDeveloper) return 'You — assign a developer in Dev Tracker';
+      if (!r.devDeveloper) return r.moduleLeadEmail === me.email ? 'You — assign a developer in Dev Tracker' : `Module Lead${r.moduleLeadEmail ? ` (${nameOf(r.moduleLeadEmail)})` : ''} — assign developer`;
       return `${r.devDeveloper} — ${r.devStatus || 'development'}`;
     default: return 'Closed';
   }
@@ -241,7 +241,7 @@ function isLate(r) {
   return !!r.requiredBy && dateOnly(r.requiredBy) < today;
 }
 
-function MyRequests({ requests, names, canLog, onOpen, onCreate }) {
+function MyRequests({ me, requests, names, canLog, onOpen, onCreate }) {
   const nameOf = (e) => (e ? names[e] || e : '');
   const groups = [
     { key: 'action', title: 'Needs your action', items: requests.filter(NEEDS_ME) },
@@ -281,7 +281,7 @@ function MyRequests({ requests, names, canLog, onOpen, onCreate }) {
                     {PROCESS_STEPS.map((s, i) => <i key={s.key} className={i < step ? 'on' : i === step && !DONE(r) ? 'now' : ''} />)}
                   </div>
                   <dl className="ccb-my-meta">
-                    <div><dt>With</dt><dd>{withWhom(r, nameOf)}</dd></div>
+                    <div><dt>With</dt><dd>{withWhom(r, nameOf, me)}</dd></div>
                     <div><dt>Target</dt><dd className={late ? 'late' : ''}>{target ? fmtDate(target) : '—'}</dd></div>
                     <div><dt>Updated</dt><dd>{relative(updated)}</dd></div>
                   </dl>

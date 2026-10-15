@@ -346,7 +346,7 @@ function DecisionDialog({ meeting, item, decision, onClose, onDone }) {
     <Modal title={`${meta.label} — ${item.crNo}`} sub={item.title} onClose={onClose}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant={meta.tone === 'red' ? 'danger-solid' : meta.tone === 'amber' ? 'primary' : 'success'} busy={busy} onClick={go}>Record decision</Button></>}>
       {(decision === 'approved' || decision === 'approved_with_modifications') && (
-        <div className="ccb-callout tone-green"><CheckCircleIcon size={15} /><span>Approval creates the <strong>Dev Tracker assignment</strong> straight away, for the IT SPOC to assign a developer.</span></div>
+        <div className="ccb-callout tone-green"><CheckCircleIcon size={15} /><span>Approval creates the <strong>Dev Tracker assignment</strong> straight away, for the Module Lead to assign a developer.</span></div>
       )}
       {decision === 'deferred' && (
         <div className="ccb-callout tone-amber"><ClockIcon size={15} /><span>The request stays with the CCB and is added to the next meeting’s agenda.</span></div>

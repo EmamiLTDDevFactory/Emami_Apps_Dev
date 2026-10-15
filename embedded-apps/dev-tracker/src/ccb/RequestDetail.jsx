@@ -213,7 +213,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
             </Card>
           )}
 
-          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · developer, build, UAT, go-live">
+          <Card title="Delivery in Dev Tracker" sub="Steps 6–9 · Module Lead, developer, UAT, go-live">
             {devItem ? (
               <>
                 <a className="ccb-delivery" href={devTrackerLink(devItem.issueNo)}>
@@ -246,6 +246,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
           <Card title="People">
             <DefinitionList rows={[
               ['IT SPOC', <Person name={nameOf(r.loggedBy)} />],
+              ['Module Lead', r.moduleLeadEmail && <Person name={nameOf(r.moduleLeadEmail)} />],
               ['Reviewer', r.reviewedBy && <Person name={nameOf(r.reviewedBy)} />],
               ['Decided by', r.decidedBy && <Person name={nameOf(r.decidedBy)} />],
             ]} />

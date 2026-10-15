@@ -82,7 +82,7 @@ function Dashboard({ me, ov, onCreate }) {
       r: { id: `a${a.id}`, title: a.title, crNo: a.crNo || 'Action item' }, tone: actionOverdue(a) ? 'red' : 'blue', icon: ClipboardIcon,
       text: a.dueDate ? `Your CCB action, due ${fmtDate(a.dueDate)}` : 'Your CCB action', href: `${ROUTES.ccbMeetings}`,
     }));
-    requests.filter((r) => r.status === 'approved' && r.loggedBy === me.email && !r.devDeveloper && r.devStatus === 'Not Started')
+    requests.filter((r) => r.status === 'approved' && (r.moduleLeadEmail ? r.moduleLeadEmail === me.email : r.loggedBy === me.email) && !r.devDeveloper && r.devStatus === 'Not Started')
       .forEach((r) => out.push({ r, tone: 'teal', icon: BoardIcon, text: 'Assign a developer in Dev Tracker', href: devTrackerLink(r.devTrackerIssueNo) }));
     return out;
   }, [requests, me, openActions]);

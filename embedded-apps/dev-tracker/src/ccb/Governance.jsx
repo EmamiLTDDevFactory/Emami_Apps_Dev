@@ -35,7 +35,7 @@ function Content({ me }) {
       if (!map.has(r.email)) map.set(r.email, { email: r.email, name: r.name, hasAccess: r.hasAccess, roles: [] });
       map.get(r.email).roles.push(r.role);
     });
-    const rank = (p) => Math.min(...p.roles.map((r) => ['CCB Member', 'CCB Secretary', 'IT Application Head', 'IT SPOC'].indexOf(r)));
+    const rank = (p) => Math.min(...p.roles.map((r) => ['CCB Member', 'CCB Secretary', 'IT Application Head', 'Module Lead', 'IT SPOC'].indexOf(r)));
     return [...map.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   }, [data.roles]);
   const board = byPerson.filter((p) => p.roles.some((r) => ['CCB Member', 'CCB Secretary'].includes(r)));
@@ -76,7 +76,7 @@ function Content({ me }) {
         ) : <div className="ccb-members">{board.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
-      <Card title="IT roles" sub="IT SPOCs and the IT Application Head">
+      <Card title="IT roles" sub="IT Application Head, Module Leads and the IT SPOCs who report to them">
         {others.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No IT roles assigned yet.</p> : <div className="ccb-members">{others.map((p) => <PersonCard key={p.email} p={p} />)}</div>}
       </Card>
 
