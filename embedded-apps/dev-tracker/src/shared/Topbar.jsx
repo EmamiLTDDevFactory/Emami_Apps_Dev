@@ -3,7 +3,7 @@ import { ROUTES } from './routes.js';
 import { goBack } from './Sidebar.jsx';
 import { clearHubSessionAndRedirect } from './AccountBar.jsx';
 import { initialsHome } from './utils.js';
-import { SearchIcon, BellIcon, PlusIcon } from './icons.jsx';
+import { SearchIcon, BellIcon } from './icons.jsx';
 import { useHubNotifications } from './useHubNotifications.js';
 
 /** Slim header for pages that put identity/search up top instead of in the sidebar
@@ -43,11 +43,6 @@ export default function Topbar({ email, name, roleLabel, notifications: localNot
     window.location.href = `${ROUTES.dashboard}?aiSearch=${encodeURIComponent(q)}#list`;
   }
 
-  function create() {
-    if (onCreate) onCreate();
-    else window.location.href = `${ROUTES.dashboard}?action=new`;
-  }
-
   return (
     <div className="topbar">
       {/* "Back to Emami Apps" lives in the sidebar footer; this one returns to the previous page. */}
@@ -67,9 +62,6 @@ export default function Topbar({ email, name, roleLabel, notifications: localNot
       </div>
 
       <div className="topbar-side">
-        <button type="button" className="topbar-create" onClick={create} title="Create issue">
-          <PlusIcon size={14} /> Create
-        </button>
         <div className="topbar-notif" ref={notifRef}>
           <button type="button" className="topbar-bell" title="Notifications" onClick={() => setNotifOpen((o) => !o)}>
             <BellIcon size={18} />
