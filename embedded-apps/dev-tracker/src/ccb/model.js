@@ -71,8 +71,8 @@ export const ROLE_META = {
   'IT SPOC': { tone: 'blue', duty: 'Reviews the requirement, logs it in the CCB application and categorises it against the CCB scope for the next meeting. Reports to a Module Lead.' },
   'Module Lead': { tone: 'teal', duty: 'Upline of the IT SPOCs in their module or system. Named on each request, assigns the developer once it is approved, and follows the team’s requests through delivery.' },
   'IT Application Head': { tone: 'purple', duty: 'Checks scope and feasibility, including the impact on other systems and modules; recommends and puts items up to the CCB; updates requests after CCB discussion and initiates or terminates development.' },
-  'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance, minutes, and records each decision the members’ majority vote supports.' },
-  'CCB Member': { tone: 'green', duty: 'Votes in the meeting to approve or reject each in-scope request (and to ratify emergency approvals). A majority of the members present decides. Counts toward quorum.' },
+  'CCB Secretary': { tone: 'indigo', duty: 'Schedules and runs CCB meetings: agenda, attendance and minutes, and records the Board’s decision on each item.' },
+  'CCB Member': { tone: 'green', duty: 'Reviews in-scope change requests and records a view (support, concerns or oppose); the Board decides together in the meeting — approve, reject or modify. Counts toward quorum.' },
 };
 export const ROLES = Object.keys(ROLE_META);
 

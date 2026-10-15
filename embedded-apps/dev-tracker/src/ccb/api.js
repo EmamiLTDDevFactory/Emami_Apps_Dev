@@ -54,7 +54,6 @@ export const ccbApi = {
   syncTeams: (id) => call(`/meetings/${id}/teams`, { method: 'POST', body: {} }),
   roles: () => call('/roles'),
   saveSettings: (fields) => call('/settings', { method: 'PUT', body: fields }),
-  vote: (id, itemId, vote, note) => call(`/meetings/${id}/items/${itemId}/vote`, { method: 'PUT', body: { vote, note } }),
   reviewItem: (id, itemId, position, note) => call(`/meetings/${id}/items/${itemId}/review`, { method: 'PUT', body: { position, note } }),
   actions: () => call('/actions'),
   addAction: (fields) => call('/actions', { method: 'POST', body: fields }),

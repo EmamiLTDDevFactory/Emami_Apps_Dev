@@ -30,7 +30,7 @@ const ACTIONS = {
 const ACTION_ORDER = ['submit', 'forward_to_head', 'return_to_spoc', 'recommend', 'approve_out_of_scope', 'mark_informed', 'approve_emergency', 'return', 'reject', 'terminate', 'withdraw'];
 
 const HISTORY_LABEL = {
-  forward_to_head: 'sent it to the IT Application Head', return_to_spoc: 'returned it to the IT SPOC for correction', ccb_vote: 'voted', ccb_vote_withdrawn: 'withdrew their vote',
+  forward_to_head: 'sent it to the IT Application Head', return_to_spoc: 'returned it to the IT SPOC for correction',
   logged: 'logged the request', submit: 'submitted it for feasibility review', edited: 'edited the request', withdraw: 'withdrew the request',
   return: 'returned it to the IT SPOC', reject: 'rejected it as not feasible', recommend: 'recommended it to the CCB',
   approve_out_of_scope: 'approved it (outside CCB scope)', approve_emergency: 'gave emergency approval', mark_informed: 'marked the CCB informed',

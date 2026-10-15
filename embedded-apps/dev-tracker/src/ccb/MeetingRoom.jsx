@@ -30,7 +30,6 @@ export default function MeetingRoom({ id, me, onBack }) {
   const [busy, setBusy] = useState('');
   const [toast, showToast] = useToast();
   const [reviewing, setReviewing] = useState(null); // { it, position }
-  const [voting, setVoting] = useState(null); // { it, vote } — a vote against needs a reason
   const [addingAction, setAddingAction] = useState(false);
 
   const load = useCallback(() => {
@@ -43,7 +42,7 @@ export default function MeetingRoom({ id, me, onBack }) {
   if (state.loading) return <Loading label="Opening meeting room…" />;
   if (state.error) return <Blocker error={state.error} onRetry={load} />;
 
-  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun, teamsConfigured, reviews = [], actions = [], canReview, tallies = {}, canVote = false } = state.detail;
+  const { meeting: m, items, attendance, people, names, quorum, notOnAgenda, canRun, teamsConfigured, reviews = [], actions = [], canReview } = state.detail;
   const reviewsOf = (itemId) => reviews.filter((v) => v.meetingItemId === itemId);
   const myEmail = (me?.email || '').toLowerCase();
   const open = ['scheduled', 'in_progress'].includes(m.status);
@@ -143,7 +142,7 @@ export default function MeetingRoom({ id, me, onBack }) {
         <div className="ccb-banner warn ccb-no-print"><AlertIcon size={15} /><span className="grow"><strong>Quorum not met.</strong> Mark at least {quorum.required} CCB members present before recording decisions ({quorum.present} so far).</span></div>
       )}
       {m.status === 'scheduled' && (
-        <div className="ccb-banner ccb-no-print"><GavelIcon size={15} /><span className="grow">Agenda is open. {canRun ? 'Start the meeting when the board convenes: mark attendance, members vote on each item, and you record the majority decision.' : 'Members share their views now; in the meeting, members present vote and the majority decides.'}</span></div>
+        <div className="ccb-banner ccb-no-print"><GavelIcon size={15} /><span className="grow">Agenda is open. {canRun ? 'Start the meeting when the board convenes to mark attendance and record decisions.' : 'Decisions are recorded by the CCB Secretary during the meeting.'}</span></div>
       )}
 
       <div className="ccb-grid two">
@@ -156,8 +155,6 @@ export default function MeetingRoom({ id, me, onBack }) {
               {ratifications.map((it, i) => (
                 <AgendaItem key={it.id} it={it} n={`R${i + 1}`} live={live} canDecide={canRun && live && quorum.met} canRemove={canRun && ['scheduled', 'in_progress'].includes(m.status)} nameOf={nameOf}
                   reviews={reviewsOf(it.id)} myEmail={myEmail} canReview={canReview && open && !it.decision}
-                  tally={tallies[it.id]} canVote={canVote && !it.decision && it.loggedBy !== myEmail}
-                  onVote={(v) => (['reject', 'not_ratify'].includes(v) ? setVoting({ it, vote: v }) : run(`vt${it.id}`, () => ccbApi.vote(m.id, it.id, v, ''), v ? 'Your vote is recorded.' : 'Your vote is withdrawn.'))}
                   onReview={(position) => (position === 'support' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, 'support', ''), 'Your support is recorded.') : position === '' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, '', ''), 'Your review is withdrawn.') : setReviewing({ it, position }))}
                   onDecide={(d) => setDeciding({ it, d })} onRemove={() => run(`rm${it.id}`, () => ccbApi.removeAgendaItem(m.id, it.id), 'Removed from agenda.')} />
               ))}
@@ -168,8 +165,6 @@ export default function MeetingRoom({ id, me, onBack }) {
               {decisions.map((it, i) => (
                 <AgendaItem key={it.id} it={it} n={i + 1} live={live} canDecide={canRun && live && quorum.met} canRemove={canRun && ['scheduled', 'in_progress'].includes(m.status)} nameOf={nameOf}
                   reviews={reviewsOf(it.id)} myEmail={myEmail} canReview={canReview && open && !it.decision}
-                  tally={tallies[it.id]} canVote={canVote && !it.decision && it.loggedBy !== myEmail}
-                  onVote={(v) => (['reject', 'not_ratify'].includes(v) ? setVoting({ it, vote: v }) : run(`vt${it.id}`, () => ccbApi.vote(m.id, it.id, v, ''), v ? 'Your vote is recorded.' : 'Your vote is withdrawn.'))}
                   onReview={(position) => (position === 'support' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, 'support', ''), 'Your support is recorded.') : position === '' ? run(`rv${it.id}`, () => ccbApi.reviewItem(m.id, it.id, '', ''), 'Your review is withdrawn.') : setReviewing({ it, position }))}
                   onDecide={(d) => setDeciding({ it, d })} onRemove={() => run(`rm${it.id}`, () => ccbApi.removeAgendaItem(m.id, it.id), 'Removed from agenda.')} />
               ))}
@@ -263,9 +258,6 @@ export default function MeetingRoom({ id, me, onBack }) {
         <ReviewDialog meeting={m} item={reviewing.it} position={reviewing.position} current={reviewsOf(reviewing.it.id).find((v) => v.email === myEmail)}
           onClose={() => setReviewing(null)} onDone={() => { setReviewing(null); showToast('Your review is recorded.'); load(); }} />
       )}
-      {voting && (
-        <VoteDialog meeting={m} item={voting.it} vote={voting.vote} onClose={() => setVoting(null)} onDone={() => { setVoting(null); showToast('Your vote is recorded.'); load(); }} />
-      )}
       {addingAction && (
         <ActionDialog meeting={m} items={items} people={people} onClose={() => setAddingAction(false)} onDone={() => { setAddingAction(false); showToast('Action item added.'); load(); }} />
       )}
@@ -275,7 +267,7 @@ export default function MeetingRoom({ id, me, onBack }) {
   );
 }
 
-function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRemove, reviews = [], myEmail, canReview, onReview, tally, canVote, onVote }) {
+function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRemove, reviews = [], myEmail, canReview, onReview }) {
   const ratification = it.kind === 'ratification';
   return (
     <div className={`ccb-agenda-item kind-${it.kind} ${it.decision ? 'is-decided' : 'is-open'}${canDecide && !it.decision ? ' can-decide' : ''}`}>
@@ -311,25 +303,18 @@ function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRem
         {it.financialImpact && <div><label>Financial impact</label><p>{it.financialImpact}</p></div>}
         {it.requiredBy && <div><label>Required by</label><p>{fmtDate(it.requiredBy)}</p></div>}
       </div>
-      {/* Before the meeting: members' advisory positions. In the meeting: the formal vote that decides. */}
-      {!live && !it.decision && <MemberReviews reviews={reviews} nameOf={nameOf} myEmail={myEmail} canReview={canReview} onReview={onReview} />}
-      {(live || it.decision) && tally && <VotePanel kind={it.kind} tally={tally} nameOf={nameOf} myEmail={myEmail} canVote={canVote} onVote={onVote} decided={!!it.decision} />}
+      <MemberReviews reviews={reviews} nameOf={nameOf} myEmail={myEmail} canReview={canReview} onReview={onReview} />
       {it.decision ? (
         <div className="ccb-outcome">
           <Meta meta={DECISION_META} value={it.decision} strong />
-          <span className="ccb-muted">recorded by {nameOf(it.decidedBy)} · {fmtTime(it.decidedAt)}</span>
+          <span className="ccb-muted">by {nameOf(it.decidedBy)} · {fmtTime(it.decidedAt)}</span>
           {it.notes && <p>{it.notes}</p>}
         </div>
       ) : canDecide ? (
         <div className="ccb-decide">
-          {DECISION_BUTTONS[it.kind].map((b) => {
-            const side = ['approved', 'approved_with_modifications', 'ratified'].includes(b.key) ? 'yes' : ['rejected', 'not_ratified'].includes(b.key) ? 'no' : null;
-            const allowed = !side || tally?.outcome === side;
-            return <Button key={b.key} size="sm" variant={b.variant} icon={b.icon} disabled={!allowed} title={allowed ? undefined : 'Needs a majority of the members present voting this way'} onClick={() => onDecide(b.key)}>{b.label}</Button>;
-          })}
-          {tally && !tally.outcome && <span className="ccb-muted" style={{ fontSize: 11.5, alignSelf: 'center' }}>No majority yet — {tally.majority} of {tally.present} needed. You can defer.</span>}
+          {DECISION_BUTTONS[it.kind].map((b) => <Button key={b.key} size="sm" variant={b.variant} icon={b.icon} onClick={() => onDecide(b.key)}>{b.label}</Button>)}
         </div>
-      ) : null}
+      ) : live ? null : null}
     </div>
   );
 }
@@ -492,88 +477,6 @@ function ActionDialog({ meeting, items, people, onClose, onDone }) {
           </select>
         </Field>
       </div>
-      {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
-    </Modal>
-  );
-}
-
-const VOTE_META = {
-  approve: { label: 'Approve', tone: 'green' }, reject: { label: 'Reject', tone: 'red' },
-  ratify: { label: 'Ratify', tone: 'green' }, not_ratify: { label: 'Do not ratify', tone: 'red' },
-  abstain: { label: 'Abstain', tone: 'gray' },
-};
-const VOTE_CHOICES = { decision: ['approve', 'reject', 'abstain'], ratification: ['ratify', 'not_ratify', 'abstain'] };
-
-/** The board's vote on one item: count against the majority of members present, who voted how, and the member's own buttons. */
-function VotePanel({ kind, tally, nameOf, myEmail, canVote, onVote, decided }) {
-  const mine = tally.votes.find((v) => v.email === myEmail);
-  const yesKey = kind === 'decision' ? 'approve' : 'ratify';
-  const noKey = kind === 'decision' ? 'reject' : 'not_ratify';
-  const pct = (n) => (tally.present ? `${(n / tally.present) * 100}%` : '0%');
-  return (
-    <div className="ccb-vote">
-      <div className="ccb-vote-head">
-        <strong>Board vote</strong>
-        <span className="ccb-muted">
-          {tally.voted} of {tally.present} present voted · majority {tally.majority}
-          {tally.outcome === 'yes' && <> · <b className="ccb-vote-yes">{VOTE_META[yesKey].label} carries</b></>}
-          {tally.outcome === 'no' && <> · <b className="ccb-vote-no">{VOTE_META[noKey].label} carries</b></>}
-        </span>
-      </div>
-      <div className="ccb-vote-bar" title={`${tally.yes} for · ${tally.no} against · ${tally.abstain} abstain`}>
-        <i className="yes" style={{ width: pct(tally.yes) }} />
-        <i className="no" style={{ width: pct(tally.no) }} />
-        <i className="abstain" style={{ width: pct(tally.abstain) }} />
-        <span className="ccb-vote-mark" style={{ left: pct(tally.majority) }} title={`Majority: ${tally.majority}`} />
-      </div>
-      <div className="ccb-vote-counts">
-        <Pill tone="green">{tally.yes} {VOTE_META[yesKey].label.toLowerCase()}</Pill>
-        <Pill tone="red">{tally.no} {VOTE_META[noKey].label.toLowerCase()}</Pill>
-        <Pill tone="gray">{tally.abstain} abstain</Pill>
-      </div>
-      {tally.votes.length > 0 && (
-        <ul className="ccb-vote-list">
-          {tally.votes.map((v) => (
-            <li key={v.email}>
-              <span>{nameOf(v.email)}</span>
-              <Pill tone={VOTE_META[v.vote].tone}>{VOTE_META[v.vote].label}</Pill>
-              {v.note && <em>{v.note}</em>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canVote && !decided && (
-        <div className="ccb-vote-mine ccb-no-print">
-          <span>Your vote:</span>
-          {VOTE_CHOICES[kind].map((v) => (
-            <button key={v} type="button" className={`ccb-chip-toggle tone-${VOTE_META[v].tone}${mine?.vote === v ? ' on' : ''}`} onClick={() => onVote(mine?.vote === v ? '' : v)}>{VOTE_META[v].label}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** A vote against needs a short reason, which every member sees. */
-function VoteDialog({ meeting, item, vote, onClose, onDone }) {
-  const [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  async function go() {
-    setBusy(true);
-    setError('');
-    try {
-      await ccbApi.vote(meeting.id, item.id, vote, note);
-      onDone();
-    } catch (e) {
-      setError(e.message);
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal title={`${VOTE_META[vote].label} — ${item.crNo}`} sub={item.title} onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="danger-solid" busy={busy} onClick={go}>Record my vote</Button></>}>
-      <Field label="Your reason" required><textarea className="ccb-textarea" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>
   );
