@@ -1,5 +1,4 @@
 'use strict';
-const AnthropicModule = require('@anthropic-ai/sdk');
 
 /*
    Claude for Setu's insights (lib/insights.js). Optional: without ANTHROPIC_API_KEY (the same key the rest of the
@@ -13,13 +12,22 @@ const AnthropicModule = require('@anthropic-ai/sdk');
    - Privacy: email addresses and phone numbers are replaced before any text leaves Emami (redact below).
 */
 
-const Anthropic = AnthropicModule.Anthropic || AnthropicModule.default || AnthropicModule;
+// The SDK is loaded on first use, never at backend start: Setu's AI can not stop the shared backend (and every
+// other app on it) from starting, whatever happens to this package.
+let Anthropic = null;
+function sdk() {
+    if (!Anthropic) {
+        const m = require('@anthropic-ai/sdk');
+        Anthropic = m.Anthropic || m.default || m;
+    }
+    return Anthropic;
+}
 const MODEL = 'claude-opus-5-5';
 const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY) && String(process.env.SETU_AI_ENABLED || 'true').toLowerCase() !== 'false';
 
 let client = null;
 function getClient() {
-    if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 90_000 });
+    if (!client) client = new (sdk())({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 90_000 });
     return client;
 }
 
@@ -41,6 +49,12 @@ const redact = (text, max = 2000) => String(text ?? '')
  */
 async function structured({ system, user, schema, effort = 'medium' }) {
     if (!aiEnabled()) throw new AiUnavailable('AI is not configured on the server.');
+    let Sdk;
+    try {
+        Sdk = sdk();
+    } catch {
+        throw new AiUnavailable('The AI library is not installed on the server.');
+    }
     let response;
     try {
         response = await getClient().beta.messages.create({
@@ -54,12 +68,12 @@ async function structured({ system, user, schema, effort = 'medium' }) {
             messages: [{ role: 'user', content: user }],
         });
     } catch (err) {
-        if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+        if (err instanceof Sdk.AuthenticationError || err instanceof Sdk.PermissionDeniedError) {
             throw new AiUnavailable('The AI service rejected the server\'s API key.');
         }
-        if (err instanceof Anthropic.RateLimitError) throw new AiUnavailable('The AI service is busy. Try again in a minute.');
-        if (err instanceof Anthropic.APIConnectionError) throw new AiUnavailable('Could not reach the AI service.');
-        if (err instanceof Anthropic.APIError) throw new AiUnavailable(`The AI service returned an error (${err.status ?? 'unknown'}).`);
+        if (err instanceof Sdk.RateLimitError) throw new AiUnavailable('The AI service is busy. Try again in a minute.');
+        if (err instanceof Sdk.APIConnectionError) throw new AiUnavailable('Could not reach the AI service.');
+        if (err instanceof Sdk.APIError) throw new AiUnavailable(`The AI service returned an error (${err.status ?? 'unknown'}).`);
         throw err;
     }
     if (response.stop_reason === 'refusal') throw new AiUnavailable('The AI declined to analyse this content.');

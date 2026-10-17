@@ -69,7 +69,13 @@ apiRouter.use('/change-control', require('./changeControl'));
 // Setu (Emami Secondary Support helpdesk: tickets, SLA on business hours, severity matrix, automations, M365 mailbox)
 // — own setu schema, own routes under /setu, self-contained in the backend/setu/ folder. Access is the 'setu' grant; its role
 // (Agent / Supervisor / Admin) decides what a person can do there.
-apiRouter.use('/setu', require('./setu'));
+// Isolated: if Setu ever failed to load, only /setu answers 503 - every other app on this backend is unaffected.
+try {
+    apiRouter.use('/setu', require('./setu'));
+} catch (err) {
+    console.error('[setu] failed to load, Setu is unavailable:', err.message);
+    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Setu is temporarily unavailable.' }));
+}
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.
 apiRouter.use('/me/notifications', require('./notifications').router);
