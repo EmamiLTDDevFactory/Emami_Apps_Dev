@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hub palette as RGB triplets (tailwind.config.ts maps them). Light only, like every sibling app.
+   ink/muted on panel/bg meet WCAG AA. */
+:root {
+  color-scheme: light;
+  --bg: 238 240 244;        /* #EEF0F4 appBg */
+  --panel: 255 255 255;
+  --sunken: 246 244 253;    /* #F6F4FD cream */
+  --line: 230 227 245;      /* #E6E3F5 */
+  --ink: 31 27 51;          /* #1F1B33 */
+  --muted: 107 114 128;     /* #6B7280 inkSoft */
+  --faint: 117 121 140;
+  --accent: 79 63 214;      /* #4F3FD6 rust (hub primary) */
+  --accent-deep: 59 47 176; /* #3B2FB0 */
+  --accent-ink: 255 255 255;
+  --plum: 36 30 61;         /* #241E3D */
+  --plum-deep: 21 17 41;    /* #151129 */
+  --good: 31 122 77;        /* #1F7A4D */
+  --warn: 180 83 9;         /* #B45309 */
+  --bad: 192 57 43;         /* #C0392B */
+  --sim: 194 24 91;         /* #C2185B */
+}
+
+html, body { height: 100%; }
+body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11' 1; }
+.num { font-variant-numeric: tabular-nums; }
+
+*:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 1px; border-radius: 3px; }
+
+.scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #d9d4ee; border-radius: 999px; border: 2px solid rgb(var(--panel)); }
+
+.skeleton { background: linear-gradient(90deg, rgb(var(--sunken)) 25%, rgb(var(--line)) 50%, rgb(var(--sunken)) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Email bodies inside the conversation thread (sanitised HTML). */
+/* Email HTML is untrusted: paint containment keeps any positioned element inside the message box, so a mail
+   can never draw over the app (e.g. a fake sign-in overlay). */
+.mail-body { overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.55; position: relative; overflow: hidden; contain: paint; }
+.mail-body p { margin: 0 0 0.6em; }
+.mail-body a { color: rgb(var(--accent)); text-decoration: underline; }
+.mail-body img { max-width: 100%; height: auto; }
+.mail-body table { border-collapse: collapse; max-width: 100%; }
+.mail-body td, .mail-body th { border: 1px solid rgb(var(--line)); padding: 2px 6px; }
+.mail-body blockquote { border-left: 3px solid rgb(var(--line)); margin: 0.4em 0; padding-left: 0.8em; color: rgb(var(--muted)); }

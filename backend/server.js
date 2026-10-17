@@ -66,6 +66,10 @@ apiRouter.use('/salescode', require('./salescode'));
 // CCB meetings, approvals → Dev Tracker assignments) — own ccb schema, own routes under /change-control,
 // self-contained in changeControl.js. Access rides on the dev-tracker grant; CCB roles live in ccb.roles.
 apiRouter.use('/change-control', require('./changeControl'));
+// Setu (Emami Secondary Support helpdesk: tickets, SLA on business hours, severity matrix, automations, M365 mailbox)
+// — own setu schema, own routes under /setu, self-contained in the backend/setu/ folder. Access is the 'setu' grant; its role
+// (Agent / Supervisor / Admin) decides what a person can do there.
+apiRouter.use('/setu', require('./setu'));
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.
 apiRouter.use('/me/notifications', require('./notifications').router);
@@ -135,7 +139,7 @@ async function requireAccessManager(req, res, next) {
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. BOM Simulator (bom-cost-explorer) adds Planner: may upload and edit production plans
  * (Admin may too; SAP's own authority check still applies). */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'] };
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

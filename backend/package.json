@@ -4,6 +4,7 @@
   "private": true,
   "description": "EmamiApps hub login (direct email in hub-auth.js, Microsoft SAML 2.0 in saml-sso.js) and Manage Access API (Postgres-backed authorized-user/app-grant storage) — deployed as an AWS Lambda (see lambda.js) via scripts/deploy-lambdas.js, fronted by API Gateway (not a Function URL, which was blocked by an unresolved AWS-account-level access issue).",
   "dependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

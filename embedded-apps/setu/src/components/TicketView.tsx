@@ -1,0 +1,534 @@
+'use client';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import DOMPurify from 'dompurify';
+import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageSquare, Pencil, Phone, Reply, Save, Send, User, Zap } from 'lucide-react';
+import { addMessage, addTimeLog, getTicket, updateTicket } from '@/lib/api';
+import { useSetu } from '@/lib/context';
+import { ACTION_LABEL, fmtDateTime, fmtMins, htmlToText, relative } from '@/lib/format';
+import { EDITABLE_FIELDS, type ActivityItem, type Conversation, type Ticket, type TicketDetail } from '@/lib/types';
+import { PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
+import TicketFields, { type Values } from './TicketFields';
+import { INSERT_REPLY_EVENT, TicketAssist } from './Insights';
+import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
+
+/**
+ * Email bodies are untrusted: keep formatting, drop scripts, forms, style blocks, event handlers and positioning.
+ * Remote images (tracking pixels tell the sender when and where a mail was opened) are held back until the agent
+ * chooses to load them; embedded (data:) images show as normal.
+ */
+function safeHtml(html: string, loadRemoteImages: boolean): { html: string; blockedImages: number } {
+  if (typeof window === 'undefined') return { html: '', blockedImages: 0 };
+  let blockedImages = 0;
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'A') {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+    if (node.tagName === 'IMG' && !loadRemoteImages && /^\s*(https?:)?\/\//i.test(node.getAttribute('src') ?? '')) {
+      node.removeAttribute('src');
+      node.removeAttribute('srcset');
+      node.setAttribute('alt', node.getAttribute('alt') || '[image]');
+      blockedImages++;
+    }
+    const style = node.getAttribute('style');
+    if (style && /position\s*:|z-index|inset\s*:/i.test(style)) node.removeAttribute('style');
+  });
+  const clean = DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'iframe', 'object', 'embed', 'meta', 'link', 'base'],
+    FORBID_ATTR: ['class', 'id', 'background'],
+  });
+  DOMPurify.removeHook('afterSanitizeAttributes');
+  return { html: clean, blockedImages };
+}
+
+const KIND_STYLE: Record<Conversation['kind'], { box: string; label: string; icon: typeof Mail }> = {
+  INCOMING: { box: 'border-line bg-panel', label: 'Requester', icon: Mail },
+  REPLY: { box: 'border-accent/25 bg-accent/[0.04]', label: 'Reply', icon: Reply },
+  NOTE: { box: 'border-warn/30 bg-[#FFF8E6]', label: 'Private note', icon: Lock },
+  FORWARD: { box: 'border-line bg-sunken', label: 'Forwarded', icon: Forward },
+};
+
+type Props = { ticket: Ticket };
+type Editable = Values & { statusId: string; priority: string; groupId: string; agentId: string; tags: string };
+
+const toForm = (t: Ticket): Editable => ({
+  ...Object.fromEntries(EDITABLE_FIELDS.map((k) => [k, t[k] ?? ''])),
+  statusId: String(t.statusId),
+  priority: String(t.priority),
+  groupId: t.groupId ? String(t.groupId) : '',
+  agentId: t.agentId ? String(t.agentId) : '',
+  tags: t.tags.join(', '),
+});
+
+export default function TicketView({ id }: { id: number }) {
+  const [data, setData] = useState<TicketDetail | null>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setData(await getTicket(id));
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the ticket.');
+    }
+  }, [id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!data) return error ? <Notice>{error}</Notice> : <Card><Skeleton rows={10} /></Card>;
+  return <TicketScreen data={data} reload={load} />;
+}
+
+function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
+  const { ticket: t } = data;
+  return (
+    <div className="space-y-4">
+      <TicketHeader ticket={t} reload={reload} />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="min-w-0 space-y-4">
+          <Thread data={data} />
+          <Composer ticket={t} reload={reload} />
+          <ActivityLog items={data.activities} />
+        </div>
+        <div className="space-y-4">
+          <TicketAssist ticket={t} reload={reload} />
+          <Properties ticket={t} reload={reload} />
+          <Requester data={data} />
+          <TimeLogs data={data} reload={reload} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [subject, setSubject] = useState(t.subject);
+  const [error, setError] = useState('');
+  const save = async () => {
+    try {
+      await updateTicket(t.id, { subject, expectedUpdatedAt: t.updatedAt });
+      setEditing(false);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.');
+    }
+  };
+  return (
+    <Card bodyClass="p-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 text-2xs text-muted">
+            <span className="num font-bold">#{t.id}</span>
+            <span>· {t.source}</span>
+            <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
+            {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
+          </div>
+          {editing ? (
+            <div className="mt-1 flex gap-2">
+              <input className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" autoFocus />
+              <Button variant="primary" onClick={save} disabled={!subject.trim()}>Save</Button>
+              <Button onClick={() => { setEditing(false); setSubject(t.subject); }}>Cancel</Button>
+            </div>
+          ) : (
+            <h2 className="mt-0.5 flex items-start gap-2 text-lg font-extrabold leading-snug tracking-tight">
+              <span className="min-w-0">{t.subject}</span>
+              <button type="button" onClick={() => setEditing(true)} className="mt-1 shrink-0 text-faint hover:text-accent" aria-label="Edit subject"><Pencil size={14} /></button>
+            </h2>
+          )}
+          {error && <div className="mt-2"><Notice onClose={() => setError('')}>{error}</Notice></div>}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <SeverityPill severity={t.severity} />
+          <PriorityPill priority={t.priority} />
+          <StatusPill t={t} />
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 border-t border-line pt-3 text-2xs sm:grid-cols-4">
+        <div><div className="font-bold uppercase tracking-wide text-muted">SLA</div><SlaBadge t={t} /></div>
+        <div><div className="font-bold uppercase tracking-wide text-muted">First response due</div><span className={cx('num font-semibold', t.frViolated && 'text-bad')}>{t.firstRespondedAt ? `Responded ${fmtDateTime(t.firstRespondedAt)}` : fmtDateTime(t.firstResponseDueAt)}</span></div>
+        <div><div className="font-bold uppercase tracking-wide text-muted">Resolution due</div><span className={cx('num font-semibold', t.resViolated && 'text-bad')}>{fmtDateTime(t.resolutionDueAt)}</span></div>
+        <div><div className="font-bold uppercase tracking-wide text-muted">{t.resolvedAt ? 'Resolved' : 'SLA paused so far'}</div><span className="num font-semibold">{t.resolvedAt ? fmtDateTime(t.resolvedAt) : fmtMins(t.slaPausedMins)}</span></div>
+      </div>
+    </Card>
+  );
+}
+
+function Thread({ data }: { data: TicketDetail }) {
+  const { ticket: t, conversations } = data;
+  // Tickets created from email already carry the first message as an INCOMING conversation.
+  const showDescription = !conversations.some((c) => c.kind === 'INCOMING') && t.description;
+  return (
+    <div className="space-y-3">
+      {showDescription && (
+        <Message kind="INCOMING" who={t.requesterName} sub={t.requesterEmail ?? t.requesterPhone ?? ''} at={t.createdAt} html={t.description} />
+      )}
+      {conversations.map((c) => (
+        <Message
+          key={c.id}
+          kind={c.kind}
+          who={c.kind === 'INCOMING' ? (c.fromEmail === t.requesterEmail ? t.requesterName : c.fromEmail ?? t.requesterName) : c.agentName ?? 'Setu automation'}
+          sub={c.kind === 'INCOMING' ? c.fromEmail ?? '' : [c.toEmails.length ? `To ${c.toEmails.join(', ')}` : '', c.ccEmails.length ? `Cc ${c.ccEmails.join(', ')}` : ''].filter(Boolean).join(' · ')}
+          at={c.createdAt}
+          html={c.bodyHtml}
+        />
+      ))}
+      {!showDescription && conversations.length === 0 && <p className="text-sm text-muted">No messages yet.</p>}
+    </div>
+  );
+}
+
+function Message({ kind, who, sub, at, html }: { kind: Conversation['kind']; who: string; sub: string; at: string; html: string }) {
+  const s = KIND_STYLE[kind];
+  const [loadImages, setLoadImages] = useState(false);
+  const clean = useMemo(() => safeHtml(html, loadImages), [html, loadImages]);
+  return (
+    <article className={cx('rounded-2xl border p-4 shadow-card', s.box)}>
+      <header className="mb-2 flex flex-wrap items-center gap-2">
+        <Avatar email={who} name={who} size={28} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-[13px] font-semibold"><span className="truncate">{who}</span><Pill tone={kind === 'NOTE' ? 'warn' : kind === 'REPLY' ? 'accent' : 'neutral'}><s.icon size={10} /> {s.label}</Pill></div>
+          {sub && <div className="truncate text-2xs text-muted">{sub}</div>}
+        </div>
+        <time className="num text-2xs text-muted" title={fmtDateTime(at)}>{fmtDateTime(at)}</time>
+      </header>
+      {clean.blockedImages > 0 && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-sunken px-2.5 py-1.5 text-2xs text-muted">
+          {clean.blockedImages} remote image{clean.blockedImages > 1 ? 's' : ''} hidden to protect your privacy.
+          <button type="button" className="font-semibold text-accent hover:underline" onClick={() => setLoadImages(true)}>Show images</button>
+        </div>
+      )}
+      <div className="mail-body" dangerouslySetInnerHTML={{ __html: clean.html }} />
+    </article>
+  );
+}
+
+function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
+  const { meta, mailEnabled } = useSetu();
+  const [kind, setKind] = useState<'REPLY' | 'NOTE' | 'FORWARD'>('REPLY');
+  const [text, setText] = useState('');
+  const [to, setTo] = useState('');
+  const [cc, setCc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const folders = useMemo(() => {
+    const m = new Map<string, typeof meta.cannedResponses>();
+    for (const c of meta.cannedResponses) m.set(c.folder, [...(m.get(c.folder) ?? []), c]);
+    return [...m.entries()];
+  }, [meta.cannedResponses]);
+
+  const insert = (body: string, replaceFrom?: number) => {
+    const el = area.current;
+    const plain = htmlToText(body);
+    if (!el) return setText((x) => x + plain);
+    const start = replaceFrom ?? el.selectionStart;
+    const end = el.selectionEnd;
+    const next = text.slice(0, start) + plain + text.slice(end);
+    setText(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + plain.length;
+    });
+  };
+
+  // "Use in reply" from the Assist card: switch to Reply and put the draft in the box for the agent to edit.
+  useEffect(() => {
+    const onInsert = (e: Event) => {
+      const draft = (e as CustomEvent<string>).detail;
+      if (typeof draft !== 'string') return;
+      setKind('REPLY');
+      setText(draft);
+      requestAnimationFrame(() => { area.current?.focus(); area.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    };
+    window.addEventListener(INSERT_REPLY_EVENT, onInsert);
+    return () => window.removeEventListener(INSERT_REPLY_EVENT, onInsert);
+  }, []);
+
+  // "/code" + Tab expands a canned response.
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== 'Tab') return;
+    const el = e.currentTarget;
+    const before = text.slice(0, el.selectionStart);
+    const m = /(?:^|\s)\/([a-z0-9_-]{1,30})$/i.exec(before);
+    if (!m) return;
+    const canned = meta.cannedResponses.find((c) => c.shortCode?.toLowerCase() === m[1].toLowerCase());
+    if (!canned) return;
+    e.preventDefault();
+    insert(canned.body, el.selectionStart - m[1].length - 1);
+  };
+
+  const send = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await addMessage(t.id, { kind, text, ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc ? { cc } : {}) });
+      setText('');
+      setTo('');
+      setCc('');
+      setMsg({ tone: 'good', text: kind === 'NOTE' ? 'Note added.' : kind === 'REPLY' ? (mailEnabled ? 'Reply sent.' : 'Reply saved (mail is switched off on the server, so no email went out).') : 'Forwarded.' });
+      await reload();
+    } catch (e) {
+      setMsg({ tone: 'bad', text: e instanceof Error ? e.message : 'Could not send.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title={
+        <Tabs
+          label="Message type"
+          value={kind}
+          onChange={setKind}
+          tabs={[
+            { id: 'REPLY', label: <span className="inline-flex items-center gap-1"><Reply size={12} /> Reply</span> },
+            { id: 'NOTE', label: <span className="inline-flex items-center gap-1"><Lock size={12} /> Private note</span> },
+            { id: 'FORWARD', label: <span className="inline-flex items-center gap-1"><Forward size={12} /> Forward</span> },
+          ]}
+        />
+      }
+      actions={
+        meta.cannedResponses.length > 0 && (
+          <select
+            aria-label="Insert canned response"
+            value=""
+            onChange={(e) => { const c = meta.cannedResponses.find((x) => String(x.id) === e.target.value); if (c) insert(c.body); }}
+            className={cx('h-8 max-w-[220px] text-xs', inputBase)}
+          >
+            <option value="">Canned responses…</option>
+            {folders.map(([folder, list]) => (
+              <optgroup key={folder} label={folder}>
+                {list.map((c) => <option key={c.id} value={c.id}>{c.title}{c.shortCode ? ` (/${c.shortCode})` : ''}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        )
+      }
+    >
+      <div className="space-y-2">
+        {kind === 'REPLY' && <p className="text-2xs text-muted">To {t.requesterEmail ?? <em>no email on file - the reply is recorded on the ticket only</em>} · your signature is added automatically.</p>}
+        {kind === 'FORWARD' && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="To" required><input className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@emamigroup.com, ..." /></Field>
+            <Field label="Cc"><input className={inputCls} value={cc} onChange={(e) => setCc(e.target.value)} /></Field>
+          </div>
+        )}
+        {kind === 'REPLY' && <input className={inputCls} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc (optional)" aria-label="Cc" />}
+        <textarea
+          ref={area}
+          rows={6}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={kind === 'NOTE' ? 'Only agents see private notes.' : 'Write your message. Type /code then Tab to insert a canned response.'}
+          className={cx(textareaCls, kind === 'NOTE' && 'bg-[#FFFBEF]')}
+          aria-label="Message"
+        />
+        {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={send} disabled={busy || !text.trim() || (kind === 'FORWARD' && !to.trim())}>
+            {busy ? <Spinner /> : kind === 'NOTE' ? <MessageSquare size={14} /> : <Send size={14} />} {kind === 'NOTE' ? 'Add note' : kind === 'REPLY' ? 'Send reply' : 'Forward'}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
+  const { meta } = useSetu();
+  const original = useMemo(() => toForm(t), [t]);
+  const [form, setForm] = useState<Editable>(original);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
+  useEffect(() => setForm(original), [original]);
+
+  const changed = (Object.keys(form) as (keyof Editable)[]).filter((k) => (form[k] ?? '') !== (original[k] ?? ''));
+  const set = (patch: Partial<Editable>) => setForm((f) => ({ ...f, ...patch } as Editable));
+
+  const save = async () => {
+    const patch: Record<string, unknown> = {};
+    for (const k of changed) {
+      const v = form[k] ?? '';
+      if (k === 'statusId' || k === 'priority') patch[k] = Number(v);
+      else if (k === 'groupId' || k === 'agentId') patch[k] = v ? Number(v) : null;
+      else if (k === 'tags') patch.tags = v.split(',').map((x) => x.trim()).filter(Boolean);
+      else patch[k] = v;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      // The version this form was loaded from: the server refuses the save if someone changed the ticket since.
+      await updateTicket(t.id, { ...patch, expectedUpdatedAt: t.updatedAt });
+      setMsg({ tone: 'good', text: 'Saved.' });
+      await reload();
+    } catch (e) {
+      setMsg({ tone: 'bad', text: e instanceof Error ? e.message : 'Could not save.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const groupAgents = meta.agents.filter((a) => a.active);
+  return (
+    <Card title="Properties" sub="Severity and priority follow Category → Function" actions={changed.length > 0 && <Pill tone="warn">{changed.length} unsaved</Pill>}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Status">
+            <select className={cx('h-9 w-full', inputBase)} value={form.statusId} onChange={(e) => set({ statusId: e.target.value })}>
+              {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Priority">
+            <select className={cx('h-9 w-full', inputBase)} value={form.priority} onChange={(e) => set({ priority: e.target.value })}>
+              {Object.entries(meta.priorities).reverse().map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </Field>
+          <Field label="Group">
+            <select className={cx('h-9 w-full', inputBase)} value={form.groupId} onChange={(e) => set({ groupId: e.target.value })}>
+              <option value="">—</option>
+              {meta.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Agent">
+            <select className={cx('h-9 w-full', inputBase)} value={form.agentId} onChange={(e) => set({ agentId: e.target.value })}>
+              <option value="">Unassigned</option>
+              {groupAgents.map((a) => <option key={a.id} value={a.id}>{a.name}{a.availability !== 'AVAILABLE' ? ` (${meta.agentStatuses[a.availability]})` : ''}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Tags" hint="Comma separated"><input className={inputCls} value={form.tags} onChange={(e) => set({ tags: e.target.value })} /></Field>
+        <TicketFields compact values={form} onChange={(p) => set(p as Partial<Editable>)} />
+        {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
+        <div className="sticky bottom-0 flex gap-2 bg-panel pt-1">
+          <Button variant="primary" className="flex-1" onClick={save} disabled={busy || changed.length === 0}>{busy ? <Spinner /> : <Save size={14} />} Save changes</Button>
+          {changed.length > 0 && <Button onClick={() => setForm(original)}>Reset</Button>}
+        </div>
+        <p className="text-2xs text-faint">Fields marked * must be filled before a ticket can be resolved.</p>
+      </div>
+    </Card>
+  );
+}
+
+function Requester({ data }: { data: TicketDetail }) {
+  const { openTicket } = useSetu();
+  const t = data.ticket;
+  return (
+    <Card title="Requester">
+      <div className="space-y-1.5 text-[13px]">
+        <div className="flex items-center gap-2 font-semibold"><User size={14} className="text-accent" /> {t.requesterName}</div>
+        {t.requesterEmail && <div className="flex items-center gap-2 text-muted"><Mail size={14} /> {t.requesterEmail}</div>}
+        {(t.requesterMobile || t.requesterPhone) && <div className="flex items-center gap-2 text-muted"><Phone size={14} /> {t.requesterMobile || t.requesterPhone}</div>}
+      </div>
+      {data.requesterTickets.length > 0 && (
+        <div className="mt-3 border-t border-line pt-3">
+          <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">Other tickets</div>
+          <ul className="space-y-1">
+            {data.requesterTickets.map((o) => (
+              <li key={o.id}>
+                <button type="button" onClick={() => openTicket(o.id)} className="w-full rounded-lg px-1.5 py-1 text-left hover:bg-sunken">
+                  <div className="truncate text-xs font-semibold"><span className="num text-muted">#{o.id}</span> {o.subject}</div>
+                  <div className="text-2xs text-muted">{o.statusName} · {relative(o.createdAt)}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TimeLogs({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
+  const [minutes, setMinutes] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+  const total = data.timeLogs.reduce((a, l) => a + l.minutes, 0);
+  const add = async () => {
+    try {
+      await addTimeLog(data.ticket.id, Number(minutes), note);
+      setMinutes('');
+      setNote('');
+      setError('');
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not log time.');
+    }
+  };
+  return (
+    <Card title="Time spent" sub={total ? `${fmtMins(total)} logged` : 'Nothing logged yet'} actions={<Clock size={14} className="text-muted" />}>
+      <div className="flex gap-1.5">
+        <input className={cx(inputCls, 'w-20')} type="number" min={1} max={1440} placeholder="Min" value={minutes} onChange={(e) => setMinutes(e.target.value)} aria-label="Minutes" />
+        <input className={inputCls} placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+        <Button onClick={add} disabled={!minutes}>Log</Button>
+      </div>
+      {error && <div className="mt-2"><Notice onClose={() => setError('')}>{error}</Notice></div>}
+      {data.timeLogs.length > 0 && (
+        <ul className="mt-2 space-y-1 text-2xs">
+          {data.timeLogs.map((l) => (
+            <li key={l.id} className="flex gap-2"><span className="num w-14 font-bold">{fmtMins(l.minutes)}</span><span className="min-w-0 flex-1 truncate text-muted">{l.agentName}{l.note ? ` · ${l.note}` : ''}</span><span className="text-faint">{relative(l.createdAt)}</span></li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  statusId: 'Status', priority: 'Priority', groupId: 'Group', agentId: 'Agent', subject: 'Subject', tags: 'Tags',
+  severity: 'Severity', callSubject: 'Call subject', distributorCode: 'Distributor code', distributorName: 'Distributor name',
+  salesOrg: 'Sales org', asmName: 'ASM', depotCoordinator: 'Depot co-ordinator', mrUid: 'MR UID', mobileNo: 'Mobile',
+  alternateMobileNo: 'Alternate mobile', callerName: 'Caller', callerContactNumber: 'Caller number', l2Agent: 'L2 agent',
+  helpdeskAnalysis: 'HelpDesk analysis', rcaSolution: 'RCA / solution',
+};
+
+function ActivityLog({ items }: { items: ActivityItem[] }) {
+  const { meta } = useSetu();
+  const name = (field: string, v: unknown): string => {
+    if (v === null || v === undefined || v === '') return '—';
+    if (field === 'statusId') return meta.statuses.find((s) => s.id === v)?.name ?? String(v);
+    if (field === 'priority') return meta.priorities[String(v)] ?? String(v);
+    if (field === 'groupId') return meta.groups.find((g) => g.id === v)?.name ?? String(v);
+    if (field === 'agentId') return meta.agents.find((a) => a.id === v)?.name ?? String(v);
+    if (Array.isArray(v)) return v.join(', ') || '—';
+    const s = String(v);
+    return s.length > 60 ? `${s.slice(0, 60)}…` : s;
+  };
+  const describe = (a: ActivityItem): string => {
+    const d = a.details ?? {};
+    if (a.action === 'updated') {
+      return Object.entries(d).map(([k, ch]) => {
+        const c = ch as { from?: unknown; to?: unknown };
+        return `${FIELD_LABEL[k] ?? k}: ${name(k, c.from)} → ${name(k, c.to)}`;
+      }).join('; ');
+    }
+    if (a.action === 'created') return `Source ${String(d.source ?? '')}, severity ${String(d.severity ?? '').toLowerCase()}`;
+    if (a.action === 'automation') return `${String(d.rule ?? '')}${d.skipped ? ` (skipped: ${String(d.skipped)})` : ''}`;
+    if (a.action === 'email_sent') return `${String(d.template ?? '')} to ${String(d.to ?? '')}`;
+    return JSON.stringify(d);
+  };
+  return (
+    <Card title="Activity" sub="Every change, automation and email on this ticket">
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">No activity yet.</p>
+      ) : (
+        <ol className="space-y-2">
+          {items.map((a) => (
+            <li key={a.id} className="flex gap-2.5 text-xs">
+              <span className={cx('mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg', a.action === 'automation' ? 'bg-warn/10 text-warn' : 'bg-sunken text-accent')}>
+                {a.action === 'automation' ? <Zap size={12} /> : a.action === 'email_sent' ? <Mail size={12} /> : <ArrowRightLeft size={12} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div><span className="font-semibold">{a.actorName ?? 'Setu'}</span> <span className="text-muted">· {ACTION_LABEL[a.action] ?? a.action}</span></div>
+                <div className="break-words text-muted">{describe(a)}</div>
+              </div>
+              <time className="num shrink-0 text-2xs text-faint" title={fmtDateTime(a.createdAt)}>{relative(a.createdAt)}</time>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Card>
+  );
+}
