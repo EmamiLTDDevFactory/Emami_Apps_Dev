@@ -113,8 +113,9 @@ async function requireUser(req, res, next) {
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the BOM Simulator.' });
         const role = grant.rows[0].role;
         req.email = email;
-        req.canEdit = role === 'Admin' || role === 'Planner';
+        // Admin (this app's Admin role, or an Emami Apps Super Admin / Admin) has all access: the admin view and every edit.
         req.isAdmin = role === 'Admin' || ['Super Admin', 'Admin'].includes(user.rows[0]?.access_level);
+        req.canEdit = req.isAdmin || role === 'Planner';
         next();
     } catch (e) {
         console.error('[cost-watch]', e.message);
