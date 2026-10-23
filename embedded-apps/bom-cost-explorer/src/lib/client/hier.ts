@@ -1,12 +1,17 @@
 /**
- * Brand -> Product (product hierarchy, PRODHA) -> CRS -> Material picker data. The levels come from SAP's
+ * Brand -> Product (product hierarchy, PRODHA) -> SKU -> Material picker data. The levels come from SAP's
  * grouped set HierVHSet; materials from MaterialVHSet filtered by the chosen levels. Brands are never derived
  * from MaterialVHSet rows (SAP answers an unfiltered MaterialVHSet with an empty list by design, and caps
  * filtered lists at 500 rows).
  *
  * The app is a static export (no /api routes): these builders are the "routes" -
  *   hierRequest({ level, brand, product, werks })              = GET /api/hier?level=&brand=&product=&werks=
- *   hierMaterialsRequest({ brand, product, crs, mtart, q, werks }) = GET /api/materials?brand=&product=&crs=&mtart=&q=&werks=
+ *   hierMaterialsRequest({ brand, product, sku, mtart, q, werks }) = GET /api/materials?brand=&product=&sku=&mtart=&q=&werks=
+ *
+ * SAP levels (new): B = brand ZBRAND, P = product hierarchy (Prodha), C = SKU ZSKU; descriptions from T179T. MaterialVHSet
+ * filters Zbrand / Prodha / Zsku. CASCADE_FIELDS=legacy sends the old Zbrandcode / Zskugrcodecrs instead (rollback). In
+ * "new" mode a system that answers "Property Zbrand / Zsku not found" is remembered and gets the legacy names, so the
+ * picker keeps working until SAP has the new fields (none of NGD / NGQ / NWP has them on 23.10.2026).
  * Several values per parameter become "(X eq 'a' or X eq 'b')"; literals are quote-escaped; the client encodes
  * with encodeURIComponent (spaces %20, never "+").
  */
@@ -24,7 +29,27 @@ export type HierLevel = 'B' | 'P' | 'C';
 /** HierVHSet row: Level, Code, Descr, Cnt. */
 export interface HierOption { level: HierLevel; code: string; descr: string; cnt: number }
 
-export interface HierCriteria { brand?: string[]; product?: string[]; crs?: string[]; werks?: string[] }
+export interface HierCriteria { brand?: string[]; product?: string[]; sku?: string[]; werks?: string[] }
+
+// ---- material filter property names: new (Zbrand, Zsku) or legacy (Zbrandcode, Zskugrcodecrs) ----------------------
+export type CascadeFields = 'new' | 'legacy';
+export const CASCADE_PROPS: Record<CascadeFields, { brand: string; product: string; sku: string }> = {
+  new: { brand: 'Zbrand', product: 'Prodha', sku: 'Zsku' },
+  legacy: { brand: 'Zbrandcode', product: 'Prodha', sku: 'Zskugrcodecrs' },
+};
+/** The switch: env CASCADE_FIELDS / NEXT_PUBLIC_CASCADE_FIELDS, "new" unless set to "legacy". */
+export const cascadeFieldsSetting = (): CascadeFields => ((process.env.NEXT_PUBLIC_CASCADE_FIELDS || process.env.CASCADE_FIELDS || 'new').trim().toLowerCase() === 'legacy' ? 'legacy' : 'new');
+const legacySystems = new Set<string>();
+const currentSystem = () => { try { return sapConfig().system; } catch { return ''; } };
+/** Names to send to this system: the setting, or legacy where SAP has rejected the new names. */
+export const cascadeFields = (system = currentSystem()): CascadeFields => (cascadeFieldsSetting() === 'legacy' || legacySystems.has(system) ? 'legacy' : 'new');
+export const markCascadeLegacy = (system = currentSystem()) => { legacySystems.add(system); };
+export const resetCascadeFields = () => legacySystems.clear();
+/** SAP's answer when MaterialVH has no Zbrand / Zsku yet. */
+export function isNewCascadePropertyMissing(e: unknown): boolean {
+  if (!(e instanceof SapError) || e.kind !== 'http') return false;
+  return [e.message, ...e.details.map((d) => d.message)].some((m) => /property\s+'?(zbrand|zsku)'?\s+(not\s+found|is\s+invalid)/i.test(m));
+}
 
 const list = (v: string[] | undefined) => (v ?? []).map((x) => x.trim()).filter(Boolean);
 function anyOf(prop: string, values: string[] | undefined): string | null {
@@ -45,17 +70,19 @@ export function hierRequest(level: HierLevel, c: HierCriteria = {}) {
   return { entitySet: HIER_SET, params: { $filter: filter } as Record<string, string | undefined> };
 }
 
-export const optionLabel = (o: HierOption) => `${o.code}${o.descr ? ` - ${o.descr}` : ''} (${o.cnt})`;
+/** "<Descr> (<Code>) - <Cnt>"; the code alone when SAP has no description. */
+export const optionLabel = (o: HierOption) => `${o.descr ? `${o.descr} (${o.code})` : o.code} - ${o.cnt}`;
 
 export interface MaterialCriteria extends HierCriteria { mtart?: string; q?: string }
 
 /** True when MaterialVHSet may be called: a level is chosen or the search text has 2+ characters. */
-export const hasMaterialCriteria = (c: MaterialCriteria) => list(c.brand).length > 0 || list(c.product).length > 0 || list(c.crs).length > 0 || (c.q ?? '').trim().length >= 2;
+export const hasMaterialCriteria = (c: MaterialCriteria) => list(c.brand).length > 0 || list(c.product).length > 0 || list(c.sku).length > 0 || (c.q ?? '').trim().length >= 2;
 
 /** MaterialVHSet filtered by the chosen levels; null = no criteria, do NOT call SAP (it answers empty by design). */
-export function hierMaterialsRequest(c: MaterialCriteria) {
+export function hierMaterialsRequest(c: MaterialCriteria, fields: CascadeFields = cascadeFields()) {
   if (!hasMaterialCriteria(c)) return null;
-  const filter = and(anyOf('Zbrandcode', c.brand), anyOf('Prodha', c.product), anyOf('Zskugrcodecrs', c.crs), c.mtart ? `Mtart eq ${odataString(c.mtart)}` : null, anyOf('Werks', c.werks?.map((w) => w.toUpperCase())));
+  const f = CASCADE_PROPS[fields];
+  const filter = and(anyOf(f.brand, c.brand), anyOf(f.product, c.product), anyOf(f.sku, c.sku), c.mtart ? `Mtart eq ${odataString(c.mtart)}` : null, anyOf('Werks', c.werks?.map((w) => w.toUpperCase())));
   const q = (c.q ?? '').trim();
   const params: Record<string, string | undefined> = {};
   if (filter) params.$filter = filter;
@@ -133,15 +160,29 @@ export interface HierMaterials { rows: MaterialRow[]; capped: boolean }
 export async function loadHierMaterials(c: MaterialCriteria, opts: SapGetOptions = {}): Promise<HierMaterials | null> {
   const req = hierMaterialsRequest(c);
   if (!req) return null;
-  const r = await sapGetCollection(req.entitySet, req.params, opts);
+  let r;
+  try {
+    r = await sapGetCollection(req.entitySet, req.params, opts);
+  } catch (e) {
+    // New names not on this system yet: remember it and ask again with the legacy names.
+    if (!isNewCascadePropertyMissing(e) || cascadeFields() === 'legacy') throw e;
+    markCascadeLegacy();
+    const again = hierMaterialsRequest(c, 'legacy')!;
+    r = await sapGetCollection(again.entitySet, again.params, opts);
+  }
   const rows = r.rows.map((raw) => normalizeEntity<MaterialRow>(raw, MATERIAL));
   return { rows, capped: rows.length >= HIER_MATERIALS_MAX };
 }
 
-/** Picking a level clears every level below it. */
-export interface HierPick { brand: string; product: string; crs: string }
+/** Picking a level sets it; lower levels stay until their reloaded list no longer has them (keepValid). */
+export interface HierPick { brand: string; product: string; sku: string }
 export function pickLevel(pick: HierPick, level: keyof HierPick, value: string): HierPick {
-  if (level === 'brand') return { brand: value, product: '', crs: '' };
-  if (level === 'product') return { ...pick, product: value, crs: '' };
-  return { ...pick, crs: value };
+  return { ...pick, [level]: value };
+}
+
+/** Clears a product / SKU selection that is not in its freshly loaded list (null = list not loaded yet: keep). */
+export function keepValid(pick: HierPick, products: HierOption[] | null, skus: HierOption[] | null): HierPick {
+  const product = pick.product && products && !products.some((o) => o.code === pick.product) ? '' : pick.product;
+  const sku = pick.sku && skus && !skus.some((o) => o.code === pick.sku) ? '' : pick.sku;
+  return product === pick.product && sku === pick.sku ? pick : { ...pick, product, sku };
 }

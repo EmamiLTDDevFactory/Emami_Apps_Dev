@@ -12,15 +12,16 @@ import { defaultQuery, type CostQuery } from '@/lib/query/schema';
 import { buildTree } from '@/lib/cost/tree';
 import { isPlantWide, needsOnePlant, plantWideSettings } from '@/lib/plantwide/flag';
 import { isNoWerksProperty, listHeaders, PlantListError } from '@/lib/plantwide/listHeaders';
+import { resetCascadeFields } from '@/lib/client/hier';
 import { chunk, etaText, mergeLines, newPwState, runBatches, type CostFn } from '@/lib/plantwide/runBatches';
 import FilterPanel from '@/components/FilterPanel';
 import type { PlantWide } from '@/lib/plantwide/usePlantWide';
 import type { CostLine } from '@/lib/sap/fields';
 import { line } from './helpers';
 
-const ENV = ['MOCK_SAP', 'MOCK_SAP_DELAY_MS', 'MOCK_SAP_HIER'];
+const ENV = ['MOCK_SAP', 'MOCK_SAP_DELAY_MS', 'MOCK_SAP_HIER', 'CASCADE_FIELDS'];
 const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
-beforeEach(() => { process.env.MOCK_SAP = 'true'; process.env.MOCK_SAP_DELAY_MS = '0'; delete process.env.MOCK_SAP_HIER; resetSapConfig(); mockRequestLog.length = 0; });
+beforeEach(() => { process.env.MOCK_SAP = 'true'; process.env.MOCK_SAP_DELAY_MS = '0'; delete process.env.MOCK_SAP_HIER; delete process.env.CASCADE_FIELDS; resetSapConfig(); resetCascadeFields(); mockRequestLog.length = 0; });
 afterEach(() => { for (const k of ENV) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; resetSapConfig(); vi.restoreAllMocks(); });
 const setOf = (u: string) => u.split('?')[0].split('/').pop();
 const q1 = (p: Partial<CostQuery> = {}): CostQuery => ({ ...defaultQuery('B'), plants: ['UB01'], ...p });
@@ -88,7 +89,7 @@ describe('listHeaders', () => {
     for (const u of mockRequestLog) expect(u).not.toContain('+');
   });
 
-  it('at the cap: slices by brand, then product, then CRS; a CRS still at the cap is listed as incomplete; de-duplicated', async () => {
+  it('at the cap: slices by brand, then product, then SKU; a SKU still at the cap is listed as incomplete; de-duplicated', async () => {
     const CAP = 4;
     const calls: string[] = [];
     const mats = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => ({ Matnr: `${prefix}${i}`, Mtart: 'FERT' }));
@@ -100,25 +101,41 @@ describe('listHeaders', () => {
         if (f.includes("Level eq 'P'")) return { rows: [{ Code: 'P1', Descr: 'One' }, { Code: 'P2', Descr: 'Two' }] };
         return { rows: [{ Code: 'C1', Descr: 'Cee1' }, { Code: 'C2', Descr: 'Cee2' }] };
       }
-      if (f.includes("Zskugrcodecrs eq 'C2'")) return { rows: mats('X', CAP) }; // still at the cap
-      if (f.includes("Zskugrcodecrs eq 'C1'")) return { rows: [...mats('Y', 2), { Matnr: 'A0', Mtart: 'FERT' }] }; // A0 again: de-duplicated
+      if (f.includes("Zsku eq 'C2'")) return { rows: mats('X', CAP) }; // still at the cap
+      if (f.includes("Zsku eq 'C1'")) return { rows: [...mats('Y', 2), { Matnr: 'A0', Mtart: 'FERT' }] }; // A0 again: de-duplicated
       if (f.includes("Prodha eq 'P1'")) return { rows: mats('Z', 3) };
-      if (f.includes("Zbrandcode eq 'BA'")) return { rows: mats('A', 2) };
+      if (f.includes("Zbrand eq 'BA'")) return { rows: mats('A', 2) };
       return { rows: mats('W', CAP) }; // plant list, brand BB and product P2: at the cap
     };
     const r = await listHeaders({ plant: 'UB01', mtart: ['FERT'] }, { vhCap: CAP, get });
     expect(r.complete).toBe(false);
-    expect(r.incomplete).toEqual(['brand Beta › product Two › CRS Cee2']);
+    expect(r.incomplete).toEqual(['brand Beta › product Two › SKU Cee2']);
     const ids = r.rows.map((m) => m.Matnr);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toEqual(expect.arrayContaining(['A0', 'A1', 'Z0', 'Y0', 'X0']));
     expect(calls.filter((c) => c.startsWith('HierVHSet')).every((c) => c.includes("Werks eq 'UB01'"))).toBe(true);
   });
 
-  it('the cascade picker narrows the list (brand / product / CRS in the filter)', async () => {
+  it('the cascade picker narrows the list (brand / product / SKU in the filter, new names)', async () => {
     const seen: string[] = [];
-    await listHeaders({ plant: 'UB01', mtart: ['FERT'], brand: 'NAV', product: 'P1', crs: 'C9' }, { get: async (_s, p) => { seen.push(p.$filter ?? ''); return { rows: [] }; } });
-    expect(seen[0]).toBe("Zbrandcode eq 'NAV' and Prodha eq 'P1' and Zskugrcodecrs eq 'C9' and Mtart eq 'FERT' and Werks eq 'UB01'");
+    await listHeaders({ plant: 'UB01', mtart: ['FERT'], brand: 'NAV', product: 'P1', sku: 'C9' }, { get: async (_s, p) => { seen.push(p.$filter ?? ''); return { rows: [] }; } });
+    expect(seen[0]).toBe("Zbrand eq 'NAV' and Prodha eq 'P1' and Zsku eq 'C9' and Mtart eq 'FERT' and Werks eq 'UB01'");
+  });
+
+  it('legacy names in legacy mode, and the same fallback as the picker when SAP lacks the new names', async () => {
+    const seen: string[] = [];
+    process.env.CASCADE_FIELDS = 'legacy';
+    await listHeaders({ plant: 'UB01', mtart: ['FERT'], brand: 'NAV', sku: 'C9' }, { get: async (_s, p) => { seen.push(p.$filter ?? ''); return { rows: [] }; } });
+    expect(seen[0]).toBe("Zbrandcode eq 'NAV' and Zskugrcodecrs eq 'C9' and Mtart eq 'FERT' and Werks eq 'UB01'");
+    delete process.env.CASCADE_FIELDS;
+    seen.length = 0;
+    const r = await listHeaders({ plant: 'UB01', mtart: ['FERT'], brand: 'NAV' }, { get: async (_s, p) => {
+      const f = p.$filter ?? ''; seen.push(f);
+      if (/Zbrand eq/.test(f)) throw new SapError('Property Zbrand not found in type MaterialVH', 'http', 400, [], 400);
+      return { rows: [{ Matnr: 'M1' }] };
+    } });
+    expect(seen).toEqual(["Zbrand eq 'NAV' and Mtart eq 'FERT' and Werks eq 'UB01'", "Zbrandcode eq 'NAV' and Mtart eq 'FERT' and Werks eq 'UB01'"]);
+    expect(r.rows.map((m) => m.Matnr)).toEqual(['M1']);
   });
 
   it('live services without Werks on MaterialVH: the plant comes from the hierarchy (plantFiltered false)', async () => {

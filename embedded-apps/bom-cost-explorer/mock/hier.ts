@@ -5,6 +5,8 @@
  *                property -> 400 "Property 'Werks' not found in type 'ZMM_BOM_COST_SRV.HierVH'"
  *                empty    -> no brands
  *                big      -> brand BIG with 650 finished goods (MaterialVHSet caps at 500)
+ * MaterialVHSet accepts the new cascade names (Zbrand, Zsku) and the legacy ones (Zbrandcode, Zskugrcodecrs).
+ * MOCK_SAP_CASCADE=legacy -> the new names are rejected like the live systems on 23.10.2026 ("Property Zbrand not found").
  */
 import { MATERIALS } from './data';
 
@@ -57,12 +59,16 @@ export function handleHier(set: string, sp: URLSearchParams, deps: HierDeps): Re
   }
   if (set === 'MaterialVHSet') {
     const raw = sp.get('$filter') ?? '';
-    const hierFilter = /Zbrandcode|Prodha|Zskugrcodecrs/.test(raw);
+    const hierFilter = /Zbrand|Prodha|Zsku/.test(raw);
     if (!hierFilter) return null; // the existing search / exact-material mock answers
+    if (process.env.MOCK_SAP_CASCADE === 'legacy') {
+      const bad = /\b(Zbrand|Zsku)\b(?!code|grcodecrs)/.exec(raw);
+      if (bad) return deps.odataError(400, '/IWBEP/CM_MGW_RT/022', `Property ${bad[1]} not found in type MaterialVH`);
+    }
     if (mode === 'property' && /Werks/.test(raw)) return deps.odataError(400, '/IWBEP/CM_MGW_RT/022', "Property 'Werks' not found in type 'ZMM_BOM_COST_SRV.MaterialVH'");
     const f = deps.parseFilter(raw);
     const term = (sp.get('search') ?? '').toLowerCase();
-    const list = hierMaterials().filter((m) => pass(f.get('Zbrandcode'), m.brand) && pass(f.get('Prodha'), m.prodha) && pass(f.get('Zskugrcodecrs'), m.crs) && pass(f.get('Mtart'), m.Mtart)
+    const list = hierMaterials().filter((m) => pass(f.get('Zbrand') ?? f.get('Zbrandcode'), m.brand) && pass(f.get('Prodha'), m.prodha) && pass(f.get('Zsku') ?? f.get('Zskugrcodecrs'), m.crs) && pass(f.get('Mtart'), m.Mtart)
       && (!f.get('Werks')?.length || m.werks.some((w) => pass(f.get('Werks'), w))) && (!term || m.Matnr.toLowerCase().includes(term) || m.Maktx.toLowerCase().includes(term)));
     return deps.json({ d: { results: list.slice(0, 500).map((m) => ({ __metadata: { type: 'ZMM_BOM_COST_SRV.MaterialVH' }, Matnr: m.Matnr, Maktx: m.Maktx, Mtart: m.Mtart, Meins: m.Meins })) } });
   }

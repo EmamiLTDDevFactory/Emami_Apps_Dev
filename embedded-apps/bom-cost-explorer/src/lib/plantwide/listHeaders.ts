@@ -1,28 +1,29 @@
 /**
  * Every header material of one plant for plant-wide costing.
  *
- *   a) MaterialVHSet?$filter=Werks eq 'P' and Mtart eq 'FERT' [and Zbrandcode/Prodha/Zskugrcodecrs]: fewer than VH_CAP
+ *   a) MaterialVHSet?$filter=Werks eq 'P' and Mtart eq 'FERT' [and Zbrand/Prodha/Zsku]: fewer than VH_CAP
  *      rows = the complete list.
  *   b) VH_CAP rows (a possibly cut list): slice by brand (HierVHSet Level B of the plant), then product (Level P), then
- *      CRS (Level C); a CRS slice still at VH_CAP is listed in incomplete[] with its names.
+ *      SKU (Level C); a SKU slice still at VH_CAP is listed in incomplete[] with its names.
+ *      Property names follow the cascade picker (lib/client/hier.ts: CASCADE_FIELDS new / legacy, legacy fallback).
  *   c) merge, de-duplicate by Matnr, sort. Slice calls run 3 at a time. URLs via the existing builders (no "+").
  *
  * The live services (NGQ, NWP checked 2026-10-23) have no Werks property on MaterialVH and answer a) with
  * "Property Werks not found in type MaterialVH". Then the plant comes from the hierarchy instead: the brands (products,
- * CRS) HierVHSet lists for the plant, and each brand's materials without the plant filter. Such a list can hold
+ * SKU) HierVHSet lists for the plant, and each brand's materials without the plant filter. Such a list can hold
  * finished goods of the brand that have no BOM in this plant; SAP skips those headers with a message when costing.
  */
 import { odataString } from '../sap/filter';
 import { sapGetCollection, SapError, type SapGetOptions } from '../sap/client';
-import { hierMaterialsRequest, hierRequest, type HierLevel } from '../client/hier';
+import { cascadeFields, hierMaterialsRequest, hierRequest, isNewCascadePropertyMissing, markCascadeLegacy, type HierLevel } from '../client/hier';
 import { ENTITY_SET } from '../sap/entities';
 
-export interface HeaderRow { Matnr: string; Maktx: string; Mtart: string; Meins: string; Zbrandcode: string; Prodha: string; Zskugrcodecrs: string }
-export interface ListHeadersInput { plant: string; mtart: string[]; brand?: string; product?: string; crs?: string }
+export interface HeaderRow { Matnr: string; Maktx: string; Mtart: string; Meins: string; Zbrand: string; Prodha: string; Zsku: string }
+export interface ListHeadersInput { plant: string; mtart: string[]; brand?: string; product?: string; sku?: string }
 export interface ListHeadersResult {
   rows: HeaderRow[];
   complete: boolean;
-  /** slices still at VH_CAP after slicing down to CRS, by name */
+  /** slices still at VH_CAP after slicing down to SKU, by name */
   incomplete: string[];
   /** false when SAP has no plant filter on MaterialVH and the list came through the plant's hierarchy */
   plantFiltered: boolean;
@@ -35,7 +36,7 @@ export interface ListHeadersOptions { signal?: AbortSignal; vhCap?: number; get?
 export class PlantListError extends Error { name = 'PlantListError'; }
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
-const toHeader = (r: Record<string, unknown>): HeaderRow => ({ Matnr: s(r.Matnr), Maktx: s(r.Maktx), Mtart: s(r.Mtart), Meins: s(r.Meins), Zbrandcode: s(r.Zbrandcode), Prodha: s(r.Prodha), Zskugrcodecrs: s(r.Zskugrcodecrs) });
+const toHeader = (r: Record<string, unknown>): HeaderRow => ({ Matnr: s(r.Matnr), Maktx: s(r.Maktx), Mtart: s(r.Mtart), Meins: s(r.Meins), Zbrand: s(r.Zbrand) || s(r.Zbrandcode), Prodha: s(r.Prodha), Zsku: s(r.Zsku) || s(r.Zskugrcodecrs) });
 
 /** SAP's answer when an entity type has no Werks property. */
 export function isNoWerksProperty(e: unknown): boolean {
@@ -69,11 +70,21 @@ export async function listHeaders(input: ListHeadersInput, opts: ListHeadersOpti
   let plantFilter = true;
 
   /** MaterialVHSet for the criteria, one call per material type; capped when any call returned VH_CAP rows. */
-  const materials = async (c: { brand?: string; product?: string; crs?: string }): Promise<{ rows: HeaderRow[]; capped: boolean }> => {
+  const materials = async (c: { brand?: string; product?: string; sku?: string }): Promise<{ rows: HeaderRow[]; capped: boolean }> => {
     const parts = await Promise.all(mtarts.map(async (mtart) => {
-      const crit = { brand: c.brand ? [c.brand] : [], product: c.product ? [c.product] : [], crs: c.crs ? [c.crs] : [], mtart, werks: plantFilter ? [plant] : [] };
-      const req = hierMaterialsRequest(crit) ?? { entitySet: ENTITY_SET.MATERIALS, params: { $filter: `Werks eq ${odataString(plant)} and Mtart eq ${odataString(mtart)}` } };
-      const r = await get(req.entitySet, req.params, sapOpts);
+      const crit = { brand: c.brand ? [c.brand] : [], product: c.product ? [c.product] : [], sku: c.sku ? [c.sku] : [], mtart, werks: plantFilter ? [plant] : [] };
+      const build = () => hierMaterialsRequest(crit) ?? { entitySet: ENTITY_SET.MATERIALS, params: { $filter: `Werks eq ${odataString(plant)} and Mtart eq ${odataString(mtart)}` } };
+      let req = build();
+      let r;
+      try {
+        r = await get(req.entitySet, req.params, sapOpts);
+      } catch (e) {
+        // New cascade names not on this system yet: same fallback as the picker.
+        if (!isNewCascadePropertyMissing(e) || cascadeFields() === 'legacy') throw e;
+        markCascadeLegacy();
+        req = build();
+        r = await get(req.entitySet, req.params, sapOpts);
+      }
       return { rows: r.rows.map(toHeader).filter((m) => m.Matnr), capped: r.rows.length >= cap };
     }));
     return { rows: parts.flatMap((p) => p.rows), capped: parts.some((p) => p.capped) };
@@ -95,7 +106,7 @@ export async function listHeaders(input: ListHeadersInput, opts: ListHeadersOpti
   let plantCount: number | undefined;
   const incomplete: string[] = [];
 
-  const top = { brand: input.brand, product: input.product, crs: input.crs };
+  const top = { brand: input.brand, product: input.product, sku: input.sku };
   let first: { rows: HeaderRow[]; capped: boolean } | null = null;
   try {
     first = await materials(top);
@@ -105,21 +116,21 @@ export async function listHeaders(input: ListHeadersInput, opts: ListHeadersOpti
   }
   if (first && !first.capped) found.push(...first.rows);
   else {
-    // Slice: brand -> product -> CRS, each narrowed by what the cascade picker already chose.
+    // Slice: brand -> product -> SKU, each narrowed by what the cascade picker already chose.
     const brands = input.brand ? [{ code: input.brand, name: input.brand, cnt: 0 }] : await level('B');
     if (!plantFilter && !input.brand) plantCount = brands.reduce((a, b) => a + b.cnt, 0);
     await pool(brands, conc, async (b) => {
-      const mb = await materials({ brand: b.code, product: input.product, crs: input.crs });
+      const mb = await materials({ brand: b.code, product: input.product, sku: input.sku });
       if (!mb.capped) { found.push(...mb.rows); return; }
       const products = input.product ? [{ code: input.product, name: input.product, cnt: 0 }] : await level('P', b.code);
       await pool(products, conc, async (p) => {
-        const mp = await materials({ brand: b.code, product: p.code, crs: input.crs });
+        const mp = await materials({ brand: b.code, product: p.code, sku: input.sku });
         if (!mp.capped) { found.push(...mp.rows); return; }
-        const crsList = input.crs ? [{ code: input.crs, name: input.crs, cnt: 0 }] : await level('C', b.code, p.code);
-        await pool(crsList, conc, async (c) => {
-          const mc = await materials({ brand: b.code, product: p.code, crs: c.code });
+        const skuList = input.sku ? [{ code: input.sku, name: input.sku, cnt: 0 }] : await level('C', b.code, p.code);
+        await pool(skuList, conc, async (c) => {
+          const mc = await materials({ brand: b.code, product: p.code, sku: c.code });
           found.push(...mc.rows);
-          if (mc.capped) incomplete.push(`brand ${b.name} › product ${p.name} › CRS ${c.name}`);
+          if (mc.capped) incomplete.push(`brand ${b.name} › product ${p.name} › SKU ${c.name}`);
         }, opts.signal);
       }, opts.signal);
     }, opts.signal);

@@ -234,7 +234,7 @@ export { inputCls };
 
 
 /**
- * Brand -> Product -> CRS -> Material browser. The lists come from SAP's grouped HierVHSet and MaterialVHSet
+ * Brand -> Product -> SKU -> Material browser. The lists come from SAP's grouped HierVHSet and MaterialVHSet
  * filtered by the chosen levels (components/MaterialCascadePicker.tsx, lib/client/hier.ts). Opens on demand;
  * picked materials go into the same list as the search above (`values` / `onChange`).
  */
@@ -243,7 +243,7 @@ export function MaterialHierarchyPicker({ values, onChange, max, werks, pick, on
   if (!open) {
     return (
       <button type="button" className="mt-1.5 text-xs font-semibold text-accent hover:underline" onClick={() => setOpen(true)}>
-        Or pick by Brand → Product → CRS → Material
+        Or pick by Brand → Product → SKU → Material
       </button>
     );
   }

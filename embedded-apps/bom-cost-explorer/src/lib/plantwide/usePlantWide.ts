@@ -16,7 +16,7 @@ import { listHeaders, type HeaderRow, type ListHeadersOptions } from './listHead
 import { chunk, newPwState, runBatches, type CostFn, type PwProgress, type PwState } from './runBatches';
 
 export type { HierPick };
-export const NO_PICK: HierPick = { brand: '', product: '', crs: '' };
+export const NO_PICK: HierPick = { brand: '', product: '', sku: '' };
 
 export interface PlantWideInfo { plant: string; headers: number; costed: number; skipped: number; failed: number; batches: number; plantFiltered: boolean; incomplete: string[] }
 
@@ -35,7 +35,7 @@ export interface UsePlantWideOptions {
 export function usePlantWide({ query, pick = NO_PICK, settings = PLANT_WIDE, cancel, cost = fetchCostLines, get, debounceMs = 500 }: UsePlantWideOptions) {
   const active = isPlantWide(query, settings.enabled);
   const plant = active ? query.plants[0].toUpperCase() : '';
-  const listKey = active ? JSON.stringify([plant, settings.mtart, pick.brand, pick.product, pick.crs]) : '';
+  const listKey = active ? JSON.stringify([plant, settings.mtart, pick.brand, pick.product, pick.sku]) : '';
 
   const [status, setStatus] = useState<'idle' | 'counting' | 'ready' | 'error'>('idle');
   const [list, setList] = useState<{ key: string; rows: HeaderRow[]; incomplete: string[]; plantFiltered: boolean; plantCount?: number } | null>(null);
@@ -54,7 +54,7 @@ export function usePlantWide({ query, pick = NO_PICK, settings = PLANT_WIDE, can
     setError('');
     const ctl = new AbortController();
     const t = setTimeout(() => {
-      listHeaders({ plant, mtart: settings.mtart, brand: pick.brand || undefined, product: pick.product || undefined, crs: pick.crs || undefined }, { signal: ctl.signal, vhCap: settings.vhCap, get })
+      listHeaders({ plant, mtart: settings.mtart, brand: pick.brand || undefined, product: pick.product || undefined, sku: pick.sku || undefined }, { signal: ctl.signal, vhCap: settings.vhCap, get })
         .then((r) => { if (!ctl.signal.aborted) { setList({ key: listKey, rows: r.rows, incomplete: r.incomplete, plantFiltered: r.plantFiltered, plantCount: r.plantCount }); setStatus('ready'); } })
         .catch((e) => { if (!ctl.signal.aborted) { setError((e as Error).message || 'Could not list the materials of the plant.'); setStatus('error'); } });
     }, debounceMs);
@@ -72,7 +72,7 @@ export function usePlantWide({ query, pick = NO_PICK, settings = PLANT_WIDE, can
     const failed = issues.filter((i) => i.kind === 'failed');
     const head: SapMessage[] = [
       { code: 'APP/PLANT_WIDE', severity: 'info', message: `Plant-wide: ${info.headers.length} header materials (${settings.mtart.join(', ')}) of plant ${info.plant} in ${chunk(info.headers, settings.batch).length} batch(es) of up to ${settings.batch}.${info.plantFiltered ? '' : ` Listed through the plant's brands (SAP has no plant filter on MaterialVH here): materials without a BOM in ${info.plant} are skipped.`}` },
-      ...info.incomplete.map((n): SapMessage => ({ code: 'APP/PW_INCOMPLETE', severity: 'warning', message: `List may be incomplete for ${n}: SAP answered the maximum number of rows. Narrow it with the brand / product / CRS picker.` })),
+      ...info.incomplete.map((n): SapMessage => ({ code: 'APP/PW_INCOMPLETE', severity: 'warning', message: `List may be incomplete for ${n}: SAP answered the maximum number of rows. Narrow it with the brand / product / SKU picker.` })),
       ...skipped.map((i): SapMessage => ({ code: 'APP/PW_SKIPPED', severity: 'warning', message: `${i.matnr.replace(/^0+/, '')} skipped: ${i.message}` })),
       ...failed.map((i): SapMessage => ({ code: 'APP/PW_FAILED', severity: 'error', message: `${i.matnr.replace(/^0+/, '')} failed: ${i.message}` })),
     ];

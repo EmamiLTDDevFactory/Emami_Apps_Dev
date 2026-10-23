@@ -1,15 +1,15 @@
 'use client';
 /**
- * "Pick by Brand -> Product -> CRS -> Material". Levels from SAP's HierVHSet (lib/client/hier.ts), materials
- * from MaterialVHSet filtered by the chosen levels (or a 2+ character search). Picking a level clears the ones
- * below it; any level may be skipped. Chosen materials become the chips of the material field (`values`).
+ * "Pick by Brand -> Product -> SKU -> Material". Levels from SAP's HierVHSet (lib/client/hier.ts), materials
+ * from MaterialVHSet filtered by the chosen levels (or a 2+ character search). Every level lists everything until a
+ * higher level is chosen; choosing one reloads the lower lists and clears a lower choice they no longer have. Chosen materials become the chips of the material field (`values`).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 import { cx, inputCls } from './ui';
 import type { MaterialRow } from '@/lib/sap/fields';
-import { HIER_MATERIALS_MAX, hasMaterialCriteria, loadBrands, loadHierMaterials, loadLevel, optionLabel, pickLevel, problemText, type HierOption, type HierPick, type HierProblem } from '@/lib/client/hier';
+import { HIER_MATERIALS_MAX, hasMaterialCriteria, keepValid, loadBrands, loadHierMaterials, loadLevel, optionLabel, pickLevel, problemText, type HierOption, type HierPick, type HierProblem } from '@/lib/client/hier';
 import { sapConfig } from '@/lib/sap/config';
 
 const ROW_H = 34;
@@ -23,13 +23,13 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const werks = useMemo(() => werksProp, [werksKey]);
   const system = useMemo(() => { try { return sapConfig().system; } catch { return ''; } }, []);
-  const [ownPick, setOwnPick] = useState<HierPick>({ brand: '', product: '', crs: '' });
+  const [ownPick, setOwnPick] = useState<HierPick>({ brand: '', product: '', sku: '' });
   // Optional controlled pick (plant-wide costing narrows its list by it); uncontrolled = as before.
   const pick = pickProp ?? ownPick;
   const setPick = (p: HierPick) => (onPickChange ? onPickChange(p) : setOwnPick(p));
   const [brands, setBrands] = useState<HierOption[] | null>(null);
-  const [products, setProducts] = useState<HierOption[]>([]);
-  const [crs, setCrs] = useState<HierOption[]>([]);
+  const [products, setProducts] = useState<HierOption[] | null>(null);
+  const [skus, setSkus] = useState<HierOption[] | null>(null);
   const [problem, setProblem] = useState<HierProblem | null>(null);
   const [levelError, setLevelError] = useState('');
   const [fgOnly, setFgOnly] = useState(true);
@@ -46,11 +46,12 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
   }, [werks.join(',')]);
   useEffect(() => { loadB(); }, [loadB]);
 
-  // Product list follows the brand; CRS follows brand + product (skipped levels = no filter).
+  // Product list follows the brand; SKU follows brand + product. Nothing chosen above = all (no filter).
   useEffect(() => {
     if (problem && problem.kind !== 'empty') return;
     const c = new AbortController();
     setLevelError('');
+    setProducts(null);
     loadLevel('P', { brand: one(pick.brand), werks }, { signal: c.signal }).then(setProducts).catch((e) => { if (!c.signal.aborted) setLevelError((e as Error).message); });
     return () => c.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,13 +59,20 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
   useEffect(() => {
     if (problem && problem.kind !== 'empty') return;
     const c = new AbortController();
-    loadLevel('C', { brand: one(pick.brand), product: one(pick.product), werks }, { signal: c.signal }).then(setCrs).catch((e) => { if (!c.signal.aborted) setLevelError((e as Error).message); });
+    setSkus(null);
+    loadLevel('C', { brand: one(pick.brand), product: one(pick.product), werks }, { signal: c.signal }).then(setSkus).catch((e) => { if (!c.signal.aborted) setLevelError((e as Error).message); });
     return () => c.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pick.brand, pick.product, problem?.kind, werks.join(',')]);
 
   // Materials: only with a chosen level or a 2+ character search (never otherwise - SAP answers empty by design).
-  const criteria = useMemo(() => ({ brand: one(pick.brand), product: one(pick.product), crs: one(pick.crs), mtart: fgOnly ? 'FERT' : '', q, werks }), [pick, fgOnly, q, werks]);
+  // A lower choice the reloaded list no longer has is cleared.
+  useEffect(() => {
+    const next = keepValid(pick, products, skus);
+    if (next !== pick) setPick(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, skus]);
+  const criteria = useMemo(() => ({ brand: one(pick.brand), product: one(pick.product), sku: one(pick.sku), mtart: fgOnly ? 'FERT' : '', q, werks }), [pick, fgOnly, q, werks]);
   const ready = hasMaterialCriteria(criteria);
   useEffect(() => {
     if (!ready) { setMats(null); return; }
@@ -104,7 +112,7 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
   return (
     <div className="mt-2 rounded-xl border border-line bg-sunken/40 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs font-bold text-ink">Pick by Brand → Product → CRS → Material {system && <span className="ml-1 rounded bg-accent/10 px-1.5 py-px text-2xs font-bold text-accent" title="SAP system the lists come from">SAP {system}</span>}</span>
+        <span className="text-xs font-bold text-ink">Pick by Brand → Product → SKU → Material {system && <span className="ml-1 rounded bg-accent/10 px-1.5 py-px text-2xs font-bold text-accent" title="SAP system the lists come from">SAP {system}</span>}</span>
         {onClose && <button type="button" className="text-xs text-muted hover:text-ink" onClick={onClose}>Close</button>}
       </div>
 
@@ -119,7 +127,7 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
       <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
         {level('Brand', 'brand', blocking ? [] : brands)}
         {level('Product', 'product', blocking ? [] : products)}
-        {level('CRS', 'crs', blocking ? [] : crs)}
+        {level('SKU', 'sku', blocking ? [] : skus)}
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-2xs font-semibold uppercase tracking-wide text-muted">
           Material
           <input aria-label="Search materials" className={cx(inputCls, 'normal-case tracking-normal')} placeholder="Search number or text (2+ characters)…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -141,7 +149,7 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
 
       <div ref={scrollRef} className="scroll-thin mt-2 h-56 overflow-auto rounded-lg border border-line bg-panel" role="listbox" aria-label="Materials" aria-multiselectable>
         {!ready ? (
-          <p className="px-3 py-2 text-xs text-muted">Choose a brand, product or CRS, or type 2+ characters to search.</p>
+          <p className="px-3 py-2 text-xs text-muted">Choose a brand, product or SKU, or type 2+ characters to search.</p>
         ) : matsLoading && !mats ? (
           <p className="px-3 py-2 text-xs text-muted">Loading materials from SAP…</p>
         ) : matsError ? (

@@ -147,7 +147,7 @@ export async function runAiTool(name: string, input: Record<string, unknown>, c:
     case 'search_materials': {
       const t = String(a.text ?? '');
       const rows = a.brand || a.product || a.crs
-        ? (await loadHierMaterials({ brand: a.brand ? [String(a.brand)] : [], product: a.product ? [String(a.product)] : [], crs: a.crs ? [String(a.crs)] : [], mtart: a.mtart ? String(a.mtart) : '', q: t }))?.rows ?? []
+        ? (await loadHierMaterials({ brand: a.brand ? [String(a.brand)] : [], product: a.product ? [String(a.product)] : [], sku: a.crs ? [String(a.crs)] : [], mtart: a.mtart ? String(a.mtart) : '', q: t }))?.rows ?? []
         : t.trim().length >= 2 ? await fetchMaterials(t) : [];
       const list = rows.filter((m) => !a.mtart || m.Mtart === a.mtart).slice(0, ROW_CAP).map((m) => ({ matnr: m.Matnr, text: m.Maktx, type: m.Mtart, unit: m.Meins }));
       return { summary: `${list.length} material(s) found.`, rows: list, facts: factsOf(c, [fact(c, 'Materials found', list.length, 'count', 'search_materials.count')]) };
