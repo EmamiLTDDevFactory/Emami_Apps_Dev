@@ -6,6 +6,11 @@ import { loadSapConfig } from '@/lib/sap/config';
 import { COSTING_TIMEOUT_MS } from '@/lib/sap/client';
 import { subscribeCostProgress, type CostProgress } from '@/lib/client/plantRun';
 import RateSummary from './rates/RateSummary';
+import dynamic from 'next/dynamic';
+import { AI_ENABLED } from '@/lib/ai/config';
+
+// AI layer (flag NEXT_PUBLIC_AI_ENABLED, default off): loaded only when on.
+const AiBar = dynamic(() => import('./ai/AiBar'), { ssr: false });
 import { useRateOptions } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import RateSources from './rates/RateSources';
@@ -128,6 +133,7 @@ export default function Explorer() {
       }
       setDrawer(null);
       const r = await runner.run(q);
+      if (r && AI_ENABLED && q.mode === 'B') void import('@/lib/snapshots/snapshot').then((m) => m.saveSnapshotIfEnabled(r.rows, q, cfg?.ok ? cfg.config.system : '', user));
       if (r) {
         setCollapsed(true);
         ls.set(lastMsKey(q.mode), r.ms);
@@ -386,6 +392,7 @@ export default function Explorer() {
                 {simTotal && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(simTotal, 2)}</strong></>}
                 <span className="text-2xs text-muted" title="Rate source priority SAP used for this result">Priority: <b className="text-ink">{prioLabel(ranQuery.prio)}</b></span>
                 {donorRows > 0 && <Pill tone="warn" title={`Leaf rows costed with rates from donor plant ${ranQuery.donorPlant || ''}`}>{donorRows} donor row{donorRows === 1 ? '' : 's'}</Pill>}
+                {AI_ENABLED && result && <AiBar rows={result.rows} result={result} query={ranQuery} system={cfg?.ok ? cfg.config.system : ''} user={user} scenarios={scen.list} onSelectRow={openRow} />}
               </div>
             )}
           </div>
