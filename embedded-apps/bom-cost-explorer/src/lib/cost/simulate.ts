@@ -7,7 +7,8 @@
  *   simulated total (leaf) = (rate/pc INR' + freight/pc INR') x ProdQty x qty multiplier
  *   rate/pc INR'  = override                                            (if overridden), else
  *                   picked option RatePcInr x (1 + source %) x (1 + component %) x (1 + FX %)
- *   freight/pc'   = FrtPcInr x (1 + freight %) x (1 + FX % of the freight currency)
+ *   freight/pc'   = FrtPcInr x (1 + freight %) x (1 + FX % of the freight currency); none when the picked source is
+ *                   Consumption / MBEW (freight included), the component's freight when another source is picked
  *
  * FX shocks apply to the currency an amount is DENOMINATED in (SelCurr / option Curr for the
  * rate, FrtCurr for freight; LocCurr when those are blank): a USD-priced item's INR value moves
@@ -17,6 +18,7 @@ import type { CostLine, RateOption } from '../sap/fields';
 import type { RateSource } from '../query/schema';
 import { D, ZERO, Decimal } from './decimal';
 import { isLeafRow, rowKey } from './tree';
+import { sourceFreightInr } from './freightIncluded';
 
 export type PickMode = 'sap' | 'priority' | 'cheapest' | 'latest';
 
@@ -169,7 +171,8 @@ export function simulateRow(r: CostLine, s: SimSettings): SimRow {
     if (fx) ratePcInr = ratePcInr.times(fx);
   }
 
-  let frtPcInr = base.frtPcInr;
+  // Freight follows the source: Consumption / MBEW include it, other sources add the component's freight.
+  let frtPcInr = repicked ? sourceFreightInr(source, r) : base.frtPcInr;
   const ff = factor(s.freightPct);
   const ffx = factor(s.fxPct[r.FrtCurr || r.LocCurr]);
   if (ff) frtPcInr = frtPcInr.times(ff);

@@ -18,6 +18,7 @@ import { pagedRequest } from '../sap/requests';
 import { sapGetCollection, type SapGetOptions } from '../sap/client';
 import { normalizeEntity } from '../sap/normalize';
 import { FREIGHT_ROW, type CostLine, type FreightRow } from '../sap/fields';
+import { componentFreightLoc, type FreightTagged } from '../cost/freightIncluded';
 
 /** FREIGHT_BREAKUP_ENABLED (default true). NEXT_PUBLIC_ name referenced literally so Next inlines it in the browser. */
 export const FREIGHT_BREAKUP_ENABLED = String(process.env.NEXT_PUBLIC_FREIGHT_BREAKUP_ENABLED ?? process.env.FREIGHT_BREAKUP_ENABLED ?? 'true').toLowerCase() !== 'false';
@@ -84,9 +85,10 @@ export interface Reconciliation {
 }
 
 /** Sum of UsedPcLoc vs the cost line's FrtPcLoc; matches within max(0.01, 0.05 % of the line value). */
-export function reconcile(rows: FreightRow[], line: Pick<CostLine, 'FrtPcLoc' | 'Meins' | 'LocCurr'>): Reconciliation {
+export function reconcile(rows: FreightRow[], line: Pick<CostLine, 'FrtPcLoc' | 'Meins' | 'LocCurr'> & FreightTagged): Reconciliation {
   const breakup = rows.reduce((a, r) => a.plus(D(r.UsedPcLoc)), ZERO);
-  const lv = D(line.FrtPcLoc);
+  // SAP's freight of the component (kept when the line's Consumption / MBEW rate already includes it).
+  const lv = componentFreightLoc(line);
   const diff = breakup.minus(lv).abs();
   const tolerance = Decimal.max(D('0.01'), lv.abs().times('0.0005'));
   const rowUnit = rows.find((r) => r.Baseunit)?.Baseunit ?? '';

@@ -11,6 +11,7 @@ import { D, ZERO, type Decimal } from '../cost/decimal';
 import { isLeafRow } from '../cost/tree';
 import type { CostLine } from '../sap/fields';
 import { RATE_SOURCE_ORDER, type RateOptionRow } from './fields';
+import { isFreightIncluded, sourceFreightInr, sourceFreightLoc } from '../cost/freightIncluded';
 
 export interface SourceOptionRow {
   line: CostLine;
@@ -41,13 +42,16 @@ export interface SourcesModel {
 }
 
 const qty = (l: CostLine) => D(l.ProdQty);
+/** Option total for the line: rate x qty plus the component's freight x qty - none for Consumption / MBEW (freight included). */
 export function optionTotal(o: RateOptionRow, l: CostLine): Decimal {
+  if (isFreightIncluded(o.Source)) return D(o.RatePcInr).times(qty(l));
   if (o.TotCostInr !== undefined && o.TotCostInr !== '') return D(o.TotCostInr);
-  return D(o.RatePcInr).times(qty(l)).plus(D(l.FrtPcInr).times(qty(l)));
+  return D(o.RatePcInr).times(qty(l)).plus(sourceFreightInr(o.Source, l).times(qty(l)));
 }
 export function optionTotalLoc(o: RateOptionRow, l: CostLine): Decimal {
+  if (isFreightIncluded(o.Source)) return D(o.RatePcLoc).times(qty(l));
   if (o.TotCostLoc !== undefined && o.TotCostLoc !== '') return D(o.TotCostLoc);
-  return D(o.RatePcLoc).times(qty(l)).plus(D(l.FrtPcLoc).times(qty(l)));
+  return D(o.RatePcLoc).times(qty(l)).plus(sourceFreightLoc(o.Source, l).times(qty(l)));
 }
 
 /** The option SAP selected: Selected = 'X' (direct set), else the option of SelSource closest to SelRatePcInr. */

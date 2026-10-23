@@ -11,6 +11,7 @@ import { configRequest, costRequest, materialSearchRequest, pagedRequest, plants
 import { normalizeEntity } from './normalize';
 import type { SapMessage } from './messages';
 import type { CostQuery, Mode } from '../query/schema';
+import { excludeIncludedFreight, excludeIncludedFreightRmPm } from '../cost/freightIncluded';
 
 /** Result field map for each mode's entity set (MODE_TO_ENTITY in entities.ts). */
 export const MODE_FIELDS = { B: COST_LINE, C: COST_LINE, R: RATE_ROW, F: FREIGHT_ROW, M: RMPM_ROW } as const satisfies Record<Mode, unknown>;
@@ -48,7 +49,8 @@ export async function fetchCostLines(q: CostQuery, opts: SapGetOptions = {}): Pr
   // The live services still warn about RATEOPTIONSET_GET_ENTITYSET in sap-message on some systems:
   // not a costing problem - the Rate sources tab says it neutrally instead.
   const messages = r.messages.filter((m) => !/RATEOPTIONSET/i.test(m.message));
-  const rows = r.rows.map((raw) => normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION }));
+  // Consumption / MBEW rates include freight: SAP's added freight is taken out here (lib/cost/freightIncluded).
+  const rows = r.rows.map((raw) => excludeIncludedFreight(normalizeEntity<CostLine>(raw, COST_LINE, { [NAV_RATE_OPTIONS]: RATE_OPTION })));
   // SAP returns depth-first order; Seqnr makes it explicit, so never trust transport order.
   rows.sort((a, b) => a.Seqnr - b.Seqnr);
   const cap = getRatesCapability(cfg.system).state;
@@ -72,7 +74,7 @@ export async function fetchPagedSet<T>(q: CostQuery, opts: SapGetOptions = {}): 
     ms += r.ms;
     if (skip === 0) messages.push(...r.messages);
     total = r.count ?? total;
-    rows.push(...r.rows.map((raw) => normalizeEntity<T>(raw, fields)));
+    rows.push(...r.rows.map((raw) => (q.mode === 'M' ? excludeIncludedFreightRmPm(normalizeEntity<T & Record<string, unknown>>(raw, fields)) : normalizeEntity<T>(raw, fields))));
     if (r.rows.length < PAGE || (total !== null && rows.length >= total)) break;
   }
   return { rows, messages, ms, truncated: rows.length >= MAX_ROWS };

@@ -9,6 +9,7 @@
  */
 import { D, type Decimal } from '../cost/decimal';
 import type { CostLine } from '../sap/fields';
+import { componentFreightInr, componentFreightLoc, type FreightTagged } from '../cost/freightIncluded';
 
 export const WITH_FREIGHT_SOURCES = ['CONTRACT', 'INFOREC'] as const;
 export type WithFreightSource = (typeof WITH_FREIGHT_SOURCES)[number];
@@ -16,7 +17,7 @@ export const WITH_FREIGHT_LABEL: Record<WithFreightSource, string> = { CONTRACT:
 export const hasFreightColumns = (source: string): source is WithFreightSource => (WITH_FREIGHT_SOURCES as readonly string[]).includes(source);
 
 type Opt = { Source: string; RatePcInr: string; RatePcLoc: string; LocCurr?: string; FxInr?: string };
-type Line = Pick<CostLine, 'FrtPcInr' | 'FrtPcLoc' | 'LocCurr' | 'TotCostInr' | 'TotCostLoc'>;
+type Line = Pick<CostLine, 'FrtPcInr' | 'FrtPcLoc' | 'LocCurr' | 'TotCostInr' | 'TotCostLoc'> & FreightTagged;
 
 export interface WithFreight { inr: Decimal; loc: Decimal | null; locCurr: string }
 
@@ -24,16 +25,16 @@ export interface WithFreight { inr: Decimal; loc: Decimal | null; locCurr: strin
 function inrPerLocal(l: Line): Decimal | null {
   const loc = D(l.TotCostLoc), inr = D(l.TotCostInr);
   if (loc.gt(0) && inr.gt(0)) return inr.div(loc);
-  const fl = D(l.FrtPcLoc), fi = D(l.FrtPcInr);
+  const fl = componentFreightLoc(l), fi = componentFreightInr(l);
   return fl.gt(0) && fi.gt(0) ? fi.div(fl) : null;
 }
 
 /** Rate + freight of a Contract / Info record option on this line; null for other sources or an unpriced option. */
 export function rateWithFreight(o: Opt, l: Line): WithFreight | null {
   if (!hasFreightColumns(o.Source) || !D(o.RatePcInr).gt(0)) return null;
-  const inr = D(o.RatePcInr).plus(D(l.FrtPcInr));
+  const inr = D(o.RatePcInr).plus(componentFreightInr(l));
   const lineCurr = l.LocCurr || o.LocCurr || '';
-  if (!o.LocCurr || !l.LocCurr || o.LocCurr === l.LocCurr) return { inr, loc: D(o.RatePcLoc).plus(D(l.FrtPcLoc)), locCurr: lineCurr };
+  if (!o.LocCurr || !l.LocCurr || o.LocCurr === l.LocCurr) return { inr, loc: D(o.RatePcLoc).plus(componentFreightLoc(l)), locCurr: lineCurr };
   const f = inrPerLocal(l);
   return { inr, loc: f ? inr.div(f) : null, locCurr: lineCurr };
 }

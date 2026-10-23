@@ -123,3 +123,13 @@ test('replay: 30 days, alerts only on the event days, nothing on quiet days', ()
   assert.ok(events[10].includes('R2'));
   assert.ok(events[20].includes('R3'));
 });
+
+test('Consumption / MBEW lines: SAP freight is not counted (rate already includes it)', () => {
+  const s = snap([row({ SelSource: 'MBEW', SelRatePcLoc: '104.54', FrtPcLoc: '10', FrtPcInr: '10', TotCostPcInr: '114.54' }), row({ Idnrk: 'B' })]);
+  const mbew = s.lines.find((l) => l.idnrk === 'A');
+  assert.equal(mbew.f_loc, '0.000000');
+  assert.equal(mbew.p_inr, '104.540000');
+  assert.equal(s.lines.find((l) => l.idnrk === 'B').p_inr, '11.000000'); // a contract line keeps its freight
+  assert.equal(C.freightIncluded('consump'), true);
+  assert.equal(C.freightIncluded('INFOREC'), false);
+});

@@ -10,6 +10,7 @@ import { Button, cx, Drawer, inputBase, inputCls, Pill, SimTag, SourceBadge } fr
 import { FreightBreakupSection } from './freight/FreightValue';
 import type { FreightRun } from '@/lib/freight/breakup';
 import { hasFreightColumns, rateWithFreight, vendorOf, vendorText } from '@/lib/rates/withFreight';
+import { type FreightTagged } from '@/lib/cost/freightIncluded';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -208,8 +209,9 @@ export default function RowDrawer({
               ['Source', <Pill key="s" tone={r.FrtSrc === 'ACTUAL' ? 'good' : 'neutral'}>{r.FrtSrc}</Pill>],
               ['Currency', r.FrtCurr],
               ['FX', fmtNum(r.FrtFx, 5, 'X')],
-              ['Freight / pc local', `${fmtRate(r.FrtPcLoc, r.LocCurr)} ${r.LocCurr}`],
-              ['Freight / pc INR', `${fmtRate(r.FrtPcInr)} INR`],
+              ...((r as FreightTagged).FrtIncluded
+                ? [['Freight', `Included in the ${r.SelSource} rate - SAP's ${fmtRate((r as FreightTagged).FrtPcLocSap ?? '0', r.LocCurr)} ${r.LocCurr} (${fmtRate((r as FreightTagged).FrtPcInrSap ?? '0')} INR) / pc is not added`] as [string, string]]
+                : [['Freight / pc local', `${fmtRate(r.FrtPcLoc, r.LocCurr)} ${r.LocCurr}`] as [string, string], ['Freight / pc INR', `${fmtRate(r.FrtPcInr)} INR`] as [string, string]]),
               ['Delivery as of', fmtDate(r.DelvAsof)],
               ['Actual delivered qty', fmtQty(r.TotActDelv)],
               ['Standard delivered qty', fmtQty(r.TotStdDelv)],

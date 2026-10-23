@@ -82,6 +82,9 @@ function paramsHash(p) {
     return crypto.createHash('sha1').update(JSON.stringify([p.system, (p.prio || []).join(','), p.lookback, p.donor || '', String(p.qty), p.inclFrt !== false, !!p.stdFrt])).digest('hex').slice(0, 12);
 }
 
+/** Sources whose rate already includes freight (env FREIGHT_INCLUDED_SOURCES, default CONSUMP,MBEW; empty = none). */
+const freightIncluded = (src) => (process.env.FREIGHT_INCLUDED_SOURCES ?? 'CONSUMP,MBEW').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).includes(String(src || '').trim().toUpperCase());
+
 function buildSnapshots(rows, params) {
     const qty = toBig(params.qty || 1) || TEN;
     const heads = new Map();
@@ -91,7 +94,9 @@ function buildSnapshots(rows, params) {
         let h = heads.get(hk);
         if (!h) heads.set(hk, (h = { headtxt: r.Headtxt || '', lines: new Map() }));
         const q = toBig(r.ProdQty) > 0n ? Dec.div(toBig(r.ProdQty), qty) : toBig(r.Hbmeng) > 0n ? Dec.div(toBig(r.Menge), toBig(r.Hbmeng)) : 0n;
-        const cur = { r: toBig(r.SelRatePcLoc), f: toBig(r.FrtPcLoc), x: toBig(r.SelFxInr) > 0n ? toBig(r.SelFxInr) : TEN, p: toBig(r.TotCostPcInr) };
+        // Consumption / MBEW rates already include freight: SAP's added freight is not counted (same rule as the app).
+        const incl = freightIncluded(r.SelSource);
+        const cur = { r: toBig(r.SelRatePcLoc), f: incl ? 0n : toBig(r.FrtPcLoc), x: toBig(r.SelFxInr) > 0n ? toBig(r.SelFxInr) : TEN, p: incl ? toBig(r.TotCostPcInr) - toBig(r.FrtPcInr) : toBig(r.TotCostPcInr) };
         const ck = `${r.Idnrk}|${r.Meins}`;
         const e = h.lines.get(ck);
         if (!e) {
@@ -275,6 +280,7 @@ function validateNumbers(text, citedIds, facts) {
 }
 
 module.exports = {
+    freightIncluded,
     Dec, toBig, costLineFilter, queryString, buildSnapshots, paramsHash, evaluateRules, DEFAULT_THRESHOLDS, fingerprint, shouldNotify,
     signLink, verifyLink, digestSubject, digestFacts, digestHtml, validateNumbers, extractNumbers, RULE_NAME, severity, isLeaf,
 };

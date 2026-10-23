@@ -11,6 +11,7 @@ import { ls } from '@/lib/client/storage';
 import { Button, cx, Modal, SimTag, SourceBadge, inputBase, inputCls } from './ui';
 import { FreightValue } from './freight/FreightValue';
 import type { FreightRun } from '@/lib/freight/breakup';
+import type { FreightTagged } from '@/lib/cost/freightIncluded';
 
 export interface NodeAgg {
   inr: Decimal[]; // leaf roll-up of TotCostInr per node
@@ -64,11 +65,11 @@ export const TREE_COLUMNS: Col[] = [
   },
   {
     id: 'frtPc', label: 'Freight / pc', width: 146, right: true,
-    line: ({ r, leaf, frun }) => (leaf && r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcLoc}><span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span></FreightValue> : null),
+    line: ({ r, leaf, frun }) => (leaf && (r as FreightTagged).FrtIncluded ? <span className="text-2xs text-muted" title={`Freight is included in the ${r.SelSource} rate; SAP's ${fmtRate((r as FreightTagged).FrtPcInrSap ?? '0')} INR/pc is not added`}>incl. in {r.SelSource === 'MBEW' ? 'MBEW' : 'consumption'} rate</span> : leaf && r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcLoc}><span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span></FreightValue> : null),
   },
   {
     id: 'frtPcInr', label: 'Freight / pc INR', width: 130, right: true,
-    line: ({ r, s, leaf, frun }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcInr}><Amt v={r.FrtPcInr} curr="INR" dp={4} /></FreightValue> : null),
+    line: ({ r, s, leaf, frun }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : (r as FreightTagged).FrtIncluded ? <span className="text-2xs text-muted" title={`Freight is included in the ${r.SelSource} rate; SAP's ${fmtRate((r as FreightTagged).FrtPcInrSap ?? '0')} INR/pc is not added`}>incl. in {r.SelSource === 'MBEW' ? 'MBEW' : 'consumption'} rate</span> : r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcInr}><Amt v={r.FrtPcInr} curr="INR" dp={4} /></FreightValue> : null),
   },
   {
     id: 'totPcInr', label: 'Total / pc INR', width: 136, right: true,
