@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, LifeBuoy,
+  Bot, DoorOpen, UserCog, LifeBuoy, Layers,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -49,6 +49,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
   setu: '/apps/setu', // Setu (Emami Secondary Support helpdesk)
+  'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -77,6 +78,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'access-tracker', name: 'Access Tracker', desc: 'Who has access to which app, every grant and revoke from Manage Access, and sign-in and app-usage activity, with Excel-ready exports. Admins only.', cat: 'IT', icon: UserCog, uses: 0, stage: 'Live' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
   { id: 'setu', name: 'Setu Helpdesk', desc: 'Emami Secondary Support helpdesk — tickets from the support mailbox and phone, AI insights and action points, severity matrix, SLA timers on business hours, round-robin assignment, board view and the daily report.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
+  { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({

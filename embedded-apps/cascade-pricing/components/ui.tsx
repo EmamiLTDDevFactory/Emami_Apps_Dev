@@ -1,0 +1,49 @@
+'use client';
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { Status } from '@/lib/types';
+
+const VARIANT = {
+  primary: 'border-plum bg-plum text-white hover:bg-plum-deep',
+  secondary: 'border-sap-line bg-white text-sap-ink hover:bg-sap-head',
+  danger: 'border-red-300 bg-white text-red-700 hover:bg-red-50',
+  success: 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700',
+} as const;
+
+export function Button({ variant = 'secondary', className = '', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT }) {
+  return <button type="button" className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded border px-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${VARIANT[variant]} ${className}`} {...rest} />;
+}
+
+export function Toolbar({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-2 border-b border-sap-line bg-white px-3 py-2" role="toolbar">{children}</div>;
+}
+
+export function TextField({ id, label, value, onChange, placeholder, error, width = 'w-32', disabled }: { id: string; label: string; value: string; onChange: (v: string) => void; placeholder?: string; error?: string; width?: string; disabled?: boolean }) {
+  return (
+    <label htmlFor={id} className="flex items-center gap-1.5 text-xs text-sap-muted">
+      <span className="font-semibold">{label}</span>
+      <input id={id} value={value} onChange={(e) => onChange(e.target.value.trim())} placeholder={placeholder} disabled={disabled} aria-invalid={!!error || undefined} aria-describedby={error ? `${id}-err` : undefined}
+        className={`h-7 rounded border bg-white px-2 font-mono text-xs text-sap-ink focus:outline-none focus:ring-2 focus:ring-plum/25 ${error ? 'border-red-400' : 'border-sap-line focus:border-plum'} ${width}`} />
+      {error && <span id={`${id}-err`} className="text-2xs text-red-600">{error}</span>}
+    </label>
+  );
+}
+
+export function TabPanelHeader({ title, hint, count }: { title: string; hint: string; count?: number }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 px-3 pt-3">
+      <h2 className="text-sm font-semibold text-sap-ink">{title}{count !== undefined && <span className="ml-2 rounded-full bg-sap-head px-2 py-0.5 text-2xs font-semibold text-sap-muted">{count} row(s)</span>}</h2>
+      <p className="text-xs text-sap-muted">{hint}</p>
+    </div>
+  );
+}
+
+/** Props every tab receives from the shell. */
+export interface TabProps {
+  active: boolean;
+  busy: boolean;
+  setStatus: (s: Status) => void;
+  dates: { vfrom: string; vto: string; error: string };
+}
+
+/** Message for the status bar, in red. */
+export const errorStatus = (message: string): Status => ({ busy: false, message, tone: 'error' });
