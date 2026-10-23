@@ -9,7 +9,7 @@ import { mockRequestLog } from '../../mock/sap';
 import { fetchCostLines } from '@/lib/sap/service';
 import { defaultQuery } from '@/lib/query/schema';
 import { isLeafRow } from '@/lib/cost/tree';
-import { freightBreakupRequest, freightKeyOf, reconcile, breakupLines } from '@/lib/freight/breakup';
+import { freightBreakupRequest, freightKeyOf, reconcile, breakupLines, selectedRows } from '@/lib/freight/breakup';
 import { clearFreightBreakupCache, loadFreightBreakup } from '@/lib/freight/useFreightBreakup';
 import type { CostLine, FreightRow } from '@/lib/sap/fields';
 
@@ -100,6 +100,12 @@ describe('freight break-up: reconciliation and columns', () => {
     expect(r.matches).toBe(false);
     expect(r.rowUnit).toBe('G');
     expect(r.rowCurr).toBe('BDT');
+  });
+  it('only the freight the costing used is listed (non-zero per piece); none used -> every row', () => {
+    const used = row({ Conditiontype: 'ZFR1', UsedPcLoc: '1.2' });
+    const unused = row({ Conditiontype: 'ZFR2', UsedPcLoc: '0', UsedPcInr: '0' });
+    expect(selectedRows([used, unused])).toEqual([used]);
+    expect(selectedRows([unused])).toEqual([unused]);
   });
   it('the Actual / Standard toggle only changes the displayed columns', () => {
     const rows = [row({ UsedPcLoc: '1' })];

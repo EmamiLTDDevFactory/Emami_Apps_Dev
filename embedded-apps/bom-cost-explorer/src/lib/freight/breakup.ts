@@ -95,6 +95,12 @@ export function reconcile(rows: FreightRow[], line: Pick<CostLine, 'FrtPcLoc' | 
   return { breakup, line: lv, diff, tolerance, matches, unitCurrencyNote: !matches, rowUnit, rowCurr };
 }
 
+/** The freight rows the costing used: a non-zero per-piece amount (local or INR). None of them -> every row. */
+export function selectedRows(rows: FreightRow[]): FreightRow[] {
+  const used = rows.filter((r) => !D(r.UsedPcLoc).isZero() || !D(r.UsedPcInr).isZero());
+  return used.length ? used : rows;
+}
+
 /** Distinct "PO / item · date" of the rows, for the panel subtitle. */
 export const poSummary = (rows: FreightRow[]) => [...new Set(rows.filter((r) => r.Purchasedocument).map((r) => `${r.Purchasedocument}${r.Purchaseline ? ` / ${r.Purchaseline}` : ''}${r.Podate ? ` · ${r.Podate}` : ''}`))];
 
