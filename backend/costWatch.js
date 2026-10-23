@@ -9,7 +9,7 @@
 
    Mounted at /api/me/cost-watch (rides the existing nginx /api/me rule, like /api/me/notifications):
      GET    /me                         { canEdit, isAdmin, enabled }
-     GET    /items  POST /items  PUT /items/:id  DELETE /items/:id        (edit: BOM Simulator role Admin or Planner)
+     GET    /items  POST /items  PUT /items/:id  DELETE /items/:id        (edit: BOM Simulator role Admin or Planner; Admin = all access)
      POST   /items/:id/run-now          runs that item now in the background (rate limited, 1 per item per 5 minutes)
      GET    /alerts?status=&plant=&rule=&severity=   GET /alerts/:id (with before / after snapshot lines)
      POST   /alerts/:id/ack   POST /alerts/:id/snooze { days: 7 | 30 }
@@ -108,13 +108,13 @@ async function requireUser(req, res, next) {
         await ready;
         const [grant, user] = await Promise.all([
             pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
-            pool.query('SELECT access_level, is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
+            pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
         if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the BOM Simulator.' });
         const role = grant.rows[0].role;
         req.email = email;
-        // Admin (this app's Admin role, or an Emami Apps Super Admin / Admin) has all access: the admin view and every edit.
-        req.isAdmin = role === 'Admin' || ['Super Admin', 'Admin'].includes(user.rows[0]?.access_level);
+        // Only the BOM Simulator role counts. Admin has all access: the admin view and everything a Planner does.
+        req.isAdmin = role === 'Admin';
         req.canEdit = req.isAdmin || role === 'Planner';
         next();
     } catch (e) {
