@@ -62,7 +62,7 @@ export function FreightBreakupPanel({ line, run, enabled = true, compactTitle = 
           <button type="button" className="inline-flex shrink-0 items-center gap-1 font-semibold text-accent hover:underline" onClick={st.retry}><RefreshCw size={12} /> Retry</button>
         </div>
       ) : !rows.length ? (
-        <p className="py-3 text-muted">No freight rows found for this component in the freight window of the run ({run.freightDays} days).</p>
+        <p className="py-3 text-muted">No freight rows found in SAP for this component in plant {werks}.</p>
       ) : (
         <>
           <div className="scroll-thin max-h-[50vh] overflow-auto rounded-lg border border-line">

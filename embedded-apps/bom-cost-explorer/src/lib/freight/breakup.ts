@@ -4,9 +4,11 @@
  * (buildSelectionFilter, Mode F):
  *
  *   Mode eq 'F' and Matnr eq '<line.Idnrk>' and Werks eq '<line.Werks>'   (component plant, not Hwerks)
- *   and FreightDays eq <run> and StdFrt eq <run> and LatestOnly eq true
+ *   and FreightDays eq 3650 and StdFrt eq <run> and LatestOnly eq true
  *
- * FreightDays / StdFrt come from the query of the run that produced the lines, never from the form.
+ * No look-back limit: FreightDays is always the widest window the service accepts (FREIGHT_NO_LIMIT_DAYS, 10 years),
+ * so the latest PO freight is found however old it is. StdFrt comes from the run that produced the lines, never
+ * from the form.
  * The app is a static export (no API routes): the browser calls the gateway through the existing SAP client,
  * like every other read. Decimals arrive as strings and are added with decimal.js.
  */
@@ -24,8 +26,11 @@ export const FREIGHT_BREAKUP_ENABLED = String(process.env.NEXT_PUBLIC_FREIGHT_BR
 export interface FreightRun { freightDays: number; stdFrt: boolean }
 export interface FreightKey extends FreightRun { matnr: string; werks: string }
 
+/** No 180-day (or any) restriction: the widest window the service accepts (schema max), with LatestOnly. */
+export const FREIGHT_NO_LIMIT_DAYS = 3650;
+
 export const freightKeyOf = (line: Pick<CostLine, 'Idnrk' | 'Werks' | 'Hwerks'>, run: FreightRun): FreightKey => ({
-  matnr: line.Idnrk, werks: line.Werks || line.Hwerks, freightDays: run.freightDays, stdFrt: run.stdFrt,
+  matnr: line.Idnrk, werks: line.Werks || line.Hwerks, freightDays: FREIGHT_NO_LIMIT_DAYS, stdFrt: run.stdFrt,
 });
 /** Cache key, same parts as the brief's ["freight-breakup", matnr, werks, freightDays, stdFrt]. */
 export const cacheKey = (k: FreightKey) => JSON.stringify(['freight-breakup', k.matnr, k.werks, k.freightDays, k.stdFrt]);

@@ -42,7 +42,7 @@ describe('freight break-up: requests', () => {
     expect(mockRequestLog.map(set)).toEqual(['CostLineSet']);
   });
 
-  it('a click sends ONE FreightRowSet call: component plant, FreightDays / StdFrt of the run, LatestOnly true, no "+"', async () => {
+  it('a click sends ONE FreightRowSet call: component plant, no look-back limit, StdFrt of the run, LatestOnly true, no "+"', async () => {
     const line = (await costLines())[0];
     mockRequestLog.length = 0;
     const rows = await loadFreightBreakup(freightKeyOf(line, run));
@@ -52,11 +52,12 @@ describe('freight break-up: requests', () => {
     expect(url).toContain("Mode eq 'F'");
     expect(url).toContain(`Matnr eq '${line.Idnrk}'`);
     expect(url).toContain(`Werks eq '${line.Werks}'`);
-    expect(url).toContain('FreightDays eq 240');
+    expect(url).toContain('FreightDays eq 3650'); // no 180-day restriction, whatever the run held
+    expect(url).not.toContain('FreightDays eq 240');
     // StdFrt / LatestOnly are CHAR1 on FreightRowSet: the shared filter function sends 'X' / '' exactly as the Freight screen does
     expect(url).toContain("StdFrt eq 'X'");
     expect(url).toContain("LatestOnly eq 'X'");
-    const freightScreen = buildSelectionFilter({ ...defaultQuery('F'), materials: [line.Idnrk], plants: [line.Werks], freightDays: 240, stdFrt: true, latestOnly: true });
+    const freightScreen = buildSelectionFilter({ ...defaultQuery('F'), materials: [line.Idnrk], plants: [line.Werks], freightDays: 3650, stdFrt: true, latestOnly: true });
     expect(new URL(`http://x${mockRequestLog[0]}`).searchParams.get('$filter')).toBe(freightScreen);
     expect(mockRequestLog[0]).not.toContain('+');
     expect(rows.length).toBeGreaterThan(0);
@@ -75,7 +76,9 @@ describe('freight break-up: requests', () => {
     await loadFreightBreakup(freightKeyOf(line, run));
     await loadFreightBreakup(freightKeyOf(line, run));
     expect(mockRequestLog).toHaveLength(1);
-    await loadFreightBreakup(freightKeyOf(line, { ...run, freightDays: 90 })); // another run window = another key
+    await loadFreightBreakup(freightKeyOf(line, { ...run, freightDays: 90 })); // the run's window no longer matters: same key
+    expect(mockRequestLog).toHaveLength(1);
+    await loadFreightBreakup(freightKeyOf(line, { ...run, stdFrt: false })); // other freight basis = another key
     expect(mockRequestLog).toHaveLength(2);
   });
 });
