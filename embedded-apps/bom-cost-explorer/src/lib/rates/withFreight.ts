@@ -43,3 +43,21 @@ export function sourceOption<T extends Opt & { Plant?: string }>(opts: T[] | und
   const list = (opts ?? []).filter((o) => o.Source === source && D(o.RatePcInr).gt(0));
   return list.length ? list.find((o) => o.Plant === werks) ?? list[0] : null;
 }
+
+/**
+ * Vendor of a rate option where SAP gives one: the option's own Vendor / Vname (RateOptionSet), else - for the option
+ * SAP used on this line - the line's SelVendor / SelVname. Empty when neither is known.
+ */
+export function vendorOf(
+  o: { Source: string; RatePcInr: string; Vendor?: string; Vname?: string },
+  l: Pick<CostLine, 'SelSource' | 'SelRatePcInr' | 'SelVendor' | 'SelVname'>,
+): { code: string; name: string } {
+  const code = (o.Vendor ?? '').trim();
+  const name = (o.Vname ?? '').trim();
+  if (code || name) return { code, name };
+  const isUsed = !!l.SelSource && o.Source === l.SelSource && D(o.RatePcInr).minus(D(l.SelRatePcInr)).abs().lte('0.0001');
+  return isUsed ? { code: (l.SelVendor ?? '').trim(), name: (l.SelVname ?? '').trim() } : { code: '', name: '' };
+}
+
+/** "Name (code)", the name alone, or the code alone. */
+export const vendorText = (v: { code: string; name: string }) => (v.name && v.code ? `${v.name} (${v.code.replace(/^0+/, '')})` : v.name || v.code.replace(/^0+/, ''));

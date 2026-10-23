@@ -21,7 +21,7 @@ import { D, ZERO, type Decimal } from './decimal';
 import { isLeafRow } from './tree';
 import { costCategory, type CostCategory } from './categories';
 import type { CostLine, RateOption } from '../sap/fields';
-import { WITH_FREIGHT_SOURCES, rateWithFreight, sourceOption, type WithFreightSource } from '../rates/withFreight';
+import { WITH_FREIGHT_SOURCES, rateWithFreight, sourceOption, vendorOf, vendorText, type WithFreightSource } from '../rates/withFreight';
 
 export const RATE_TYPES = ['SELECTED', 'BUDGET', 'CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW', 'CHEAPEST'] as const;
 export type RateType = (typeof RATE_TYPES)[number];
@@ -70,8 +70,8 @@ export interface ComponentRow {
   rates: Record<RateType, Decimal | null>;
   min: Decimal | null; max: Decimal | null; spreadPct: Decimal | null; // over the priced types
   lowestType: RateType | null;
-  /** Contract / Info record rate + freight per unit (weighted by quantity) */
-  withFrt: Record<WithFreightSource, { inr: Decimal | null; loc: Decimal | null; locCurr: string }>;
+  /** Contract / Info record rate + freight per unit (weighted by quantity), with the vendor(s) where SAP names them */
+  withFrt: Record<WithFreightSource, { inr: Decimal | null; loc: Decimal | null; locCurr: string; vendor: string }>;
 }
 
 export interface RateSummary { fgs: FgRow[]; rm: ComponentRow[]; pm: ComponentRow[]; other: ComponentRow[] }
@@ -79,8 +79,8 @@ export interface RateSummary { fgs: FgRow[]; rm: ComponentRow[]; pm: ComponentRo
 const emptyFigures = (): Record<RateType, { total: Decimal; priced: number }> =>
   Object.fromEntries(RATE_TYPES.map((t) => [t, { total: ZERO, priced: 0 }])) as Record<RateType, { total: Decimal; priced: number }>;
 
-type FrtSum = { inr: Decimal; loc: Decimal; locOk: boolean; q: Decimal; priced: number; locCurr: string };
-const emptyFrt = (): Record<WithFreightSource, FrtSum> => Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, { inr: ZERO, loc: ZERO, locOk: true, q: ZERO, priced: 0, locCurr: '' }])) as Record<WithFreightSource, FrtSum>;
+type FrtSum = { inr: Decimal; loc: Decimal; locOk: boolean; q: Decimal; priced: number; locCurr: string; vendors: Set<string> };
+const emptyFrt = (): Record<WithFreightSource, FrtSum> => Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, { inr: ZERO, loc: ZERO, locOk: true, q: ZERO, priced: 0, locCurr: '', vendors: new Set<string>() }])) as Record<WithFreightSource, FrtSum>;
 function addFrt(sum: FrtSum, l: Line, src: WithFreightSource, pq: Decimal) {
   const o = sourceOption(l.RateOptions, src, l.Werks);
   const w = o ? rateWithFreight(o, l) : null;
@@ -91,6 +91,8 @@ function addFrt(sum: FrtSum, l: Line, src: WithFreightSource, pq: Decimal) {
   sum.locCurr ||= w.locCurr;
   sum.q = sum.q.plus(pq);
   sum.priced++;
+  const v = vendorText(vendorOf(o!, l));
+  if (v) sum.vendors.add(v);
 }
 
 export function rateSummary(lines: Line[], explQty: string | number = 1): RateSummary {
@@ -141,6 +143,7 @@ export function rateSummary(lines: Line[], explQty: string | number = 1): RateSu
   const compRows = [...comps.values()].map(({ heads, sums, frt, ...c }) => {
     const withFrt = Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, {
       inr: frt[t].q.gt(0) ? frt[t].inr.div(frt[t].q) : null, loc: frt[t].q.gt(0) && frt[t].locOk ? frt[t].loc.div(frt[t].q) : null, locCurr: frt[t].locCurr,
+      vendor: [...frt[t].vendors].join(', '),
     }])) as ComponentRow['withFrt'];
     const rates = Object.fromEntries(RATE_TYPES.map((t) => [t, sums[t].q.gt(0) ? sums[t].cost.div(sums[t].q) : null])) as Record<RateType, Decimal | null>;
     const priced = RATE_TYPES.filter((t) => t !== 'CHEAPEST' && rates[t]) as RateType[];

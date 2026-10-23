@@ -61,6 +61,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
         { header: `${WITH_FREIGHT_LABEL[src]} local / unit`, dp: 4, get: (i) => n(list[i].withFrt[src].loc) },
         { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => list[i].withFrt[src].locCurr },
         { header: `${WITH_FREIGHT_LABEL[src]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].withFrt[src].inr) },
+        { header: `${src === 'CONTRACT' ? 'Contract' : 'Info record'} vendor`, width: 28, get: (i) => list[i].withFrt[src].vendor },
       ]),
       { header: 'Spread %', dp: 1, get: (i) => n(list[i].spreadPct, 1) }, { header: 'Lowest type', get: (i) => (list[i].lowestType ? RATE_TYPE_LABEL[list[i].lowestType!] : '') },
     ];
@@ -163,7 +164,7 @@ function ComponentCard({ title, list, types, frt }: { title: string; list: Compo
                 ))}
                 {frt && WITH_FREIGHT_SOURCES.flatMap((src) => [
                   <td key={`${src}l`} className={tdN}>{locCell(c.withFrt[src].loc, c.withFrt[src].locCurr)}</td>,
-                  <td key={`${src}i`} className={tdN}>{c.withFrt[src].inr ? fmtRate(c.withFrt[src].inr) : '—'}</td>,
+                  <td key={`${src}i`} className={tdN}>{c.withFrt[src].inr ? fmtRate(c.withFrt[src].inr) : '—'}{c.withFrt[src].vendor && <div className="max-w-[180px] truncate text-2xs font-normal text-muted" title={c.withFrt[src].vendor}>{c.withFrt[src].vendor}</div>}</td>,
                 ])}
                 <td className={cx(tdN, c.spreadPct && c.spreadPct.gt(20) && 'font-semibold text-warn')}>{c.spreadPct ? `${fmtNum(c.spreadPct, 1)}%` : '—'}</td>
               </tr>

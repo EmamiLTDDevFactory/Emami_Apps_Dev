@@ -17,7 +17,7 @@ import { Button, cx, Segmented, SimTag, Skeleton, SourceBadge, sourceColorVar } 
 import { ALL_RATE_SOURCES, prioLabel } from '@/lib/rates/priority';
 import { ratesIntegrity } from '@/lib/rates/integrity';
 import IntegrityBanner from './IntegrityBanner';
-import { hasFreightColumns, rateWithFreight } from '@/lib/rates/withFreight';
+import { hasFreightColumns, rateWithFreight, vendorOf, vendorText } from '@/lib/rates/withFreight';
 import RateCompare from './RateCompare';
 
 type ColSet = 'compact' | 'report' | 'local';
@@ -35,6 +35,7 @@ const COLS: Col[] = [
   { id: 'comp', label: 'Component', width: 120, cell: (r) => <span className="font-mono text-xs">{r.line.Idnrk}</span>, xlsx: { header: 'Component', get: () => '' } },
   { id: 'desc', label: 'Description', width: 220, cell: (r) => <span className="truncate" title={r.line.Maktx}>{r.line.Maktx}</span>, xlsx: { header: 'Description', width: 34, get: () => '' } },
   { id: 'plant', label: 'Plant', width: 64, cell: (r) => r.opt.Plant || r.line.Werks, xlsx: { header: 'Plant', get: () => '' } },
+  { id: 'vendor', label: 'Vendor', width: 190, cell: (r) => { const t = vendorText(vendorOf(r.opt, r.line)); return t ? <span className="truncate" title={t}>{t}</span> : <span className="text-faint">—</span>; }, xlsx: { header: 'Vendor', width: 30, get: () => '' } },
   { id: 'cond', label: 'Cond', width: 64, cell: (r) => r.opt.Cond, xlsx: { header: 'Cond', get: () => '' } },
   { id: 'curr', label: 'Curr', width: 56, cell: (r) => r.opt.Curr, xlsx: { header: 'Curr', get: () => '' } },
   { id: 'rate', label: 'Rate', width: 110, right: true, cell: (r) => <span className="num">{fmtRate(r.opt.Rate)}</span>, xlsx: { header: 'Rate', dp: 4, get: () => 0 } },
@@ -60,9 +61,9 @@ const FRT_COLS: Col[] = [
 ];
 
 const SETS: Record<ColSet, string[]> = {
-  compact: ['comp', 'desc', 'plant', 'ratePcInr', 'qty', 'totInr'],
-  report: ['comp', 'desc', 'plant', 'cond', 'curr', 'rate', 'uom', 'valid', 'ratePc', 'fx', 'ratePcInr', 'qty', 'frtInr', 'totInr'],
-  local: ['comp', 'desc', 'plant', 'locCurr', 'ratePcLoc', 'qty', 'costLoc', 'frtLoc', 'totLoc'],
+  compact: ['comp', 'desc', 'plant', 'vendor', 'ratePcInr', 'qty', 'totInr'],
+  report: ['comp', 'desc', 'plant', 'vendor', 'cond', 'curr', 'rate', 'uom', 'valid', 'ratePc', 'fx', 'ratePcInr', 'qty', 'frtInr', 'totInr'],
+  local: ['comp', 'desc', 'plant', 'vendor', 'locCurr', 'ratePcLoc', 'qty', 'costLoc', 'frtLoc', 'totLoc'],
 };
 
 type Item = { kind: 'block'; source: string; lines: number; total: string } | { kind: 'head'; source: string } | { kind: 'row'; row: SourceOptionRow } | { kind: 'empty'; source: string };
@@ -130,6 +131,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
         case 'comp': return r.line.Idnrk;
         case 'desc': return r.line.Maktx;
         case 'plant': return r.opt.Plant || r.line.Werks;
+        case 'vendor': return vendorText(vendorOf(r.opt, r.line));
         case 'cond': return r.opt.Cond;
         case 'curr': return r.opt.Curr;
         case 'rate': return n(r.opt.Rate);

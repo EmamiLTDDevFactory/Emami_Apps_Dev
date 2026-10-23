@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import React, { createElement } from 'react';
 (globalThis as unknown as { React: typeof React }).React = React;
 import { renderToStaticMarkup } from 'react-dom/server';
-import { hasFreightColumns, rateWithFreight, sourceOption } from '@/lib/rates/withFreight';
+import { hasFreightColumns, rateWithFreight, sourceOption, vendorOf, vendorText } from '@/lib/rates/withFreight';
 import { rateSummary } from '@/lib/cost/rateSummary';
 import RateSummary from '@/components/rates/RateSummary';
 import { defaultQuery } from '@/lib/query/schema';
@@ -72,3 +72,25 @@ describe('rate summary with freight', () => {
     expect(renderToStaticMarkup(createElement(RateSummary, { rows: lines as never, rates: loading, query: defaultQuery('B') }))).not.toContain('+ freight (INR)');
   });
 });
+
+describe('vendor name where SAP gives it', () => {
+  const l = line({ SelSource: 'CONTRACT', SelRatePcInr: '9', SelVendor: '0000100234', SelVname: 'Bengal Packaging Co' });
+
+  it("the option's own vendor first (RateOptionSet), else the line's vendor for the option SAP used, else nothing", () => {
+    expect(vendorText(vendorOf({ Source: 'INFOREC', RatePcInr: '11', Vendor: '0000100777', Vname: 'Unity Cartons' }, l))).toBe('Unity Cartons (100777)');
+    expect(vendorText(vendorOf({ Source: 'CONTRACT', RatePcInr: '9' }, l))).toBe('Bengal Packaging Co (100234)'); // the used option
+    expect(vendorText(vendorOf({ Source: 'INFOREC', RatePcInr: '11' }, l))).toBe(''); // not used, no vendor from SAP
+    expect(vendorText(vendorOf({ Source: 'CONTRACT', RatePcInr: '8.5' }, l))).toBe(''); // another contract option
+    expect(vendorText({ code: '', name: 'Name only' })).toBe('Name only');
+    expect(vendorText({ code: '000042', name: '' })).toBe('42');
+  });
+
+  it('rate summary components carry the vendor(s) of the Contract / Info record figures', () => {
+    const rows = [leaf(2, 1, 'RM1', '9', '1', '2', { SelSource: 'CONTRACT', SelRatePcInr: '9', SelVendor: '100234', SelVname: 'Bengal Packaging Co', LocCurr: 'INR', FrtPcLoc: '1',
+      RateOptions: [opt({ Source: 'CONTRACT', RatePcInr: '9', RatePcLoc: '9' }), { ...opt({ Source: 'INFOREC', RatePcInr: '11', RatePcLoc: '11' }), Vendor: '100777', Vname: 'Unity Cartons' } as never] })];
+    const c = [...rateSummary(rows as never, 1).rm, ...rateSummary(rows as never, 1).other][0];
+    expect(c.withFrt.CONTRACT.vendor).toBe('Bengal Packaging Co (100234)');
+    expect(c.withFrt.INFOREC.vendor).toBe('Unity Cartons (100777)');
+  });
+});
+
