@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
+import TutorialButton from './TutorialButton';
 import { ArrowLeft, Boxes, Calendar, ClipboardList, Layers, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
@@ -161,7 +162,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
           </span>
           <EnvBadge {...env} />
           <div className="flex-1" />
-          <div className="flex items-center gap-1.5">{actions}</div>
+          <div className="flex items-center gap-1.5"><TutorialButton />{actions}</div>
           <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 sm:flex" title={email}>
             <User size={13} className="text-accent" />
             <span className="max-w-[160px] truncate text-[11.5px] font-bold text-ink">{nameFromEmail(email)}</span>

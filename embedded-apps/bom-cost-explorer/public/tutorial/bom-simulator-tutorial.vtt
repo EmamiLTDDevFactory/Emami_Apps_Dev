@@ -1,0 +1,206 @@
+WEBVTT
+
+1
+00:00:01.429 --> 00:00:12.667
+Welcome to the BOM Simulator. This app costs Emami finished goods straight from SAP. It explodes the bill of materials, prices every component, and shows the cost per piece.
+
+2
+00:00:13.017 --> 00:00:21.765
+The header shows which SAP system you are working in. Here it is the development system. On the live site it shows NWP, production.
+
+3
+00:00:22.115 --> 00:00:31.535
+The left pane switches between the screens: BOM costing, Plant comparison, Rates, Freight, R M and P M, and the Production Plan.
+
+4
+00:00:31.885 --> 00:00:40.075
+The Tutorial button in the top bar opens this video at any time. Use the chapter list beside the video to jump straight to a topic.
+
+5
+00:00:40.425 --> 00:00:47.719
+Start with What to cost. Type part of a material number or description, and SAP suggests the matching materials.
+
+6
+00:00:48.069 --> 00:00:55.474
+Press Enter to add a material. You can also paste a whole list, separated by commas, spaces or new lines.
+
+7
+00:00:55.824 --> 00:01:03.728
+Or pick by brand, product and C R S. Each level narrows the list below it, and you can select materials from the result.
+
+8
+00:01:04.078 --> 00:01:11.572
+Choose one or more plants. Tip: leave the materials empty to cost every finished good of the chosen plants in one go.
+
+9
+00:01:11.922 --> 00:01:18.606
+Explosion quantity is the number of finished pieces to cost. Results are also shown per single piece.
+
+10
+00:01:18.956 --> 00:01:24.951
+B O M levels limits how deep the bill of materials is exploded. All explodes every level.
+
+11
+00:01:25.301 --> 00:01:33.979
+Rate look-back is how many days of purchase history SAP uses to find a rate. A donor plant lends its rates when a plant has none of its own.
+
+12
+00:01:34.329 --> 00:01:44.515
+Rate source priority decides which rate SAP picks: the first source in this list that has a rate wins. Untick a source to exclude it, or drag to change the order.
+
+13
+00:01:44.865 --> 00:01:49.688
+Freight can be included or excluded, using actual or standard freight.
+
+14
+00:01:50.038 --> 00:01:58.722
+Compare to budget adds the budget rates. Stock coverage adds cover days, and As of a date costs with the rates that were valid on a past date.
+
+15
+00:01:59.072 --> 00:02:06.756
+Press Run in SAP. A costing run takes a few seconds. The bar shows the progress, and you can cancel at any time.
+
+16
+00:02:07.106 --> 00:02:14.495
+SAP messages show warnings from the run, for example rates taken from another plant, or old rates that were ignored.
+
+17
+00:02:14.845 --> 00:02:20.658
+The total shows the cost of the whole run in Indian rupees, with the rate priority SAP used.
+
+18
+00:02:21.008 --> 00:02:30.823
+The B O M tree lists country, plant, finished good, and every component level. Click an arrow to expand or collapse a level, or use Expand all.
+
+19
+00:02:31.173 --> 00:02:36.890
+Columns lets you choose which columns to show, and column presets save your favourite layouts.
+
+20
+00:02:37.240 --> 00:02:45.001
+Click a freight value to see the freight break-up by condition type: the purchase order, the rate, and how it matches the cost line.
+
+21
+00:02:45.351 --> 00:03:00.123
+Click any component row to open its details: quantities, every rate option SAP found, freight, budget and coverage. You can also enter a manual rate as a what if. It is marked as simulated and never changes SAP.
+
+22
+00:03:00.473 --> 00:03:06.773
+The Dashboard summarises the cost by category, rate source and plant, with stock cover days.
+
+23
+00:03:07.123 --> 00:03:20.412
+The Simulator tries what ifs in your browser: re-pick rates, change rates by source, freight, exchange rates or quantity, or change single component rates. Simulated figures are marked S I M.
+
+24
+00:03:20.762 --> 00:03:29.337
+Data quality lists the lines that need attention: missing rates, M B E W only rates, donor plants and zero quantities.
+
+25
+00:03:29.687 --> 00:03:36.912
+Scenarios save a selection with its settings, so you can run it again later and compare versions side by side.
+
+26
+00:03:37.262 --> 00:03:43.816
+Rate sources compares every source for each component, and shows the cheapest option and the possible saving.
+
+27
+00:03:44.166 --> 00:03:54.970
+Rate summary shows all rate types at once: the cost per piece of each finished good on every rate type, and the R M and P M rates per unit, with the lowest highlighted.
+
+28
+00:03:55.320 --> 00:04:01.688
+Rate coverage shows how many components each source priced, and which components have no rate at all.
+
+29
+00:04:02.038 --> 00:04:12.589
+Excel downloads every column with a parameters sheet. C S V suits other tools, Print gives a clean report, and Share copies a link that opens this same selection.
+
+30
+00:04:12.939 --> 00:04:21.897
+Explain change tells you why the cost per piece moved, compared with a previous run, the budget, an earlier SAP date, or a saved scenario.
+
+31
+00:04:22.247 --> 00:04:33.200
+The waterfall splits the change into quantity, rate, freight and exchange rate effects. Every number in the text carries a fact id that you can hover to see where it came from.
+
+32
+00:04:33.550 --> 00:04:43.835
+Ask opens the costing assistant. Ask questions in plain language; it answers from SAP through read-only tools, and asks you to confirm before any SAP run.
+
+33
+00:04:44.185 --> 00:04:51.326
+Add your own Claude A P I key in A I settings. The key stays in your browser and is sent only to Anthropic.
+
+34
+00:04:51.676 --> 00:04:59.459
+Plant comparison costs one bill of materials in several plants. Choose the B O M plant, and the plants to compare.
+
+35
+00:04:59.809 --> 00:05:08.521
+Run it, and each component cost appears side by side for every plant, converted to rupees, so the cheapest plant is easy to see.
+
+36
+00:05:08.871 --> 00:05:14.946
+Rates lists the rate records SAP found in the look-back window for the chosen materials and plants.
+
+37
+00:05:15.296 --> 00:05:20.280
+Freight shows the freight per purchase order, actual against standard.
+
+38
+00:05:20.630 --> 00:05:26.922
+R M and P M shows the exploded raw and packing material requirement for the chosen materials.
+
+39
+00:05:27.272 --> 00:05:34.040
+Production plans live under Plans. The list shows every plan and plant in SAP, with the number of rows.
+
+40
+00:05:34.390 --> 00:05:40.110
+Open a plan, then choose the plants at the top. Every tab works on the plants you choose.
+
+41
+00:05:40.460 --> 00:05:46.677
+Entries lists the plan rows with their monthly quantities. Planners can edit or delete rows here.
+
+42
+00:05:47.027 --> 00:05:55.147
+Breakup and cost explodes the whole plan in SAP and prices it. The tree is grouped by plan country, plant and finished good.
+
+43
+00:05:55.497 --> 00:06:02.250
+F G per piece compares the cost per piece on budget, M B E W, consumption and the current rates.
+
+44
+00:06:02.600 --> 00:06:16.720
+Simulate changes component costs by category, for one component code in every product, or for a single finished good, and shows the impact per product and in total. Quick scenarios apply common increases in one click.
+
+45
+00:06:17.070 --> 00:06:33.167
+Plant drill-down rolls the cost up by plant, then finished good, then component. Savings and exposure compares the rates with budget, actual and the cheapest option. K P Is show the cost mix, A B C classes and the components that move the cost most.
+
+46
+00:06:33.517 --> 00:06:40.312
+Requirement lists every component with its monthly quantity, and Used in shows the finished goods that use it.
+
+47
+00:06:40.662 --> 00:06:50.063
+Rate simulation changes one component rate with the slider, a percentage or a new rate, and shows the effect on each product and on the whole plan.
+
+48
+00:06:50.413 --> 00:07:00.285
+Budget rates H 1 and H 2 applies the second half budget revision. Savings versus actual compares the budget with the actual for the months that have passed.
+
+49
+00:07:00.635 --> 00:07:09.647
+Checks lists bill of materials and master data problems, W I P covers semi-finished goods, and Scenarios compares plan what ifs.
+
+50
+00:07:09.997 --> 00:07:15.958
+Upload plan downloads the Excel template, checks your file, and saves the plan to SAP.
+
+51
+00:07:16.308 --> 00:07:24.673
+That completes the tour. Open the Tutorial at any time, and use Explain change or Ask whenever you need help understanding a cost.
+
