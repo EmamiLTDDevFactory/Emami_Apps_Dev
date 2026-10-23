@@ -7,6 +7,8 @@ import { minCover } from '@/lib/cost/analytics';
 import { rowKey } from '@/lib/cost/tree';
 import { fmtDate, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { Button, cx, Drawer, inputBase, inputCls, Pill, SimTag, SourceBadge } from './ui';
+import { FreightBreakupSection } from './freight/FreightValue';
+import type { FreightRun } from '@/lib/freight/breakup';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -30,13 +32,15 @@ function KV({ items }: { items: [string, React.ReactNode][] }) {
 }
 
 export default function RowDrawer({
-  row, sim, onClose, override, onOverride, rateOptions = true, rateOptionsState,
+  row, sim, onClose, override, onOverride, rateOptions = true, rateOptionsState, freightRun,
 }: {
   row: CostLine | null; sim: SimRow | null; onClose: () => void; override?: string; onOverride: (key: string, v: string | null) => void;
   /** false while the rate options are not loaded (or not available) for this run */
   rateOptions?: boolean;
   /** lazy rate-options state (BOM costing); omitted = the previous behaviour */
   rateOptionsState?: { status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'error'; note: string; onRetest: () => void };
+  /** FreightDays / StdFrt of the run: adds the collapsed "Freight break-up" section (omitted = as before) */
+  freightRun?: FreightRun | null;
 }) {
   const [ov, setOv] = useState(override ?? '');
   useEffect(() => setOv(override ?? ''), [override, row]);
@@ -202,6 +206,8 @@ export default function RowDrawer({
           <p className="text-sm text-muted">No freight on this line (freight excluded or none found).</p>
         )}
       </Section>
+
+      <FreightBreakupSection key={rowKey(r)} line={r} run={freightRun} />
 
       {!D(r.BudLanded).isZero() && (
         <Section title={`Budget ${r.BudGjahr}`}>

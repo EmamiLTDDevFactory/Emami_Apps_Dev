@@ -143,6 +143,8 @@ export default function Explorer() {
   const plantNames = useMemo(() => Object.fromEntries(plants.map((p) => [p.Werks, p.Name1])), [plants]);
   // Rate options load lazily (Rate sources tab, row drawer, re-pick what-ifs) - never on the main run.
   const rates = useRateOptions(result && mode === 'B' && ranQuery ? ranQuery : null, cfg?.ok ? cfg.config.system : '');
+  // Freight break-up: FreightDays / StdFrt of the run that produced the lines (never the form).
+  const freightRun = useMemo(() => (result && ranQuery ? { freightDays: ranQuery.freightDays, stdFrt: ranQuery.stdFrt } : null), [result, ranQuery]);
   const costRows = useMemo(() => (result && mode === 'B' && rates.status === 'ready' && rates.rows ? attachRateOptions(result.rows, rates.rows) : result?.rows ?? []), [result, mode, rates.status, rates.rows]);
   const tree = useMemo(() => (result && mode === 'B' ? buildTree(costRows, plantNames) : null), [result, costRows, mode, plantNames]);
   const pivot = useMemo(() => (result && mode === 'C' && ranQuery ? buildPivot(result.rows, ranQuery.compPlants) : null), [result, mode, ranQuery]);
@@ -405,7 +407,7 @@ export default function Explorer() {
               Pick up to 50 header materials and the plants above, then press <strong>Run in SAP</strong>. SAP does all the costing; this app presents, compares and simulates.
             </Empty>
           ) : activeTab === 'tree' && tree && agg ? (
-            rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} /> : <Empty title="SAP returned no lines">Check the SAP messages above, or try other plants.</Empty>
+            rows.length ? <BomTree tree={tree} sim={simRows} simOn={simOn} agg={agg} plantCurr={plantCurr} onOpen={setDrawer} focusRow={focusRow} freightRun={freightRun} /> : <Empty title="SAP returned no lines">Check the SAP messages above, or try other plants.</Empty>
           ) : activeTab === 'compare' && pivot ? (
             pivot.rows.length ? <ComparisonView pivot={pivot} plantNames={plantNames} /> : <Empty title="SAP returned no lines">Check the SAP messages above.</Empty>
           ) : activeTab === 'dash' ? (
@@ -454,6 +456,7 @@ export default function Explorer() {
           onClose={() => setDrawer(null)}
           rateOptions={rateOptions}
           rateOptionsState={mode === 'B' ? { status: rates.status, note: rates.note, onRetest: rates.retest } : undefined}
+          freightRun={freightRun}
           override={sim.overrides[rowKey(rows[drawer])]}
           onOverride={(k, v) => {
             const o = { ...sim.overrides };

@@ -9,6 +9,8 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import { fmtNum, fmtPct, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { ls } from '@/lib/client/storage';
 import { Button, cx, Modal, SimTag, SourceBadge, inputBase, inputCls } from './ui';
+import { FreightValue } from './freight/FreightValue';
+import type { FreightRun } from '@/lib/freight/breakup';
 
 export interface NodeAgg {
   inr: Decimal[]; // leaf roll-up of TotCostInr per node
@@ -16,7 +18,7 @@ export interface NodeAgg {
   sim: Decimal[] | null; // leaf roll-up of the simulated total
 }
 
-interface LineCtx { r: CostLine; s: SimRow; leaf: boolean; simOn: boolean }
+interface LineCtx { r: CostLine; s: SimRow; leaf: boolean; simOn: boolean; frun?: FreightRun | null }
 interface GroupCtx { n: TreeNode; i: number; agg: NodeAgg; locCurr: string; simOn: boolean }
 
 interface Col {
@@ -62,11 +64,11 @@ export const TREE_COLUMNS: Col[] = [
   },
   {
     id: 'frtPc', label: 'Freight / pc', width: 146, right: true,
-    line: ({ r, leaf }) => (leaf && r.FrtSrc ? <span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span> : null),
+    line: ({ r, leaf, frun }) => (leaf && r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcLoc}><span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span></FreightValue> : null),
   },
   {
     id: 'frtPcInr', label: 'Freight / pc INR', width: 130, right: true,
-    line: ({ r, s, leaf }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : r.FrtSrc ? <Amt v={r.FrtPcInr} curr="INR" dp={4} /> : null),
+    line: ({ r, s, leaf, frun }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcInr}><Amt v={r.FrtPcInr} curr="INR" dp={4} /></FreightValue> : null),
   },
   {
     id: 'totPcInr', label: 'Total / pc INR', width: 136, right: true,
@@ -158,9 +160,11 @@ const KIND_STYLE: Record<string, string> = {
 const ROW_H = 30;
 
 export default function BomTree({
-  tree, sim, simOn, agg, plantCurr, onOpen, focusRow,
+  tree, sim, simOn, agg, plantCurr, onOpen, focusRow, freightRun,
 }: {
   tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; plantCurr: Record<string, string>; onOpen: (row: number) => void; focusRow?: number | null;
+  /** FreightDays / StdFrt of the run that produced the rows: enables the freight break-up on freight values (omitted = as before) */
+  freightRun?: FreightRun | null;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(allExpandableIds(tree, 2)));
   const [colIds, setColIds] = useState<string[]>(PRESETS.Standard);
@@ -325,6 +329,7 @@ export default function BomTree({
                   onToggle={toggle}
                   onOpen={onOpen}
                   onFocus={setFocus}
+                  frun={freightRun}
                 />
               );
             })}
@@ -374,10 +379,11 @@ function ColumnChooser({ colIds, setCols, presets, setPresets }: { colIds: strin
 }
 
 const TreeRow = memo(function TreeRow({
-  vi, top, ni, node: n, tree, sim, simOn, agg, cols, template, open, focused, locCurr, onToggle, onOpen, onFocus,
+  vi, top, ni, node: n, tree, sim, simOn, agg, cols, template, open, focused, locCurr, onToggle, onOpen, onFocus, frun,
 }: {
   vi: number; top: number; ni: number; node: TreeNode; tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; cols: Col[]; template: string;
   open: boolean; focused: boolean; locCurr: string; onToggle: (id: string, open?: boolean) => void; onOpen: (row: number) => void; onFocus: (i: number) => void;
+  frun?: FreightRun | null;
 }) {
   const isLine = n.kind === 'line';
   const r = isLine ? tree.rows[n.row] : null;
@@ -422,7 +428,7 @@ const TreeRow = memo(function TreeRow({
       </div>
       {cols.map((c) => (
         <div role="gridcell" key={c.id} className={cx('min-w-0 truncate px-2', c.right && 'text-right')}>
-          {r && s ? c.line({ r, s, leaf, simOn }) : c.group?.({ n, i: ni, agg, locCurr, simOn })}
+          {r && s ? c.line({ r, s, leaf, simOn, frun }) : c.group?.({ n, i: ni, agg, locCurr, simOn })}
         </div>
       ))}
     </div>
