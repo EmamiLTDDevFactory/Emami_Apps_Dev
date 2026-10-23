@@ -34,6 +34,7 @@ export default function WatchPage() {
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<Tab>('alerts');
   const [openAlert, setOpenAlert] = useState<string | null>(null);
+  const [rev, setRev] = useState(0); // bumps when the alert drawer closes so the inbox shows acknowledge / snooze
   useEffect(() => {
     watchApi.me().then(setMe).catch((e) => setErr(e.message));
     const a = new URLSearchParams(window.location.search).get('alert');
@@ -52,24 +53,25 @@ export default function WatchPage() {
       {me && (
         <>
           <div className="w-full max-w-md"><Segmented<Tab> size="sm" label="Cost watch views" value={tab} onChange={setTab} options={[{ value: 'alerts', label: 'Alerts' }, { value: 'items', label: 'Watch items' }, ...(me.isAdmin ? [{ value: 'admin' as Tab, label: 'Admin' }] : [])]} /></div>
-          {tab === 'alerts' && <Alerts onOpen={setOpenAlert} />}
+          {tab === 'alerts' && <Alerts onOpen={setOpenAlert} rev={rev} />}
           {tab === 'items' && <Items canEdit={me.canEdit} canRun={me.canEdit || me.isAdmin} />}
           {tab === 'admin' && me.isAdmin && <Admin />}
         </>
       )}
-      {openAlert && <AlertDetail id={openAlert} onClose={() => { setOpenAlert(null); const u = new URL(window.location.href); u.searchParams.delete('alert'); window.history.replaceState(null, '', u); }} />}
+      {openAlert && <AlertDetail id={openAlert} onClose={() => { setOpenAlert(null); setRev((r) => r + 1); const u = new URL(window.location.href); u.searchParams.delete('alert'); window.history.replaceState(null, '', u); }} />}
     </PlanFrame>
   );
 }
 
 /* ======================= alerts inbox ======================= */
-function Alerts({ onOpen }: { onOpen: (id: string) => void }) {
+function Alerts({ onOpen, rev }: { onOpen: (id: string) => void; rev: number }) {
   const [f, setF] = useState({ status: 'open', plant: '', rule: '', severity: '' });
   const [data, setData] = useState<{ loading: boolean; alerts: Alert[]; error: string }>({ loading: true, alerts: [], error: '' });
   const load = useCallback(() => {
     setData((d) => ({ ...d, loading: true }));
     watchApi.alerts(f).then((r) => setData({ loading: false, alerts: r.alerts, error: '' })).catch((e) => setData({ loading: false, alerts: [], error: e.message }));
-  }, [f]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f, rev]);
   useEffect(load, [load]);
   const act = async (fn: () => Promise<unknown>) => { await fn().catch(() => {}); load(); };
   const n = (s: string) => data.alerts.filter((a) => a.severity === s).length;

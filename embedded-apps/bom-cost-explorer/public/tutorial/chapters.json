@@ -1,46 +1,50 @@
 [
  {
   "title": "Welcome and layout",
-  "start": 1.2
+  "start": 1
  },
  {
   "title": "Choosing what to cost",
-  "start": 40.2
+  "start": 40
  },
  {
   "title": "Reading the BOM tree",
-  "start": 126.9
+  "start": 126.7
  },
  {
   "title": "Dashboard, simulator and scenarios",
-  "start": 180.2
+  "start": 180
  },
  {
   "title": "Rate sources, rate summary and coverage",
-  "start": 217
+  "start": 216.8
  },
  {
   "title": "Export, print and share",
-  "start": 241.8
+  "start": 241.6
  },
  {
   "title": "AI: explain change and ask",
-  "start": 252.7
+  "start": 252.5
  },
  {
   "title": "Plant comparison",
-  "start": 291.4
+  "start": 291.2
  },
  {
   "title": "Rates, freight and R M P M lists",
-  "start": 308.6
+  "start": 308.4
  },
  {
   "title": "Production plans",
-  "start": 327
+  "start": 326.8
+ },
+ {
+  "title": "Daily cost watch",
+  "start": 435.8
  },
  {
   "title": "Wrap-up",
-  "start": 436.1
+  "start": 543.6
  }
 ]

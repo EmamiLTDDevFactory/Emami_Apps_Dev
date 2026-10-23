@@ -3,6 +3,7 @@
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { watchRoute } from './watchMock.mjs';
 const [OUT, EX] = process.argv.slice(2);
 const BASE = 'http://localhost:3297/apps/bom-cost-explorer';
 
@@ -83,8 +84,26 @@ st('Budget rates H 1 and H 2 applies the second half budget revision. Savings ve
 st('Checks lists bill of materials and master data problems, W I P covers semi-finished goods, and Scenarios compares plan what ifs.', async (p, h) => { const t = p.getByRole('tab', { name: 'Checks' }); await h(t); await t.click(); await p.waitForTimeout(1500); });
 st('Upload plan downloads the Excel template, checks your file, and saves the plan to SAP.', async (p, h) => { const l = p.getByRole('link', { name: /^Upload plan/ }).first(); await h(l); await l.click(); await p.waitForTimeout(2500); });
 
-ch('11. Wrap-up');
-st('That completes the tour. Open the Tutorial at any time, and use Explain change or Ask whenever you need help understanding a cost.', async (p) => { await p.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await p.waitForTimeout(1000); });
+ch('11. Daily cost watch');
+st('The daily cost watch keeps an eye on costs for you. Open Cost watch under Monitoring. Every morning at six, the server costs your watch items in SAP and compares them with yesterday, the last seven days and thirty days ago.', async (p, h) => { const l = p.getByRole('link', { name: /^Cost watch/ }).first(); await h(l); await l.click(); await p.getByText('Daily cost watch').first().waitFor({ timeout: 30000 }); await p.waitForTimeout(1200); });
+st('The alerts inbox counts the high, medium and low alerts. Severity comes from the rupee impact on the volume: high from fifty thousand rupees, medium from five thousand.', async (p, h) => { await h(p.getByText('High', { exact: true }).first().locator('xpath=ancestor::div[2]')); });
+st('Each alert names the rule that fired: cost per piece moved, a component rate moved, a weaker rate source, a freight jump, an exchange rate move, a B O M change, low cover or a plan check. Filter by status, plant, rule or severity.', async (p, h) => { const r = p.getByLabel('Rule'); await h(r); await r.selectOption('R2'); await p.waitForTimeout(1500); await r.selectOption(''); await p.waitForTimeout(800); });
+st('Click an alert to see the evidence: the impact in rupees, the change per piece, and each component before and after, with its rate source, rate, freight and exchange rate.', async (p, h, clear) => { const row = p.locator('tbody tr').filter({ hasText: 'Menthol' }).first(); await h(row); await row.click(); await clear(); await p.waitForTimeout(2200); });
+st('Acknowledge an alert once it is handled, or snooze it for seven or thirty days. Open the costing runs the same costing in the explorer, where Explain change breaks the move down.', async (p, h, clear) => { const b = p.getByRole('button', { name: /Acknowledge/ }).last(); await h(b); await b.click(); await clear(); await p.waitForTimeout(1200); await h(p.getByRole('link', { name: 'Open the costing' })); await p.waitForTimeout(1200); await clear(); await p.getByRole('button', { name: 'Close', exact: true }).click(); });
+st('Watch items decide what is watched. Planners and Admins create them, and the list shows the open alerts and the last run of each.', async (p, h) => { const t = p.getByRole('radio', { name: 'Watch items' }); await h(t); await t.click(); await p.waitForTimeout(1500); });
+st('A watch item has the finished goods and plants, the quantity basis, an optional plan for the planned volume, the rate priority and costing settings, the thresholds, and who gets the morning email digest.', async (p, h) => { const b = p.getByRole('button', { name: /New watch item/ }); await h(b); await b.click(); await p.waitForTimeout(700); await p.getByPlaceholder(/Navratna oils/).fill('Pain balms - Kolkata'); await p.getByPlaceholder('FG1001 FG1002').fill('FG3001 FG3002'); await p.getByPlaceholder('1000 1100').fill('1000'); await p.getByText(/^Thresholds/).click(); await p.waitForTimeout(1800); });
+st('Save it, and press Run now to test it straight away. An alert is emailed again only after seven days, or when it gets twenty five percent worse, so the digest stays short.', async (p, h) => { await p.getByRole('button', { name: 'Save' }).click(); await p.waitForTimeout(1000); const r = p.getByTitle('Run now').first(); await h(r); await r.click(); await p.waitForTimeout(1500); });
+st('Admins see the run log and the digest log: each SAP run with its time, lines and alerts, and each email that went out.', async (p, h) => { const t = p.getByRole('radio', { name: 'Admin' }); await h(t); await t.click(); await p.waitForTimeout(2200); });
+
+ch('12. Wrap-up');
+st('That completes the tour. Open the Tutorial at any time, use Explain change or Ask whenever you need help understanding a cost, and let the cost watch tell you each morning what moved.', async (p) => { await p.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await p.waitForTimeout(1000); });
+
+// TUTORIAL_ONLY=11 rehearses one chapter (from the start page) without re-recording the rest.
+if (process.env.TUTORIAL_ONLY) {
+  const keep = []; let on = false;
+  for (const s of steps) { if (s.chapter) on = s.chapter.startsWith(`${process.env.TUTORIAL_ONLY}.`); if (on) keep.push(s); }
+  steps.splice(0, steps.length, ...keep);
+}
 
 /* ======================= narration ======================= */
 const VOICE = 'Rishi';
@@ -92,7 +111,10 @@ let n = 0;
 for (const s of steps) {
   if (!s.text) continue;
   s.audio = `${OUT}/n${String(n++).padStart(3, '0')}.aiff`;
-  execFileSync('say', ['-v', VOICE, '-r', '178', '-o', s.audio, s.text]);
+  // macOS say can hang now and then: give each clip a minute and retry
+  for (let k = 0; ; k++) {
+    try { execFileSync('say', ['-v', VOICE, '-r', '178', '-o', s.audio, s.text], { timeout: 60000 }); break; } catch (e) { if (k >= 2) throw e; }
+  }
   const info = execFileSync('afinfo', [s.audio]).toString();
   s.dur = Number(/estimated duration: ([\d.]+)/.exec(info)?.[1] ?? 4);
 }
@@ -101,6 +123,7 @@ console.log('narration', steps.filter((s) => s.text).reduce((a, s) => a + s.dur,
 /* ======================= recording ======================= */
 const b = await chromium.launch({ executablePath: EX });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 800 }, recordVideo: { dir: OUT, size: { width: 1280, height: 800 } }, acceptDownloads: true });
+await ctx.route('**/me/cost-watch/**', watchRoute);
 await ctx.route('**/access/me**', (r) => r.fulfill({ json: { success: true, apps: [{ appId: 'bom-cost-explorer', role: 'Planner' }] } }));
 await ctx.addInitScript(() => { localStorage.setItem('emami_apps_user_email', 'trainer@emamigroup.com'); localStorage.setItem('emami_apps_session_token', 't'); });
 const p = await ctx.newPage();
@@ -138,7 +161,7 @@ for (const s of steps) {
   const at = (Date.now() - t0) / 1000;
   await overlay(chapter, s.text).catch(() => {});
   const start = Date.now();
-  try { await s.action(p, ring); } catch (e) { failures.push(`${chapter} | ${s.text.slice(0, 60)}: ${e.message.split('\n')[0]}`); }
+  try { await s.action(p, ring, clearRing); } catch (e) { failures.push(`${chapter} | ${s.text.slice(0, 60)}: ${e.message.split('\n')[0]}`); }
   await overlay(chapter, s.text).catch(() => {}); // pages may have navigated
   const spent = (Date.now() - start) / 1000;
   const rest = Math.max(0.6, s.dur + 0.7 - spent);
