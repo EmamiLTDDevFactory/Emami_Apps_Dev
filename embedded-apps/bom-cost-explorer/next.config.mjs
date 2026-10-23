@@ -20,6 +20,8 @@ const DEPLOYED_PLAN_MODULE = 'true';
 // AI layer (explain change, costing assistant): on for the deployed DEV build so it can be tried; off elsewhere unless
 // AI_ENABLED / NEXT_PUBLIC_AI_ENABLED is set. Each user types their own Claude API key on the AI settings screen.
 const DEPLOYED_AI_ENABLED = 'true';
+// Daily cost watch pages (backend: hub backend /api/me/cost-watch). WATCH_ENABLED / NEXT_PUBLIC_WATCH_ENABLED win.
+const DEPLOYED_WATCH_ENABLED = 'true';
 const sapEnv = isBuild
   ? {
       NEXT_PUBLIC_SAP_SYSTEM: process.env.NEXT_PUBLIC_SAP_SYSTEM || DEPLOYED_SAP_SYSTEM,
@@ -45,7 +47,8 @@ const nextConfig = {
   env: { NEXT_PUBLIC_BASE_PATH: basePath, ...sapEnv,
     // RateOptionSet CHAR1 flags: 'string' (default, 'X' / '') or 'boolean' (lib/rates/optionFilter.ts).
     NEXT_PUBLIC_RATEOPTION_BOOL_STYLE: process.env.RATEOPTION_BOOL_STYLE || process.env.NEXT_PUBLIC_RATEOPTION_BOOL_STYLE || 'string', NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || (isBuild ? DEPLOYED_PLAN_MODULE : 'false'),
-    NEXT_PUBLIC_AI_ENABLED: process.env.NEXT_PUBLIC_AI_ENABLED || process.env.AI_ENABLED || (isBuild ? DEPLOYED_AI_ENABLED : 'false') },
+    NEXT_PUBLIC_AI_ENABLED: process.env.NEXT_PUBLIC_AI_ENABLED || process.env.AI_ENABLED || (isBuild ? DEPLOYED_AI_ENABLED : 'false'),
+    NEXT_PUBLIC_WATCH_ENABLED: process.env.NEXT_PUBLIC_WATCH_ENABLED || process.env.WATCH_ENABLED || (isBuild ? DEPLOYED_WATCH_ENABLED : 'false') },
 };
 
 export default nextConfig;

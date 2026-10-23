@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, Boxes, Calendar, ClipboardList, Layers, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BellRing, Boxes, Calendar, ClipboardList, Layers, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
+import { AI_ENABLED } from '@/lib/ai/config';
+import { WATCH_ENABLED } from '@/lib/watch/api';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
@@ -40,7 +42,7 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload';
+export type PlanNav = 'plans' | 'upload' | 'watch';
 
 function NavPane({ mode, onMode, open, onClose, wide, planActive }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav }) {
   const pane = wide
@@ -71,6 +73,12 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive }: { mode: Mode
               <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Production plan</p>
               <NavLink href={`${BASE_PATH}/plan/`} icon={ClipboardList} label="Plans" hint="Plans in SAP, breakup and cost" active={planActive === 'plans'} />
               <NavLink href={`${BASE_PATH}/plan/upload/`} icon={Upload} label="Upload plan" hint="Excel template, check, save" active={planActive === 'upload'} />
+            </>
+          )}
+          {AI_ENABLED && WATCH_ENABLED && (
+            <>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Monitoring</p>
+              <NavLink href={`${BASE_PATH}/watch/`} icon={BellRing} label="Cost watch" hint="Daily 06:00 cost alerts and digest" active={planActive === 'watch'} />
             </>
           )}
         </nav>

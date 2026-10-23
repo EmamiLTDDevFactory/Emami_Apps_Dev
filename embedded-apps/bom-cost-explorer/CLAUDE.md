@@ -24,4 +24,6 @@ using the key each user types on the AI settings screen. There is no server key,
 
 ## Workflow
 - Run `npm test` before and after; the existing suite must pass unchanged. `npm run eval` runs evals/golden.json with a real key.
-- Phase 3 (daily cost watch with a 06:00 digest) needs a server, a database and mail: not part of this static app yet.
+- Phase 3 (daily cost watch with a 06:00 digest) runs on the hub backend (backend/costWatch.js + costWatchCore.js,
+  Postgres schema cost_watch, Resend mail, routes /api/me/cost-watch). This app only has the screens (src/app/watch,
+  src/components/watch, src/lib/watch) behind NEXT_PUBLIC_WATCH_ENABLED. Backend tests: `cd backend && npm test`.

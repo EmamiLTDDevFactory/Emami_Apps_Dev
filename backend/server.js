@@ -79,6 +79,8 @@ try {
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.
 apiRouter.use('/me/notifications', require('./notifications').router);
+// Daily cost watch (BOM Simulator): rides the existing nginx /api/me rule; see costWatch.js.
+apiRouter.use('/me/cost-watch', require('./costWatch'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
