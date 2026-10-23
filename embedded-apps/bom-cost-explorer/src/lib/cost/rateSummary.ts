@@ -12,11 +12,16 @@
  *   FG cost per piece (type) = sum over leaf components of rate(type) x ProdQty / explosion qty
  *   A component without a rate of that type is not counted as 0: priced / leaves tells how complete the figure is.
  *   FG landed (incl. freight) = sum of leaf TotCostInr / explosion qty  (the BOM tree's total).
+ *
+ * Contract + freight / Info record + freight (lib/rates/withFreight): that source's rate plus the line's freight per
+ * unit, in INR and in local currency; per FG piece the same sum over the components priced by that source. Not part of
+ * the lowest / spread comparison (those compare material rates only).
  */
 import { D, ZERO, type Decimal } from './decimal';
 import { isLeafRow } from './tree';
 import { costCategory, type CostCategory } from './categories';
 import type { CostLine, RateOption } from '../sap/fields';
+import { WITH_FREIGHT_SOURCES, rateWithFreight, sourceOption, type WithFreightSource } from '../rates/withFreight';
 
 export const RATE_TYPES = ['SELECTED', 'BUDGET', 'CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW', 'CHEAPEST'] as const;
 export type RateType = (typeof RATE_TYPES)[number];
@@ -55,6 +60,8 @@ export interface FgRow {
   landedPc: Decimal | null; // incl. freight (BOM tree total / qty)
   freightPc: Decimal | null;
   cheapestType: RateType | null; // lowest complete figure among the types
+  /** Contract / Info record rate + freight per FG piece; loc in the plant's currency (null when a component's could not be told) */
+  withFrt: Record<WithFreightSource, { inr: Figure; loc: Decimal | null; locCurr: string }>;
 }
 
 export interface ComponentRow {
@@ -63,6 +70,8 @@ export interface ComponentRow {
   rates: Record<RateType, Decimal | null>;
   min: Decimal | null; max: Decimal | null; spreadPct: Decimal | null; // over the priced types
   lowestType: RateType | null;
+  /** Contract / Info record rate + freight per unit (weighted by quantity) */
+  withFrt: Record<WithFreightSource, { inr: Decimal | null; loc: Decimal | null; locCurr: string }>;
 }
 
 export interface RateSummary { fgs: FgRow[]; rm: ComponentRow[]; pm: ComponentRow[]; other: ComponentRow[] }
@@ -70,16 +79,30 @@ export interface RateSummary { fgs: FgRow[]; rm: ComponentRow[]; pm: ComponentRo
 const emptyFigures = (): Record<RateType, { total: Decimal; priced: number }> =>
   Object.fromEntries(RATE_TYPES.map((t) => [t, { total: ZERO, priced: 0 }])) as Record<RateType, { total: Decimal; priced: number }>;
 
+type FrtSum = { inr: Decimal; loc: Decimal; locOk: boolean; q: Decimal; priced: number; locCurr: string };
+const emptyFrt = (): Record<WithFreightSource, FrtSum> => Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, { inr: ZERO, loc: ZERO, locOk: true, q: ZERO, priced: 0, locCurr: '' }])) as Record<WithFreightSource, FrtSum>;
+function addFrt(sum: FrtSum, l: Line, src: WithFreightSource, pq: Decimal) {
+  const o = sourceOption(l.RateOptions, src, l.Werks);
+  const w = o ? rateWithFreight(o, l) : null;
+  if (!w) return;
+  sum.inr = sum.inr.plus(w.inr.times(pq));
+  if (w.loc) sum.loc = sum.loc.plus(w.loc.times(pq)); else sum.locOk = false;
+  if (sum.locCurr && w.locCurr && sum.locCurr !== w.locCurr) sum.locOk = false;
+  sum.locCurr ||= w.locCurr;
+  sum.q = sum.q.plus(pq);
+  sum.priced++;
+}
+
 export function rateSummary(lines: Line[], explQty: string | number = 1): RateSummary {
   const qty = D(explQty).gt(0) ? D(explQty) : D(1);
-  const fgs = new Map<string, { row: Omit<FgRow, 'perPc' | 'landedPc' | 'freightPc' | 'cheapestType'>; fig: ReturnType<typeof emptyFigures>; landed: Decimal; freight: Decimal }>();
-  const comps = new Map<string, ComponentRow & { heads: Set<string>; sums: Record<RateType, { cost: Decimal; q: Decimal }> }>();
+  const fgs = new Map<string, { row: Omit<FgRow, 'perPc' | 'landedPc' | 'freightPc' | 'cheapestType' | 'withFrt'>; fig: ReturnType<typeof emptyFigures>; landed: Decimal; freight: Decimal; frt: Record<WithFreightSource, FrtSum> }>();
+  const comps = new Map<string, Omit<ComponentRow, 'withFrt'> & { heads: Set<string>; sums: Record<RateType, { cost: Decimal; q: Decimal }>; frt: Record<WithFreightSource, FrtSum> }>();
 
   for (const l of lines) {
     if (!isLeafRow(l)) continue;
     const hk = `${l.Land1}|${l.Hwerks}|${l.Headmat}`;
     let f = fgs.get(hk);
-    if (!f) fgs.set(hk, (f = { row: { key: hk, land1: l.Land1, hwerks: l.Hwerks, headmat: l.Headmat, headtxt: l.Headtxt, leaves: 0 }, fig: emptyFigures(), landed: ZERO, freight: ZERO }));
+    if (!f) fgs.set(hk, (f = { row: { key: hk, land1: l.Land1, hwerks: l.Hwerks, headmat: l.Headmat, headtxt: l.Headtxt, leaves: 0 }, fig: emptyFigures(), landed: ZERO, freight: ZERO, frt: emptyFrt() }));
     f.row.leaves++;
     const pq = D(l.ProdQty);
     f.landed = f.landed.plus(D(l.TotCostInr));
@@ -89,10 +112,11 @@ export function rateSummary(lines: Line[], explQty: string | number = 1): RateSu
     if (!c) comps.set(ck, (c = {
       key: ck, werks: l.Werks || l.Hwerks, idnrk: l.Idnrk, maktx: l.Maktx, meins: l.Meins, cat: costCategory(l), qty: ZERO, fgs: 0, selectedSource: l.SelSource,
       rates: Object.fromEntries(RATE_TYPES.map((t) => [t, null])) as Record<RateType, Decimal | null>, min: null, max: null, spreadPct: null, lowestType: null,
-      heads: new Set(), sums: Object.fromEntries(RATE_TYPES.map((t) => [t, { cost: ZERO, q: ZERO }])) as Record<RateType, { cost: Decimal; q: Decimal }>,
+      heads: new Set(), sums: Object.fromEntries(RATE_TYPES.map((t) => [t, { cost: ZERO, q: ZERO }])) as Record<RateType, { cost: Decimal; q: Decimal }>, frt: emptyFrt(),
     }));
     c.qty = c.qty.plus(pq);
     c.heads.add(hk);
+    for (const src of WITH_FREIGHT_SOURCES) { addFrt(f.frt[src], l, src, pq); addFrt(c.frt[src], l, src, pq); }
     for (const t of RATE_TYPES) {
       const r = rateOf(l, t);
       if (r === null) continue;
@@ -103,20 +127,27 @@ export function rateSummary(lines: Line[], explQty: string | number = 1): RateSu
     }
   }
 
-  const fgRows: FgRow[] = [...fgs.values()].map(({ row, fig, landed, freight }) => {
+  const fgRows: FgRow[] = [...fgs.values()].map(({ row, fig, landed, freight, frt }) => {
     const perPc = Object.fromEntries(RATE_TYPES.map((t) => [t, { value: fig[t].priced ? fig[t].total.div(qty) : null, priced: fig[t].priced, leaves: row.leaves }])) as Record<RateType, Figure>;
     const complete = RATE_TYPES.filter((t) => perPc[t].value && perPc[t].priced === row.leaves);
     const cheapestType = complete.length ? complete.reduce((a, t) => (perPc[t].value!.lt(perPc[a].value!) ? t : a)) : null;
-    return { ...row, perPc, landedPc: landed.div(qty), freightPc: freight.div(qty), cheapestType };
+    const withFrt = Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, {
+      inr: { value: frt[t].priced ? frt[t].inr.div(qty) : null, priced: frt[t].priced, leaves: row.leaves },
+      loc: frt[t].priced && frt[t].locOk ? frt[t].loc.div(qty) : null, locCurr: frt[t].locCurr,
+    }])) as FgRow['withFrt'];
+    return { ...row, perPc, landedPc: landed.div(qty), freightPc: freight.div(qty), cheapestType, withFrt };
   }).sort((a, b) => a.land1.localeCompare(b.land1) || a.hwerks.localeCompare(b.hwerks) || a.headmat.localeCompare(b.headmat));
 
-  const compRows = [...comps.values()].map(({ heads, sums, ...c }) => {
+  const compRows = [...comps.values()].map(({ heads, sums, frt, ...c }) => {
+    const withFrt = Object.fromEntries(WITH_FREIGHT_SOURCES.map((t) => [t, {
+      inr: frt[t].q.gt(0) ? frt[t].inr.div(frt[t].q) : null, loc: frt[t].q.gt(0) && frt[t].locOk ? frt[t].loc.div(frt[t].q) : null, locCurr: frt[t].locCurr,
+    }])) as ComponentRow['withFrt'];
     const rates = Object.fromEntries(RATE_TYPES.map((t) => [t, sums[t].q.gt(0) ? sums[t].cost.div(sums[t].q) : null])) as Record<RateType, Decimal | null>;
     const priced = RATE_TYPES.filter((t) => t !== 'CHEAPEST' && rates[t]) as RateType[];
     const vals = priced.map((t) => rates[t]!);
     const min = vals.length ? vals.reduce((a, v) => (v.lt(a) ? v : a)) : null;
     const max = vals.length ? vals.reduce((a, v) => (v.gt(a) ? v : a)) : null;
-    return { ...c, fgs: heads.size, rates, min, max, spreadPct: min && max && min.gt(0) ? max.minus(min).div(min).times(100) : null, lowestType: min ? priced.find((t) => rates[t]!.eq(min)) ?? null : null };
+    return { ...c, withFrt, fgs: heads.size, rates, min, max, spreadPct: min && max && min.gt(0) ? max.minus(min).div(min).times(100) : null, lowestType: min ? priced.find((t) => rates[t]!.eq(min)) ?? null : null };
   }).sort((a, b) => (b.rates.SELECTED ?? ZERO).times(b.qty).cmp((a.rates.SELECTED ?? ZERO).times(a.qty)));
 
   return {

@@ -9,6 +9,7 @@ import { fmtDate, fmtNum, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { Button, cx, Drawer, inputBase, inputCls, Pill, SimTag, SourceBadge } from './ui';
 import { FreightBreakupSection } from './freight/FreightValue';
 import type { FreightRun } from '@/lib/freight/breakup';
+import { hasFreightColumns, rateWithFreight } from '@/lib/rates/withFreight';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -49,6 +50,8 @@ export default function RowDrawer({
   const opts = r.RateOptions ?? [];
   const sel = selectedOptionIndex(r);
   const priced = opts.filter((o) => D(o.RatePcInr).gt(0));
+  /** Contract / Info record rows get "rate + freight" in local and INR (lib/rates/withFreight). */
+  const withFrt = opts.some((o) => hasFreightColumns(o.Source));
   const best = priced.length ? priced.reduce((b, o) => (D(o.RatePcInr).lt(D(b.RatePcInr)) ? o : b)) : null;
   const bestIdx = best ? opts.indexOf(best) : -1;
   const saving = best && r.SelSource ? D(r.SelRatePcInr).minus(D(best.RatePcInr)).times(D(r.ProdQty)) : null;
@@ -123,6 +126,8 @@ export default function RowDrawer({
                     <th className="px-2 py-2 text-left">Curr</th>
                     <th className="px-2 py-2 text-right">Rate / pc</th>
                     <th className="px-2 py-2 text-right">Rate / pc INR</th>
+                    {withFrt && <th className="px-2 py-2 text-right" title="Contract and Info record: rate + this line's freight per piece">Rate + freight / pc local</th>}
+                    {withFrt && <th className="px-2 py-2 text-right" title="Contract and Info record: rate + this line's freight per piece">Rate + freight / pc INR</th>}
                     <th className="px-2 py-2 text-left">Valid from</th>
                     <th className="px-2.5 py-2 text-left">Plant</th>
                   </tr>
@@ -146,6 +151,10 @@ export default function RowDrawer({
                       <td className="px-2 py-1.5">{o.Curr}</td>
                       <td className="num px-2 py-1.5 text-right">{fmtRate(o.RatePc, o.Curr)} <span className="text-faint">{o.Curr}</span></td>
                       <td className="num px-2 py-1.5 text-right">{fmtRate(o.RatePcInr)} <span className="text-faint">INR</span></td>
+                      {withFrt && (() => { const w = rateWithFreight(o, r); return (<>
+                        <td className="num px-2 py-1.5 text-right">{w?.loc ? <>{fmtRate(w.loc)} <span className="text-faint">{w.locCurr}</span></> : '—'}</td>
+                        <td className="num px-2 py-1.5 text-right">{w ? <>{fmtRate(w.inr)} <span className="text-faint">INR</span></> : '—'}</td>
+                      </>); })()}
                       <td className="px-2 py-1.5">{fmtDate(o.ValidFrom)}</td>
                       <td className="px-2.5 py-1.5 font-mono">
                         {o.Plant}

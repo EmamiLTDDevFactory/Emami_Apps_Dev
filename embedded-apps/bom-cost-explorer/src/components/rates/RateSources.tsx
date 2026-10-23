@@ -17,6 +17,7 @@ import { Button, cx, Segmented, SimTag, Skeleton, SourceBadge, sourceColorVar } 
 import { ALL_RATE_SOURCES, prioLabel } from '@/lib/rates/priority';
 import { ratesIntegrity } from '@/lib/rates/integrity';
 import IntegrityBanner from './IntegrityBanner';
+import { hasFreightColumns, rateWithFreight } from '@/lib/rates/withFreight';
 import RateCompare from './RateCompare';
 
 type ColSet = 'compact' | 'report' | 'local';
@@ -52,13 +53,19 @@ const COLS: Col[] = [
   { id: 'totLoc', label: 'Total local', width: 130, right: true, cell: (r) => <span className="num">{fmtNum(r.totalLoc, 2)}</span>, xlsx: { header: 'Total local', dp: 2, get: () => 0 } },
 ];
 
+/** Contract and Info record blocks only: rate + the line's freight per piece, local and INR. */
+const FRT_COLS: Col[] = [
+  { id: 'rfLoc', label: 'Rate + freight / pc local', width: 150, right: true, cell: (r) => { const w = rateWithFreight(r.opt, r.line); return w?.loc ? <span className="num">{fmtRate(w.loc)} <span className="text-2xs text-faint">{w.locCurr}</span></span> : '—'; }, xlsx: { header: 'Rate + freight / pc local', dp: 4, get: () => 0 } },
+  { id: 'rfInr', label: 'Rate + freight / pc INR', width: 150, right: true, cell: (r) => { const w = rateWithFreight(r.opt, r.line); return w ? <span className="num">{fmtRate(w.inr)}</span> : '—'; }, xlsx: { header: 'Rate + freight / pc INR', dp: 4, curr: 'INR', get: () => 0 } },
+];
+
 const SETS: Record<ColSet, string[]> = {
   compact: ['comp', 'desc', 'plant', 'ratePcInr', 'qty', 'totInr'],
   report: ['comp', 'desc', 'plant', 'cond', 'curr', 'rate', 'uom', 'valid', 'ratePc', 'fx', 'ratePcInr', 'qty', 'frtInr', 'totInr'],
   local: ['comp', 'desc', 'plant', 'locCurr', 'ratePcLoc', 'qty', 'costLoc', 'frtLoc', 'totLoc'],
 };
 
-type Item = { kind: 'block'; source: string; lines: number; total: string } | { kind: 'head' } | { kind: 'row'; row: SourceOptionRow } | { kind: 'empty'; source: string };
+type Item = { kind: 'block'; source: string; lines: number; total: string } | { kind: 'head'; source: string } | { kind: 'row'; row: SourceOptionRow } | { kind: 'empty'; source: string };
 
 const ROW_H = 30;
 
@@ -71,6 +78,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
 
   const model = useMemo(() => (rates.status === 'ready' ? buildSourcesModel(rows) : null), [rates.status, rows]);
   const cols = useMemo(() => SETS[set].map((id) => COLS.find((c) => c.id === id)!), [set]);
+  const colsFor = (source: string) => (hasFreightColumns(source) ? [...cols, ...FRT_COLS] : cols);
   const items = useMemo<Item[]>(() => {
     if (!model) return [];
     const out: Item[] = [];
@@ -80,7 +88,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
     for (const src of order) {
       const b = bySource.get(src);
       if (!b) { out.push({ kind: 'block', source: src, lines: 0, total: '' }, { kind: 'empty', source: src }); continue; }
-      out.push({ kind: 'block', source: b.source, lines: b.lines, total: fmtNum(b.total, 2) }, { kind: 'head' });
+      out.push({ kind: 'block', source: b.source, lines: b.lines, total: fmtNum(b.total, 2) }, { kind: 'head', source: b.source });
       for (const r of b.rows) out.push({ kind: 'row', row: r });
     }
     return out;
@@ -138,6 +146,8 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
         case 'costLoc': return n(r.opt.CostLoc);
         case 'frtLoc': return n(r.line.FrtPcLoc);
         case 'totLoc': return Number(r.totalLoc.toFixed(2));
+        case 'rfLoc': { const w = rateWithFreight(r.opt, r.line); return w?.loc ? Number(w.loc.toFixed(4)) : ''; }
+        case 'rfInr': { const w = rateWithFreight(r.opt, r.line); return w ? Number(w.inr.toFixed(4)) : ''; }
         default: return '';
       }
     };
@@ -145,6 +155,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
       { header: 'Source', get: (i) => flat[i].opt.Source },
       { header: 'Header', get: (i) => flat[i].line.Headmat },
       ...SETS.report.concat(['locCurr', 'ratePcLoc', 'costLoc', 'frtLoc', 'totLoc']).map((id) => ({ ...COLS.find((c) => c.id === id)!.xlsx, get: (i: number) => val(flat[i], id) })),
+      ...FRT_COLS.map((c) => ({ ...c.xlsx, get: (i: number) => val(flat[i], c.id) })),
       { header: 'Used by SAP', get: (i) => (flat[i].used ? 'X' : '') },
       { header: 'Cheapest', get: (i) => (flat[i].cheapest ? 'X' : '') },
     ];
@@ -154,7 +165,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
     });
   };
 
-  const width = cols.reduce((n, c) => n + c.width, 0) + 120;
+  const width = [...cols, ...FRT_COLS].reduce((n, c) => n + c.width, 0) + 120;
   return (
     <div className="flex h-full flex-col">
       <IntegrityBanner integrity={integrity} className="mx-3 mt-2" />
@@ -195,7 +206,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
             if (it.kind === 'head') {
               return (
                 <div key={vi.key} style={style} className="flex items-center bg-sunken text-2xs font-bold uppercase tracking-wide text-muted">
-                  {cols.map((c) => <div key={c.id} style={{ width: c.width }} className={cx('px-2', c.right && 'text-right')}>{c.label}</div>)}
+                  {colsFor(it.source).map((c) => <div key={c.id} style={{ width: c.width }} className={cx('px-2', c.right && 'text-right')}>{c.label}</div>)}
                   <div className="w-[120px] px-2">Mark</div>
                 </div>
               );
@@ -209,7 +220,7 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
                 onClick={() => onOpenRow?.(r.lineIdx)}
                 title={r.used ? 'Rate SAP used for this component' : undefined}
               >
-                {cols.map((c) => <div key={c.id} style={{ width: c.width }} className={cx('truncate px-2', c.right && 'text-right')}>{c.cell(r)}</div>)}
+                {colsFor(r.opt.Source).map((c) => <div key={c.id} style={{ width: c.width }} className={cx('truncate px-2', c.right && 'text-right')}>{c.cell(r)}</div>)}
                 <div className="flex w-[120px] gap-1 px-2 text-2xs">
                   {r.used && <span className="rounded bg-accent/10 px-1.5 py-px font-bold text-accent">USED</span>}
                   {r.cheapest && <span className="rounded bg-good/15 px-1.5 py-px font-bold text-good">CHEAPEST</span>}

@@ -14,6 +14,8 @@ import { CATEGORY_LABEL } from '@/lib/cost/categories';
 import { exportTable, type XCol } from '@/lib/client/export';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
 import { Button, Card, cx, inputBase, sourceColorVar } from '../ui';
+import { WITH_FREIGHT_LABEL, WITH_FREIGHT_SOURCES } from '@/lib/rates/withFreight';
+import type { Decimal } from '@/lib/cost/decimal';
 
 const th = 'sticky top-0 z-10 bg-panel px-2 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted shadow-[0_1px_0_rgb(var(--line))]';
 const thN = `${th} text-right`;
@@ -41,6 +43,11 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
       { header: 'Description', width: 30, get: (i) => s.fgs[i].headtxt },
       ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
       ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
+      ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
+        { header: `${WITH_FREIGHT_LABEL[src]} / pc local`, dp: 4, get: (i) => n(s.fgs[i].withFrt[src].loc) },
+        { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => s.fgs[i].withFrt[src].locCurr },
+        { header: `${WITH_FREIGHT_LABEL[src]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].withFrt[src].inr.value) },
+      ]),
       { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].freightPc) },
       { header: 'Landed / pc INR (BOM total)', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].landedPc) },
       { header: 'Lowest complete type', get: (i) => (s.fgs[i].cheapestType ? RATE_TYPE_LABEL[s.fgs[i].cheapestType!] : '') },
@@ -50,12 +57,17 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
       { header: 'Category', get: (i) => CATEGORY_LABEL[list[i].cat] }, { header: 'Unit', get: (i) => list[i].meins }, { header: 'Used in FGs', get: (i) => list[i].fgs },
       { header: 'Qty', dp: 3, get: (i) => n(list[i].qty, 3) }, { header: 'Selected source', get: (i) => list[i].selectedSource },
       ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].rates[rt]) })),
+      ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
+        { header: `${WITH_FREIGHT_LABEL[src]} local / unit`, dp: 4, get: (i) => n(list[i].withFrt[src].loc) },
+        { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => list[i].withFrt[src].locCurr },
+        { header: `${WITH_FREIGHT_LABEL[src]} INR / unit`, dp: 4, curr: 'INR', get: (i) => n(list[i].withFrt[src].inr) },
+      ]),
       { header: 'Spread %', dp: 1, get: (i) => n(list[i].spreadPct, 1) }, { header: 'Lowest type', get: (i) => (list[i].lowestType ? RATE_TYPE_LABEL[list[i].lowestType!] : '') },
     ];
     void exportTable({
       fmt: 'xlsx', name: 'Rate summary', query, cols: fgCols, count: s.fgs.length,
       extraSheets: [{ name: 'RM rates', cols: compCols(s.rm), count: s.rm.length }, { name: 'PM rates', cols: compCols(s.pm), count: s.pm.length }, ...(s.other.length ? [{ name: 'Other rates', cols: compCols(s.other), count: s.other.length }] : [])],
-      extraParams: [['FG cost per piece', 'Sum over leaf components of rate x qty / explosion qty (material only; freight and landed shown separately)'], ['Rate options', optionsReady ? 'loaded' : `not loaded: ${rates.note || rates.status}`]],
+      extraParams: [['FG cost per piece', 'Sum over leaf components of rate x qty / explosion qty (material only; freight and landed shown separately)'], ['Contract / Info record + freight', 'That source\'s rate plus the line\'s freight per unit (BOM tree freight), local and INR'], ['Rate options', optionsReady ? 'loaded' : `not loaded: ${rates.note || rates.status}`]],
     });
   };
 
@@ -78,22 +90,32 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
             <thead><tr>
               <th className={th}>FG</th>
               {types.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
+              {optionsReady && <FrtHeads />}
               <th className={thN}>Freight</th><th className={thN}>Landed (BOM)</th>
             </tr></thead>
-            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={types} />)}</tbody>
+            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={types} frt={optionsReady} />)}</tbody>
           </table>
           {!fgs.length && <p className="px-3 py-3 text-xs text-muted">No FG matches.</p>}
         </div>
       </Card>
 
-      <ComponentCard title="RM rates (incl. perfume) · INR per unit" list={rm} types={types} />
-      <ComponentCard title="PM rates · INR per unit" list={pm} types={types} />
-      <p className="text-2xs text-muted">Bold = lowest of the row. FG figures are material cost per piece on each rate type; a grey figure is incomplete (some components have no rate of that type — hover for the count). Freight and landed are the BOM tree&apos;s values.</p>
+      <ComponentCard title="RM rates (incl. perfume) · INR per unit" list={rm} types={types} frt={optionsReady} />
+      <ComponentCard title="PM rates · INR per unit" list={pm} types={types} frt={optionsReady} />
+      <p className="text-2xs text-muted">Bold = lowest of the row. FG figures are material cost per piece on each rate type; a grey figure is incomplete (some components have no rate of that type — hover for the count). Freight and landed are the BOM tree&apos;s values. Contract + freight and Info record + freight add the line&apos;s freight per unit to that source&apos;s rate, in local currency and INR.</p>
     </div>
   );
 }
 
-function FgLine({ f, types }: { f: FgRow; types: RateType[] }) {
+/** Contract + freight and Info record + freight, local then INR. */
+function FrtHeads() {
+  return <>{WITH_FREIGHT_SOURCES.flatMap((src) => [
+    <th key={`${src}l`} className={thN} title="Rate + the line's freight per unit, local currency"><Swatch t={src} />{WITH_FREIGHT_LABEL[src]} (local)</th>,
+    <th key={`${src}i`} className={thN} title="Rate + the line's freight per unit, INR"><Swatch t={src} />{WITH_FREIGHT_LABEL[src]} (INR)</th>,
+  ])}</>;
+}
+const locCell = (v: Decimal | null, curr: string) => (v ? <>{fmtRate(v)} <span className="text-2xs text-faint">{curr}</span></> : '—');
+
+function FgLine({ f, types, frt }: { f: FgRow; types: RateType[]; frt: boolean }) {
   const complete = types.filter((t) => f.perPc[t].value && f.perPc[t].priced === f.leaves);
   const low = complete.length ? complete.reduce((a, t) => (f.perPc[t].value!.lt(f.perPc[a].value!) ? t : a)) : null;
   return (
@@ -104,13 +126,22 @@ function FgLine({ f, types }: { f: FgRow; types: RateType[] }) {
         const incomplete = x.value && x.priced < f.leaves;
         return <td key={t} className={cx(tdN, low === t && 'font-bold text-good', incomplete && 'text-faint')} title={`${x.priced} of ${f.leaves} components priced`}>{x.value ? fmtRate(x.value) : '—'}</td>;
       })}
+      {frt && WITH_FREIGHT_SOURCES.flatMap((src) => {
+        const w = f.withFrt[src];
+        const part = w.inr.value && w.inr.priced < f.leaves;
+        const tip = `${w.inr.priced} of ${f.leaves} components priced by ${src}`;
+        return [
+          <td key={`${src}l`} className={cx(tdN, part && 'text-faint')} title={tip}>{locCell(w.loc, w.locCurr)}</td>,
+          <td key={`${src}i`} className={cx(tdN, part && 'text-faint')} title={tip}>{w.inr.value ? fmtRate(w.inr.value) : '—'}</td>,
+        ];
+      })}
       <td className={tdN}>{f.freightPc ? fmtRate(f.freightPc) : '—'}</td>
       <td className={cx(tdN, 'font-semibold')}>{f.landedPc ? fmtRate(f.landedPc) : '—'}</td>
     </tr>
   );
 }
 
-function ComponentCard({ title, list, types }: { title: string; list: ComponentRow[]; types: RateType[] }) {
+function ComponentCard({ title, list, types, frt }: { title: string; list: ComponentRow[]; types: RateType[]; frt: boolean }) {
   return (
     <Card title={`${title} (${list.length})`} bodyClass="p-0">
       <div className="scroll-thin max-h-[45vh] overflow-auto">
@@ -118,6 +149,7 @@ function ComponentCard({ title, list, types }: { title: string; list: ComponentR
           <thead><tr>
             <th className={th}>Component</th><th className={thN}>FGs</th><th className={thN}>Qty</th>
             {types.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
+            {frt && <FrtHeads />}
             <th className={thN} title="Highest vs lowest rate type, % of the lowest">Spread</th>
           </tr></thead>
           <tbody>
@@ -129,6 +161,10 @@ function ComponentCard({ title, list, types }: { title: string; list: ComponentR
                 {types.map((t) => (
                   <td key={t} className={cx(tdN, c.rates[t] && c.min && c.rates[t]!.eq(c.min) && t !== 'CHEAPEST' && 'font-bold text-good', t === 'SELECTED' && 'bg-accent/[0.05]')}>{c.rates[t] ? fmtRate(c.rates[t]) : '—'}</td>
                 ))}
+                {frt && WITH_FREIGHT_SOURCES.flatMap((src) => [
+                  <td key={`${src}l`} className={tdN}>{locCell(c.withFrt[src].loc, c.withFrt[src].locCurr)}</td>,
+                  <td key={`${src}i`} className={tdN}>{c.withFrt[src].inr ? fmtRate(c.withFrt[src].inr) : '—'}</td>,
+                ])}
                 <td className={cx(tdN, c.spreadPct && c.spreadPct.gt(20) && 'font-semibold text-warn')}>{c.spreadPct ? `${fmtNum(c.spreadPct, 1)}%` : '—'}</td>
               </tr>
             ))}
