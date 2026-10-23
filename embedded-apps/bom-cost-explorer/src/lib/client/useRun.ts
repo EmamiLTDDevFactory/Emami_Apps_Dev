@@ -17,6 +17,8 @@ export function useRun<T, A extends unknown[]>(fn: (signal: AbortSignal, ...args
   const ctl = useRef<AbortController | null>(null);
   const fnRef = useRef(fn);
   fnRef.current = fn;
+  const override = useRef<((signal: AbortSignal) => Promise<T>) | null>(null);
+  const runRef = useRef<(...args: A) => Promise<T | null>>(async () => null);
 
   useEffect(() => {
     if (s.status !== 'running' || !s.startedAt) return;
@@ -26,6 +28,18 @@ export function useRun<T, A extends unknown[]>(fn: (signal: AbortSignal, ...args
 
   useEffect(() => () => ctl.current?.abort(), []);
 
+  /** run() with another function for this one call (plant-wide costing); same state, cancel and ticker. */
+  const runWith = useCallback(async (fn2: (signal: AbortSignal) => Promise<T>): Promise<T | null> => {
+    override.current = fn2;
+    try {
+      return await runRef.current(...([] as unknown as A));
+    } finally {
+      override.current = null;
+    }
+  }, []);
+  /** Partial data while a run is still going (plant-wide batches); status stays as it is. */
+  const publish = useCallback((data: T) => set((p) => ({ ...p, data })), []);
+
   const run = useCallback(async (...args: A): Promise<T | null> => {
     ctl.current?.abort();
     const c = new AbortController();
@@ -33,7 +47,7 @@ export function useRun<T, A extends unknown[]>(fn: (signal: AbortSignal, ...args
     const startedAt = Date.now();
     set((p) => ({ ...p, status: 'running', error: null, startedAt, elapsed: 0 }));
     try {
-      const data = await fnRef.current(c.signal, ...args);
+      const data = await (override.current ? override.current(c.signal) : fnRef.current(c.signal, ...args));
       if (c.signal.aborted) return null;
       set({ status: 'done', data, error: null, startedAt: null, elapsed: Date.now() - startedAt });
       return data;
@@ -49,7 +63,9 @@ export function useRun<T, A extends unknown[]>(fn: (signal: AbortSignal, ...args
     }
   }, []);
 
+  runRef.current = run;
+
   const cancel = useCallback(() => ctl.current?.abort(), []);
   const reset = useCallback((data: T | null = null) => set({ status: data ? 'done' : 'idle', data, error: null, startedAt: null, elapsed: 0 }), []);
-  return { ...s, run, cancel, reset };
+  return { ...s, run, runWith, publish, cancel, reset };
 }

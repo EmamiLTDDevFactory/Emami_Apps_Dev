@@ -1,11 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { SapMessage } from '@/lib/sap/messages';
 import { cx } from './ui';
 
 /** Messages from SAP's sap-message header (skipped materials, missing BOMs, unauthorised
  * plants...) and BFF notices. Warnings/errors are expanded by default, info collapsed. */
-export default function Warnings({ messages: all }: { messages: SapMessage[] }) {
+export default function Warnings({ messages: all, action }: { messages: SapMessage[]; /** optional link next to the title (plant-wide "Retry 3 failed") */ action?: ReactNode }) {
   const [open, setOpen] = useState(true);
   // "RATEOPTIONSET_GET_ENTITYSET not implemented" is not a costing problem: the Rate sources tab
   // says it neutrally ("Rate options are not available from SAP for this system").
@@ -24,6 +24,7 @@ export default function Warnings({ messages: all }: { messages: SapMessage[] }) 
         </span>
         <span className="ml-auto text-xs text-muted">{open ? 'Hide' : 'Show'}</span>
       </button>
+      {action && <div className="mt-1">{action}</div>}
       {open && (
         <ul className="mt-1.5 max-h-40 space-y-0.5 overflow-auto text-xs">
           {[...warn, ...info].map((m, i) => (

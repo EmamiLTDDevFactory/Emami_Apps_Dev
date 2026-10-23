@@ -5,6 +5,9 @@ import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { loadSapConfig } from '@/lib/sap/config';
 import { COSTING_TIMEOUT_MS } from '@/lib/sap/client';
 import { subscribeCostProgress, type CostProgress } from '@/lib/client/plantRun';
+import { isPlantWide, needsOnePlant, PLANT_WIDE_ENABLED } from '@/lib/plantwide/flag';
+import { NO_PICK, usePlantWide, type HierPick } from '@/lib/plantwide/usePlantWide';
+import { etaText } from '@/lib/plantwide/runBatches';
 import RateSummary from './rates/RateSummary';
 import dynamic from 'next/dynamic';
 import { AI_ENABLED } from '@/lib/ai/config';
@@ -95,6 +98,9 @@ export default function Explorer() {
   const scen = useScenarios(user);
   const [autoRun, setAutoRun] = useState<string[]>([]);
   const runner = useRun((signal: AbortSignal, q: CostQuery) => api.cost(q, signal));
+  // Plant-wide costing (flag PLANT_WIDE_ENABLED, one plant + Materials empty); inactive = no request, no change.
+  const [hierPick, setHierPick] = useState<HierPick>(NO_PICK);
+  const pw = usePlantWide({ query, pick: hierPick, cancel: runner.cancel });
 
   // ---- boot: config, plants, initial query (URL > last per user > default) -----------------
   useEffect(() => setCoverDays(ls.get('bce:cover-days', 30)), []);
@@ -132,7 +138,7 @@ export default function Explorer() {
         return;
       }
       setDrawer(null);
-      const r = await runner.run(q);
+      const r = PLANT_WIDE_ENABLED && isPlantWide(q) && pw.active ? await runner.runWith((signal) => pw.run(signal, q, runner.publish)) : await runner.run(q);
       if (r && AI_ENABLED && q.mode === 'B') void import('@/lib/snapshots/snapshot').then((m) => m.saveSnapshotIfEnabled(r.rows, q, cfg?.ok ? cfg.config.system : '', user));
       if (r) {
         setCollapsed(true);
@@ -141,7 +147,7 @@ export default function Explorer() {
         setTab((t) => (q.mode === 'C' ? (t === 'tree' || t === 'table' ? 'compare' : t) : t === 'compare' || t === 'table' ? 'tree' : t));
       }
     },
-    [query, runner, user],
+    [query, runner, user, pw],
   );
 
   // ---- derived results ---------------------------------------------------------------------
@@ -254,6 +260,8 @@ export default function Explorer() {
   };
 
   const running = runner.status === 'running' || pagedBusy.on;
+  const pwProgress = runner.status === 'running' ? pw.progress : null;
+  const retryFailed = () => { const q = ranQuery; if (q && !running) void runner.runWith((signal) => pw.retryFailed(signal, q, runner.publish)); };
   const elapsed = runner.status === 'running' ? runner.elapsed : pagedBusy.started ? Date.now() - pagedBusy.started : 0;
   const typical = ls.get<number>(lastMsKey(query.mode), 0);
   const [, tick] = useState(0);
@@ -344,6 +352,7 @@ export default function Explorer() {
           onCancel={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}
           collapsed={collapsed}
           onToggle={() => setCollapsed(!collapsed)}
+          {...(PLANT_WIDE_ENABLED ? { plantWide: pw.active ? pw : undefined, onePlantHint: needsOnePlant(query), hierPick, onHierPick: setHierPick } : {})}
         />
 
         {running && (
@@ -351,12 +360,22 @@ export default function Explorer() {
             <div className="flex items-center gap-3 text-sm">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden />
               <span className="font-bold">SAP is costing…</span>
-              <PlantRunProgress />
-              <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at {COSTING_TIMEOUT_MS / 1000} s</span>
-              <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
+              {pwProgress ? (
+                <>
+                  <span className="num text-xs text-accent">Batch {pwProgress.batch}/{pwProgress.batches} · {pwProgress.lines.toLocaleString('en-IN')} lines so far{etaText(pwProgress.etaMs) ? ` · ${etaText(pwProgress.etaMs)}` : ''}</span>
+                  <span className="num text-muted">{fmtMs(elapsed)}</span>
+                  <button type="button" className="ml-auto text-xs font-semibold text-bad hover:underline" onClick={pw.stop}>Stop</button>
+                </>
+              ) : (
+                <>
+                  <PlantRunProgress />
+                  <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at {COSTING_TIMEOUT_MS / 1000} s</span>
+                  <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
+                </>
+              )}
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sunken">
-              {typical ? <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-deep transition-all" style={{ width: `${Math.min(95, (elapsed / typical) * 90)}%` }} /> : <div className="indeterminate h-full w-1/3 rounded-full bg-accent" />}
+              {pwProgress ? <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-deep transition-all" style={{ width: `${pwProgress.batches ? Math.max(3, ((pwProgress.headersDone) / Math.max(1, pwProgress.headersTotal)) * 100) : 3}%` }} /> : typical ? <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-deep transition-all" style={{ width: `${Math.min(95, (elapsed / typical) * 90)}%` }} /> : <div className="indeterminate h-full w-1/3 rounded-full bg-accent" />}
             </div>
           </div>
         )}
@@ -374,13 +393,14 @@ export default function Explorer() {
           </div>
         )}
 
-        <Warnings messages={messages} />
+        <Warnings messages={messages} action={result?.plantWide && result.plantWide.failed > 0 && !running ? <button type="button" className="text-xs font-semibold text-accent hover:underline" onClick={retryFailed}>Retry {result.plantWide.failed} failed</button> : undefined} />
 
         {hasResult && ranQuery && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 no-print">
             <Tabs label="Views" tabs={tabs} value={activeTab} onChange={setTab} />
             <span className="text-xs text-muted">
               {result && <>{result.rows.length.toLocaleString('en-IN')} lines · SAP {fmtMs(result.ms)}</>}
+              {result?.plantWide && !running && <> · Plant-wide: {result.plantWide.headers.toLocaleString('en-IN')} headers, {result.plantWide.skipped} skipped{result.plantWide.failed ? `, ${result.plantWide.failed} failed` : ''}{runner.status === 'cancelled' ? ` (stopped after ${(result.plantWide.costed + result.plantWide.skipped + result.plantWide.failed).toLocaleString('en-IN')})` : ''}</>}
               {pagedMsgs && isPaged && <>SAP {fmtMs(pagedMsgs.ms)}</>}
             </span>
             {JSON.stringify(query) !== JSON.stringify(ranQuery) && <Pill tone="warn" title="The selection was changed after this run">selection changed – run again</Pill>}
@@ -388,7 +408,7 @@ export default function Explorer() {
               <div className="ml-auto flex items-baseline gap-3 rounded-2xl border border-line bg-panel px-4 py-2 shadow-card">
                 <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Total</span>
                 <strong className="num text-lg font-extrabold">{fmtNum(total, 2)}</strong>
-                <span className="text-xs font-semibold text-muted">{groupCurr}</span>
+                <span className="text-xs font-semibold text-muted">{groupCurr}{result?.plantWide ? ` · ${result.plantWide.headers.toLocaleString('en-IN')} headers` : ''}</span>
                 {simTotal && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(simTotal, 2)}</strong></>}
                 <span className="text-2xs text-muted" title="Rate source priority SAP used for this result">Priority: <b className="text-ink">{prioLabel(ranQuery.prio)}</b></span>
                 {donorRows > 0 && <Pill tone="warn" title={`Leaf rows costed with rates from donor plant ${ranQuery.donorPlant || ''}`}>{donorRows} donor row{donorRows === 1 ? '' : 's'}</Pill>}

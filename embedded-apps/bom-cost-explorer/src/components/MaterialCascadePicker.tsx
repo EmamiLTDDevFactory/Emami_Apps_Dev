@@ -17,13 +17,16 @@ const one = (v: string) => (v ? [v] : []);
 
 const NO_WERKS: string[] = [];
 
-export default function MaterialCascadePicker({ values, onChange, max, werks: werksProp = NO_WERKS, onClose }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; onClose?: () => void }) {
+export default function MaterialCascadePicker({ values, onChange, max, werks: werksProp = NO_WERKS, onClose, pick: pickProp, onPickChange }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; onClose?: () => void; pick?: HierPick; onPickChange?: (p: HierPick) => void }) {
   // A stable plant list: a new array on every render would re-run the SAP calls in a loop.
   const werksKey = werksProp.join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const werks = useMemo(() => werksProp, [werksKey]);
   const system = useMemo(() => { try { return sapConfig().system; } catch { return ''; } }, []);
-  const [pick, setPick] = useState<HierPick>({ brand: '', product: '', crs: '' });
+  const [ownPick, setOwnPick] = useState<HierPick>({ brand: '', product: '', crs: '' });
+  // Optional controlled pick (plant-wide costing narrows its list by it); uncontrolled = as before.
+  const pick = pickProp ?? ownPick;
+  const setPick = (p: HierPick) => (onPickChange ? onPickChange(p) : setOwnPick(p));
   const [brands, setBrands] = useState<HierOption[] | null>(null);
   const [products, setProducts] = useState<HierOption[]>([]);
   const [crs, setCrs] = useState<HierOption[]>([]);

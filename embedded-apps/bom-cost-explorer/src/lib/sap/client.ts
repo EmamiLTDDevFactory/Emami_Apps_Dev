@@ -75,16 +75,18 @@ export interface SapGetOptions {
   timeoutMs?: number;
   /** costing runs are never retried on timeout (they would just run twice) */
   costing?: boolean;
+  /** Plant-wide costing (lib/plantwide): no client-side timeout at all, only the caller's signal ends the request. */
+  noTimeout?: boolean;
 }
 
 /** Every SAP call waits up to 230 s - the Azure gateway's own limit (SAP_TIMEOUT_MS can lower it). */
 export const SAP_MAX_TIMEOUT_MS = 230_000;
 export const COSTING_TIMEOUT_MS = SAP_MAX_TIMEOUT_MS;
 
-function linkedSignal(outer: AbortSignal | undefined, ms: number) {
+function linkedSignal(outer: AbortSignal | undefined, ms: number | null) {
   const ctl = new AbortController();
   let timedOut = false;
-  const timer = setTimeout(() => {
+  const timer = ms === null ? undefined : setTimeout(() => {
     timedOut = true;
     ctl.abort();
   }, ms);
@@ -106,7 +108,7 @@ async function once(c: SapConfig, path: string, params: Record<string, string | 
   const url = buildUrl(path, params, c);
   const started = Date.now();
   const timeout = opts.timeoutMs ?? (opts.costing ? COSTING_TIMEOUT_MS : c.timeoutMs);
-  const link = linkedSignal(opts.signal, timeout);
+  const link = linkedSignal(opts.signal, opts.noTimeout ? null : timeout);
   let res: Response;
   try {
     res = await doFetch(url, { method: 'GET', headers: { Accept: path === '$metadata' ? 'application/xml' : 'application/json', ...authHeaders(c) }, signal: link.signal, cache: 'no-store' });

@@ -33,6 +33,8 @@ export interface CostResult {
   /** plant run (materials left empty): the finished goods that were costed */
   resolvedMaterials?: string[];
   plantRun?: { plants: string[]; fgs: number; capped: boolean; batches: number };
+  /** plant-wide costing (lib/plantwide, flag PLANT_WIDE_ENABLED): headers listed, costed, skipped and failed */
+  plantWide?: import('../plantwide/usePlantWide').PlantWideInfo;
 }
 export interface PagedResult<T = Record<string, unknown>> {
   rows: T[];

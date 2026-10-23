@@ -1,9 +1,11 @@
 'use client';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarClock, ChevronDown, ChevronUp, Coins, Factory, Gauge, Package, Play, RefreshCw, SlidersHorizontal, Square, Truck, Wallet, type LucideIcon } from 'lucide-react';
 import type { PlantRow } from '@/lib/sap/fields';
 import { costQuerySchema, MAX_MATERIALS, MODE_LABEL, RATE_SOURCES, usesField, type CostQuery, type QueryField } from '@/lib/query/schema';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from './Pickers';
+import type { HierPick } from '@/lib/client/hier';
+import type { PlantWide } from '@/lib/plantwide/usePlantWide';
 import SourcePriorityEditor from './rates/SourcePriorityEditor';
 import { MODE_ICON } from './Shell';
 import { Button, cx, Field, inputBase, inputCls, Segmented } from './ui';
@@ -66,10 +68,12 @@ function Chip({ children }: { children: ReactNode }) {
 /** The selection, as a collapsible card above the results: blocks per topic, segmented toggles,
  * quick-pick chips. Collapsed, it shows a one-line summary so the results get the screen. */
 export default function FilterPanel({
-  query, onChange, plants, running, onRun, onCancel, collapsed, onToggle,
+  query, onChange, plants, running, onRun, onCancel, collapsed, onToggle, plantWide, onePlantHint, hierPick, onHierPick,
 }: {
   query: CostQuery; onChange: (q: CostQuery) => void; plants: PlantsState; running: boolean; onRun: () => void; onCancel: () => void;
   collapsed: boolean; onToggle: () => void;
+  /** plant-wide costing (flag PLANT_WIDE_ENABLED): only passed while the mode can apply */
+  plantWide?: PlantWide; onePlantHint?: boolean; hierPick?: HierPick; onHierPick?: (p: HierPick) => void;
 }) {
   const [touched, setTouched] = useState(false);
   const errors = useMemo(() => validate(query), [query]);
@@ -81,9 +85,17 @@ export default function FilterPanel({
   const ModeIcon = MODE_ICON[query.mode];
   const plantList = query.mode === 'C' ? [query.bomPlant, ...query.compPlants].filter(Boolean) : query.plants;
 
+  const pw = plantWide?.active ? plantWide : null;
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => setConfirming(false), [pw?.count, pw?.plant]);
+  /** Run stays disabled until the plant's materials are listed, and with several plants and Materials empty. */
+  const runBlocked = (!!pw && pw.status !== 'ready') || !!onePlantHint;
   const submit = () => {
     setTouched(true);
-    if (valid && !running) onRun();
+    if (!valid || running || runBlocked) return;
+    if (pw && pw.settings.confirmAbove > 0 && pw.count > pw.settings.confirmAbove && !confirming) { setConfirming(true); return; }
+    setConfirming(false);
+    onRun();
   };
 
   const summary = (
@@ -119,7 +131,7 @@ export default function FilterPanel({
             {running ? (
               <Button type="button" variant="danger" onClick={onCancel}><Square size={14} /> Cancel run</Button>
             ) : (
-              <Button type="submit" variant="primary" className="px-5"><Play size={14} /> Run in SAP</Button>
+              <Button type="submit" variant="primary" className="px-5" disabled={runBlocked}><Play size={14} /> Run in SAP{pw ? ` · all materials of ${pw.plant}` : ''}</Button>
             )}
           </div>
         </header>
@@ -127,10 +139,12 @@ export default function FilterPanel({
         {!collapsed && (
           <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-12">
             <Block icon={Package} title="What to cost" className="lg:col-span-5">
-              <Field label={`Materials · ${query.materials.length}/${MAX_MATERIALS}`} error={show('materials')} hint={query.mode === 'B' ? 'Type to search SAP, or paste a list. Leave empty to cost every finished good (FERT) of the chosen plants.' : 'Type to search SAP, or paste a list (comma, space or new line)'}>
+              <Field label={pw ? `Materials · all${pw.status === 'ready' ? ` (${pw.count.toLocaleString('en-IN')})` : ''}` : `Materials · ${query.materials.length}/${MAX_MATERIALS}`} error={show('materials')} hint={pw || onePlantHint ? undefined : query.mode === 'B' ? 'Type to search SAP, or paste a list. Leave empty to cost every finished good (FERT) of the chosen plants.' : 'Type to search SAP, or paste a list (comma, space or new line)'}>
                 {(id) => <MaterialPicker id={id} values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} invalid={!!show('materials')} />}
               </Field>
-              <MaterialHierarchyPicker values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} />
+              {pw && <PlantWideHint pw={pw} confirming={confirming} onConfirm={() => { setConfirming(false); onRun(); }} />}
+              {onePlantHint && <p className="mt-1 text-[11.5px] text-muted">Pick one plant to cost all its materials.</p>}
+              <MaterialHierarchyPicker values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} pick={onHierPick ? hierPick : undefined} onPickChange={onHierPick} />
               {u('plants') && (
                 <Field label="Plants" error={show('plants')} hint={plants.loading ? 'Loading plants from SAP…' : `${plants.plants.length} plants from SAP`}>
                   {(id) => <PlantPicker id={id} values={query.plants} onChange={(v) => set('plants', v)} state={plants} invalid={!!show('plants')} />}
@@ -281,5 +295,19 @@ export default function FilterPanel({
         )}
       </form>
     </section>
+  );
+}
+
+/** One grey line under Materials while plant-wide costing is active: count, incomplete list, error with retry, confirm. */
+function PlantWideHint({ pw, confirming, onConfirm }: { pw: PlantWide; confirming: boolean; onConfirm: () => void }) {
+  const what = `${pw.settings.mtart.join(', ')} materials of ${pw.plant}`;
+  return (
+    <div className="mt-1 space-y-0.5 text-[11.5px] text-muted" aria-live="polite">
+      {pw.status === 'counting' && <p>Blank = all {what}: counting…</p>}
+      {pw.status === 'ready' && <p>Blank = all {what}: {pw.count.toLocaleString('en-IN')} found. Costed in {pw.batches} batch{pw.batches === 1 ? '' : 'es'}.{pw.plantFiltered ? '' : ` Listed through the plant's brands${pw.plantCount ? ` (SAP counts ${pw.plantCount.toLocaleString('en-IN')} materials in ${pw.plant})` : ''}; materials without a BOM there are skipped.`}</p>}
+      {pw.status === 'ready' && pw.incomplete.map((n) => <p key={n} className="text-warn">List may be incomplete for {n}: narrow it.</p>)}
+      {pw.status === 'error' && <p className="text-bad">Could not list the {what}: {pw.error} <button type="button" className="font-semibold text-accent hover:underline" onClick={pw.retryCount}>Retry</button></p>}
+      {confirming && <p className="text-ink">Cost all {pw.count.toLocaleString('en-IN')} materials in {pw.batches} batches? <button type="button" className="ml-1 rounded-md bg-accent px-2 py-0.5 font-semibold text-white" onClick={onConfirm}>Confirm</button></p>}
+    </div>
   );
 }

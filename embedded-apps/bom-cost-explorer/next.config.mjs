@@ -22,6 +22,9 @@ const DEPLOYED_PLAN_MODULE = 'true';
 const DEPLOYED_AI_ENABLED = 'true';
 // Daily cost watch pages (backend: hub backend /api/me/cost-watch). WATCH_ENABLED / NEXT_PUBLIC_WATCH_ENABLED win.
 const DEPLOYED_WATCH_ENABLED = 'true';
+// Plant-wide costing (one plant + Materials empty = all its header materials, batched, no time limit). Code default off.
+const DEPLOYED_PLANT_WIDE_ENABLED = 'true';
+const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
       NEXT_PUBLIC_SAP_SYSTEM: process.env.NEXT_PUBLIC_SAP_SYSTEM || DEPLOYED_SAP_SYSTEM,
@@ -48,7 +51,10 @@ const nextConfig = {
     // RateOptionSet CHAR1 flags: 'string' (default, 'X' / '') or 'boolean' (lib/rates/optionFilter.ts).
     NEXT_PUBLIC_RATEOPTION_BOOL_STYLE: process.env.RATEOPTION_BOOL_STYLE || process.env.NEXT_PUBLIC_RATEOPTION_BOOL_STYLE || 'string', NEXT_PUBLIC_PLAN_MODULE_ENABLED: process.env.NEXT_PUBLIC_PLAN_MODULE_ENABLED || process.env.PLAN_MODULE_ENABLED || (isBuild ? DEPLOYED_PLAN_MODULE : 'false'),
     NEXT_PUBLIC_AI_ENABLED: process.env.NEXT_PUBLIC_AI_ENABLED || process.env.AI_ENABLED || (isBuild ? DEPLOYED_AI_ENABLED : 'false'),
-    NEXT_PUBLIC_WATCH_ENABLED: process.env.NEXT_PUBLIC_WATCH_ENABLED || process.env.WATCH_ENABLED || (isBuild ? DEPLOYED_WATCH_ENABLED : 'false') },
+    NEXT_PUBLIC_WATCH_ENABLED: process.env.NEXT_PUBLIC_WATCH_ENABLED || process.env.WATCH_ENABLED || (isBuild ? DEPLOYED_WATCH_ENABLED : 'false'),
+    NEXT_PUBLIC_PLANT_WIDE_ENABLED: pick('PLANT_WIDE_ENABLED') || (isBuild ? DEPLOYED_PLANT_WIDE_ENABLED : 'false'),
+    NEXT_PUBLIC_VH_CAP: pick('VH_CAP', '500'), NEXT_PUBLIC_PLANT_WIDE_BATCH: pick('PLANT_WIDE_BATCH', '25'), NEXT_PUBLIC_PLANT_WIDE_MTART: pick('PLANT_WIDE_MTART', 'FERT'),
+    NEXT_PUBLIC_PLANT_WIDE_MAX_CONCURRENCY: pick('PLANT_WIDE_MAX_CONCURRENCY', '1'), NEXT_PUBLIC_PLANT_WIDE_CONFIRM_ABOVE: pick('PLANT_WIDE_CONFIRM_ABOVE', '0') },
 };
 
 export default nextConfig;

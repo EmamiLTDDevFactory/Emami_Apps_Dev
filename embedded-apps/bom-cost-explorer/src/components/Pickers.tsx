@@ -229,6 +229,7 @@ export function PriorityList({ value, onChange, all }: { value: string[]; onChan
   );
 }
 
+import type { HierPick } from '@/lib/client/hier';
 export { inputCls };
 
 
@@ -237,7 +238,7 @@ export { inputCls };
  * filtered by the chosen levels (components/MaterialCascadePicker.tsx, lib/client/hier.ts). Opens on demand;
  * picked materials go into the same list as the search above (`values` / `onChange`).
  */
-export function MaterialHierarchyPicker({ values, onChange, max, werks }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[] }) {
+export function MaterialHierarchyPicker({ values, onChange, max, werks, pick, onPickChange }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; pick?: HierPick; onPickChange?: (p: HierPick) => void }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -246,5 +247,5 @@ export function MaterialHierarchyPicker({ values, onChange, max, werks }: { valu
       </button>
     );
   }
-  return <MaterialCascadePicker values={values} onChange={onChange} max={max} werks={werks} onClose={() => setOpen(false)} />;
+  return <MaterialCascadePicker values={values} onChange={onChange} max={max} werks={werks} onClose={() => setOpen(false)} pick={pick} onPickChange={onPickChange} />;
 }
