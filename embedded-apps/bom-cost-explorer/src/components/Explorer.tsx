@@ -4,6 +4,8 @@ import { useHubSession, BASE_PATH } from '@/lib/client/session';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { loadSapConfig } from '@/lib/sap/config';
 import { COSTING_TIMEOUT_MS } from '@/lib/sap/client';
+import { subscribeCostProgress, type CostProgress } from '@/lib/client/plantRun';
+import RateSummary from './rates/RateSummary';
 import { useRateOptions } from '@/lib/rates/useRateOptions';
 import { attachRateOptions } from '@/lib/rates/options';
 import RateSources from './rates/RateSources';
@@ -40,7 +42,7 @@ import Warnings from './Warnings';
 import PrintView from './PrintView';
 import { Button, cx, Empty, Pill, SimTag, Skeleton, Tabs } from './ui';
 
-type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates' | 'coverage';
+type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates' | 'coverage' | 'ratesum';
 
 const lastQueryKey = (u: string) => `bce:last-query:${u}`;
 const lastMsKey = (m: Mode) => `bce:last-ms:${m}`;
@@ -142,7 +144,9 @@ export default function Explorer() {
   const result: CostResult | null = runner.data && ranQuery && ranQuery.mode === mode && (mode === 'B' || mode === 'C') ? runner.data : null;
   const plantNames = useMemo(() => Object.fromEntries(plants.map((p) => [p.Werks, p.Name1])), [plants]);
   // Rate options load lazily (Rate sources tab, row drawer, re-pick what-ifs) - never on the main run.
-  const rates = useRateOptions(result && mode === 'B' && ranQuery ? ranQuery : null, cfg?.ok ? cfg.config.system : '');
+  // Plant run (materials empty): rate options are read for the finished goods that were costed.
+  const ratesQuery = useMemo(() => (ranQuery && result?.resolvedMaterials?.length ? { ...ranQuery, materials: result.resolvedMaterials } : ranQuery), [ranQuery, result]);
+  const rates = useRateOptions(result && mode === 'B' && ratesQuery ? ratesQuery : null, cfg?.ok ? cfg.config.system : '');
   // Freight break-up: FreightDays / StdFrt of the run that produced the lines (never the form).
   const freightRun = useMemo(() => (result && ranQuery ? { freightDays: ranQuery.freightDays, stdFrt: ranQuery.stdFrt } : null), [result, ranQuery]);
   const costRows = useMemo(() => (result && mode === 'B' && rates.status === 'ready' && rates.rows ? attachRateOptions(result.rows, rates.rows) : result?.rows ?? []), [result, mode, rates.status, rates.rows]);
@@ -262,6 +266,7 @@ export default function Explorer() {
           { id: 'dq', label: 'Data quality', badge: dqCount ? <Pill tone="warn">{dqCount}</Pill> : undefined },
           { id: 'scen', label: 'Scenarios' },
           { id: 'rates', label: 'Rate sources' },
+          { id: 'ratesum', label: 'Rate summary' },
           { id: 'coverage', label: 'Rate coverage' },
         ]
       : mode === 'C'
@@ -340,6 +345,7 @@ export default function Explorer() {
             <div className="flex items-center gap-3 text-sm">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden />
               <span className="font-bold">SAP is costing…</span>
+              <PlantRunProgress />
               <span className="num text-muted">{fmtMs(elapsed)}{typical ? ` · last run took ${fmtMs(typical)}` : ''} · times out at {COSTING_TIMEOUT_MS / 1000} s</span>
               <Button size="sm" variant="danger" className="ml-auto" onClick={() => (runner.status === 'running' ? runner.cancel() : pagedBusy.cancel?.())}>Cancel</Button>
             </div>
@@ -430,6 +436,8 @@ export default function Explorer() {
             />
           ) : activeTab === 'rates' && ranQuery ? (
             <RateSources rows={rows} rates={rates} query={ranQuery} onOpenRow={setDrawer} prio={ranQuery.prio} />
+          ) : activeTab === 'ratesum' && ranQuery ? (
+            <RateSummary rows={rows} rates={rates} query={ranQuery} />
           ) : activeTab === 'coverage' && ranQuery ? (
             <RateCoverage
               lines={rows}
@@ -469,5 +477,17 @@ export default function Explorer() {
 
       {printing && ranQuery && result && <PrintView query={ranQuery} tree={tree} pivot={pivot} sim={simRows} simOn={simOn} total={total} messages={result.messages} />}
     </Shell>
+  );
+}
+
+/** "Batch 2 of 7 · FGs 51-100 of 340" while a plant run (materials left empty) is costing. */
+function PlantRunProgress() {
+  const [p, setP] = useState<CostProgress | null>(null);
+  useEffect(() => subscribeCostProgress(setP), []);
+  if (!p) return null;
+  return (
+    <span className="num text-xs text-accent">
+      {p.phase === 'fgs' ? 'finding the finished goods of the plant…' : `batch ${p.batch} of ${p.batches} · FGs ${p.done + 1}–${Math.min(p.done + 50, p.total)} of ${p.total}`}
+    </span>
   );
 }

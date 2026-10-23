@@ -41,7 +41,9 @@ const code = z.string().trim().min(1).max(40);
 export const costQuerySchema = z
   .object({
     mode: z.enum(MODES),
-    materials: z.array(code).min(1, 'Pick at least one material').max(MAX_MATERIALS, `SAP accepts at most ${MAX_MATERIALS} header materials per run`),
+    // BOM costing may leave materials empty to cost every finished good of the chosen plants (lib/client/plantRun.ts);
+    // every other mode still needs at least one (checked in superRefine below).
+    materials: z.array(code).max(MAX_MATERIALS, `SAP accepts at most ${MAX_MATERIALS} header materials per run`),
     plants: z.array(code).max(200).default([]),
     bomPlant: z.string().trim().max(4).default(''),
     compPlants: z.array(code).max(50).default([]),
@@ -68,6 +70,8 @@ export const costQuerySchema = z
   })
   .superRefine((q, ctx) => {
     const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    if (q.materials.length === 0 && q.mode !== 'B') issue('materials', 'Pick at least one material');
+    if (q.materials.length === 0 && q.mode === 'B' && q.plants.length === 0) issue('materials', 'Pick at least one material, or leave it empty and pick plants to cost every finished good of those plants');
     if (Number(q.explQty) <= 0 && usesField(q.mode, 'explQty')) issue('explQty', 'Quantity must be greater than 0');
     if (q.mode === 'C') {
       if (!q.bomPlant) issue('bomPlant', 'Pick exactly one BOM plant');

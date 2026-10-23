@@ -9,6 +9,7 @@ import type { CostLine, MaterialRow, PlantRow } from '../sap/fields';
 import type { SapMessage } from '../sap/messages';
 import { costQuerySchema, pageSchema, type CostQuery, type PageRequest } from '../query/schema';
 import { fetchConfig, fetchCostLines, fetchMaterials, fetchPagedSet, fetchPlants } from '../sap/service';
+import { isPlantRun, runPlantCosting } from './plantRun';
 import { SapError } from '../sap/client';
 import { FilterError } from '../sap/filter';
 import type { ExpandCapability } from '../sap/capability';
@@ -29,6 +30,9 @@ export interface CostResult {
   /** false when SAP could not / did not $expand RateOptions (mode C never expands) */
   rateOptions?: boolean;
   capability?: ExpandCapability;
+  /** plant run (materials left empty): the finished goods that were costed */
+  resolvedMaterials?: string[];
+  plantRun?: { plants: string[]; fgs: number; capped: boolean; batches: number };
 }
 export interface PagedResult<T = Record<string, unknown>> {
   rows: T[];
@@ -74,7 +78,12 @@ function validQuery(query: CostQuery): CostQuery {
 export const api = {
   async cost(query: CostQuery, signal?: AbortSignal): Promise<CostResult> {
     try {
-      const r = await fetchCostLines(validQuery(query), { signal });
+      const q = validQuery(query);
+      if (isPlantRun(q)) {
+        const p = await runPlantCosting(q, { signal });
+        return { rows: p.rows, messages: p.messages, ms: p.ms, total: p.rows.length, rateOptions: p.rateOptions, capability: p.capability, resolvedMaterials: p.resolvedMaterials, plantRun: p.plantRun };
+      }
+      const r = await fetchCostLines(q, { signal });
       return { rows: r.rows, messages: r.messages, ms: r.ms, total: r.rows.length, rateOptions: r.rateOptions, capability: r.capability };
     } catch (e) {
       return wrap(e);

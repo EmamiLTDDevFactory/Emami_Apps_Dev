@@ -88,7 +88,7 @@ export default function FilterPanel({
 
   const summary = (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      <Chip><Package size={12} className="text-accent" />{query.materials.length ? `${query.materials.slice(0, 3).join(', ')}${query.materials.length > 3 ? ` +${query.materials.length - 3}` : ''}` : 'no materials'}</Chip>
+      <Chip><Package size={12} className="text-accent" />{query.materials.length ? `${query.materials.slice(0, 3).join(', ')}${query.materials.length > 3 ? ` +${query.materials.length - 3}` : ''}` : query.mode === 'B' && query.plants.length ? 'all FGs of the plant' : 'no materials'}</Chip>
       <Chip><Factory size={12} className="text-accent" />{query.mode === 'C' ? `${query.bomPlant || '?'} → ${query.compPlants.join(', ') || '?'}` : plantList.join(', ') || 'no plants'}</Chip>
       {u('explQty') && <Chip>Qty {query.explQty}</Chip>}
       {u('lookback') && <Chip>{query.lookback} days</Chip>}
@@ -127,7 +127,7 @@ export default function FilterPanel({
         {!collapsed && (
           <div className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-12">
             <Block icon={Package} title="What to cost" className="lg:col-span-5">
-              <Field label={`Materials · ${query.materials.length}/${MAX_MATERIALS}`} error={show('materials')} hint="Type to search SAP, or paste a list (comma, space or new line)">
+              <Field label={`Materials · ${query.materials.length}/${MAX_MATERIALS}`} error={show('materials')} hint={query.mode === 'B' ? 'Type to search SAP, or paste a list. Leave empty to cost every finished good (FERT) of the chosen plants.' : 'Type to search SAP, or paste a list (comma, space or new line)'}>
                 {(id) => <MaterialPicker id={id} values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} invalid={!!show('materials')} />}
               </Field>
               <MaterialHierarchyPicker values={query.materials} onChange={(v) => set('materials', v)} max={MAX_MATERIALS} />

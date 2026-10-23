@@ -525,8 +525,12 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
     // Like SAP: no search term and no filter -> empty list by design.
     if (!(sp.get('search') ?? sp.get('$search') ?? '').trim() && !(sp.get('$filter') ?? '').trim()) return json({ d: { results: [] } });
     const term = (sp.get('search') ?? sp.get('$search') ?? '').toLowerCase();
-    const exact = parseFilter(sp.get('$filter') ?? '').get(MATERIAL.Matnr[0]) ?? [];
+    const mf = parseFilter(sp.get('$filter') ?? '');
+    const exact = mf.get(MATERIAL.Matnr[0]) ?? [];
     let list = MATERIALS;
+    // Plant run: (Werks eq ...) and Mtart eq 'FERT' -> the finished goods (every mock FG exists in every mock plant).
+    const mtart = mf.get('Mtart') ?? [];
+    if (mtart.length) list = list.filter((m) => mtart.includes(m.Mtart));
     if (exact.length) list = list.filter((m) => exact.map((e) => e.toUpperCase()).includes(m.Matnr));
     else if (term) list = list.filter((m) => m.Matnr.toLowerCase().includes(term) || m.Maktx.toLowerCase().includes(term));
     const top = Number(sp.get('$top') ?? 100);

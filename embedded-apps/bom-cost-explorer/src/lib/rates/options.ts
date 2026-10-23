@@ -17,7 +17,7 @@ import { buildSelectionFilter } from '../sap/filter';
 import { ENTITY_SET, NAV_RATE_OPTIONS } from '../sap/entities';
 import { RATE_OPTION, type CostLine } from '../sap/fields';
 import { normalizeEntity } from '../sap/normalize';
-import { defaultQuery, type CostQuery } from '../query/schema';
+import { MAX_MATERIALS, defaultQuery, type CostQuery } from '../query/schema';
 import { getRatesCapability, setRatesCapability, type RatesProbe } from './capability';
 import { EXPAND_PARENT, RATE_OPTION_DIRECT, RATE_OPTION_SET, optionKey, type RateOptionRow } from './fields';
 import { rateOptionFilter } from './optionFilter';
@@ -108,8 +108,22 @@ export const clearRatesCache = () => { cache.clear(); inflight.clear(); };
 
 /** Rate options for a costing query (mode B). Shares one request per query between callers. */
 export function fetchRateOptions(q: CostQuery, opts: SapGetOptions = {}): Promise<RatesResult> {
+  if (q.materials.length > MAX_MATERIALS) return fetchRateOptionsBatched(q, opts);
   const own = buildSelectionFilter(q);
   return fetchRateOptionsByFilter(own, opts, probeFilter(own, q));
+}
+
+/** Plant runs cost more FGs than SAP takes per request: rate options in the same batches, rows merged. */
+async function fetchRateOptionsBatched(q: CostQuery, opts: SapGetOptions): Promise<RatesResult> {
+  const rows: RateOptionRow[] = [];
+  let mode: 'direct' | 'expand' = 'direct';
+  for (let i = 0; i < q.materials.length; i += MAX_MATERIALS) {
+    const r = await fetchRateOptions({ ...q, materials: q.materials.slice(i, i + MAX_MATERIALS) }, opts);
+    if ('unavailable' in r) return r;
+    rows.push(...r.rows);
+    mode = r.mode;
+  }
+  return { rows, mode };
 }
 
 /**
