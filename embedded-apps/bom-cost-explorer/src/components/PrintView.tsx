@@ -7,6 +7,7 @@ import type { SimRow } from '@/lib/cost/simulate';
 import type { Decimal } from '@/lib/cost/decimal';
 import type { SapMessage } from '@/lib/sap/messages';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
+import { componentFreightInr, type FreightTagged } from '@/lib/cost/freightIncluded';
 
 const MAX = 5000;
 
@@ -36,7 +37,7 @@ export default function PrintView({ query, tree, pivot, sim, simOn, total, messa
                 <td style={{ textAlign: 'right' }}>{fmtQty(r.ProdQty)} {r.Meins}</td>
                 <td>{tree.isLeaf[i] ? r.SelSource || 'NO RATE' : ''}</td>
                 <td style={{ textAlign: 'right' }}>{tree.isLeaf[i] ? fmtRate(r.SelRatePcInr) : ''}</td>
-                <td style={{ textAlign: 'right' }}>{tree.isLeaf[i] ? fmtRate(r.FrtPcInr) : ''}</td>
+                <td style={{ textAlign: 'right' }}>{tree.isLeaf[i] ? `${fmtRate(String(componentFreightInr(r)))}${(r as FreightTagged).FrtIncluded ? ' (not added)' : ''}` : ''}</td>
                 <td style={{ textAlign: 'right' }}>{fmtNum(r.TotCostInr, 2)}</td>
                 {simOn && <td style={{ textAlign: 'right' }}>{tree.isLeaf[i] ? fmtNum(sim[i].total, 2) : ''}</td>}
               </tr>

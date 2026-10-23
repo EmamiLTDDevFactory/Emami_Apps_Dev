@@ -9,6 +9,7 @@ import type { Pivot } from '../cost/pivot';
 import type { TableTotals } from '../cost/table';
 import type { SapMessage } from '../sap/messages';
 import { sanitizeCell } from './spreadsheetSafe';
+import { componentFreightInr, componentFreightLoc, type FreightTagged } from '../cost/freightIncluded';
 
 /** Excel number formats. INR gets Indian grouping (lakh/crore) via conditional sections. */
 const INR_FMT = (dp: number) => {
@@ -128,11 +129,14 @@ export async function exportCostLines({ fmt, query, rows, sim, settings, message
   const cols: XCol[] = Object.keys(kinds).map((k) => {
     const kind = kinds[k][1];
     const inr = /Inr$/.test(k) || k === 'BudLanded';
+    // Freight as SAP gave it, also where it is not added (Consumption / MBEW rates include it; see "Freight added").
+    if (k === 'FrtPcInr' || k === 'FrtPcLoc') return { header: k, dp: 4, curr: k === 'FrtPcInr' ? 'INR' : undefined, width: 14, get: (i) => Number((k === 'FrtPcInr' ? componentFreightInr(rows[i]) : componentFreightLoc(rows[i])).toFixed(6)) };
     if (kind === 'd') return { header: k, dp: /Rate|Fx|Pc/.test(k) ? 4 : k.startsWith('Cov') ? 0 : 2, curr: inr ? 'INR' : undefined, width: 14, get: (i) => num((rows[i] as unknown as Record<string, unknown>)[k]) };
     return { header: k, width: k === 'Maktx' || k === 'Headtxt' ? 30 : 10, get: (i) => String((rows[i] as unknown as Record<string, unknown>)[k] ?? '') };
   });
   cols.splice(Object.keys(kinds).indexOf('Idnrk') + 1, 0, { header: 'Structure', width: 40, get: (i) => `${'  '.repeat(Math.max(0, rows[i].Level - 1))}${rows[i].Idnrk}` });
   cols.push({ header: 'RateOptions (count)', width: 10, get: (i) => rows[i].RateOptions?.length ?? 0 });
+  cols.push({ header: 'Freight added', width: 12, get: (i) => (!rows[i].HasChild?.trim() ? ((rows[i] as FreightTagged).FrtIncluded ? 'No (included in rate)' : 'Yes') : '') });
   if (simOn) {
     cols.push(
       { header: 'SIM Source', width: 12, get: (i) => sim[i].source },

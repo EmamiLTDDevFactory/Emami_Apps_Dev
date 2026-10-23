@@ -72,9 +72,9 @@ describe('Consumption / MBEW: no freight on top', () => {
     expect(reconcile([{ UsedPcLoc: '10' } as never], r).matches).toBe(true);
   });
 
-  it('RM / PM requirement rows: no freight on Consumption / MBEW, totals = rate', () => {
+  it('RM / PM requirement rows: freight still shown on Consumption / MBEW, totals = rate (not added)', () => {
     const row = { RateSrc: 'CONSUMP', RatePcLoc: '5', RatePcInr: '5', RateCostLoc: '50', RateCostInr: '50', FrtPcLoc: '1', FrtPcInr: '1', FrtCostLoc: '10', FrtCostInr: '10', TotPcLoc: '6', TotPcInr: '6', TotCostLoc: '60', TotCostInr: '60' };
-    expect(excludeIncludedFreightRmPm(row)).toMatchObject({ FrtPcInr: '0', FrtCostInr: '0', TotPcInr: '5', TotCostInr: '50', TotCostLoc: '50' });
+    expect(excludeIncludedFreightRmPm(row)).toMatchObject({ FrtPcInr: '1', FrtCostInr: '10', TotPcInr: '5', TotCostInr: '50', TotCostLoc: '50' });
     const ir = { ...row, RateSrc: 'INFOREC' };
     expect(excludeIncludedFreightRmPm(ir)).toBe(ir);
   });
@@ -84,6 +84,7 @@ describe('Consumption / MBEW: no freight on top', () => {
     const r = await fetchCostLines({ ...defaultQuery('B'), materials: ['FG1001', 'FG3001'], plants: ['1000'], prio: ['MBEW', 'CONSUMP', 'CONTRACT', 'INFOREC'] });
     const incl = r.rows.filter((l) => !l.HasChild?.trim() && ['MBEW', 'CONSUMP'].includes(l.SelSource));
     expect(incl.length).toBeGreaterThan(0);
-    for (const l of incl) expect(Number(l.FrtPcInr)).toBe(0);
+    for (const l of incl) expect(Number(l.FrtPcInr)).toBe(0); // not added to any total
+    expect(incl.some((l) => Number(componentFreightInr(l)) > 0)).toBe(true); // SAP's freight still there to show
   });
 });

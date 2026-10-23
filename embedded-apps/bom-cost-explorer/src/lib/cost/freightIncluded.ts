@@ -6,7 +6,8 @@
  *   cost lines (CostLineSet, Mode B / C / plan P), leaf lines whose selected source is in FREIGHT_INCLUDED_SOURCES:
  *     TotCostPcInr / TotCostPcLoc - freight per piece; TotCostInr / TotCostLoc scaled the same way (any quantity basis);
  *     FrtPcInr / FrtPcLoc = 0, SAP's values kept in FrtPcInrSap / FrtPcLocSap, FrtIncluded = true
- *   RM / PM requirement rows (RmPmRowSet) with RateSrc in the list: freight per piece and freight cost 0, totals = rate
+ *   RM / PM requirement rows (RmPmRowSet) with RateSrc in the list: freight shown as SAP gives it, totals = rate
+ * Freight stays visible everywhere a line's freight is shown (SAP's value, marked "not added"); it is only never added.
  *
  * The component's freight is still known (FrtPc*Sap): Contract and Info record options of that line add it
  * (componentFreight*), Consumption and MBEW options never do. The switch FREIGHT_INCLUDED_SOURCES (default
@@ -62,9 +63,9 @@ export const sourceFreightLoc = (source: string, l: Pick<CostLine, 'FrtPcLoc'> &
 
 type RmPm = { RateSrc?: unknown; FrtPcLoc?: unknown; FrtPcInr?: unknown; FrtCostLoc?: unknown; FrtCostInr?: unknown; RatePcLoc?: unknown; RatePcInr?: unknown; RateCostLoc?: unknown; RateCostInr?: unknown; TotPcLoc?: unknown; TotPcInr?: unknown; TotCostLoc?: unknown; TotCostInr?: unknown };
 
-/** RM / PM requirement row: no freight on a Consumption / MBEW rate; totals = the rate figures. */
+/** RM / PM requirement row on a Consumption / MBEW rate: freight still shown, but the totals are the rate figures. */
 export function excludeIncludedFreightRmPm<T extends RmPm>(r: T): T {
   if (!isFreightIncluded(String(r.RateSrc ?? ''))) return r;
   if (D(String(r.FrtPcLoc ?? '0')).isZero() && D(String(r.FrtPcInr ?? '0')).isZero() && D(String(r.FrtCostInr ?? '0')).isZero()) return r;
-  return { ...r, FrtPcLoc: '0', FrtPcInr: '0', FrtCostLoc: '0', FrtCostInr: '0', TotPcLoc: r.RatePcLoc, TotPcInr: r.RatePcInr, TotCostLoc: r.RateCostLoc, TotCostInr: r.RateCostInr };
+  return { ...r, TotPcLoc: r.RatePcLoc, TotPcInr: r.RatePcInr, TotCostLoc: r.RateCostLoc, TotCostInr: r.RateCostInr };
 }

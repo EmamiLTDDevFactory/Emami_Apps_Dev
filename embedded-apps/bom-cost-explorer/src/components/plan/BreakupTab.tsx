@@ -29,6 +29,7 @@ import { isLeafRow } from '@/lib/cost/tree';
 import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import type { CostLine } from '@/lib/sap/fields';
 import { fmtCompactInr, fmtDate, fmtNum, fmtPct, fmtQty, fmtRate } from '@/lib/format';
+import { componentFreightInr, type FreightTagged } from '@/lib/cost/freightIncluded';
 
 type View = 'tree' | 'fg' | 'sim' | 'charts' | 'rates' | 'coverage';
 type Months = 'qty' | 'cost';
@@ -350,7 +351,7 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
       <td className={tdNum}>{fmtQty(l.QtyTot)} <span className="text-faint">{l.Meins}</span></td>
       <td className={tdCls}>{leaf ? <SourceBadge source={l.SelSource} /> : null}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.SelRatePcInr) : ''}</td>
-      <td className={tdNum}>{leaf ? fmtRate(l.FrtPcInr) : ''}</td>
+      <td className={tdNum} title={(l as FreightTagged).FrtIncluded ? `Not added: the ${l.SelSource} rate already includes freight` : undefined}>{leaf ? <>{fmtRate(String(componentFreightInr(l)))}{(l as FreightTagged).FrtIncluded && <span className="text-2xs text-faint"> not added</span>}</> : ''}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.TotCostPcInr) : ''}</td>
       <td className={cx(tdNum, leaf && 'font-semibold')}>{leaf ? fmtNum(l.TotCostInr, 2) : ''}</td>
       <td className={tdNum}>{leaf && D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : ''}</td>
@@ -376,7 +377,7 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
     ['Rate source', <SourceBadge key="s" source={l.SelSource} />],
     ['Vendor', `${l.SelVendor} ${l.SelVname}`.trim() || '—'],
     ['Rate/pc INR', fmtRate(l.SelRatePcInr)],
-    ['Freight/pc INR', `${fmtRate(l.FrtPcInr)} (${l.FrtSrc || '—'})`],
+    ['Freight/pc INR', `${fmtRate(String(componentFreightInr(l)))} (${l.FrtSrc || '—'})${(l as FreightTagged).FrtIncluded ? ` - not added, the ${l.SelSource} rate includes freight` : ''}`],
     ['Total/pc INR', fmtRate(l.TotCostPcInr)],
     ['Total cost INR', fmtNum(l.TotCostInr, 2)],
     ['Alt BOM (FG / item)', `${l.Stlal || '—'} / ${l.ItemStlal || '—'}`],

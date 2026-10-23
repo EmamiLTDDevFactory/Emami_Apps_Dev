@@ -11,6 +11,7 @@ import { budgetPlan, loadBudget, type ComponentQty } from './budgetSim';
 import type { PlanLineWithOptions } from './sources';
 import type { PlanCostQuery } from './requests';
 import type { SapMessage } from '../sap/messages';
+import { componentFreightInr, type FreightTagged } from '../cost/freightIncluded';
 
 const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
 const get = (r: unknown, k: string) => (r as Record<string, unknown>)[k];
@@ -59,7 +60,8 @@ export function breakupCols(rows: PlanCostLine[]): XCol[] {
     { header: 'Total qty', dp: 3, get: (i) => num(rows[i].QtyTot) },
     { header: 'Source', get: (i) => rows[i].SelSource || 'NO RATE' },
     { header: 'Rate/pc INR', dp: 4, curr: 'INR', get: (i) => num(rows[i].SelRatePcInr) },
-    { header: 'Freight/pc INR', dp: 4, curr: 'INR', get: (i) => num(rows[i].FrtPcInr) },
+    { header: 'Freight/pc INR', dp: 4, curr: 'INR', get: (i) => Number(componentFreightInr(rows[i]).toFixed(6)) },
+    { header: 'Freight added', get: (i) => ((rows[i] as FreightTagged).FrtIncluded ? 'No (included in rate)' : 'Yes') },
     { header: 'Total/pc INR', dp: 4, curr: 'INR', get: (i) => num(rows[i].TotCostPcInr) },
     ...QTY.map((k, m) => ({ header: `${FISCAL_MONTHS[m]} cost INR`, dp: 2, curr: 'INR', get: (i: number) => Number(D(get(rows[i], k) as string).times(D(rows[i].TotCostPcInr)).toFixed(2)) })),
     { header: 'Total cost INR', dp: 2, curr: 'INR', get: (i) => num(rows[i].TotCostInr) },

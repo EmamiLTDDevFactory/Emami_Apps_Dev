@@ -17,6 +17,7 @@ import { Button, cx, Segmented, SimTag, Skeleton, SourceBadge, sourceColorVar } 
 import { ALL_RATE_SOURCES, prioLabel } from '@/lib/rates/priority';
 import { ratesIntegrity } from '@/lib/rates/integrity';
 import IntegrityBanner from './IntegrityBanner';
+import { componentFreightInr, componentFreightLoc } from '@/lib/cost/freightIncluded';
 import { hasFreightColumns, rateWithFreight, vendorOf, vendorText } from '@/lib/rates/withFreight';
 import RateCompare from './RateCompare';
 
@@ -45,12 +46,12 @@ const COLS: Col[] = [
   { id: 'fx', label: 'FX → INR', width: 96, right: true, cell: (r) => <span className="num text-muted">{fmtNum(r.opt.FxInr, 5, 'X')}</span>, xlsx: { header: 'FX to INR', dp: 6, get: () => 0 } },
   { id: 'ratePcInr', label: 'Rate / pc INR', width: 120, right: true, cell: (r) => <span className="num">{fmtRate(r.opt.RatePcInr)}</span>, xlsx: { header: 'Rate / pc INR', dp: 4, curr: 'INR', get: () => 0 } },
   { id: 'qty', label: 'Qty', width: 110, right: true, cell: (r) => <span className="num">{fmtQty(r.line.ProdQty)} <span className="text-2xs text-faint">{r.line.Meins}</span></span>, xlsx: { header: 'Qty', dp: 3, get: () => 0 } },
-  { id: 'frtInr', label: 'Freight / pc INR', width: 120, right: true, cell: (r) => <span className="num text-muted">{fmtRate(r.line.FrtPcInr)}</span>, xlsx: { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: () => 0 } },
+  { id: 'frtInr', label: 'Freight / pc INR', width: 120, right: true, cell: (r) => <span className="num text-muted">{fmtRate(String(componentFreightInr(r.line)))}</span>, xlsx: { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: () => 0 } },
   { id: 'totInr', label: 'Total INR', width: 130, right: true, cell: (r) => <span className="num">{fmtNum(r.total, 2)}</span>, xlsx: { header: 'Total INR', dp: 2, curr: 'INR', get: () => 0 } },
   { id: 'locCurr', label: 'Local curr', width: 76, cell: (r) => r.opt.LocCurr || r.line.LocCurr, xlsx: { header: 'Local curr', get: () => '' } },
   { id: 'ratePcLoc', label: 'Rate / pc local', width: 120, right: true, cell: (r) => <span className="num">{fmtRate(r.opt.RatePcLoc)}</span>, xlsx: { header: 'Rate / pc local', dp: 4, get: () => 0 } },
   { id: 'costLoc', label: 'Cost local', width: 120, right: true, cell: (r) => <span className="num">{fmtNum(r.opt.CostLoc, 2)}</span>, xlsx: { header: 'Cost local', dp: 2, get: () => 0 } },
-  { id: 'frtLoc', label: 'Freight / pc local', width: 124, right: true, cell: (r) => <span className="num text-muted">{fmtRate(r.line.FrtPcLoc)}</span>, xlsx: { header: 'Freight / pc local', dp: 4, get: () => 0 } },
+  { id: 'frtLoc', label: 'Freight / pc local', width: 124, right: true, cell: (r) => <span className="num text-muted">{fmtRate(String(componentFreightLoc(r.line)))}</span>, xlsx: { header: 'Freight / pc local', dp: 4, get: () => 0 } },
   { id: 'totLoc', label: 'Total local', width: 130, right: true, cell: (r) => <span className="num">{fmtNum(r.totalLoc, 2)}</span>, xlsx: { header: 'Total local', dp: 2, get: () => 0 } },
 ];
 
@@ -141,12 +142,12 @@ export default function RateSources({ rows, rates, query, onOpenRow, prio }: { r
         case 'fx': return n(r.opt.FxInr);
         case 'ratePcInr': return n(r.opt.RatePcInr);
         case 'qty': return n(r.line.ProdQty);
-        case 'frtInr': return n(r.line.FrtPcInr);
+        case 'frtInr': return Number(componentFreightInr(r.line).toFixed(4));
         case 'totInr': return Number(r.total.toFixed(2));
         case 'locCurr': return r.opt.LocCurr || r.line.LocCurr;
         case 'ratePcLoc': return n(r.opt.RatePcLoc);
         case 'costLoc': return n(r.opt.CostLoc);
-        case 'frtLoc': return n(r.line.FrtPcLoc);
+        case 'frtLoc': return Number(componentFreightLoc(r.line).toFixed(4));
         case 'totLoc': return Number(r.totalLoc.toFixed(2));
         case 'rfLoc': { const w = rateWithFreight(r.opt, r.line); return w?.loc ? Number(w.loc.toFixed(4)) : ''; }
         case 'rfInr': { const w = rateWithFreight(r.opt, r.line); return w ? Number(w.inr.toFixed(4)) : ''; }
