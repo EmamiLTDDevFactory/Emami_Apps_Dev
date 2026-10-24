@@ -13,6 +13,7 @@ import { fmtNum, fmtPct, fmtQty, fmtRate, fmtSigned } from '@/lib/format';
 import { PriorityList } from './Pickers';
 import { Button, Card, cx, inputBase, inputCls, SimTag, Stat } from './ui';
 import { Tornado } from './charts';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 function Pct({ label, value, onChange, id }: { label: string; value: number; onChange: (v: number) => void; id: string }) {
   return (
@@ -137,7 +138,7 @@ export default function Simulator({
 
         <Card title="Rate change by source">
           <div className="space-y-1.5">
-            {RATE_SOURCES.map((s) => <Pct key={s} id={`src-${s}`} label={s} value={settings.ratePct[s] ?? 0} onChange={(v) => set({ ratePct: { ...settings.ratePct, [s]: v } })} />)}
+            {RATE_SOURCES.map((s) => <Pct key={s} id={`src-${s}`} label={sourceLabel(s)} value={settings.ratePct[s] ?? 0} onChange={(v) => set({ ratePct: { ...settings.ratePct, [s]: v } })} />)}
           </div>
         </Card>
 

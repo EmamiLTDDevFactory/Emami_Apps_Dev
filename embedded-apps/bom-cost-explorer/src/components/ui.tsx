@@ -1,5 +1,6 @@
 'use client';
 import { forwardRef, useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -44,7 +45,7 @@ export const sourceColorVar = (src: string) => `var(--src-${SRC_VAR[src] ?? 'non
 
 /** Rate source badge: coloured swatch + text label (identity never by colour alone). */
 export function SourceBadge({ source, sim }: { source: string; sim?: boolean }) {
-  const label = source || 'NO RATE';
+  const label = source ? sourceLabel(source) : 'NO RATE';
   return (
     <span
       className={cx('inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs font-semibold tracking-wide', sim && 'ring-1 ring-sim')}

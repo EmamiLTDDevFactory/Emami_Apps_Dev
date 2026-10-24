@@ -65,7 +65,7 @@ export function plantSummary(rows: PlanCostLine[], r: CompSimResult): PlantRow[]
 
 export const BENCHMARKS = ['BUDGET', 'ACTUAL', 'MBEW', 'CONSUMP', 'CHEAPEST'] as const;
 export type Benchmark = (typeof BENCHMARKS)[number];
-export const BENCHMARK_LABEL: Record<Benchmark, string> = { BUDGET: 'Budget', ACTUAL: 'Latest actual', MBEW: 'MBEW', CONSUMP: 'Consumption', CHEAPEST: 'Cheapest SAP option' };
+export const BENCHMARK_LABEL: Record<Benchmark, string> = { BUDGET: 'Budget', ACTUAL: 'Latest actual', MBEW: 'C-MAP', CONSUMP: 'Consumption', CHEAPEST: 'Cheapest SAP option' };
 export const NEEDS_OPTIONS: Benchmark[] = ['MBEW', 'CONSUMP', 'CHEAPEST'];
 
 function benchmarkRate(l: PlanLineWithOptions, b: Benchmark): Decimal | null {

@@ -547,6 +547,39 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   });
   if (planRes) return planRes;
 
+  // ProcOrderCostSet (proposed, lib/costbreakup/procOrder): process-order actuals by cost element.
+  // MOCK_SAP_PROCORDER=missing -> 404 like the live systems before SAP adds the set.
+  if (set === 'ProcOrderCostSet') {
+    if (process.env.MOCK_SAP_PROCORDER === 'missing') return odataError(404, '/IWBEP/CM_MGW_RT/020', "Resource not found for segment 'ProcOrderCostSet'");
+    await sleep(120, signal);
+    const pf = parseFilter(sp.get('$filter') ?? '');
+    const plants = pf.get('Werks') ?? ['1000'];
+    const fgs = pf.get('Matnr') ?? [];
+    const out: Record<string, unknown>[] = [];
+    for (const w of plants) for (const fg of fgs) {
+      if (!BOMS[fg]) continue;
+      for (let o = 0; o < 3; o++) {
+        const aufnr = `00${String(1000000 + (hash(`${w}${fg}`) % 800000) + o).padStart(10, '0')}`;
+        const yld = 10000 + (hash(`${aufnr}y`) % 5000);
+        const budat = `202609${String(5 + o * 8).padStart(2, '0')}`;
+        const row = (Element: string, extra: Record<string, unknown>, perPc: number, qtyPc: number, Meins: string) => out.push({
+          ...meta('ProcOrderCost', `ProcOrderCostSet('${aufnr}${Element}')`), Werks: w, Matnr: fg, Aufnr: aufnr, Budat: budat, Yield: n(yld, 3), YieldUom: 'PC', Element,
+          Lstar: '', Kostl: '', Kstar: '', Idnrk: '', Maktx: '', Menge: n(qtyPc * yld, 3), Meins, Cost: n(perPc * yld, 2), Waers: 'INR', CostInr: n(perPc * yld, 2), ...extra,
+        });
+        const v = 1 + ((hash(`${aufnr}v`) % 9) - 4) / 100;
+        row('RM', { Idnrk: 'RM0001', Maktx: 'Light Liquid Paraffin', Kstar: '51000100' }, 9.2 * v, 0.06, 'KG');
+        row('PERFUME', { Idnrk: 'RM0005', Maktx: 'Perfume Compound A', Kstar: '51000110' }, 3.1 * v, 0.001, 'KG');
+        row('PM', { Idnrk: 'PM0001', Maktx: 'PET Bottle 100 ml', Kstar: '51000200' }, 6.4 * v, 1.005, 'PC');
+        row('LABOUR', { Lstar: 'LAB001', Kostl: `${w}PRD01`, Kstar: '94300001' }, 0.42 * v, 0.0016, 'HR');
+        row('POWER', { Lstar: 'PWR001', Kostl: `${w}UTL01`, Kstar: '94300002' }, 0.18 * v, 0.021, 'KWH');
+        row('MACHINE', { Lstar: 'MCH001', Kostl: `${w}PRD01`, Kstar: '94300003' }, 0.31 * v, 0.0009, 'HR');
+        row('STEAM', { Lstar: 'STM001', Kostl: `${w}UTL02`, Kstar: '94300004' }, 0.07 * v, 0.012, 'KG');
+        row('CONV', { Lstar: 'CNV001', Kostl: `${w}TPM01`, Kstar: '94300009' }, 0.25 * v, 1, 'PC');
+      }
+    }
+    return json({ d: { results: out } });
+  }
+
   // MOCK_SAP_RATES picks how rate options can be read (lib/rates):
   //   expand-fails      $expand=RateOptions -> 501 (the live services today); RateOptionSet -> 404
   //   direct-works      RateOptionSet answers flat rows; $expand -> 501

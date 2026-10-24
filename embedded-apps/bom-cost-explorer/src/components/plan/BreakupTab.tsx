@@ -30,6 +30,7 @@ import { D, ZERO, type Decimal } from '@/lib/cost/decimal';
 import type { CostLine } from '@/lib/sap/fields';
 import { fmtCompactInr, fmtDate, fmtNum, fmtPct, fmtQty, fmtRate } from '@/lib/format';
 import { componentFreightInr, type FreightTagged } from '@/lib/cost/freightIncluded';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 type View = 'tree' | 'fg' | 'sim' | 'charts' | 'rates' | 'coverage';
 type Months = 'qty' | 'cost';
@@ -215,7 +216,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
                       <th className={thNum}>Total/pc</th>
                       <th className={thNum}>Total cost INR</th>
                       <th className={thNum} title="As per Budget: SAP budget landed rate (on plan-material rows: per FG piece)">Budget/pc</th>
-                      <th className={thNum} title="As per MBEW (on plan-material rows: per FG piece)">MBEW/pc</th>
+                      <th className={thNum} title="As per C-MAP (on plan-material rows: per FG piece)">C-MAP/pc</th>
                       <th className={thNum} title="As per Consumption (on plan-material rows: per FG piece)">Consumption/pc</th>
                       <th className={thNum}>Actual rate/pc</th>
                       <th className={thNum}>Var %</th>
@@ -231,7 +232,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
           )}
           {view === 'tree' && !optionsLoaded && (
             <p className="-mt-1 text-xs text-muted">
-              MBEW and Consumption rates come from SAP&apos;s rate options, loaded on request.{' '}
+              C-MAP and Consumption rates come from SAP&apos;s rate options, loaded on request.{' '}
               {rates.status === 'loading' ? 'Loading…' : rates.status === 'unavailable' || rates.status === 'error' ? <>{rates.note} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></> : <button type="button" className="font-semibold text-accent underline" onClick={rates.request}>Load MBEW / Consumption rates</button>}
             </p>
           )}
@@ -351,7 +352,7 @@ function LineRow({ l, months, onOpen, optionsLoaded }: { l: PlanLineWithOptions;
       <td className={tdNum}>{fmtQty(l.QtyTot)} <span className="text-faint">{l.Meins}</span></td>
       <td className={tdCls}>{leaf ? <SourceBadge source={l.SelSource} /> : null}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.SelRatePcInr) : ''}</td>
-      <td className={tdNum} title={(l as FreightTagged).FrtIncluded ? `Not added: the ${l.SelSource} rate already includes freight` : undefined}>{leaf ? <>{fmtRate(String(componentFreightInr(l)))}{(l as FreightTagged).FrtIncluded && <span className="text-2xs text-faint"> not added</span>}</> : ''}</td>
+      <td className={tdNum} title={(l as FreightTagged).FrtIncluded ? `Not added: the ${sourceLabel(l.SelSource)} rate already includes freight` : undefined}>{leaf ? <>{fmtRate(String(componentFreightInr(l)))}{(l as FreightTagged).FrtIncluded && <span className="text-2xs text-faint"> not added</span>}</> : ''}</td>
       <td className={tdNum}>{leaf ? fmtRate(l.TotCostPcInr) : ''}</td>
       <td className={cx(tdNum, leaf && 'font-semibold')}>{leaf ? fmtNum(l.TotCostInr, 2) : ''}</td>
       <td className={tdNum}>{leaf && D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : ''}</td>
@@ -377,12 +378,12 @@ function LineDrawer({ line, onClose }: { line: (PlanCostLine & { RateOptions?: C
     ['Rate source', <SourceBadge key="s" source={l.SelSource} />],
     ['Vendor', `${l.SelVendor} ${l.SelVname}`.trim() || '—'],
     ['Rate/pc INR', fmtRate(l.SelRatePcInr)],
-    ['Freight/pc INR', `${fmtRate(String(componentFreightInr(l)))} (${l.FrtSrc || '—'})${(l as FreightTagged).FrtIncluded ? ` - not added, the ${l.SelSource} rate includes freight` : ''}`],
+    ['Freight/pc INR', `${fmtRate(String(componentFreightInr(l)))} (${l.FrtSrc || '—'})${(l as FreightTagged).FrtIncluded ? ` - not added, the ${sourceLabel(l.SelSource)} rate includes freight` : ''}`],
     ['Total/pc INR', fmtRate(l.TotCostPcInr)],
     ['Total cost INR', fmtNum(l.TotCostInr, 2)],
     ['Alt BOM (FG / item)', `${l.Stlal || '—'} / ${l.ItemStlal || '—'}`],
     ['As per Budget', D(l.BudLanded).gt(0) ? fmtRate(l.BudLanded) : '—'],
-    ['As per MBEW', componentRate(l, 'MBEW') ? fmtRate(componentRate(l, 'MBEW')) : '—'],
+    ['As per C-MAP', componentRate(l, 'MBEW') ? fmtRate(componentRate(l, 'MBEW')) : '—'],
     ['As per Consumption', componentRate(l, 'CONSUMP') ? fmtRate(componentRate(l, 'CONSUMP')) : '—'],
     ['Actual rate/pc INR', D(l.ActRatePcInr).gt(0) ? `${fmtRate(l.ActRatePcInr)} (${fmtPct(actVariancePct(l))} vs SAP rate)` : '—'],
     ['Delivered as of', fmtDate(l.DelvAsof) || '—'],

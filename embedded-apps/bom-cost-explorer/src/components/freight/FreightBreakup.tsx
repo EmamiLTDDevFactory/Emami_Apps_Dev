@@ -15,6 +15,7 @@ import { breakupLines, freightKeyOf, poSummary, reconcile, selectedRows, type Fr
 import { useFreightBreakup } from '@/lib/freight/useFreightBreakup';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
 import { componentFreightInr, componentFreightLoc, type FreightTagged } from '@/lib/cost/freightIncluded';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 const th = 'px-3 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
@@ -50,7 +51,7 @@ export function FreightBreakupPanel({ line, run, enabled = true, compactTitle = 
       )}
       {compactTitle && pos.length > 0 && <div className="text-xs text-muted">PO {pos.slice(0, 3).join(' · ')}{pos.length > 3 ? ` · +${pos.length - 3} more` : ''} {line.FrtSrc && <Pill tone={line.FrtSrc === 'ACTUAL' ? 'good' : 'neutral'}>{line.FrtSrc}</Pill>}</div>}
 
-      {(line as FreightTagged).FrtIncluded && <p className="rounded-lg border border-line bg-sunken/40 px-3 py-2 text-xs text-muted">This line is priced on {line.SelSource}, which already includes freight: the freight below is shown for information and is not added to the cost.</p>}
+      {(line as FreightTagged).FrtIncluded && <p className="rounded-lg border border-line bg-sunken/40 px-3 py-2 text-xs text-muted">This line is priced on {sourceLabel(line.SelSource)}, which already includes freight: the freight below is shown for information and is not added to the cost.</p>}
       {line.FrtSrc && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="rounded-xl border border-line bg-sunken/40 px-3 py-2"><div className="text-2xs font-semibold uppercase tracking-wide text-muted">Freight / pc on the cost line</div><div className="num text-lg font-bold">{fmtRate(String(componentFreightLoc(line)))} <span className="text-xs font-normal text-muted">{line.LocCurr}</span></div></div>

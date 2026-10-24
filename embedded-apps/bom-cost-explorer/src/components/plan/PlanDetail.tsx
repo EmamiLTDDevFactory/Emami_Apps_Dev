@@ -12,6 +12,7 @@ import { ArrowLeft, FileSpreadsheet } from 'lucide-react';
 import PlanFrame from './PlanFrame';
 import EntriesTab from './EntriesTab';
 import BreakupTab from './BreakupTab';
+import CostBreakupTab from './CostBreakupTab';
 import RequirementTab from './RequirementTab';
 import ChecksTab from './ChecksTab';
 import WipTab from './WipTab';
@@ -24,11 +25,12 @@ import { exportPlanWorkbook } from '@/lib/plan/export';
 import { Button, Card, Empty, Pill, Spinner, Tabs } from '../ui';
 import { PlantChips, SelectPlants } from './common';
 
-export type PlanTab = 'entries' | 'breakup' | 'requirement' | 'checks' | 'wip' | 'scenarios';
+export type PlanTab = 'entries' | 'breakup' | 'costbreakup' | 'requirement' | 'checks' | 'wip' | 'scenarios';
 
 export const PLAN_TABS: { id: PlanTab; label: string; what: string }[] = [
   { id: 'entries', label: 'Entries', what: 'Editable monthly quantities (April..March) per material, plant and country; save and delete per row.' },
   { id: 'breakup', label: 'Breakup & cost', what: 'CostLineSet Mode P: country > plant > plan material > components, monthly quantity and cost, BOM source, rate sources.' },
+  { id: 'costbreakup', label: 'Cost breakup', what: 'Each plan material in Raw Material, Perfume, Pack Material, Labour, Power, Machine, Steam and Conversion Charge (quantity and cost), with the process-order actual; click an element for its detail.' },
   { id: 'requirement', label: 'Requirement', what: 'PlanSummarySet: monthly requirement vs valuated stock, PO, delivered and open PO, shortages.' },
   { id: 'checks', label: 'Checks', what: 'PlanCheckSet: FG and item messages grouped by plant and material.' },
   { id: 'wip', label: 'WIP', what: 'PlanWipSet: WIP requirement per finished good; save as a WIP plan.' },
@@ -99,6 +101,7 @@ function PlanView({ plan, werks, email, tab, onTab }: { plan: string; werks: str
       {tab !== 'entries' && ws.needsPlant ? <SelectPlants ws={ws} /> : (
         <>
           {tab === 'breakup' && <BreakupTab ws={ws} />}
+          {tab === 'costbreakup' && <CostBreakupTab ws={ws} />}
           {tab === 'requirement' && <RequirementTab ws={ws} />}
           {tab === 'checks' && <ChecksTab ws={ws} />}
           {tab === 'wip' && <WipTab ws={ws} />}

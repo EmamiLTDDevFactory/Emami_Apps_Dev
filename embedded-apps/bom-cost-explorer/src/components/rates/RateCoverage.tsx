@@ -59,7 +59,7 @@ export default function RateCoverage({ lines, rates, prio, lookback, onAddDonor,
       </Card>
 
       <Card
-        title={<span className="flex items-center gap-2">MBEW only <Pill tone={cov.mbewOnly.length ? 'warn' : 'good'}>{cov.mbewOnly.length} component{cov.mbewOnly.length === 1 ? '' : 's'}</Pill></span>}
+        title={<span className="flex items-center gap-2">C-MAP only <Pill tone={cov.mbewOnly.length ? 'warn' : 'good'}>{cov.mbewOnly.length} component{cov.mbewOnly.length === 1 ? '' : 's'}</Pill></span>}
         actions={cov.mbewOnly.length ? (
           <>
             {onAddDonor && <Button size="sm" onClick={onAddDonor}>Add donor plant…</Button>}
@@ -93,7 +93,7 @@ export default function RateCoverage({ lines, rates, prio, lookback, onAddDonor,
               })}
             </ul>
           </>
-        ) : <p className="text-xs text-muted">Every leaf row has a rate from at least one source besides MBEW (or more than one source).</p>}
+        ) : <p className="text-xs text-muted">Every leaf row has a rate from at least one source besides C-MAP (or more than one source).</p>}
       </Card>
 
       <Card title={<span className="flex items-center gap-2">Source outside priority {ready && <Pill tone={cov.outsidePrio.length ? 'accent' : 'good'}>{cov.outsidePrio.length}</Pill>}</span>}>

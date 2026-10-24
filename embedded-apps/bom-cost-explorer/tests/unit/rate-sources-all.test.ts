@@ -57,7 +57,7 @@ describe('priority editor -> Prio', () => {
     expect(buildSelectionFilter(q({ prio: ['CONTRACT', 'MBEW'] }))).not.toContain('MARKT');
     expect(prioString([' contract ', 'mbew', 'MBEW'])).toBe('CONTRACT,MBEW');
     expect(parsePrio('contract, Inforec ,MBEW')).toEqual(['CONTRACT', 'INFOREC', 'MBEW']);
-    expect(prioLabel(['CONTRACT', 'MBEW'])).toBe('CONTRACT > MBEW');
+    expect(prioLabel(['CONTRACT', 'MBEW'])).toBe('CONTRACT > C-MAP');
   });
   it('plan breakup: default priority = Report default; the editor value goes into the Mode P filter', () => {
     expect(costFilter(defaultPlanCostQuery('P'))).toContain("Prio eq 'CONTRACT,INFOREC,CONSUMP,MBEW'");
@@ -141,7 +141,7 @@ describe('coverage', () => {
     ];
     const c = rateCoverage(lines, ['CONTRACT', 'INFOREC', 'CONSUMP', 'MBEW'], false);
     expect(c.mbewOnly.map((g) => `${g.idnrk}:${g.rows.length}`)).toEqual(['RM1:2']);
-    expect(MBEW_ONLY_HINT).toBe('No contract / info record / market / consumption rate in the look-back window. Try a donor plant or a longer look-back.');
+    expect(MBEW_ONLY_HINT).toBe('Only a C-MAP (MBEW) rate: no contract / info record / market / consumption rate in the look-back window. Try a donor plant or a longer look-back.');
   });
   it('per source: components with a rate and share of leaf rows using it; source outside priority named with its rate; donor rows counted', () => {
     const lines = [

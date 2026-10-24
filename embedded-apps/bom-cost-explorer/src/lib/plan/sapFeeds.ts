@@ -64,7 +64,7 @@ export interface Feed<T> { status: FeedStatus; rows: T[]; note: string; system: 
 const MISSING = /Resource not found for (the )?segment|No service found|not found in type|Invalid entity set/i;
 const PROPERTY = /Property '?([\w/]+)'? (?:not found|is invalid)/i;
 
-async function readFeed<T>(req: { entitySet: string; params: Record<string, string | undefined> }, map: Parameters<typeof normalizeEntity>[1], opts: SapGetOptions): Promise<Feed<T>> {
+export async function readFeed<T>(req: { entitySet: string; params: Record<string, string | undefined> }, map: Parameters<typeof normalizeEntity>[1], opts: SapGetOptions): Promise<Feed<T>> {
   const system = sapConfig().system;
   try {
     const r = await sapGetCollection(req.entitySet, req.params, opts);

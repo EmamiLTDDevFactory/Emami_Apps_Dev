@@ -80,4 +80,4 @@ export function rateCoverage(lines: readonly Line[], prio: readonly string[], op
   return { leafRows: n, sources, mbewOnly: [...mbew.values()].sort((a, b) => b.rows.length - a.rows.length || a.idnrk.localeCompare(b.idnrk)), outsidePrio: outside, donorRows, donorPlants: [...donors].sort(), optionsLoaded };
 }
 
-export const MBEW_ONLY_HINT = 'No contract / info record / market / consumption rate in the look-back window. Try a donor plant or a longer look-back.';
+export const MBEW_ONLY_HINT = 'Only a C-MAP (MBEW) rate: no contract / info record / market / consumption rate in the look-back window. Try a donor plant or a longer look-back.';

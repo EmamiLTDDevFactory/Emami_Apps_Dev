@@ -1,6 +1,7 @@
 'use client';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fmtCompactInr, fmtNum } from '@/lib/format';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 /** Chart colours are picked per theme in JS (SVG presentation attributes can't read CSS vars
  * reliably). Values from the validated reference palette; source colours are the app's fixed
@@ -36,7 +37,7 @@ export function SourceDonut({ data }: { data: Datum[] }) {
             <Pie data={data} dataKey="value" nameKey="name" innerRadius="62%" outerRadius="95%" paddingAngle={1} stroke={t.surface} strokeWidth={2} isAnimationActive={false}>
               {data.map((d) => <Cell key={d.name} fill={t.src[d.name] ?? t.neutral} />)}
             </Pie>
-            <Tooltip {...tooltipStyle(t)} formatter={(v: unknown) => [`${fmtNum(String(v), 2)} INR (${((Number(v) / total) * 100).toFixed(1)}%)`, 'Cost']} />
+            <Tooltip {...tooltipStyle(t)} formatter={(v: unknown, name: unknown) => [`${fmtNum(String(v), 2)} INR (${((Number(v) / total) * 100).toFixed(1)}%)`, sourceLabel(String(name))]} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -44,7 +45,7 @@ export function SourceDonut({ data }: { data: Datum[] }) {
         {data.map((d) => (
           <li key={d.name} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: t.src[d.name] ?? t.neutral }} aria-hidden />
-            <span className="font-medium">{d.name}</span>
+            <span className="font-medium">{sourceLabel(d.name)}</span>
             <span className="num ml-auto text-muted">{fmtCompactInr(d.value)}</span>
             <span className="num w-12 text-right font-semibold">{((d.value / total) * 100).toFixed(1)}%</span>
           </li>

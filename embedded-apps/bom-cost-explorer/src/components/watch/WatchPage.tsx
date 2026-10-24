@@ -15,7 +15,7 @@ import { watchApi, type Alert, type WatchItem } from '@/lib/watch/api';
 import { fmtNum, fmtRate } from '@/lib/format';
 
 type Tab = 'alerts' | 'items' | 'admin';
-const RULES: Record<string, string> = { R1: 'Cost per piece moved', R2: 'Component rate moved', R3: 'Rate source worse', R4: 'No / MBEW-only rate', R5: 'Freight jump', R6: 'FX moved', R7: 'BOM changed', R8: 'Low cover', R9: 'Plan check' };
+const RULES: Record<string, string> = { R1: 'Cost per piece moved', R2: 'Component rate moved', R3: 'Rate source worse', R4: 'No / C-MAP-only rate', R5: 'Freight jump', R6: 'FX moved', R7: 'BOM changed', R8: 'Low cover', R9: 'Plan check' };
 const SEV_TONE = { high: 'bad', medium: 'warn', low: 'neutral' } as const;
 const th = 'px-2 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const td = 'px-2 py-1.5 align-top';
@@ -235,7 +235,7 @@ function Items({ canEdit, canRun }: { canEdit: boolean; canRun: boolean }) {
 const THRESHOLDS: { key: string; label: string; unit: string; def: number }[] = [
   { key: 'r1DayPct', label: 'R1 cost per piece vs yesterday', unit: '%', def: 2 }, { key: 'r1MonthPct', label: 'R1 vs 30 days', unit: '%', def: 5 },
   { key: 'r2Pct', label: 'R2 component rate', unit: '%', def: 10 }, { key: 'r2MinSharePct', label: 'R2 min. share of piece cost', unit: '%', def: 0.5 },
-  { key: 'r4MinSharePct', label: 'R4 min. share (no / MBEW rate)', unit: '%', def: 1 }, { key: 'r5Pct', label: 'R5 freight per piece', unit: '%', def: 25 },
+  { key: 'r4MinSharePct', label: 'R4 min. share (no / C-MAP rate)', unit: '%', def: 1 }, { key: 'r5Pct', label: 'R5 freight per piece', unit: '%', def: 25 },
   { key: 'r6Pct', label: 'R6 FX factor', unit: '%', def: 1 }, { key: 'r7QtyPct', label: 'R7 quantity per piece', unit: '%', def: 5 },
   { key: 'r8LeadDays', label: 'R8 lead time', unit: 'days', def: 15 }, { key: 'highInr', label: 'High severity from', unit: 'INR', def: 50000 }, { key: 'mediumInr', label: 'Medium severity from', unit: 'INR', def: 5000 },
 ];

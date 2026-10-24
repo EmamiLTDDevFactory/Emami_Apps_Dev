@@ -80,7 +80,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
         <span className="text-muted">{s.fgs.length} FG · {s.rm.length} RM · {s.pm.length} PM · rates in INR</span>
         {!optionsReady && (
           <span className="text-muted">
-            Contract, Info record, Market, Consumption, MBEW and Cheapest need SAP&apos;s rate options. {rates.status === 'loading' || rates.status === 'idle' ? 'Loading…' : <>{rates.note} <button type="button" className="inline-flex items-center gap-1 font-semibold text-accent underline" onClick={rates.retest}><RefreshCw size={11} /> Test again</button></>}
+            Contract, Info record, Market, Consumption, C-MAP and Cheapest need SAP&apos;s rate options. {rates.status === 'loading' || rates.status === 'idle' ? 'Loading…' : <>{rates.note} <button type="button" className="inline-flex items-center gap-1 font-semibold text-accent underline" onClick={rates.retest}><RefreshCw size={11} /> Test again</button></>}
           </span>
         )}
         <Button size="sm" className="ml-auto" onClick={exportXlsx}><FileSpreadsheet size={14} /> Excel</Button>

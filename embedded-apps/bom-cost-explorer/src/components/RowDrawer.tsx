@@ -12,6 +12,7 @@ import type { FreightRun } from '@/lib/freight/breakup';
 import { hasFreightColumns, rateWithFreight, vendorOf, vendorText } from '@/lib/rates/withFreight';
 import { type FreightTagged } from '@/lib/cost/freightIncluded';
 import { componentFreightInr, componentFreightLoc } from '@/lib/cost/freightIncluded';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -212,7 +213,7 @@ export default function RowDrawer({
               ['FX', fmtNum(r.FrtFx, 5, 'X')],
               ['Freight / pc local', `${fmtRate(String(componentFreightLoc(r)), r.LocCurr)} ${r.LocCurr}`],
               ['Freight / pc INR', `${fmtRate(String(componentFreightInr(r)))} INR`],
-              ...((r as FreightTagged).FrtIncluded ? [['Added to the cost', `No - the ${r.SelSource} rate already includes freight`] as [string, string]] : []),
+              ...((r as FreightTagged).FrtIncluded ? [['Added to the cost', `No - the ${sourceLabel(r.SelSource)} rate already includes freight`] as [string, string]] : []),
               ['Delivery as of', fmtDate(r.DelvAsof)],
               ['Actual delivered qty', fmtQty(r.TotActDelv)],
               ['Standard delivered qty', fmtQty(r.TotStdDelv)],

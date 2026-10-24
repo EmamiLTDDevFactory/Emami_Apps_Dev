@@ -82,7 +82,7 @@ export default function AssistantPanel({ open, onClose, onSettings, current, sys
           <div className="text-xs text-muted">
             <p>Ask about costs, rates, freight and plans in SAP. Examples:</p>
             <ul className="ml-4 mt-1 list-disc space-y-0.5">
-              {['Which components of the current run have only an MBEW rate?', 'What are the top 5 cost drivers per piece?', 'What if contract rates go up 5%?', 'Why did the cost change versus budget?'].map((x) => (
+              {['Which components of the current run have only a C-MAP (MBEW) rate?', 'What are the top 5 cost drivers per piece?', 'What if contract rates go up 5%?', 'Why did the cost change versus budget?'].map((x) => (
                 <li key={x}><button type="button" className="text-left text-accent hover:underline" onClick={() => setQ(x)}>{x}</button></li>
               ))}
             </ul>

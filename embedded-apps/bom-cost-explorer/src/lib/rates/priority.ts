@@ -4,6 +4,7 @@
  * has no MARKT ("Report default"). "Cheapest" is not an SAP preset - it is the client-side what-if.
  */
 import { RATE_SOURCE_ORDER } from './fields';
+import { sourceLabel } from './sourceLabel';
 
 export const ALL_RATE_SOURCES: readonly string[] = RATE_SOURCE_ORDER;
 export const PRIO_PRESETS: { id: 'report' | 'all'; label: string; prio: string[] }[] = [
@@ -25,8 +26,8 @@ export function normalizePrio(list: readonly string[]): string[] {
 export const prioString = (list: readonly string[]) => normalizePrio(list).join(',');
 /** Parses a Prio string back ("A, b ,C" -> [A, B, C]). */
 export const parsePrio = (s: string | null | undefined) => normalizePrio(String(s ?? '').split(','));
-/** Human label shown next to results: "CONTRACT > INFOREC > CONSUMP > MBEW". */
-export const prioLabel = (list: readonly string[]) => (list.length ? normalizePrio(list).join(' > ') : 'SAP default');
+/** Human label shown next to results: "CONTRACT > INFOREC > CONSUMP > C-MAP" (MBEW shown as C-MAP). */
+export const prioLabel = (list: readonly string[]) => (list.length ? normalizePrio(list).map(sourceLabel).join(' > ') : 'SAP default');
 
 export interface PrioItem { source: string; on: boolean }
 

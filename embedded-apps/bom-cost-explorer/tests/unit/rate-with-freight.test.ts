@@ -83,7 +83,7 @@ describe('rate summary FG level', () => {
       expect(fg).not.toContain(h);
       expect(comps).toContain(h);
     }
-    for (const h of ['Selected (SAP)</th>', 'Budget</th>', 'Consumption</th>', 'MBEW</th>', 'Freight</th>', 'Landed (BOM)</th>']) expect(fg).toContain(h);
+    for (const h of ['Selected (SAP)</th>', 'Budget</th>', 'Consumption</th>', 'C-MAP</th>', 'Freight</th>', 'Landed (BOM)</th>']) expect(fg).toContain(h);
   });
 });
 

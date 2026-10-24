@@ -17,6 +17,7 @@ import { DEFAULT_PRIO } from '@/lib/query/schema';
 import { isLeafRow } from '@/lib/cost/tree';
 import { fmtCompactInr, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { ZERO, pctChange } from '@/lib/cost/decimal';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 const SOURCES = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW'];
 const numIn = (v: string, d = 0) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
@@ -145,7 +146,7 @@ export default function ScenariosTab({ ws }: { ws: PlanWorkspace }) {
                 <p className="mb-1 mt-3 text-xs font-bold text-muted">Rate % by source</p>
                 <div className="grid grid-cols-5 gap-1">
                   {SOURCES.map((s) => (
-                    <label key={s} className="text-2xs text-muted">{s}
+                    <label key={s} className="text-2xs text-muted">{sourceLabel(s)}
                       <input type="number" className={cx(inputBase, 'h-7 w-full px-1 text-right text-xs')} value={active.client.srcPct[s] ?? 0} onChange={(e) => setClient({ srcPct: { ...active.client.srcPct, [s]: numIn(e.target.value) } })} />
                     </label>
                   ))}

@@ -17,7 +17,7 @@ import type { PlanCostLine } from './fields';
 
 export const PLAN_SOURCES = ['BUDGET', 'MBEW', 'CONSUMP', 'SELECTED'] as const;
 export type PlanSource = (typeof PLAN_SOURCES)[number];
-export const PLAN_SOURCE_LABEL: Record<PlanSource, string> = { BUDGET: 'As per Budget', MBEW: 'As per MBEW', CONSUMP: 'As per Consumption', SELECTED: 'Current selected' };
+export const PLAN_SOURCE_LABEL: Record<PlanSource, string> = { BUDGET: 'As per Budget', MBEW: 'As per C-MAP', CONSUMP: 'As per Consumption', SELECTED: 'Current selected' };
 export const PLAN_SOURCE_COLOR: Record<PlanSource, string> = { BUDGET: '#4F3FD6', MBEW: '#e34948', CONSUMP: '#eb6834', SELECTED: '#008300' };
 
 export type PlanLineWithOptions = PlanCostLine & { RateOptions?: RateOption[] };

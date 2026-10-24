@@ -78,7 +78,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
         ['Country', country || 'all'],
         ['Cost per FG piece', 'Sum over leaf components of rate x total qty / plan qty (material rate; freight only in "Selected incl. freight")'],
         ['As per Budget', 'SAP budget landed rate (BudLanded)' + (query.inclBudget ? `, budget year ${query.budgetYr}` : ' - budget not requested')],
-        ['As per MBEW / Consumption', optionsReady ? 'SAP rate options of source MBEW / CONSUMP (component plant first)' : `not loaded: ${rates.note || rates.status}`],
+        ['As per C-MAP / Consumption', optionsReady ? 'SAP rate options of source MBEW (C-MAP) / CONSUMP (component plant first)' : `not loaded: ${rates.note || rates.status}`],
         ['Priced', 'components with a rate on that source / leaf components (an unpriced component is not counted as 0)'],
       ],
     });
@@ -102,7 +102,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
         </div>
         <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted">
           <span className="inline-flex items-center gap-1"><Info size={12} /> Material rate per FG piece, INR. * = not every component has a rate on that source (hover for the count).</span>
-          {!optionsReady && <span className="text-warn">MBEW / Consumption: {rates.status === 'loading' || rates.status === 'idle' ? 'loading rate options…' : <>{rates.note || 'not available'} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></>}</span>}
+          {!optionsReady && <span className="text-warn">C-MAP / Consumption: {rates.status === 'loading' || rates.status === 'idle' ? 'loading rate options…' : <>{rates.note || 'not available'} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></>}</span>}
           {noBudget && <span className="text-warn">No budget rates in this run{query.inclBudget ? ` for ${query.budgetYr}` : ' (turn on Budget rates and run again)'}.</span>}
         </div>
         <div className="scroll-thin overflow-x-auto">

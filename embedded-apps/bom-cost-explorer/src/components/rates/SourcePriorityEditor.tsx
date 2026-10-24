@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { cx } from '../ui';
 import { PRIO_PRESETS, prioFromItems, prioItems, presetMatches, type PrioItem } from '@/lib/rates/priority';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 export default function SourcePriorityEditor({ value, onChange, compact = false }: { value: string[]; onChange: (v: string[]) => void; compact?: boolean }) {
   const [items, setItems] = useState<PrioItem[]>(() => prioItems(value));
@@ -57,17 +58,17 @@ export default function SourcePriorityEditor({ value, onChange, compact = false 
                 if (e.altKey && e.key === 'ArrowDown') { e.preventDefault(); move(i, i + 1); }
               }}
               tabIndex={0}
-              aria-label={`${it.source}${it.on ? `, priority ${n}` : ', not used'}. Alt+Up or Alt+Down to move`}
+              aria-label={`${sourceLabel(it.source)}${it.on ? `, priority ${n}` : ', not used'}. Alt+Up or Alt+Down to move`}
               className={cx('flex cursor-grab items-center gap-2 rounded-xl border border-line bg-panel px-2.5 text-xs shadow-card transition hover:border-accent/40', compact ? 'py-1' : 'py-1.5', drag === i && 'opacity-50', !it.on && 'opacity-60')}
             >
               <span className="w-3 text-faint" aria-hidden>⋮⋮</span>
-              <input type="checkbox" checked={it.on} onChange={() => toggle(i)} aria-label={`Use ${it.source}`} className="h-3.5 w-3.5 accent-[rgb(var(--accent))]" />
+              <input type="checkbox" checked={it.on} onChange={() => toggle(i)} aria-label={`Use ${sourceLabel(it.source)}`} className="h-3.5 w-3.5 accent-[rgb(var(--accent))]" />
               <span className={cx('grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold', it.on ? 'bg-accent/10 text-accent' : 'bg-sunken text-faint')}>{it.on ? n : '–'}</span>
               <span className="h-2 w-2 rounded-sm" style={{ background: `var(--src-${it.source.toLowerCase()})` }} aria-hidden />
-              <span className={cx('font-semibold', !it.on && 'line-through decoration-faint')}>{it.source}</span>
+              <span className={cx('font-semibold', !it.on && 'line-through decoration-faint')}>{sourceLabel(it.source)}</span>
               <span className="ml-auto flex gap-0.5">
-                <button type="button" className="px-1 text-faint hover:text-ink disabled:opacity-30" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${it.source} up`}>▲</button>
-                <button type="button" className="px-1 text-faint hover:text-ink disabled:opacity-30" disabled={i === items.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move ${it.source} down`}>▼</button>
+                <button type="button" className="px-1 text-faint hover:text-ink disabled:opacity-30" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label={`Move ${sourceLabel(it.source)} up`}>▲</button>
+                <button type="button" className="px-1 text-faint hover:text-ink disabled:opacity-30" disabled={i === items.length - 1} onClick={() => move(i, i + 1)} aria-label={`Move ${sourceLabel(it.source)} down`}>▼</button>
               </span>
             </li>
           );

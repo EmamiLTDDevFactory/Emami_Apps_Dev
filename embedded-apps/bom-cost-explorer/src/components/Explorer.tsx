@@ -9,6 +9,8 @@ import { isPlantWide, needsOnePlant, PLANT_WIDE_ENABLED } from '@/lib/plantwide/
 import { NO_PICK, usePlantWide, type HierPick } from '@/lib/plantwide/usePlantWide';
 import { etaText } from '@/lib/plantwide/runBatches';
 import RateSummary from './rates/RateSummary';
+import CostBreakup from './costbreakup/CostBreakup';
+import type { CostLine } from '@/lib/sap/fields';
 import dynamic from 'next/dynamic';
 import { AI_ENABLED } from '@/lib/ai/config';
 
@@ -50,7 +52,7 @@ import Warnings from './Warnings';
 import PrintView from './PrintView';
 import { Button, cx, Empty, Pill, SimTag, Skeleton, Tabs } from './ui';
 
-type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates' | 'coverage' | 'ratesum';
+type Tab = 'tree' | 'compare' | 'table' | 'dash' | 'sim' | 'dq' | 'scen' | 'rates' | 'coverage' | 'ratesum' | 'breakup';
 
 const lastQueryKey = (u: string) => `bce:last-query:${u}`;
 const lastMsKey = (m: Mode) => `bce:last-ms:${m}`;
@@ -187,6 +189,10 @@ export default function Explorer() {
       sim: simOn ? nodeTotals(tree, leafPrefix(tree, (i) => simRows[i].total)) : null,
     };
   }, [tree, simRows, simOn]);
+  // Cost breakup tab: line quantity and FG quantity of the BOM costing run.
+  const lineQty = useCallback((l: CostLine) => D(l.ProdQty), []);
+  const explQtyRan = ranQuery?.explQty ?? '1';
+  const fgQty = useCallback(() => D(explQtyRan), [explQtyRan]);
   const total = useMemo(() => (tree ? grandTotal(leafPrefix(tree, (i) => tree.rows[i].TotCostInr)) : null), [tree]);
   const simTotal = useMemo(() => (tree && simOn ? grandTotal(leafPrefix(tree, (i) => simRows[i].total)) : null), [tree, simRows, simOn]);
   const plantCurr = useMemo(() => {
@@ -275,6 +281,7 @@ export default function Explorer() {
     mode === 'B'
       ? [
           { id: 'tree', label: 'BOM tree' },
+          { id: 'breakup', label: 'Cost breakup' },
           { id: 'dash', label: 'Dashboard' },
           { id: 'sim', label: 'Simulator', badge: simOn ? <SimTag /> : undefined },
           { id: 'dq', label: 'Data quality', badge: dqCount ? <Pill tone="warn">{dqCount}</Pill> : undefined },
@@ -463,6 +470,8 @@ export default function Explorer() {
             />
           ) : activeTab === 'rates' && ranQuery ? (
             <RateSources rows={rows} rates={rates} query={ranQuery} onOpenRow={setDrawer} prio={ranQuery.prio} />
+          ) : activeTab === 'breakup' && ranQuery ? (
+            <div className="h-full overflow-auto"><CostBreakup lines={rows} qtyOf={lineQty} fgQtyOf={fgQty} qtyLabel={`the explosion quantity (${ranQuery.explQty})`} exportName="Cost breakup" /></div>
           ) : activeTab === 'ratesum' && ranQuery ? (
             <RateSummary rows={rows} rates={rates} query={ranQuery} />
           ) : activeTab === 'coverage' && ranQuery ? (

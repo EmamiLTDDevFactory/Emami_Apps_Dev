@@ -12,6 +12,7 @@ import { Button, cx, Modal, SimTag, SourceBadge, inputBase, inputCls } from './u
 import { FreightValue } from './freight/FreightValue';
 import type { FreightRun } from '@/lib/freight/breakup';
 import type { FreightTagged } from '@/lib/cost/freightIncluded';
+import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 export interface NodeAgg {
   inr: Decimal[]; // leaf roll-up of TotCostInr per node
@@ -65,11 +66,11 @@ export const TREE_COLUMNS: Col[] = [
   },
   {
     id: 'frtPc', label: 'Freight / pc', width: 146, right: true,
-    line: ({ r, leaf, frun }) => (leaf && (r as FreightTagged).FrtIncluded ? <FreightValue line={r} run={frun} value={(r as FreightTagged).FrtPcLocSap}><span className="num" title={`${r.FrtSrc} freight - not added: the ${r.SelSource} rate already includes freight`}>{fmtNum((r as FreightTagged).FrtPcLocSap ?? '0', 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · not added</span></span></FreightValue> : leaf && r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcLoc}><span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span></FreightValue> : null),
+    line: ({ r, leaf, frun }) => (leaf && (r as FreightTagged).FrtIncluded ? <FreightValue line={r} run={frun} value={(r as FreightTagged).FrtPcLocSap}><span className="num" title={`${r.FrtSrc} freight - not added: the ${sourceLabel(r.SelSource)} rate already includes freight`}>{fmtNum((r as FreightTagged).FrtPcLocSap ?? '0', 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · not added</span></span></FreightValue> : leaf && r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcLoc}><span className="num" title={`${r.FrtSrc} freight`}>{fmtNum(r.FrtPcLoc, 4, r.LocCurr)} <span className="text-2xs text-faint">{r.LocCurr} · {r.FrtSrc === 'ACTUAL' ? 'A' : 'S'}</span></span></FreightValue> : null),
   },
   {
     id: 'frtPcInr', label: 'Freight / pc INR', width: 130, right: true,
-    line: ({ r, s, leaf, frun }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : (r as FreightTagged).FrtIncluded ? <FreightValue line={r} run={frun} value={(r as FreightTagged).FrtPcInrSap}><span className="num" title={`Not added: the ${r.SelSource} rate already includes freight`}><Amt v={(r as FreightTagged).FrtPcInrSap ?? '0'} curr="INR" dp={4} /> <span className="text-2xs text-faint">not added</span></span></FreightValue> : r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcInr}><Amt v={r.FrtPcInr} curr="INR" dp={4} /></FreightValue> : null),
+    line: ({ r, s, leaf, frun }) => (!leaf ? null : s.changed && !s.frtPcInr.eq(D(r.FrtPcInr)) ? <span className="sim-val num">{fmtRate(s.frtPcInr, 'INR')}</span> : (r as FreightTagged).FrtIncluded ? <FreightValue line={r} run={frun} value={(r as FreightTagged).FrtPcInrSap}><span className="num" title={`Not added: the ${sourceLabel(r.SelSource)} rate already includes freight`}><Amt v={(r as FreightTagged).FrtPcInrSap ?? '0'} curr="INR" dp={4} /> <span className="text-2xs text-faint">not added</span></span></FreightValue> : r.FrtSrc ? <FreightValue line={r} run={frun} value={r.FrtPcInr}><Amt v={r.FrtPcInr} curr="INR" dp={4} /></FreightValue> : null),
   },
   {
     id: 'totPcInr', label: 'Total / pc INR', width: 136, right: true,

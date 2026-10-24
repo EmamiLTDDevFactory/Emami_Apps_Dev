@@ -26,7 +26,7 @@ import { WITH_FREIGHT_SOURCES, rateWithFreight, sourceOption, vendorOf, vendorTe
 export const RATE_TYPES = ['SELECTED', 'BUDGET', 'CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW', 'CHEAPEST'] as const;
 export type RateType = (typeof RATE_TYPES)[number];
 export const RATE_TYPE_LABEL: Record<RateType, string> = {
-  SELECTED: 'Selected (SAP)', BUDGET: 'Budget', CONTRACT: 'Contract', INFOREC: 'Info record', MARKT: 'Market', CONSUMP: 'Consumption', MBEW: 'MBEW', CHEAPEST: 'Cheapest',
+  SELECTED: 'Selected (SAP)', BUDGET: 'Budget', CONTRACT: 'Contract', INFOREC: 'Info record', MARKT: 'Market', CONSUMP: 'Consumption', MBEW: 'C-MAP', CHEAPEST: 'Cheapest',
 };
 /** Types that need the lazy rate options. */
 export const NEEDS_OPTIONS: RateType[] = ['CONTRACT', 'INFOREC', 'MARKT', 'CONSUMP', 'MBEW', 'CHEAPEST'];

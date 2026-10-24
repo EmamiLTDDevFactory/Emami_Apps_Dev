@@ -177,7 +177,7 @@ export function SavingsView({ lines, rates, query }: { lines: PlanLineWithOption
         <Stat label="Components with a saving" value={res.rows.filter((r) => r.best).length} sub={`of ${res.rows.length} components`} />
       </div>
       {!optionsReady && rates && (
-        <p className="text-xs text-muted">MBEW, Consumption and the cheapest SAP option need SAP&apos;s rate options.{' '}
+        <p className="text-xs text-muted">C-MAP, Consumption and the cheapest SAP option need SAP&apos;s rate options.{' '}
           {rates.status === 'loading' ? 'Loading…' : rates.status === 'unavailable' || rates.status === 'error' ? <>{rates.note} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></> : <button type="button" className="font-semibold text-accent underline" onClick={rates.request}>Load rate options</button>}
         </p>
       )}
