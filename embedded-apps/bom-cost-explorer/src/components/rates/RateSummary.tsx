@@ -22,6 +22,11 @@ const thN = `${th} text-right`;
 const td = 'px-2 py-1.5 align-top';
 const tdN = `${td} num text-right whitespace-nowrap`;
 const n = (d: { toFixed: (x: number) => string } | null | undefined, dp = 4) => (d ? Number(d.toFixed(dp)) : null);
+/** Not shown at FG level (per piece): Contract, Info record and Market - their + freight figures stay. */
+const FG_HIDDEN: RateType[] = ['CONTRACT', 'INFOREC', 'MARKT'];
+const FG_TYPES = RATE_TYPES.filter((t) => !FG_HIDDEN.includes(t));
+/** Lowest complete figure among the FG-level types. */
+const fgLowest = (f: FgRow, types: readonly RateType[]) => { const c = types.filter((t) => f.perPc[t].value && f.perPc[t].priced === f.leaves); return c.length ? c.reduce((a, t) => (f.perPc[t].value!.lt(f.perPc[a].value!) ? t : a)) : null; };
 const Swatch = ({ t }: { t: RateType }) => (['SELECTED', 'BUDGET', 'CHEAPEST'].includes(t) ? null : <span className="mr-1 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: sourceColorVar(t) }} />);
 
 export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; rates: RatesState; query: CostQuery }) {
@@ -29,6 +34,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
   useEffect(() => { request(); }, [request]);
   const optionsReady = rates.status === 'ready';
   const types = RATE_TYPES.filter((t) => optionsReady || !NEEDS_OPTIONS.includes(t));
+  const fgTypes = types.filter((t) => !FG_HIDDEN.includes(t));
   const s = useMemo(() => rateSummary(rows, query.explQty), [rows, query.explQty]);
   const [q, setQ] = useState('');
   const t = q.trim().toLowerCase();
@@ -41,8 +47,8 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
     const fgCols: XCol[] = [
       { header: 'Country', get: (i) => s.fgs[i].land1 }, { header: 'Plant', get: (i) => s.fgs[i].hwerks }, { header: 'FG', get: (i) => s.fgs[i].headmat },
       { header: 'Description', width: 30, get: (i) => s.fgs[i].headtxt },
-      ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
-      ...RATE_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
+      ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
+      ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
       ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
         { header: `${WITH_FREIGHT_LABEL[src]} / pc local`, dp: 4, get: (i) => n(s.fgs[i].withFrt[src].loc) },
         { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => s.fgs[i].withFrt[src].locCurr },
@@ -50,7 +56,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
       ]),
       { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].freightPc) },
       { header: 'Landed / pc INR (BOM total)', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].landedPc) },
-      { header: 'Lowest complete type', get: (i) => (s.fgs[i].cheapestType ? RATE_TYPE_LABEL[s.fgs[i].cheapestType!] : '') },
+      { header: 'Lowest complete type', get: (i) => { const t = fgLowest(s.fgs[i], FG_TYPES); return t ? RATE_TYPE_LABEL[t] : ''; } },
     ];
     const compCols = (list: ComponentRow[]): XCol[] => [
       { header: 'Component plant', get: (i) => list[i].werks }, { header: 'Component', get: (i) => list[i].idnrk }, { header: 'Description', width: 30, get: (i) => list[i].maktx },
@@ -90,11 +96,11 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
           <table className="w-full text-xs">
             <thead><tr>
               <th className={th}>FG</th>
-              {types.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
+              {fgTypes.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
               {optionsReady && <FrtHeads />}
               <th className={thN}>Freight</th><th className={thN}>Landed (BOM)</th>
             </tr></thead>
-            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={types} frt={optionsReady} />)}</tbody>
+            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={fgTypes} frt={optionsReady} />)}</tbody>
           </table>
           {!fgs.length && <p className="px-3 py-3 text-xs text-muted">No FG matches.</p>}
         </div>
@@ -117,8 +123,7 @@ function FrtHeads() {
 const locCell = (v: Decimal | null, curr: string) => (v ? <>{fmtRate(v)} <span className="text-2xs text-faint">{curr}</span></> : '—');
 
 function FgLine({ f, types, frt }: { f: FgRow; types: RateType[]; frt: boolean }) {
-  const complete = types.filter((t) => f.perPc[t].value && f.perPc[t].priced === f.leaves);
-  const low = complete.length ? complete.reduce((a, t) => (f.perPc[t].value!.lt(f.perPc[a].value!) ? t : a)) : null;
+  const low = fgLowest(f, types);
   return (
     <tr className="border-t border-line/60">
       <td className={td}><span className="font-mono font-semibold">{f.headmat}</span> <span className="text-muted">{f.headtxt}</span><div className="text-2xs text-faint">{f.land1} · {f.hwerks} · {f.leaves} components</div></td>
