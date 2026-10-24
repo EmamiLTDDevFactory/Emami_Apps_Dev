@@ -547,6 +547,42 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   });
   if (planRes) return planRes;
 
+  // ActivityCostSet (live on NGQ / NWP): routing activities per material x BOM alternative x period, shaped like the
+  // live rows - every row twice, two BOM alternatives with the same routing, ActGrp 'OTHER', ValuePc 0, a '000' row.
+  // FGs: machine, labour, power (packing line); SF bulk: machine, labour, power, steam. MOCK_SAP_ACTIVITY=missing -> 404.
+  if (set === 'ActivityCostSet') {
+    if (process.env.MOCK_SAP_ACTIVITY === 'missing') return odataError(404, '/IWBEP/CM_MGW_RT/020', "Resource not found for segment 'ActivityCostSet'");
+    const pf = parseFilter(sp.get('$filter') ?? '');
+    const mats = pf.get('Matnr') ?? [];
+    const plants = pf.get('Werks') ?? [];
+    if (!mats.length && !plants.length) return odataError(400, '/IWBEP/CM_MGW_RT/022', 'Material or plant is required');
+    await sleep(100, signal);
+    const poper = (pf.get('Poper') ?? ['007'])[0];
+    const gjahr = (pf.get('Gjahr') ?? ['2026'])[0];
+    const out: Record<string, unknown>[] = [];
+    let rowid = 0;
+    for (const w of plants.length ? plants : ['1000']) for (const m of mats) {
+      const bom = BOMS[m];
+      if (!bom || m === 'FG9000') continue;
+      const sf = m.startsWith('SF');
+      const acts: [string, string, string, number, number][] = sf
+        ? [['MACHRS', 'Machine Hours', 'MIN', 48, 69.84], ['LABHRS', 'Labour Hours', 'MIN', 44, 2.18], ['POWER', 'Power', 'KWH', 9.5, 5.82], ['STEAM', 'Steam', 'KG', 40, 2.91]]
+        : [['MACHRS', 'Machine Hours', 'MIN', 3, 69.84], ['LABHRS', 'Labour Hours', 'MIN', 80, 2.18], ['POWER', 'Power', 'KWH', 1.4, 5.82]];
+      const v = 1 + ((hash(`${w}${m}act`) % 7) - 3) / 100;
+      for (const stlal of ['1', '2']) for (const [i, [lstar, name, unit, q, price]] of acts.entries()) for (const per of [poper, ...(i === 0 && stlal === '1' ? ['000'] : [])]) for (let dup = 0; dup < 2; dup++) {
+        const actQty = q * v;
+        const p = per === '000' ? 0 : price;
+        out.push({
+          ...meta('ActivityCost', `ActivityCostSet(${++rowid})`), Rowid: rowid, Matnr: m, Maktx: MAT.get(m)?.Maktx ?? m, Werks: w, Stlnr: String(10000 + (hash(m) % 9000)).padStart(8, '0'), Stlal: stlal,
+          Plnnr: String(50000000 + (hash(m) % 90000)), Plnal: '1', Vornr: '0020', Resrc: sf ? 'MIXCR05' : 'PACKL01', ResrcTxt: sf ? 'Mixing vessel 5' : 'Packing line 1', Actseq: i + 2, Poper: per,
+          Kokrs: '1000', Kostl: `P${w}03`, Lstar: lstar, ActName: name, ActDesc: name, ActGrp: 'OTHER', GrpSeq: '99', BomUnit: bom.unit, BomQty: n(bom.base, 3), RcpQty: n(bom.base * 10, 3),
+          ActQty: n(actQty, 3), ActUnit: unit, Curr: '', ActPrice: n(p, 6), ActValue: n(actQty * p, 2), ValuePc: '0.000000', FxInr: '0.000000', ValuePcInr: '0.000000', NoPrice: 'X', Gjahr: gjahr, Versn: '0', AsofDate: null,
+        });
+      }
+    }
+    return json({ d: { results: out } });
+  }
+
   // ProcOrderCostSet (proposed, lib/costbreakup/procOrder): process-order actuals by cost element.
   // MOCK_SAP_PROCORDER=missing -> 404 like the live systems before SAP adds the set.
   if (set === 'ProcOrderCostSet') {
