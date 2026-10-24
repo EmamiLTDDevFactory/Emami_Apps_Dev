@@ -74,16 +74,16 @@ describe('rate summary with freight', () => {
 });
 
 describe('rate summary FG level', () => {
-  it('no Contract / Info record / Market columns per FG piece; the RM / PM tables keep them; + freight columns stay', () => {
+  it('FG level: Selected, Budget, Consumption, MBEW, Freight, Landed only; the RM / PM tables keep every column', () => {
     const rows = [leaf(2, 1, 'RM1', '10', '1', '2', { RateOptions: [opt({ Source: 'CONTRACT', RatePcInr: '9', RatePcLoc: '9' }), opt({ Source: 'MARKT', RatePcInr: '12', RatePcLoc: '12' })], FrtPcLoc: '1', LocCurr: 'INR' })];
     const ready = { status: 'ready', request: () => undefined, retest: () => undefined, note: '', rows: [] } as never;
     const html = renderToStaticMarkup(createElement(RateSummary, { rows: rows as never, rates: ready, query: { ...defaultQuery('B'), explQty: '1' } }));
     const [fg, comps] = html.split('RM rates (incl. perfume)');
-    for (const h of ['Contract</th>', 'Info record</th>', 'Market</th>']) {
+    for (const h of ['Contract</th>', 'Info record</th>', 'Market</th>', 'Cheapest</th>', 'Contract + freight (local)', 'Contract + freight (INR)', 'Info record + freight (local)', 'Info record + freight (INR)']) {
       expect(fg).not.toContain(h);
       expect(comps).toContain(h);
     }
-    for (const h of ['Selected (SAP)</th>', 'Budget</th>', 'Consumption</th>', 'MBEW</th>', 'Cheapest</th>', 'Contract + freight (INR)', 'Info record + freight (local)']) expect(fg).toContain(h);
+    for (const h of ['Selected (SAP)</th>', 'Budget</th>', 'Consumption</th>', 'MBEW</th>', 'Freight</th>', 'Landed (BOM)</th>']) expect(fg).toContain(h);
   });
 });
 

@@ -22,8 +22,8 @@ const thN = `${th} text-right`;
 const td = 'px-2 py-1.5 align-top';
 const tdN = `${td} num text-right whitespace-nowrap`;
 const n = (d: { toFixed: (x: number) => string } | null | undefined, dp = 4) => (d ? Number(d.toFixed(dp)) : null);
-/** Not shown at FG level (per piece): Contract, Info record and Market - their + freight figures stay. */
-const FG_HIDDEN: RateType[] = ['CONTRACT', 'INFOREC', 'MARKT'];
+/** Not shown at FG level (per piece): Contract, Info record, Market and Cheapest (and no rate + freight columns there). */
+const FG_HIDDEN: RateType[] = ['CONTRACT', 'INFOREC', 'MARKT', 'CHEAPEST'];
 const FG_TYPES = RATE_TYPES.filter((t) => !FG_HIDDEN.includes(t));
 /** Lowest complete figure among the FG-level types. */
 const fgLowest = (f: FgRow, types: readonly RateType[]) => { const c = types.filter((t) => f.perPc[t].value && f.perPc[t].priced === f.leaves); return c.length ? c.reduce((a, t) => (f.perPc[t].value!.lt(f.perPc[a].value!) ? t : a)) : null; };
@@ -49,11 +49,6 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
       { header: 'Description', width: 30, get: (i) => s.fgs[i].headtxt },
       ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].perPc[rt].value) })),
       ...FG_TYPES.map((rt): XCol => ({ header: `${RATE_TYPE_LABEL[rt]} priced`, get: (i) => `${s.fgs[i].perPc[rt].priced}/${s.fgs[i].leaves}` })),
-      ...WITH_FREIGHT_SOURCES.flatMap((src): XCol[] => [
-        { header: `${WITH_FREIGHT_LABEL[src]} / pc local`, dp: 4, get: (i) => n(s.fgs[i].withFrt[src].loc) },
-        { header: `${WITH_FREIGHT_LABEL[src]} local curr`, get: (i) => s.fgs[i].withFrt[src].locCurr },
-        { header: `${WITH_FREIGHT_LABEL[src]} / pc INR`, dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].withFrt[src].inr.value) },
-      ]),
       { header: 'Freight / pc INR', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].freightPc) },
       { header: 'Landed / pc INR (BOM total)', dp: 4, curr: 'INR', get: (i) => n(s.fgs[i].landedPc) },
       { header: 'Lowest complete type', get: (i) => { const t = fgLowest(s.fgs[i], FG_TYPES); return t ? RATE_TYPE_LABEL[t] : ''; } },
@@ -97,10 +92,9 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
             <thead><tr>
               <th className={th}>FG</th>
               {fgTypes.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
-              {optionsReady && <FrtHeads />}
               <th className={thN}>Freight</th><th className={thN}>Landed (BOM)</th>
             </tr></thead>
-            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={fgTypes} frt={optionsReady} />)}</tbody>
+            <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={fgTypes} />)}</tbody>
           </table>
           {!fgs.length && <p className="px-3 py-3 text-xs text-muted">No FG matches.</p>}
         </div>
@@ -108,7 +102,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
 
       <ComponentCard title="RM rates (incl. perfume) · INR per unit" list={rm} types={types} frt={optionsReady} />
       <ComponentCard title="PM rates · INR per unit" list={pm} types={types} frt={optionsReady} />
-      <p className="text-2xs text-muted">Bold = lowest of the row. FG figures are material cost per piece on each rate type; a grey figure is incomplete (some components have no rate of that type — hover for the count). Freight and landed are the BOM tree&apos;s values. Contract + freight and Info record + freight add the line&apos;s freight per unit to that source&apos;s rate, in local currency and INR.</p>
+      <p className="text-2xs text-muted">Bold = lowest of the row. FG figures are material cost per piece on each rate type; a grey figure is incomplete (some components have no rate of that type — hover for the count). Freight and landed are the BOM tree&apos;s values. In the RM / PM tables, Contract + freight and Info record + freight add the line&apos;s freight per unit to that source&apos;s rate, in local currency and INR.</p>
     </div>
   );
 }
@@ -122,7 +116,7 @@ function FrtHeads() {
 }
 const locCell = (v: Decimal | null, curr: string) => (v ? <>{fmtRate(v)} <span className="text-2xs text-faint">{curr}</span></> : '—');
 
-function FgLine({ f, types, frt }: { f: FgRow; types: RateType[]; frt: boolean }) {
+function FgLine({ f, types }: { f: FgRow; types: RateType[] }) {
   const low = fgLowest(f, types);
   return (
     <tr className="border-t border-line/60">
@@ -131,15 +125,6 @@ function FgLine({ f, types, frt }: { f: FgRow; types: RateType[]; frt: boolean }
         const x = f.perPc[t];
         const incomplete = x.value && x.priced < f.leaves;
         return <td key={t} className={cx(tdN, low === t && 'font-bold text-good', incomplete && 'text-faint')} title={`${x.priced} of ${f.leaves} components priced`}>{x.value ? fmtRate(x.value) : '—'}</td>;
-      })}
-      {frt && WITH_FREIGHT_SOURCES.flatMap((src) => {
-        const w = f.withFrt[src];
-        const part = w.inr.value && w.inr.priced < f.leaves;
-        const tip = `${w.inr.priced} of ${f.leaves} components priced by ${src}`;
-        return [
-          <td key={`${src}l`} className={cx(tdN, part && 'text-faint')} title={tip}>{locCell(w.loc, w.locCurr)}</td>,
-          <td key={`${src}i`} className={cx(tdN, part && 'text-faint')} title={tip}>{w.inr.value ? fmtRate(w.inr.value) : '—'}</td>,
-        ];
       })}
       <td className={tdN}>{f.freightPc ? fmtRate(f.freightPc) : '—'}</td>
       <td className={cx(tdN, 'font-semibold')}>{f.landedPc ? fmtRate(f.landedPc) : '—'}</td>
