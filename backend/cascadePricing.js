@@ -31,13 +31,55 @@ function abapName(k) {
     if (k === k.toUpperCase()) return k;
     return k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').toUpperCase();
 }
+/*
+   Until SAP returns one format everywhere (see the SAP error report, issues 4 and 5), rows coming back are aligned to
+   what the app sends: dates as YYYYMMDD (SAP returns "2026-11-01" in DATA and "/Date(ms)/" for Edm.DateTime) and
+   all-digit KUNNR / MATNR with leading zeros (SAP returns "510012" / "400003658"). Applying it twice changes nothing.
+*/
+const DATE_KEYS = new Set(['VFROM', 'VTO', 'VALIDFROM', 'VALIDTO', 'ZSUB_DATE', 'PDATE']);
+const PAD = { KUNNR: 10, MATNR: 18 };
+
+function ymd(v) {
+    if (typeof v !== 'string') return v;
+    const s = v.trim();
+    let m = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(s);
+    if (m) return `${m[1]}${m[2]}${m[3]}`;
+    m = /^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/.exec(s);
+    if (m) {
+        const d = new Date(Number(m[1]));
+        return Number.isNaN(d.getTime()) ? v : `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+    return v;
+}
+
+function alignValues(row) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    const out = { ...row };
+    for (const k of Object.keys(out)) {
+        if (DATE_KEYS.has(k)) out[k] = ymd(out[k]);
+        else if (PAD[k] && typeof out[k] === 'string' && /^\d+$/.test(out[k].trim())) out[k] = out[k].trim().padStart(PAD[k], '0');
+    }
+    return out;
+}
+
 function toAbapRow(r) {
     const out = {};
     for (const [k, v] of Object.entries(r || {})) {
         if (k === '__metadata' || (v && typeof v === 'object' && v.__deferred)) continue;
         out[abapName(k)] = v;
     }
-    return out;
+    return alignValues(out);
+}
+
+/** The action's DATA as a string, with any rows in it aligned the same way. */
+function alignData(data) {
+    if (data === undefined || data === null || data === '') return '';
+    let v = data;
+    if (typeof v === 'string') {
+        try { v = JSON.parse(v); } catch { return data; }
+    }
+    if (Array.isArray(v)) return JSON.stringify(v.map(alignValues));
+    return typeof data === 'string' ? data : JSON.stringify(data);
 }
 
 /**
@@ -125,7 +167,7 @@ router.post('/action', async (req, res) => {
             processed: Number(r?.PROCESSED ?? 0) || 0,
             failed: Number(r?.FAILED ?? 0) || 0,
             message: String(r?.MESSAGE ?? ''),
-            data: data === undefined || data === null || data === '' ? '' : typeof data === 'string' ? data : JSON.stringify(data),
+            data: alignData(data),
         };
         console.info(`[cascade-pricing] ${req.email} ${action} rows=${rows} processed=${out.processed} failed=${out.failed} ms=${Date.now() - t0} id=${body.Requestid}`);
         res.json(out);
@@ -139,3 +181,5 @@ module.exports = router;
 module.exports.abapName = abapName;
 module.exports.toAbapRow = toAbapRow;
 module.exports.actionRequest = actionRequest;
+module.exports.alignValues = alignValues;
+module.exports.alignData = alignData;

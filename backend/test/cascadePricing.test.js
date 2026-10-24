@@ -7,7 +7,7 @@ test('OData property names become the ABAP names the app uses', () => {
   const cases = { Matnr: 'MATNR', CascadeDesc: 'CASCADE_DESC', Zbusiness: 'ZBUSINESS', SLand1: 'S_LAND1', DLand1: 'D_LAND1', Name1: 'NAME1', ZiRrpPerPc: 'ZI_RRP_PER_PC',
     ZpttEAp: 'ZPTT_E_AP', ZcifF: 'ZCIF_F', ZcifAfterAp: 'ZCIF_AFTER_AP', ZdamZdax: 'ZDAM_ZDAX', LWaerk: 'L_WAERK', BWaerk: 'B_WAERK', ZrrpPerDz: 'ZRRP_PER_DZ', Validfrom: 'VALIDFROM', Light: 'LIGHT', ZpriceIn: 'ZPRICE_IN', MATNR: 'MATNR' };
   for (const [k, v] of Object.entries(cases)) assert.equal(abapName(k), v, k);
-  assert.deepEqual(toAbapRow({ __metadata: { uri: 'x' }, Matnr: '400003658', CascadeDesc: '' }), { MATNR: '400003658', CASCADE_DESC: '' });
+  assert.deepEqual(toAbapRow({ __metadata: { uri: 'x' }, Matnr: '400003658', CascadeDesc: '' }), { MATNR: '000000000400003658', CASCADE_DESC: '' });
 });
 
 function withEnv(env, fn) {
@@ -70,4 +70,18 @@ test('ActionRequest body uses the NGD property names; dates as Edm.DateTime, lef
   assert.equal('Validto' in b, false);
   assert.equal(b.Payload, '{"ROWS":[{"MATNR":"1"}]}');
   assert.equal('RequestId' in b || 'ValidFrom' in b, false);
+});
+
+test('rows from SAP: dates to YYYYMMDD, all-digit KUNNR / MATNR with leading zeros; idempotent', () => {
+  const { alignValues, alignData, toAbapRow } = require('../cascadePricing');
+  const r = alignValues({ KUNNR: '510012', MATNR: '400003658', VFROM: '2026-11-01', VTO: '2027-03-31T00:00:00', VALIDFROM: '/Date(1793491200000)/', ZSUB_DATE: '', VKORG: '5100', NAME1: 'X' });
+  assert.deepEqual(r, { KUNNR: '0000510012', MATNR: '000000000400003658', VFROM: '20261101', VTO: '20270331', VALIDFROM: '20261101', ZSUB_DATE: '', VKORG: '5100', NAME1: 'X' });
+  assert.deepEqual(alignValues(r), r);
+  assert.equal(alignValues({ MATNR: 'FG-ABC' }).MATNR, 'FG-ABC'); // alphanumeric kept as is
+  assert.deepEqual(toAbapRow({ Matnr: '400003658', CascadeDesc: '' }), { MATNR: '000000000400003658', CASCADE_DESC: '' });
+  const d = JSON.parse(alignData('[{"KUNNR":"510012","MATNR":"400003658","KSCHL":"ZCIF","MESSAGE":"x","VFROM":"2026-11-01"}]'));
+  assert.deepEqual(d[0], { KUNNR: '0000510012', MATNR: '000000000400003658', KSCHL: 'ZCIF', MESSAGE: 'x', VFROM: '20261101' });
+  assert.equal(alignData(''), '');
+  assert.equal(alignData('not json'), 'not json');
+  assert.equal(alignData([{ MATNR: '1' }]), '[{"MATNR":"000000000000000001"}]');
 });
