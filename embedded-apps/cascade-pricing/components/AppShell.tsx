@@ -10,7 +10,7 @@ import StatusBar from './StatusBar';
 import FailureList from './FailureList';
 import { Button, TextField, dateError, type TabProps } from './ui';
 import { IconArrowLeft, IconCalculator, IconCalendar, IconChart, IconCheckCircle, IconFileCheck, IconLayers, IconMenu, IconUpload, IconUser, IconX } from './icons';
-import { MOCK_MODE, checkHealth } from '@/lib/api';
+import { checkHealth } from '@/lib/api';
 import type { FailureItem, StatusMessage, Tone } from '@/lib/types';
 
 type Icon = ComponentType<{ size?: number }>;
@@ -130,7 +130,7 @@ export default function AppShell() {
           ))}
         </nav>
         <div className="border-t border-sap-line px-4 py-3 text-[11px] leading-snug text-sap-muted">
-          Prices come from SAP <span className="font-mono">ZMM_CASCADE_SRV</span>. {MOCK_MODE ? 'Demo data in this build.' : health.state === 'ok' ? `Connected · ${health.count.toLocaleString('en-IN')} cascade materials.` : health.state === 'down' ? 'SAP connection unavailable.' : 'Checking the SAP connection…'}
+          Prices come from SAP <span className="font-mono">ZMM_CASCADE_SRV</span>. {health.state === 'ok' ? `Connected · ${health.count.toLocaleString('en-IN')} cascade materials.` : health.state === 'down' ? 'SAP connection unavailable.' : 'Checking the SAP connection…'}
         </div>
       </aside>
 
@@ -145,9 +145,7 @@ export default function AppShell() {
           {!wide && <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="p-1 text-sap-ink"><IconMenu size={22} /></button>}
           <h1 className="truncate text-[15px] font-extrabold text-sap-ink">Cascade Pricing</h1>
           <span className="hidden items-center gap-1 rounded-full bg-plum/10 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-plum sm:inline-flex"><CurrentIcon size={11} /> {current.label}</span>
-          {MOCK_MODE
-            ? <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-800 ring-1 ring-amber-300" title="Demo data: changes are kept only until the page is reloaded.">Mock data</span>
-            : <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200" title={`SAP system ${SAP_SYSTEM}`}>SAP {SAP_SYSTEM}</span>}
+          <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200" title={`SAP system ${SAP_SYSTEM}`}>SAP {SAP_SYSTEM}</span>
           <div className="flex-1" />
           <div className="flex flex-col items-end gap-0.5">
             <div className="flex flex-wrap items-center gap-3" aria-label="Validity for approvals" title="Valid From and Valid To are required for Send for Approval. For Approve, leave blank to keep the stored dates.">

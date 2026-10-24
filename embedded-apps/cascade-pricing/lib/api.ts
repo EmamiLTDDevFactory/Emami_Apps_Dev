@@ -1,14 +1,11 @@
-import { mockAction, mockGetSet, mockHealth, MockError } from './mock';
 import type { ActionName, ActionPayload, ActionResult, CascadeSet, Row } from './types';
 
 /**
  * The app's only way to SAP. The browser never calls SAP: in live mode every call goes to the Emami Apps backend
  * (backend/cascadePricing.js, mounted at <api>/me/cascade-pricing), which holds the SAP connection and checks the hub
  * session and the Cascade Pricing grant. The hub's own sign-in token is read to authenticate the call; this app stores
- * nothing in the browser. Mock mode (CASCADE_MOCK, local development and builds without the service) answers the same
- * contract from lib/mock.ts.
+ * nothing in the browser. There is no mock or demo data: every screen shows SAP's data.
  */
-export const MOCK_MODE = process.env.NEXT_PUBLIC_CASCADE_MOCK !== 'false';
 
 const HUB_TOKEN_KEY = 'emami_apps_session_token';
 
@@ -64,7 +61,6 @@ async function call<T>(path: string, init?: { method: 'POST'; body: unknown }): 
 
 /** Rows of an entity set. */
 export async function getCascade(set: CascadeSet): Promise<Row[]> {
-  if (MOCK_MODE) return mockGetSet(set);
   const rows = await call<unknown>(`/cascade/${encodeURIComponent(set)}`);
   if (!Array.isArray(rows)) throw new ApiError('Unexpected answer from the pricing service.', 502);
   return rows as Row[];
@@ -80,21 +76,12 @@ function stripPayload(p?: ActionPayload): ActionPayload | undefined {
 /** One action through the backend; dates only when filled. */
 export async function runAction(action: ActionName, payload?: ActionPayload, vfrom?: string, vto?: string): Promise<ActionResult> {
   const req = { action, payload: stripPayload(payload), ...(vfrom ? { vfrom } : {}), ...(vto ? { vto } : {}) };
-  if (MOCK_MODE) {
-    try {
-      return await mockAction(req);
-    } catch (e) {
-      if (e instanceof MockError) throw new ApiError(e.message, e.status);
-      throw e;
-    }
-  }
   const r = await call<Partial<ActionResult>>('/action', { method: 'POST', body: req });
   return { processed: Number(r?.processed ?? 0) || 0, failed: Number(r?.failed ?? 0) || 0, message: String(r?.message ?? ''), data: typeof r?.data === 'string' ? r.data : '' };
 }
 
 /** SAP connectivity for the banner and footer. */
 export async function checkHealth(): Promise<{ ok: boolean; count?: number; error?: string }> {
-  if (MOCK_MODE) return mockHealth();
   try {
     return await call<{ ok: boolean; count?: number }>('/health');
   } catch (e) {

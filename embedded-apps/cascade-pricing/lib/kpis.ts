@@ -1,7 +1,7 @@
 import { priceKey, type Row } from './types';
 
 /**
- * Standard cascade-pricing KPIs, all from the row values alone (works the same on SAP data and the mock).
+ * Standard cascade-pricing KPIs, all from the row values SAP returns.
  * Shares are % of RRP excl VAT (the consumer price the trade and the company split); the CIF side is converted back
  * to local currency with the rate implied by the row (CIF in local = DLC - duty - C&F - LC charge; fx = that / CIF).
  * Averages are simple (no volumes in the contract).

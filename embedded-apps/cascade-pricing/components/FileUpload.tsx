@@ -2,7 +2,6 @@
 import { useRef } from 'react';
 import { Button } from './ui';
 import { RATE_FILE_KEYS, SIM_FILE_KEYS } from '@/lib/columns';
-import { sampleRateRows, sampleSimRows } from '@/lib/mock';
 import type { Row } from '@/lib/types';
 
 export interface FileUploadProps {
@@ -45,7 +44,8 @@ export default function FileUpload({ id, label, disabled, kind, onRows, onError,
 
   async function downloadTemplate() {
     const { templateWorkbook } = await import('@/lib/excel');
-    save(kind === 'rate' ? templateWorkbook([...RATE_FILE_KEYS], sampleRateRows()) : templateWorkbook([...SIM_FILE_KEYS], sampleSimRows()), templateName);
+    // Header row only (the file layout); rows start in row 2.
+    save(templateWorkbook(kind === 'rate' ? [...RATE_FILE_KEYS] : [...SIM_FILE_KEYS], []), templateName);
   }
 
   return (

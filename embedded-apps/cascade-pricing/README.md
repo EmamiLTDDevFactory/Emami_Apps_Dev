@@ -6,8 +6,8 @@ by the hub at `/apps/cascade-pricing/` (built by the repo root `scripts/build-em
 
 ```
 npm install
-npm run dev        # http://localhost:3310/apps/cascade-pricing/
-npm test           # excel parsing, cascade maths, mock workflow, KPIs
+npm run dev        # http://localhost:3310/apps/cascade-pricing/ (DEV backend, live SAP NGD)
+npm test           # excel parsing, formatting, the API client against a stubbed backend, KPIs
 npm run build      # static export -> dist/
 ```
 
@@ -23,8 +23,8 @@ SAP's OData names (`Matnr`, `CascadeDesc`, `ZiRrpPerPc`) are returned as the ABA
 `CASCADE_DESC`, `ZI_RRP_PER_PC`). ActionRequestSet on NGD: `Requestid`, `Action`, `Payload` (JSON string), `Validfrom` /
 `Validto` (Edm.DateTime, left out when blank), `Result` (JSON string with PROCESSED / FAILED / MESSAGE / DATA).
 
-Deployed builds are live; local `npm run dev` uses the mock (`lib/mock.ts`, same contract). `CASCADE_MOCK=true|false`
-overrides either.
+There is no mock or demo data: every build, including local `npm run dev`, reads SAP through the backend (local
+development uses the DEV backend and needs a hub sign-in token in the browser).
 
 ## Tabs
 1. Cascade Material Extraction · 2. Cascade Rate Upload · 3. Pricing Simulation · 4. Condition Creation ·
