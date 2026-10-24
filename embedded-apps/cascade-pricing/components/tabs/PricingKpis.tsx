@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, TabPanelHeader, Toolbar, type TabProps } from '../ui';
-import { getSet, parseRows, postAction } from '@/lib/api';
+import { getCascade, parseDataArray, runAction } from '@/lib/api';
 import { fmt2, fmtDate, fmtPct } from '@/lib/format';
 import { GUARDRAILS, computeKpis } from '@/lib/kpis';
 import type { Row } from '@/lib/types';
@@ -34,7 +34,7 @@ const th = 'whitespace-nowrap border-b border-sap-line px-2 py-1 text-left text-
 const td = 'whitespace-nowrap border-b border-sap-line px-2 py-1';
 
 /** Pricing KPIs: price waterfall, realisation and margins by market, price corridor, guardrails and version changes. */
-export default function PricingKpis({ active, busy, setStatus }: TabProps) {
+export default function PricingKpis({ active, busy, showMessage }: TabProps) {
   const [data, setData] = useState<{ review: Row[]; pending: Row[]; history: Row[]; materials: Row[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [market, setMarket] = useState('');
@@ -43,17 +43,19 @@ export default function PricingKpis({ active, busy, setStatus }: TabProps) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [review, pending, materials] = await Promise.all([getSet('ApprovalSet'), getSet('ConditionPendingSet'), getSet('CascadeMapSet')]);
+      // A set SAP cannot serve right now counts as empty here (its own tab shows the error).
+      const safe = (p: Promise<Row[]>) => p.catch(() => [] as Row[]);
+      const [review, pending, materials] = await Promise.all([safe(getCascade('ApprovalSet')), safe(getCascade('ConditionPendingSet')), safe(getCascade('CascadeMapSet'))]);
       const all = [...review, ...pending.filter((p) => !review.some((r) => r.MATNR === p.MATNR && r.KUNNR === p.KUNNR && r.ZVERSION === p.ZVERSION))];
-      const history = all.length ? parseRows(await postAction({ action: 'COMPARE', payload: { ROWS: all } })) : [];
+      const history = all.length ? parseDataArray(await runAction('COMPARE', { ROWS: all }).catch(() => ({ processed: 0, failed: 0, message: '', data: '' }))) : [];
       setData({ review, pending, history, materials });
       loaded.current = true;
     } catch (e) {
-      setStatus({ busy: false, message: e instanceof Error ? e.message : 'Could not load the KPIs.', tone: 'error' });
+      showMessage(e instanceof Error ? e.message : 'Could not load the KPIs.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [setStatus]);
+  }, [showMessage]);
 
   useEffect(() => { if (active && !loaded.current) void load(); }, [active, load]);
   // Fresh numbers each time the tab is opened again after other tabs changed data.

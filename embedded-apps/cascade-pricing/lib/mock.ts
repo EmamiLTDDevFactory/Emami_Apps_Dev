@@ -5,9 +5,9 @@
  * Reject turns a row red again, Delete removes it, Approve Simulation approves straight from the simulation.
  * Customer names are fictional; materials are Emami export SKUs. Nothing is persisted: a reload starts again.
  */
-import { RATE_COLUMNS } from './columns';
+import { RATE_FILE_KEYS } from './columns';
 import { buildCascade, ratesFromRateRow, type CascadeRates } from './cascade';
-import { DATED_ACTIONS, priceKey, rowKey, type ActionRequest, type ActionResult, type CascadeSet, type Row } from './types';
+import { priceKey, rowKey, type ActionRequest, type ActionResult, type CascadeSet, type FailureItem, type Row } from './types';
 
 export class MockError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -73,7 +73,7 @@ function cascadeRow(m: Market, mat: Material, rates: CascadeRates, version: numb
   return {
     S_LAND1: m.sLand, D_LAND1: m.dLand, VKORG: m.vkorg, KUNNR: m.kunnr, NAME1: m.name, MATNR: mat.matnr, MAKTX: mat.maktx,
     CASCADE_DESC: mat.desc, ZSKUSIZE: mat.size, ZVERSION: String(version), VALIDFROM: vfrom, VALIDTO: vto, L_WAERK: m.curr, B_WAERK: 'USD',
-    ...buildCascade(rates), LIGHT: state ? LIGHT[state] : '', STATUS: state ?? '',
+    WERKS: m.werks, CHARG: '', ZPRICE_IN: 0, ...buildCascade(rates), LIGHT: state ? LIGHT[state] : '', STATUS: state ?? '',
   };
 }
 
@@ -132,25 +132,49 @@ export async function mockGetSet(set: CascadeSet): Promise<Row[]> {
 
 const result = (processed: number, failed: number, message: string, data: unknown = ''): ActionResult => ({ processed, failed, message, data: data === '' ? '' : JSON.stringify(data) });
 
+const YMD8 = /^\d{8}$/;
+const ymdOk = (v: unknown) => typeof v === 'string' && YMD8.test(v);
+
+/** Health in mock mode: always connected, the material count as SAP's would be. */
+export async function mockHealth(): Promise<{ ok: true; count: number }> {
+  await delay(100);
+  return { ok: true, count: MATERIALS.length };
+}
+
 export async function mockAction(req: ActionRequest): Promise<ActionResult> {
   await delay(400);
   const s = db();
   const rows = req.payload?.ROWS ?? [];
-  if (!rows.length) throw new MockError('Select at least one row', 400);
-  if (DATED_ACTIONS.has(req.action) && (!/^\d{8}$/.test(req.vfrom ?? '') || !/^\d{8}$/.test(req.vto ?? ''))) throw new MockError('Valid From and Valid To (YYYYMMDD) are required for this action.', 400);
+  const rateRows = req.payload?.RATE_ROWS ?? [];
   const find = (r: Row) => s.rows.find((x) => rowKey(x) === rowKey(r));
+  const mat = (matnr: string) => MATERIALS.find((x) => x.matnr === matnr);
   let ok = 0;
   let bad = 0;
 
+  if (req.action === 'ENRICH_RATES' || req.action === 'SAVE_RATES') {
+    if (!rateRows.length) throw new MockError('No rate rows were sent.', 400);
+  } else if (!rows.length) {
+    throw new MockError('Select at least one row', 400);
+  }
+  if (req.action === 'SEND_APPROVAL' && (!ymdOk(req.vfrom) || !ymdOk(req.vto))) throw new MockError('Valid From and Valid To (YYYYMMDD) are required for Send for Approval.', 400);
+
   switch (req.action) {
+    case 'ENRICH_RATES': {
+      const out = rateRows.map((r) => { const m = mat(String(r.MATNR)); return { ...r, MAKTX: m?.maktx ?? '', CASCADE_DESC: m?.desc ?? '' }; });
+      const unknown = out.filter((r) => !r.MAKTX).length;
+      return result(out.length, 0, `${out.length} rate row(s) checked against the material master${unknown ? `; ${unknown} material(s) not found` : ''}.`, out);
+    }
     case 'SAVE_RATES': {
-      for (const r of rows) {
+      const failures: FailureItem[] = [];
+      for (const r of rateRows) {
+        const why = !mat(String(r.MATNR)) ? 'Material is not maintained for cascade pricing' : !ymdOk(r.VFROM) || !ymdOk(r.VTO) ? 'Valid From / Valid To missing or invalid' : String(r.VFROM) > String(r.VTO) ? 'Valid From is after Valid To' : '';
+        if (why) { failures.push({ VKORG: '', KUNNR: '', MATNR: String(r.MATNR ?? ''), KSCHL: String(r.ZRRP_KSCHL || 'ZRRP'), MESSAGE: why }); bad++; continue; }
         const k = [r.LLAND, r.MATNR, r.VFROM, r.VTO].join('|');
         const i = s.rates.findIndex((x) => [x.LLAND, x.MATNR, x.VFROM, x.VTO].join('|') === k);
         if (i >= 0) s.rates[i] = { ...r }; else s.rates.push({ ...r });
         ok++;
       }
-      return result(ok, 0, `${ok} rate row(s) saved as condition records.`);
+      return result(ok, bad, `${ok} rate row(s) saved as condition records${bad ? `; ${bad} failed` : ''}.`, failures.length ? failures : '');
     }
     case 'RUN_SIM': {
       const pdate = req.payload?.PARAMS?.PDATE || '';
@@ -158,12 +182,15 @@ export async function mockAction(req: ActionRequest): Promise<ActionResult> {
       const missing: string[] = [];
       for (const r of rows) {
         const m = MARKETS.find((x) => x.kunnr === r.KUNNR && (!r.VKORG || x.vkorg === r.VKORG));
-        const mat = MATERIALS.find((x) => x.matnr === r.MATNR);
-        if (!m || !mat) { bad++; missing.push(`${r.KUNNR}/${r.MATNR}`); continue; }
-        const rate = s.rates.filter((x) => x.LLAND === m.sLand && x.MATNR === mat.matnr && (!pdate || (x.VFROM <= pdate && x.VTO >= pdate))).pop();
-        const rates = rate ? ratesFromRateRow(rate, m.fx) : marketRates(m, listPrice(m, mat));
-        const row = cascadeRow(m, mat, rates, nextVersion(s.rows, priceKey({ S_LAND1: m.sLand, D_LAND1: m.dLand, VKORG: m.vkorg, KUNNR: m.kunnr, MATNR: mat.matnr })), '', '', null);
-        out.push({ ...row, L_WAERK: r.L_WAERK || row.L_WAERK, B_WAERK: r.B_WAERK || row.B_WAERK, WERKS: r.WERKS, CHARG: r.CHARG });
+        const mt = mat(String(r.MATNR));
+        if (!m || !mt) { bad++; missing.push(`${r.KUNNR}/${r.MATNR}`); continue; }
+        const rate = s.rates.filter((x) => x.LLAND === m.sLand && x.MATNR === mt.matnr && (!pdate || (x.VFROM <= pdate && x.VTO >= pdate))).pop();
+        const base = rate ? ratesFromRateRow(rate, m.fx) : marketRates(m, listPrice(m, mt));
+        // Always from the base price: the factor changes RRP and never compounds over runs.
+        const factor = Number(r.ZPRICE_IN) || 0;
+        const rates = { ...base, rrpInclVat: Math.round(base.rrpInclVat * (1 + factor / 100) * 100) / 100 };
+        const row = cascadeRow(m, mt, rates, nextVersion(s.rows, priceKey({ S_LAND1: m.sLand, D_LAND1: m.dLand, VKORG: m.vkorg, KUNNR: m.kunnr, MATNR: mt.matnr })), '', '', null);
+        out.push({ ...row, L_WAERK: r.L_WAERK || row.L_WAERK, B_WAERK: r.B_WAERK || row.B_WAERK, WERKS: r.WERKS || row.WERKS, CHARG: r.CHARG ?? '', ZPRICE_IN: factor });
         ok++;
       }
       return result(ok, bad, `Simulation priced ${ok} row(s)${bad ? `; ${bad} without customer or material master (${missing.slice(0, 3).join(', ')})` : ''}.`, out);
@@ -172,9 +199,7 @@ export async function mockAction(req: ActionRequest): Promise<ActionResult> {
     case 'APPROVE_SIM': {
       const state: State = req.action === 'SEND_APPROVAL' ? 'P' : 'A';
       for (const r of rows) {
-        const { WERKS: _w, CHARG: _c, ...base } = r;
-        void _w; void _c;
-        s.rows.push({ ...base, ZVERSION: String(nextVersion(s.rows, priceKey(r))), VALIDFROM: req.vfrom, VALIDTO: req.vto, LIGHT: LIGHT[state], STATUS: state });
+        s.rows.push({ ...r, ZVERSION: String(nextVersion(s.rows, priceKey(r))), VALIDFROM: req.vfrom || r.VALIDFROM || '', VALIDTO: req.vto || r.VALIDTO || '', LIGHT: LIGHT[state], STATUS: state });
         ok++;
       }
       return result(ok, 0, req.action === 'SEND_APPROVAL' ? `${ok} row(s) sent for approval.` : `${ok} row(s) approved from the simulation; they are now in Condition Creation.`);
@@ -186,7 +211,8 @@ export async function mockAction(req: ActionRequest): Promise<ActionResult> {
         if (!x || x.STATUS === 'C') { bad++; continue; }
         x.STATUS = req.action === 'APPROVE' ? 'A' : 'R';
         x.LIGHT = LIGHT[x.STATUS as State];
-        if (req.action === 'APPROVE') { x.VALIDFROM = req.vfrom; x.VALIDTO = req.vto; }
+        // Approve: blank dates keep the stored ones.
+        if (req.action === 'APPROVE') { if (req.vfrom) x.VALIDFROM = req.vfrom; if (req.vto) x.VALIDTO = req.vto; }
         ok++;
       }
       return result(ok, bad, `${ok} row(s) ${req.action === 'APPROVE' ? 'approved' : 'rejected'}${bad ? `, ${bad} not found or already in SAP` : ''}.`);
@@ -198,16 +224,19 @@ export async function mockAction(req: ActionRequest): Promise<ActionResult> {
         s.rows.splice(i, 1);
         ok++;
       }
-      return result(ok, bad, `${ok} record(s) deleted${bad ? `, ${bad} not found` : ''}.`);
+      return result(ok, bad, `${ok} record(s) deleted from ZMM_CASCADE${bad ? `, ${bad} not found` : ''}.`);
     }
     case 'CREATE_COND': {
+      const failures: FailureItem[] = [];
       for (const r of rows) {
         const x = find(r);
-        if (!x || x.STATUS !== 'A') { bad++; continue; }
+        if (!x || x.STATUS !== 'A') { bad++; failures.push({ VKORG: String(r.VKORG ?? ''), KUNNR: String(r.KUNNR ?? ''), MATNR: String(r.MATNR ?? ''), KSCHL: '', MESSAGE: 'Not approved, or no longer pending' }); continue; }
+        // Nigeria has no condition table access in the demo: shows how failures are listed.
+        if (x.S_LAND1 === 'NG') { bad++; failures.push({ VKORG: x.VKORG, KUNNR: x.KUNNR, MATNR: x.MATNR, KSCHL: 'ZCIF', MESSAGE: 'No access to condition table A305 for sales org 1100 / NG' }); continue; }
         x.STATUS = 'C';
         ok++;
       }
-      return result(ok, bad, `Condition records created for ${ok} row(s)${bad ? `; ${bad} skipped (not approved)` : ''}.`);
+      return result(ok, bad, `Condition records created for ${ok} row(s)${bad ? `; ${bad} failed` : ''}.`, failures.length ? failures : '');
     }
     case 'COMPARE': {
       const keys = new Set(rows.map(priceKey));
@@ -224,7 +253,7 @@ export async function mockAction(req: ActionRequest): Promise<ActionResult> {
 export function sampleRateRows(): (string | number)[][] {
   return [MARKETS[0], MARKETS[3]].map((m) => {
     const r = rateRow(m, MATERIALS[0], listPrice(m, MATERIALS[0]));
-    return RATE_COLUMNS.map(({ key: k }) => (k === 'VFROM' ? '01.04.2026' : k === 'VTO' ? '31.03.2027' : k === 'MATNR' ? '400012001' : r[k]));
+    return RATE_FILE_KEYS.map((k) => (k === 'VFROM' ? '01.04.2026' : k === 'VTO' ? '31.03.2027' : k === 'MATNR' ? '400012001' : r[k]));
   });
 }
 

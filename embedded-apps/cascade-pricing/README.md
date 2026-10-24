@@ -12,14 +12,19 @@ npm run build      # static export -> dist/
 ```
 
 ## Data
-The browser never talks to SAP. `lib/api.ts` calls the service that fronts it:
-`GET <base>/cascade/{CascadeMapSet|ApprovalSet|ConditionPendingSet}` and `POST <base>/action`
-(`SEND_APPROVAL, APPROVE, APPROVE_SIM, REJECT, DELETE, CREATE_COND, RUN_SIM, SAVE_RATES, COMPARE`).
+The browser never calls SAP. The app is a static export, so its "route handlers" live on the Emami Apps backend:
+`backend/cascadePricing.js` (mounted at `<api>/me/cascade-pricing`: `GET /health`, `GET /cascade/{set}`, `POST /action`)
+and `backend/cascadeSap.js` (`sapGet` / `sapAction`: Basic auth, sap-client, CSRF token + cookies, one retry on 403).
+Every call needs the hub session and a Cascade Pricing grant. Server env (never committed):
+`CASCADE_SAP_ODATA_BASE` (DEV: the Azure SAP gateway + `/api/NGD/ZMM_CASCADE_SRV_SRV`, which signs in and does CSRF),
+optional `CASCADE_SAP_CLIENT`, `CASCADE_SAP_USER`, `CASCADE_SAP_PASSWORD` for a direct SAP URL.
 
-The service is not available yet, so **mock mode is on by default** (`lib/mock.ts`: in-memory, same contract and
-workflow, fictional customers, nothing persisted). To use the real service, build with
-`CASCADE_MOCK=false CASCADE_API_BASE=https://<host>/<path>`. Authorisation must be enforced by that service; this app
-has no login UI of its own.
+SAP's OData names (`Matnr`, `CascadeDesc`, `ZiRrpPerPc`) are returned as the ABAP names the app uses (`MATNR`,
+`CASCADE_DESC`, `ZI_RRP_PER_PC`). ActionRequestSet on NGD: `Requestid`, `Action`, `Payload` (JSON string), `Validfrom` /
+`Validto` (Edm.DateTime, left out when blank), `Result` (JSON string with PROCESSED / FAILED / MESSAGE / DATA).
+
+Deployed builds are live; local `npm run dev` uses the mock (`lib/mock.ts`, same contract). `CASCADE_MOCK=true|false`
+overrides either.
 
 ## Tabs
 1. Cascade Material Extraction · 2. Cascade Rate Upload · 3. Pricing Simulation · 4. Condition Creation ·

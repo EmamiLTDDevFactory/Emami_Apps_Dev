@@ -1,74 +1,99 @@
 'use client';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import DataTable from '../DataTable';
+import ExportButton from '../ExportButton';
 import FileUpload from '../FileUpload';
-import { Button, TabPanelHeader, TextField, Toolbar, errorStatus, type TabProps } from '../ui';
-import { parseRows, postAction } from '@/lib/api';
-import { CASCADE_COLUMNS, SIM_INPUT_COLUMNS } from '@/lib/columns';
-import { isYmd } from '@/lib/format';
-import { rowKey, type Row } from '@/lib/types';
+import HistoryPanel from '../HistoryPanel';
+import { Button, TabPanelHeader, TextField, Toolbar, optionalDatesError, requiredDatesError, type TabProps } from '../ui';
+import { parseDataArray } from '@/lib/api';
+import { SIM_COLS, SIM_FILE_KEYS, SIM_INPUT_COLS } from '@/lib/columns';
+import { FACTOR_INPUT, YMD, factorError, factorNumber, todayYmd } from '@/lib/format';
+import { makeRowId, rowKey, type Row, type SimRow } from '@/lib/types';
 import { useBusyAction } from '@/lib/useBusyAction';
 import { useSelection } from '@/lib/useSelection';
 
-const today = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+/** The simulation input of a row (uploaded or already simulated): file columns + the factor as a number (blank = 0). */
+const toInput = (r: Row): Row => ({ ...Object.fromEntries(SIM_FILE_KEYS.map((k) => [k, r[k] ?? ''])), ZPRICE_IN: factorNumber(r.ZPRICE_IN) });
+const validate = (key: string, v: unknown) => (key === 'ZPRICE_IN' ? factorError(v) : '');
 
-/** Pricing Simulation: price uploaded customer x material rows in SAP, then send them for approval or approve them. */
-export default function PricingSimulation({ busy, setStatus, dates }: TabProps) {
-  const [rows, setRows] = useState<Row[]>([]);
+/** Pricing Simulation: price uploaded customer x material rows in SAP with an optional Pricing Factor %, then send for approval, approve or compare. */
+export default function PricingSimulation({ busy, setBusy, showMessage, setFailures, vfrom, vto }: TabProps) {
+  const [rows, setRows] = useState<SimRow[]>([]);
   const [simulated, setSimulated] = useState(false);
-  const [params, setParams] = useState({ BUKRS: '1100', KALSM: 'ZEXPRC', PDATE: today() });
-  const sel = useSelection(rows, 'SimRows');
-  const clear = sel.clear;
-  const run = useBusyAction({ setStatus, clearSelection: clear });
+  const [params, setParams] = useState({ BUKRS: '1100', KALSM: 'ZEXPRC', PDATE: todayYmd() });
+  const [history, setHistory] = useState<Row[] | null>(null);
+  const sel = useSelection(rows);
+  const run = useBusyAction({ setBusy, showMessage });
+  const pdateErr = YMD.test(params.PDATE) ? '' : 'YYYYMMDD';
+  const factorProblems = rows.map((r) => factorError(r.ZPRICE_IN)).filter(Boolean);
 
-  const pdateErr = isYmd(params.PDATE) ? '' : 'YYYYMMDD';
+  const onEdit = (row: Row, key: string, value: string) => {
+    if (key !== 'ZPRICE_IN' || !FACTOR_INPUT.test(value)) return;
+    setRows((all) => all.map((r) => (r.__id === row.__id ? { ...r, ZPRICE_IN: value } : r)));
+  };
 
   async function simulate() {
-    if (!rows.length) { setStatus(errorStatus('Upload a simulation file first.')); return; }
-    if (!params.BUKRS || !params.KALSM || pdateErr) { setStatus(errorStatus('Enter Company code, Procedure and a Pricing date (YYYYMMDD).')); return; }
-    const input = simulated ? rows.map((r) => Object.fromEntries(SIM_INPUT_COLUMNS.map((c) => [c.key, r[c.key] ?? '']))) : rows;
-    const res = await run(() => postAction({ action: 'RUN_SIM', payload: { ROWS: input, PARAMS: params } }), { reloadAfter: false });
-    if (res) {
-      const out = parseRows(res);
-      setRows(out);
-      setSimulated(out.length > 0);
-    }
+    if (!rows.length) { showMessage('Upload a simulation file first.', 'error'); return; }
+    if (!params.BUKRS || !params.KALSM || pdateErr) { showMessage('Enter Company code, Procedure and a Pricing date (YYYYMMDD).', 'error'); return; }
+    if (factorProblems.length) { showMessage(factorProblems[0], 'error'); return; }
+    const input = rows.map(toInput);
+    const r = await run('RUN_SIM', { ROWS: input, PARAMS: params });
+    if (!r) return;
+    const out = parseDataArray(r);
+    // Keep each row's factor: SAP's when it returns one, else the one that was sent (same order).
+    setRows(out.map((o, i) => ({ ...o, ZPRICE_IN: o.ZPRICE_IN ?? input[i]?.ZPRICE_IN ?? 0, __id: makeRowId() })));
+    setSimulated(out.length > 0);
+    sel.clear();
+    setHistory(null);
   }
 
-  const write = useCallback(async (action: 'SEND_APPROVAL' | 'APPROVE_SIM') => {
-    if (!sel.selectedRows.length) { setStatus(errorStatus('Select at least one row')); return; }
-    if (dates.error) { setStatus(errorStatus(dates.error)); return; }
-    const picked = sel.selectedRows;
-    const res = await run(() => postAction({ action, vfrom: dates.vfrom, vto: dates.vto, payload: { ROWS: picked } }), { reloadAfter: false });
-    if (res && res.processed > 0) {
-      const keys = new Set(picked.map((r) => rowKey(r, 'SimRows')));
-      setRows((all) => all.map((r) => (keys.has(rowKey(r, 'SimRows')) ? { ...r, LIGHT: action === 'SEND_APPROVAL' ? '1' : '3', VALIDFROM: dates.vfrom, VALIDTO: dates.vto } : r)));
-    }
-  }, [sel.selectedRows, dates, run, setStatus]);
+  function picked(): Row[] | null {
+    if (!sel.selectedRows.length) { showMessage('Select at least one row', 'error'); return null; }
+    return sel.selectedRows;
+  }
+
+  async function write(action: 'SEND_APPROVAL' | 'APPROVE_SIM') {
+    const rs = picked();
+    if (!rs) return;
+    const err = action === 'SEND_APPROVAL' ? requiredDatesError(vfrom, vto) : optionalDatesError(vfrom, vto);
+    if (err) { showMessage(err, 'error'); return; }
+    const r = await run(action, { ROWS: rs }, vfrom, vto);
+    if (r) sel.clear();
+  }
+
+  async function compare() {
+    const rs = picked();
+    if (!rs) return;
+    const r = await run('COMPARE', { ROWS: rs });
+    if (r) setHistory(parseDataArray(r));
+  }
 
   return (
     <>
-      <TabPanelHeader title="Pricing Simulation" hint={simulated ? 'Priced rows below. Select rows to send for approval or approve directly.' : 'Upload customer x material rows (.xlsx: VKORG, WERKS, KUNNR, MATNR, CHARG, L_WAERK, B_WAERK), then run the simulation.'} count={rows.length} />
+      <TabPanelHeader title="Pricing Simulation" hint={simulated ? 'Priced rows below. Change a Pricing Factor % and run again, or select rows to send for approval, approve or compare.' : 'Upload customer x material rows (.xlsx: VKORG, WERKS, KUNNR, MATNR, CHARG, L_WAERK, B_WAERK), set factors if needed, then run the simulation.'} count={rows.length} />
       <Toolbar>
-        <FileUpload id="sim-file" label="Upload simulation file" disabled={busy} kind="sim" onRows={(r) => { setRows(r); setSimulated(false); clear(); if (r.length) setStatus({ busy: false, message: `${r.length} row(s) ready to simulate.`, tone: 'info' }); }}
-          onError={(m) => setStatus(errorStatus(m))} templateName="cascade-simulation-template.xlsx" />
+        <FileUpload id="sim-file" label="Upload simulation file" disabled={busy} kind="sim"
+          onRows={(r) => { setRows(r.map((x) => ({ ...x, ZPRICE_IN: x.ZPRICE_IN ?? 0, __id: makeRowId() }))); setSimulated(false); sel.clear(); setHistory(null); setFailures([]); showMessage(`${r.length} row(s) loaded from file`, 'info'); }}
+          onError={(m) => showMessage(m, 'error')} templateName="cascade-simulation-template.xlsx" />
+        <div className="ml-auto"><ExportButton rows={rows} columns={simulated ? SIM_COLS : SIM_INPUT_COLS} tab="Pricing_Simulation" disabled={busy} /></div>
       </Toolbar>
       <Toolbar>
         <TextField id="bukrs" label="Company code" value={params.BUKRS} onChange={(v) => setParams((p) => ({ ...p, BUKRS: v.toUpperCase() }))} width="w-16" disabled={busy} />
         <TextField id="kalsm" label="Procedure" value={params.KALSM} onChange={(v) => setParams((p) => ({ ...p, KALSM: v.toUpperCase() }))} width="w-20" disabled={busy} />
         <TextField id="pdate" label="Pricing date" value={params.PDATE} onChange={(v) => setParams((p) => ({ ...p, PDATE: v }))} placeholder="YYYYMMDD" error={pdateErr} width="w-24" disabled={busy} />
         <Button variant="primary" onClick={() => void simulate()} disabled={busy || !rows.length}>Run Simulation</Button>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <Button onClick={() => void compare()} disabled={busy || !simulated}>Version History / Compare</Button>
           <Button onClick={() => void write('SEND_APPROVAL')} disabled={busy || !simulated}>Send for Approval</Button>
           <Button variant="success" onClick={() => void write('APPROVE_SIM')} disabled={busy || !simulated}>Approve Simulation</Button>
         </div>
       </Toolbar>
+      <p className="px-3 pt-2 text-2xs text-sap-muted">Enter a Pricing Factor % to change RRP. Blank keeps the base price. Run Simulation always starts from the base price, so changing a factor and running again does not compound.</p>
+      {factorProblems.length > 0 && <p className="px-3 pt-1 text-xs text-red-600" role="alert">{factorProblems[0]}</p>}
       <div className="p-3">
-        {simulated ? (
-          <DataTable label="Simulation result" columns={CASCADE_COLUMNS} rows={rows} rowKeyOf={(r) => rowKey(r, 'SimRows')} selection={sel} showLight />
-        ) : (
-          <DataTable label="Simulation input" columns={SIM_INPUT_COLUMNS} rows={rows} rowKeyOf={(r) => rowKey(r, 'SimRows')} emptyText="No simulation rows. Upload a simulation file (Download template shows the layout)." />
-        )}
+        <DataTable label={simulated ? 'Simulation result' : 'Simulation input'} columns={simulated ? SIM_COLS : SIM_INPUT_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)}
+          selection={simulated ? sel : undefined} showLight={simulated} onEdit={onEdit} validate={validate} disabled={busy} />
+        {history && <HistoryPanel rows={history} onClose={() => setHistory(null)} />}
       </div>
     </>
   );

@@ -1,12 +1,14 @@
 import type { Column } from './types';
 
-/** Condition Creation, Review / Approval, Version history and the simulation result. */
-export const CASCADE_COLUMNS: Column[] = [
+/** Condition Creation, Review / Approval and Version history. */
+export const CASCADE_COLS: Column[] = [
   { key: 'S_LAND1', label: 'Selling Country' },
   { key: 'D_LAND1', label: 'Dest. Country' },
   { key: 'KUNNR', label: 'Customer' },
   { key: 'NAME1', label: 'Customer Name' },
   { key: 'VKORG', label: 'Sales Org.' },
+  { key: 'WERKS', label: 'Plant' },
+  { key: 'CHARG', label: 'Batch' },
   { key: 'MATNR', label: 'Material Code' },
   { key: 'MAKTX', label: 'Material Description' },
   { key: 'CASCADE_DESC', label: 'Cascade Mat Desc' },
@@ -38,17 +40,26 @@ export const CASCADE_COLUMNS: Column[] = [
 ];
 
 /** Cascade Material Extraction (CascadeMapSet). */
-export const MATERIAL_COLUMNS: Column[] = [
+export const MAP_COLS: Column[] = [
   { key: 'MATNR', label: 'Material Code' },
   { key: 'MAKTX', label: 'Material Description' },
   { key: 'CASCADE_DESC', label: 'Cascade Description' },
   { key: 'ZBUSINESS', label: 'Business' },
 ];
 
-/** Cascade Rate Upload: also the column order of the rate Excel file. */
-export const RATE_COLUMNS: Column[] = [
+/** The rate file's columns, in file order (parseRateFile). */
+export const RATE_FILE_KEYS = [
+  'LLAND', 'MATNR', 'ZRRP_KSCHL', 'ZRRP_KBETR', 'ZCVT_KSCHL', 'ZCVT_KBETR', 'ZRPI_KSCHL', 'ZRPI_KBETR', 'ZRTL_KSCHL', 'ZRTL_KBETR',
+  'ZPTT_KSCHL', 'ZPTT_KBETR', 'ZDEX_KSCHL', 'ZDEX_KBETR', 'ZDML_KSCHL', 'ZDML_KBETR', 'ZCUD_KSCHL', 'ZCUD_KBETR', 'ZCFD_KSCHL', 'ZCFD_KBETR',
+  'ZLCC_KSCHL', 'ZLCC_KBETR', 'ZDAX_KSCHL', 'ZDAX_KBETR', 'ZAP_KSCHL', 'ZAP_KBETR', 'VFROM', 'VTO', 'WAERK',
+] as const;
+
+/** Cascade Rate Upload grid (after ENRICH_RATES); VFROM / VTO are editable. */
+export const RATE_COLS: Column[] = [
   { key: 'LLAND', label: 'Selling Country' },
   { key: 'MATNR', label: 'Material Code' },
+  { key: 'MAKTX', label: 'Material Description' },
+  { key: 'CASCADE_DESC', label: 'Cascade Description' },
   { key: 'ZRRP_KSCHL', label: 'RRP Incl VAT Condition' },
   { key: 'ZRRP_KBETR', label: 'RRP Incl VAT rate' },
   { key: 'ZCVT_KSCHL', label: 'VAT Condition' },
@@ -73,13 +84,16 @@ export const RATE_COLUMNS: Column[] = [
   { key: 'ZDAX_KBETR', label: 'Damage/Expiry Rate' },
   { key: 'ZAP_KSCHL', label: 'A&P' },
   { key: 'ZAP_KBETR', label: 'A&P Rate' },
-  { key: 'VFROM', label: 'Valid From' },
-  { key: 'VTO', label: 'Valid To' },
+  { key: 'VFROM', label: 'Valid From', editable: true },
+  { key: 'VTO', label: 'Valid To', editable: true },
   { key: 'WAERK', label: 'Currency' },
 ];
 
-/** Pricing Simulation input: also the column order of the simulation Excel file. */
-export const SIM_INPUT_COLUMNS: Column[] = [
+/** The simulation file's columns, in file order (parseSimulationFile). */
+export const SIM_FILE_KEYS = ['VKORG', 'WERKS', 'KUNNR', 'MATNR', 'CHARG', 'L_WAERK', 'B_WAERK'] as const;
+
+/** Pricing Simulation before Run: the uploaded rows plus the editable Pricing Factor %. */
+export const SIM_INPUT_COLS: Column[] = [
   { key: 'VKORG', label: 'Sales Org.' },
   { key: 'WERKS', label: 'Plant' },
   { key: 'KUNNR', label: 'Customer' },
@@ -87,15 +101,19 @@ export const SIM_INPUT_COLUMNS: Column[] = [
   { key: 'CHARG', label: 'Batch' },
   { key: 'L_WAERK', label: 'Local Currency' },
   { key: 'B_WAERK', label: 'Billing Currency' },
+  { key: 'ZPRICE_IN', label: 'Pricing Factor %', editable: true },
 ];
 
-const NUMERIC_HINTS = ['RRP', 'CIF', 'DZ', 'PC', 'AP', 'DLC', 'DUTY', 'MARGIN', 'RETAIL', 'PTT', 'DAM', 'DEX', 'VAT', 'CF', 'CHARGE'];
+/** Pricing Simulation after Run: the cascade with the Pricing Factor % still editable (run again from the base price). */
+export const SIM_COLS: Column[] = [{ key: 'ZPRICE_IN', label: 'Pricing Factor %', editable: true }, ...CASCADE_COLS];
 
-/** Amount / rate columns: right-aligned, 2 decimals. Condition types (…_KSCHL) are text even when the name matches. */
+const NUMERIC_HINTS = ['RRP', 'CIF', 'DZ', 'PC', 'AP', 'DLC', 'DUTY', 'MARGIN', 'RETAIL', 'PTT', 'DAM', 'DEX', 'VAT', 'CF', 'CHARGE', 'PRICE'];
+const NEVER_NUMERIC: ReadonlySet<string> = new Set(['MATNR', 'KUNNR', 'VKORG', 'ZVERSION', 'VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE']);
+export const DATE_KEYS: ReadonlySet<string> = new Set(['VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE']);
+
+/** Right-aligned, 2 decimals: keys ending in KBETR or containing one of the hints, and ZPRICE_IN. Condition types (…_KSCHL), codes and dates never. */
 export function isNumericKey(key: string): boolean {
-  if (key.endsWith('_KSCHL')) return false;
-  if (key.startsWith('Z') && key.endsWith('KBETR')) return true;
+  if (NEVER_NUMERIC.has(key) || key.endsWith('_KSCHL')) return false;
+  if (key === 'ZPRICE_IN' || key.endsWith('KBETR')) return true;
   return NUMERIC_HINTS.some((h) => key.includes(h));
 }
-
-export const DATE_KEYS: ReadonlySet<string> = new Set(['VALIDFROM', 'VALIDTO', 'VFROM', 'VTO', 'PDATE']);

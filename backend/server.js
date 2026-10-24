@@ -81,6 +81,8 @@ try {
 apiRouter.use('/me/notifications', require('./notifications').router);
 // Daily cost watch (BOM Simulator): rides the existing nginx /api/me rule; see costWatch.js.
 apiRouter.use('/me/cost-watch', require('./costWatch'));
+// Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
+apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

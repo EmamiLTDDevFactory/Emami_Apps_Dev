@@ -1,7 +1,7 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Button } from './ui';
-import { RATE_COLUMNS, SIM_INPUT_COLUMNS } from '@/lib/columns';
+import { RATE_FILE_KEYS, SIM_FILE_KEYS } from '@/lib/columns';
 import { sampleRateRows, sampleSimRows } from '@/lib/mock';
 import type { Row } from '@/lib/types';
 
@@ -9,9 +9,9 @@ export interface FileUploadProps {
   id: string;
   label: string;
   disabled?: boolean;
-  /** Which layout: the rate file or the simulation file (lib/excel.ts, loaded only when needed). */
+  /** Which file: the rate file or the simulation file (lib/excel.ts, loaded only when a file is picked). */
   kind: 'rate' | 'sim';
-  onRows: (rows: Row[], fileName: string) => void;
+  onRows: (rows: Row[]) => void;
   onError: (message: string) => void;
   templateName: string;
 }
@@ -25,31 +25,19 @@ function save(data: ArrayBuffer, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** .xlsx picker that parses in the browser; lists the rows it could not read. */
+/** .xlsx picker that parses in the browser; parse errors go to the status bar. */
 export default function FileUpload({ id, label, disabled, kind, onRows, onError, templateName }: FileUploadProps) {
   const input = useRef<HTMLInputElement>(null);
-  const [info, setInfo] = useState('');
-  const [errors, setErrors] = useState<string[]>([]);
 
   async function onFile(file: File | undefined) {
     if (!file) return;
-    setErrors([]);
-    if (!/\.xlsx$/i.test(file.name)) {
-      setInfo('');
-      onError('Only .xlsx files are accepted.');
-      return;
-    }
-    const excel = await import('@/lib/excel');
     try {
+      if (!/\.xlsx$/i.test(file.name)) { onError('Only .xlsx files are accepted.'); return; }
+      const excel = await import('@/lib/excel');
       const data = await file.arrayBuffer();
-      const res = kind === 'rate' ? excel.parseRateFile(data) : excel.parseSimulationFile(data);
-      setErrors(res.errors);
-      setInfo(`${file.name}: ${res.rows.length} row(s) loaded${res.errors.length ? `, ${res.errors.length} skipped` : ''}`);
-      if (!res.rows.length) onError(res.errors.length ? 'No valid rows in the file. See the list below.' : 'The file has no data rows (data starts in row 2).');
-      onRows(res.rows, file.name);
+      onRows(kind === 'rate' ? excel.parseRateFile(data) : excel.parseSimulationFile(data));
     } catch (e) {
-      setInfo('');
-      onError(e instanceof excel.ExcelParseError ? e.message : 'The file could not be parsed.');
+      onError(e instanceof Error ? e.message : 'The file could not be parsed.');
     } finally {
       if (input.current) input.current.value = '';
     }
@@ -57,7 +45,7 @@ export default function FileUpload({ id, label, disabled, kind, onRows, onError,
 
   async function downloadTemplate() {
     const { templateWorkbook } = await import('@/lib/excel');
-    save(kind === 'rate' ? templateWorkbook(RATE_COLUMNS, sampleRateRows()) : templateWorkbook(SIM_INPUT_COLUMNS, sampleSimRows()), templateName);
+    save(kind === 'rate' ? templateWorkbook([...RATE_FILE_KEYS], sampleRateRows()) : templateWorkbook([...SIM_FILE_KEYS], sampleSimRows()), templateName);
   }
 
   return (
@@ -65,14 +53,6 @@ export default function FileUpload({ id, label, disabled, kind, onRows, onError,
       <input ref={input} id={id} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" disabled={disabled} onChange={(e) => void onFile(e.target.files?.[0])} />
       <Button variant="primary" disabled={disabled} onClick={() => input.current?.click()} aria-controls={id}>{label}</Button>
       <Button disabled={disabled} onClick={() => void downloadTemplate()}>Download template</Button>
-      {info && <span className="text-xs text-sap-muted" role="status">{info}</span>}
-      {errors.length > 0 && (
-        <details className="w-full rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
-          <summary className="cursor-pointer font-semibold">{errors.length} row(s) could not be read</summary>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5">{errors.slice(0, 50).map((e) => <li key={e}>{e}</li>)}</ul>
-          {errors.length > 50 && <p className="mt-1">… and {errors.length - 50} more.</p>}
-        </details>
-      )}
     </div>
   );
 }

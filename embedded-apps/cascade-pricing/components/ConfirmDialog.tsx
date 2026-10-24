@@ -5,20 +5,28 @@ export interface ConfirmDialogProps {
   open: boolean;
   title: string;
   message: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmDialog({ open, title, message, confirmLabel = 'Yes', cancelLabel = 'No', onConfirm, onCancel }: ConfirmDialogProps) {
+/** Yes / No dialog: focus starts on No, Escape closes it, Tab stays inside while it is open. */
+export default function ConfirmDialog({ open, title, message, onConfirm, onCancel }: ConfirmDialogProps) {
   const noRef = useRef<HTMLButtonElement>(null);
+  const yesRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
+    const before = document.activeElement as HTMLElement | null;
     noRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); return; }
+      if (e.key !== 'Tab') return;
+      const order = [noRef.current, yesRef.current].filter((x): x is HTMLButtonElement => !!x);
+      const i = order.indexOf(document.activeElement as HTMLButtonElement);
+      e.preventDefault();
+      order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]?.focus();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); before?.focus(); };
   }, [open, onCancel]);
   if (!open) return null;
   return (
@@ -27,8 +35,8 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = 'Ye
         <h2 id="confirm-title" className="border-b border-sap-line bg-sap-head px-4 py-2 text-sm font-semibold text-sap-ink">{title}</h2>
         <p id="confirm-msg" className="px-4 py-4 text-sm text-sap-ink">{message}</p>
         <div className="flex justify-end gap-2 border-t border-sap-line px-4 py-2.5">
-          <button ref={noRef} type="button" onClick={onCancel} className="rounded border border-sap-line bg-white px-3 py-1 text-xs font-semibold text-sap-ink hover:bg-sap-head">{cancelLabel}</button>
-          <button type="button" onClick={onConfirm} className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700">{confirmLabel}</button>
+          <button ref={noRef} type="button" onClick={onCancel} className="rounded border border-sap-line bg-white px-3 py-1 text-xs font-semibold text-sap-ink hover:bg-sap-head">No</button>
+          <button ref={yesRef} type="button" onClick={onConfirm} className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700">Yes</button>
         </div>
       </div>
     </div>

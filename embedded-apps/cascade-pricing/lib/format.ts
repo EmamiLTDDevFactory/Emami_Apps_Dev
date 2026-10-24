@@ -6,14 +6,15 @@ const PCT = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFr
 export const fmt2 = (n: number) => NUM.format(n);
 export const fmtPct = (n: number) => `${PCT.format(n)}%`;
 
-/** YYYYMMDD -> DD.MM.YYYY (SAP display); anything else unchanged. */
+/** YYYYMMDD -> YYYY-MM-DD; anything else unchanged. */
 export function fmtDate(v: string): string {
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(v);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : v;
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : v;
 }
 
-/** Display text for one cell and whether it is right-aligned. */
+/** Display text for one cell and whether it is right-aligned. A blank ZVERSION shows as 01. */
 export function cellText(key: string, value: unknown): { text: string; numeric: boolean } {
+  if (key === 'ZVERSION') return { text: String(value ?? '').trim() || '01', numeric: false };
   if (value === null || value === undefined || value === '') return { text: '', numeric: false };
   if (isNumericKey(key)) {
     const n = typeof value === 'number' ? value : Number(String(value).replace(/,/g, ''));
@@ -21,14 +22,30 @@ export function cellText(key: string, value: unknown): { text: string; numeric: 
   }
   const s = String(value);
   if (DATE_KEYS.has(key)) return { text: fmtDate(s), numeric: false };
-  if ((key === 'MATNR' || key === 'KUNNR') && /^0+\d+$/.test(s)) return { text: s.replace(/^0+/, ''), numeric: false };
   return { text: s, numeric: false };
 }
 
-/** Valid YYYYMMDD calendar date. */
-export function isYmd(v: string): boolean {
-  if (!/^\d{8}$/.test(v)) return false;
-  const y = Number(v.slice(0, 4)), m = Number(v.slice(4, 6)), d = Number(v.slice(6, 8));
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+/** YYYYMMDD when filled: the top bar and the editable dates. */
+export const YMD = /^\d{8}$/;
+
+/** Pricing Factor %: up to 3 digits and 2 decimals, optionally negative; while typing, partial values are allowed. */
+export const FACTOR_INPUT = /^-?\d{0,3}(\.\d{0,2})?$/;
+
+/** '' when the factor is fine (blank = 0 = base price), else the message. */
+export function factorError(v: unknown): string {
+  const s = String(v ?? '').trim();
+  if (s === '' || s === '-') return '';
+  if (!FACTOR_INPUT.test(s)) return 'Pricing Factor %: up to 3 digits and 2 decimals';
+  if (Number(s) <= -100) return 'Pricing Factor % must be above -100';
+  return '';
 }
+
+export const factorNumber = (v: unknown): number => {
+  const n = Number(String(v ?? '').trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+export const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+};

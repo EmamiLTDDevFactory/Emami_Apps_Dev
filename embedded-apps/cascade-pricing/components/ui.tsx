@@ -1,6 +1,7 @@
 'use client';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
-import type { Status } from '@/lib/types';
+import { YMD } from '@/lib/format';
+import type { FailureItem, Tone } from '@/lib/types';
 
 const VARIANT = {
   primary: 'border-plum bg-plum text-white hover:bg-plum-deep',
@@ -22,7 +23,7 @@ export function TextField({ id, label, value, onChange, placeholder, error, widt
     <label htmlFor={id} className="flex items-center gap-1.5 text-xs text-sap-muted">
       <span className="font-semibold">{label}</span>
       <input id={id} value={value} onChange={(e) => onChange(e.target.value.trim())} placeholder={placeholder} disabled={disabled} aria-invalid={!!error || undefined} aria-describedby={error ? `${id}-err` : undefined}
-        className={`h-7 rounded border bg-white px-2 font-mono text-xs text-sap-ink focus:outline-none focus:ring-2 focus:ring-plum/25 ${error ? 'border-red-400' : 'border-sap-line focus:border-plum'} ${width}`} />
+        className={`h-7 rounded border bg-white px-2 font-mono text-xs text-sap-ink focus:outline-none focus:ring-2 focus:ring-plum/25 ${error ? 'border-red-500' : 'border-sap-line focus:border-plum'} ${width}`} />
       {error && <span id={`${id}-err`} className="text-2xs text-red-600">{error}</span>}
     </label>
   );
@@ -37,13 +38,32 @@ export function TabPanelHeader({ title, hint, count }: { title: string; hint: st
   );
 }
 
-/** Props every tab receives from the shell. */
+/** What every tab gets from the shell. */
 export interface TabProps {
   active: boolean;
   busy: boolean;
-  setStatus: (s: Status) => void;
-  dates: { vfrom: string; vto: string; error: string };
+  setBusy: (b: boolean) => void;
+  showMessage: (text: string, tone: Tone) => void;
+  setFailures: (items: FailureItem[]) => void;
+  /** Top-bar validity (YYYYMMDD or blank). */
+  vfrom: string;
+  vto: string;
 }
 
-/** Message for the status bar, in red. */
-export const errorStatus = (message: string): Status => ({ busy: false, message, tone: 'error' });
+/** '' when the date is blank or YYYYMMDD. */
+export const dateError = (v: string) => (v && !YMD.test(v) ? 'YYYYMMDD' : '');
+
+/** Send for Approval: both dates required and valid. Returns the message or ''. */
+export function requiredDatesError(vfrom: string, vto: string): string {
+  if (!vfrom || !vto) return 'Valid From and Valid To are required for Send for Approval.';
+  if (dateError(vfrom) || dateError(vto)) return 'Valid From and Valid To must be dates in YYYYMMDD format.';
+  if (vfrom > vto) return 'Valid From is after Valid To.';
+  return '';
+}
+
+/** Approve / Approve Simulation: blank keeps the stored dates; filled must be valid. */
+export function optionalDatesError(vfrom: string, vto: string): string {
+  if (dateError(vfrom) || dateError(vto)) return 'Valid From and Valid To must be dates in YYYYMMDD format (or blank to keep the stored dates).';
+  if (vfrom && vto && vfrom > vto) return 'Valid From is after Valid To.';
+  return '';
+}
