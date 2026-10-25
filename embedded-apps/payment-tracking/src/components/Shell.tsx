@@ -17,7 +17,7 @@ const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every si
 // next/link prepends next.config.js's basePath; plain <img> doesn't.
 const BASE_PATH = '/apps/payment-tracking';
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavItem = { href: string; label: string; hint: string; icon: LucideIcon };
 
 // Three roles, three distinct tab sets — same lists, same order as the Expo version's _layout.tsx:
 //   Admin   — Dashboard, Provision Details, Calendar
@@ -25,20 +25,20 @@ type NavItem = { href: string; label: string; icon: LucideIcon };
 //             Pending Approval, Submission History
 //   User    — Upcoming Provision, Missed Provision, Submission History
 const ADMIN_NAV: NavItem[] = [
-  { href: '/dashboard/', label: 'Dashboard', icon: LayoutGrid },
-  { href: '/provision-details/', label: 'Provision Details', icon: Layers },
-  { href: '/calendar/', label: 'Calendar', icon: CalendarRange },
+  { href: '/dashboard/', label: 'Dashboard', hint: 'Provisions at a glance', icon: LayoutGrid },
+  { href: '/provision-details/', label: 'Provision Details', hint: 'Every open service PO', icon: Layers },
+  { href: '/calendar/', label: 'Calendar', hint: 'Deliveries by date', icon: CalendarRange },
 ];
 const FINANCE_NAV: NavItem[] = [
-  { href: '/po-creation/', label: 'Purchase Order Creation and Details', icon: Wrench },
-  { href: '/admin-upcoming/', label: 'Upcoming Provision (All Vendors)', icon: CalendarClock },
-  { href: '/pending-approval/', label: 'Pending Approval', icon: CheckCheck },
-  { href: '/history/', label: 'Submission History', icon: History },
+  { href: '/po-creation/', label: 'Purchase Order Creation and Details', hint: 'Upload and review POs', icon: Wrench },
+  { href: '/admin-upcoming/', label: 'Upcoming Provision (All Vendors)', hint: 'Confirm deliveries for vendors', icon: CalendarClock },
+  { href: '/pending-approval/', label: 'Pending Approval', hint: 'Approve or send back', icon: CheckCheck },
+  { href: '/history/', label: 'Submission History', hint: 'Latest status, full audit trail', icon: History },
 ];
 const USER_NAV: NavItem[] = [
-  { href: '/upcoming/', label: 'Upcoming Provision', icon: CalendarClock },
-  { href: '/missed-delivery/', label: 'Missed Provision', icon: AlertCircle },
-  { href: '/history/', label: 'Submission History', icon: History },
+  { href: '/upcoming/', label: 'Upcoming Provision', hint: 'Confirm this month\'s deliveries', icon: CalendarClock },
+  { href: '/missed-delivery/', label: 'Missed Provision', hint: 'Deliveries past their date', icon: AlertCircle },
+  { href: '/history/', label: 'Submission History', hint: 'Latest status, full audit trail', icon: History },
 ];
 
 function useIsWideScreen() {
@@ -62,41 +62,50 @@ function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => 
 
   const pane = (
     <aside className={cx(
-      'flex h-full w-60 shrink-0 flex-col border-r border-border bg-white',
-      !isWide && 'fixed inset-y-0 left-0 z-40 shadow-pop animate-slideIn',
+      'flex h-full w-[17rem] shrink-0 flex-col border-r border-border bg-white',
+      !isWide && 'fixed inset-y-0 left-0 z-40 max-w-[85vw] shadow-pop animate-slideIn',
     )}>
-      <div className="border-b border-line px-4 pb-3 pt-4">
-        <div className="flex items-start justify-between">
+      <div className="relative border-b border-line">
+        {!isWide && (
+          <button type="button" onClick={onClose} aria-label="Close menu" className="absolute right-2 top-2 z-10 rounded-full p-1.5 text-inkSoft hover:bg-appBg hover:text-ink"><X size={18} /></button>
+        )}
+        <div className="mx-3 mt-3 flex justify-center rounded-2xl bg-cream/60 px-6 py-4 ring-1 ring-border">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={112} height={92} className="h-auto w-[112px]" />
-          {!isWide && (
-            <button type="button" onClick={onClose} aria-label="Close menu" className="p-1 text-inkSoft hover:text-ink"><X size={18} /></button>
-          )}
+          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} className="h-auto w-[150px]" />
         </div>
-        <p className="mt-2 text-sm font-extrabold text-ink">Provision Tracking</p>
-        <p className="text-xs text-inkSoft">Command Center — track every open service PO</p>
+        <div className="px-4 pb-3 pt-3">
+          <p className="text-[15px] font-extrabold text-ink">Provision Tracking</p>
+          <p className="text-xs text-inkSoft">Command Center — track every open service PO</p>
+        </div>
       </div>
-      <nav className="flex flex-col gap-0.5 p-2">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
         {roleLoading && <div className="flex justify-center py-6"><Spinner /></div>}
+        {!roleLoading && items.length > 0 && <p className="px-3 pb-1 pt-1 text-[10px] font-extrabold uppercase tracking-[0.16em] text-inkFaint">{role}</p>}
         {items.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (
             <Link key={item.href} href={item.href} replace onClick={() => { if (!isWide) onClose(); }}
               className={cx(
-                'group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-sm font-semibold leading-tight transition-colors',
-                active ? 'bg-rust/[0.08] text-rust' : 'text-inkSoft hover:bg-appBg hover:text-ink',
+                'group relative flex items-start gap-3 rounded-2xl px-3 py-2.5 transition-colors',
+                active ? 'bg-rust/[0.08] text-rust' : 'text-ink hover:bg-appBg',
               )}
               aria-current={active ? 'page' : undefined}>
-              {active && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-gradient-to-b from-rust to-ledger" />}
-              <Icon size={15} className="shrink-0" />
-              <span className="min-w-0">{item.label}</span>
+              {active && <span className="absolute inset-y-3 left-0 w-1 rounded-full bg-gradient-to-b from-rust to-ledger" />}
+              <span className={cx('mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl transition',
+                active ? 'bg-gradient-to-br from-rust to-ledger text-white shadow-card' : 'bg-appBg text-rust group-hover:bg-white group-hover:shadow-card')}>
+                <Icon size={16} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold leading-tight">{item.label}</span>
+                <span className={cx('block truncate text-[11px]', active ? 'text-rust/75' : 'text-inkSoft')}>{item.hint}</span>
+              </span>
             </Link>
           );
         })}
       </nav>
       {!roleLoading && (
-        <div className="mt-auto border-t border-line px-4 py-2.5">
+        <div className="mx-3 mb-3 rounded-2xl bg-appBg px-3 py-2.5">
           <p className="text-2xs font-bold uppercase tracking-[0.1em] text-inkFaint">Signed in as</p>
           <p className="text-xs font-bold text-ink">{role}</p>
         </div>

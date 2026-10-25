@@ -238,7 +238,7 @@ export function Banner({ type, children, onClose }: { type: 'success' | 'error' 
 
 /* ---------------------------------------------------------------- modal ----------------- */
 
-export function Modal({ open = true, title, subtitle, onClose, children, footer, size = 'md' }: {
+export function Modal({ open = true, title, subtitle, onClose, children, footer, size = 'md', centered = false }: {
   open?: boolean;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -246,6 +246,8 @@ export function Modal({ open = true, title, subtitle, onClose, children, footer,
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** centred on every screen size (default: a bottom sheet on phones) */
+  centered?: boolean;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -256,8 +258,8 @@ export function Modal({ open = true, title, subtitle, onClose, children, footer,
   if (!open) return null;
   const w = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-3xl', xl: 'max-w-6xl' }[size];
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-plumDeep/55 p-0 backdrop-blur-[2px] animate-fadeIn sm:items-center sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-pop animate-slideUp sm:rounded-2xl', w)} onClick={(e) => e.stopPropagation()}>
+    <div className={cx('fixed inset-0 z-50 flex justify-center bg-plumDeep/55 backdrop-blur-[2px] animate-fadeIn sm:items-center sm:p-4', centered ? 'items-center p-3' : 'items-end p-0')} onClick={onClose}>
+      <div role="dialog" aria-modal="true" className={cx('flex max-h-[92vh] w-full flex-col overflow-hidden bg-white shadow-pop animate-slideUp sm:rounded-2xl', centered ? 'rounded-2xl' : 'rounded-t-2xl', w)} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div className="min-w-0">
             <h2 className="truncate text-[15px] font-extrabold text-ink">{title}</h2>

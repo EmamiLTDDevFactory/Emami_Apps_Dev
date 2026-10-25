@@ -41,6 +41,16 @@ const sapClient = axios.create({
  * embedded-apps/po-followup/src/lib/poFollowupApi.ts already unpacks for Eindt on the sibling
  * entity (ZDelvPendPOSet) this app used to read from, same SAP service. "" for anything else/
  * unparseable rather than throwing, since not every row is guaranteed a schedule line. */
+/** Edm.Time ('PT14H30M05S') or 'HHMMSS' / 'HH:MM:SS' -> 'HH:MM:SS'; '' when blank or unreadable. */
+function parseODataTime(value: unknown): string {
+  if (typeof value !== 'string' || !value) return '';
+  const iso = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.\d+)?S)?$/);
+  const p2 = (n: string | undefined) => String(Number(n || 0)).padStart(2, '0');
+  if (iso) return `${p2(iso[1])}:${p2(iso[2])}:${p2(iso[3])}`;
+  const flat = value.replace(/:/g, '');
+  return /^\d{6}$/.test(flat) ? `${flat.slice(0, 2)}:${flat.slice(2, 4)}:${flat.slice(4, 6)}` : '';
+}
+
 function parseODataDate(value: unknown): string {
   if (typeof value !== 'string') return '';
   const match = value.match(/\/Date\((-?\d+)\)\//);
@@ -674,6 +684,9 @@ export interface ProvisionLogRow {
    * Zstatustxt), otherwise PROVISION_LOG_STATUS_LABELS[zstatus], otherwise the raw code. */
   zstatusText: string;
   actionDate: string; // LogDate — confirmed live 2026-09-16 (previously guessed as nonexistent Zdate)
+  actionTime: string; // LogTime, 'HH:MM:SS' or '' — orders entries of the same day in the audit trail
+  /** position in SAP's answer — the last tie-breaker for entries with the same date and time */
+  seq: number;
   deliveryDate: string; // Eindt, 'YYYY-MM-DD'
   revisedDeliveryDate: string; // RevisedDelDate, 'YYYY-MM-DD' or ''
   provisionValue: string; // Netwr
@@ -710,6 +723,8 @@ function toProvisionLogRow(raw: Record<string, any>, index: number): ProvisionLo
     zstatus,
     zstatusText: str(raw.Zstatustxt) || PROVISION_LOG_STATUS_LABELS[zstatus] || zstatus,
     actionDate: parseODataDate(raw.LogDate),
+    actionTime: parseODataTime(raw.LogTime),
+    seq: index,
     deliveryDate: parseODataDate(raw.Eindt),
     revisedDeliveryDate: parseODataDate(raw.RevisedDelDate),
     provisionValue: str(raw.Netwr),

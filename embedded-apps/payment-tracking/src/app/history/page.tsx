@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeftRight, CalendarClock, CheckCircle2, CheckSquare, Circle, Download, FileCheck2, FileText, Hourglass, Info, Mail,
+  ArrowLeftRight, CalendarClock, CheckCircle2, CheckSquare, ChevronRight, Circle, Download, FileCheck2, FileText, Hourglass, Info, ListTree, Mail,
   Paperclip, Search, Square, Undo2, XCircle, type LucideIcon,
 } from 'lucide-react';
 import {
@@ -22,6 +22,7 @@ import { getDocumentAsync } from '../../lib/documentPicker';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { formatDeliveryDate, filterByMonth, filterByFiscalYear } from '../../lib/provisionMetrics';
+import { groupLogTrails, trailKey, type LogTrail } from '../../lib/provisionLogTrail';
 import {
   Banner, Button, Card, Chip, DateField, EmptyState, InfoField, Input, LoadingBlock, Modal, PageHeader, Spinner, TableWrap, cx, type Tone,
 } from '../../components/ui';
@@ -126,6 +127,84 @@ function StatusBadge({ status, text }: { status: ProvisionLogStatus | ''; text: 
 
 type StatusFilter = 'all' | ProvisionLogStatus;
 
+/** Clicks on these inside a row act on the control, not "open the audit trail". */
+const INTERACTIVE = 'button, input, a, label, textarea, select, [role="checkbox"]';
+
+/** Full audit trail of one PO line item, newest first, in a centred pop-up: a summary of the line, then every entry
+ * as a timeline step with its status, date / time and whatever that step recorded. */
+function AuditTrailModal({ trail, onClose, onViewAttachment }: { trail: LogTrail | null; onClose: () => void; onViewAttachment: (row: ProvisionLogRow) => void }) {
+  if (!trail) return null;
+  const { latest, entries } = trail;
+  // SAP sends 0.000 for an amount nobody entered: shown as blank.
+  const money = (v: string) => (v && Number(v) !== 0 ? `${v}${latest.currency ? ` ${latest.currency}` : ''}` : '');
+  return (
+    <Modal size="lg" centered onClose={onClose}
+      title={<span className="flex items-center gap-2"><ListTree size={16} className="text-rust" /> Audit trail · PO {latest.poNumber || '—'} · Item {latest.poItemNo || '—'}</span>}
+      subtitle={`${entries.length} recorded action${entries.length === 1 ? '' : 's'}, newest first`}>
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border bg-cream/50 p-3 sm:grid-cols-4">
+          <InfoField label="Vendor" value={[latest.vendor, latest.vendorName].filter(Boolean).join(' · ')} className="col-span-2" />
+          <InfoField label="Current status" value={<StatusBadge status={latest.zstatus} text={latest.zstatusText} />} className="col-span-2" />
+          <InfoField label="Service" value={latest.serviceText} className="col-span-2 sm:col-span-4" />
+          <InfoField label="Delivery Date" value={formatDeliveryDate(latest.deliveryDate)} />
+          <InfoField label="Revised Delivery" value={formatDeliveryDate(latest.revisedDeliveryDate)} />
+          <InfoField label="Provision Amount" value={money(latest.provisionValue)} />
+          <InfoField label="SES No" value={latest.entrySheetNo} mono />
+        </div>
+        <ol className="relative flex flex-col gap-3 pl-6">
+          <span className="absolute bottom-2 left-[9px] top-2 w-px bg-border" aria-hidden="true" />
+          {entries.map((e, i) => {
+            const st = e.zstatus ? STATUS_STYLE[e.zstatus] : null;
+            const Icon = st?.icon || Circle;
+            const details: [string, React.ReactNode, boolean?][] = [
+              ['SES No', e.entrySheetNo, true],
+              ['Revised Delivery', formatDeliveryDate(e.revisedDeliveryDate)],
+              ['Invoice No', e.invoiceNo, true],
+              ['Invoice Date', formatDeliveryDate(e.invoiceDate)],
+              ['Invoice Amount', money(e.invoiceAmount)],
+            ];
+            const shown = details.filter(([, v]) => !!v);
+            return (
+              <li key={e.key} className="relative">
+                <span className={cx('absolute -left-6 top-0.5 grid h-[19px] w-[19px] place-items-center rounded-full border-2 bg-white', st?.ring || 'border-border')} aria-hidden="true">
+                  <Icon size={10} />
+                </span>
+                <div className={cx('rounded-xl border bg-white p-3 shadow-card', i === 0 ? 'border-rust/40' : 'border-border')}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={e.zstatus} text={e.zstatusText} />
+                    {i === 0 && <span className="chip bg-rust/10 text-rust">Latest</span>}
+                    <span className="ml-auto whitespace-nowrap text-xs font-semibold text-inkSoft">
+                      {e.actionDate ? `${formatDeliveryDate(e.actionDate)}${e.actionTime ? ` · ${e.actionTime.slice(0, 5)}` : ''}` : 'Date not recorded'}
+                    </span>
+                  </div>
+                  {shown.length > 0 && (
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+                      {shown.map(([label, value, mono]) => <InfoField key={label} label={label} value={value} mono={mono} />)}
+                    </div>
+                  )}
+                  {e.remarks && <p className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-appBg px-2.5 py-1.5 text-xs text-ink"><span className="font-bold text-inkSoft">Remarks: </span>{e.remarks}</p>}
+                  {e.filename && (
+                    <div className="mt-2">
+                      {e.attachmentBase64 ? (
+                        <button type="button" onClick={() => onViewAttachment(e)} title={e.filename}
+                          className="chip border border-border bg-white normal-case tracking-normal text-rust hover:border-rust/40 hover:bg-cream">
+                          <Paperclip size={11} /> {e.filename}
+                        </button>
+                      ) : (
+                        <span className="chip border border-dashed border-border bg-appBg normal-case tracking-normal text-inkSoft" title={e.filename}><Info size={11} /> Attachment unavailable</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </Modal>
+  );
+}
+
 /** Submission History (User side-pane tab) — every ZProvisionLogSet entry for the signed-in
  * user's own login email (see fetchProvisionLog), fetched once and then filtered client-side by
  * Zstatus (see filteredRows below) so switching status chips doesn't re-hit SAP. Each row gets a
@@ -145,6 +224,7 @@ export default function PaymentTrackingHistory() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [openTrail, setOpenTrail] = useState<string | null>(null);
 
   useEffect(() => {
     if (roleLoading || !email) return;
@@ -169,20 +249,36 @@ export default function PaymentTrackingHistory() {
   // delivery date client-side, same as Pending Approval's own monthYearRows; ZProvisionLogSet has
   // no Gjahr server filter to send the year to, so both dimensions apply here, ahead of the
   // existing status/search filter below.
+  // One line per PO + line item: its latest entry (status and details), the whole trail behind it.
+  const trails = useMemo(() => groupLogTrails(rows), [rows]);
+  const trailByKey = useMemo(() => new Map(trails.map((t) => [t.key, t])), [trails]);
   const monthYearRows = useMemo(
-    () => filterByFiscalYear(filterByMonth(rows, month), year),
-    [rows, month, year]
+    () => filterByFiscalYear(filterByMonth(trails.map((t) => t.latest), month), year),
+    [trails, month, year]
   );
 
+  // Status chips filter on the line's latest status; the search looks through every entry of the line.
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return monthYearRows.filter((row) => {
       if (statusFilter !== 'all' && row.zstatus !== statusFilter) return false;
       if (!q) return true;
-      const haystack = [row.poNumber, row.poItemNo, row.vendorName, row.serviceText, row.remarks].join(' ').toLowerCase();
+      const entries = trailByKey.get(trailKey(row))?.entries ?? [row];
+      const haystack = entries.flatMap((e) => [e.poNumber, e.poItemNo, e.vendorName, e.serviceText, e.remarks, e.invoiceNo, e.entrySheetNo]).join(' ').toLowerCase();
       return haystack.includes(q);
     });
-  }, [monthYearRows, search, statusFilter]);
+  }, [monthYearRows, search, statusFilter, trailByKey]);
+  const openRowTrail = (e: React.MouseEvent, row: ProvisionLogRow) => {
+    if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
+    setOpenTrail(trailKey(row));
+  };
+  const trailCount = (row: ProvisionLogRow) => trailByKey.get(trailKey(row))?.entries.length ?? 1;
+  const trailButton = (row: ProvisionLogRow) => (
+    <button type="button" onClick={() => setOpenTrail(trailKey(row))} aria-label={`Show the audit trail of PO ${row.poNumber} item ${row.poItemNo}`}
+      className="chip border border-border bg-white normal-case tracking-normal text-ledger hover:border-ledger/40 hover:bg-ledgerBg">
+      <ListTree size={11} /> {trailCount(row)} {trailCount(row) === 1 ? 'entry' : 'entries'} <ChevronRight size={11} />
+    </button>
+  );
 
   // Reverse SES / Mail for P2P — only offered on a row already in the 'AS' (SES Created) state.
   // Marks the row done locally on success (removeAction) rather than refetching the whole log,
@@ -491,7 +587,7 @@ export default function PaymentTrackingHistory() {
       <PageHeader
         eyebrow="Submission History"
         title="Submission History"
-        subtitle="Every action recorded against your provision submissions — filter by status to focus on one stage."
+        subtitle="The latest status of each PO line item. Click a line to see its full audit trail."
         icon={ArrowLeftRight}
       />
 
@@ -512,7 +608,7 @@ export default function PaymentTrackingHistory() {
                 </button>
               )}
             </div>
-            <span className="ml-auto text-2xs font-semibold text-inkSoft">{filteredRows.length} of {rows.length}</span>
+            <span className="ml-auto text-2xs font-semibold text-inkSoft">{filteredRows.length} of {trails.length} PO line item{trails.length === 1 ? '' : 's'} · {rows.length} entries</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -564,7 +660,8 @@ export default function PaymentTrackingHistory() {
                     <tr>
                       {anyEditable && <th className="w-8" />}
                       <th>PO · Item</th>
-                      <th>Status</th>
+                      <th>Latest status</th>
+                      <th>Audit trail</th>
                       <th>Service</th>
                       <th>SES No</th>
                       <th>Action Date</th>
@@ -582,16 +679,17 @@ export default function PaymentTrackingHistory() {
                   <tbody>
                     {filteredRows.map((row) => {
                       const v = rowView(row);
-                      const cols = anyEditable ? 15 : 14;
+                      const cols = anyEditable ? 16 : 15;
                       return (
                         <React.Fragment key={row.key}>
-                          <tr className={cx(v.hasMessages && '[&>td]:border-b-0')}>
+                          <tr className={cx('cursor-pointer', v.hasMessages && '[&>td]:border-b-0')} onClick={(e) => openRowTrail(e, row)} title="Click to see the full audit trail">
                             {anyEditable && <td>{v.checkbox}</td>}
                             <td className="whitespace-nowrap">
                               <p className="code">{row.poNumber || '—'} · {row.poItemNo || '—'}</p>
                               {row.vendorName ? <p className="max-w-[180px] truncate text-2xs text-inkSoft" title={row.vendorName}>{row.vendorName}</p> : null}
                             </td>
                             <td><StatusBadge status={row.zstatus} text={row.zstatusText} /></td>
+                            <td className="whitespace-nowrap">{trailButton(row)}</td>
                             <td><p className="line-clamp-2 min-w-[140px] max-w-[220px] text-xs" title={row.serviceText}>{row.serviceText || '—'}</p></td>
                             <td className="code whitespace-nowrap">{row.entrySheetNo || '—'}</td>
                             <td className="whitespace-nowrap">{formatDeliveryDate(row.actionDate) || '—'}</td>
@@ -629,7 +727,7 @@ export default function PaymentTrackingHistory() {
                 {filteredRows.map((row) => {
                   const v = rowView(row);
                   return (
-                    <div key={row.key} className="card flex flex-col gap-2 p-2.5">
+                    <div key={row.key} className="card flex cursor-pointer flex-col gap-2 p-2.5" onClick={(e) => openRowTrail(e, row)}>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {v.checkbox}
                         <div className="min-w-0 flex-1">
@@ -663,7 +761,10 @@ export default function PaymentTrackingHistory() {
                         <InfoField label="Remarks" value={row.remarks} className="col-span-2 sm:col-span-3" />
                       </div>
                       {v.hasMessages && <div className="flex flex-col gap-0.5">{v.messages}</div>}
-                      {v.actions && <div className="flex justify-end border-t border-line pt-1.5">{v.actions}</div>}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-1.5">
+                        {trailButton(row)}
+                        {v.actions}
+                      </div>
                     </div>
                   );
                 })}
@@ -672,6 +773,7 @@ export default function PaymentTrackingHistory() {
           </>
         )}
       </div>
+      <AuditTrailModal trail={openTrail ? trailByKey.get(openTrail) ?? null : null} onClose={() => setOpenTrail(null)} onViewAttachment={viewAttachment} />
       <AttachmentPreviewModal blobUrl={preview?.blobUrl ?? null} filename={preview?.filename ?? ''} onClose={closePreview} />
     </>
   );
