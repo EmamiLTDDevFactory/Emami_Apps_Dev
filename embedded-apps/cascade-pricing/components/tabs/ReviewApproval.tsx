@@ -9,7 +9,7 @@ import RejectReasonDialog from '../RejectReasonDialog';
 import { Button, TabPanelHeader, Toolbar, optionalDatesError, type TabProps, LoadError } from '../ui';
 import { parseDataArray } from '@/lib/api';
 import { CASCADE_COLS } from '@/lib/columns';
-import { rowKey, statusLight, type Row } from '@/lib/types';
+import { rowKey, statusLight, type FailureItem, type Row } from '@/lib/types';
 import { useBusyAction } from '@/lib/useBusyAction';
 import { useSelection } from '@/lib/useSelection';
 import { useSetData } from '@/lib/useSetData';
@@ -17,7 +17,7 @@ import { useSetData } from '@/lib/useSetData';
 type Filter = 'all' | 'red' | 'green';
 
 /** Review / Approval: cascades sent for approval (ApprovalSet). Red = pending or rejected, green = approved. */
-export default function ReviewApproval({ active, busy, setBusy, showMessage, vfrom, vto }: TabProps) {
+export default function ReviewApproval({ active, busy, setBusy, showMessage, setFailures, vfrom, vto }: TabProps) {
   const { rows, loading, reload, error } = useSetData('ApprovalSet', active, showMessage);
   const [filter, setFilter] = useState<Filter>('all');
   const shown = useMemo(() => (filter === 'all' ? rows : rows.filter((r) => statusLight(r) === (filter === 'red' ? '1' : '3'))), [rows, filter]);
@@ -46,6 +46,8 @@ export default function ReviewApproval({ active, busy, setBusy, showMessage, vfr
 
   async function rejectWithReason(rs: Row[], reason: string) {
     const r = await run('REJECT_WITH_REASON', { ROWS: rs, REASON: reason });
+    // SAP's reason per failed row, when it sends one in DATA (shown in the Failed items list).
+    if (r) setFailures(r.failed > 0 ? parseDataArray<FailureItem>(r) : []);
     if (r) {
       sel.clear();
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
