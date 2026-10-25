@@ -7,7 +7,7 @@ import HistoryPanel from '../HistoryPanel';
 import { Button, TabPanelHeader, Toolbar, optionalDatesError, type TabProps, LoadError } from '../ui';
 import { parseDataArray } from '@/lib/api';
 import { CASCADE_COLS } from '@/lib/columns';
-import { rowKey, type Row } from '@/lib/types';
+import { rowKey, statusLight, type Row } from '@/lib/types';
 import { useBusyAction } from '@/lib/useBusyAction';
 import { useSelection } from '@/lib/useSelection';
 import { useSetData } from '@/lib/useSetData';
@@ -18,12 +18,13 @@ type Filter = 'all' | 'red' | 'green';
 export default function ReviewApproval({ active, busy, setBusy, showMessage, vfrom, vto }: TabProps) {
   const { rows, loading, reload, error } = useSetData('ApprovalSet', active, showMessage);
   const [filter, setFilter] = useState<Filter>('all');
-  const shown = useMemo(() => (filter === 'all' ? rows : rows.filter((r) => String(r.LIGHT ?? '').trim() === (filter === 'red' ? '1' : '3'))), [rows, filter]);
+  const shown = useMemo(() => (filter === 'all' ? rows : rows.filter((r) => statusLight(r) === (filter === 'red' ? '1' : '3'))), [rows, filter]);
   const sel = useSelection(shown);
   const [history, setHistory] = useState<Row[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const run = useBusyAction({ setBusy, showMessage });
-  const red = rows.filter((r) => String(r.LIGHT ?? '').trim() === '1').length;
+  const red = rows.filter((r) => statusLight(r) === '1').length;
+  const green = rows.filter((r) => statusLight(r) === '3').length;
 
   function picked(): Row[] | null {
     if (!sel.selectedRows.length) { showMessage('Select at least one row', 'error'); return null; }
@@ -52,7 +53,7 @@ export default function ReviewApproval({ active, busy, setBusy, showMessage, vfr
       <Toolbar>
         <Button onClick={() => void reload()} disabled={busy || loading}>{loading ? 'Loading...' : 'Refresh'}</Button>
         <div className="flex gap-0.5 rounded-full bg-white/60 p-0.5 text-xs ring-1 ring-white" role="group" aria-label="Show rows">
-          {([['all', `All (${rows.length})`], ['red', `Pending / rejected (${red})`], ['green', `Approved (${rows.length - red})`]] as [Filter, string][]).map(([f, label]) => (
+          {([['all', `All (${rows.length})`], ['red', `Pending / rejected (${red})`], ['green', `Approved (${green})`]] as [Filter, string][]).map(([f, label]) => (
             <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} disabled={busy} className={`rounded-full px-3 py-1 font-semibold transition ${filter === f ? 'btn-primary' : 'text-sap-muted hover:bg-white hover:text-sap-ink'}`}>{label}</button>
           ))}
         </div>

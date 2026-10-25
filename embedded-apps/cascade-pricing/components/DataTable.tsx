@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { cellText } from '@/lib/format';
-import type { Column, Row } from '@/lib/types';
+import { lightDerived, statusLight, type Column, type Row } from '@/lib/types';
 import type { Selection } from '@/lib/useSelection';
 
 export interface RowAction {
@@ -34,13 +34,15 @@ export interface DataTableProps {
 
 const LIGHT_INFO: Record<string, { cls: string; text: string }> = {
   '1': { cls: 'bg-red-500 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.6)]', text: 'Pending or rejected' },
+  '2': { cls: 'bg-amber-400 ring-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.6)]', text: 'In process' },
   '3': { cls: 'bg-emerald-500 ring-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.6)]', text: 'Approved' },
 };
 
-function StatusLight({ value }: { value: unknown }) {
-  const info = LIGHT_INFO[String(value ?? '').trim()];
-  if (!info) return <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300 ring-2 ring-gray-100" title="No status" aria-label="No status" role="img" />;
-  return <span className={`inline-block h-2.5 w-2.5 rounded-full ring-2 ${info.cls}`} title={info.text} aria-label={info.text} role="img" />;
+function StatusLight({ row }: { row: Row }) {
+  const info = LIGHT_INFO[statusLight(row)];
+  if (!info) return <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300 ring-2 ring-gray-100" title="No status from SAP" aria-label="No status" role="img" />;
+  const text = lightDerived(row) ? `${info.text} (from SAP's approval flags)` : info.text;
+  return <span className={`inline-block h-2.5 w-2.5 rounded-full ring-2 ${info.cls}`} title={text} aria-label={text} role="img" />;
 }
 
 function rowLabel(row: Row): string {
@@ -96,7 +98,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
             const shade = highlight?.(row, ri);
             return (
               <tr key={`${key}#${ri}`} className={sel ? 'bg-violet-100/70' : shade ? 'bg-emerald-50' : ri % 2 ? 'bg-violet-50/30' : 'bg-transparent'}>
-                {showLight && <td className={`${td} text-center`}><StatusLight value={row.LIGHT} /></td>}
+                {showLight && <td className={`${td} text-center`}><StatusLight row={row} /></td>}
                 {selection && (
                   <td className={`${td} text-center`}>
                     <input type="checkbox" className="h-3.5 w-3.5 accent-plum" checked={sel} onChange={() => selection.toggle(row)} disabled={disabled} aria-label={`Select row: ${rowLabel(row)}`} />

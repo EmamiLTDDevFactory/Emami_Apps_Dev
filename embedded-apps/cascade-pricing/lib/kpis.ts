@@ -1,4 +1,4 @@
-import { priceKey, type Row } from './types';
+import { priceKey, statusLight, type Row } from './types';
 
 /**
  * Standard cascade-pricing KPIs, all from the row values SAP returns.
@@ -143,7 +143,7 @@ export function computeKpis(rows: Row[], pending: Row[], history: Row[], materia
 
   return {
     points: rows.length, skus: new Set(rows.map((r) => r.MATNR)).size, markets: new Set(rows.map((r) => r.S_LAND1)).size,
-    red: rows.filter((r) => r.LIGHT === '1').length, green: rows.filter((r) => r.LIGHT === '3').length, conditionPending: pending.length,
+    red: rows.filter((r) => statusLight(r) === '1').length, green: rows.filter((r) => statusLight(r) === '3').length, conditionPending: pending.length,
     coveragePct: materials.length ? (mapped / materials.length) * 100 : 0, mapped, materials: materials.length,
     realisationPct: mean((m) => m.realisationPct), channelPct: mean((m) => m.channelPct), retailPct: tradeRetail, distOnPttPct: mean((m) => m.distOnPttPct),
     apPct: mean((m) => m.apPct), landingOnCifPct: mean((m) => m.landingOnCifPct),

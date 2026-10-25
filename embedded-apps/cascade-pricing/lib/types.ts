@@ -3,6 +3,28 @@ export type Row = Record<string, any>;
 
 export type CascadeSet = 'CascadeMapSet' | 'ApprovalSet' | 'ConditionPendingSet';
 
+/**
+ * Status light of a cascade row: '1' red (pending or rejected), '2' yellow, '3' green (approved), '' none.
+ * SAP's LIGHT when it sends one. NGQ sends LIGHT blank, so it is then told from the approval flags:
+ * ZAPPROVE X / A = approved (green), R = rejected (red); a condition status means approved; ZINITIATOR X (sent for
+ * approval, not approved yet) = red. getCascade stores the result in __light (client-side only, never sent to SAP).
+ */
+export function lightOf(r: Row): '' | '1' | '2' | '3' {
+  const l = String(r.LIGHT ?? '').trim();
+  if (l === '1' || l === '2' || l === '3') return l;
+  const approve = String(r.ZAPPROVE ?? '').trim().toUpperCase();
+  if (approve === 'X' || approve === 'A' || approve === 'Y') return '3';
+  if (approve === 'R') return '1';
+  if (String(r.ZCOND_STAT ?? '').trim()) return '3';
+  if (String(r.ZINITIATOR ?? '').trim()) return '1';
+  return '';
+}
+
+/** The light to show: the one getCascade worked out (__light), else lightOf. */
+export const statusLight = (r: Row): string => (r.__light !== undefined ? String(r.__light) : lightOf(r));
+/** true when SAP sent no LIGHT and the app told it from the flags (for the tooltip). */
+export const lightDerived = (r: Row): boolean => !String(r.LIGHT ?? '').trim() && statusLight(r) !== '';
+
 export type ActionName =
   | 'SEND_APPROVAL'
   | 'APPROVE'

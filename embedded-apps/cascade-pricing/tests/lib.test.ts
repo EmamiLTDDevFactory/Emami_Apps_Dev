@@ -4,7 +4,7 @@ import { RATE_FILE_KEYS, SIM_FILE_KEYS, isNumericKey } from '@/lib/columns';
 import { padKunnr, padMatnr, parseRateFile, parseRateMatrix, parseSimulationFile, parseSimulationMatrix, templateWorkbook, toYmd } from '@/lib/excel';
 import { cellText, factorError, factorNumber, FACTOR_INPUT } from '@/lib/format';
 import { computeKpis, rowMetrics } from '@/lib/kpis';
-import { makeRowId, rowKey, type Row } from '@/lib/types';
+import { lightOf, makeRowId, rowKey, statusLight, type Row } from '@/lib/types';
 import { checkHealth, friendlyError, getCascade, parseDataArray, runAction } from '@/lib/api';
 
 /** One rate file row in file order (RATE_FILE_KEYS). */
@@ -104,8 +104,8 @@ describe('API client (stubbed backend)', () => {
   it('runAction strips __id, sends dates only when filled, maps the result', async () => {
     let sent: Record<string, unknown> = {};
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => { sent = JSON.parse(String(init.body)); return reply(200, { processed: 1, failed: 0, message: 'ok', data: '[{"MATNR":"1"}]' }); }));
-    const r = await runAction('APPROVE', { ROWS: [{ __id: 'x1', MATNR: '1' }] }, '', '20270331');
-    expect(sent).toEqual({ action: 'APPROVE', payload: { ROWS: [{ MATNR: '1' }] }, vto: '20270331' });
+    const r = await runAction('APPROVE', { ROWS: [{ __id: 'x1', __light: '1', MATNR: '1', LIGHT: '' }] }, '', '20270331');
+    expect(sent).toEqual({ action: 'APPROVE', payload: { ROWS: [{ MATNR: '1', LIGHT: '' }] }, vto: '20270331' }); // __light never goes to SAP
     expect(r).toEqual({ processed: 1, failed: 0, message: 'ok', data: '[{"MATNR":"1"}]' });
     expect(parseDataArray(r)).toEqual([{ MATNR: '1' }]);
     await runAction('SAVE_RATES', { RATE_ROWS: [{ __id: 'r1', LLAND: 'AE' }] });
@@ -203,5 +203,29 @@ describe('KPI report (screen + Excel from one definition)', async () => {
     const real = sheets[0].rows.find((r) => r[1] === 'Net realisation')!;
     expect(real.slice(2, 6)).toEqual([59.64, '% of RRP excl. VAT', 'At or above 35%', '≥ 35%']);
     expect(sheets[4].rows[1][4]).toMatch(/A&P 19\.9% \(max 10%\)/);
+  });
+});
+
+describe('status lights', () => {
+  it("SAP's LIGHT when sent, else from the approval flags (NGQ sends LIGHT blank)", () => {
+    expect(lightOf({ LIGHT: '3', ZINITIATOR: 'X' })).toBe('3');
+    expect(lightOf({ LIGHT: '', ZINITIATOR: 'X', ZAPPROVE: '' })).toBe('1'); // the 3 NGQ rows of 25.10.2026: sent, not approved
+    expect(lightOf({ LIGHT: '', ZINITIATOR: 'X', ZAPPROVE: 'X' })).toBe('3');
+    expect(lightOf({ LIGHT: '', ZAPPROVE: 'R' })).toBe('1');
+    expect(lightOf({ LIGHT: '', ZCOND_STAT: 'C' })).toBe('3');
+    expect(lightOf({ LIGHT: '' })).toBe('');
+  });
+
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  afterEach(() => vi.unstubAllGlobals());
+  it('getCascade adds __light; rows waiting for condition creation are green when SAP gives nothing; KPIs count them', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => reply(200, url.endsWith('/ConditionPendingSet') ? [{ MATNR: '1', LIGHT: '' }] : [{ MATNR: '2', LIGHT: '', ZINITIATOR: 'X', ZAPPROVE: '' }])));
+    const pend = await getCascade('ConditionPendingSet');
+    const rev = await getCascade('ApprovalSet');
+    expect(statusLight(pend[0])).toBe('3');
+    expect(statusLight(rev[0])).toBe('1');
+    expect(rev[0].LIGHT).toBe(''); // SAP's own field untouched
+    const k = computeKpis(rev, pend, [], [], '20261025');
+    expect([k.red, k.green]).toEqual([1, 0]);
   });
 });

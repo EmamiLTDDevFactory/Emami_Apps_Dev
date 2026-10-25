@@ -1,4 +1,4 @@
-import type { ActionName, ActionPayload, ActionResult, CascadeSet, Row } from './types';
+import { lightOf, type ActionName, type ActionPayload, type ActionResult, type CascadeSet, type Row } from './types';
 
 /**
  * The app's only way to SAP. The browser never calls SAP: in live mode every call goes to the Emami Apps backend
@@ -85,11 +85,14 @@ async function call<T>(path: string, init?: { method: 'POST'; body: unknown }, w
 export async function getCascade(set: CascadeSet): Promise<Row[]> {
   const rows = await call<unknown>(`/cascade/${encodeURIComponent(set)}`, undefined, SET_LABEL[set] ?? set);
   if (!Array.isArray(rows)) throw new ApiError('Unexpected answer from the pricing service.', 502);
-  return rows as Row[];
+  // The status light for the screen: SAP's, else from the approval flags; rows waiting for condition creation are
+  // approved by definition (green) when SAP gives nothing.
+  if (set === 'CascadeMapSet') return rows as Row[];
+  return (rows as Row[]).map((r) => ({ ...r, __light: lightOf(r) || (set === 'ConditionPendingSet' ? '3' : '') }));
 }
 
-/** __id is a client-side row id: never sent to SAP. */
-const strip = (rows: Row[] | undefined) => rows?.map(({ __id: _id, ...rest }) => { void _id; return rest; });
+/** __id, __light ... are client-side only: never sent to SAP. */
+const strip = (rows: Row[] | undefined) => rows?.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith('__'))));
 function stripPayload(p?: ActionPayload): ActionPayload | undefined {
   if (!p) return p;
   return { ...p, ...(p.ROWS ? { ROWS: strip(p.ROWS) } : {}), ...(p.RATE_ROWS ? { RATE_ROWS: strip(p.RATE_ROWS) } : {}) };
