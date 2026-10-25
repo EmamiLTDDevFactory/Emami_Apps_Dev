@@ -3,7 +3,7 @@ import { useState } from 'react';
 import DataTable from '../DataTable';
 import ExportButton from '../ExportButton';
 import HistoryPanel from '../HistoryPanel';
-import { Button, TabPanelHeader, Toolbar, type TabProps } from '../ui';
+import { Button, TabPanelHeader, Toolbar, type TabProps, LoadError } from '../ui';
 import { parseDataArray } from '@/lib/api';
 import { CASCADE_COLS } from '@/lib/columns';
 import { rowKey, type FailureItem, type Row } from '@/lib/types';
@@ -13,7 +13,7 @@ import { useSetData } from '@/lib/useSetData';
 
 /** Condition Creation: approved price points waiting for their SAP condition records (ConditionPendingSet). */
 export default function ConditionCreation({ active, busy, setBusy, showMessage, setFailures }: TabProps) {
-  const { rows, loading, reload } = useSetData('ConditionPendingSet', active, showMessage);
+  const { rows, loading, reload, error } = useSetData('ConditionPendingSet', active, showMessage);
   const sel = useSelection(rows);
   const [history, setHistory] = useState<Row[] | null>(null);
   const run = useBusyAction({ setBusy, showMessage });
@@ -54,7 +54,8 @@ export default function ConditionCreation({ active, busy, setBusy, showMessage, 
         </div>
       </Toolbar>
       <div className="p-3">
-        <DataTable label="Approved cascades awaiting condition creation" columns={CASCADE_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy} />
+        <LoadError error={error} onRetry={() => void reload()} busy={loading} />
+        <DataTable emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : undefined} label="Approved cascades awaiting condition creation" columns={CASCADE_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy} />
         {history && <HistoryPanel rows={history} onClose={() => setHistory(null)} />}
       </div>
     </>

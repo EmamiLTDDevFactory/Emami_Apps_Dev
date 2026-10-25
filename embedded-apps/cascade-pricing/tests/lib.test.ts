@@ -5,7 +5,7 @@ import { padKunnr, padMatnr, parseRateFile, parseRateMatrix, parseSimulationFile
 import { cellText, factorError, factorNumber, FACTOR_INPUT } from '@/lib/format';
 import { computeKpis, rowMetrics } from '@/lib/kpis';
 import { makeRowId, rowKey, type Row } from '@/lib/types';
-import { checkHealth, getCascade, parseDataArray, runAction } from '@/lib/api';
+import { checkHealth, friendlyError, getCascade, parseDataArray, runAction } from '@/lib/api';
 
 /** One rate file row in file order (RATE_FILE_KEYS). */
 const RATE_ROW: (string | number)[] = ['AE', '400003658', 'ZRRP', 12, 'ZCVT', 5, 'ZRPI', 11.43, 'ZRTL', 25, 'ZPTT', 3, 'ZDEX', 1, 'ZDML', 12, 'ZCUD', 5, 'ZCFD', 4, 'ZLCC', 0.5, 'ZDAX', 1, 'ZAP', 4, '01.11.2026', '31.03.2027', 'AED'];
@@ -94,7 +94,11 @@ describe('API client (stubbed backend)', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => { calls.push(url); return url.endsWith('/ConditionPendingSet') ? reply(502, { error: 'In the context of Data Services an unknown internal server error occurred' }) : reply(200, [{ MATNR: '000000000400003658' }]); }));
     expect(await getCascade('CascadeMapSet')).toEqual([{ MATNR: '000000000400003658' }]);
     expect(calls[0]).toBe('https://audit-capa-api.emamiapps.in/api/me/cascade-pricing/cascade/CascadeMapSet');
-    await expect(getCascade('ConditionPendingSet')).rejects.toThrow(/unknown internal server error/);
+    const err = await getCascade('ConditionPendingSet').catch((e) => e);
+    expect(err.message).toBe("SAP could not load the approved cascades waiting for condition creation. The error is inside SAP's own service, not in this app; the SAP team has been informed. Try again later.");
+    expect(err.sapSide).toBe(true);
+    expect(err.status).toBe(502);
+    expect(err.detail).toMatch(/unknown internal server error/); // SAP's own text kept for the SAP team
   });
 
   it('runAction strips __id, sends dates only when filled, maps the result', async () => {
@@ -144,5 +148,17 @@ describe('kpis', () => {
     expect(k.changes[0].billingPct).toBeCloseTo(7.14, 1);
     expect(k.corridor[0].spreadPct).toBeCloseTo(20, 0);
     expect(k.coveragePct).toBe(0);
+  });
+});
+
+describe('error messages', () => {
+  it('access and input errors stay as the backend wrote them; timeouts and other SAP errors say so', () => {
+    expect(friendlyError(403, 'You do not have access to Cascade Pricing.', 'x').message).toBe('You do not have access to Cascade Pricing.');
+    expect(friendlyError(403, 'x', 'x').sapSide).toBe(false);
+    expect(friendlyError(502, 'timeout of 60000ms exceeded', 'the cascade material list').message).toBe('SAP did not answer in time while loading the cascade material list. Try again in a minute.');
+    const e = friendlyError(502, 'Material 4711 is locked by user X', 'the cascades waiting for review');
+    expect(e.message).toBe('SAP returned an error while loading the cascades waiting for review.');
+    expect(e.detail).toBe('Material 4711 is locked by user X');
+    expect(friendlyError(502, 'In the context of Data Services an unknown internal server error occurred', 'the result of CREATE_COND').message).toMatch(/^SAP could not return the result of CREATE_COND\. The error is inside SAP's own service/);
   });
 });

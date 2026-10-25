@@ -4,7 +4,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import DataTable from '../DataTable';
 import ExportButton from '../ExportButton';
 import HistoryPanel from '../HistoryPanel';
-import { Button, TabPanelHeader, Toolbar, optionalDatesError, type TabProps } from '../ui';
+import { Button, TabPanelHeader, Toolbar, optionalDatesError, type TabProps, LoadError } from '../ui';
 import { parseDataArray } from '@/lib/api';
 import { CASCADE_COLS } from '@/lib/columns';
 import { rowKey, type Row } from '@/lib/types';
@@ -16,7 +16,7 @@ type Filter = 'all' | 'red' | 'green';
 
 /** Review / Approval: cascades sent for approval (ApprovalSet). Red = pending or rejected, green = approved. */
 export default function ReviewApproval({ active, busy, setBusy, showMessage, vfrom, vto }: TabProps) {
-  const { rows, loading, reload } = useSetData('ApprovalSet', active, showMessage);
+  const { rows, loading, reload, error } = useSetData('ApprovalSet', active, showMessage);
   const [filter, setFilter] = useState<Filter>('all');
   const shown = useMemo(() => (filter === 'all' ? rows : rows.filter((r) => String(r.LIGHT ?? '').trim() === (filter === 'red' ? '1' : '3'))), [rows, filter]);
   const sel = useSelection(shown);
@@ -66,7 +66,8 @@ export default function ReviewApproval({ active, busy, setBusy, showMessage, vfr
         </div>
       </Toolbar>
       <div className="p-3">
-        <DataTable label="Cascades for review" columns={CASCADE_COLS} rows={shown} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy}
+        <LoadError error={error} onRetry={() => void reload()} busy={loading} />
+        <DataTable emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : undefined} label="Cascades for review" columns={CASCADE_COLS} rows={shown} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy}
           rowAction={{ label: 'Reject', button: 'Reject', onClick: (row) => void write('REJECT', [row]) }} />
         {history && <HistoryPanel rows={history} onClose={() => setHistory(null)} />}
       </div>

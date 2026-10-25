@@ -38,6 +38,21 @@ export function TabPanelHeader({ title, hint, count }: { title: string; hint: st
   );
 }
 
+/** A list that could not be loaded: what happened in plain words, a retry, and SAP's own text for the SAP team. */
+export function LoadError({ error, onRetry, busy }: { error: { message: string; sapSide?: boolean; detail?: string; status?: number } | null; onRetry: () => void; busy?: boolean }) {
+  if (!error) return null;
+  return (
+    <div role="alert" className="mb-3 flex flex-wrap items-start gap-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800">
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{error.sapSide ? 'SAP error - the list could not be loaded' : 'The list could not be loaded'}</p>
+        <p className="mt-0.5">{error.message}</p>
+        {error.detail && <p className="mt-1 break-words font-mono text-2xs text-red-700/80">SAP message{error.status ? ` (HTTP ${error.status})` : ''}: {error.detail}</p>}
+      </div>
+      <Button onClick={onRetry} disabled={busy}>Try again</Button>
+    </div>
+  );
+}
+
 /** What every tab gets from the shell. */
 export interface TabProps {
   active: boolean;

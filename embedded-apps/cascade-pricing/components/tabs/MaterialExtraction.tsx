@@ -2,14 +2,14 @@
 import { useMemo, useState } from 'react';
 import DataTable from '../DataTable';
 import ExportButton from '../ExportButton';
-import { Button, TabPanelHeader, Toolbar, type TabProps } from '../ui';
+import { Button, TabPanelHeader, Toolbar, type TabProps, LoadError } from '../ui';
 import { MAP_COLS } from '@/lib/columns';
 import { rowKey } from '@/lib/types';
 import { useSetData } from '@/lib/useSetData';
 
 /** Cascade Material Extraction: the materials mapped for cascade pricing (CascadeMapSet). Read only. */
 export default function MaterialExtraction({ active, busy, showMessage }: TabProps) {
-  const { rows, loading, reload } = useSetData('CascadeMapSet', active, showMessage);
+  const { rows, loading, reload, error } = useSetData('CascadeMapSet', active, showMessage);
   const [q, setQ] = useState('');
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -31,7 +31,8 @@ export default function MaterialExtraction({ active, busy, showMessage }: TabPro
         <div className="ml-auto"><ExportButton rows={shown} columns={MAP_COLS} tab="Cascade_Material_Extraction" disabled={busy} /></div>
       </Toolbar>
       <div className="p-3">
-        <DataTable label="Cascade materials" columns={MAP_COLS} rows={shown} rowKeyOf={(r) => rowKey(r, 'material')} loading={loading} emptyText={q ? 'No material matches the search.' : undefined} />
+        <LoadError error={error} onRetry={() => void reload()} busy={loading} />
+        <DataTable label="Cascade materials" columns={MAP_COLS} rows={shown} rowKeyOf={(r) => rowKey(r, 'material')} loading={loading} emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : q ? 'No material matches the search.' : undefined} />
       </div>
     </>
   );

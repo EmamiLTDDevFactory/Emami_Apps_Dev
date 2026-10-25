@@ -25,7 +25,29 @@ function hubToken(): string {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  /** sapSide: SAP's own service failed (not the app, the backend or the network); detail: SAP's raw message */
+  constructor(message: string, public status: number, public sapSide = false, public detail = '') { super(message); }
+}
+
+/** What each set holds, in the users' words (for error messages). */
+export const SET_LABEL: Record<CascadeSet, string> = {
+  CascadeMapSet: 'the cascade material list',
+  ApprovalSet: 'the cascades waiting for review',
+  ConditionPendingSet: 'the approved cascades waiting for condition creation',
+};
+
+/** SAP Gateway's texts for an error inside the service's own code (a short dump / an uncaught exception). */
+const SAP_INTERNAL = /Data Services an unknown internal server error|internal server error|short dump|RABAX|CX_[A-Z_]+|Runtime Error|Exception raised/i;
+
+/** The backend's error for a failed SAP call, made readable: what could not be done, whose fault, and SAP's own text. */
+export function friendlyError(status: number, raw: string, what: string): ApiError {
+  if (status === 401 || status === 403 || status === 400 || status === 404) return new ApiError(raw, status);
+  if (status === 502 || status === 500 || status === 503 || status === 504) {
+    if (SAP_INTERNAL.test(raw)) return new ApiError(`SAP could not ${what.startsWith('the result') ? 'return' : 'load'} ${what}. The error is inside SAP's own service, not in this app; the SAP team has been informed. Try again later.`, status, true, raw);
+    if (/timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|socket/i.test(raw)) return new ApiError(`SAP did not answer in time while loading ${what}. Try again in a minute.`, status, true, raw);
+    return new ApiError(`SAP returned an error while loading ${what}.`, status, true, raw);
+  }
+  return new ApiError(raw, status);
 }
 
 async function readJson(res: Response): Promise<unknown> {
@@ -38,7 +60,7 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
-async function call<T>(path: string, init?: { method: 'POST'; body: unknown }): Promise<T> {
+async function call<T>(path: string, init?: { method: 'POST'; body: unknown }, what = 'the data'): Promise<T> {
   const token = hubToken();
   let res: Response;
   try {
@@ -54,14 +76,14 @@ async function call<T>(path: string, init?: { method: 'POST'; body: unknown }): 
   const body = await readJson(res);
   if (!res.ok) {
     const msg = body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string' ? (body as { error: string }).error : `Request failed (${res.status} ${res.statusText}).`;
-    throw new ApiError(msg, res.status);
+    throw friendlyError(res.status, msg, what);
   }
   return body as T;
 }
 
 /** Rows of an entity set. */
 export async function getCascade(set: CascadeSet): Promise<Row[]> {
-  const rows = await call<unknown>(`/cascade/${encodeURIComponent(set)}`);
+  const rows = await call<unknown>(`/cascade/${encodeURIComponent(set)}`, undefined, SET_LABEL[set] ?? set);
   if (!Array.isArray(rows)) throw new ApiError('Unexpected answer from the pricing service.', 502);
   return rows as Row[];
 }
@@ -76,7 +98,7 @@ function stripPayload(p?: ActionPayload): ActionPayload | undefined {
 /** One action through the backend; dates only when filled. */
 export async function runAction(action: ActionName, payload?: ActionPayload, vfrom?: string, vto?: string): Promise<ActionResult> {
   const req = { action, payload: stripPayload(payload), ...(vfrom ? { vfrom } : {}), ...(vto ? { vto } : {}) };
-  const r = await call<Partial<ActionResult>>('/action', { method: 'POST', body: req });
+  const r = await call<Partial<ActionResult>>('/action', { method: 'POST', body: req }, `the result of ${action}`);
   return { processed: Number(r?.processed ?? 0) || 0, failed: Number(r?.failed ?? 0) || 0, message: String(r?.message ?? ''), data: typeof r?.data === 'string' ? r.data : '' };
 }
 
