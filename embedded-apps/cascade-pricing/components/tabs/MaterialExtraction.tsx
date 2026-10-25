@@ -25,12 +25,12 @@ export default function MaterialExtraction({ active, busy, showMessage }: TabPro
         <Button onClick={() => void reload()} disabled={busy || loading}>{loading ? 'Loading...' : 'Refresh'}</Button>
         <label className="flex items-center gap-1.5 text-xs text-sap-muted">
           <span className="font-semibold">Search</span>
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Material, description, business" aria-label="Search materials" className="h-7 w-56 rounded border border-sap-line px-2 text-xs focus:border-plum focus:outline-none" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Material, description, business" aria-label="Search materials" className="field h-7 w-56" />
         </label>
         {unmapped > 0 && <span className="text-xs text-amber-700">{unmapped.toLocaleString('en-IN')} material(s) without a cascade description</span>}
         <div className="ml-auto"><ExportButton rows={shown} columns={MAP_COLS} tab="Cascade_Material_Extraction" disabled={busy} /></div>
       </Toolbar>
-      <div className="p-3">
+      <div className="p-4">
         <LoadError error={error} onRetry={() => void reload()} busy={loading} />
         <DataTable label="Cascade materials" columns={MAP_COLS} rows={shown} rowKeyOf={(r) => rowKey(r, 'material')} loading={loading} emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : q ? 'No material matches the search.' : undefined} />
       </div>

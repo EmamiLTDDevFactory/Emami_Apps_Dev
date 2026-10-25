@@ -30,13 +30,13 @@ export default function ConfirmDialog({ open, title, message, onConfirm, onCance
   }, [open, onCancel]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onCancel}>
-      <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg" className="w-full max-w-sm rounded-md border border-sap-line bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h2 id="confirm-title" className="border-b border-sap-line bg-sap-head px-4 py-2 text-sm font-semibold text-sap-ink">{title}</h2>
-        <p id="confirm-msg" className="px-4 py-4 text-sm text-sap-ink">{message}</p>
-        <div className="flex justify-end gap-2 border-t border-sap-line px-4 py-2.5">
-          <button ref={noRef} type="button" onClick={onCancel} className="rounded border border-sap-line bg-white px-3 py-1 text-xs font-semibold text-sap-ink hover:bg-sap-head">No</button>
-          <button ref={yesRef} type="button" onClick={onConfirm} className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700">Yes</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-deep/35 p-4 backdrop-blur-sm" onClick={onCancel}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg" className="glass-strong fade-up w-full max-w-sm overflow-hidden rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <h2 id="confirm-title" className="border-b border-plum/10 bg-gradient-to-r from-violet-50/90 to-teal-50/70 px-5 py-3 font-display text-sm font-bold text-sap-ink">{title}</h2>
+        <p id="confirm-msg" className="px-5 py-4 text-sm text-sap-ink">{message}</p>
+        <div className="flex justify-end gap-2 border-t border-plum/10 px-5 py-3">
+          <button ref={noRef} type="button" onClick={onCancel} className="btn btn-secondary">No</button>
+          <button ref={yesRef} type="button" onClick={onConfirm} className="btn bg-gradient-to-r from-red-600 to-rose-500 text-white shadow-[0_6px_18px_-6px_rgba(225,29,72,0.6)]">Yes</button>
         </div>
       </div>
     </div>

@@ -62,7 +62,7 @@ export default function RateUpload({ busy, setBusy, showMessage, setFailures }: 
           <Button variant="success" onClick={() => void save()} disabled={busy || !rows.length}>Save Rates</Button>
         </div>
       </Toolbar>
-      <div className="p-3">
+      <div className="p-4">
         <DataTable label="Cascade rates" columns={RATE_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)} selection={sel} onEdit={onEdit} validate={dateErr} disabled={busy} />
       </div>
     </>

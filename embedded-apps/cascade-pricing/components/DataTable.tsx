@@ -33,8 +33,8 @@ export interface DataTableProps {
 }
 
 const LIGHT_INFO: Record<string, { cls: string; text: string }> = {
-  '1': { cls: 'bg-red-500 ring-red-200', text: 'Pending or rejected' },
-  '3': { cls: 'bg-emerald-500 ring-emerald-200', text: 'Approved' },
+  '1': { cls: 'bg-red-500 ring-red-200 shadow-[0_0_8px_rgba(239,68,68,0.6)]', text: 'Pending or rejected' },
+  '3': { cls: 'bg-emerald-500 ring-emerald-200 shadow-[0_0_8px_rgba(16,185,129,0.6)]', text: 'Approved' },
 };
 
 function StatusLight({ value }: { value: unknown }) {
@@ -54,24 +54,29 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
     if (allRef.current) allRef.current.indeterminate = !!selection?.someSelected;
   }, [selection?.someSelected]);
 
-  const th = 'sticky top-0 z-10 whitespace-nowrap border-b border-r border-sap-line bg-sap-head px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wide text-sap-muted';
-  const td = 'whitespace-nowrap border-b border-r border-sap-line px-2 py-1';
+  const th = 'sticky top-0 z-10 whitespace-nowrap border-b border-plum/10 px-2.5 py-2 text-left text-2xs font-bold uppercase tracking-wider text-plum/70';
+  const td = 'whitespace-nowrap border-b border-plum/[0.06] px-2.5 py-1.5';
 
   if (loading && !rows.length) {
     return (
-      <div className="space-y-1.5 rounded border border-sap-line bg-white p-3" aria-busy="true" aria-label={`${label}: loading`}>
-        {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-5 animate-pulse rounded bg-sap-head" />)}
+      <div className="space-y-2 rounded-2xl bg-white/70 p-4 ring-1 ring-white/80" aria-busy="true" aria-label={`${label}: loading`}>
+        {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-5 animate-pulse rounded-lg bg-gradient-to-r from-violet-100 via-white to-teal-50" style={{ animationDelay: `${i * 80}ms` }} />)}
         <p className="pt-1 text-xs text-sap-muted">Working...</p>
       </div>
     );
   }
   if (!rows.length) {
-    return <div className="rounded border border-dashed border-sap-line bg-white px-4 py-10 text-center text-sm text-sap-muted">{emptyText ?? 'No data for this tab. Use Load or upload a file.'}</div>;
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-plum/20 bg-white/50 px-4 py-12 text-center text-sm text-sap-muted">
+        <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-violet-100 to-teal-50 text-lg text-plum ring-1 ring-white" aria-hidden="true">◇</span>
+        {emptyText ?? 'No data for this tab. Use Load or upload a file.'}
+      </div>
+    );
   }
 
   return (
-    <div className="overflow-auto rounded border border-sap-line bg-white" style={{ maxHeight }} aria-busy={loading || undefined}>
-      <table className="min-w-full border-separate border-spacing-0 text-xs text-sap-ink" aria-label={label}>
+    <div className="scroll-glass overflow-auto rounded-2xl bg-white/85 shadow-[0_8px_30px_-16px_rgba(36,30,61,0.35)] ring-1 ring-white" style={{ maxHeight }} aria-busy={loading || undefined}>
+      <table className="glass-table min-w-full border-separate border-spacing-0 text-xs text-sap-ink" aria-label={label}>
         <thead>
           <tr>
             {showLight && <th scope="col" className={`${th} w-8 text-center`}><span className="sr-only">Status</span></th>}
@@ -81,7 +86,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
               </th>
             )}
             {rowAction && <th scope="col" className={th}>{rowAction.label}</th>}
-            {columns.map((c, i) => <th key={`${c.key}-${i}`} scope="col" className={`${th} ${c.editable ? 'bg-amber-50' : ''}`}>{c.label}</th>)}
+            {columns.map((c, i) => <th key={`${c.key}-${i}`} scope="col" className={`${th} ${c.editable ? '!bg-amber-50/95 !text-amber-800' : ''}`}>{c.label}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -90,7 +95,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
             const sel = selection?.isSelected(row) ?? false;
             const shade = highlight?.(row, ri);
             return (
-              <tr key={`${key}#${ri}`} className={sel ? 'bg-plum-soft' : shade ? 'bg-emerald-50' : ri % 2 ? 'bg-sap-row' : 'bg-white'}>
+              <tr key={`${key}#${ri}`} className={sel ? 'bg-violet-100/70' : shade ? 'bg-emerald-50' : ri % 2 ? 'bg-violet-50/30' : 'bg-transparent'}>
                 {showLight && <td className={`${td} text-center`}><StatusLight value={row.LIGHT} /></td>}
                 {selection && (
                   <td className={`${td} text-center`}>
@@ -100,7 +105,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
                 {rowAction && (
                   <td className={td}>
                     <button type="button" onClick={() => rowAction.onClick(row)} disabled={rowAction.disabled || disabled} aria-label={`${rowAction.button}: ${rowLabel(row)}`}
-                      className="rounded border border-red-300 bg-white px-2 py-0.5 text-2xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">{rowAction.button}</button>
+                      className="rounded-full border border-red-200 bg-white/90 px-2.5 py-0.5 text-2xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">{rowAction.button}</button>
                   </td>
                 )}
                 {columns.map((c, ci) => {
@@ -110,7 +115,7 @@ export default function DataTable({ label, columns, rows, rowKeyOf, selection, s
                     return (
                       <td key={`${c.key}-${ci}`} className={`${td} p-0.5`}>
                         <input value={String(v)} onChange={(e) => onEdit(row, c.key, e.target.value.trim())} disabled={disabled} title={err || undefined} aria-invalid={!!err || undefined} aria-label={`${c.label}: ${rowLabel(row)}`}
-                          className={`h-6 w-24 rounded border px-1.5 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-plum/25 ${err ? 'border-red-500 bg-red-50' : 'border-sap-line focus:border-plum'}`} />
+                          className={`field !h-6 w-24 !rounded-lg !px-1.5 text-right font-mono ${err ? '!border-red-500 !bg-red-50' : ''}`} />
                       </td>
                     );
                   }

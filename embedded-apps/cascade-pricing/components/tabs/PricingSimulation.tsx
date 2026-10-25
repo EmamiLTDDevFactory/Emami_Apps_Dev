@@ -88,9 +88,9 @@ export default function PricingSimulation({ busy, setBusy, showMessage, setFailu
           <Button variant="success" onClick={() => void write('APPROVE_SIM')} disabled={busy || !simulated}>Approve Simulation</Button>
         </div>
       </Toolbar>
-      <p className="px-3 pt-2 text-2xs text-sap-muted">Enter a Pricing Factor % to change RRP. Blank keeps the base price. Run Simulation always starts from the base price, so changing a factor and running again does not compound.</p>
-      {factorProblems.length > 0 && <p className="px-3 pt-1 text-xs text-red-600" role="alert">{factorProblems[0]}</p>}
-      <div className="p-3">
+      <p className="px-5 pt-2 text-2xs text-sap-muted">Enter a Pricing Factor % to change RRP. Blank keeps the base price. Run Simulation always starts from the base price, so changing a factor and running again does not compound.</p>
+      {factorProblems.length > 0 && <p className="px-5 pt-1 text-xs text-red-600" role="alert">{factorProblems[0]}</p>}
+      <div className="p-4">
         <DataTable label={simulated ? 'Simulation result' : 'Simulation input'} columns={simulated ? SIM_COLS : SIM_INPUT_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)}
           selection={simulated ? sel : undefined} showLight={simulated} onEdit={onEdit} validate={validate} disabled={busy} />
         {history && <HistoryPanel rows={history} onClose={() => setHistory(null)} />}

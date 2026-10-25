@@ -51,9 +51,9 @@ export default function ReviewApproval({ active, busy, setBusy, showMessage, vfr
       <TabPanelHeader title="Review / Approval" hint="Approve uses the top-bar validity (blank keeps the stored dates). Rejected rows stay red until they are deleted or approved." count={rows.length} />
       <Toolbar>
         <Button onClick={() => void reload()} disabled={busy || loading}>{loading ? 'Loading...' : 'Refresh'}</Button>
-        <div className="flex overflow-hidden rounded border border-sap-line text-xs" role="group" aria-label="Show rows">
+        <div className="flex gap-0.5 rounded-full bg-white/60 p-0.5 text-xs ring-1 ring-white" role="group" aria-label="Show rows">
           {([['all', `All (${rows.length})`], ['red', `Pending / rejected (${red})`], ['green', `Approved (${rows.length - red})`]] as [Filter, string][]).map(([f, label]) => (
-            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} disabled={busy} className={`px-2.5 py-1 font-semibold ${filter === f ? 'bg-plum text-white' : 'bg-white text-sap-muted hover:bg-sap-head'}`}>{label}</button>
+            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} disabled={busy} className={`rounded-full px-3 py-1 font-semibold transition ${filter === f ? 'btn-primary' : 'text-sap-muted hover:bg-white hover:text-sap-ink'}`}>{label}</button>
           ))}
         </div>
         <span className="text-xs text-sap-muted">{sel.selectedRows.length} selected</span>
@@ -65,7 +65,7 @@ export default function ReviewApproval({ active, busy, setBusy, showMessage, vfr
           <Button variant="success" onClick={() => { const rs = picked(); if (rs) void write('APPROVE', rs); }} disabled={busy}>Approve</Button>
         </div>
       </Toolbar>
-      <div className="p-3">
+      <div className="p-4">
         <LoadError error={error} onRetry={() => void reload()} busy={loading} />
         <DataTable emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : undefined} label="Cascades for review" columns={CASCADE_COLS} rows={shown} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy}
           rowAction={{ label: 'Reject', button: 'Reject', onClick: (row) => void write('REJECT', [row]) }} />

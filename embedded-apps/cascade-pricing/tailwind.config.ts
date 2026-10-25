@@ -14,6 +14,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        display: ['Sora', 'Inter', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: { '2xs': ['10.5px', '14px'] },

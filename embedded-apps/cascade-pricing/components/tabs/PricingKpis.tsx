@@ -7,31 +7,33 @@ import { GUARDRAILS, computeKpis } from '@/lib/kpis';
 import type { Row } from '@/lib/types';
 
 const ymdToday = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
-const STEP_COLOR = ['bg-sky-500', 'bg-indigo-500', 'bg-amber-500', 'bg-rose-400', 'bg-slate-400', 'bg-emerald-600'];
+const STEP_COLOR = ['bg-gradient-to-r from-sky-400 to-sky-500', 'bg-gradient-to-r from-indigo-400 to-violet-500', 'bg-gradient-to-r from-amber-400 to-orange-400', 'bg-gradient-to-r from-rose-300 to-fuchsia-400', 'bg-gradient-to-r from-slate-300 to-slate-400', 'bg-gradient-to-r from-emerald-500 to-teal-400'];
 const short = (m: unknown) => String(m ?? '').replace(/^0+/, '');
 
 function Card({ label, value, sub, tone, help }: { label: string; value: string; sub?: string; tone?: 'good' | 'warn' | 'bad'; help: string }) {
   const color = tone === 'bad' ? 'text-red-600' : tone === 'warn' ? 'text-amber-600' : tone === 'good' ? 'text-emerald-700' : 'text-sap-ink';
+  const bar = tone === 'bad' ? 'from-red-500 to-rose-400' : tone === 'warn' ? 'from-amber-500 to-orange-400' : tone === 'good' ? 'from-emerald-500 to-teal-400' : 'from-plum via-violet-500 to-teal-400';
   return (
-    <div className="rounded border border-sap-line bg-white px-3 py-2" title={help}>
-      <div className="text-2xs font-semibold uppercase tracking-wide text-sap-muted">{label}</div>
-      <div className={`mt-0.5 text-lg font-bold tabular-nums ${color}`}>{value}</div>
-      {sub && <div className="text-2xs text-sap-muted">{sub}</div>}
+    <div className="group relative overflow-hidden rounded-2xl bg-white/70 px-4 py-3 shadow-[0_8px_24px_-14px_rgba(36,30,61,0.4)] ring-1 ring-white transition duration-200 hover:-translate-y-0.5 hover:bg-white/85" title={help}>
+      <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${bar}`} aria-hidden="true" />
+      <div className="text-2xs font-bold uppercase tracking-wider text-plum/60">{label}</div>
+      <div className={`mt-1 font-display text-xl font-bold tabular-nums ${color}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-2xs text-sap-muted">{sub}</div>}
     </div>
   );
 }
 
 function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded border border-sap-line bg-white">
-      <div className="border-b border-sap-line bg-sap-head px-3 py-1.5"><h3 className="text-xs font-semibold text-sap-ink">{title}</h3>{hint && <p className="text-2xs text-sap-muted">{hint}</p>}</div>
-      <div className="overflow-x-auto p-3">{children}</div>
+    <section className="overflow-hidden rounded-2xl bg-white/75 shadow-[0_8px_30px_-16px_rgba(36,30,61,0.35)] ring-1 ring-white">
+      <div className="border-b border-plum/10 bg-gradient-to-r from-violet-50/90 via-white/60 to-teal-50/70 px-4 py-2.5"><h3 className="font-display text-[13px] font-bold text-sap-ink">{title}</h3>{hint && <p className="text-2xs text-sap-muted">{hint}</p>}</div>
+      <div className="scroll-glass overflow-x-auto p-4">{children}</div>
     </section>
   );
 }
 
-const th = 'whitespace-nowrap border-b border-sap-line px-2 py-1 text-left text-2xs font-semibold uppercase text-sap-muted';
-const td = 'whitespace-nowrap border-b border-sap-line px-2 py-1';
+const th = 'whitespace-nowrap border-b border-plum/10 px-2 py-1.5 text-left text-2xs font-bold uppercase tracking-wider text-plum/60';
+const td = 'whitespace-nowrap border-b border-plum/[0.06] px-2 py-1.5';
 
 /** Pricing KPIs: price waterfall, realisation and margins by market, price corridor, guardrails and version changes. */
 export default function PricingKpis({ active, busy, showMessage }: TabProps) {
@@ -75,7 +77,7 @@ export default function PricingKpis({ active, busy, showMessage }: TabProps) {
         <Button onClick={() => void load()} disabled={busy || loading}>{loading ? 'Loading...' : 'Refresh'}</Button>
         <label className="flex items-center gap-1.5 text-xs text-sap-muted">
           <span className="font-semibold">Selling country</span>
-          <select value={market} onChange={(e) => setMarket(e.target.value)} className="h-7 rounded border border-sap-line bg-white px-2 text-xs" aria-label="Filter KPIs by selling country">
+          <select value={market} onChange={(e) => setMarket(e.target.value)} className="field h-7" aria-label="Filter KPIs by selling country">
             <option value="">All markets</option>
             {markets.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -86,8 +88,8 @@ export default function PricingKpis({ active, busy, showMessage }: TabProps) {
       ) : !k.points ? (
         <p className="p-6 text-center text-sm text-sap-muted">No price points in review for this selection.</p>
       ) : (
-        <div className="space-y-3 p-3">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+        <div className="space-y-4 p-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
             <Card label="Price points in review" value={String(k.points)} sub={`${k.skus} SKUs · ${k.markets} market(s)`} help="Rows in Review / Approval (all versions shown there)." />
             <Card label="Awaiting approval" value={String(k.red)} sub={`${k.green} approved in review`} tone={k.red ? 'warn' : 'good'} help="Red rows: pending or rejected." />
             <Card label="Condition pending" value={String(k.conditionPending)} sub="approved, no SAP condition yet" tone={k.conditionPending ? 'warn' : undefined} help="Rows in Condition Creation." />
@@ -103,7 +105,7 @@ export default function PricingKpis({ active, busy, showMessage }: TabProps) {
           </div>
 
           <Panel title="Price waterfall (average, % of RRP excl. VAT)" hint="Where the consumer price goes: trade margins, A&P and damage, import landing cost, and what the company realises.">
-            <div className="flex h-7 w-full min-w-[480px] overflow-hidden rounded" role="img" aria-label={k.waterfall.map((s) => `${s.label} ${s.pct.toFixed(1)}%`).join(', ')}>
+            <div className="flex h-9 w-full min-w-[480px] gap-0.5 overflow-hidden rounded-xl" role="img" aria-label={k.waterfall.map((s) => `${s.label} ${s.pct.toFixed(1)}%`).join(', ')}>
               {k.waterfall.map((s, i) => <div key={s.label} className={`${STEP_COLOR[i % STEP_COLOR.length]} flex items-center justify-center text-2xs font-semibold text-white`} style={{ width: `${Math.max(0, s.pct)}%` }}>{s.pct >= 6 ? fmtPct(s.pct) : ''}</div>)}
             </div>
             <ul className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs md:grid-cols-3">

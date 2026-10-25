@@ -53,7 +53,7 @@ export default function ConditionCreation({ active, busy, setBusy, showMessage, 
           <Button variant="success" onClick={() => void createConditions()} disabled={busy}>Create Condition</Button>
         </div>
       </Toolbar>
-      <div className="p-3">
+      <div className="p-4">
         <LoadError error={error} onRetry={() => void reload()} busy={loading} />
         <DataTable emptyText={error ? 'Nothing to show: SAP did not return the list (see above).' : undefined} label="Approved cascades awaiting condition creation" columns={CASCADE_COLS} rows={rows} rowKeyOf={(r) => rowKey(r)} selection={sel} showLight loading={loading} disabled={busy} />
         {history && <HistoryPanel rows={history} onClose={() => setHistory(null)} />}
