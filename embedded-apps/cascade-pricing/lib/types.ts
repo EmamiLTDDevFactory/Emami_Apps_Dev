@@ -35,7 +35,12 @@ export type ActionName =
   | 'RUN_SIM'
   | 'ENRICH_RATES'
   | 'SAVE_RATES'
-  | 'COMPARE';
+  | 'COMPARE'
+  | 'REJECT_WITH_REASON'
+  | 'GET_PENDING_CORRECTION'
+  | 'RESUBMIT'
+  | 'GET_NOTIFICATIONS'
+  | 'MARK_NOTIF_READ';
 
 export interface SimParams {
   BUKRS: string;
@@ -47,6 +52,51 @@ export interface ActionPayload {
   ROWS?: Row[];
   RATE_ROWS?: Row[];
   PARAMS?: SimParams;
+  /** REJECT_WITH_REASON */
+  REASON?: string;
+  /** MARK_NOTIF_READ */
+  NOTIF_IDS?: string[];
+}
+
+/** A rejection notification (GET_NOTIFICATIONS): one per rejected price point, until it is marked as read. */
+export type CascadeNotification = {
+  NOTIF_ID: string;
+  S_LAND1: string;
+  D_LAND1: string;
+  VKORG: string;
+  KUNNR: string;
+  MATNR: string;
+  VALIDFROM: string;
+  VALIDTO: string;
+  ZVERSION: string;
+  REJECT_REASON: string;
+  REJECTED_BY: string;
+  REJECT_DATE: string;
+  REJECT_TIME: string;
+  ZREAD: string;
+};
+
+/** Remove leading zeros from a numeric string (SAP ALPHA OUT equivalent). */
+export function trimLeadingZeros(s: string): string {
+  if (!s) return s;
+  const trimmed = s.replace(/^0+/, '');
+  return trimmed === '' ? '0' : trimmed;
+}
+
+/** Format YYYYMMDD as YYYY-MM-DD, or return the value as-is. */
+export function formatDate(s: string): string {
+  if (s && /^\d{8}$/.test(s)) {
+    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  }
+  return s ?? '';
+}
+
+/** Format HHMMSS as HH:MM. */
+export function formatTime(s: string): string {
+  if (s && /^\d{6}$/.test(s)) {
+    return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+  }
+  return s ?? '';
 }
 
 export interface ActionRequest {

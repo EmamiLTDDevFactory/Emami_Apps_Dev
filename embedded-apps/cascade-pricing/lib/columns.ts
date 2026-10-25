@@ -1,7 +1,9 @@
 import type { Column } from './types';
 
-/** Condition Creation, Review / Approval and Version history. */
+/** Pending Correction, Condition Creation, Review / Approval and Version history (the rejection columns are blank for rows never rejected). */
 export const CASCADE_COLS: Column[] = [
+  { key: 'REJECT_REASON', label: 'Rejection Reason' },
+  { key: 'REJECTED_BY', label: 'Rejected By' },
   { key: 'S_LAND1', label: 'Selling Country' },
   { key: 'D_LAND1', label: 'Dest. Country' },
   { key: 'KUNNR', label: 'Customer' },

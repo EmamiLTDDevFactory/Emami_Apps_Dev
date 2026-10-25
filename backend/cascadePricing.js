@@ -21,7 +21,8 @@ const { sapGet, sapAction, isConfigured, sapSystem } = require('./cascadeSap');
 
 const APP_ID = 'cascade-pricing';
 const SETS = new Set(['CascadeMapSet', 'ApprovalSet', 'ConditionPendingSet']);
-const ACTIONS = new Set(['SEND_APPROVAL', 'APPROVE', 'APPROVE_SIM', 'REJECT', 'DELETE', 'CREATE_COND', 'RUN_SIM', 'ENRICH_RATES', 'SAVE_RATES', 'COMPARE']);
+const ACTIONS = new Set(['SEND_APPROVAL', 'APPROVE', 'APPROVE_SIM', 'REJECT', 'DELETE', 'CREATE_COND', 'RUN_SIM', 'ENRICH_RATES', 'SAVE_RATES', 'COMPARE',
+    'REJECT_WITH_REASON', 'GET_PENDING_CORRECTION', 'RESUBMIT', 'GET_NOTIFICATIONS', 'MARK_NOTIF_READ']);
 const YMD = /^\d{8}$/;
 
 const router = express.Router();

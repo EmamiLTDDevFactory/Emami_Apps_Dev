@@ -4,7 +4,8 @@ import { RATE_FILE_KEYS, SIM_FILE_KEYS, isNumericKey } from '@/lib/columns';
 import { padKunnr, padMatnr, parseRateFile, parseRateMatrix, parseSimulationFile, parseSimulationMatrix, templateWorkbook, toYmd } from '@/lib/excel';
 import { cellText, factorError, factorNumber, FACTOR_INPUT } from '@/lib/format';
 import { computeKpis, rowMetrics } from '@/lib/kpis';
-import { lightOf, makeRowId, rowKey, statusLight, type Row } from '@/lib/types';
+import { formatDate, formatTime, lightOf, makeRowId, rowKey, statusLight, trimLeadingZeros, type Row } from '@/lib/types';
+import { CASCADE_COLS } from '@/lib/columns';
 import { checkHealth, friendlyError, getCascade, parseDataArray, runAction } from '@/lib/api';
 
 /** One rate file row in file order (RATE_FILE_KEYS). */
@@ -159,6 +160,7 @@ describe('error messages', () => {
     const e = friendlyError(502, 'Material 4711 is locked by user X', 'the cascades waiting for review');
     expect(e.message).toBe('SAP returned an error while loading the cascades waiting for review.');
     expect(e.detail).toBe('Material 4711 is locked by user X');
+    expect(friendlyError(502, "Property 'Action' at offset '68' has invalid value 'GET_PENDING_CORRECTION'", 'the result of GET_PENDING_CORRECTION').message).toBe('SAP cannot take the action GET_PENDING_CORRECTION yet: its Action field holds at most 20 characters and this name has 22. The SAP team needs to lengthen the Action property of ActionRequest.');
     expect(friendlyError(502, 'In the context of Data Services an unknown internal server error occurred', 'the result of CREATE_COND').message).toMatch(/^SAP could not return the result of CREATE_COND\. The error is inside SAP's own service/);
   });
 });
@@ -227,5 +229,37 @@ describe('status lights', () => {
     expect(rev[0].LIGHT).toBe(''); // SAP's own field untouched
     const k = computeKpis(rev, pend, [], [], '20261025');
     expect([k.red, k.green]).toEqual([1, 0]);
+  });
+});
+
+describe('rejection with reason, pending correction, notifications', () => {
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('display helpers: ALPHA OUT, YYYY-MM-DD, HH:MM', () => {
+    expect(trimLeadingZeros('000000000400009275')).toBe('400009275');
+    expect(trimLeadingZeros('0000')).toBe('0');
+    expect(trimLeadingZeros('')).toBe('');
+    expect(formatDate('20261025')).toBe('2026-10-25');
+    expect(formatDate('2026-10-25')).toBe('2026-10-25');
+    expect(formatTime('134502')).toBe('13:45');
+    expect(formatTime('1345')).toBe('1345');
+  });
+
+  it('the rejection columns come first in every cascade grid', () => {
+    expect(CASCADE_COLS.slice(0, 3).map((c) => [c.key, c.label])).toEqual([['REJECT_REASON', 'Rejection Reason'], ['REJECTED_BY', 'Rejected By'], ['S_LAND1', 'Selling Country']]);
+  });
+
+  it('REJECT_WITH_REASON sends ROWS + REASON (no dates); MARK_NOTIF_READ sends NOTIF_IDS; RESUBMIT sends the dates', async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u: string, init: RequestInit) => { sent.push(JSON.parse(String(init.body))); return reply(200, { processed: 1, failed: 0, message: '', data: '' }); }));
+    await runAction('REJECT_WITH_REASON', { ROWS: [{ MATNR: '1', __light: '1' }], REASON: 'Retailer margin too low' });
+    await runAction('MARK_NOTIF_READ', { NOTIF_IDS: ['N1', 'N2'] });
+    await runAction('RESUBMIT', { ROWS: [{ MATNR: '1' }] }, '20261101', '20270331');
+    expect(sent).toEqual([
+      { action: 'REJECT_WITH_REASON', payload: { ROWS: [{ MATNR: '1' }], REASON: 'Retailer margin too low' } },
+      { action: 'MARK_NOTIF_READ', payload: { NOTIF_IDS: ['N1', 'N2'] } },
+      { action: 'RESUBMIT', payload: { ROWS: [{ MATNR: '1' }] }, vfrom: '20261101', vto: '20270331' },
+    ]);
   });
 });

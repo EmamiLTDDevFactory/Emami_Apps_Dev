@@ -3,13 +3,15 @@ import { useCallback, useEffect, useRef, useState, type ComponentType } from 're
 import MaterialExtraction from './tabs/MaterialExtraction';
 import RateUpload from './tabs/RateUpload';
 import PricingSimulation from './tabs/PricingSimulation';
+import PendingCorrection from './tabs/PendingCorrection';
+import NotificationBell from './NotificationBell';
 import ConditionCreation from './tabs/ConditionCreation';
 import ReviewApproval from './tabs/ReviewApproval';
 import PricingKpis from './tabs/PricingKpis';
 import StatusBar from './StatusBar';
 import FailureList from './FailureList';
 import { Button, TextField, dateError, type TabProps } from './ui';
-import { IconArrowLeft, IconCalculator, IconCalendar, IconChart, IconCheckCircle, IconFileCheck, IconLayers, IconMenu, IconUpload, IconUser, IconX } from './icons';
+import { IconArrowLeft, IconCalculator, IconCalendar, IconChart, IconCheckCircle, IconFileCheck, IconLayers, IconMenu, IconUndo, IconUpload, IconUser, IconX } from './icons';
 import { checkHealth } from '@/lib/api';
 import type { FailureItem, StatusMessage, Tone } from '@/lib/types';
 
@@ -18,6 +20,7 @@ const TABS: { id: string; label: string; hint: string; group: string; icon: Icon
   { id: 'material', label: 'Cascade Material Extraction', hint: 'Materials mapped for cascade', group: 'Masters', icon: IconLayers, Comp: MaterialExtraction },
   { id: 'rates', label: 'Cascade Rate Upload', hint: 'Condition rates from Excel', group: 'Masters', icon: IconUpload, Comp: RateUpload },
   { id: 'sim', label: 'Pricing Simulation', hint: 'Price, factor, send for approval', group: 'Pricing', icon: IconCalculator, Comp: PricingSimulation },
+  { id: 'pending', label: 'Pending Correction', hint: 'Rejected, correct and resubmit', group: 'Pricing', icon: IconUndo, Comp: PendingCorrection },
   { id: 'cond', label: 'Condition Creation', hint: 'Approved, create in SAP', group: 'Pricing', icon: IconFileCheck, Comp: ConditionCreation },
   { id: 'review', label: 'Review / Approval', hint: 'Approve, reject, delete', group: 'Approval', icon: IconCheckCircle, Comp: ReviewApproval },
   { id: 'kpis', label: 'Pricing KPIs', hint: 'Waterfall, margins, corridor', group: 'Insights', icon: IconChart, Comp: PricingKpis },
@@ -163,6 +166,7 @@ export default function AppShell() {
             </div>
             <p className="hidden text-2xs text-sap-muted 2xl:block">Valid From and Valid To are required for Send for Approval. For Approve, leave blank to keep the stored dates.</p>
           </div>
+          <NotificationBell onNavigateToPendingCorrection={() => open('pending')} />
           {email && (
             <div className="chip hidden normal-case tracking-normal sm:flex" title={email}>
               <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-plum to-teal-500 text-white"><IconUser size={11} /></span><span className="max-w-[160px] truncate text-[11.5px] font-bold text-sap-ink">{nameFromEmail(email)}</span>

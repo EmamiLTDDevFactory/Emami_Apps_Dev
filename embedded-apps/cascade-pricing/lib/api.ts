@@ -43,6 +43,9 @@ const SAP_INTERNAL = /Data Services an unknown internal server error|internal se
 export function friendlyError(status: number, raw: string, what: string): ApiError {
   if (status === 401 || status === 403 || status === 400 || status === 404) return new ApiError(raw, status);
   if (status === 502 || status === 500 || status === 503 || status === 504) {
+    // SAP's ActionRequest-Action is CHAR 20 (NGQ, 25.10.2026): a longer action name is refused before SAP's code runs.
+    const tooLong = /Property 'Action' at offset '\d+' has invalid value '([^']+)'/.exec(raw);
+    if (tooLong) return new ApiError(`SAP cannot take the action ${tooLong[1]} yet: its Action field holds at most 20 characters and this name has ${tooLong[1].length}. The SAP team needs to lengthen the Action property of ActionRequest.`, status, true, raw);
     if (SAP_INTERNAL.test(raw)) return new ApiError(`SAP could not ${what.startsWith('the result') ? 'return' : 'load'} ${what}. The error is inside SAP's own service, not in this app; the SAP team has been informed. Try again later.`, status, true, raw);
     if (/timeout|timed out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|socket/i.test(raw)) return new ApiError(`SAP did not answer in time while loading ${what}. Try again in a minute.`, status, true, raw);
     return new ApiError(`SAP returned an error while loading ${what}.`, status, true, raw);
