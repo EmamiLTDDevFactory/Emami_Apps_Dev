@@ -85,3 +85,18 @@ test('rows from SAP: dates to YYYYMMDD, all-digit KUNNR / MATNR with leading zer
   assert.equal(alignData('not json'), 'not json');
   assert.equal(alignData([{ MATNR: '1' }]), '[{"MATNR":"000000000000000001"}]');
 });
+
+test('SAP system for the health answer: CASCADE_SAP_SYSTEM, else from the gateway base', () => {
+  const keep = { b: process.env.CASCADE_SAP_ODATA_BASE, s: process.env.CASCADE_SAP_SYSTEM };
+  try {
+    delete process.env.CASCADE_SAP_SYSTEM;
+    process.env.CASCADE_SAP_ODATA_BASE = 'https://gw.example.net/api/NGQ/ZMM_CASCADE_SRV_SRV';
+    assert.equal(sap.sapSystem(), 'NGQ');
+    process.env.CASCADE_SAP_ODATA_BASE = 'https://10.0.0.1:4440/sap/opu/odata/sap/ZMM_CASCADE_SRV_SRV';
+    assert.equal(sap.sapSystem(), '');
+    process.env.CASCADE_SAP_SYSTEM = 'nwp';
+    assert.equal(sap.sapSystem(), 'NWP');
+  } finally {
+    for (const [k, v] of [['CASCADE_SAP_ODATA_BASE', keep.b], ['CASCADE_SAP_SYSTEM', keep.s]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

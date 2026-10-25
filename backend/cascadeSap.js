@@ -27,6 +27,14 @@ class SapError extends Error {
     constructor(message, status = 502) { super(message); this.status = status; }
 }
 
+/** SAP system of the connection: CASCADE_SAP_SYSTEM, else told from a gateway base .../api/<SYS>/<SERVICE>; '' when unknown. */
+function sapSystem() {
+    const explicit = env('CASCADE_SAP_SYSTEM', '');
+    if (explicit) return explicit.toUpperCase();
+    const m = /\/api\/([A-Z0-9]{3})\//i.exec(config().base + '/');
+    return m ? m[1].toUpperCase() : '';
+}
+
 function isConfigured() {
     return !!config().base;
 }
@@ -120,4 +128,4 @@ async function sapAction(payload) {
 /** Test seam: forget the cached CSRF token. */
 const resetCsrf = () => { csrf = null; };
 
-module.exports = { sapGet, sapAction, isConfigured, SapError, resetCsrf };
+module.exports = { sapGet, sapAction, isConfigured, sapSystem, SapError, resetCsrf };

@@ -58,6 +58,8 @@ export interface TabProps {
   /** Top-bar validity (YYYYMMDD or blank). */
   vfrom: string;
   vto: string;
+  /** SAP system the backend is connected to (NGQ, NGD, NWP) */
+  system?: string;
 }
 
 /** '' when the date is blank or YYYYMMDD. */

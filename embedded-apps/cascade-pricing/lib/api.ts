@@ -103,9 +103,9 @@ export async function runAction(action: ActionName, payload?: ActionPayload, vfr
 }
 
 /** SAP connectivity for the banner and footer. */
-export async function checkHealth(): Promise<{ ok: boolean; count?: number; error?: string }> {
+export async function checkHealth(): Promise<{ ok: boolean; count?: number; error?: string; system?: string }> {
   try {
-    return await call<{ ok: boolean; count?: number }>('/health');
+    return await call<{ ok: boolean; count?: number; system?: string }>('/health');
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'SAP connection unavailable' };
   }

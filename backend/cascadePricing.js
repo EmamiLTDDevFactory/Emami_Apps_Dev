@@ -2,7 +2,7 @@
    Cascade Pricing (embedded-apps/cascade-pricing) -> SAP ZMM_CASCADE_SRV, server side. Mounted at /api/me/cascade-pricing
    (rides the existing nginx /api/me rule). The app is a static export, so these routes are its "route handlers":
 
-     GET  /health          { ok: true, count } | 502 { ok: false, error }        (sapGet('CascadeMapSet'))
+     GET  /health          { ok: true, count, system } | 502 { ok: false, error, system }   (sapGet('CascadeMapSet'); system NGD / NGQ / NWP)
      GET  /cascade/:set    rows of CascadeMapSet | ApprovalSet | ConditionPendingSet, other sets 404
      POST /action          { action, vfrom?, vto?, payload? } -> { processed, failed, message, data }
                            (sent as ActionRequestSet { Requestid, Action, Validfrom?, Validto?, Payload })
@@ -17,7 +17,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { pool } = require('./db');
 const { JWT_SECRET } = require('./sessionAuth');
-const { sapGet, sapAction, isConfigured } = require('./cascadeSap');
+const { sapGet, sapAction, isConfigured, sapSystem } = require('./cascadeSap');
 
 const APP_ID = 'cascade-pricing';
 const SETS = new Set(['CascadeMapSet', 'ApprovalSet', 'ConditionPendingSet']);
@@ -130,9 +130,9 @@ router.get('/health', async (req, res) => {
     if (!isConfigured()) return res.status(502).json({ ok: false, error: 'The SAP connection for Cascade Pricing is not configured on the server.' });
     try {
         const rows = await sapGet('CascadeMapSet');
-        res.json({ ok: true, count: rows.length });
+        res.json({ ok: true, count: rows.length, system: sapSystem() });
     } catch (e) {
-        res.status(502).json({ ok: false, error: e.message });
+        res.status(502).json({ ok: false, error: e.message, system: sapSystem() });
     }
 });
 

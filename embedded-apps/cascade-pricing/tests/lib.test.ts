@@ -162,3 +162,46 @@ describe('error messages', () => {
     expect(friendlyError(502, 'In the context of Data Services an unknown internal server error occurred', 'the result of CREATE_COND').message).toMatch(/^SAP could not return the result of CREATE_COND\. The error is inside SAP's own service/);
   });
 });
+
+describe('KPI report (screen + Excel from one definition)', async () => {
+  const { kpiItems, kpiReportSheets, waterfallSentence, waterfallWithRest } = await import('@/lib/kpiReport');
+  // The NGQ ApprovalSet row of 25.10.2026 (AE, 400009275, ZANDU BALM 25ML), in the app's ABAP names.
+  const ngq: Row = { S_LAND1: 'AE', D_LAND1: 'AE', VKORG: 'EDCC', KUNNR: '0000028440', MATNR: '000000000400009275', MAKTX: 'FGE-ZANDU BALM25ML(EA-UAE)SO(2+1FREE)144', ZVERSION: '01', L_WAERK: 'AED', B_WAERK: 'AED',
+    ZI_RRP_PER_PC: '11.000', ZVAT: '0.520', ZE_RRP_PER_PC: '10.480', ZRETAIL: '1.370', ZPTT: '9.110', ZAP_ON_PTT: '0.000', ZDAMGE: '0.000', ZPTT_E_AP: '9.110', ZDMARGIN: '0.770', ZDLC: '8.340',
+    ZCUS_DUTY: '0.000', ZCF: '0.000', ZLC_CHARGE: '0.000', ZCIF: '8.340', ZDAM_ZDAX: '0.000', ZCIF_F: '8.340', ZAP: '2.090', ZCIF_AFTER_AP: '6.250', VALIDFROM: '20261023', VALIDTO: '20261023', LIGHT: '' };
+  const k = computeKpis([ngq], [], [], [{ MATNR: '1', CASCADE_DESC: 'x' }, { MATNR: '2', CASCADE_DESC: '' }], '20261025');
+
+  it('every KPI has a value, meaning, formula and a status against its target', () => {
+    const items = kpiItems(k);
+    const by = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(by.realisation.value).toBe('59.6%'); // 6.25 / 10.48
+    expect(by.realisation.status).toBe('ok');
+    expect(by.ap.value).toBe('19.9%'); // 2.09 / 10.48
+    expect(by.ap.status).toBe('bad');
+    expect(by.ap.statusText).toBe('Above 10%');
+    expect(by.channel.status).toBe('watch'); // retailer 13.1% < 15%
+    expect(by.coverage.statusText).toBe('1 without a description');
+    expect(by.awaiting.statusText).toBe('1 without a status'); // NGQ sends Light blank
+    expect(by.awaiting.sub).toBe('0 already approved · 1 with no status from SAP');
+    for (const i of items) { expect(i.meaning.length).toBeGreaterThan(10); expect(i.formula.length).toBeGreaterThan(3); }
+  });
+
+  it('waterfall: an "Other / not explained" step when the steps do not add up to 100%, and a plain sentence', () => {
+    const steps = waterfallWithRest(k.waterfall);
+    expect(steps.map((s) => s.label)).not.toContain('Other / not explained'); // the NGQ row adds up to 100%
+    expect(steps.reduce((a, s) => a + s.pct, 0)).toBeCloseTo(100, 1);
+    const gap = waterfallWithRest([{ label: 'Retailer margin', pct: 20, kind: 'trade' }, { label: 'Net realisation', pct: 70, kind: 'net' }]);
+    expect(gap.map((s) => [s.label, Math.round(s.pct)])).toEqual([['Retailer margin', 20], ['Other / not explained', 10], ['Net realisation', 70]]);
+    expect(waterfallSentence(steps, ['AED'])).toMatch(/^Of every 100 AED the consumer pays \(excl\. VAT\), the trade keeps about 20\.42 AED, A&P and damage take 19\.94 AED, and the company realises 59\.64 AED\.$/);
+  });
+
+  it('Excel report: summary with status / target / meaning / formula, the waterfall, lists and notes', () => {
+    const sheets = kpiReportSheets(k, { system: 'NGQ', market: '', loadedAt: '25 Oct 2026, 13:00', points: 1 }, ['AED']);
+    expect(sheets.map((s) => s.name)).toEqual(['Summary', 'Price waterfall', 'By selling country', 'Price corridor', 'Guardrail exceptions', 'Changes vs previous', 'Notes']);
+    expect(sheets[0].rows[1][0]).toMatch(/^SAP NGQ · All markets · 1 price point/);
+    expect(sheets[0].rows[3]).toEqual(['Section', 'KPI', 'Value', 'Unit', 'Status', 'Target', 'What it means', 'How it is calculated']);
+    const real = sheets[0].rows.find((r) => r[1] === 'Net realisation')!;
+    expect(real.slice(2, 6)).toEqual([59.64, '% of RRP excl. VAT', 'At or above 35%', '≥ 35%']);
+    expect(sheets[4].rows[1][4]).toMatch(/A&P 19\.9% \(max 10%\)/);
+  });
+});

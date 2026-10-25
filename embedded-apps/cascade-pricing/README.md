@@ -6,7 +6,7 @@ by the hub at `/apps/cascade-pricing/` (built by the repo root `scripts/build-em
 
 ```
 npm install
-npm run dev        # http://localhost:3310/apps/cascade-pricing/ (DEV backend, live SAP NGD)
+npm run dev        # http://localhost:3310/apps/cascade-pricing/ (DEV backend, live SAP NGQ)
 npm test           # excel parsing, formatting, the API client against a stubbed backend, KPIs
 npm run build      # static export -> dist/
 ```
@@ -16,7 +16,7 @@ The browser never calls SAP. The app is a static export, so its "route handlers"
 `backend/cascadePricing.js` (mounted at `<api>/me/cascade-pricing`: `GET /health`, `GET /cascade/{set}`, `POST /action`)
 and `backend/cascadeSap.js` (`sapGet` / `sapAction`: Basic auth, sap-client, CSRF token + cookies, one retry on 403).
 Every call needs the hub session and a Cascade Pricing grant. Server env (never committed):
-`CASCADE_SAP_ODATA_BASE` (DEV: the Azure SAP gateway + `/api/NGD/ZMM_CASCADE_SRV_SRV`, which signs in and does CSRF),
+`CASCADE_SAP_ODATA_BASE` (DEV: the Azure SAP gateway + `/api/NGQ/ZMM_CASCADE_SRV_SRV` since 25.10.2026, before that NGD; it signs in and does CSRF),
 optional `CASCADE_SAP_CLIENT`, `CASCADE_SAP_USER`, `CASCADE_SAP_PASSWORD` for a direct SAP URL.
 
 SAP's OData names (`Matnr`, `CascadeDesc`, `ZiRrpPerPc`) are returned as the ABAP names the app uses (`MATNR`,

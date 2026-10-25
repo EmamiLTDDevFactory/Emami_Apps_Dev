@@ -25,8 +25,8 @@ const TABS: { id: string; label: string; hint: string; group: string; icon: Icon
 const GROUPS = [...new Set(TABS.map((t) => t.group))];
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
-/** SAP system the live service runs on (ZMM_CASCADE_SRV_SRV is on NGD). */
-const SAP_SYSTEM = process.env.NEXT_PUBLIC_CASCADE_SAP_SYSTEM || 'NGD';
+/** SAP system shown until the backend says which one it is connected to (its /health answer). */
+const DEFAULT_SAP_SYSTEM = process.env.NEXT_PUBLIC_CASCADE_SAP_SYSTEM || 'NGQ';
 type Health = { state: 'checking' } | { state: 'ok'; count: number } | { state: 'down'; error: string };
 
 function nameFromEmail(email: string): string {
@@ -56,6 +56,7 @@ export default function AppShell() {
   const [vfrom, setVfrom] = useState('');
   const [vto, setVto] = useState('');
   const [health, setHealth] = useState<Health>({ state: 'checking' });
+  const [system, setSystem] = useState(DEFAULT_SAP_SYSTEM);
   const [email, setEmail] = useState('');
   const [today, setToday] = useState('');
   const seq = useRef(0);
@@ -75,6 +76,7 @@ export default function AppShell() {
   const runHealth = useCallback(async () => {
     setHealth({ state: 'checking' });
     const h = await checkHealth();
+    if (h.system) setSystem(h.system);
     setHealth(h.ok ? { state: 'ok', count: h.count ?? 0 } : { state: 'down', error: h.error ?? 'SAP connection unavailable' });
   }, []);
   useEffect(() => { void runHealth(); }, [runHealth]);
@@ -145,13 +147,13 @@ export default function AppShell() {
           </button>
           <a href="/" className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"><IconArrowLeft size={14} /> Back to Emami Apps</a>
           <div className="flex-1" />
-          <span className="mr-4 hidden items-center gap-2 text-[11px] font-semibold text-white/70 md:flex"><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" /> SAP {SAP_SYSTEM}</span>
+          <span className="mr-4 hidden items-center gap-2 text-[11px] font-semibold text-white/70 md:flex"><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" /> SAP {system}</span>
         </div>
         <header className="glass mt-3 flex flex-wrap items-center gap-2.5 rounded-2xl px-4 py-3">
           {!wide && <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="rounded-full p-1.5 text-sap-ink hover:bg-white/70"><IconMenu size={22} /></button>}
           <h1 className="truncate font-display text-[19px] font-extrabold tracking-tight"><span className="text-gradient">Cascade</span> <span className="text-sap-ink">Pricing</span></h1>
           <span className="chip hidden text-plum sm:inline-flex"><CurrentIcon size={11} /> {current.label}</span>
-          <span className="chip text-emerald-700" title={`SAP system ${SAP_SYSTEM}`}><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" />SAP {SAP_SYSTEM}</span>
+          <span className="chip text-emerald-700" title={`SAP system ${system}`}><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" />SAP {system}</span>
           <div className="flex-1" />
           <div className="flex flex-col items-end gap-0.5">
             <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/50 px-3 py-1 ring-1 ring-white/80" aria-label="Validity for approvals" title="Valid From and Valid To are required for Send for Approval. For Approve, leave blank to keep the stored dates.">
@@ -187,7 +189,7 @@ export default function AppShell() {
           </div>
           {TABS.map(({ id, Comp }) => (
             <section key={id} id={`panel-${id}`} aria-label={TABS.find((t) => t.id === id)?.label} hidden={tab !== id} className="glass glass-rim fade-up mb-3 rounded-3xl">
-              {visited.has(id) && <Comp active={tab === id} busy={busy} setBusy={setBusy} showMessage={showMessage} setFailures={setFailures} vfrom={vfrom} vto={vto} />}
+              {visited.has(id) && <Comp active={tab === id} busy={busy} setBusy={setBusy} showMessage={showMessage} setFailures={setFailures} vfrom={vfrom} vto={vto} system={system} />}
             </section>
           ))}
         </main>
