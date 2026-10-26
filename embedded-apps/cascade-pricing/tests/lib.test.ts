@@ -263,3 +263,16 @@ describe('rejection with reason, pending correction, notifications', () => {
     ]);
   });
 });
+
+describe('SAP background timeout', () => {
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  afterEach(() => vi.unstubAllGlobals());
+  it('read actions: try again later; write actions: may still be processed, refresh first (no double send)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => reply(200, { processed: 0, failed: 1, message: 'Timeout waiting for background result', data: '' })));
+    const read = await runAction('ENRICH_RATES', { RATE_ROWS: [] });
+    expect(read.failed).toBe(1);
+    expect(read.message).toBe('SAP did not return the result of ENRICH_RATES in time: its background job did not report back (an issue on the SAP side). Try again in a few minutes.');
+    const write = await runAction('SEND_APPROVAL', { ROWS: [] }, '20261101', '20270331');
+    expect(write.message).toMatch(/It may still be processed - refresh the list before trying again, so nothing is sent twice\.$/);
+  });
+});

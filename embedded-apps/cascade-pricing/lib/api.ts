@@ -105,7 +105,19 @@ function stripPayload(p?: ActionPayload): ActionPayload | undefined {
 export async function runAction(action: ActionName, payload?: ActionPayload, vfrom?: string, vto?: string): Promise<ActionResult> {
   const req = { action, payload: stripPayload(payload), ...(vfrom ? { vfrom } : {}), ...(vto ? { vto } : {}) };
   const r = await call<Partial<ActionResult>>('/action', { method: 'POST', body: req }, `the result of ${action}`);
-  return { processed: Number(r?.processed ?? 0) || 0, failed: Number(r?.failed ?? 0) || 0, message: String(r?.message ?? ''), data: typeof r?.data === 'string' ? r.data : '' };
+  const message = String(r?.message ?? '');
+  return { processed: Number(r?.processed ?? 0) || 0, failed: Number(r?.failed ?? 0) || 0, message: isSapTimeout(message) ? sapTimeoutText(action) : message, data: typeof r?.data === 'string' ? r.data : '' };
+}
+
+/** SAP's answer when its background job did not report back in time (seen on NGD and NGQ, 26.10.2026: ~30-45 s, every
+ * action, even GET_NOTIFICATIONS). */
+export const SAP_TIMEOUT = /Timeout waiting for background result/i;
+export const isSapTimeout = (message: string) => SAP_TIMEOUT.test(message);
+const READ_ONLY: ActionName[] = ['GET_NOTIFICATIONS', 'GET_PENDING_CORRECTION', 'COMPARE', 'RUN_SIM', 'ENRICH_RATES'];
+export function sapTimeoutText(action: ActionName): string {
+  return READ_ONLY.includes(action)
+    ? `SAP did not return the result of ${action} in time: its background job did not report back (an issue on the SAP side). Try again in a few minutes.`
+    : `SAP did not confirm ${action} in time: its background job did not report back (an issue on the SAP side). It may still be processed - refresh the list before trying again, so nothing is sent twice.`;
 }
 
 /** SAP connectivity for the banner and footer. */

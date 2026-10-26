@@ -1,8 +1,8 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { IconBell, IconX } from './icons';
-import { parseDataArray, runAction } from '@/lib/api';
+import { isSapTimeout, parseDataArray, runAction } from '@/lib/api';
 import { formatDate, formatTime, trimLeadingZeros, type CascadeNotification } from '@/lib/types';
 
 type Props = {
@@ -12,6 +12,8 @@ type Props = {
 /** Fired by the tabs after a reject or a resubmit, so the bell does not wait for the next 60-second poll. */
 export const NOTIFICATIONS_CHANGED = 'cascade:notifications-changed';
 const POLL_MS = 60_000;
+/** After SAP times out, no polling for this long: each timed-out call holds an SAP work process for 30-45 s. */
+const BACKOFF_MS = 10 * 60_000;
 
 /**
  * Rejection notifications: a bell with the unread count, polled every 60 seconds (GET_NOTIFICATIONS), and a panel that
@@ -23,10 +25,18 @@ export default function NotificationBell({ onNavigateToPendingCorrection }: Prop
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState<string | 'all' | null>(null);
+  const pausedUntil = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (manual = false) => {
+    if (!manual && Date.now() < pausedUntil.current) return;
     try {
       const r = await runAction('GET_NOTIFICATIONS', {});
+      // A failed answer without data keeps the notifications already shown (it does not mean "none").
+      if (r.failed > 0 && !r.data) {
+        if (isSapTimeout(r.message) || /did not (return|confirm)/.test(r.message)) pausedUntil.current = Date.now() + BACKOFF_MS;
+        setError(r.message || 'SAP could not return the notifications.');
+        return;
+      }
       setItems(parseDataArray<CascadeNotification>(r));
       setError('');
     } catch (e) {
@@ -39,7 +49,7 @@ export default function NotificationBell({ onNavigateToPendingCorrection }: Prop
   useEffect(() => {
     void load();
     const t = setInterval(() => { void load(); }, POLL_MS);
-    const onChanged = () => { void load(); };
+    const onChanged = () => { void load(true); };
     window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);
     return () => { clearInterval(t); window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged); };
   }, [load]);
