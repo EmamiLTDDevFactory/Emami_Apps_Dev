@@ -30,6 +30,7 @@ import { useRun } from '@/lib/client/useRun';
 import { MAX_SCENARIOS, scenarioResults, useScenarios, type Scenario, type ScenarioResult } from '@/lib/client/scenarios';
 import { D } from '@/lib/cost/decimal';
 import { buildTree, leafPrefix, nodeTotals, grandTotal, rowKey } from '@/lib/cost/tree';
+import { localTotals } from '@/lib/cost/localTotals';
 import { buildPivot } from '@/lib/cost/pivot';
 import { EMPTY_SIM, isIdentity, simulate, type SimSettings } from '@/lib/cost/simulate';
 import { dataQuality } from '@/lib/cost/analytics';
@@ -195,6 +196,13 @@ export default function Explorer() {
   const fgQty = useCallback(() => D(explQtyRan), [explQtyRan]);
   const total = useMemo(() => (tree ? grandTotal(leafPrefix(tree, (i) => tree.rows[i].TotCostInr)) : null), [tree]);
   const simTotal = useMemo(() => (tree && simOn ? grandTotal(leafPrefix(tree, (i) => simRows[i].total)) : null), [tree, simRows, simOn]);
+  // The same total in local currency, per currency: shown as soon as one plant's currency is not INR (then every
+  // currency, INR plants included, so the local parts add up to the INR total).
+  const locTotals = useMemo(() => {
+    if (!tree) return [];
+    const all = localTotals(tree.rows, tree.isLeaf, simOn ? (i) => simRows[i].total : undefined);
+    return all.some((t) => t.curr !== groupCurr) ? all : [];
+  }, [tree, simRows, simOn, groupCurr]);
   const plantCurr = useMemo(() => {
     const m: Record<string, string> = Object.fromEntries(plants.map((p) => [p.Werks, p.Waers]));
     for (const r of rows) m[r.Hwerks] ??= r.LocCurr;
@@ -417,6 +425,14 @@ export default function Explorer() {
                 <strong className="num text-lg font-extrabold">{fmtNum(total, 2)}</strong>
                 <span className="text-xs font-semibold text-muted">{groupCurr}{result?.plantWide ? ` · ${result.plantWide.headers.toLocaleString('en-IN')} headers` : ''}</span>
                 {simTotal && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(simTotal, 2)}</strong></>}
+                {locTotals.map((t, i) => (
+                  <span key={t.curr} className={cx('flex items-baseline gap-1.5', i === 0 && 'border-l border-line pl-3')} title={`Lines costed in ${t.curr}: ${fmtNum(t.loc, 2)} ${t.curr} = ${fmtNum(t.inr, 2)} ${groupCurr} of the total`}>
+                    {i === 0 && <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Local</span>}
+                    <strong className="num text-lg font-extrabold">{fmtNum(t.loc, 2)}</strong>
+                    <span className="text-xs font-semibold text-muted">{t.curr}</span>
+                    {t.simLoc && <><SimTag /><strong className="num sim-val text-lg font-extrabold">{fmtNum(t.simLoc, 2)}</strong></>}
+                  </span>
+                ))}
                 <span className="text-2xs text-muted" title="Rate source priority SAP used for this result">Priority: <b className="text-ink">{prioLabel(ranQuery.prio)}</b></span>
                 {donorRows > 0 && <Pill tone="warn" title={`Leaf rows costed with rates from donor plant ${ranQuery.donorPlant || ''}`}>{donorRows} donor row{donorRows === 1 ? '' : 's'}</Pill>}
                 {AI_ENABLED && result && <AiBar rows={result.rows} result={result} query={ranQuery} system={cfg?.ok ? cfg.config.system : ''} user={user} scenarios={scen.list} onSelectRow={openRow} />}
