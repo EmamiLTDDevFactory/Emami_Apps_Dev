@@ -1170,68 +1170,100 @@ export async function fetchPoAttachment(ebeln: string): Promise<PoAttachment | n
 }
 
 // ---------------------------------------------------------------------------------------------
-// SES supporting documents — ZSESPDFUploadSet: one or more PDF files attached to a Service Entry
-// Sheet that already exists (Submission History rows with an SES number), keyed by the SES number
-// (Lblni) only, plus the signed-in Email. One flat POST per file.
-// Checked on NGD 26.10.2026 (filter probes, read-only): the entity type ZSESPDFUpload has Lblni,
-// Email, Guid, Status and Message; Ebeln/Ebelp/Lifnr are not on it, and there is no file field yet
-// (Filename / Mimetype / Value are what this app sends, the names every other attachment on this
-// service uses); ZSESPDFUPLOADSET_CREATE_ENTITY was not implemented. Change names only here.
+// SES supporting documents — ZSESPDFUploadSet, a deep create: one POST per Service Entry Sheet with
+// every chosen PDF in its file list (spec from the SAP team, 26.10.2026):
+//   request  { Guid (client UUID), Lblni (SES number, 10 chars, leading zeros), Email,
+//              ToFiles: [ { Filename, Value (base64 PDF) } ] }
+//   response { Guid, Lblni, Status S|P|E, Message, Totalrows, Successcnt, Errorcnt,
+//              ToFiles: [ { Filename, Status S|E, Message } ] }
+//   overall Status: S = all attached, P = some, E = none; per file S = attached, E = failed (reason).
+// Checked on NGD the same day: the header properties exist exactly so (OData names: Guid, Lblni,
+// Email, Status, Message, Totalrows, Successcnt, Errorcnt), but the file list (TOFILES) was not in the
+// model yet under any casing - the navigation names below are tried in order until SAP accepts one.
 // ---------------------------------------------------------------------------------------------
 
 const SES_DOC_ENTITY_SET = 'ZSESPDFUploadSet';
-const SES_DOC_FIELDS = {
-  sesNo: 'Lblni', email: 'Email', filename: 'Filename', mimetype: 'Mimetype', value: 'Value',
-} as const;
+const SES_DOC_NAV_CANDIDATES = ['ToFiles', 'TOFILES', 'Tofiles'];
 
 export interface SesSupportingDoc { name: string; base64: string; mimeType: string }
 export interface SesDocResult { name: string; ok: boolean; error?: string }
+export interface SesDocSummary { status: 'S' | 'P' | 'E' | ''; message: string; files: SesDocResult[] }
 
 function sapErrorText(err: any, fallback: string): string {
   return err?.response?.data?.error?.message?.value || (err instanceof Error ? err.message : fallback);
 }
 
-/** Attaches each PDF to the row's Service Entry Sheet, one POST per file, in order. Returns one result per file (never
- * throws per file) so the screen can say which ones were saved. If SAP refuses the full MIME type because its field is
- * short (as ZProvHeaderSet's is), the same file is retried once with 'PDF'. */
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/** 'SES number, 10 characters, left-padded with zeros'. */
+export const padLblni = (v: string) => String(v ?? '').trim().padStart(10, '0');
+
+/** Attaches the PDFs to the row's Service Entry Sheet. Files go in as few deep creates as possible, each request kept
+ * within the same 70 KB a single attachment on this service is held to (SAP's request-size ceiling), and the answers
+ * are merged: overall S when every file attached, E when none did, P otherwise. */
 export async function submitSesSupportingDocs(
   row: Pick<ProvisionLogRow, 'entrySheetNo'>,
   email: string,
   docs: SesSupportingDoc[]
-): Promise<SesDocResult[]> {
-  const F = SES_DOC_FIELDS;
-  const results: SesDocResult[] = [];
+): Promise<SesDocSummary> {
+  const LIMIT = 70 * 1024;
+  const bytes = (d: SesSupportingDoc) => Math.floor(d.base64.length * 3 / 4);
+  const batches: SesSupportingDoc[][] = [];
   for (const d of docs) {
-    const payload = (mimetype: string) => ({
-      [F.sesNo]: row.entrySheetNo, [F.email]: email,
-      [F.filename]: d.name, [F.mimetype]: mimetype, [F.value]: d.base64,
-    });
-    const post = async (mimetype: string) => {
-      const res = await sapClient.post(`/${SES_DOC_ENTITY_SET}`, payload(mimetype));
-      const body = res.data?.d || res.data;
-      if (body?.Type === 'E') throw new Error(body.Message || 'SAP rejected this document.');
-    };
+    const last = batches[batches.length - 1];
+    if (last && last.reduce((a, x) => a + bytes(x), 0) + bytes(d) <= LIMIT) last.push(d); else batches.push([d]);
+  }
+  const parts: SesDocSummary[] = [];
+  for (const b of batches) parts.push(await submitSesDocBatch(row, email, b));
+  if (parts.length === 1) return parts[0];
+  const files = parts.flatMap((p) => p.files);
+  const okCount = files.filter((f) => f.ok).length;
+  const status: SesDocSummary['status'] = okCount === files.length ? 'S' : okCount === 0 ? 'E' : 'P';
+  return { status, message: parts.map((p) => p.message).filter(Boolean).join(' · '), files };
+}
+
+/** One deep create with these files. Never throws: a failed call comes back as status 'E' with every file marked
+ * failed and the reason, so the pop-up can always say what happened. */
+async function submitSesDocBatch(
+  row: Pick<ProvisionLogRow, 'entrySheetNo'>,
+  email: string,
+  docs: SesSupportingDoc[]
+): Promise<SesDocSummary> {
+  const header = { Guid: uuid(), Lblni: padLblni(row.entrySheetNo), Email: email };
+  const files = docs.map((d) => ({ Filename: d.name, Value: d.base64 }));
+  const allFailed = (error: string): SesDocSummary => ({ status: 'E', message: error, files: docs.map((d) => ({ name: d.name, ok: false, error })) });
+  let lastError = '';
+  for (const nav of SES_DOC_NAV_CANDIDATES) {
     try {
-      try {
-        await post(d.mimeType || 'application/pdf');
-      } catch (err: any) {
-        if (/Mimetype/i.test(sapErrorText(err, ''))) await post('PDF'); else throw err;
-      }
-      results.push({ name: d.name, ok: true });
-    } catch (err: any) {
-      const text = sapErrorText(err, 'Could not attach this document.');
-      results.push({
-        name: d.name,
-        ok: false,
-        error: /Resource not found for the segment/i.test(text)
-          ? `SAP does not offer ${SES_DOC_ENTITY_SET} yet on this system (the SAP team needs to activate it / clear the gateway cache).`
-          : /Property '?(\w+)'? is invalid/i.test(text)
-            ? `SAP's ${SES_DOC_ENTITY_SET} has no field "${/Property '?(\w+)'? is invalid/i.exec(text)![1]}" yet - the SAP team needs to add the file fields (Filename, Mimetype, Value).`
-            : /CREATE_ENTITY' not implemented/i.test(text)
-              ? `SAP has not built the save for ${SES_DOC_ENTITY_SET} yet (ZSESPDFUPLOADSET_CREATE_ENTITY is not implemented).`
-              : text,
+      const res = await sapClient.post(`/${SES_DOC_ENTITY_SET}`, { ...header, [nav]: files });
+      const body = res.data?.d || res.data || {};
+      const back: any[] = body?.[nav]?.results ?? body?.[nav] ?? [];
+      const status = String(body.Status || '').toUpperCase() as SesDocSummary['status'];
+      const byName = new Map(back.map((f) => [String(f.Filename ?? ''), f]));
+      const results = docs.map((d) => {
+        const f = byName.get(d.name);
+        if (f) return { name: d.name, ok: String(f.Status).toUpperCase() === 'S', error: String(f.Status).toUpperCase() === 'S' ? undefined : String(f.Message || 'Not attached.') };
+        // No per-file answer: fall back on the overall status.
+        return { name: d.name, ok: status === 'S', error: status === 'S' ? undefined : String(body.Message || 'Not attached.') };
       });
+      return { status, message: String(body.Message || ''), files: results };
+    } catch (err: any) {
+      const text = sapErrorText(err, 'Could not attach the documents.');
+      lastError = text;
+      // This casing of the file list is not in SAP's model: try the next one.
+      if (new RegExp(`Property '?${nav}'? is invalid`, 'i').test(text)) continue;
+      if (/Resource not found for the segment/i.test(text)) return allFailed(`SAP does not offer ${SES_DOC_ENTITY_SET} on this system yet.`);
+      if (/CREATE_(DEEP_)?ENTITY' not implemented/i.test(text)) return allFailed(`SAP has not built the save for ${SES_DOC_ENTITY_SET} yet (${/CREATE_DEEP_ENTITY/i.test(text) ? 'CREATE_DEEP_ENTITY' : 'CREATE_ENTITY'} is not implemented).`);
+      return allFailed(text);
     }
   }
-  return results;
+  return allFailed(/is invalid/i.test(lastError)
+    ? `SAP's ${SES_DOC_ENTITY_SET} has no file list (TOFILES) yet - the SAP team needs to add that navigation property.`
+    : lastError);
 }

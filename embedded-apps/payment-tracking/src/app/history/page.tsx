@@ -10,6 +10,7 @@ import {
   submitLogAction,
   submitSesSupportingDocs,
   type SesDocResult,
+  type SesDocSummary,
   submitLogActionBatch,
   PROVISION_LOG_STATUSES,
   PROVISION_LOG_STATUS_LABELS,
@@ -163,6 +164,7 @@ function SupportingDocsModal({ row, email, onClose }: { row: ProvisionLogRow; em
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string[]>([]);
   const [failed, setFailed] = useState<SesDocResult[]>([]);
+  const [summary, setSummary] = useState<SesDocSummary | null>(null);
 
   const add = async () => {
     setPicking(true);
@@ -176,7 +178,9 @@ function SupportingDocsModal({ row, email, onClose }: { row: ProvisionLogRow; em
     setSaving(true);
     setFailed([]);
     try {
-      const results = await submitSesSupportingDocs(row, email, files);
+      const result = await submitSesSupportingDocs(row, email, files);
+      setSummary(result);
+      const results = result.files;
       const ok = results.filter((r) => r.ok).map((r) => r.name);
       setSaved((cur) => [...cur, ...ok]);
       setFailed(results.filter((r) => !r.ok));
@@ -210,6 +214,11 @@ function SupportingDocsModal({ row, email, onClose }: { row: ProvisionLogRow; em
               </li>
             ))}
           </ul>
+        )}
+        {summary && summary.message && (
+          <p className={cx('rounded-lg px-2.5 py-1.5 text-xs font-semibold', summary.status === 'S' ? 'bg-greenBg text-green' : summary.status === 'P' ? 'bg-amberBg text-amber' : 'bg-redBg text-red')}>
+            {summary.status === 'S' ? 'All attached' : summary.status === 'P' ? 'Partly attached' : 'Not attached'}: {summary.message}
+          </p>
         )}
         {failed.map((r) => <p key={r.name} className="text-xs font-semibold text-red">{r.name}: {r.error}</p>)}
         {saved.length > 0 && (
