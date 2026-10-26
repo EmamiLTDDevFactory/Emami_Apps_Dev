@@ -7,7 +7,9 @@ import { fetchProvisionPOs, type PaymentTrackingRow } from '../../lib/paymentTra
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { num, formatValue, breakdownBy, filterByMonth } from '../../lib/provisionMetrics';
-import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal, PT_COLORS } from '../../components/ProvisionUI';
+import { ProvisionHero, HeroActionButton, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal, PT_COLORS, ExcelButton } from '../../components/ProvisionUI';
+import { lineItemSheet, type Sheet } from '../../lib/exportExcel';
+import type { Breakdown } from '../../lib/provisionMetrics';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../components/ProvisionFilters';
 import { Banner, Card, CardTitle, LoadingBlock } from '../../components/ui';
 import { AdminDenied, RoleLoading } from '../../components/admin/AdminStates';
@@ -72,6 +74,25 @@ export default function ProvisionDashboard() {
     [filteredRows]
   );
 
+  // Excel: the KPIs, every breakdown in full (the screen shows the top 8) and the line items, all under the current
+  // Period and filters.
+  const breakdownSheet = (name: string, keyLabel: string, data: Breakdown[]): Sheet => ({
+    name, header: [keyLabel, 'Description', 'Line items', 'Pending bill value'],
+    rows: data.map((d) => [d.label, d.sublabel || '', d.count, d.value]), widths: [18, 36, 12, 18],
+  });
+  const dashboardSheets = (): Sheet[] => [
+    { name: 'KPIs', header: ['KPI', 'Value'], widths: [52, 18], rows: [
+      ['Open POs', distinctPOs], ['Open line items', filteredRows.length], ['Pending bill value', totalPending],
+      ['Cost centers involved', distinctCostCenters], ['Vendors involved', distinctVendors], ['Countries involved', distinctCountries],
+      ['Main exposure (GR posted, no SES) - line items', mainExposureRows.length], ['Main exposure (GR posted, no SES) - pending value', mainExposureValue],
+    ] },
+    breakdownSheet('By status', 'Status', statusBreakdown),
+    breakdownSheet('By cost center', 'Cost center', breakdownBy(filteredRows, (r) => r.costCenter || '(unassigned)', (r) => r.costCenter || 'Unassigned', (r) => r.costCenterText)),
+    breakdownSheet('By vendor', 'Vendor', breakdownBy(filteredRows, (r) => r.vendor || '(unassigned)', (r) => r.vendor || 'Unassigned', (r) => r.vendorName)),
+    breakdownSheet('By country', 'Country', countryBreakdown),
+    lineItemSheet(filteredRows),
+  ];
+
   if (roleLoading) {
     return <RoleLoading />;
   }
@@ -88,7 +109,10 @@ export default function ProvisionDashboard() {
         eyebrow="Admin · Cross-org"
         title="Dashboard"
         subtitle="Cross-org provision status across every open service PO — filter by any standard KPI to focus in on a slice of it."
-        right={<HeroActionButton label="Provision Details" onPress={() => router.replace('/provision-details/')} />}
+        right={<>
+          {!loading && !error && <ExcelButton fileBase="Provision_Dashboard" sheets={dashboardSheets} disabled={filteredRows.length === 0} />}
+          <HeroActionButton label="Provision Details" onPress={() => router.replace('/provision-details/')} />
+        </>}
       />
 
       {loading ? (

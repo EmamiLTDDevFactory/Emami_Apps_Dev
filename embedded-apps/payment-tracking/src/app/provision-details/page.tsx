@@ -7,7 +7,8 @@ import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext
 import { useMonthYear } from '../../context/MonthYearContext';
 import { filterByMonth } from '../../lib/provisionMetrics';
 import PaymentTrackingTable from '../../components/PaymentTrackingTable';
-import { ProvisionHero, HeroIconButton, OptionCard, PT_COLORS } from '../../components/ProvisionUI';
+import { ProvisionHero, HeroIconButton, OptionCard, PT_COLORS, ExcelButton } from '../../components/ProvisionUI';
+import { lineItemSheet, type Sheet } from '../../lib/exportExcel';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../components/ProvisionFilters';
 import { Banner, InfoField, LoadingBlock, Modal, TableWrap } from '../../components/ui';
 import { AdminDenied, RoleLoading } from '../../components/admin/AdminStates';
@@ -253,7 +254,10 @@ function PoDetailModal({ group, onClose }: { group: PoGroup; onClose: () => void
         </div>
       </div>
 
-      <p className="mb-2 text-sm font-extrabold text-ink">Line items ({group.lineCount})</p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-extrabold text-ink">Line items ({group.lineCount})</p>
+        <ExcelButton fileBase={`PO_${group.poNumber}`} sheets={() => [lineItemSheet(group.lines)]} />
+      </div>
       <PaymentTrackingTable rows={group.lines} emptyMessage="No line items." />
     </Modal>
   );
@@ -372,6 +376,21 @@ export default function ProvisionDetailsScreen() {
       onPress: () => setSelectedPo(g),
     }));
 
+  // Excel for whatever level is on screen: that level's table (cost centers, countries or POs) plus the line items
+  // behind it, under the current Period and filters.
+  const poSheet = (groups: PoGroup[]): Sheet => ({
+    name: 'POs', widths: [12, 14, 10, 28, 12, 26, 12, 26, 8, 8, 16],
+    header: ['PO Number', 'PO Creator', 'Vendor', 'Vendor Name', 'Cost Center', 'Cost Center Text', 'GL Code', 'GL Text', 'Country', 'Lines', 'Pending bill value'],
+    rows: groups.map((g) => [g.poNumber, g.poCreator, g.vendor, g.vendorName, g.costCenter, g.costCenterText, g.glAccount, g.glAccountText, g.country, g.lineCount, g.totalOpenValue]),
+  });
+  const detailSheets = (): Sheet[] => {
+    if (mode === 'costcenter') return [{ name: 'Cost centers', widths: [14, 32, 8, 8, 18], header: ['Cost Center', 'Description', 'POs', 'Lines', 'Pending bill value'], rows: costCenterGroups.map((g) => [g.costCenter, g.costCenterText, g.poCount, g.lineCount, g.totalOpenValue]) }, lineItemSheet(filteredRows)];
+    if (mode === 'country') return [{ name: 'Countries', widths: [10, 8, 8, 18], header: ['Country', 'POs', 'Lines', 'Pending bill value'], rows: countryGroups.map((g) => [g.country, g.poCount, g.lineCount, g.totalOpenValue]) }, lineItemSheet(filteredRows)];
+    const groups = mode === 'costcenter-po' ? posForSelectedCostCenter : mode === 'country-po' ? posForSelectedCountry : mode === 'report-po' ? poGroups : poGroups;
+    return [poSheet(groups), lineItemSheet(mode === 'choose' ? filteredRows : groups.flatMap((g) => g.lines))];
+  };
+  const excelBase = mode === 'choose' ? 'Provision_Details_All' : `Provision_Details_${heroTitle}`;
+
   const emptyText = (text: string) => <p className="py-10 text-center text-sm text-inkSoft">{text}</p>;
 
   return (
@@ -381,6 +400,7 @@ export default function ProvisionDetailsScreen() {
         title={heroTitle}
         subtitle={heroSubtitle}
         left={mode !== 'choose' ? <HeroIconButton icon={ArrowLeft} label="Back" onPress={onBack} /> : undefined}
+        right={!loading && !error ? <ExcelButton fileBase={excelBase} sheets={detailSheets} label={mode === 'choose' ? 'Excel (all)' : 'Excel'} disabled={filteredRows.length === 0} /> : undefined}
       />
 
       {loading ? (

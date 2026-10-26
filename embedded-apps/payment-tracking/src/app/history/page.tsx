@@ -3,11 +3,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeftRight, CalendarClock, CheckCircle2, CheckSquare, ChevronRight, Circle, Download, FileCheck2, FileText, Hourglass, Info, ListTree, Mail,
-  Paperclip, Search, Square, Undo2, XCircle, type LucideIcon,
+  Paperclip, Search, Square, Trash2, Undo2, XCircle, type LucideIcon,
 } from 'lucide-react';
 import {
   fetchProvisionLog,
   submitLogAction,
+  submitSesSupportingDocs,
+  type SesDocResult,
   submitLogActionBatch,
   PROVISION_LOG_STATUSES,
   PROVISION_LOG_STATUS_LABELS,
@@ -127,6 +129,140 @@ function StatusBadge({ status, text }: { status: ProvisionLogStatus | ''; text: 
 
 type StatusFilter = 'all' | ProvisionLogStatus;
 
+interface PickedPdf { name: string; base64: string; mimeType: string; bytes: number }
+
+/** Picks one or more PDFs and brings each under the attachment size limit (same compression as every other attachment
+ * in this app). Returns the files that made it and a message for any that did not. */
+async function pickPdfs(multiple: boolean): Promise<{ files: PickedPdf[]; errors: string[] }> {
+  const result = await getDocumentAsync({ type: 'application/pdf', multiple });
+  if (result.canceled) return { files: [], errors: [] };
+  const files: PickedPdf[] = [];
+  const errors: string[] = [];
+  for (const asset of result.assets) {
+    const name = asset.name || 'document.pdf';
+    if (!name.toLowerCase().endsWith('.pdf') || (asset.mimeType && asset.mimeType !== 'application/pdf')) { errors.push(`${name}: only PDF files can be attached.`); continue; }
+    try {
+      const base64 = await ensureAttachmentUnderLimit(await readAttachmentAsBase64(asset.uri), true);
+      if (!base64) { errors.push(`${name}: could not be compressed under 70KB - attach a smaller file.`); continue; }
+      files.push({ name, base64, mimeType: 'application/pdf', bytes: Math.floor(base64.length * 3 / 4) });
+    } catch {
+      errors.push(`${name}: could not be read.`);
+    }
+  }
+  return { files, errors };
+}
+
+const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/** Supporting documents for an SES that already exists: choose several PDFs, then "Save supporting documents" posts
+ * each one to ZSESPDFUploadSet. Saved files leave the list; any that failed stay, with SAP's reason. */
+function SupportingDocsModal({ row, email, onClose }: { row: ProvisionLogRow; email: string; onClose: () => void }) {
+  const [files, setFiles] = useState<PickedPdf[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState<string[]>([]);
+  const [failed, setFailed] = useState<SesDocResult[]>([]);
+
+  const add = async () => {
+    setPicking(true);
+    try {
+      const r = await pickPdfs(true);
+      setErrors(r.errors);
+      setFiles((cur) => [...cur, ...r.files.filter((f) => !cur.some((c) => c.name === f.name && c.bytes === f.bytes))]);
+    } finally { setPicking(false); }
+  };
+  const save = async () => {
+    setSaving(true);
+    setFailed([]);
+    try {
+      const results = await submitSesSupportingDocs(row, email, files);
+      const ok = results.filter((r) => r.ok).map((r) => r.name);
+      setSaved((cur) => [...cur, ...ok]);
+      setFailed(results.filter((r) => !r.ok));
+      setFiles((cur) => cur.filter((f) => !ok.includes(f.name)));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal size="md" centered onClose={saving ? () => {} : onClose}
+      title={<span className="flex items-center gap-2"><Paperclip size={15} className="text-rust" /> Supporting documents</span>}
+      subtitle={`SES ${row.entrySheetNo} · PO ${row.poNumber} · Item ${row.poItemNo}`}
+      footer={<>
+        <Button size="sm" variant="secondary" onClick={onClose} disabled={saving}>Close</Button>
+        <Button size="sm" variant="primary" icon={FileCheck2} onClick={save} disabled={!files.length || saving || picking} loading={saving}>Save supporting documents</Button>
+      </>}>
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-inkSoft">Attach one or more PDF files to this Service Entry Sheet. Each file is compressed to 70KB or less.</p>
+        <button type="button" onClick={add} disabled={picking || saving}
+          className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-rust/30 bg-cream/50 px-3 py-4 text-sm font-bold text-rust hover:border-rust/60 hover:bg-cream disabled:opacity-60">
+          {picking ? <Spinner size={14} /> : <Paperclip size={15} />} {picking ? 'Reading files…' : 'Choose PDF files (you can select several)'}
+        </button>
+        {errors.map((e) => <p key={e} className="text-xs font-semibold text-red">{e}</p>)}
+        {files.length > 0 && (
+          <ul className="flex flex-col divide-y divide-line rounded-xl border border-border">
+            {files.map((f) => (
+              <li key={`${f.name}-${f.bytes}`} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <FileText size={14} className="shrink-0 text-rust" />
+                <span className="min-w-0 flex-1 truncate" title={f.name}>{f.name}</span>
+                <span className="text-2xs text-inkSoft">{kb(f.bytes)}</span>
+                <button type="button" onClick={() => setFiles((cur) => cur.filter((c) => c !== f))} disabled={saving} aria-label={`Remove ${f.name}`} className="text-inkSoft hover:text-red"><Trash2 size={13} /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {failed.map((r) => <p key={r.name} className="text-xs font-semibold text-red">{r.name}: {r.error}</p>)}
+        {saved.length > 0 && (
+          <p className="flex items-start gap-1 text-xs font-bold text-green"><CheckCircle2 size={13} className="mt-[1px] shrink-0" /> Saved to the SES: {saved.join(', ')}</p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+export interface CommonInvoice { invoiceNo: string; invoiceDate: string; invoiceAmount: string; attachmentName: string; attachmentBase64: string; attachmentMimeType: string }
+
+/** Mail for P2P on several lines: one set of invoice details (number, date, amount, PDF) that is copied to every selected
+ * line before the usual mass Mail for P2P runs. */
+function MassMailModal({ count, onSubmit, onClose, submitting }: { count: number; onSubmit: (c: CommonInvoice) => void; onClose: () => void; submitting: boolean }) {
+  const [c, setC] = useState<CommonInvoice>({ invoiceNo: '', invoiceDate: '', invoiceAmount: '', attachmentName: '', attachmentBase64: '', attachmentMimeType: '' });
+  const [picking, setPicking] = useState(false);
+  const [error, setError] = useState('');
+  const amountOk = !!c.invoiceAmount.trim() && !Number.isNaN(Number(c.invoiceAmount));
+  const complete = !!c.invoiceNo.trim() && !!c.invoiceDate && amountOk && !!c.attachmentBase64;
+  const pick = async () => {
+    setPicking(true);
+    setError('');
+    try {
+      const r = await pickPdfs(false);
+      if (r.errors.length) setError(r.errors[0]);
+      const f = r.files[0];
+      if (f) setC((cur) => ({ ...cur, attachmentName: f.name, attachmentBase64: f.base64, attachmentMimeType: f.mimeType }));
+    } finally { setPicking(false); }
+  };
+  return (
+    <Modal size="md" centered onClose={submitting ? () => {} : onClose}
+      title={<span className="flex items-center gap-2"><Mail size={15} className="text-teal" /> Mail {count} item{count === 1 ? '' : 's'} for P2P</span>}
+      subtitle="These invoice details are applied to every selected line, then the mail to P2P is sent."
+      footer={<>
+        <Button size="sm" variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
+        <button type="button" onClick={() => onSubmit(c)} disabled={!complete || submitting} className="btn btn-sm bg-teal text-white hover:brightness-110 disabled:opacity-50">
+          {submitting ? <Spinner size={12} className="text-white" /> : <Mail size={12} />} Apply and mail {count} for P2P
+        </button>
+      </>}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="min-w-0"><span className="label">Invoice Number</span><Input aria-label="Invoice Number" value={c.invoiceNo} onChange={(e) => setC({ ...c, invoiceNo: e.target.value })} className="code" /></div>
+        <div className="min-w-0"><span className="label">Invoice Date</span><DateField value={c.invoiceDate} onChange={(v) => setC({ ...c, invoiceDate: v })} label="Invoice Date" /></div>
+        <div className="min-w-0"><span className="label">Invoice Amount</span><Input aria-label="Invoice Amount" inputMode="decimal" value={c.invoiceAmount} onChange={(e) => setC({ ...c, invoiceAmount: e.target.value })} className="num text-right" />
+          {c.invoiceAmount && !amountOk && <p className="mt-0.5 text-2xs font-semibold text-red">Enter a number.</p>}</div>
+        <div className="min-w-0"><span className="label">Attach Invoice (PDF)</span><AttachField fileName={c.attachmentName} attaching={picking} onPick={pick} /></div>
+      </div>
+      {error && <p className="mt-2 text-xs font-semibold text-red">{error}</p>}
+      <p className="mt-3 text-2xs font-semibold italic text-inkSoft">All four are required. Lines that already had invoice details get these instead.</p>
+    </Modal>
+  );
+}
+
 /** Clicks on these inside a row act on the control, not "open the audit trail". */
 const INTERACTIVE = 'button, input, a, label, textarea, select, [role="checkbox"]';
 
@@ -225,6 +361,8 @@ export default function PaymentTrackingHistory() {
   const [massSubmitting, setMassSubmitting] = useState(false);
   const [banner, setBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [openTrail, setOpenTrail] = useState<string | null>(null);
+  const [docsRow, setDocsRow] = useState<ProvisionLogRow | null>(null);
+  const [massMailOpen, setMassMailOpen] = useState(false);
 
   useEffect(() => {
     if (roleLoading || !email) return;
@@ -393,9 +531,33 @@ export default function PaymentTrackingHistory() {
   // as the per-row canMailP2P check) so a single incomplete row can't silently drop out of an
   // otherwise-successful mass submission — the whole batch is blocked until it's fixed, same
   // posture as Upcoming Provision's submitSelected.
-  const submitMassMailP2P = async () => {
+  const submitMassMailP2P = async (common?: CommonInvoice) => {
     const targets = rows.filter((r) => selected.has(r.key) && r.zstatus === 'AS' && !doneActions[r.key]);
     if (targets.length === 0) return;
+
+    // Common invoice details from the pop-up: copied onto every selected line (screen state included) and sent as each
+    // line's overrides; without them the original per-line check and values apply exactly as before.
+    if (common) {
+      const fields = { invoiceNo: common.invoiceNo, invoiceDate: common.invoiceDate, invoiceAmount: common.invoiceAmount, attachmentName: common.attachmentName, attachmentBase64: common.attachmentBase64, attachmentMimeType: common.attachmentMimeType };
+      targets.forEach((r) => patchRow(r.key, fields));
+      setMassSubmitting(true);
+      targets.forEach((r) => patchRow(r.key, { acting: 'MS', actionError: null, savedNotice: false }));
+      const overrides: Record<string, InvoiceEditOverrides> = {};
+      targets.forEach((r) => { overrides[r.key] = { ...fields }; });
+      const fails = await submitLogActionBatch(targets, email || '', 'MS', overrides);
+      const failedVendors = new Set(fails.map((f) => f.lifnr));
+      targets.forEach((r) => {
+        if (failedVendors.has(r.vendor)) patchRow(r.key, { acting: null, actionError: fails.find((f) => f.lifnr === r.vendor)?.error || 'Could not send mail to P2P.' });
+        else { patchRow(r.key, { acting: null }); setDoneActions((prev) => ({ ...prev, [r.key]: 'MS' })); }
+      });
+      setSelected(new Set());
+      setMassSubmitting(false);
+      setMassMailOpen(false);
+      setBanner(fails.length === 0
+        ? { type: 'success', message: `${targets.length} item(s) mailed for P2P with invoice ${common.invoiceNo}.` }
+        : { type: 'error', message: `${fails.length} vendor group(s) failed — see the affected rows below.` });
+      return;
+    }
 
     const badRow = targets.find((r) => !canMailP2P(rowState[r.key]));
     if (badRow) {
@@ -577,7 +739,14 @@ export default function PaymentTrackingHistory() {
       )
     ) : null;
 
-    return { state, editable, checkbox, attachment, invoiceNoEl, invoiceDateEl, invoiceAmountEl, attachPicker, messages, hasMessages, actions };
+    // Supporting documents: any line whose SES exists (not reversed).
+    const canAddDocs = !!row.entrySheetNo && row.zstatus !== 'RS';
+    const docsButton = canAddDocs ? (
+      <Button size="sm" variant="secondary" icon={Paperclip} onClick={() => setDocsRow(row)} aria-label={`Supporting documents for SES ${row.entrySheetNo}`}>Supporting docs</Button>
+    ) : null;
+    const allActions = actions || docsButton ? <div className="flex flex-wrap items-center justify-end gap-1.5">{actions}{docsButton}</div> : null;
+
+    return { state, editable, checkbox, attachment, invoiceNoEl, invoiceDateEl, invoiceAmountEl, attachPicker, messages, hasMessages, actions: allActions };
   };
 
   const anyEditable = filteredRows.some((r) => r.zstatus === 'AS' && !doneActions[r.key]);
@@ -646,7 +815,7 @@ export default function PaymentTrackingHistory() {
             {selected.size > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-white px-3 py-2 shadow-card">
                 <span className="text-sm font-bold text-ink">{selected.size} selected</span>
-                <button type="button" onClick={submitMassMailP2P} disabled={massSubmitting}
+                <button type="button" onClick={() => setMassMailOpen(true)} disabled={massSubmitting}
                   className="btn btn-sm bg-teal text-white hover:brightness-110">
                   {massSubmitting ? <Spinner size={12} className="text-white" /> : <><Mail size={12} /> Mail Selected for P2P</>}
                 </button>
@@ -773,6 +942,8 @@ export default function PaymentTrackingHistory() {
           </>
         )}
       </div>
+      {docsRow && <SupportingDocsModal row={docsRow} email={email || ''} onClose={() => setDocsRow(null)} />}
+      {massMailOpen && <MassMailModal count={rows.filter((r) => selected.has(r.key) && r.zstatus === 'AS' && !doneActions[r.key]).length} submitting={massSubmitting} onClose={() => setMassMailOpen(false)} onSubmit={(c) => void submitMassMailP2P(c)} />}
       <AuditTrailModal trail={openTrail ? trailByKey.get(openTrail) ?? null : null} onClose={() => setOpenTrail(null)} onViewAttachment={viewAttachment} />
       <AttachmentPreviewModal blobUrl={preview?.blobUrl ?? null} filename={preview?.filename ?? ''} onClose={closePreview} />
     </>

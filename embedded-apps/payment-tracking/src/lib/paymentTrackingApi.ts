@@ -1168,3 +1168,67 @@ export async function fetchPoAttachment(ebeln: string): Promise<PoAttachment | n
     throw new Error(sapMessage || (err instanceof Error ? err.message : 'Could not load this quotation.'));
   }
 }
+
+// ---------------------------------------------------------------------------------------------
+// SES supporting documents — ZSESPDFUploadSet: one or more PDF files attached to a Service Entry
+// Sheet that already exists (Submission History rows with an SES number). One flat POST per file,
+// same shape as ZPOAttachmentSet / the ZProvHeader attachment fields (Filename / Mimetype / Value as
+// base64), keyed by the SES (Lblni) with its PO line and vendor alongside.
+// NOT YET CONFIRMED LIVE: on 26.10.2026 the NGD gateway still answered "Resource not found for the
+// segment 'ZSESPDFUploadSet'" (metadata cache not refreshed). The property names below are the
+// app's best guess from the sibling entities — change them only in SES_DOC_FIELDS if SAP's differ.
+// ---------------------------------------------------------------------------------------------
+
+const SES_DOC_ENTITY_SET = 'ZSESPDFUploadSet';
+const SES_DOC_FIELDS = {
+  sesNo: 'Lblni', poNumber: 'Ebeln', poItemNo: 'Ebelp', vendor: 'Lifnr', email: 'Email',
+  filename: 'Filename', mimetype: 'Mimetype', value: 'Value',
+} as const;
+
+export interface SesSupportingDoc { name: string; base64: string; mimeType: string }
+export interface SesDocResult { name: string; ok: boolean; error?: string }
+
+function sapErrorText(err: any, fallback: string): string {
+  return err?.response?.data?.error?.message?.value || (err instanceof Error ? err.message : fallback);
+}
+
+/** Attaches each PDF to the row's Service Entry Sheet, one POST per file, in order. Returns one result per file (never
+ * throws per file) so the screen can say which ones were saved. If SAP refuses the full MIME type because its field is
+ * short (as ZProvHeaderSet's is), the same file is retried once with 'PDF'. */
+export async function submitSesSupportingDocs(
+  row: Pick<ProvisionLogRow, 'entrySheetNo' | 'poNumber' | 'poItemNo' | 'vendor'>,
+  email: string,
+  docs: SesSupportingDoc[]
+): Promise<SesDocResult[]> {
+  const F = SES_DOC_FIELDS;
+  const results: SesDocResult[] = [];
+  for (const d of docs) {
+    const payload = (mimetype: string) => ({
+      [F.sesNo]: row.entrySheetNo, [F.poNumber]: row.poNumber, [F.poItemNo]: row.poItemNo, [F.vendor]: row.vendor, [F.email]: email,
+      [F.filename]: d.name, [F.mimetype]: mimetype, [F.value]: d.base64,
+    });
+    const post = async (mimetype: string) => {
+      const res = await sapClient.post(`/${SES_DOC_ENTITY_SET}`, payload(mimetype));
+      const body = res.data?.d || res.data;
+      if (body?.Type === 'E') throw new Error(body.Message || 'SAP rejected this document.');
+    };
+    try {
+      try {
+        await post(d.mimeType || 'application/pdf');
+      } catch (err: any) {
+        if (/Mimetype/i.test(sapErrorText(err, ''))) await post('PDF'); else throw err;
+      }
+      results.push({ name: d.name, ok: true });
+    } catch (err: any) {
+      const text = sapErrorText(err, 'Could not attach this document.');
+      results.push({
+        name: d.name,
+        ok: false,
+        error: /Resource not found for the segment/i.test(text)
+          ? `SAP does not offer ${SES_DOC_ENTITY_SET} yet on this system (the SAP team needs to activate it / clear the gateway cache).`
+          : text,
+      });
+    }
+  }
+  return results;
+}

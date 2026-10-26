@@ -5,7 +5,8 @@ import { CalendarDays, CheckCircle2, Search, XCircle } from 'lucide-react';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
 import { useMonthYear, fiscalYearLabel } from '../../context/MonthYearContext';
-import { ProvisionHero, ProvisionDetailModal } from '../../components/ProvisionUI';
+import { ProvisionHero, ProvisionDetailModal, ExcelButton } from '../../components/ProvisionUI';
+import { lineItemSheet, type Sheet } from '../../lib/exportExcel';
 import { Banner, Card, CardTitle, Chip, Input, LoadingBlock, TableWrap } from '../../components/ui';
 import { AdminDenied, RoleLoading } from '../../components/admin/AdminStates';
 
@@ -103,6 +104,14 @@ export default function ProvisionCalendar() {
   const allRows = useMemo(() => buildMatrixRows(rows), [rows]);
   const filteredRows = useMemo(() => allRows.filter((r) => matchesQuery(r, query)), [allRows, query]);
 
+  // Excel: the matrix as shown (current search), months as Accepted / Not accepted, plus the line items behind it.
+  const calendarSheets = (): Sheet[] => [
+    { name: `Calendar ${fiscalYearLabel(Number(year))}`, widths: [12, 28, 12, 34, 14, ...FISCAL_MONTHS.map(() => 10), 8],
+      header: ['Vendor Code', 'Vendor Name', 'PO Number', 'Service Text', 'PO Creator', ...FISCAL_MONTHS.map((m) => m.label), 'Total'],
+      rows: filteredRows.map((r) => [r.vendorCode, r.vendorName, r.poNumber, r.serviceText, r.poCreator, ...r.monthStatus.map((a) => (a ? 'Accepted' : '')), `${r.monthStatus.filter(Boolean).length}/12`]) },
+    lineItemSheet(filteredRows.map((r) => r.row)),
+  ];
+
   if (roleLoading) {
     return <RoleLoading />;
   }
@@ -130,7 +139,7 @@ export default function ProvisionCalendar() {
           <CardTitle
             icon={CalendarDays}
             title={`Vendor · PO · month detail — ${fiscalYearLabel(Number(year))}`}
-            actions={<Chip tone="rust">{filteredRows.length} row{filteredRows.length === 1 ? '' : 's'}</Chip>}
+            actions={<div className="flex items-center gap-1.5"><Chip tone="rust">{filteredRows.length} row{filteredRows.length === 1 ? '' : 's'}</Chip><ExcelButton fileBase={`Provision_Calendar_FY${year}`} sheets={calendarSheets} disabled={filteredRows.length === 0} /></div>}
           />
           <p className="-mt-1 text-xs text-inkSoft">
             {filteredRows.length} row{filteredRows.length === 1 ? '' : 's'} match the current search. A green tick marks the month a line's Service Entry Sheet was created and accepted.

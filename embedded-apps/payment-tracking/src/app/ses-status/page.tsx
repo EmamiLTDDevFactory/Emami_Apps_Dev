@@ -6,7 +6,8 @@ import { fetchProvisionPOs, type PaymentTrackingRow, type ProvisionStatus } from
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { num, formatValue, breakdownBy, filterByMonth } from '../../lib/provisionMetrics';
-import { ProvisionHero, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal, PT_COLORS } from '../../components/ProvisionUI';
+import { ProvisionHero, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal, PT_COLORS, ExcelButton } from '../../components/ProvisionUI';
+import { lineItemSheet, type Sheet } from '../../lib/exportExcel';
 import { ProvisionFilterBar, applyProvisionFilters, EMPTY_PROVISION_FILTERS, type ProvisionFilterState } from '../../components/ProvisionFilters';
 import { Banner, Card, CardTitle, LoadingBlock } from '../../components/ui';
 import { AdminDenied, RoleLoading } from '../../components/admin/AdminStates';
@@ -67,6 +68,12 @@ export default function SesStatusScreen() {
     [filteredRows]
   );
 
+  const sesSheets = (): Sheet[] => [
+    { name: 'SES stages', header: ['Status', 'Stage', 'Line items', 'Pending bill value'], widths: [8, 40, 12, 18],
+      rows: STATUS_STAGES.map((st) => { const rs = rowsByStatus.get(st.code) || []; return [st.code, st.label, rs.length, rs.reduce((a, r) => a + num(r.pendingValue), 0)]; }) },
+    lineItemSheet(filteredRows),
+  ];
+
   if (roleLoading) {
     return <RoleLoading />;
   }
@@ -83,6 +90,7 @@ export default function SesStatusScreen() {
         eyebrow="Admin · Cross-org"
         title="Overall SES Status"
         subtitle="Every open PO item's Service Entry Sheet lifecycle stage, at a glance — tap a stage or a bar for its line items."
+        right={!loading && !error ? <ExcelButton fileBase="Overall_SES_Status" sheets={sesSheets} disabled={filteredRows.length === 0} /> : undefined}
       />
 
       {loading ? (

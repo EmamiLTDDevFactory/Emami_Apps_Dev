@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, ChevronRight, type LucideIcon } from 'lucide-react';
+import { ArrowRight, ChevronRight, FileSpreadsheet, type LucideIcon } from 'lucide-react';
 import { formatValue, type Breakdown } from '../lib/provisionMetrics';
 import PaymentTrackingTable from './PaymentTrackingTable';
 import type { PaymentTrackingRow } from '../lib/paymentTrackingApi';
-import { Modal, cx } from './ui';
+import { Modal, Spinner, cx } from './ui';
+import { downloadExcel, lineItemSheet, type Sheet } from '../lib/exportExcel';
 
 /** Hex values of the Tailwind palette (tailwind.config.ts), for props that take a colour string
  * (`accent`), mirroring the original's `colors.*` tokens so call sites can pass e.g. PT_COLORS.red. */
@@ -97,6 +98,26 @@ export function HeroActionButton({ label, onPress }: { label: string; onPress: (
     <button type="button" onClick={onPress} aria-label={label} className="btn-primary btn-sm">
       <span className="truncate">{label}</span>
       <ArrowRight size={12} />
+    </button>
+  );
+}
+
+/** "Excel" download button for the Admin screens and pop-ups. `sheets` is called on click, so it always exports what
+ * the screen shows at that moment (current filter, drill-down level and search). */
+export function ExcelButton({ fileBase, sheets, label = 'Excel', disabled }: { fileBase: string; sheets: () => Sheet[]; label?: string; disabled?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const onClick = async () => {
+    setBusy(true);
+    setFailed(false);
+    try { await downloadExcel(fileBase, sheets()); } catch { setFailed(true); } finally { setBusy(false); }
+  };
+  return (
+    <button type="button" onClick={onClick} disabled={busy || disabled} aria-label={`Download ${fileBase.replace(/_/g, ' ')} as Excel`}
+      title={failed ? 'The Excel file could not be created. Try again.' : 'Download as Excel'}
+      className={cx('btn btn-sm border border-border bg-white font-bold text-ledger hover:border-ledger/40 hover:bg-ledgerBg disabled:opacity-50', failed && '!border-red/50 !text-red')}>
+      {busy ? <Spinner size={12} /> : <FileSpreadsheet size={13} />}
+      {failed ? 'Retry Excel' : label}
     </button>
   );
 }
@@ -258,7 +279,8 @@ export function ProvisionDetailModal({
   onClose: () => void;
 }) {
   return (
-    <Modal title={title} subtitle={subtitle} onClose={onClose} size="xl">
+    <Modal title={title} subtitle={subtitle} onClose={onClose} size="xl"
+      footer={<ExcelButton fileBase={title} sheets={() => [lineItemSheet(rows)]} disabled={rows.length === 0} />}>
       <PaymentTrackingTable rows={rows} emptyMessage="No items match this stat right now." />
     </Modal>
   );
