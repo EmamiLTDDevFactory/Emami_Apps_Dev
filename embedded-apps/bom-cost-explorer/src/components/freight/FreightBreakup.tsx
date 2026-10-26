@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 import { Pill, cx } from '../ui';
 import type { CostLine } from '@/lib/sap/fields';
-import { breakupLines, freightKeyOf, poSummary, reconcile, selectedRows, type FreightRun, type FreightView } from '@/lib/freight/breakup';
+import { BVAT_NOTE, breakupLines, freightKeyOf, isExcluded, poSummary, reconcile, selectedRows, type FreightRun, type FreightView } from '@/lib/freight/breakup';
 import { useFreightBreakup } from '@/lib/freight/useFreightBreakup';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
 import { componentFreightInr, componentFreightLoc, type FreightTagged } from '@/lib/cost/freightIncluded';
@@ -94,9 +94,9 @@ export function FreightBreakupPanel({ line, run, enabled = true, compactTitle = 
               </thead>
               <tbody>
                 {lines.map((l, i) => {
-                  const isUsed = usedSet.has(l.row) && !l.zero;
+                  const isUsed = usedSet.has(l.row) && !l.zero && !l.excluded;
                   return (
-                    <tr key={i} className={cx('border-t border-line/60', isUsed ? 'font-bold' : 'text-faint')}>
+                    <tr key={i} className={cx('border-t border-line/60', isUsed ? 'font-bold' : 'text-faint')} title={l.excluded ? `${BVAT_NOTE} (not summed)` : undefined}>
                       <td className={td}><span className="font-mono">{l.row.Conditiontype || '—'}</span>{l.row.UsedSrc && <span className="ml-1 text-2xs font-normal text-faint">{l.row.UsedSrc}</span>}</td>
                       <td className={tdN}>{fmtQty(l.qty)} <span className="text-2xs font-normal text-faint">{l.row.Matuom || l.row.Baseunit}</span></td>
                       <td className={tdN}>{fmtNum(l.amount, 2, l.row.Currency)} <span className="text-2xs font-normal text-faint">{l.row.Currency}</span></td>
@@ -120,6 +120,7 @@ export function FreightBreakupPanel({ line, run, enabled = true, compactTitle = 
               </tbody>
             </table>
           </div>
+          {all.some(isExcluded) && <p className="text-xs text-muted">{BVAT_NOTE}.</p>}
           {rec && (rec.matches ? (
             <p className="flex items-center gap-1.5 font-semibold text-good"><CheckCircle2 size={16} /> Matches the cost line ({fmtRate(rec.breakup)} vs {fmtRate(rec.line)} {line.LocCurr} per piece).</p>
           ) : (

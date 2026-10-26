@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BVAT_HINT } from '@/lib/freight/breakup';
 import type { CostQuery, PageRequest } from '@/lib/query/schema';
 import { MODE_LABEL } from '@/lib/query/schema';
 import { api, type ApiError, type PagedResult } from '@/lib/client/api';
@@ -118,6 +119,7 @@ export default function PagedTable({ query, runKey, onMessages, onRunning }: { q
           </button>
         ))}
         {loading && <span className="text-2xs text-muted">Loading…</span>}
+        {mode === 'F' && <span className="text-2xs text-muted">{BVAT_HINT}: without one, SAP shows BVAT as EXCLUDED.</span>}
         <span className="ml-auto text-2xs text-muted">{data.total.toLocaleString('en-IN')} rows {data.cached && '· from cache'}</span>
         <Button size="sm" onClick={() => exportAll('xlsx')}>Excel</Button>
         <Button size="sm" onClick={() => exportAll('csv')}>CSV</Button>

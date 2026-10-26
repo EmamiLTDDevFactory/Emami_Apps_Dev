@@ -5,6 +5,11 @@
  *
  *   Mode eq 'F' and Matnr eq '<line.Idnrk>' and Werks eq '<line.Werks>'   (component plant, not Hwerks)
  *   and FreightDays eq 3650 and StdFrt eq <run> and LatestOnly eq true
+ *   and FgMatnr eq '<line.Headmat>'   (the finished good of the clicked cost line, when there is one)
+ *
+ * With FgMatnr SAP decides BVAT per finished good (it counts only for material group 404); rows SAP returns with
+ * UsedSrc 'EXCLUDED' are shown greyed and left out of every sum. Without FgMatnr (standalone Freight screen) SAP
+ * returns BVAT as EXCLUDED.
  *
  * No look-back limit: FreightDays is always the widest window the service accepts (FREIGHT_NO_LIMIT_DAYS, 10 years),
  * so the latest PO freight is found however old it is. StdFrt comes from the run that produced the lines, never
@@ -19,27 +24,30 @@ import { sapGetCollection, type SapGetOptions } from '../sap/client';
 import { normalizeEntity } from '../sap/normalize';
 import { FREIGHT_ROW, type CostLine, type FreightRow } from '../sap/fields';
 import { componentFreightLoc, type FreightTagged } from '../cost/freightIncluded';
+import { odataString } from '../sap/filter';
 
 /** FREIGHT_BREAKUP_ENABLED (default true). NEXT_PUBLIC_ name referenced literally so Next inlines it in the browser. */
 export const FREIGHT_BREAKUP_ENABLED = String(process.env.NEXT_PUBLIC_FREIGHT_BREAKUP_ENABLED ?? process.env.FREIGHT_BREAKUP_ENABLED ?? 'true').toLowerCase() !== 'false';
 
 /** The freight settings of the run that produced the cost lines. */
 export interface FreightRun { freightDays: number; stdFrt: boolean }
-export interface FreightKey extends FreightRun { matnr: string; werks: string }
+export interface FreightKey extends FreightRun { matnr: string; werks: string; /** finished good of the cost line ('' = none) */ fgMatnr: string }
 
 /** No 180-day (or any) restriction: the widest window the service accepts (schema max), with LatestOnly. */
 export const FREIGHT_NO_LIMIT_DAYS = 3650;
 
-export const freightKeyOf = (line: Pick<CostLine, 'Idnrk' | 'Werks' | 'Hwerks'>, run: FreightRun): FreightKey => ({
-  matnr: line.Idnrk, werks: line.Werks || line.Hwerks, freightDays: FREIGHT_NO_LIMIT_DAYS, stdFrt: run.stdFrt,
+export const freightKeyOf = (line: Pick<CostLine, 'Idnrk' | 'Werks' | 'Hwerks'> & Partial<Pick<CostLine, 'Headmat'>>, run: FreightRun): FreightKey => ({
+  matnr: line.Idnrk, werks: line.Werks || line.Hwerks, freightDays: FREIGHT_NO_LIMIT_DAYS, stdFrt: run.stdFrt, fgMatnr: line.Headmat || '',
 });
 /** Cache key, same parts as the brief's ["freight-breakup", matnr, werks, freightDays, stdFrt]. */
-export const cacheKey = (k: FreightKey) => JSON.stringify(['freight-breakup', k.matnr, k.werks, k.freightDays, k.stdFrt]);
+export const cacheKey = (k: FreightKey) => JSON.stringify(['freight-breakup', k.matnr, k.werks, k.freightDays, k.stdFrt, k.fgMatnr]);
 
 /** One FreightRowSet request (one page, no paging needed for one component). */
 export function freightBreakupRequest(k: FreightKey) {
   const q = { ...defaultQuery('F'), materials: [k.matnr], plants: [k.werks], freightDays: k.freightDays, stdFrt: k.stdFrt, latestOnly: true };
-  return pagedRequest(q, 500, 0);
+  const r = pagedRequest(q, 500, 0);
+  if (k.fgMatnr) r.params.$filter = `${r.params.$filter} and FgMatnr eq ${odataString(k.fgMatnr)}`;
+  return r;
 }
 
 export async function fetchFreightBreakup(k: FreightKey, opts: SapGetOptions = {}): Promise<FreightRow[]> {
@@ -52,11 +60,17 @@ export async function fetchFreightBreakup(k: FreightKey, opts: SapGetOptions = {
 
 export type FreightView = 'ACTUAL' | 'STANDARD';
 
+/** A row SAP left out of the freight (BVAT when the finished good is not in material group 404): greyed, never summed. */
+export const isExcluded = (r: Pick<FreightRow, 'UsedSrc'>) => String(r.UsedSrc ?? '').trim().toUpperCase() === 'EXCLUDED';
+export const BVAT_NOTE = 'BVAT counts only when the finished good is in material group 404';
+export const BVAT_HINT = 'BVAT depends on the finished good';
+
 export interface BreakupLine {
   row: FreightRow;
   qty: Decimal; amount: Decimal; rate: Decimal; stdRate: Decimal;
   pcLoc: Decimal; pcInr: Decimal;
   zero: boolean;
+  excluded: boolean;
 }
 export interface BreakupTotals { qty: Decimal; amount: Decimal; pcLoc: Decimal; pcInr: Decimal }
 
@@ -68,9 +82,9 @@ export function breakupLines(rows: FreightRow[], view: FreightView): { lines: Br
     const rate = D(view === 'ACTUAL' ? row.ActRate : row.StdRate);
     const pcLoc = D(row.UsedPcLoc);
     const pcInr = D(row.UsedPcInr);
-    return { row, qty, amount, rate, stdRate: D(row.StdRate), pcLoc, pcInr, zero: amount.isZero() && pcLoc.isZero() && pcInr.isZero() };
+    return { row, qty, amount, rate, stdRate: D(row.StdRate), pcLoc, pcInr, zero: amount.isZero() && pcLoc.isZero() && pcInr.isZero(), excluded: isExcluded(row) };
   });
-  const totals = lines.reduce((t, l) => ({ qty: t.qty.plus(l.qty), amount: t.amount.plus(l.amount), pcLoc: t.pcLoc.plus(l.pcLoc), pcInr: t.pcInr.plus(l.pcInr) }), { qty: ZERO, amount: ZERO, pcLoc: ZERO, pcInr: ZERO });
+  const totals = lines.filter((l) => !l.excluded).reduce((t, l) => ({ qty: t.qty.plus(l.qty), amount: t.amount.plus(l.amount), pcLoc: t.pcLoc.plus(l.pcLoc), pcInr: t.pcInr.plus(l.pcInr) }), { qty: ZERO, amount: ZERO, pcLoc: ZERO, pcInr: ZERO });
   return { lines, totals };
 }
 
@@ -86,7 +100,7 @@ export interface Reconciliation {
 
 /** Sum of UsedPcLoc vs the cost line's FrtPcLoc; matches within max(0.01, 0.05 % of the line value). */
 export function reconcile(rows: FreightRow[], line: Pick<CostLine, 'FrtPcLoc' | 'Meins' | 'LocCurr'> & FreightTagged): Reconciliation {
-  const breakup = rows.reduce((a, r) => a.plus(D(r.UsedPcLoc)), ZERO);
+  const breakup = rows.filter((r) => !isExcluded(r)).reduce((a, r) => a.plus(D(r.UsedPcLoc)), ZERO);
   // SAP's freight of the component (kept when the line's Consumption / MBEW rate already includes it).
   const lv = componentFreightLoc(line);
   const diff = breakup.minus(lv).abs();
@@ -99,7 +113,7 @@ export function reconcile(rows: FreightRow[], line: Pick<CostLine, 'FrtPcLoc' | 
 
 /** The freight rows the costing used: a non-zero per-piece amount (local or INR). None of them -> every row. */
 export function selectedRows(rows: FreightRow[]): FreightRow[] {
-  const used = rows.filter((r) => !D(r.UsedPcLoc).isZero() || !D(r.UsedPcInr).isZero());
+  const used = rows.filter((r) => !isExcluded(r) && (!D(r.UsedPcLoc).isZero() || !D(r.UsedPcInr).isZero()));
   return used.length ? used : rows;
 }
 

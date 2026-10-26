@@ -9,7 +9,7 @@ import { mockRequestLog } from '../../mock/sap';
 import { fetchCostLines } from '@/lib/sap/service';
 import { defaultQuery } from '@/lib/query/schema';
 import { isLeafRow } from '@/lib/cost/tree';
-import { freightBreakupRequest, freightKeyOf, reconcile, breakupLines, selectedRows } from '@/lib/freight/breakup';
+import { BVAT_NOTE, freightBreakupRequest, freightKeyOf, isExcluded, reconcile, breakupLines, selectedRows } from '@/lib/freight/breakup';
 import { clearFreightBreakupCache, loadFreightBreakup } from '@/lib/freight/useFreightBreakup';
 import type { CostLine, FreightRow } from '@/lib/sap/fields';
 
@@ -58,7 +58,8 @@ describe('freight break-up: requests', () => {
     expect(url).toContain("StdFrt eq 'X'");
     expect(url).toContain("LatestOnly eq 'X'");
     const freightScreen = buildSelectionFilter({ ...defaultQuery('F'), materials: [line.Idnrk], plants: [line.Werks], freightDays: 3650, stdFrt: true, latestOnly: true });
-    expect(new URL(`http://x${mockRequestLog[0]}`).searchParams.get('$filter')).toBe(freightScreen);
+    // the Freight screen's filter plus the finished good of the clicked line
+    expect(new URL(`http://x${mockRequestLog[0]}`).searchParams.get('$filter')).toBe(`${freightScreen} and FgMatnr eq '${line.Headmat}'`);
     expect(mockRequestLog[0]).not.toContain('+');
     expect(rows.length).toBeGreaterThan(0);
   });
@@ -150,5 +151,28 @@ describe('freight break-up: freight cells', () => {
     const html = await cell('frtPc', run);
     expect(html).not.toContain('<button');
     expect(mockRequestLog).toHaveLength(0);
+  });
+});
+
+describe('freight break-up: finished good and BVAT', () => {
+  const row = (o: Partial<FreightRow>) => ({ Conditiontype: 'ZFR1', Baseunit: 'KG', Localcurrency: 'INR', Currency: 'INR', Actualdelvquantity: '10', Actualdelvcostamount: '50', ActRate: '5', Stddelvquantity: '10', Stddelvcostamount: '40', StdRate: '4', UsedPcLoc: '0', UsedPcInr: '0', UsedSrc: 'ACTUAL', ...o }) as FreightRow;
+
+  it("FgMatnr eq '<line.Headmat>' on the request; none without a finished good (and a separate cache key)", () => {
+    const withFg = freightBreakupRequest(freightKeyOf({ Idnrk: 'RM1', Werks: '1000', Hwerks: '1000', Headmat: 'FG1001' } as CostLine, run));
+    expect(withFg.params.$filter).toMatch(/ and FgMatnr eq 'FG1001'$/);
+    const without = freightBreakupRequest(freightKeyOf({ Idnrk: 'RM1', Werks: '1000', Hwerks: '1000' } as CostLine, run));
+    expect(without.params.$filter).not.toContain('FgMatnr');
+  });
+
+  it("rows with UsedSrc 'EXCLUDED' are not summed: totals, reconciliation and the used rows leave them out", () => {
+    const rows = [row({ Conditiontype: 'ZFR1', UsedPcLoc: '2', UsedPcInr: '2' }), row({ Conditiontype: 'BVAT', UsedSrc: 'EXCLUDED', Actualdelvcostamount: '30', UsedPcLoc: '1.5', UsedPcInr: '1.5' })];
+    expect(isExcluded(rows[1])).toBe(true);
+    const { lines, totals } = breakupLines(rows, 'ACTUAL');
+    expect(lines[1].excluded).toBe(true);
+    expect(totals.pcLoc.toFixed(2)).toBe('2.00');
+    expect(totals.amount.toFixed(0)).toBe('50');
+    expect(reconcile(rows, { FrtPcLoc: '2', Meins: 'KG', LocCurr: 'INR' } as CostLine).matches).toBe(true);
+    expect(selectedRows(rows).map((r) => r.Conditiontype)).toEqual(['ZFR1']);
+    expect(BVAT_NOTE).toBe('BVAT counts only when the finished good is in material group 404');
   });
 });
