@@ -626,6 +626,8 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   const known = [ENTITY_SET.COST_LINES, ENTITY_SET.RATES, ENTITY_SET.FREIGHT, ENTITY_SET.RMPM, ...(ratesMode === 'direct-works' ? ['RateOptionSet'] : [])] as string[];
   if (!known.includes(set)) return odataError(404, '/IWBEP/CM_MGW_RT/020', `Resource not found for segment '${set}'`); // incl. RateOptions on its own
 
+  // MOCK_SAP_NO_FGMATNR=1: a FreightRowSet without FgMatnr (NGQ on 26.10.2026).
+  if (process.env.MOCK_SAP_NO_FGMATNR === '1' && set === ENTITY_SET.FREIGHT && /FgMatnr/.test(sp.get('$filter') ?? '')) return odataError(400, '/IWBEP/CM_MGW_RT/004', 'Property FgMatnr not found in type FreightRow');
   const f = parseFilter(sp.get('$filter') ?? '');
   const p = params(f);
   if (p.mats.length === 0) return odataError(400, 'ZBOM/001', 'Enter at least one material in the filter (Matnr)');

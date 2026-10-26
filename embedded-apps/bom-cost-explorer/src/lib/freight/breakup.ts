@@ -52,8 +52,17 @@ export function freightBreakupRequest(k: FreightKey) {
 
 export async function fetchFreightBreakup(k: FreightKey, opts: SapGetOptions = {}): Promise<FreightRow[]> {
   const { entitySet, params } = freightBreakupRequest(k);
-  const r = await sapGetCollection(entitySet, params, opts);
-  return r.rows.map((raw) => normalizeEntity<FreightRow>(raw, FREIGHT_ROW));
+  try {
+    const r = await sapGetCollection(entitySet, params, opts);
+    return r.rows.map((raw) => normalizeEntity<FreightRow>(raw, FREIGHT_ROW));
+  } catch (e) {
+    // A system without FgMatnr on FreightRowSet yet (NGQ, 26.10.2026): the request as before, without it.
+    const text = `${e instanceof Error ? e.message : ''} ${JSON.stringify((e as { details?: unknown }).details ?? '')}`;
+    if (!k.fgMatnr || !/FgMatnr/i.test(text) || !/not found|invalid/i.test(text)) throw e;
+    const plain = freightBreakupRequest({ ...k, fgMatnr: '' });
+    const r = await sapGetCollection(plain.entitySet, plain.params, opts);
+    return r.rows.map((raw) => normalizeEntity<FreightRow>(raw, FREIGHT_ROW));
+  }
 }
 
 /* ---------- display maths ---------- */
