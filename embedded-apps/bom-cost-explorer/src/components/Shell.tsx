@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, BellRing, Boxes, Calendar, ClipboardList, Layers, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BellRing, Boxes, Calendar, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { AI_ENABLED } from '@/lib/ai/config';
 import { WATCH_ENABLED } from '@/lib/watch/api';
@@ -42,7 +42,7 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight';
 
 function NavPane({ mode, onMode, open, onClose, wide, planActive }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav }) {
   const pane = wide
@@ -68,6 +68,7 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive }: { mode: Mode
           {(['B', 'C'] as Mode[]).map((m) => <NavItem key={m} m={m} active={!planActive && mode === m} onClick={() => { onMode(m); onClose(); }} />)}
           <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Analysis</p>
           {(['R', 'F', 'M'] as Mode[]).map((m) => <NavItem key={m} m={m} active={!planActive && mode === m} onClick={() => { onMode(m); onClose(); }} />)}
+          <NavLink href={`${BASE_PATH}/freight-compare/`} icon={GitCompareArrows} label="Freight comparison" hint="Actual vs standard, plant and FG wise" active={planActive === 'freight'} />
           {PLAN_MODULE_ENABLED && (
             <>
               <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Production plan</p>
