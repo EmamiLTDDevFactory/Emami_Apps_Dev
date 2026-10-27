@@ -5,7 +5,8 @@
  *
  * Freight of a leaf line per 1 finished-good piece (INR) = line cost x freight per component piece / cost per
  * component piece, divided by the costed quantity - the same scaling lib/cost/freightIncluded.ts uses. Lines
- * priced on Consumption / MBEW already carry freight in the rate, so their freight is 0 on both sides.
+ * priced on Consumption / MBEW already carry freight in their rate: it is still SAP's freight of the component, so it is
+ * shown here too (the costing just does not add it again).
  * The break-up is by cost category (RM / Perfume / PM / Other) and by component; the condition-type split of one
  * component is the existing freight break-up (components/freight/FreightBreakup.tsx).
  */
@@ -14,6 +15,7 @@ import { D, ZERO, type Decimal } from '../cost/decimal';
 import { CATEGORIES, CATEGORY_LABEL, costCategory, type CostCategory } from '../cost/categories';
 import type { XCol } from '../client/export';
 import { isLeafRow, rowKey } from '../cost/tree';
+import { componentFreightInr, type FreightTagged } from '../cost/freightIncluded';
 
 export interface FreightComponent {
   key: string;
@@ -49,10 +51,12 @@ export interface FreightCompareRow {
   components: FreightComponent[];
 }
 
-const freightPc = (r: CostLine, qty: Decimal): Decimal => {
+/** Freight is SAP's own figure for the component (also where the rate already includes it and the costing adds none),
+ * times the component quantity per FG piece (line cost / cost per piece). */
+const freightPc = (r: CostLine & FreightTagged, qty: Decimal): Decimal => {
   const pc = D(r.TotCostPcInr);
   if (!pc.gt(0) || qty.isZero()) return ZERO;
-  return D(r.TotCostInr).times(D(r.FrtPcInr)).div(pc).div(qty);
+  return D(r.TotCostInr).div(pc).times(componentFreightInr(r)).div(qty);
 };
 
 const emptyCats = () => Object.fromEntries(CATEGORIES.map((c) => [c, { actual: ZERO, standard: ZERO }])) as FreightCompareRow['byCategory'];

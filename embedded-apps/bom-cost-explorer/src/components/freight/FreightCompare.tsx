@@ -191,7 +191,7 @@ function Results({ data, stale, ran }: { data: Compared; stale: boolean; ran: { 
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted">Freight per finished-good piece, INR. Components priced on Consumption or MBEW already include freight in the rate, so they add none here (same as the BOM costing).{data.messages > 0 ? ` SAP returned ${data.messages} message(s) on the runs.` : ''}</p>
+      <p className="text-xs text-muted">Freight per finished-good piece, INR. For components priced on Consumption or MBEW the freight is already inside the rate; it is shown here as SAP gives it, but the BOM costing does not add it again.{data.messages > 0 ? ` SAP returned ${data.messages} message(s) on the runs.` : ''}</p>
     </div>
   );
 }
