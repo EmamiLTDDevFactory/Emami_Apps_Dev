@@ -17,6 +17,49 @@ const one = (v: string) => (v ? [v] : []);
 
 const NO_WERKS: string[] = [];
 
+/** A searchable single-choice list: type to narrow by description or code, pick one, or choose "All". */
+function LevelCombo({ label, opts, value, disabled, onPick }: { label: string; opts: HierOption[] | null; value: string; disabled: boolean; onPick: (code: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const boxRef = useRef<HTMLDivElement>(null);
+  const chosen = (opts ?? []).find((o) => o.code === value);
+  const needle = text.trim().toLowerCase();
+  const shown = (opts ?? []).filter((o) => !needle || o.code.toLowerCase().includes(needle) || (o.descr ?? '').toLowerCase().includes(needle));
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) { setOpen(false); setText(''); } };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+  const choose = (code: string) => { onPick(code); setOpen(false); setText(''); };
+  const off = !opts || disabled;
+  return (
+    <div ref={boxRef} className="relative flex min-w-0 flex-1 flex-col gap-1 text-2xs font-semibold uppercase tracking-wide text-muted">
+      <label>
+        {label}
+        <input
+          aria-label={label} role="combobox" aria-expanded={open} autoComplete="off" disabled={off}
+          className={cx(inputCls, 'mt-1 w-full normal-case tracking-normal')}
+          placeholder={opts ? (chosen ? optionLabel(chosen) : `All (${opts.length}) - type to search`) : 'Loading…'}
+          value={open ? text : chosen ? optionLabel(chosen) : ''}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setText(e.target.value); setOpen(true); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setText(''); } else if (e.key === 'Enter' && shown.length === 1) { e.preventDefault(); choose(shown[0].code); } }}
+        />
+      </label>
+      {open && !off && (
+        <ul role="listbox" aria-label={`${label} options`} className="scroll-thin absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-lg border border-line bg-panel py-1 text-sm normal-case tracking-normal text-ink shadow-lg">
+          <li role="option" aria-selected={!value} className="cursor-pointer px-2.5 py-1.5 text-muted hover:bg-accent/5" onMouseDown={(e) => { e.preventDefault(); choose(''); }}>All ({opts?.length ?? 0})</li>
+          {shown.map((o) => (
+            <li key={o.code} role="option" aria-selected={o.code === value} className={cx('cursor-pointer px-2.5 py-1.5 hover:bg-accent/5', o.code === value && 'bg-accent/10 font-semibold')} onMouseDown={(e) => { e.preventDefault(); choose(o.code); }}>{optionLabel(o)}</li>
+          ))}
+          {!shown.length && <li className="px-2.5 py-1.5 text-xs text-muted">No match</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function MaterialCascadePicker({ values, onChange, max, werks: werksProp = NO_WERKS, onClose, pick: pickProp, onPickChange }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; onClose?: () => void; pick?: HierPick; onPickChange?: (p: HierPick) => void }) {
   // A stable plant list: a new array on every render would re-run the SAP calls in a loop.
   const werksKey = werksProp.join(',');
@@ -100,13 +143,7 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
 
   const blocking = problem && problem.kind !== 'empty';
   const level = (label: string, key: keyof HierPick, opts: HierOption[] | null) => (
-    <label className="flex min-w-0 flex-1 flex-col gap-1 text-2xs font-semibold uppercase tracking-wide text-muted">
-      {label}
-      <select aria-label={label} className={cx(inputCls, 'normal-case tracking-normal')} value={pick[key]} disabled={!opts || !!blocking} onChange={(e) => setPick(pickLevel(pick, key, e.target.value))}>
-        <option value="">{opts ? `All (${opts.length})` : 'Loading…'}</option>
-        {(opts ?? []).map((o) => <option key={o.code} value={o.code}>{optionLabel(o)}</option>)}
-      </select>
-    </label>
+    <LevelCombo label={label} opts={opts} value={pick[key]} disabled={!!blocking} onPick={(code) => setPick(pickLevel(pick, key, code))} />
   );
 
   return (
