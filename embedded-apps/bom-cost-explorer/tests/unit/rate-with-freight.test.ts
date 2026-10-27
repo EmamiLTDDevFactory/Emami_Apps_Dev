@@ -78,7 +78,8 @@ describe('rate summary FG level', () => {
     const rows = [leaf(2, 1, 'RM1', '10', '1', '2', { RateOptions: [opt({ Source: 'CONTRACT', RatePcInr: '9', RatePcLoc: '9' }), opt({ Source: 'MARKT', RatePcInr: '12', RatePcLoc: '12' })], FrtPcLoc: '1', LocCurr: 'INR' })];
     const ready = { status: 'ready', request: () => undefined, retest: () => undefined, note: '', rows: [] } as never;
     const html = renderToStaticMarkup(createElement(RateSummary, { rows: rows as never, rates: ready, query: { ...defaultQuery('B'), explQty: '1' } }));
-    const [fg, comps] = html.split('RM rates (incl. perfume)');
+    // headings are '<span>Label</span>' inside the <th> (the colour dot sits beside the label)
+    const [fg, comps] = html.split('RM rates (incl. perfume)').map((part) => part.replace(/<\/span><\/span><\/th>/g, '</th>').replace(/<span>/g, ''));
     for (const h of ['Contract</th>', 'Info record</th>', 'Market</th>', 'Cheapest</th>', 'Contract + freight (local)', 'Contract + freight (INR)', 'Info record + freight (local)', 'Info record + freight (INR)']) {
       expect(fg).not.toContain(h);
       expect(comps).toContain(h);
