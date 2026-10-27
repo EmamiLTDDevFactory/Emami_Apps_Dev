@@ -11,7 +11,8 @@
  */
 import type { CostLine } from '../sap/fields';
 import { D, ZERO, type Decimal } from '../cost/decimal';
-import { CATEGORIES, costCategory, type CostCategory } from '../cost/categories';
+import { CATEGORIES, CATEGORY_LABEL, costCategory, type CostCategory } from '../cost/categories';
+import type { XCol } from '../client/export';
 import { isLeafRow, rowKey } from '../cost/tree';
 
 export interface FreightComponent {
@@ -104,4 +105,41 @@ export function compareTotals(rows: FreightCompareRow[]): FreightCompareTotals {
   }
   t.delta = t.actual.minus(t.standard);
   return t;
+}
+
+/* ---------- Excel / CSV export ---------- */
+const n = (v: Decimal | null | undefined, dp = 6) => (v ? Number(v.toFixed(dp)) : null);
+
+/** Sheets of the export: one row per FG x plant (with the category split), and one row per component behind them. */
+export function freightCompareSheets(rows: FreightCompareRow[]): { summary: { cols: XCol[]; count: number }; components: { cols: XCol[]; count: number } } {
+  const summary: XCol[] = [
+    { header: 'Plant', width: 8, get: (i) => rows[i].plant },
+    { header: 'FG', width: 14, get: (i) => rows[i].fg },
+    { header: 'FG description', width: 34, get: (i) => rows[i].text },
+    { header: 'Actual freight / pc (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].actual) },
+    { header: 'Standard freight / pc (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].standard) },
+    { header: 'Difference (INR)', dp: 4, curr: 'INR', width: 14, get: (i) => n(rows[i].delta) },
+    { header: 'Difference %', dp: 2, width: 12, get: (i) => n(rows[i].deltaPct, 4) },
+    { header: 'Material cost / pc (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].costPc) },
+    { header: 'Actual % of cost', dp: 2, width: 12, get: (i) => n(rows[i].actualPctOfCost, 4) },
+    ...CATEGORIES.flatMap((c): XCol[] => [
+      { header: `${CATEGORY_LABEL[c]} actual (INR)`, dp: 4, curr: 'INR', width: 14, get: (i) => n(rows[i].byCategory[c].actual) },
+      { header: `${CATEGORY_LABEL[c]} standard (INR)`, dp: 4, curr: 'INR', width: 14, get: (i) => n(rows[i].byCategory[c].standard) },
+    ]),
+  ];
+  const flat = rows.flatMap((r) => r.components.map((c) => ({ r, c })));
+  const components: XCol[] = [
+    { header: 'Plant', width: 8, get: (i) => flat[i].r.plant },
+    { header: 'FG', width: 14, get: (i) => flat[i].r.fg },
+    { header: 'Component', width: 14, get: (i) => flat[i].c.idnrk },
+    { header: 'Component description', width: 34, get: (i) => flat[i].c.text },
+    { header: 'Category', width: 10, get: (i) => CATEGORY_LABEL[flat[i].c.category] },
+    { header: 'Component plant', width: 10, get: (i) => flat[i].c.werks },
+    { header: 'Actual freight / pc (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(flat[i].c.actual) },
+    { header: 'Standard freight / pc (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(flat[i].c.standard) },
+    { header: 'Difference (INR)', dp: 4, curr: 'INR', width: 14, get: (i) => n(flat[i].c.delta) },
+    { header: 'Actual source', width: 12, get: (i) => flat[i].c.actualSrc },
+    { header: 'Standard source', width: 12, get: (i) => flat[i].c.standardSrc },
+  ];
+  return { summary: { cols: summary, count: rows.length }, components: { cols: components, count: flat.length } };
 }

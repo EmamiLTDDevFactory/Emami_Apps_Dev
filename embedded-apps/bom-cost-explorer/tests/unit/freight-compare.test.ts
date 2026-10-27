@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareFreight, compareTotals } from '@/lib/freight/compare';
+import { compareFreight, compareTotals, freightCompareSheets } from '@/lib/freight/compare';
 import { leaf, parent } from './helpers';
 
 // FG1 in plant 1000: RM1 (ROH) and PM1 (PKGN); explosion quantity 2 pieces
@@ -35,5 +35,16 @@ describe('compareFreight', () => {
     const [r] = compareFreight(lines('12', '3'), [parent(1, 0, 'FG1', '0')], '2');
     expect(r.standard.isZero()).toBe(true);
     expect(r.deltaPct).toBeNull();
+  });
+
+  it('export sheets: one row per FG x plant, one per component, numbers not text', () => {
+    const rows = compareFreight(lines('12', '3'), lines('10', '3'), '2');
+    const { summary, components } = freightCompareSheets(rows);
+    const val = (h: string) => summary.cols.find((c) => c.header === h)!.get(0);
+    expect(summary.count).toBe(1);
+    expect([val('Plant'), val('FG'), val('Actual freight / pc (INR)'), val('Standard freight / pc (INR)'), val('Difference (INR)')]).toEqual(['1000', 'FG1', 18, 16, 2]);
+    expect(val('RM actual (INR)')).toBe(12);
+    expect(components.count).toBe(2);
+    expect(components.cols.find((c) => c.header === 'Component')!.get(0)).toBe('RM1');
   });
 });

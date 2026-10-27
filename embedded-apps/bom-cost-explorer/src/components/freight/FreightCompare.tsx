@@ -7,7 +7,7 @@
  */
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, ChevronDown, ChevronRight, Play, Square } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
@@ -16,7 +16,8 @@ import type { PlantRow } from '@/lib/sap/fields';
 import { api } from '@/lib/client/api';
 import { useRun } from '@/lib/client/useRun';
 import { MAX_MATERIALS, defaultQuery, type CostQuery } from '@/lib/query/schema';
-import { compareFreight, compareTotals, type FreightComponent, type FreightCompareRow } from '@/lib/freight/compare';
+import { compareFreight, compareTotals, freightCompareSheets, type FreightComponent, type FreightCompareRow } from '@/lib/freight/compare';
+import { exportTable } from '@/lib/client/export';
 import { CATEGORIES, CATEGORY_LABEL } from '@/lib/cost/categories';
 import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import type { FreightRun } from '@/lib/freight/breakup';
@@ -126,6 +127,22 @@ function Results({ data, stale, ran }: { data: Compared; stale: boolean; ran: { 
   const totals = useMemo(() => compareTotals(rows), [rows]);
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
+  const doExport = async (fmt: 'xlsx' | 'csv') => {
+    const { summary, components } = freightCompareSheets(rows);
+    await exportTable({
+      fmt, name: 'Freight comparison', cols: summary.cols, count: summary.count,
+      extraSheets: fmt === 'xlsx' ? [{ name: 'Components', ...components }] : undefined,
+      extraParams: [
+        ['Report', 'Actual vs standard freight per FG and plant, INR per piece'],
+        ['Plants', plant || (ran?.plants.join(', ') ?? '')],
+        ['Finished goods', ran?.materials.length ? ran.materials.join(', ') : 'every finished good of the plants'],
+        ['Filter', `${filter === 'all' ? 'all' : filter === 'over' ? 'above standard' : 'below standard'}${q.trim() ? `, search "${q.trim()}"` : ''}`],
+        ['Rows (FG x plant)', String(rows.length)],
+        ['Freight look-back (days)', String(FREIGHT_DAYS)],
+      ],
+    });
+  };
+
   if (!data.rows.length) return <Empty title="No freight lines">SAP returned no costed lines for this selection.</Empty>;
   return (
     <div className={cx('flex flex-col gap-3', stale && 'opacity-60')}>
@@ -144,6 +161,8 @@ function Results({ data, stale, ran }: { data: Compared; stale: boolean; ran: { 
           {plantList.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
         <input aria-label="Search finished goods" className={cx(inputCls, 'w-64')} placeholder="Search FG code or description…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Button size="sm" onClick={() => doExport('xlsx')} disabled={!rows.length} title="Excel: FG x plant sheet, Components sheet, Parameters"><FileSpreadsheet size={14} /> Excel</Button>
+        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={!rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Sorted by the biggest gap. Open a row for the break-up.{ran && !ran.materials.length ? ' Every finished good of the plants.' : ''}</span>
       </div>
 
