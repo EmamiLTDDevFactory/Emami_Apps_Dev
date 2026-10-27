@@ -57,6 +57,10 @@ body { @apply bg-bg font-sans text-ink antialiased; font-feature-settings: 'cv11
 .skeleton { background: linear-gradient(90deg, rgb(var(--sunken)) 0%, rgb(var(--line)) 50%, rgb(var(--sunken)) 100%); background-size: 800px 100%; animation: shimmer 1.3s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .indeterminate, .skeleton { animation: none; } }
 
+/* Table headings: every header row lines up on the bottom edge, so one-line and wrapped (two-line) headings share
+   one baseline above their column. */
+thead th, [role="columnheader"] { vertical-align: bottom; }
+
 /* Print: only the report. */
 .print-only { display: none; }
 @media print {

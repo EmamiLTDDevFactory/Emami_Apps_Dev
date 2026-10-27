@@ -4,7 +4,7 @@
  * components (rate per unit), on one page, with an Excel download (lib/cost/rateSummary.ts). Contract / Info record
  * / Market / Consumption / MBEW / Cheapest need SAP's rate options (requested when the tab opens).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FileSpreadsheet, RefreshCw } from 'lucide-react';
 import type { CostLine } from '@/lib/sap/fields';
 import type { CostQuery } from '@/lib/query/schema';
@@ -34,6 +34,10 @@ const Dual = ({ inr, locPerInr, curr }: { inr: Decimal | null | undefined; locPe
   return <>{fmtRate(inr)}{loc && <div className="text-2xs font-normal text-muted">{fmtRate(loc)} {curr}</div>}</>;
 };
 const Swatch = ({ t }: { t: RateType }) => (['SELECTED', 'BUDGET', 'CHEAPEST'].includes(t) ? null : <span className="mr-1 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: sourceColorVar(t) }} />);
+/** Header label with its colour dot kept on the first line, next to the text (the dot never wraps on its own). */
+const Head = ({ t, children }: { t: RateType; children: ReactNode }) => (
+  <span className="inline-flex items-start justify-end gap-1 text-right"><span className="mt-[3px] shrink-0"><Swatch t={t} /></span><span>{children}</span></span>
+);
 
 export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; rates: RatesState; query: CostQuery }) {
   const { request } = rates;
@@ -110,7 +114,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
           <table className="w-full text-xs">
             <thead><tr>
               <th className={th}>FG</th>
-              {fgTypes.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
+              {fgTypes.map((rt) => <th key={rt} className={thN}><Head t={rt}>{RATE_TYPE_LABEL[rt]}</Head></th>)}
               <th className={thN}>Freight</th><th className={thN}>Landed (BOM)</th>
             </tr></thead>
             <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={fgTypes} />)}</tbody>
@@ -129,8 +133,8 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
 /** Contract + freight and Info record + freight, local then INR. */
 function FrtHeads() {
   return <>{WITH_FREIGHT_SOURCES.flatMap((src) => [
-    <th key={`${src}l`} className={thN} title="Rate + the line's freight per unit, local currency"><Swatch t={src} />{WITH_FREIGHT_LABEL[src]} (local)</th>,
-    <th key={`${src}i`} className={thN} title="Rate + the line's freight per unit, INR"><Swatch t={src} />{WITH_FREIGHT_LABEL[src]} (INR)</th>,
+    <th key={`${src}l`} className={thN} title="Rate + the line's freight per unit, local currency"><Head t={src}>{WITH_FREIGHT_LABEL[src]} (local)</Head></th>,
+    <th key={`${src}i`} className={thN} title="Rate + the line's freight per unit, INR"><Head t={src}>{WITH_FREIGHT_LABEL[src]} (INR)</Head></th>,
   ])}</>;
 }
 const locCell = (v: Decimal | null, curr: string) => (v ? <>{fmtRate(v)} <span className="text-2xs text-faint">{curr}</span></> : '—');
@@ -158,7 +162,7 @@ function ComponentCard({ title, list, types, frt }: { title: string; list: Compo
         <table className="w-full text-xs">
           <thead><tr>
             <th className={th}>Component</th><th className={thN}>FGs</th><th className={thN}>Qty</th>
-            {types.map((rt) => <th key={rt} className={thN}><Swatch t={rt} />{RATE_TYPE_LABEL[rt]}</th>)}
+            {types.map((rt) => <th key={rt} className={thN}><Head t={rt}>{RATE_TYPE_LABEL[rt]}</Head></th>)}
             {frt && <FrtHeads />}
             <th className={thN} title="Highest vs lowest rate type, % of the lowest">Spread</th>
           </tr></thead>

@@ -40,7 +40,7 @@ export default function ComparisonView({ pivot, plantNames }: { pivot: Pivot; pl
         <div style={{ width, minWidth: '100%' }}>
           <div className="sticky top-0 z-20 bg-panel" role="rowgroup">
             <div className="grid border-b border-line text-xs font-semibold" style={{ gridTemplateColumns: `300px ${pivot.plants.map(() => `${plantW}px`).join(' ')} 470px` }} role="row">
-              <div className="sticky left-0 bg-panel px-3 py-1.5" role="columnheader">Header / component</div>
+              <div className="sticky left-0 bg-panel px-3 py-1.5" aria-hidden="true" />
               {pivot.plants.map((p) => (
                 <div key={p} className="border-l border-line px-2 py-1.5 text-center" role="columnheader">
                   <span className="font-mono">{p}</span> <span className="font-normal text-muted">{plantNames[p]}</span>
@@ -49,7 +49,7 @@ export default function ComparisonView({ pivot, plantNames }: { pivot: Pivot; pl
               <div className="border-l border-line px-2 py-1.5 text-center" role="columnheader">Comparison (INR)</div>
             </div>
             <div className="grid border-b border-line text-2xs font-semibold uppercase tracking-wide text-muted" style={{ gridTemplateColumns: template }} role="row">
-              <div className="sticky left-0 bg-panel px-3 py-1" />
+              <div className="sticky left-0 bg-panel px-3 py-1 text-left" role="columnheader">Header / component</div>
               {pivot.plants.map((p) => SUB.map((s, i) => <div key={p + s} className={cx('px-2 py-1 text-right', i === 0 && 'border-l border-line', s === 'Source' && 'text-left')} role="columnheader">{s}</div>))}
               <div className="border-l border-line px-2 py-1 text-right">Min</div>
               <div className="px-2 py-1 text-right">Max</div>

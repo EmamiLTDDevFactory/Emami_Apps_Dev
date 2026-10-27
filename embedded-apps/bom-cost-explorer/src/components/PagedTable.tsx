@@ -130,7 +130,7 @@ export default function PagedTable({ query, runKey, onMessages, onRunning }: { q
             <tr className="border-b border-line">
               {cols.map((c) => (
                 <th key={c.key} scope="col" style={{ width: w(c) }} className={cx('px-2 py-1.5 text-2xs font-semibold uppercase tracking-wide text-muted', c.kind === 'd' ? 'text-right' : 'text-left')} aria-sort={page.sort === c.key ? (page.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                  <button type="button" className="hover:text-ink" onClick={() => sortBy(c.key)}>
+                  <button type="button" className="uppercase tracking-wide hover:text-ink" onClick={() => sortBy(c.key)}>
                     {c.label} {page.sort === c.key ? (page.dir === 'asc' ? '▲' : '▼') : ''}
                   </button>
                 </th>
