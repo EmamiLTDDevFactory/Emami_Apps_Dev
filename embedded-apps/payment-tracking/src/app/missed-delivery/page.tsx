@@ -42,7 +42,7 @@ export default function PaymentTrackingMissedDelivery() {
   return (
     <div className="flex flex-col gap-3">
       <PageHeader
-        eyebrow="Provision Tracking"
+        eyebrow="Service PO Automation"
         title="Missed Provision"
         subtitle="GR/MIGO posted but no Service Entry Sheet created yet — your main provision exposure bucket."
         icon={CalendarX2}

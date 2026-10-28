@@ -74,7 +74,7 @@ function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => 
           <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} className="h-auto w-[150px]" />
         </div>
         <div className="px-4 pb-3 pt-3">
-          <p className="text-[15px] font-extrabold text-ink">Provision Tracking</p>
+          <p className="text-[15px] font-extrabold text-ink">Service PO Automation</p>
           <p className="text-xs text-inkSoft">Command Center — track every open service PO</p>
         </div>
       </div>
@@ -176,7 +176,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           {!isWide && (
             <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" className="-ml-1 p-1 text-ink"><Menu size={20} /></button>
           )}
-          <h1 className="truncate text-[14.5px] font-extrabold text-ink">IBD Provision Tracking</h1>
+          <h1 className="truncate text-[14.5px] font-extrabold text-ink">Service PO Automation</h1>
           <span className="hidden rounded-full bg-gradient-to-r from-rust/10 to-ledger/10 px-2 py-[2px] text-2xs font-extrabold uppercase tracking-wide text-rust sm:inline-flex">Command Center</span>
           <div className="flex-1" />
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-appBg px-2 py-[3px] sm:flex">

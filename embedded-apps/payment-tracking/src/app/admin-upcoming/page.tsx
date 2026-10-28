@@ -581,7 +581,7 @@ export default function AdminUpcomingProvision() {
   return (
     <div className="flex flex-col gap-3">
       <PageHeader
-        eyebrow="Provision Tracking"
+        eyebrow="Service PO Automation"
         title="Upcoming Provision — All Vendors"
         subtitle="Confirm delivery for each vendor's PO item, add the invoice details, and send it for approval."
         icon={Users}

@@ -570,7 +570,7 @@ export default function UpcomingProvision() {
   return (
     <div className="flex flex-col gap-3">
       <PageHeader
-        eyebrow="Provision Tracking"
+        eyebrow="Service PO Automation"
         title="Upcoming Provision"
         subtitle="Confirm delivery for each PO item, add the invoice details, and send it for approval."
         icon={CalendarClock}

@@ -3,7 +3,7 @@ import './globals.css';
 import Shell from '../components/Shell';
 
 export const metadata: Metadata = {
-  title: 'IBD Provision Tracking',
+  title: 'Service PO Automation',
   description: 'Track every open service PO — provisions, approvals, SES and payments.',
   icons: { icon: '/apps/payment-tracking/emami-apps-logo.png' },
 };
