@@ -12,6 +12,7 @@ import { ScreenHistoryTracker, useScreenBack } from '../lib/screenHistory';
 import { PaymentTrackingAuthProvider, usePaymentTrackingAuth } from '../context/PaymentTrackingAuthContext';
 import { MonthYearProvider, useMonthYear, MONTH_OPTIONS, YEAR_OPTIONS, fiscalYearLabel } from '../context/MonthYearContext';
 import { Select, Spinner, cx } from './ui';
+import { SAP_SYSTEM } from '../lib/paymentTrackingApi';
 
 const WIDE_BREAKPOINT = 768; // matches the hub's own useIsWideScreen + every sibling embedded app
 // next/link prepends next.config.js's basePath; plain <img> doesn't.
@@ -187,6 +188,12 @@ function ShellInner({ children }: { children: React.ReactNode }) {
           <h1 className="truncate text-[14.5px] font-extrabold text-ink">Service PO Automation</h1>
           <span className="hidden rounded-full bg-gradient-to-r from-rust/10 to-ledger/10 px-2 py-[2px] text-2xs font-extrabold uppercase tracking-wide text-rust sm:inline-flex">Command Center</span>
           <div className="flex-1" />
+          <span
+            title={`SAP system ${SAP_SYSTEM || 'unknown'}: ${SAP_SYSTEM === 'NWP' ? 'production (live data)' : 'development (test data)'}`}
+            className={cx('inline-flex items-center rounded-full px-2.5 py-[3px] text-2xs font-extrabold uppercase tracking-wide', SAP_SYSTEM === 'NWP' ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-900 ring-1 ring-amber-300')}
+          >
+            {SAP_SYSTEM === 'NWP' ? 'PRD' : 'DEV'}{SAP_SYSTEM ? ` · ${SAP_SYSTEM}` : ''}
+          </span>
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-appBg px-2 py-[3px] sm:flex">
             <User size={12} className="text-rust" />
             <span className="max-w-[150px] truncate text-xs font-bold text-ink">{hubEmail ? nameFromEmail(hubEmail) : 'Guest'}</span>

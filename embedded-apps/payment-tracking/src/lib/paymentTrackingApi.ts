@@ -30,6 +30,9 @@
 import axios from 'axios';
 
 const SAP_BASE_URL = 'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZMM_PO_FOLLOWUP_SRV';
+/** The SAP landscape this build talks to (the segment after /api/ in SAP_BASE_URL): NGD = development, NWP = production.
+ * Shown as a DEV / PRD badge in the header so nobody mistakes one for the other. */
+export const SAP_SYSTEM = (SAP_BASE_URL.match(/\/api\/([A-Z]{3})\//)?.[1] ?? '') as string;
 const ENTITY_SET = 'ZProvisionTrackSet';
 
 const sapClient = axios.create({
