@@ -28,6 +28,7 @@ import {
 import { exportFailedRowsToCsv } from '../../lib/exportCsv';
 import { ensureAttachmentUnderLimit, readAttachmentAsBase64, MAX_ATTACHMENT_BYTES } from '../../lib/pdfAttachment';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { Banner, Button, Card, CardTitle, Chip, Input, LoadingBlock, PageHeader, Spinner, TableWrap, cx } from '../../components/ui';
 
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -864,7 +865,7 @@ export default function PurchaseOrderCreation() {
 
   // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
   // is still reachable by a typed URL.
-  if (role !== 'Finance') {
+  if (!hasRole(role, 'Finance')) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20">
         <Lock size={22} className="text-inkSoft" />

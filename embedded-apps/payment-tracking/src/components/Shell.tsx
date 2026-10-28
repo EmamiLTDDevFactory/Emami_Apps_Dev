@@ -24,6 +24,7 @@ type NavItem = { href: string; label: string; hint: string; icon: LucideIcon };
 //   Finance — Purchase Order Creation and Details, Upcoming Provision (All Vendors),
 //             Pending Approval, Submission History
 //   User    — Upcoming Provision, Missed Provision, Submission History
+//   Super Admin — all of the above
 const ADMIN_NAV: NavItem[] = [
   { href: '/dashboard/', label: 'Dashboard', hint: 'Provisions at a glance', icon: LayoutGrid },
   { href: '/provision-details/', label: 'Provision Details', hint: 'Every open service PO', icon: Layers },
@@ -39,6 +40,13 @@ const USER_NAV: NavItem[] = [
   { href: '/upcoming/', label: 'Upcoming Provision', hint: 'Confirm this month\'s deliveries', icon: CalendarClock },
   { href: '/missed-delivery/', label: 'Missed Provision', hint: 'Deliveries past their date', icon: AlertCircle },
   { href: '/history/', label: 'Submission History', hint: 'Latest status, full audit trail', icon: History },
+];
+
+// Super Admin — every tab of the three roles above (Submission History once).
+const SUPER_ADMIN_NAV: NavItem[] = [
+  ...ADMIN_NAV,
+  ...FINANCE_NAV,
+  ...USER_NAV.filter((u) => !FINANCE_NAV.some((f) => f.href === u.href)),
 ];
 
 function useIsWideScreen() {
@@ -58,7 +66,7 @@ function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => 
   const pathname = norm(usePathname());
   const { role, roleLoading } = usePaymentTrackingAuth();
   // While the role lookup is still resolving, show no items rather than flashing the wrong set.
-  const items = roleLoading ? [] : role === 'Admin' ? ADMIN_NAV : role === 'Finance' ? FINANCE_NAV : USER_NAV;
+  const items = roleLoading ? [] : role === 'Super Admin' ? SUPER_ADMIN_NAV : role === 'Admin' ? ADMIN_NAV : role === 'Finance' ? FINANCE_NAV : USER_NAV;
 
   const pane = (
     <aside className={cx(

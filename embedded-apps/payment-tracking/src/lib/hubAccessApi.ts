@@ -21,7 +21,10 @@ function accessApiBase(): string {
   return `${ACCESS_API_HOST}${isDev ? '/dev-api' : ''}/api`;
 }
 
-export type PaymentTrackingRole = 'User' | 'Admin' | 'Finance';
+export type PaymentTrackingRole = 'User' | 'Admin' | 'Finance' | 'Super Admin';
+
+/** Super Admin sees every tab of every other role: a screen meant for `needed` also opens for it. */
+export const hasRole = (role: PaymentTrackingRole, needed: 'Admin' | 'Finance'): boolean => role === needed || role === 'Super Admin';
 
 interface AccessMeResponse {
   success: boolean;
@@ -40,7 +43,7 @@ export async function fetchPaymentTrackingRole(email: string): Promise<PaymentTr
     });
     if (!data?.success) return 'User';
     const role = (data.apps || []).find((a) => a.appId === APP_ID)?.role;
-    return role === 'Admin' || role === 'Finance' ? role : 'User';
+    return role === 'Admin' || role === 'Finance' || role === 'Super Admin' ? role : 'User';
   } catch {
     return 'User';
   }

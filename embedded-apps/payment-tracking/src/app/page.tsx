@@ -12,7 +12,7 @@ export default function ProvisionHome() {
   const { role, roleLoading } = usePaymentTrackingAuth();
   useEffect(() => {
     if (roleLoading) return;
-    router.replace(role === 'Admin' ? '/dashboard/' : role === 'Finance' ? '/pending-approval/' : '/upcoming/');
+    router.replace(role === 'Admin' || role === 'Super Admin' ? '/dashboard/' : role === 'Finance' ? '/pending-approval/' : '/upcoming/');
   }, [role, roleLoading, router]);
   return <LoadingBlock />;
 }

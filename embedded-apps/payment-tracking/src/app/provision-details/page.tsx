@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Building2, ChevronRight, Globe, List } from 'lucide-react';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { filterByMonth } from '../../lib/provisionMetrics';
 import PaymentTrackingTable from '../../components/PaymentTrackingTable';
@@ -286,7 +287,7 @@ export default function ProvisionDetailsScreen() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (role !== 'Admin' || !email) {
+    if (!hasRole(role, 'Admin') || !email) {
       setLoading(false);
       return;
     }
@@ -318,7 +319,7 @@ export default function ProvisionDetailsScreen() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (role !== 'Admin') {
+  if (!hasRole(role, 'Admin')) {
     return <AdminDenied message="Provision Details is only available to Admins." />;
   }
 

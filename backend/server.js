@@ -149,7 +149,7 @@ async function requireAccessManager(req, res, next) {
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
  * 'User' role. BOM Simulator (bom-cost-explorer) adds Planner: may upload and edit production plans
  * (Admin may too; SAP's own authority check still applies). */
-const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'] };
+const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance', 'Super Admin'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];
 function validRolesForApp(appId) {
     return VALID_ROLES_BY_APP[appId] || DEFAULT_VALID_ROLES;

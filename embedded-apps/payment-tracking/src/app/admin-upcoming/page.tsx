@@ -15,6 +15,7 @@ import { ensureAttachmentUnderLimit, readAttachmentAsBase64 } from '../../lib/pd
 import { getDocumentAsync } from '../../lib/documentPicker';
 import { QuotationPreviewModal } from '../../components/QuotationPreviewModal';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { filterByMonth, filterByFiscalYear } from '../../lib/provisionMetrics';
 import {
@@ -163,7 +164,7 @@ export default function AdminUpcomingProvision() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (role !== 'Finance' || !email) {
+    if (!hasRole(role, 'Finance') || !email) {
       setLoading(false);
       return;
     }
@@ -357,7 +358,7 @@ export default function AdminUpcomingProvision() {
 
   // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
   // is still reachable by a typed URL.
-  if (role !== 'Finance') {
+  if (!hasRole(role, 'Finance')) {
     return (
       <EmptyState icon={Lock} title="Upcoming Provision (All Vendors) is only available to Finance." />
     );

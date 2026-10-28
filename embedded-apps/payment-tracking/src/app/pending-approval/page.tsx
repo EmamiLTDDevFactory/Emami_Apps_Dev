@@ -33,6 +33,7 @@ import {
 import { base64ToBlob, base64ToBytes, ensureAttachmentUnderLimit, looksLikePdf, readAttachmentAsBase64 } from '../../lib/pdfAttachment';
 import { getDocumentAsync } from '../../lib/documentPicker';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { filterByMonth, filterByFiscalYear, formatDeliveryDate } from '../../lib/provisionMetrics';
 import {
@@ -229,7 +230,7 @@ export default function PendingApproval() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (role !== 'Finance' || !email) {
+    if (!hasRole(role, 'Finance') || !email) {
       setLoading(false);
       return;
     }
@@ -466,7 +467,7 @@ export default function PendingApproval() {
 
   // Defense in depth — the nav bar already hides this link from non-Finance roles, but the route
   // is still reachable by a typed URL.
-  if (role !== 'Finance') {
+  if (!hasRole(role, 'Finance')) {
     return <EmptyState icon={Lock} title="Pending Approval is only available to Finance." />;
   }
 

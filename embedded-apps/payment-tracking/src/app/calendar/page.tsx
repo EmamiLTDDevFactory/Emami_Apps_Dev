@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CheckCircle2, Search, XCircle } from 'lucide-react';
 import { fetchProvisionPOs, type PaymentTrackingRow } from '../../lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { useMonthYear, fiscalYearLabel } from '../../context/MonthYearContext';
 import { ProvisionHero, ProvisionDetailModal, ExcelButton } from '../../components/ProvisionUI';
 import { lineItemSheet, type Sheet } from '../../lib/exportExcel';
@@ -89,7 +90,7 @@ export default function ProvisionCalendar() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (role !== 'Admin' || !email) {
+    if (!hasRole(role, 'Admin') || !email) {
       setLoading(false);
       return;
     }
@@ -118,7 +119,7 @@ export default function ProvisionCalendar() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (role !== 'Admin') {
+  if (!hasRole(role, 'Admin')) {
     return <AdminDenied message="Calendar is only available to Admins." />;
   }
 

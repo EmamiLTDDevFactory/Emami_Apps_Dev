@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCheck, Clock, FileText, RotateCcw, type LucideIcon } from 'lucide-react';
 import { fetchProvisionPOs, type PaymentTrackingRow, type ProvisionStatus } from '../../lib/paymentTrackingApi';
 import { usePaymentTrackingAuth } from '../../context/PaymentTrackingAuthContext';
+import { hasRole } from '../../lib/hubAccessApi';
 import { useMonthYear } from '../../context/MonthYearContext';
 import { num, formatValue, breakdownBy, filterByMonth } from '../../lib/provisionMetrics';
 import { ProvisionHero, KpiCard, HorizontalBarBreakdown, ProvisionDetailModal, PT_COLORS, ExcelButton } from '../../components/ProvisionUI';
@@ -38,7 +39,7 @@ export default function SesStatusScreen() {
 
   useEffect(() => {
     if (roleLoading) return;
-    if (role !== 'Admin' || !email) {
+    if (!hasRole(role, 'Admin') || !email) {
       setLoading(false);
       return;
     }
@@ -80,7 +81,7 @@ export default function SesStatusScreen() {
 
   // Defense in depth — the nav bar already hides this link from non-Admins, but the route is
   // still reachable by a typed URL.
-  if (role !== 'Admin') {
+  if (!hasRole(role, 'Admin')) {
     return <AdminDenied message="Overall SES Status is only available to Admins." />;
   }
 
