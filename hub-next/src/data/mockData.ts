@@ -61,7 +61,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0, stage: 'Live' },
   { id: 'dev-tracker', name: 'Change Control Board & CR Tracker', desc: 'IT change governance and delivery in one place — ERP, application development, analytics and infrastructure change requests, CCB meetings and approvals, flowing straight into development tracking, UAT and go-live.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
-  { id: 'payment-tracking', name: 'Service PO Automation', desc: 'Payment progress tracking related.', cat: 'IBD', icon: Wallet, uses: 0, stage: 'UAT' },
+  { id: 'payment-tracking', name: 'Service PO Automation', desc: 'Service PO provisions, deliveries and SES status in one place.', cat: 'IBD', icon: Wallet, uses: 0, stage: 'UAT' },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0, stage: 'WIP' },
   { id: 'fm-po-deviation', name: 'PO Approval', desc: 'Review, approve, or reject purchase order deviations, with full history and printable PO forms.', cat: 'Cross-Function', icon: FileCheck2, uses: 0, stage: 'Partial Live' },
   { id: 'mediclaim', name: 'Mediclaim Policy', desc: 'Submit your Mediclaim policy details and view admin submission reports.', cat: 'Cross-Function', icon: HeartPulse, uses: 0, stage: 'WIP' },
