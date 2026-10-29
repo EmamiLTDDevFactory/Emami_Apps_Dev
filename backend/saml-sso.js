@@ -25,7 +25,7 @@ const crypto = require('crypto');
 const samlify = require('samlify');
 const idpConfig = require('./idpConfig');
 const { isAuthorized } = require('./authorizedUsers');
-const { FRONTEND_REDIRECT_URL, issueSessionToken } = require('./sessionAuth');
+const { JWT_SECRET, FRONTEND_REDIRECT_URL, issueSessionToken } = require('./sessionAuth');
 const { upsertLoginProfile } = require('./userProfile');
 
 // Full XSD schema validation needs a native `xmllint` binary samlify doesn't ship — not viable in
@@ -63,6 +63,7 @@ function buildServiceProvider(acsUrl, sloUrl) {
         assertionConsumerService: [{ Binding: namespace.binding.post, Location: acsUrl }],
         singleLogoutService: [{ Binding: namespace.binding.redirect, Location: sloUrl }],
         wantAssertionsSigned: true,
+        generateID: generateRequestId,
     });
 }
 
@@ -70,19 +71,28 @@ function buildIdentityProvider(metadataXml) {
     return samlify.IdentityProvider({ metadata: metadataXml });
 }
 
-// CSRF/replay guard for the SAML redirect — mirrors the `state` map the old OAuth2 flow used.
-// Single-instance in-memory store: a cold start (or a scaled-out Lambda routing /login and /acs
-// to different instances) just means that one in-flight login attempt has to restart — same
-// accepted limitation as before, not a new regression.
-const pendingRequests = new Map();
+// CSRF guard for the SAML redirect. Stateless on purpose: the AuthnRequest ID itself carries a
+// timestamp and an HMAC, so ANY instance can validate the response. The earlier in-memory Map
+// failed whenever /login and /acs landed on different Lambda instances (or after a cold start):
+// the user authenticated with Microsoft, got "invalid_response" and had to sign in a second time.
 const REQUEST_TTL_MS = 10 * 60 * 1000;
-function trackRequest(id) {
-    pendingRequests.set(id, Date.now() + REQUEST_TTL_MS);
+function requestSignature(nonce, issuedAt) {
+    return crypto.createHmac('sha256', JWT_SECRET).update(`${nonce}.${issuedAt}`).digest('hex').slice(0, 32);
+}
+function generateRequestId() {
+    const nonce = crypto.randomBytes(8).toString('hex');
+    const issuedAt = Date.now().toString(16);
+    // XML IDs must start with a letter or underscore, hence the leading '_'
+    return `_${nonce}-${issuedAt}-${requestSignature(nonce, issuedAt)}`;
 }
 function consumeRequest(id) {
-    const expiry = pendingRequests.get(id);
-    pendingRequests.delete(id);
-    return !!expiry && Date.now() < expiry;
+    const match = /^_([0-9a-f]{16})-([0-9a-f]+)-([0-9a-f]{32})$/.exec(String(id || ''));
+    if (!match || !JWT_SECRET) return false;
+    const [, nonce, issuedAtHex, sig] = match;
+    const expected = requestSignature(nonce, issuedAtHex);
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+    const age = Date.now() - parseInt(issuedAtHex, 16);
+    return age >= -60 * 1000 && age < REQUEST_TTL_MS;
 }
 
 /** Claim URIs Azure AD's default SAML token configuration sends the user's email under —
@@ -145,8 +155,7 @@ router.get('/hub-auth/saml/login', async (req, res) => {
         // below (/hub-auth/saml/logout) ends the Entra ID session too via SAML Single Logout, so a
         // *different* person signing in afterwards never inherits a leftover Microsoft session —
         // that's the actual scenario forceAuthn was originally added to close.
-        const { id, context } = sp.createLoginRequest(idp, wording.binding.redirect);
-        trackRequest(id);
+        const { context } = sp.createLoginRequest(idp, wording.binding.redirect);
         return res.redirect(context);
     } catch (err) {
         console.error('[saml-sso] login failed:', err.message);
