@@ -180,12 +180,11 @@ export function availableManDays(periodStart, periodEnd, holidaySet) {
 }
 
 // --- Resource universe + allocations --------------------------------------------------
-// One allocation record per (resource, assignment) pair. An assignment can produce up to two
-// allocations — one for its `developer`, one for its `spocFunction` — ported intentionally from
-// the previous roster model: the same assignment legitimately consumes both people's capacity.
-const ROLE_FIELD = { Developer: 'developer', 'Functional SPOC': 'spocFunction' };
-// A field can name several people ("Task Assigned to" takes many, comma-separated): each person gets the
-// assignment on their own row, and its man-days are shared equally between them.
+// One allocation record per (resource, assignment) pair. Resources are only the people in "Task Assigned
+// to" (`developer`) — the Function Owner is a business contact, not delivery capacity.
+const ROLE_FIELD = { Developer: 'developer' };
+// "Task Assigned to" can name several people (comma-separated): each person gets the assignment on their
+// own row, and its man-days are shared equally between them.
 export const peopleIn = (value) => [...new Set(String(value || '').split(',').map((s) => s.trim()).filter(Boolean))];
 
 export function buildAllocations(items, revisedTargetFn, holidaySet) {

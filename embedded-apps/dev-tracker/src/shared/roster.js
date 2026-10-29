@@ -60,7 +60,6 @@ export function buildRoster(items) {
     if (row.status === 'Cancelled') continue;
     // Each person named (Task Assigned to can hold several) carries the assignment on their own row.
     for (const name of peopleIn(row.developer)) addWindow('Developer', name, row);
-    for (const name of peopleIn(row.spocFunction)) addWindow('Functional SPOC', name, row);
   }
 
   return Object.values(roster).map((entry) => ({

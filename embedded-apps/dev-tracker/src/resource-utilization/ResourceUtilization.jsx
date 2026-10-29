@@ -6,11 +6,16 @@ import { useNotifications } from '../shared/useNotifications.js';
 import { apiList, apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
 import { fmtDate, revisedTarget } from '../shared/utils.js';
+import { issueKey } from '../shared/pm.js';
+import { ROUTES } from '../shared/routes.js';
+
+// Opens the assignment in the CR Tracker issue view (Dashboard resolves ?issue=).
+const issueHref = (item) => `${ROUTES.dashboard}?issue=${encodeURIComponent(issueKey(item))}#list`;
 import {
   toISODate, allocatedManDaysInPeriod, buildAllocations, buildResourceUniverse, matchesFilters,
   overlapsPeriod, bucketFor, UTIL_BUCKETS, resourceStatus, RESOURCE_STATUS_META,
   computeResourceStats, allocationPct, allocationByModule, buildHolidaySet, countWorkingDays,
-  ESTIMATED_MAN_DAYS, DEFAULT_ESTIMATED_MAN_DAYS, SPOC_ESTIMATE_SHARE,
+  ESTIMATED_MAN_DAYS, DEFAULT_ESTIMATED_MAN_DAYS,
 } from '../shared/resourceUtil.js';
 import {
   CalendarIcon, FilterIcon, DownloadIcon, GridIcon, MoreIcon, SearchIcon,
@@ -23,7 +28,6 @@ const VIEW_OPTIONS = [
   { key: 'table', label: 'Allocation Table', icon: GridIcon },
   { key: 'summary', label: 'Resource Summary', icon: BarChartIcon },
 ];
-const ROLE_OPTIONS = ['Developer', 'Functional SPOC'];
 const GRANULARITIES = ['Months', 'Weeks', 'Days'];
 const PAGE_SIZES = [10, 15, 25, 50];
 const MODULE_PALETTE = ['var(--st-blue)', 'var(--st-green)', 'var(--st-purple)', 'var(--st-amber)', 'var(--st-red)', 'var(--st-teal)', 'var(--st-indigo)', 'var(--st-gray)'];
@@ -181,7 +185,7 @@ function WorkloadTip({ tip, periodStart, periodEnd, holidaySet, areaColors, onMo
             return (
               <div className="ru-wtip-proj" key={`${a.role}::${a.item.id}`}>
                 <div className="ru-wtip-proj-top">
-                  <span className="ru-wtip-proj-title">{a.item.devList}</span>
+                  <a className="ru-wtip-proj-title ru-task-link" href={issueHref(a.item)}>{a.item.devList}</a>
                   <span className="mono ru-wtip-proj-md">
                     {fmtMd(md)} · {Math.round(pct)}%
                     {a.estimated.manDays && <span className="ru-est-tag" title="Estimated from Technical Complexity">est.</span>}
@@ -523,10 +527,6 @@ export default function ResourceUtilization() {
             <option value="">All Resources</option>
             {resourceNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
-            <option value="">All Roles</option>
-            {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
           <select value={filterModule} onChange={(e) => setFilterModule(e.target.value)}>
             <option value="">All Modules</option>
             {(options.area || []).map((a) => <option key={a} value={a}>{a}</option>)}
@@ -612,7 +612,7 @@ export default function ResourceUtilization() {
                   Some items have no Target Date or Man-days, so estimates are used and marked <span className="ru-est-tag">est.</span> —
                   {estimatedDatesCount > 0 && <> dates for {estimatedDatesCount} of {totalAllocationsCount} allocations come from their stage dates</>}
                   {estimatedDatesCount > 0 && estimatedEffortCount > 0 && ';'}
-                  {estimatedEffortCount > 0 && <> effort for {estimatedEffortCount} comes from Technical Complexity (High {ESTIMATED_MAN_DAYS.High}, Medium {ESTIMATED_MAN_DAYS.Medium}, Low {ESTIMATED_MAN_DAYS.Low}, otherwise {DEFAULT_ESTIMATED_MAN_DAYS} man-days; a Functional SPOC counts {Math.round(SPOC_ESTIMATE_SHARE * 100)}% of that)</>}.
+                  {estimatedEffortCount > 0 && <> effort for {estimatedEffortCount} comes from Technical Complexity (High {ESTIMATED_MAN_DAYS.High}, Medium {ESTIMATED_MAN_DAYS.Medium}, Low {ESTIMATED_MAN_DAYS.Low}, otherwise {DEFAULT_ESTIMATED_MAN_DAYS} man-days)</>}.
                   {' '}Fill in Target Date and Man-days on an item to replace its estimate.
                 </span>
               )}
@@ -676,15 +676,16 @@ export default function ResourceUtilization() {
                         const dateRange = `${fmtDate(toISODate(a.window.start), { withYear: false })} – ${fmtDate(toISODate(a.window.end), { withYear: false })}`;
                         const estNote = [a.estimated.dates && 'dates', a.estimated.manDays && 'man-days'].filter(Boolean).join(' and ');
                         return (
-                          <div
+                          <a
                             key={idx}
-                            className={`bar${a.estimated.dates ? ' is-estimated' : ''}`}
+                            href={issueHref(a.item)}
+                            className={`bar is-link${a.estimated.dates ? ' is-estimated' : ''}`}
                             style={{ left: `${left}%`, width: `${width}%`, top: 8 + idx * BAR_LANE_HEIGHT, background: meta.softColor, opacity: completed ? 0.6 : 1, borderBottom: overdue ? '3px solid var(--st-red)' : 'none' }}
                             title={`${a.item.devList} — ${dateRange}${completed ? ' (completed)' : ''}${estNote ? ` — estimated ${estNote}` : ''}`}
                           >
                             <span className="bar-title" style={{ color: meta.color }}>{a.item.devList}{completed ? ' ✓' : ''}</span>
                             <span className="bar-dates">{dateRange}</span>
-                          </div>
+                          </a>
                         );
                       })}
                     </div>
@@ -718,7 +719,7 @@ export default function ResourceUtilization() {
                       <div className="ru-upcoming-row" key={i}>
                         <span className="dot" style={{ background: (areaColors[a.module] || { color: 'var(--mod-fallback)' }).color }} />
                         <div className="ru-upcoming-main">
-                          <div className="ru-upcoming-title">{a.item.devList}</div>
+                          <a className="ru-upcoming-title ru-task-link" href={issueHref(a.item)}>{a.item.devList}</a>
                           <div className="ru-upcoming-sub">Starts in {days} day{days === 1 ? '' : 's'}</div>
                         </div>
                         <div className="ru-upcoming-date mono">{fmtDate(toISODate(a.window.start))}</div>
@@ -763,7 +764,7 @@ export default function ResourceUtilization() {
                         </div>
                       </td>
                       <td>{r.role}</td>
-                      <td>{r.title}</td>
+                      <td><a className="ru-task-link" href={issueHref(r.item)}>{r.title}</a></td>
                       <td>{r.module || '—'}</td>
                       <td className="mono">{r.startDate ? fmtDate(r.startDate) : '—'}{r.estDates && <span className="ru-est-tag" title="Estimated from stage dates">est.</span>}</td>
                       <td className="mono">{r.endDate ? fmtDate(r.endDate) : '—'}{r.estDates && <span className="ru-est-tag" title="Estimated from stage dates">est.</span>}</td>
