@@ -1,5 +1,6 @@
 import { revisedTarget, todayStr } from './utils.js';
 import { bandFor, MAX_CONCURRENT } from './constants.js';
+import { peopleIn } from './resourceUtil.js';
 
 // Ported from resource-utilization.js buildRoster()/render(). One roster entry per
 // distinct (role, name): the same item can populate BOTH a Developer's and a
@@ -57,8 +58,9 @@ export function buildRoster(items) {
 
   for (const row of items || []) {
     if (row.status === 'Cancelled') continue;
-    addWindow('Developer', row.developer, row);
-    addWindow('Functional SPOC', row.spocFunction, row);
+    // Each person named (Task Assigned to can hold several) carries the assignment on their own row.
+    for (const name of peopleIn(row.developer)) addWindow('Developer', name, row);
+    for (const name of peopleIn(row.spocFunction)) addWindow('Functional SPOC', name, row);
   }
 
   return Object.values(roster).map((entry) => ({

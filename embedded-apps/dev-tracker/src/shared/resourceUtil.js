@@ -184,6 +184,9 @@ export function availableManDays(periodStart, periodEnd, holidaySet) {
 // allocations — one for its `developer`, one for its `spocFunction` — ported intentionally from
 // the previous roster model: the same assignment legitimately consumes both people's capacity.
 const ROLE_FIELD = { Developer: 'developer', 'Functional SPOC': 'spocFunction' };
+// A field can name several people ("Task Assigned to" takes many, comma-separated): each person gets the
+// assignment on their own row, and its man-days are shared equally between them.
+export const peopleIn = (value) => [...new Set(String(value || '').split(',').map((s) => s.trim()).filter(Boolean))];
 
 export function buildAllocations(items, revisedTargetFn, holidaySet) {
   const allocations = [];
@@ -191,18 +194,21 @@ export function buildAllocations(items, revisedTargetFn, holidaySet) {
     if (item.status === 'Cancelled') continue; // cancelled work never consumed capacity
     const plan = assignmentPlan(item, revisedTargetFn, holidaySet);
     for (const role of Object.keys(ROLE_FIELD)) {
-      const name = item[ROLE_FIELD[role]];
-      if (!name) continue;
-      allocations.push({
-        resourceName: name,
-        role,
-        item,
-        window: plan.window, // null when the item has no usable date at all — excluded from timeline/effort math, but the allocation itself (and resource) still exists
-        // Man-days, or the complexity estimate when that's blank (see assignmentPlan).
-        manDays: plan.estimated.manDays && role === 'Functional SPOC' ? plan.manDays * SPOC_ESTIMATE_SHARE : plan.manDays,
-        estimated: plan.estimated,
-        module: item.area || null,
-      });
+      const names = peopleIn(item[ROLE_FIELD[role]]);
+      const roleDays = plan.estimated.manDays && role === 'Functional SPOC' ? plan.manDays * SPOC_ESTIMATE_SHARE : plan.manDays;
+      for (const name of names) {
+        allocations.push({
+          resourceName: name,
+          role,
+          item,
+          window: plan.window, // null when the item has no usable date at all — excluded from timeline/effort math, but the allocation itself (and resource) still exists
+          // Man-days (or the complexity estimate when that's blank — see assignmentPlan), split between the people named.
+          manDays: roleDays / names.length,
+          sharedWith: names.length,
+          estimated: plan.estimated,
+          module: item.area || null,
+        });
+      }
     }
   }
   return allocations;
@@ -214,12 +220,12 @@ export function buildResourceUniverse(items) {
   const byName = new Map();
   for (const item of items || []) {
     for (const role of Object.keys(ROLE_FIELD)) {
-      const name = item[ROLE_FIELD[role]];
-      if (!name) continue;
-      if (!byName.has(name)) byName.set(name, { name, roles: new Set(), moduleTally: {} });
-      const entry = byName.get(name);
-      entry.roles.add(role);
-      if (item.area) entry.moduleTally[item.area] = (entry.moduleTally[item.area] || 0) + 1;
+      for (const name of peopleIn(item[ROLE_FIELD[role]])) {
+        if (!byName.has(name)) byName.set(name, { name, roles: new Set(), moduleTally: {} });
+        const entry = byName.get(name);
+        entry.roles.add(role);
+        if (item.area) entry.moduleTally[item.area] = (entry.moduleTally[item.area] || 0) + 1;
+      }
     }
   }
   return Array.from(byName.values()).map((entry) => ({
