@@ -5,6 +5,7 @@
 // read-only aggregate data for a different screen/audience.
 import type { AccessLevel, UserAppGrant } from '../types';
 import { authFetch } from './authFetch';
+import type { MyActivity } from './authApi';
 
 const ACCESS_API_URL =
   process.env.NEXT_PUBLIC_ACCESS_API_URL || process.env.NEXT_PUBLIC_AUTH_API_URL || 'http://localhost:4000/api';
@@ -119,6 +120,19 @@ export async function getAdminAppUserStats(appId: string): Promise<{ ok: boolean
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load per-user stats for this app.' };
     return { ok: true, users: data.users };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
+/** One person's sign-ins and sessions for the Admin Center drill-down (GET /admin/user/:email/activity —
+ * the same shape as My Profile's own /me/activity). */
+export async function getAdminUserActivity(email: string): Promise<{ ok: boolean; activity?: MyActivity; error?: string }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/admin/user/${encodeURIComponent(email)}/activity`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load this person’s activity.' };
+    return { ok: true, activity: data.activity };
   } catch {
     return { ok: false, error: 'Could not reach the server. Please try again.' };
   }

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle, ArrowUpRight } from 'lucide-react';
 import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../types';
 import { getMyProfile, type UserProfile } from '../../lib/authApi';
 import { getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
@@ -54,6 +55,8 @@ export default function UserDrawer({
   onRemoved: (email: string) => void;
   notify: (message: string, tone?: 'success' | 'error') => void;
 }) {
+  const router = useRouter();
+  const usageRef = useRef<HTMLParagraphElement>(null);
   const [tab, setTab] = useState<Tab>('access');
   const [draft, setDraft] = useState<Draft>(() => draftFrom(user));
   const [saving, setSaving] = useState(false);
@@ -228,6 +231,9 @@ export default function UserDrawer({
   };
 
   const name = displayName(user.email, user.usage?.name);
+  // The full sign-in / session history for this person (My Profile's activity page in admin mode).
+  const openActivity = (view: 'signins' | 'sessions') =>
+    router.push(`/settings/activity?view=${view}&user=${encodeURIComponent(user.email)}${user.usage?.name ? `&name=${encodeURIComponent(user.usage.name)}` : ''}`);
 
   const header = (
     <>
@@ -443,15 +449,15 @@ export default function UserDrawer({
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} />
-                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} />
-                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} />
-                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} />
-                <Stat label="Apps opened" value={String(profile?.appsOpened ?? user.usage?.appsOpened ?? 0)} />
+                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} onClick={() => openActivity('signins')} />
+                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} hint="See every sign-in" onClick={() => openActivity('signins')} />
+                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} hint="See each visit and its apps" onClick={() => openActivity('sessions')} />
+                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} hint="See how long each session lasted" onClick={() => openActivity('sessions')} />
+                <Stat label="Apps opened" value={String(profile?.appsOpened ?? user.usage?.appsOpened ?? 0)} hint="Jump to usage by app" onClick={() => usageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
                 <Stat label="Downloads" value={String(profile?.downloads ?? 0)} />
               </div>
 
-              <p style={{ ...labelStyle, margin: '22px 0 10px' }}>Usage by app</p>
+              <p ref={usageRef} style={{ ...labelStyle, margin: '22px 0 10px', scrollMarginTop: 12 }}>Usage by app</p>
               {appStats.length === 0 ? (
                 <EmptyState icon={Activity} title="No apps opened yet" />
               ) : (
@@ -550,12 +556,20 @@ export function Segmented<T extends string | null>({
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint, onClick }: { label: string; value: string; hint?: string; onClick?: () => void }) {
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div title={hint} style={{ border: `1px solid ${colors.border}`, borderRadius: radii.xl, padding: '12px 14px', backgroundColor: colors.white }}>
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      title={hint}
+      className={onClick ? 'ac-card' : undefined}
+      style={{ position: 'relative', textAlign: 'left', width: '100%', cursor: onClick ? 'pointer' : 'default', border: `1px solid ${colors.border}`, borderRadius: radii.xl, padding: '12px 14px', backgroundColor: colors.white, font: 'inherit' }}
+    >
+      {onClick && <ArrowUpRight size={14} color={colors.inkSoft} style={{ position: 'absolute', top: 10, right: 10 }} aria-hidden />}
       <p style={{ ...labelStyle, margin: 0, fontSize: 10 }}>{label}</p>
       <p style={{ margin: '4px 0 0', fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{value}</p>
-    </div>
+    </Tag>
   );
 }
 

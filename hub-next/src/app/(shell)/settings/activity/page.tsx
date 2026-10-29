@@ -6,15 +6,17 @@ import { ArrowLeft, LogIn, History, CalendarDays, Timer, Layers, ChevronDown, Ch
 import { useAuth } from '../../../../context/AuthContext';
 import { useIsWideScreen } from '../../../../hooks/useIsWideScreen';
 import { getMyActivity, type MyActivity, type MySession } from '../../../../lib/authApi';
+import { getAdminUserActivity } from '../../../../lib/adminApi';
 import { appById } from '../../../../data/mockData';
 import { colors, fonts, fontWeights, radii } from '../../../../theme/tokens';
 import {
-  AdminStyles, AppIcon, EmptyState, Skeleton,
+  AdminStyles, AppIcon, EmptyState, Skeleton, displayName,
   cardStyle, labelStyle, secondaryBtnStyle, sectionSubStyle, sectionTitleStyle, timeAgo,
 } from '../../../../components/admin/adminShared';
 
 /** My Profile › Sign-ins & sessions — the person's own history behind the Sign-ins and Sessions
- * tiles on My Profile. ?view=signins|sessions picks the tab, so each tile links straight to its own. */
+ * tiles on My Profile. ?view=signins|sessions picks the tab, so each tile links straight to its own.
+ * With ?user=<email> it is the Admin Center's view of that person (the server checks the viewer is an admin). */
 
 type View = 'signins' | 'sessions';
 const PAGE = 40;
@@ -60,7 +62,13 @@ function ActivityContent() {
   const isWide = useIsWideScreen();
   const { profile } = useAuth();
   const view: View = params.get('view') === 'sessions' ? 'sessions' : 'signins';
-  const setView = (v: View) => router.replace(`${pathname}?view=${v}`, { scroll: false });
+  const who = (params.get('user') || '').trim().toLowerCase();
+  const whoName = who ? displayName(who, params.get('name')) : '';
+  const setView = (v: View) => {
+    const next = new URLSearchParams(params.toString());
+    next.set('view', v);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
 
   const [activity, setActivity] = useState<MyActivity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,13 +77,14 @@ function ActivityContent() {
   const [limit, setLimit] = useState(PAGE);
 
   useEffect(() => {
-    getMyActivity().then((r) => {
+    setLoading(true);
+    (who ? getAdminUserActivity(who) : getMyActivity()).then((r: { ok: boolean; activity?: MyActivity; error?: string; notAvailable?: boolean }) => {
       setLoading(false);
       if (r.ok && r.activity) setActivity(r.activity);
       else if (r.notAvailable) setNotAvailable(true);
-      else setError(r.error || 'Could not load your activity.');
+      else setError(r.error || 'Could not load the activity.');
     });
-  }, []);
+  }, [who]);
   useEffect(() => setLimit(PAGE), [view]);
 
   const logins = activity?.logins ?? [];
@@ -114,22 +123,22 @@ function ActivityContent() {
   return (
     <div style={{ minHeight: '100%', padding: pad, paddingBottom: 48 }}>
       <AdminStyles />
-      <button type="button" className="ac-btn" onClick={() => router.push('/settings')} style={{ ...secondaryBtnStyle, height: 34, borderRadius: radii.pill, marginBottom: 14 }}>
-        <ArrowLeft size={14} /> Back to My Profile
+      <button type="button" className="ac-btn" onClick={() => router.push(who ? `/manage-access?tab=people&user=${encodeURIComponent(who)}` : '/settings')} style={{ ...secondaryBtnStyle, height: 34, borderRadius: radii.pill, marginBottom: 14 }}>
+        <ArrowLeft size={14} /> {who ? `Back to ${whoName}` : 'Back to My Profile'}
       </button>
 
       {/* Header */}
       <div style={{ position: 'relative', overflow: 'hidden', borderRadius: radii.xxxl + 4, padding: isWide ? '24px 28px 0' : '18px 18px 0', background: `linear-gradient(125deg, ${colors.plumDeep} 0%, #2A2070 45%, ${colors.rust} 100%)`, boxShadow: '0 18px 40px -18px rgba(37,27,120,0.6)' }}>
         <div aria-hidden style={{ position: 'absolute', right: -60, top: -80, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,124,255,0.55), transparent 70%)' }} />
-        <p style={{ position: 'relative', margin: 0, fontSize: 12, fontFamily: fonts.sansSemiBold, color: '#C7C0FF', letterSpacing: 0.8, textTransform: 'uppercase' }}>My Profile</p>
-        <h1 style={{ position: 'relative', margin: '6px 0 4px', fontSize: isWide ? 25 : 21, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.white }}>Sign-ins &amp; sessions</h1>
+        <p style={{ position: 'relative', margin: 0, fontSize: 12, fontFamily: fonts.sansSemiBold, color: '#C7C0FF', letterSpacing: 0.8, textTransform: 'uppercase' }}>{who ? 'Admin Center' : 'My Profile'}</p>
+        <h1 style={{ position: 'relative', margin: '6px 0 4px', fontSize: isWide ? 25 : 21, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.white }}>{who ? `${whoName} — sign-ins & sessions` : 'Sign-ins & sessions'}</h1>
         <p style={{ position: 'relative', margin: 0, fontSize: 13, fontFamily: fonts.sansRegular, color: 'rgba(255,255,255,0.72)' }}>
-          Every time you signed in to Emami Apps, and what you did in each visit.
+          {who ? `Every time ${whoName} signed in to Emami Apps, and the apps opened in each visit.` : 'Every time you signed in to Emami Apps, and what you did in each visit.'}
         </p>
         <nav style={{ position: 'relative', display: 'flex', gap: 4, marginTop: 20 }}>
           {([
-            ['signins', 'Sign-ins', LogIn, activity ? logins.length : profile?.logins],
-            ['sessions', 'Sessions', History, activity ? sessions.length : profile?.sessionsTotal],
+            ['signins', 'Sign-ins', LogIn, activity ? logins.length : who ? undefined : profile?.logins],
+            ['sessions', 'Sessions', History, activity ? sessions.length : who ? undefined : profile?.sessionsTotal],
           ] as [View, string, React.ElementType, number | undefined][]).map(([id, label, Icon, n]) => {
             const active = view === id;
             return (
@@ -147,7 +156,7 @@ function ActivityContent() {
           <div style={{ ...cardStyle, padding: 8 }}>
             <EmptyState
               icon={notAvailable ? Info : AlertCircle}
-              title={notAvailable ? 'Your detailed history is on its way' : 'Could not load your history'}
+              title={notAvailable ? 'Your detailed history is on its way' : who ? 'Could not load this history' : 'Could not load your history'}
               hint={notAvailable ? `So far you have ${profile?.logins ?? 0} sign-ins and ${profile?.sessionsTotal ?? 0} sessions. The full list will appear here once the server update is live.` : error}
             />
           </div>
@@ -160,12 +169,12 @@ function ActivityContent() {
                   <Tile icon={LogIn} accent="#0EA5E9" label="Total sign-ins" value={loading ? null : logins.length} />
                   <Tile icon={CalendarDays} accent="#16A34A" label="Last 7 days" value={loading ? null : loginStats.week} />
                   <Tile icon={CalendarDays} accent={colors.rust} label="Last 30 days" value={loading ? null : loginStats.month} />
-                  <Tile icon={Clock} accent="#F59E0B" label="Days you signed in" value={loading ? null : loginStats.activeDays} sub={loginStats.first ? `since ${new Date(loginStats.first).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}` : undefined} />
+                  <Tile icon={Clock} accent="#F59E0B" label={who ? 'Days signed in' : 'Days you signed in'} value={loading ? null : loginStats.activeDays} sub={loginStats.first ? `since ${new Date(loginStats.first).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}` : undefined} />
                 </>
               ) : (
                 <>
                   <Tile icon={History} accent={colors.rust} label="Total sessions" value={loading ? null : sessions.length} />
-                  <Tile icon={Timer} accent="#0D9488" label="Average length" value={loading ? null : formatDuration(sessionStats.avg)} sub="of sessions you signed out of" />
+                  <Tile icon={Timer} accent="#0D9488" label="Average length" value={loading ? null : formatDuration(sessionStats.avg)} sub={who ? 'of sessions ended with Sign out' : 'of sessions you signed out of'} />
                   <Tile icon={Timer} accent="#9333EA" label="Longest session" value={loading ? null : formatDuration(sessionStats.longest?.durationSeconds ?? null)} sub={sessionStats.longest ? new Date(sessionStats.longest.start).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : undefined} />
                   <Tile icon={Layers} accent="#F59E0B" label="Apps per session" value={loading ? null : sessionStats.appsPer} sub="on average" />
                 </>
@@ -232,11 +241,11 @@ function ActivityContent() {
               {view === 'sessions' && !loading && sessionStats.unclosed > 0 && (
                 <p style={{ display: 'flex', gap: 8, margin: '16px 0 0', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, lineHeight: '16px' }}>
                   <Info size={14} style={{ flexShrink: 0 }} />
-                  {sessionStats.unclosed} session{sessionStats.unclosed === 1 ? '' : 's'} ended without Sign out (tab closed or timed out), so their length isn&apos;t known. Use Sign out to have your time recorded.
+                  {sessionStats.unclosed} session{sessionStats.unclosed === 1 ? '' : 's'} ended without Sign out (tab closed or timed out), so their length isn&apos;t known.{who ? '' : ' Use Sign out to have your time recorded.'}
                 </p>
               )}
               {activity?.truncated && (
-                <p style={{ margin: '10px 0 0', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>Showing your most recent activity only.</p>
+                <p style={{ margin: '10px 0 0', fontSize: 11.5, fontFamily: fonts.sansRegular, color: colors.inkSoft }}>{who ? 'Showing the most recent activity only.' : 'Showing your most recent activity only.'}</p>
               )}
             </div>
           </>
