@@ -25,6 +25,14 @@ async function logActivity(ticketId, action, details, actorAgentId = null) {
     await pool.query('INSERT INTO setu.activities ("ticketId", "actorAgentId", action, details) VALUES ($1, $2, $3, $4)', [ticketId, actorAgentId, action, JSON.stringify(details ?? {})]);
 }
 
+/** Last activity shown in the ticket list: what happened (ACTIVITY_KINDS), who did it and a short detail. */
+async function touchActivity(ticketId, kind, by, detail = null, at = new Date()) {
+    await pool.query(
+        'UPDATE setu.tickets SET "lastActivityAt" = $2, "lastActivityKind" = $3, "lastActivityBy" = $4, "lastActivityDetail" = $5 WHERE id = $1',
+        [ticketId, at, kind, by ? String(by).slice(0, 200) : null, detail ? String(detail).slice(0, 200) : null],
+    );
+}
+
 /** UPDATE setu.<table> SET ... from a plain object of camelCase columns. */
 async function updateRow(table, id, data, client = pool) {
     const keys = Object.keys(data);
@@ -51,4 +59,4 @@ function istDayStart(offsetDays = 0) {
     return new Date(new Date(`${ymd}T00:00:00+05:30`).getTime() + offsetDays * 86_400_000);
 }
 
-module.exports = { audit, esc, fail, fmtIst, intOrNull, istDayStart, logActivity, setting, stripTags, textToHtml, ticketLink, updateRow, wrap };
+module.exports = { audit, esc, fail, fmtIst, intOrNull, istDayStart, logActivity, setting, stripTags, textToHtml, ticketLink, touchActivity, updateRow, wrap };

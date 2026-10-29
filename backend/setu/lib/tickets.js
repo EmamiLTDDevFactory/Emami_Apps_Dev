@@ -1,13 +1,15 @@
 'use strict';
 const { pool } = require('../../db');
-const { EDITABLE_FIELDS, PATCHABLE, SEVERITY_PRIORITY, STATUS, q } = require('../constants');
+const { CUSTOMER_SOURCES, EDITABLE_FIELDS, PATCHABLE, SEVERITY_PRIORITY, STATUS, q } = require('../constants');
+const { ring } = require('./bell');
 const { roundRobinAgent } = require('./assignment');
 const { ruleMatches, rulesFor } = require('./automation');
 const { sendMail } = require('./mail');
 const { emailRequester, loadTicket, notifyAgents, renderTemplate } = require('./notify');
 const { severityFor } = require('./severity');
 const { computeDueDates, nextResponseDue, pausedMinutes } = require('./sla');
-const { logActivity, setting, stripTags, updateRow } = require('./util');
+const { logActivity, setting, stripTags, touchActivity, updateRow } = require('./util');
+const { htmlToWhatsAppText, sendWhatsApp } = require('./whatsapp');
 
 async function runActions(ticketId, actions, ruleName) {
     for (const a of actions) {
@@ -75,7 +77,19 @@ async function findOrCreateContact(r) {
         );
         return rows[0];
     }
-    const { rows } = await pool.query('INSERT INTO setu.contacts (name, phone) VALUES ($1, $2) RETURNING id, "companyId", email', [r.name, r.phone || null]);
+    // No email (WhatsApp): the same number is the same person.
+    const number = r.mobile || r.phone;
+    if (number) {
+        const found = await pool.query(
+            'SELECT id, "companyId", email FROM setu.contacts WHERE (mobile = $1 OR phone = $1) AND "anonymizedAt" IS NULL ORDER BY id DESC LIMIT 1',
+            [number],
+        );
+        if (found.rows.length) return found.rows[0];
+    }
+    const { rows } = await pool.query(
+        'INSERT INTO setu.contacts (name, phone, mobile) VALUES ($1, $2, $3) RETURNING id, "companyId", email',
+        [r.name, r.phone || null, r.mobile || null],
+    );
     return rows[0];
 }
 
@@ -101,6 +115,8 @@ async function createTicket(input) {
         severity,
         ...f,
         priority: f.priority ?? SEVERITY_PRIORITY[severity],
+        lastActivityBy: String(input.actorName ?? input.requester.name ?? '').slice(0, 200) || null,
+        lastActivityDetail: input.source ?? 'Email',
     };
     const keys = Object.keys(data);
     const { rows } = await pool.query(
@@ -110,8 +126,9 @@ async function createTicket(input) {
     const id = rows[0].id;
     if (input.messageId) {
         await pool.query(
-            `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "messageId", "createdAt") VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6)`,
-            [id, data.description, stripTags(data.description), contact.email, input.messageId, createdAt],
+            `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
+             VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6, $7, $8)`,
+            [id, data.description, stripTags(data.description), contact.email, input.fromPhone ?? null, input.channel ?? 'email', input.messageId, createdAt],
         );
     }
     await logActivity(id, 'created', { source: data.source, severity }, input.actorAgentId ?? null);
@@ -127,11 +144,20 @@ async function createTicket(input) {
         }
     }
     await updateRow('tickets', id, await computeDueDates(routed));
+    // Routing and round robin above count as part of creating the ticket, not as a later "assigned" activity.
+    await touchActivity(id, 'created', data.lastActivityBy, data.lastActivityDetail, createdAt);
 
     const t = await loadTicket(id);
-    if (t.source === 'Email') await emailRequester(t, 'requester.ticket_received');
+    // Acknowledgement: always for email; for other channels when asked (portal, an agent logging it on someone's behalf).
+    if (t.source === 'Email' || input.notifyRequester) await emailRequester(t, 'requester.ticket_received');
     if (t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');
     if (t.agentId && t.agentId !== input.actorAgentId) await notifyAgents(t, 'agent.assigned_agent', 'assignee');
+    if (!input.actorAgentId && CUSTOMER_SOURCES.includes(t.source)) {
+        await ring(t, 'new_ticket', { title: `New ${t.source} ticket #${t.id}: ${t.subject}`, body: t.requesterName });
+    }
+    if (t.agentId && t.agentId !== input.actorAgentId) {
+        await ring(t, 'assigned', { title: `Assigned to you: #${t.id} ${t.subject}`, body: t.requesterName, only: [t.agentId] });
+    }
     return t;
 }
 
@@ -191,6 +217,14 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     await logActivity(id, 'updated', Object.fromEntries(changed.map((k) => [k, { from: before[k] ?? null, to: data[k] ?? null }])), actorAgentId);
 
     const t = await loadTicket(id);
+    if (changed.includes('statusId') || changed.includes('agentId')) {
+        const actor = actorAgentId ? (await pool.query('SELECT name FROM setu.agents WHERE id = $1', [actorAgentId])).rows[0]?.name : 'Automation';
+        if (changed.includes('statusId')) await touchActivity(id, 'status', actor, `${before.statusName} → ${t.statusName}`, now);
+        else await touchActivity(id, 'assigned', actor, t.agentName ? `Assigned to ${t.agentName}` : 'Unassigned', now);
+    }
+    if (changed.includes('agentId') && t.agentId && t.agentId !== actorAgentId) {
+        await ring(t, 'assigned', { title: `Assigned to you: #${t.id} ${t.subject}`, body: t.requesterName, only: [t.agentId] });
+    }
     if (changed.includes('agentId') && t.agentId && t.agentId !== actorAgentId) await notifyAgents(t, 'agent.assigned_agent', 'assignee');
     if (changed.includes('groupId') && t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');
     if (!opts.skipAutomations) await runRules('ON_UPDATE', id, changed);
@@ -204,8 +238,17 @@ async function addAgentMessage(ticketId, m, agent) {
     let to = (m.to ?? []).map((x) => x.toLowerCase());
     const cc = (m.cc ?? []).map((x) => x.toLowerCase());
     const withAgent = { ...t, agentName: agent.name };
+    // A reply on a WhatsApp ticket goes back on WhatsApp (to the requester's number), not by email.
+    const viaWhatsApp = m.kind === 'REPLY' && t.source === 'WhatsApp' && Boolean(t.requesterMobile || t.requesterPhone);
+    let delivery = null;
 
-    if (m.kind === 'REPLY') {
+    if (viaWhatsApp) {
+        const signature = await renderTemplate('reply.signature', withAgent);
+        html = `${m.html}${signature ? `<br>${signature.html}` : ''}`;
+        to = [];
+        delivery = await sendWhatsApp(t.requesterMobile || t.requesterPhone, stripTags(html.replace(/<br\s*\/?>|<\/p>/gi, '\n')));
+        await logActivity(ticketId, delivery.sent ? 'whatsapp_sent' : 'whatsapp_failed', delivery.sent ? {} : { reason: delivery.reason }, agent.id);
+    } else if (m.kind === 'REPLY') {
         to = t.requesterEmail ? [t.requesterEmail, ...to.filter((x) => x !== t.requesterEmail)] : to;
         const signature = await renderTemplate('reply.signature', withAgent);
         html = `${m.html}${signature ? `<br>${signature.html}` : ''}`;
@@ -217,8 +260,8 @@ async function addAgentMessage(ticketId, m, agent) {
     }
 
     await pool.query(
-        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails") VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [ticketId, m.kind, html, stripTags(html), agent.id, to, cc],
+        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails", channel) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [ticketId, m.kind, html, stripTags(html), agent.id, to, cc, viaWhatsApp ? 'whatsapp' : 'email'],
     );
 
     if (m.kind === 'REPLY') {
@@ -234,22 +277,34 @@ async function addAgentMessage(ticketId, m, agent) {
         await updateRow('tickets', ticketId, { updatedAt: now });
         if (m.kind === 'NOTE' && t.agentId && t.agentId !== agent.id) {
             await notifyAgents(t, 'agent.note_added', 'assignee', { 'comment.body': stripTags(m.html) });
+            await ring(t, 'note', { title: `${agent.name} added a note on #${t.id}`, body: stripTags(m.html).slice(0, 200), only: [t.agentId] });
         }
     }
+    // After any "assign to first responder" above, so the list shows the reply itself as the last activity.
+    const KIND = { REPLY: 'agent_reply', NOTE: 'note', FORWARD: 'forward' };
+    await touchActivity(ticketId, KIND[m.kind], agent.name, viaWhatsApp ? 'WhatsApp' : m.kind === 'FORWARD' ? `To ${to.join(', ')}` : null, now);
+    await logActivity(ticketId, 'message', { kind: m.kind, channel: viaWhatsApp ? 'whatsapp' : 'email' }, agent.id);
+    return { delivery };
 }
 
-/** A requester's email reply on an existing ticket. Reopens resolved / waiting tickets. */
+/** A requester's reply on an existing ticket (email, or WhatsApp with channel / fromPhone). Reopens resolved / waiting tickets. */
 async function addRequesterReply(ticketId, m) {
     const exists = await pool.query('SELECT 1 FROM setu.conversations WHERE "messageId" = $1', [m.messageId]);
     if (exists.rows.length) return;
     await pool.query(
-        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "messageId", "createdAt") VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6)`,
-        [ticketId, m.html, stripTags(m.html), m.fromEmail, m.messageId, m.receivedAt],
+        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
+         VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6, $7, $8)`,
+        [ticketId, m.html, stripTags(m.html), m.fromEmail ?? null, m.fromPhone ?? null, m.channel ?? 'email', m.messageId, m.receivedAt],
     );
     const t = await loadTicket(ticketId);
     if (t.statusId !== STATUS.OPEN && !t.isClosed) await updateTicket(ticketId, { statusId: STATUS.OPEN }, null);
     await updateRow('tickets', ticketId, { nextResponseDueAt: await nextResponseDue(t.groupId, t.priority), updatedAt: new Date() });
-    await notifyAgents(await loadTicket(ticketId), 'agent.requester_replied', 'assignee', { 'comment.body': stripTags(m.html) });
+    const after = await loadTicket(ticketId);
+    await notifyAgents(after, 'agent.requester_replied', 'assignee', { 'comment.body': stripTags(m.html) });
+    // Last, so the reply (not the reopening above) is what the list shows.
+    await touchActivity(ticketId, 'requester_reply', after.requesterName, m.channel === 'whatsapp' ? 'WhatsApp' : null, new Date());
+    await logActivity(ticketId, 'requester_replied', { channel: m.channel ?? 'email' });
+    await ring(after, 'requester_reply', { title: `${after.requesterName} replied on #${after.id}`, body: stripTags(m.html).slice(0, 200) });
 }
 
 module.exports = { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, addRequesterReply, createTicket, runActions, updateTicket };

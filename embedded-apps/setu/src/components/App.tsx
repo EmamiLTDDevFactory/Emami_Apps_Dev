@@ -5,7 +5,7 @@ import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type
 import { BASE_PATH } from '@/lib/config';
 import { SetuContext, type Screen, type Setu } from '@/lib/context';
 import { hasHubSession } from '@/lib/hub';
-import type { Availability, Me, Meta } from '@/lib/types';
+import type { Availability, BellEvent, Me, Meta } from '@/lib/types';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import { Avatar, Button, cx } from './ui';
 import Dashboard from './Dashboard';
@@ -15,6 +15,7 @@ import NewTicket from './NewTicket';
 import dynamic from 'next/dynamic';
 import { Skeleton as LoadingSkeleton } from './ui';
 import Shortcuts from './Shortcuts';
+import Bell from './Bell';
 
 // Loaded only when opened: keeps the first load small for agents who never open Admin or the report.
 const loading = () => <LoadingSkeleton />;
@@ -27,7 +28,7 @@ const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
   { id: 'tickets', label: 'Tickets', hint: 'Views, filters and search', icon: Inbox },
   { id: 'board', label: 'Board', hint: 'Drag tickets between statuses', icon: Columns3 },
-  { id: 'new', label: 'New ticket', hint: 'Phone, WhatsApp, portal ...', icon: PlusCircle },
+  { id: 'new', label: 'New ticket', hint: 'On behalf of a requester', icon: PlusCircle },
   { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet, show: (s) => s.sup },
   { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings, show: (s) => s.admin },
 ];
@@ -42,7 +43,7 @@ type State =
   | { kind: 'expired'; message: string }
   | { kind: 'denied'; message: string }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean };
+  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; bellMuted: BellEvent[] };
 
 /** ?ticket=<id> deep link (hub notifications and emails point there). */
 function ticketFromUrl(): number | null {
@@ -87,7 +88,10 @@ export default function App() {
     setState({ kind: 'checking' });
     try {
       const [me, meta] = await Promise.all([getMe(), getMeta()]);
-      setState({ kind: 'ready', me: me.me, meta, mailEnabled: me.mailEnabled });
+      setState({
+        kind: 'ready', me: me.me, meta, mailEnabled: me.mailEnabled, whatsappEnabled: me.whatsappEnabled,
+        bellEvents: me.bellEvents ?? ['requester_reply'], bellMuted: me.prefs?.bellMuted ?? [],
+      });
       const deep = ticketFromUrl();
       if (deep) {
         setTicketId(deep);
@@ -120,6 +124,7 @@ export default function App() {
       me: state.me,
       meta: state.meta,
       mailEnabled: state.mailEnabled,
+      whatsappEnabled: state.whatsappEnabled,
       reloadMeta,
       openTicket: (id: number) => { setTicketId(id); setScreen('ticket'); setMenu(false); },
       openList: (q: TicketQuery = {}) => { setPreset((p) => ({ n: p.n + 1, q })); setScreen('tickets'); setMenu(false); },
@@ -243,6 +248,7 @@ export default function App() {
                 Mail off
               </span>
             )}
+            <Bell events={state.bellEvents} muted={state.bellMuted} />
             <button type="button" onClick={() => window.dispatchEvent(new Event('setu:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
             <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>
             <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 md:flex"><Calendar size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{today}</span></div>

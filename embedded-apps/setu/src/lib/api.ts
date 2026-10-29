@@ -8,8 +8,8 @@
  */
 import { getHubToken } from './hub';
 import type {
-  ActivityItem, AdminAgent, AdminField, AdminGroup, AuditEvent, AutomationRule, Counts, Dashboard, DashboardInsights, DayWindow, Distributor,
-  EmailTemplate, Me, Meta, ParkedMail, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow,
+  ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, AuditEvent, AutomationRule, BellEvent, BellItem, ContactMatch, Counts, Dashboard,
+  DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -54,6 +54,9 @@ async function request<T = Json>(method: string, path: string, body?: unknown): 
   return data as T;
 }
 
+/** Full URL of a Setu API path (shown to admins, e.g. the WhatsApp webhook address to give Meta). */
+export const setuApiUrl = (path: string) => `${apiBase()}/setu${path}`;
+
 const get = <T>(p: string) => request<T & Json>('GET', p);
 const qs = (o: Record<string, string | number | undefined | null>) => {
   const u = new URLSearchParams();
@@ -62,8 +65,26 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
   return s ? `?${s}` : '';
 };
 
+// ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
+export interface PortalTicketStatus { id: number; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[] }>('/portal/config');
+export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
+  request<{ ticket: { id: number } }>('POST', '/portal/tickets', body).then((r) => r.ticket);
+export const portalStatus = (id: number, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
+
 // ---------- Me & reference data ----------
-export const getMe = () => get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean }>('/me');
+export const getMe = () =>
+  get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[] }>('/me');
+export const savePrefs = (prefs: { bellMuted: BellEvent[] }) => request<{ prefs: AgentPrefs }>('PUT', '/me/preferences', prefs).then((r) => r.prefs);
+export const searchContacts = (q: string) => get<{ items: ContactMatch[] }>(`/contacts/search${qs({ q })}`).then((r) => r.items);
+
+// ---------- In-app bell ----------
+export const getBell = () => get<{ items: BellItem[]; unread: number }>('/notifications');
+export const markBellRead = (body: { ids: number[] } | { all: true }) => request('POST', '/notifications/read', body);
+
+// ---------- Personal canned responses (private to the signed-in agent) ----------
+export const saveMyCanned = (b: { id?: number; folder: string; title: string; shortCode: string; body: string }) => request('POST', '/me/canned', b);
+export const deleteMyCanned = (id: number) => request('DELETE', `/me/canned/${id}`);
 export const setAvailability = (availability: string) => request('PATCH', '/me/availability', { availability });
 export const getMeta = () => get<Meta>('/meta');
 export const lookupDistributor = (code: string) => get<{ distributor: Distributor | null }>(`/distributors/lookup${qs({ code })}`).then((r) => r.distributor);
@@ -79,6 +100,7 @@ export interface TicketQuery {
   source?: string;
   type?: string;
   category?: string;
+  activity?: string;
   tag?: string;
   from?: string;
   to?: string;
@@ -94,7 +116,9 @@ export const getTicket = (id: number) => get<TicketDetail>(`/tickets/${id}`);
 export const createTicket = (body: Json) => request<{ ticket: Ticket }>('POST', '/tickets', body).then((r) => r.ticket);
 export const updateTicket = (id: number, patch: Json) => request<{ ticket: Ticket }>('PATCH', `/tickets/${id}`, patch).then((r) => r.ticket);
 export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string }) =>
-  request('POST', `/tickets/${id}/messages`, body);
+  request<{ delivery: { sent: boolean; reason?: string } | null }>('POST', `/tickets/${id}/messages`, body).then((r) => r.delivery);
+export const logCall = (id: number, body: { phone: string; direction: 'OUTBOUND' | 'INBOUND'; outcome: string; durationMins: number; notes: string }) =>
+  request('POST', `/tickets/${id}/calls`, body);
 export const addTimeLog = (id: number, minutes: number, note: string) => request('POST', `/tickets/${id}/time-logs`, { minutes, note });
 
 // ---------- Board, dashboard, reports ----------
@@ -120,7 +144,7 @@ export const admin = {
   deleteCanned: (id: number) => request('DELETE', `/admin/canned/${id}`),
   distributors: (q: string) => get<{ items: Distributor[]; total: number; lastUpdated: string | null }>(`/admin/distributors${qs({ q })}`),
   importDistributors: (rows: string[][]) => request<{ imported: number }>('POST', '/admin/distributors/import', { rows }).then((r) => r.imported),
-  anonymize: (email: string) => request('POST', '/admin/contacts/anonymize', { email }),
+  anonymize: (who: { email: string } | { phone: string }) => request('POST', '/admin/contacts/anonymize', who),
   sla: () => get<{ policies: SlaPolicy[] }>('/admin/sla').then((r) => r.policies),
   saveSlaTarget: (id: number, b: Json) => request('PUT', `/admin/sla/targets/${id}`, b),
   saveSlaGroups: (policyId: number, groupIds: number[]) => request('PUT', `/admin/sla/policies/${policyId}/groups`, { groupIds }),

@@ -1,21 +1,40 @@
 'use client';
-import { useState } from 'react';
-import { PlusCircle } from 'lucide-react';
-import { createTicket } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { PlusCircle, UserSearch } from 'lucide-react';
+import { createTicket, searchContacts } from '@/lib/api';
+import type { ContactMatch } from '@/lib/types';
 import { useSetu } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
-const EMPTY_TOP ={ requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
+const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
+const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
 
 export default function NewTicket() {
   const { meta, openTicket } = useSetu();
   const [top, setTop] = useState(EMPTY_TOP);
   const [fields, setFields] = useState<Values>({});
   const [another, setAnother] = useState(false);
+  const [notify, setNotify] = useState(true);
+  const [matches, setMatches] = useState<ContactMatch[]>([]);
+  const [lookup, setLookup] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
   const set = (p: Partial<typeof EMPTY_TOP>) => setTop((t) => ({ ...t, ...p }));
+  const emailOk = EMAIL_RE.test(top.requesterEmail.trim());
+
+  // Find the requester by name, email or phone (people who wrote in before), as the agent types.
+  useEffect(() => {
+    const q = lookup.trim();
+    if (q.length < 2) { setMatches([]); return; }
+    const id = setTimeout(() => { searchContacts(q).then(setMatches).catch(() => setMatches([])); }, 300);
+    return () => clearTimeout(id);
+  }, [lookup]);
+  const pick = (c: ContactMatch) => {
+    set({ requesterName: c.name, requesterEmail: c.email ?? '', requesterPhone: c.mobile || c.phone || '' });
+    setMatches([]);
+    setLookup('');
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -30,6 +49,7 @@ export default function NewTicket() {
         description: top.description,
         source: top.source,
         statusId: Number(top.statusId),
+        notifyRequester: notify,
         tags: top.tags.split(',').map((x) => x.trim()).filter(Boolean),
       };
       if (top.groupId) body.groupId = Number(top.groupId);
@@ -55,14 +75,32 @@ export default function NewTicket() {
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-extrabold tracking-tight">New ticket</h2>
-        <p className="text-sm text-muted">For calls, WhatsApp, portal and walk-ins. Email tickets are created from the support mailbox automatically.</p>
+        <p className="text-sm text-muted">Log a ticket on a requester&apos;s behalf (call, walk-in, message). Their email is needed: replies and updates go there. Email, portal and WhatsApp tickets arrive on their own.</p>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
           <Card title="Requester and issue">
+            <div className="relative mb-3">
+              <UserSearch size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <input className={cx(inputCls, 'pl-8')} value={lookup} onChange={(e) => setLookup(e.target.value)} placeholder="Find an existing requester by name, email or phone" aria-label="Find requester" />
+              {matches.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-line bg-panel shadow-pop">
+                  {matches.map((c) => (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => pick(c)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-sunken">
+                        <span className="font-semibold">{c.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-2xs text-muted">{[c.email, c.mobile || c.phone].filter(Boolean).join(' · ')}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Requester name" required><input className={inputCls} value={top.requesterName} onChange={(e) => set({ requesterName: e.target.value })} /></Field>
-              <Field label="Email"><input className={inputCls} type="email" value={top.requesterEmail} onChange={(e) => set({ requesterEmail: e.target.value })} /></Field>
+              <Field label="Email" required hint={top.requesterEmail && !emailOk ? <span className="text-bad">Not a valid email</span> : undefined}>
+                <input className={inputCls} type="email" value={top.requesterEmail} onChange={(e) => set({ requesterEmail: e.target.value })} />
+              </Field>
               <Field label="Phone"><input className={inputCls} value={top.requesterPhone} onChange={(e) => set({ requesterPhone: e.target.value })} /></Field>
             </div>
             <div className="mt-3 space-y-3">
@@ -110,10 +148,14 @@ export default function NewTicket() {
           </Card>
           {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
           <label className="flex items-center gap-2 text-[13px] font-medium">
+            <input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--accent))]" />
+            Email the requester their ticket number
+          </label>
+          <label className="flex items-center gap-2 text-[13px] font-medium">
             <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} className="h-4 w-4 accent-[rgb(var(--accent))]" />
             Create another after this one
           </label>
-          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim()}>
+          <Button variant="primary" className="w-full" onClick={submit} disabled={busy || !top.subject.trim() || !top.requesterName.trim() || !emailOk}>
             {busy ? <Spinner /> : <PlusCircle size={14} />} Create ticket
           </Button>
         </div>

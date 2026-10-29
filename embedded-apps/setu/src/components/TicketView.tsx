@@ -1,12 +1,14 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import DOMPurify from 'dompurify';
-import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageSquare, Pencil, Phone, Reply, Save, Send, User, Zap } from 'lucide-react';
+import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageCircle, MessageSquare, Pencil, Phone, PhoneIncoming, PhoneOutgoing, Reply, Save, Send, User, Zap } from 'lucide-react';
 import { addMessage, addTimeLog, getTicket, updateTicket } from '@/lib/api';
 import { useSetu } from '@/lib/context';
-import { ACTION_LABEL, fmtDateTime, fmtMins, htmlToText, relative } from '@/lib/format';
-import { EDITABLE_FIELDS, type ActivityItem, type Conversation, type Ticket, type TicketDetail } from '@/lib/types';
-import { PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
+import { ACTION_LABEL, fmtDateTime, fmtMins, fmtSecs, htmlToText, relative } from '@/lib/format';
+import { EDITABLE_FIELDS, type ActivityItem, type CallLog, type Conversation, type Ticket, type TicketDetail } from '@/lib/types';
+import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
+import { CallPanel } from './Calls';
+import { MyCannedButton } from './MyCanned';
 import TicketFields, { type Values } from './TicketFields';
 import { INSERT_REPLY_EVENT, TicketAssist } from './Insights';
 import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
@@ -93,7 +95,7 @@ function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Prom
         <div className="space-y-4">
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
-          <Requester data={data} />
+          <Requester data={data} reload={reload} />
           <TimeLogs data={data} reload={reload} />
         </div>
       </div>
@@ -124,6 +126,7 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
             <span title={fmtDateTime(t.createdAt)}>· created {relative(t.createdAt)}</span>
             {t.escalatedAt && <Pill tone="bad">Escalated</Pill>}
           </div>
+          <ActivityLine t={t} className="mt-1" />
           {editing ? (
             <div className="mt-1 flex gap-2">
               <input className={inputCls} value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" autoFocus />
@@ -155,30 +158,60 @@ function TicketHeader({ ticket: t, reload }: Props & { reload: () => Promise<voi
 }
 
 function Thread({ data }: { data: TicketDetail }) {
-  const { ticket: t, conversations } = data;
+  const { ticket: t, conversations, calls } = data;
   // Tickets created from email already carry the first message as an INCOMING conversation.
   const showDescription = !conversations.some((c) => c.kind === 'INCOMING') && t.description;
+  // Messages and phone calls in one timeline.
+  const entries = [
+    ...conversations.map((c) => ({ at: c.createdAt, key: `m${c.id}`, c, call: null as CallLog | null })),
+    ...(calls ?? []).map((call) => ({ at: call.createdAt, key: `c${call.id}`, c: null as Conversation | null, call })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const incomingWho = (c: Conversation) =>
+    c.channel === 'whatsapp' || !c.fromEmail || c.fromEmail === t.requesterEmail ? t.requesterName : c.fromEmail;
+  const sentTo = (c: Conversation) =>
+    c.channel === 'whatsapp' ? `WhatsApp to ${t.requesterMobile ?? t.requesterPhone ?? 'the requester'}` : [c.toEmails.length ? `To ${c.toEmails.join(', ')}` : '', c.ccEmails.length ? `Cc ${c.ccEmails.join(', ')}` : ''].filter(Boolean).join(' · ');
   return (
     <div className="space-y-3">
       {showDescription && (
-        <Message kind="INCOMING" who={t.requesterName} sub={t.requesterEmail ?? t.requesterPhone ?? ''} at={t.createdAt} html={t.description} />
+        <Message kind="INCOMING" who={t.requesterName} sub={[t.requesterEmail ?? t.requesterPhone ?? '', t.source === 'Portal' ? 'via portal' : ''].filter(Boolean).join(' · ')} at={t.createdAt} html={t.description} />
       )}
-      {conversations.map((c) => (
+      {entries.map((e) => (e.call ? <CallEntry key={e.key} call={e.call} /> : e.c && (
         <Message
-          key={c.id}
-          kind={c.kind}
-          who={c.kind === 'INCOMING' ? (c.fromEmail === t.requesterEmail ? t.requesterName : c.fromEmail ?? t.requesterName) : c.agentName ?? 'Setu automation'}
-          sub={c.kind === 'INCOMING' ? c.fromEmail ?? '' : [c.toEmails.length ? `To ${c.toEmails.join(', ')}` : '', c.ccEmails.length ? `Cc ${c.ccEmails.join(', ')}` : ''].filter(Boolean).join(' · ')}
-          at={c.createdAt}
-          html={c.bodyHtml}
+          key={e.key}
+          kind={e.c.kind}
+          whatsapp={e.c.channel === 'whatsapp'}
+          who={e.c.kind === 'INCOMING' ? incomingWho(e.c) : e.c.agentName ?? 'Setu automation'}
+          sub={e.c.kind === 'INCOMING' ? e.c.fromPhone ?? e.c.fromEmail ?? '' : sentTo(e.c)}
+          at={e.c.createdAt}
+          html={e.c.bodyHtml}
         />
-      ))}
-      {!showDescription && conversations.length === 0 && <p className="text-sm text-muted">No messages yet.</p>}
+      )))}
+      {!showDescription && entries.length === 0 && <p className="text-sm text-muted">No messages yet.</p>}
     </div>
   );
 }
 
-function Message({ kind, who, sub, at, html }: { kind: Conversation['kind']; who: string; sub: string; at: string; html: string }) {
+function CallEntry({ call }: { call: CallLog }) {
+  const Icon = call.direction === 'INBOUND' ? PhoneIncoming : PhoneOutgoing;
+  const tone = call.outcome === 'Connected' ? 'good' : 'warn';
+  return (
+    <article className="rounded-2xl border border-line bg-sunken/60 px-4 py-3">
+      <header className="flex flex-wrap items-center gap-2">
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-panel text-accent"><Icon size={14} /></span>
+        <div className="min-w-0 flex-1 text-[13px]">
+          <span className="font-semibold">{call.agentName}</span>
+          <span className="text-muted"> · {call.direction === 'INBOUND' ? 'call from' : 'call to'} {call.phone}</span>
+        </div>
+        <Pill tone={tone}>{call.outcome}</Pill>
+        {call.durationSecs > 0 && <span className="num text-2xs text-muted">{fmtSecs(call.durationSecs)}</span>}
+        <time className="num text-2xs text-muted">{fmtDateTime(call.createdAt)}</time>
+      </header>
+      {call.notes && <p className="mt-2 whitespace-pre-wrap text-[13px] text-ink/90">{call.notes}</p>}
+    </article>
+  );
+}
+
+function Message({ kind, who, sub, at, html, whatsapp }: { kind: Conversation['kind']; who: string; sub: string; at: string; html: string; whatsapp?: boolean }) {
   const s = KIND_STYLE[kind];
   const [loadImages, setLoadImages] = useState(false);
   const clean = useMemo(() => safeHtml(html, loadImages), [html, loadImages]);
@@ -187,7 +220,11 @@ function Message({ kind, who, sub, at, html }: { kind: Conversation['kind']; who
       <header className="mb-2 flex flex-wrap items-center gap-2">
         <Avatar email={who} name={who} size={28} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-[13px] font-semibold"><span className="truncate">{who}</span><Pill tone={kind === 'NOTE' ? 'warn' : kind === 'REPLY' ? 'accent' : 'neutral'}><s.icon size={10} /> {s.label}</Pill></div>
+          <div className="flex items-center gap-2 text-[13px] font-semibold">
+            <span className="truncate">{who}</span>
+            <Pill tone={kind === 'NOTE' ? 'warn' : kind === 'REPLY' ? 'accent' : 'neutral'}><s.icon size={10} /> {s.label}</Pill>
+            {whatsapp && <Pill tone="good"><MessageCircle size={10} /> WhatsApp</Pill>}
+          </div>
           {sub && <div className="truncate text-2xs text-muted">{sub}</div>}
         </div>
         <time className="num text-2xs text-muted" title={fmtDateTime(at)}>{fmtDateTime(at)}</time>
@@ -204,7 +241,8 @@ function Message({ kind, who, sub, at, html }: { kind: Conversation['kind']; who
 }
 
 function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
-  const { meta, mailEnabled } = useSetu();
+  const { meta, mailEnabled, whatsappEnabled } = useSetu();
+  const viaWhatsApp = t.source === 'WhatsApp' && Boolean(t.requesterMobile || t.requesterPhone);
   const [kind, setKind] = useState<'REPLY' | 'NOTE' | 'FORWARD'>('REPLY');
   const [text, setText] = useState('');
   const [to, setTo] = useState('');
@@ -212,9 +250,13 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
+  // "My responses" (private to me) first, then the shared folders.
   const folders = useMemo(() => {
     const m = new Map<string, typeof meta.cannedResponses>();
-    for (const c of meta.cannedResponses) m.set(c.folder, [...(m.get(c.folder) ?? []), c]);
+    for (const c of meta.cannedResponses) {
+      const folder = c.ownerAgentId ? `My responses · ${c.folder}` : c.folder;
+      m.set(folder, [...(m.get(folder) ?? []), c]);
+    }
     return [...m.entries()];
   }, [meta.cannedResponses]);
 
@@ -252,7 +294,10 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
     const before = text.slice(0, el.selectionStart);
     const m = /(?:^|\s)\/([a-z0-9_-]{1,30})$/i.exec(before);
     if (!m) return;
-    const canned = meta.cannedResponses.find((c) => c.shortCode?.toLowerCase() === m[1].toLowerCase());
+    // My own short code wins over a shared one with the same code.
+    const code = m[1].toLowerCase();
+    const canned = meta.cannedResponses.find((c) => c.ownerAgentId && c.shortCode?.toLowerCase() === code)
+      ?? meta.cannedResponses.find((c) => c.shortCode?.toLowerCase() === code);
     if (!canned) return;
     e.preventDefault();
     insert(canned.body, el.selectionStart - m[1].length - 1);
@@ -262,11 +307,15 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
     setBusy(true);
     setMsg(null);
     try {
-      await addMessage(t.id, { kind, text, ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc ? { cc } : {}) });
+      const delivery = await addMessage(t.id, { kind, text, ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc && !viaWhatsApp ? { cc } : {}) });
       setText('');
       setTo('');
       setCc('');
-      setMsg({ tone: 'good', text: kind === 'NOTE' ? 'Note added.' : kind === 'REPLY' ? (mailEnabled ? 'Reply sent.' : 'Reply saved (mail is switched off on the server, so no email went out).') : 'Forwarded.' });
+      if (delivery) {
+        setMsg(delivery.sent ? { tone: 'good', text: 'Reply sent on WhatsApp.' } : { tone: 'bad', text: `Reply saved on the ticket but not sent on WhatsApp: ${delivery.reason ?? 'unknown reason'}.` });
+      } else {
+        setMsg({ tone: 'good', text: kind === 'NOTE' ? 'Note added.' : kind === 'REPLY' ? (mailEnabled ? 'Reply sent.' : 'Reply saved (mail is switched off on the server, so no email went out).') : 'Forwarded.' });
+      }
       await reload();
     } catch (e) {
       setMsg({ tone: 'bad', text: e instanceof Error ? e.message : 'Could not send.' });
@@ -290,7 +339,9 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
         />
       }
       actions={
-        meta.cannedResponses.length > 0 && (
+        <div className="flex items-center gap-1.5">
+        <MyCannedButton />
+        {meta.cannedResponses.length > 0 && (
           <select
             aria-label="Insert canned response"
             value=""
@@ -304,18 +355,26 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
               </optgroup>
             ))}
           </select>
-        )
+        )}
+        </div>
       }
     >
       <div className="space-y-2">
-        {kind === 'REPLY' && <p className="text-2xs text-muted">To {t.requesterEmail ?? <em>no email on file - the reply is recorded on the ticket only</em>} · your signature is added automatically.</p>}
+        {kind === 'REPLY' && viaWhatsApp && (
+          <p className="flex items-center gap-1 text-2xs text-muted">
+            <MessageCircle size={12} className="text-good" /> On WhatsApp to {t.requesterMobile || t.requesterPhone}
+            {!whatsappEnabled && <em> - WhatsApp is switched off on the server, so the reply is saved on the ticket only</em>}
+            {whatsappEnabled && <span> · WhatsApp only accepts free text within 24 hours of the requester&apos;s last message</span>}
+          </p>
+        )}
+        {kind === 'REPLY' && !viaWhatsApp && <p className="text-2xs text-muted">To {t.requesterEmail ?? <em>no email on file - the reply is recorded on the ticket only</em>} · your signature is added automatically.</p>}
         {kind === 'FORWARD' && (
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label="To" required><input className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="name@emamigroup.com, ..." /></Field>
             <Field label="Cc"><input className={inputCls} value={cc} onChange={(e) => setCc(e.target.value)} /></Field>
           </div>
         )}
-        {kind === 'REPLY' && <input className={inputCls} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc (optional)" aria-label="Cc" />}
+        {kind === 'REPLY' && !viaWhatsApp && <input className={inputCls} value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Cc (optional)" aria-label="Cc" />}
         <textarea
           ref={area}
           rows={6}
@@ -412,7 +471,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
   );
 }
 
-function Requester({ data }: { data: TicketDetail }) {
+function Requester({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
   const { openTicket } = useSetu();
   const t = data.ticket;
   return (
@@ -420,8 +479,8 @@ function Requester({ data }: { data: TicketDetail }) {
       <div className="space-y-1.5 text-[13px]">
         <div className="flex items-center gap-2 font-semibold"><User size={14} className="text-accent" /> {t.requesterName}</div>
         {t.requesterEmail && <div className="flex items-center gap-2 text-muted"><Mail size={14} /> {t.requesterEmail}</div>}
-        {(t.requesterMobile || t.requesterPhone) && <div className="flex items-center gap-2 text-muted"><Phone size={14} /> {t.requesterMobile || t.requesterPhone}</div>}
       </div>
+      <CallPanel ticket={t} reload={reload} />
       {data.requesterTickets.length > 0 && (
         <div className="mt-3 border-t border-line pt-3">
           <div className="mb-1 text-2xs font-bold uppercase tracking-wide text-muted">Other tickets</div>
@@ -507,6 +566,11 @@ function ActivityLog({ items }: { items: ActivityItem[] }) {
     if (a.action === 'created') return `Source ${String(d.source ?? '')}, severity ${String(d.severity ?? '').toLowerCase()}`;
     if (a.action === 'automation') return `${String(d.rule ?? '')}${d.skipped ? ` (skipped: ${String(d.skipped)})` : ''}`;
     if (a.action === 'email_sent') return `${String(d.template ?? '')} to ${String(d.to ?? '')}`;
+    if (a.action === 'message') return `${({ REPLY: 'Reply', NOTE: 'Private note', FORWARD: 'Forward' } as Record<string, string>)[String(d.kind)] ?? String(d.kind)}${d.channel === 'whatsapp' ? ' on WhatsApp' : ''}`;
+    if (a.action === 'requester_replied') return d.channel === 'whatsapp' ? 'On WhatsApp' : 'By email';
+    if (a.action === 'call_logged') return `${d.direction === 'INBOUND' ? 'Call from requester' : 'Call to requester'} - ${String(d.outcome ?? '')}${d.minutes ? `, ${String(d.minutes)} min` : ''}`;
+    if (a.action === 'whatsapp_failed') return String(d.reason ?? '');
+    if (a.action === 'whatsapp_sent') return 'Delivered to WhatsApp';
     return JSON.stringify(d);
   };
   return (
@@ -518,7 +582,7 @@ function ActivityLog({ items }: { items: ActivityItem[] }) {
           {items.map((a) => (
             <li key={a.id} className="flex gap-2.5 text-xs">
               <span className={cx('mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg', a.action === 'automation' ? 'bg-warn/10 text-warn' : 'bg-sunken text-accent')}>
-                {a.action === 'automation' ? <Zap size={12} /> : a.action === 'email_sent' ? <Mail size={12} /> : <ArrowRightLeft size={12} />}
+                {a.action === 'automation' ? <Zap size={12} /> : a.action === 'email_sent' ? <Mail size={12} /> : a.action === 'call_logged' ? <Phone size={12} /> : a.action.startsWith('whatsapp') ? <MessageCircle size={12} /> : <ArrowRightLeft size={12} />}
               </span>
               <div className="min-w-0 flex-1">
                 <div><span className="font-semibold">{a.actorName ?? 'Setu'}</span> <span className="text-muted">· {ACTION_LABEL[a.action] ?? a.action}</span></div>

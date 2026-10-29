@@ -80,7 +80,9 @@ export function CannedTab() {
   const [edit, setEdit] = useState<{ id?: number; folder: string; title: string; shortCode: string; body: string } | null>(null);
   const [filter, setFilter] = useState('');
   const act = useAction();
-  const list = meta.cannedResponses.filter((c) => !filter || `${c.folder} ${c.title} ${c.shortCode ?? ''}`.toLowerCase().includes(filter.toLowerCase()));
+  // Shared responses only. Agents' personal responses are private to them and never reach this screen.
+  const shared = meta.cannedResponses.filter((c) => c.ownerAgentId === null);
+  const list = shared.filter((c) => !filter || `${c.folder} ${c.title} ${c.shortCode ?? ''}`.toLowerCase().includes(filter.toLowerCase()));
 
   const open = (c?: CannedResponse) => {
     act.setMsg(null);
@@ -96,13 +98,13 @@ export function CannedTab() {
 
   return (
     <Card
-      title="Canned responses"
-      sub="Agents pick these in the reply box, or type /code then Tab"
+      title="Shared canned responses"
+      sub="Every agent sees these in the reply box (or types /code then Tab). Agents can also keep personal ones under My responses, which only they see."
       actions={<><input className={cx(inputCls, 'h-8 w-48 text-xs')} placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter" /><Button size="sm" variant="primary" onClick={() => open()}><Plus size={13} /> Add</Button></>}
       bodyClass="p-0"
     >
       {act.msg && !edit && <div className="p-4 pb-0"><Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice></div>}
-      {meta.cannedResponses.length === 0 ? <Empty title="No canned responses yet" icon={MessageSquareText} /> : (
+      {shared.length === 0 ? <Empty title="No canned responses yet" icon={MessageSquareText} /> : (
         <Table head={['Folder', 'Title', 'Short code', 'Text', '']}>
           {list.map((c) => (
             <tr key={c.id}>

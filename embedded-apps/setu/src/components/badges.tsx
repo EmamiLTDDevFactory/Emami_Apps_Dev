@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Clock, Pause } from 'lucide-react';
-import { PRIORITY_LABEL, PRIORITY_TONE, SEVERITY_LABEL, SEVERITY_TONE, slaState } from '@/lib/format';
+import { ArrowRightLeft, Clock, Forward, Lock, MessageCircleReply, Pause, Phone, Reply, Sparkles, UserCheck, type LucideIcon } from 'lucide-react';
+import { ACTIVITY_LABEL, PRIORITY_LABEL, PRIORITY_TONE, SEVERITY_LABEL, SEVERITY_TONE, fmtDateTime, relative, slaState } from '@/lib/format';
 import type { Severity, TicketRow } from '@/lib/types';
 import { Pill, cx } from './ui';
 
@@ -37,5 +37,27 @@ export function SlaBadge({ t, className }: { t: Parameters<typeof slaState>[0]; 
       {s.label === 'Paused' ? <Pause size={11} /> : <Clock size={11} />}
       {s.label}
     </span>
+  );
+}
+
+const ACTIVITY_ICON: Record<string, LucideIcon> = {
+  created: Sparkles, status: ArrowRightLeft, assigned: UserCheck, agent_reply: Reply, requester_reply: MessageCircleReply,
+  note: Lock, forward: Forward, call: Phone,
+};
+
+/** "Requester replied · Ravi Kumar · 12 min ago" - what last happened on the ticket. A requester reply stands out. */
+export function ActivityLine({ t, className }: { t: Pick<TicketRow, 'lastActivityAt' | 'lastActivityKind' | 'lastActivityBy' | 'lastActivityDetail'>; className?: string }) {
+  if (!t.lastActivityKind || !t.lastActivityAt) return null;
+  const Icon = ACTIVITY_ICON[t.lastActivityKind] ?? ArrowRightLeft;
+  const waiting = t.lastActivityKind === 'requester_reply';
+  return (
+    <div className={cx('flex min-w-0 items-center gap-1.5 text-2xs', waiting ? 'font-semibold text-accent' : 'text-muted', className)} title={fmtDateTime(t.lastActivityAt)}>
+      <Icon size={11} className="shrink-0" />
+      <span className="truncate">
+        {ACTIVITY_LABEL[t.lastActivityKind] ?? t.lastActivityKind}
+        {t.lastActivityDetail && t.lastActivityKind !== 'created' ? `: ${t.lastActivityDetail}` : ''}
+        {t.lastActivityBy ? ` · ${t.lastActivityBy}` : ''} · {relative(t.lastActivityAt)}
+      </span>
+    </div>
   );
 }

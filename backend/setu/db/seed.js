@@ -189,7 +189,12 @@ async function seed() {
         );
     }
     // escalation.groupId = 0 means "not chosen yet": the overdue rule then logs and skips.
-    for (const [key, value] of [['escalation.groupId', 0], ['escalation.notifyEmails', []], ['sla.reminderMinutes', 30]]) {
+    // bell.*: the in-app bell shows requester replies only, to the ticket's agent, until an Admin changes it.
+    // whatsapp.threadDays: a WhatsApp message joins the sender's open WhatsApp ticket updated within this many days.
+    for (const [key, value] of [
+        ['escalation.groupId', 0], ['escalation.notifyEmails', []], ['sla.reminderMinutes', 30],
+        ['bell.events', ['requester_reply']], ['bell.scope', 'assignee'], ['portal.enabled', true], ['call.mode', 'tel'], ['whatsapp.threadDays', 7],
+    ]) {
         await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, JSON.stringify(value)]);
     }
 }

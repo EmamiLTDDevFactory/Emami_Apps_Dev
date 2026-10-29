@@ -31,7 +31,13 @@ backend/setu/
   middleware/
     auth.js              hub session token + 'setu' grant + role; deactivated agents blocked
     rateLimit.js         per-person request limits
-  routes/                me.js, tickets.js, reports.js (board, dashboard, daily report), insights.js, admin.js, jobs.js
+    bell.js              in-app bell: which events, who sees them, per-agent mute
+    canned.js            shared (Admin) and personal (one agent only) canned responses
+    whatsapp.js          WhatsApp Cloud API: webhook signature, inbound messages, sending replies
+    whatsappIngest.js    WhatsApp message -> new ticket or reply on the sender's open WhatsApp ticket
+  routes/                me.js (+ bell, preferences, personal canned, contact search), tickets.js (+ calls), reports.js
+                         (board, dashboard, daily report), insights.js, admin.js, jobs.js,
+                         public.js (requester portal + WhatsApp webhook: no hub sign-in, their own limits)
   tests/                 unit.test.js (no DB), api.test.js (end to end, local DB only), mock-anthropic.js
                          (AI stand-in for tests) - see tests/README.md
 ```
@@ -48,6 +54,21 @@ grant's role decides what a person can do:
 | Admin | Supervisor + Admin screens and "Run scheduled checks now" |
 
 An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is refused even with a grant.
+
+## Channels, last activity, bell, calls
+
+- **Ways in**: email (support mailbox), the **requester portal** (`/apps/setu/portal/`, no Emami Apps login: name + email
+  required, acknowledgement emailed, status check by ticket number + email), **WhatsApp** (Meta Cloud API webhook,
+  replies go back on WhatsApp), and agents logging a ticket on someone's behalf (requester email required).
+- **Last activity** on every ticket (created, status change, assignment, agent / requester reply, note, forward, call):
+  shown in the list, filterable and sortable.
+- **Bell** in the Setu header: Admin > Channels & bell picks the events (default: requester replies only) and who sees
+  them (the ticket's agent, its group, or everyone); each agent can mute events for themselves. Kept 30 days.
+- **Calls**: Call buttons (tel: or Microsoft Teams, Admin's choice) on every number on the ticket, and a call log
+  (direction, outcome, length, notes) shown in the conversation.
+- **Canned responses**: shared ones (Admin) plus personal ones per agent that nobody else - Admins included - sees.
+- **Multi-option filters** on the ticket list (status, priority, severity, group, agent, source, type, last activity)
+  and a **Pending** view; the daily report can be filtered on any of its 36 columns before download.
 
 ## Insights and action points
 
@@ -88,6 +109,11 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
   fails SPF / DKIM / DMARC are parked, not threaded; more than 20 new tickets an hour from one sender are parked;
   auto-replies and notification loops are parked; ticket numbers in subjects are bounded.
 - **Excel report**: cells that would start a formula (= + - @) are neutralised.
+- **Portal** (no sign-in): a honeypot field for bots; 5 tickets per 10 minutes per client address, 10 per email a day and
+  300 an hour in all; status lookup needs the ticket number and the requester's email and returns no ticket text.
+- **WhatsApp webhook**: every POST must carry Meta's `X-Hub-Signature-256` for the app secret (checked against the body
+  as Meta serialises it, so the shared server's JSON parser is not changed); the GET verification needs the verify token.
+- **Personal canned responses** and the **bell** are scoped to the signed-in agent on the server.
 - **Privacy**: Admin > Contacts removes a person's name, email and phone, their words on their tickets, and their
   address from conversations, activity and parked mail. Logs never contain email addresses or message text.
 - **Audit**: admin changes, report downloads and contact removal are written to `setu.audit_events`
@@ -129,6 +155,11 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
 | `SETU_MAILBOX` | support mailbox address (default `emami.helpdesk@emamigroup.com`) |
 | `ANTHROPIC_API_KEY` | turns on AI analysis (already used by other backend modules); unset = built-in insights only |
 | `SETU_AI_ENABLED` | `false` switches Setu's AI off even when a key is set (default on) |
+| `SETU_WHATSAPP_ENABLED` | `true` to connect WhatsApp (default off: WhatsApp replies are saved on the ticket only) |
+| `SETU_WHATSAPP_TOKEN` / `SETU_WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Cloud API access token and the helpdesk number's id |
+| `SETU_WHATSAPP_APP_SECRET` | Meta app secret - webhook signatures are checked with it |
+| `SETU_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/setu/whatsapp/webhook` |
+| `SETU_WHATSAPP_API_VERSION` | Graph API version (default `v21.0`) |
 
 Mail uses the Microsoft Graph app registration from `backend/ccbTeams.js`; it needs the **Mail.ReadWrite** and
 **Mail.Send** application permissions, ideally limited to the support mailbox with an Exchange application

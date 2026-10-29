@@ -104,13 +104,15 @@ export function AutomationsTab() {
 }
 
 export function ContactsTab() {
-  const [email, setEmail] = useState('');
+  const [who, setWho] = useState('');
   const act = useAction();
+  // An email address, or a phone number for WhatsApp requesters who have no email.
+  const target = who.trim().includes('@') ? { email: who.trim() } : { phone: who.trim() };
   return (
-    <Card title="Remove a contact's personal data" sub="On a data-removal request: name, email and phone numbers are replaced. Tickets stay for reporting." className="max-w-xl">
+    <Card title="Remove a contact's personal data" sub="On a data-removal request: name, email and phone numbers are replaced (also on calls and WhatsApp messages). Tickets stay for reporting." className="max-w-xl">
       <div className="flex gap-2">
-        <input className={inputCls} type="email" placeholder="requester@example.com" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="Contact email" />
-        <Button variant="primary" disabled={!email.trim() || act.busy} onClick={async () => { if (confirm(`Remove all personal details of ${email}? This cannot be undone.`) && (await act.run(() => admin.anonymize(email.trim()), 'Personal details removed from that contact.'))) setEmail(''); }}>Remove</Button>
+        <input className={inputCls} placeholder="requester@example.com or +91 98300 12345" value={who} onChange={(e) => setWho(e.target.value)} aria-label="Contact email or phone" />
+        <Button variant="primary" disabled={!who.trim() || act.busy} onClick={async () => { if (confirm(`Remove all personal details of ${who}? This cannot be undone.`) && (await act.run(() => admin.anonymize(target), 'Personal details removed from that contact.'))) setWho(''); }}>Remove</Button>
       </div>
       {act.msg && <div className="mt-3"><Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice></div>}
     </Card>
