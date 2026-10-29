@@ -101,6 +101,15 @@ const TEMPLATE_FIELD_LABELS: Record<string, string> = {
   ORDERID: 'Internal Order', EINDT: 'Delivery Date',
 };
 
+/** The template's columns by position (the real upload reads by position too). A file whose header
+ * row uses plain labels instead of these names (e.g. "Supplier", "SR.No") is mapped onto these so
+ * the preview can still group it into purchase orders. */
+const TEMPLATE_COLUMN_ORDER = [
+  'LIFNR', 'BUKRS', 'TXZ01', 'SALES', 'MENGE', 'GR_PRICE', 'MEINS', 'WERKS', 'STEUC', 'SAKTO', 'KOSTL',
+  'MWSKZ', 'WAERS', 'VPER_START', 'VPER_END', 'BSART', 'EKORG', 'EKGRP', 'ZTERM', 'INCO1', 'INCO2',
+  'PO_ID', 'ORDERID', 'EINDT',
+];
+
 function findTemplateHeader(headers: string[], field: string): string | undefined {
   return headers.find((h) => String(h).trim().toUpperCase() === field);
 }
@@ -401,7 +410,25 @@ function ServicePoUploadSection({ email }: { email: string | null }) {
         return;
       }
       const sheet = workbook.Sheets[sheetName];
-      const rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      let rows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const namedHeaders = rows.length > 0 ? Object.keys(rows[0]) : [];
+      if (rows.length > 0 && !['LIFNR', 'BUKRS', 'PO_ID'].every((f) => findTemplateHeader(namedHeaders, f))) {
+        // Plain-label header row (not the SAP field names): read by position, as the upload does.
+        const matrix: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        const labels = (matrix[0] || []).map((h) => String(h ?? '').trim());
+        if (labels.length >= 22) {
+          rows = matrix.slice(1)
+            .filter((r) => r.some((c) => String(c ?? '').trim() !== ''))
+            .map((r) => {
+              const o: Record<string, any> = {};
+              labels.forEach((label, i) => {
+                const key = i < TEMPLATE_COLUMN_ORDER.length ? TEMPLATE_COLUMN_ORDER[i] : label;
+                if (key) o[key] = r[i] ?? '';
+              });
+              return o;
+            });
+        }
+      }
       if (rows.length === 0) {
         setPreviewError('No data rows found — check the file has a header row and at least one data row.');
         return;
