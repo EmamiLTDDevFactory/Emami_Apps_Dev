@@ -567,8 +567,8 @@ function Stat({ label, value, hint, onClick }: { label: string; value: string; h
       style={{ position: 'relative', textAlign: 'left', width: '100%', cursor: onClick ? 'pointer' : 'default', border: `1px solid ${colors.border}`, borderRadius: radii.xl, padding: '12px 14px', backgroundColor: colors.white, font: 'inherit' }}
     >
       {onClick && <ArrowUpRight size={14} color={colors.inkSoft} style={{ position: 'absolute', top: 10, right: 10 }} aria-hidden />}
-      <p style={{ ...labelStyle, margin: 0, fontSize: 10 }}>{label}</p>
-      <p style={{ margin: '4px 0 0', fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{value}</p>
+      <span style={{ ...labelStyle, display: 'block', margin: 0, fontSize: 10 }}>{label}</span>
+      <span style={{ display: 'block', margin: '4px 0 0', fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{value}</span>
     </Tag>
   );
 }
