@@ -418,12 +418,32 @@ router.get('/items/:id/history', requireDevTrackerAccess, async (req, res) => {
     }
 });
 
-// The only people an item can be assigned to (Assignee = "developer"). Mirrors ASSIGNABLE_DEVELOPERS in the
-// app's shared/constants.js — add a name in both places to open it up. An existing assignee is left alone
-// until someone changes it.
-const ASSIGNABLE_DEVELOPERS = ['Indranil Banerjee'];
-const assigneeAllowed = (name) => !name || ASSIGNABLE_DEVELOPERS.includes(String(name).trim());
-const ASSIGNEE_ERROR = `Assignee must be one of: ${ASSIGNABLE_DEVELOPERS.join(', ')} (or left unassigned).`;
+// "Task Assigned to" (stored in `developer`): one or more people, comma-separated.
+// Only the shape is checked here — up to MAX_ASSIGNEES names of a sensible length.
+const MAX_ASSIGNEES = 10;
+const assigneeAllowed = (value) => {
+    if (!value) return true;
+    const names = String(value).split(',').map((s) => s.trim()).filter(Boolean);
+    return names.length <= MAX_ASSIGNEES && names.every((n) => n.length <= 120);
+};
+const ASSIGNEE_ERROR = `Task Assigned to takes at most ${MAX_ASSIGNEES} people, each name under 120 characters.`;
+
+// "Task Assigned to" (developer) can only be set or changed by a Module Lead or the IT Application Head —
+// their roles in the Change Control Board (ccb.roles). A server without the CCB schema has no such roles,
+// so the rule doesn't apply there.
+const ASSIGN_ROLES = ['Module Lead', 'IT Application Head'];
+const ASSIGN_ROLE_ERROR = 'Only a Module Lead or the IT Application Head can set Task Assigned to.';
+async function canAssign(email) {
+    try {
+        const { rows } = await pool.query('SELECT 1 FROM ccb.roles WHERE email = $1 AND role = ANY($2) LIMIT 1', [email, ASSIGN_ROLES]);
+        return rows.length > 0;
+    } catch (err) {
+        if (err.code === '42P01' || err.code === '3F000') return true; // no CCB on this server
+        throw err;
+    }
+}
+const samePeople = (a, b) => String(a || '').split(',').map((x) => x.trim()).filter(Boolean).sort().join('|')
+    === String(b || '').split(',').map((x) => x.trim()).filter(Boolean).sort().join('|');
 
 // CREATE item
 router.post('/items', requireDevTrackerAccess, async (req, res) => {
@@ -434,6 +454,9 @@ router.post('/items', requireDevTrackerAccess, async (req, res) => {
     }
     if (!assigneeAllowed(row.developer)) return res.status(400).json({ error: ASSIGNEE_ERROR });
     try {
+        if (row.developer && String(row.developer).trim() && !(await canAssign(req.verifiedEmail))) {
+            return res.status(403).json({ error: ASSIGN_ROLE_ERROR });
+        }
         const changedBy = await resolveDisplayName(req);
         if (!row.status) row.status = 'Not Started';
         if (!row.issueType) row.issueType = 'Task';
@@ -483,6 +506,9 @@ router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
         row.remarks = existing.remarks ?? null;
         if ((row.developer || null) !== (existing.developer || null) && !assigneeAllowed(row.developer)) {
             return res.status(400).json({ error: ASSIGNEE_ERROR });
+        }
+        if (!samePeople(row.developer, existing.developer) && !(await canAssign(req.verifiedEmail))) {
+            return res.status(403).json({ error: ASSIGN_ROLE_ERROR });
         }
         if (row.epicId && row.epicId === req.params.id) row.epicId = null;
         if (row.parentId && row.parentId === req.params.id) row.parentId = null;

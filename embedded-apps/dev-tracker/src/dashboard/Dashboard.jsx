@@ -268,7 +268,7 @@ export default function Dashboard() {
           ) : view === 'timeline' ? (
             <TimelineView {...common} />
           ) : (
-            <ReportsView ws={ws} items={filtered} />
+            <ReportsView ws={ws} items={filtered} email={email} onOpen={openIssue} />
           )}
         </div>
 

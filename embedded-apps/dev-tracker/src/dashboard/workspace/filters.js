@@ -1,5 +1,5 @@
 import { isOverdue } from '../../shared/utils.js';
-import { issueKey, nameMatches, isDone, parseLabels } from '../../shared/pm.js';
+import { issueKey, nameMatches, isDone, parseLabels, splitPeople } from '../../shared/pm.js';
 
 // One filter object shared by board, backlog, list and timeline, so switching views keeps the
 // same slice of work on screen (Jira's quick filters behave the same way across a project).
@@ -44,8 +44,8 @@ export function applyFilters(items, f, { myNames = [] } = {}) {
   const weekAgo = Date.now() - 7 * 86400000;
   return items.filter((it) => {
     if (assignees.size) {
-      const dev = (it.developer || '').trim();
-      if (!(dev ? assignees.has(dev) : assignees.has(UNASSIGNED))) return false;
+      const devs = splitPeople(it.developer);
+      if (!(devs.length ? devs.some((d) => assignees.has(d)) : assignees.has(UNASSIGNED))) return false;
     }
     if (f.onlyMine && ![it.developer, it.spocIT, it.spocFunction].some((v) => nameMatches(v, myNames))) return false;
     if (f.recent) {

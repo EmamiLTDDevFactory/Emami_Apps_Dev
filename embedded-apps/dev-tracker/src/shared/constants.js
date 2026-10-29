@@ -195,6 +195,6 @@ export function bandFor(n) {
 // Fixed donut palette (Dashboard "Status mix" chart) and default area-fallback swatches.
 export const DONUT_PALETTE = ['#5da8e0', '#3fcf9e', '#e8a33d', '#e0716d'];
 
-// The only people an assignment can be assigned to (Assignee / "developer"). Mirrors ASSIGNABLE_DEVELOPERS in
-// backend/devTracker.js, which enforces it — add a name in both places to open it up.
+// Always offered first in "Task Assigned to" (stored in `developer`, one or more people), alongside everyone
+// already named on the tracker.
 export const ASSIGNABLE_DEVELOPERS = ['Indranil Banerjee'];

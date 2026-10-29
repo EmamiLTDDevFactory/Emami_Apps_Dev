@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { Avatar, PriorityIcon, StatusPicker, EpicLozenge, TypeAndKey } from './ui.jsx';
 import { FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../../shared/constants.js';
-import { issueKey, points, fmtPoints, dueDate, typeOf, statusCategory } from '../../shared/pm.js';
+import { issueKey, points, fmtPoints, dueDate, typeOf, statusCategory, splitPeople } from '../../shared/pm.js';
 import { fmtDate, isOverdue, relativeTime, daysBetween, todayStr } from '../../shared/utils.js';
 import { CaretUpDownIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from '../../shared/icons.jsx';
 
@@ -11,7 +11,7 @@ const COLUMNS = [
   { key: 'key', label: 'Key', sort: (a, b) => (a.issueNo ?? 0) - (b.issueNo ?? 0) },
   { key: 'summary', label: 'Summary', sort: (a, b) => (a.devList || '').localeCompare(b.devList || '') },
   { key: 'status', label: 'Status', sort: (a, b) => ['todo', 'inprogress', 'done'].indexOf(statusCategory(a.status)) - ['todo', 'inprogress', 'done'].indexOf(statusCategory(b.status)) || (a.status || '').localeCompare(b.status || '') },
-  { key: 'assignee', label: 'Assignee', sort: (a, b) => (a.developer || '~').localeCompare(b.developer || '~') },
+  { key: 'assignee', label: 'Task Assigned to', sort: (a, b) => (a.developer || '~').localeCompare(b.developer || '~') },
   { key: 'priority', label: 'Priority', sort: (a, b) => (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) },
   { key: 'epic', label: 'Epic', pm: true },
   { key: 'sprint', label: 'Sprint', pm: true },
@@ -121,7 +121,7 @@ export default function ListView({ ws, items, filters, setFilters, onOpen, onErr
                       case 'key': return <td key={c.key} className="pm-td-type"><TypeAndKey item={it} onOpen={onOpen} /></td>;
                       case 'summary': return <td key={c.key} className="pm-td-summary">{it.devList}</td>;
                       case 'status': return <td key={c.key} onClick={(e) => e.stopPropagation()}><StatusPicker status={it.status} statuses={statusOrder} size="sm" onChange={(s) => updateItem(it.id, { status: s }).catch((e) => onError(e.message))} /></td>;
-                      case 'assignee': return <td key={c.key}><span className="pm-person-cell"><Avatar name={it.developer} size={22} /> {it.developer || <span className="pm-muted">Unassigned</span>}</span></td>;
+                      case 'assignee': return <td key={c.key}><span className="pm-person-cell"><Avatar name={splitPeople(it.developer)[0]} size={22} /> {it.developer || <span className="pm-muted">Unassigned</span>}</span></td>;
                       case 'priority': return <td key={c.key}><PriorityIcon priority={it.priority} showLabel /></td>;
                       case 'epic': return <td key={c.key}>{epic ? <EpicLozenge epic={epic} /> : ''}</td>;
                       case 'sprint': return <td key={c.key} className="pm-td-muted">{sprintName(it.sprintId)}</td>;

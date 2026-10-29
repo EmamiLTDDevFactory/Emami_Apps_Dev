@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { relativeTime, revisedTarget, daysBetween, todayStr, fmtDate } from './utils.js';
+import { splitPeople } from './pm.js';
 
 // Notification read/clear state has no backend of its own — the notifications themselves
 // are computed fresh from real item (+ activity) data every load, but which ones a person
@@ -31,7 +32,7 @@ function saveNotifState(email, state) {
 function computeMyNotifications(items, activity, profileName) {
   if (!profileName) return [];
   const norm = (s) => (s || '').trim().toLowerCase();
-  const myItems = items.filter((it) => norm(it.developer) === norm(profileName));
+  const myItems = items.filter((it) => splitPeople(it.developer).some((d) => norm(d) === norm(profileName)));
   const myTitles = new Set(myItems.map((it) => it.devList));
 
   const changesByOthers = activity

@@ -195,7 +195,7 @@ export function ProgressBar({ done, inprogress = 0, total, height = 6 }) {
   );
 }
 
-/** Several people in one field (e.g. IT Stakeholders), stored as "Name A, Name B". Pick from the list or type a name, Enter to add. */
+/** Several people in one field (e.g. Task Assigned to), stored as "Name A, Name B". Pick from the list or type a name, Enter to add. */
 export function MultiPersonField({ value, people = [], onSave, placeholder = 'Add a person…' }) {
   const names = String(value || '').split(',').map((s) => s.trim()).filter(Boolean);
   const [draft, setDraft] = useState('');

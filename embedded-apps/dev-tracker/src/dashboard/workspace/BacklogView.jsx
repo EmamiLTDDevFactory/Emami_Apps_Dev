@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Avatar, PriorityIcon, StatusLozenge, EpicLozenge, TypeAndKey, Popover, ProgressBar, TypeIcon, epicColor } from './ui.jsx';
 import { SprintModal, CompleteSprintModal } from './SprintModals.jsx';
-import { statusCategory, isEpic, isDone, points, fmtPoints, byRank, rankBetween, CATEGORY_META } from '../../shared/pm.js';
+import { statusCategory, isEpic, isDone, points, fmtPoints, byRank, rankBetween, CATEGORY_META, splitPeople } from '../../shared/pm.js';
 import { apiSprintCreate, apiSprintUpdate, apiSprintStart, apiSprintComplete, apiSprintDelete } from '../../shared/api.js';
 import { fmtDate } from '../../shared/utils.js';
 import { ChevronRightIcon, MoreIcon, PlusIcon } from '../../shared/icons.jsx';
@@ -298,7 +298,7 @@ function Row({ it, epic, selected, onSelect, onOpen, dragging, setDrag }) {
         <StatusLozenge status={it.status} />
         <span className="pm-points" title="Story points">{pts > 0 ? fmtPoints(pts) : '–'}</span>
         <PriorityIcon priority={it.priority} />
-        <Avatar name={it.developer} size={24} />
+        <Avatar name={splitPeople(it.developer)[0]} size={24} />
       </span>
     </div>
   );

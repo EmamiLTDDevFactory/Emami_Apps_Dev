@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Avatar, PriorityIcon, TypeIcon, EpicLozenge, IssueKey } from './ui.jsx';
-import { CATEGORY_META, statusCategory, typeOf, isEpic, points, fmtPoints, byRank, rankBetween, dueDate, parseLabels } from '../../shared/pm.js';
+import { CATEGORY_META, statusCategory, typeOf, isEpic, points, fmtPoints, byRank, rankBetween, dueDate, parseLabels, splitPeople } from '../../shared/pm.js';
 import { KANBAN_COLUMNS } from '../../shared/constants.js';
 import { isOverdue, fmtDate } from '../../shared/utils.js';
 import { ChevronRightIcon, CalendarIcon } from '../../shared/icons.jsx';
@@ -8,7 +8,7 @@ import { ChevronRightIcon, CalendarIcon } from '../../shared/icons.jsx';
 const SWIMLANES = [
   { key: '', label: 'None' },
   { key: 'epic', label: 'Epics' },
-  { key: 'developer', label: 'Assignees' },
+  { key: 'developer', label: 'Task Assigned to' },
   { key: 'area', label: 'Modules' },
   { key: 'priority', label: 'Priority' },
 ];
@@ -243,7 +243,7 @@ function Card({ it, epic, onOpen, dragging, setDrag, showEpic }) {
         <span className="pm-card-foot-right">
           {pts > 0 && <span className="pm-points" title="Story points">{fmtPoints(pts)}</span>}
           <PriorityIcon priority={it.priority} />
-          <Avatar name={it.developer} size={22} />
+          <Avatar name={splitPeople(it.developer)[0]} size={22} />
         </span>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Avatar, Popover, TypeIcon } from './ui.jsx';
 import { UNASSIGNED, EMPTY_FILTERS, activeFilterCount } from './filters.js';
-import { ISSUE_TYPES, issueKey, parseLabels } from '../../shared/pm.js';
+import { ISSUE_TYPES, issueKey, parseLabels, splitPeople } from '../../shared/pm.js';
 import { SearchIcon } from '../../shared/icons.jsx';
 
 const VISIBLE_AVATARS = 7;
@@ -62,8 +62,7 @@ export default function FilterBar({ filters, setFilters, items, epics, options, 
   const assigneeCounts = useMemo(() => {
     const m = new Map();
     for (const it of items) {
-      const d = (it.developer || '').trim();
-      if (d) m.set(d, (m.get(d) || 0) + 1);
+      for (const d of splitPeople(it.developer)) m.set(d, (m.get(d) || 0) + 1);
     }
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   }, [items]);
@@ -111,7 +110,7 @@ export default function FilterBar({ filters, setFilters, items, epics, options, 
               {rest.length ? `+${rest.length}` : '…'}
             </button>
             <Popover open={moreOpen} onClose={() => { setMoreOpen(false); setAssigneeQuery(''); }} className="pm-pop-wide">
-              <input className="pm-pop-search" autoFocus placeholder="Search assignees" aria-label="Search assignees" value={assigneeQuery} onChange={(e) => setAssigneeQuery(e.target.value)} />
+              <input className="pm-pop-search" autoFocus placeholder="Search people" aria-label="Search people" value={assigneeQuery} onChange={(e) => setAssigneeQuery(e.target.value)} />
               <div className="pm-pop-scroll">
                 {showUnassigned && (
                   <label className="pm-pop-check">

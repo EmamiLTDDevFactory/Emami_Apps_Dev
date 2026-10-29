@@ -3,14 +3,15 @@ import { Avatar, MultiPersonField, PriorityIcon, StatusPicker, TypeIcon, Popover
 import { apiHistory, apiComments, apiCommentCreate, apiCommentUpdate, apiCommentDelete } from '../../shared/api.js';
 import { FIELD_LABELS } from '../../shared/constants.js';
 import { fmtDate, relativeTime, revisedTarget, isOverdue, riskLevel } from '../../shared/utils.js';
-import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, isDone, statusCategory, byRank, rankBetween, parseLabels, points, fmtPoints } from '../../shared/pm.js';
+import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, statusCategory, byRank, rankBetween, parseLabels, points, fmtPoints, splitPeople } from '../../shared/pm.js';
 import { RISK_META, ASSIGNABLE_DEVELOPERS } from '../../shared/constants.js';
 import { ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon, GavelIcon } from '../../shared/icons.jsx';
 import { ROUTES } from '../../shared/routes.js';
+import { ASSIGN_ROLES, useCanAssign } from './assignRights.js';
 
 const PM_LABELS = {
   issueType: 'Issue Type', description: 'Description', storyPoints: 'Story Points', epicId: 'Epic',
-  sprintId: 'Sprint', parentId: 'Parent', labels: 'Labels', reporter: 'Reporter', developer: 'Assignee',
+  sprintId: 'Sprint', parentId: 'Parent', labels: 'Labels', reporter: 'Reporter', developer: 'Task Assigned to',
   devList: 'Summary', targetDate: 'Due Date',
 };
 const labelFor = (f) => PM_LABELS[f] || FIELD_LABELS[f] || f;
@@ -20,6 +21,8 @@ const labelFor = (f) => PM_LABELS[f] || FIELD_LABELS[f] || f;
 // Save button, same as Jira.
 export default function IssueView({ id, ws, email, profileName, isAdmin, onClose, onOpen, onError, onCreate }) {
   const { byId, items, sprints, options, statusOrder, people, epics, updateItem, createItem, deleteItem, pmReady } = ws;
+  const canAssign = useCanAssign();
+  const assignOptions = useMemo(() => [...new Set([...ASSIGNABLE_DEVELOPERS, ...people])], [people]);
   const it = byId.get(String(id));
   const [history, setHistory] = useState(null);
   const [comments, setComments] = useState(null);
@@ -55,7 +58,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
     return items.filter((c) => (isEpic(it) ? String(c.epicId) === String(it.id) : String(c.parentId) === String(it.id))).sort(byRank);
   }, [items, it]);
 
-  // Child issues are picked only from OPEN assignments: not done/cancelled, not epics, not this item, not
+  // Child issues are picked from the existing Issues list (any status): not epics, not this item, not
   // already linked here, and (for a normal parent) not one of this item's own ancestors — no loops.
   const childCandidates = useMemo(() => {
     if (!it) return [];
@@ -63,7 +66,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
     const ancestors = new Set();
     for (let p = it.parentId; p && !ancestors.has(String(p)); p = byId.get(String(p))?.parentId) ancestors.add(String(p));
     return items
-      .filter((c) => String(c.id) !== String(it.id) && !linked.has(String(c.id)) && !ancestors.has(String(c.id)) && !isEpic(c) && !isDone(c))
+      .filter((c) => String(c.id) !== String(it.id) && !linked.has(String(c.id)) && !ancestors.has(String(c.id)) && !isEpic(c))
       .sort((a, b) => (a.issueNo || 0) - (b.issueNo || 0));
   }, [items, it, children, byId]);
 
@@ -249,10 +252,15 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
 
             <div className="pm-details">
               <div className="pm-details-head">Details</div>
-              <Field label="Assignee">
-                <AssigneeField value={it.developer} onSave={(v) => save({ developer: v })} />
-                {profileName && ASSIGNABLE_DEVELOPERS.includes(profileName) && (it.developer || '') !== profileName && (
-                  <button type="button" className="pm-link-btn pm-assign-me" onClick={() => save({ developer: profileName })}>Assign to me</button>
+              <Field label="Task Assigned to">
+                {/* One or more people, stored comma-separated in `developer`. */}
+                {canAssign ? <MultiPersonField value={it.developer} people={assignOptions} onSave={(v) => save({ developer: v })} placeholder="Unassigned — add a person…" /> : (
+                  <span className="pm-multi-person" title={`Only a ${ASSIGN_ROLES.join(' or the ')} can change this`}>
+                    {splitPeople(it.developer).length ? splitPeople(it.developer).map((n) => <span className="pm-multi-chip" key={n}><Avatar name={n} size={18} /> {n}</span>) : <span className="pm-muted">Unassigned</span>}
+                  </span>
+                )}
+                {canAssign && profileName && !splitPeople(it.developer).includes(profileName) && (
+                  <button type="button" className="pm-link-btn pm-assign-me" onClick={() => save({ developer: [...splitPeople(it.developer), profileName].join(', ') })}>Assign to me</button>
                 )}
               </Field>
               <Field label="Reporter">
@@ -324,7 +332,6 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               <Field label="Business impact"><SelectField value={it.impact} options={options.impact || []} onSave={(v) => save({ impact: v })} /></Field>
               <Field label="Complexity"><SelectField value={it.complexity} options={options.complexity || []} onSave={(v) => save({ complexity: v })} /></Field>
               <Field label="Function Owner"><PersonField value={it.spocFunction} people={people} onSave={(v) => save({ spocFunction: v })} /></Field>
-              <Field label="IT Stakeholders"><MultiPersonField value={it.spocIT} people={people} onSave={(v) => save({ spocIT: v })} /></Field>
               <Field label="Dev Factory"><SelectField value={it.devFactory} options={options.devFactory || []} onSave={(v) => save({ devFactory: v })} /></Field>
               <Field label="Man-days"><InlineText type="number" value={it.devTime ?? ''} placeholder="None" onSave={(v) => save({ devTime: v })} /></Field>
               <Field label="Rework (days)"><InlineText type="number" value={it.rework ?? ''} placeholder="None" onSave={(v) => save({ rework: v })} /></Field>
@@ -336,8 +343,9 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
 
             <Collapsible title="Stage dates">
               {['reqDiscussion', 'fsPrep', 'development', 'itTesting', 'userTesting', 'hypercareDate', 'onHoldDate', 'completedDate', 'cancelledDate'].map((k) => (
+                // Read-only: each date is stamped when the status reaches that stage (buildPayload in shared/pm.js).
                 <Field key={k} label={FIELD_LABELS[k]}>
-                  <InlineText type="date" value={it[k] || ''} onSave={(v) => save({ [k]: v })} display={(v) => (v ? fmtDate(v) : 'None')} />
+                  <span className={it[k] ? undefined : 'pm-muted'} title="Set automatically when the status changes">{it[k] ? fmtDate(it[k]) : 'None'}</span>
                 </Field>
               ))}
               <Field label="Hypercare (days)"><InlineText type="number" value={it.hypercare ?? ''} placeholder="None" onSave={(v) => save({ hypercare: v })} /></Field>
@@ -432,20 +440,6 @@ function SelectField({ value, options, onSave, render, noneLabel = 'None', searc
           ))}
         </div>
       </Popover>
-    </span>
-  );
-}
-
-/** Assignee: only the people in ASSIGNABLE_DEVELOPERS (a legacy assignee stays visible until changed). */
-function AssigneeField({ value, onSave }) {
-  const options = value && !ASSIGNABLE_DEVELOPERS.includes(value) ? [value, ...ASSIGNABLE_DEVELOPERS] : ASSIGNABLE_DEVELOPERS;
-  return (
-    <span className="pm-person pm-assignee-select">
-      <Avatar name={value} size={22} />
-      <select className="pm-inline-input" value={value || ''} onChange={(e) => onSave(e.target.value)} aria-label="Assignee">
-        <option value="">Unassigned</option>
-        {options.map((p) => <option key={p} value={p} disabled={!ASSIGNABLE_DEVELOPERS.includes(p)}>{p}</option>)}
-      </select>
     </span>
   );
 }
@@ -564,10 +558,14 @@ function ChildIssues({ list, isEpicParent, onOpen, candidates = [], onLink }) {
   const done = list.filter((c) => statusCategory(c.status) === 'done').length;
   const inprog = list.filter((c) => statusCategory(c.status) === 'inprogress').length;
   const pts = list.reduce((s, c) => s + points(c), 0);
-  async function pick(id) {
-    const child = candidates.find((c) => String(c.id) === id);
-    if (!child) return;
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const matches = (query
+    ? candidates.filter((c) => [issueKey(c), c.devList, c.developer, c.status].some((v) => String(v || '').toLowerCase().includes(query)))
+    : candidates).slice(0, 50);
+  async function pick(child) {
     setAdding(false);
+    setQ('');
     await onLink(child);
   }
   return (
@@ -590,20 +588,38 @@ function ChildIssues({ list, isEpicParent, onOpen, candidates = [], onLink }) {
             <TypeAndKey item={c} onOpen={onOpen} />
             <span className="pm-row-title">{c.devList}</span>
             <PriorityIcon priority={c.priority} />
-            <Avatar name={c.developer} size={22} />
+            <Avatar name={splitPeople(c.developer)[0]} size={22} />
             <StatusLozenge status={c.status} />
           </div>
         ))}
       </div>
       {adding && (
-        <div className="pm-quick-create">
-          <TypeIcon type={isEpicParent ? 'Task' : 'Sub-task'} />
-          <select autoFocus className="pm-child-select" defaultValue="" onChange={(e) => pick(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); } }}
-            onBlur={() => setAdding(false)}>
-            <option value="" disabled>{candidates.length ? 'Select an open assignment…' : 'No open assignments to link'}</option>
-            {candidates.map((c) => <option key={c.id} value={String(c.id)}>{issueKey(c)} — {c.devList} ({c.status || 'Not Started'})</option>)}
-          </select>
+        <div className="pm-child-picker">
+          <div className="pm-quick-create">
+            <TypeIcon type={isEpicParent ? 'Task' : 'Sub-task'} />
+            <input
+              autoFocus className="pm-child-select" value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder={candidates.length ? 'Search the Issues list by key, title, person or status…' : 'No issues to link'}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { e.stopPropagation(); setAdding(false); setQ(''); }
+                if (e.key === 'Enter' && matches[0]) { e.preventDefault(); pick(matches[0]); }
+              }}
+            />
+            <button type="button" className="pm-link-btn" onClick={() => { setAdding(false); setQ(''); }}>Cancel</button>
+          </div>
+          <div className="pm-child-options" role="listbox">
+            {matches.map((c) => (
+              <button type="button" className="pm-child-row pm-child-option" key={c.id} onClick={() => pick(c)}>
+                <TypeIcon type={typeOf(c)} />
+                <span className="pm-child-key">{issueKey(c)}</span>
+                <span className="pm-row-title">{c.devList}</span>
+                {c.parentId && <span className="pm-muted pm-child-note" title="Linking moves it under this issue">has a parent</span>}
+                <StatusLozenge status={c.status} />
+              </button>
+            ))}
+            {!matches.length && <div className="pm-muted" style={{ padding: '8px 10px' }}>{candidates.length ? 'No issue matches.' : 'Every issue is already linked here.'}</div>}
+            {candidates.length > matches.length && matches.length === 50 && <div className="pm-muted" style={{ padding: '6px 10px', fontSize: 12 }}>Showing 50 — type to narrow down.</div>}
+          </div>
         </div>
       )}
       {!list.length && !adding && <div className="pm-muted">{isEpicParent ? 'No issues in this epic yet.' : 'No child issues.'}</div>}

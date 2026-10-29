@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { CATEGORY_META, statusCategory, isDone, isEpic, points, fmtPoints, shiftDate } from '../../shared/pm.js';
+import AgeingReport from './AgeingReport.jsx';
+import { CATEGORY_META, statusCategory, isDone, isEpic, points, fmtPoints, shiftDate, splitPeople } from '../../shared/pm.js';
 import { todayStr, daysBetween, fmtDate } from '../../shared/utils.js';
 
 // Chart colours: categorical slots 1–2 of the validated reference palette (blue, orange) plus a
@@ -10,6 +11,7 @@ const C2 = '#eb6834';
 const GUIDE = '#8993A4';
 
 const REPORTS = [
+  { key: 'ageing', label: 'Ageing' },
   { key: 'burndown', label: 'Sprint burndown', pm: true },
   { key: 'velocity', label: 'Velocity', pm: true },
   { key: 'created', label: 'Created vs resolved' },
@@ -21,7 +23,7 @@ function resolvedOn(it) {
   return it.completedDate || it.cancelledDate || (it.updatedAt ? String(it.updatedAt).slice(0, 10) : null);
 }
 
-export default function ReportsView({ ws, items }) {
+export default function ReportsView({ ws, items, email, onOpen }) {
   const { pmReady } = ws;
   const available = REPORTS.filter((r) => !r.pm || pmReady);
   const [report, setReport] = useState(available[0].key);
@@ -33,6 +35,7 @@ export default function ReportsView({ ws, items }) {
         ))}
       </nav>
       <div className="pm-report-body">
+        {report === 'ageing' && <AgeingReport items={items} statusOrder={ws.statusOrder} email={email} onOpen={onOpen} />}
         {report === 'burndown' && <Burndown ws={ws} />}
         {report === 'velocity' && <Velocity ws={ws} />}
         {report === 'created' && <CreatedResolved items={items} />}
@@ -182,11 +185,14 @@ function Workload({ items }) {
       if (isEpic(it)) continue;
       const cat = statusCategory(it.status);
       if (cat === 'done') continue;
-      const k = (it.developer || '').trim() || 'Unassigned';
-      if (!m.has(k)) m.set(k, { label: k, todo: 0, inprogress: 0, pts: 0 });
-      const r = m.get(k);
-      r[cat]++;
-      r.pts += points(it);
+      // Each person a task is assigned to carries it in their own workload.
+      const who = splitPeople(it.developer);
+      for (const k of who.length ? who : ['Unassigned']) {
+        if (!m.has(k)) m.set(k, { label: k, todo: 0, inprogress: 0, pts: 0 });
+        const r = m.get(k);
+        r[cat]++;
+        r.pts += points(it);
+      }
     }
     return [...m.values()].sort((a, b) => (b.todo + b.inprogress) - (a.todo + a.inprogress)).slice(0, 20);
   }, [items]);
