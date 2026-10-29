@@ -66,3 +66,4 @@ export const PrinterIcon = (p) => <Icon {...p}><path d="M7 9V3h10v6" /><rect x="
 export const XIcon = (p) => <Icon {...p} strokeWidth="2.4"><path d="M6 6l12 12M18 6 6 18" /></Icon>;
 export const ExternalIcon = (p) => <Icon {...p}><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></Icon>;
 export const BoltIcon = (p) => <Icon {...p}><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></Icon>;
+export const PaperclipIcon = (p) => <Icon {...p}><path d="M20.5 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" /></Icon>;

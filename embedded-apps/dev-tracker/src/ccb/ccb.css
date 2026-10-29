@@ -502,3 +502,22 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-picker-text { display: flex; flex-direction: column; min-width: 0; }
 .ccb-picker-text strong { font-size: 12.5px; color: var(--text); }
 .ccb-picker-text small { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Attachments ---------- */
+.ccb-files { display: flex; flex-direction: column; gap: 10px; }
+.ccb-drop { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border: 1.5px dashed var(--border); border-radius: 12px; background: var(--bg-alt); color: var(--muted); font-size: 12.5px; transition: border-color .15s, background .15s; }
+.ccb-drop.compact { padding: 10px 14px; }
+.ccb-drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ccb-drop > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ccb-drop strong { color: var(--text); font-weight: 600; }
+.ccb-drop small { font-size: 11px; color: var(--muted); }
+.ccb-link-btn { border: none; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ccb-link-btn:disabled { opacity: .5; cursor: default; }
+.ccb-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ccb-file { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ccb-file-ext { flex: none; width: 34px; height: 34px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 800; letter-spacing: .04em; color: var(--accent); background: var(--accent-soft); }
+.ccb-file-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ccb-file-name { font-size: 12.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccb-file-sub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccb-file-actions { display: inline-flex; gap: 2px; flex: none; }
+.ccb-step-badge svg { display: block; }

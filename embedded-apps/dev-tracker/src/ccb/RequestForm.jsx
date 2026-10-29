@@ -3,8 +3,9 @@ import { ccbApi } from './api.js';
 import { apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
 import { Button, DirectoryPicker, Field, Modal } from './ui.jsx';
+import { FilePicker, uploadAll } from './Attachments.jsx';
 import { AREA_MODULES, CATEGORY_HELP, CATEGORY_META, IT_AREAS, PRIORITY_META, dateOnly } from './model.js';
-import { AlertIcon, BoltIcon, InfoIcon, SendIcon } from '../shared/icons.jsx';
+import { AlertIcon, BoltIcon, InfoIcon, PaperclipIcon, SendIcon } from '../shared/icons.jsx';
 
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
@@ -12,8 +13,8 @@ const EMPTY = {
   isEmergency: false, emergencyReason: '', moduleLeadEmail: '', moduleLeadName: '', requestedByEmail: '',
 };
 
-/** Log (or edit) a change request. `request` set = edit mode. */
-export default function RequestForm({ request, onClose, onSaved }) {
+/** Log (or edit) a change request. `request` set = edit mode; `attachments` = what it already has. */
+export default function RequestForm({ request, attachments = [], onClose, onSaved }) {
   const editing = !!request;
   const [form, setForm] = useState(() => (editing ? {
     ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, request[k] ?? EMPTY[k]])),
@@ -22,6 +23,9 @@ export default function RequestForm({ request, onClose, onSaved }) {
   } : EMPTY));
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [files, setFiles] = useState([]);
+  // Saved, but some documents did not upload: say which, then let the user carry on to the request.
+  const [partial, setPartial] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
   const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
@@ -58,6 +62,11 @@ export default function RequestForm({ request, onClose, onSaved }) {
         moduleLeadEmail: isLead && !editing ? notPickable.me : form.moduleLeadEmail || null, moduleLeadName: isLead && !editing ? null : form.moduleLeadEmail ? form.moduleLeadName : null, requestedByEmail: form.requestedByEmail || null,
       };
       const d = editing ? await ccbApi.updateRequest(request.id, payload) : await ccbApi.createRequest(payload, intent);
+      if (files.length) {
+        setBusy('upload');
+        const failed = await uploadAll(d.request.id, files);
+        if (failed.length) { setBusy(''); setPartial({ request: d.request, intent, failed }); return; }
+      }
       onSaved(d.request, intent);
     } catch (e) {
       setError(e.message);
@@ -71,10 +80,14 @@ export default function RequestForm({ request, onClose, onSaved }) {
       title={editing ? `Edit ${request.crNo}` : 'Log a change request'}
       sub={editing ? 'Changes are recorded in the request’s audit trail.' : 'Steps 2–3 of the CCB process: log the function’s requirement and categorise it against the CCB scope.'}
       onClose={onClose}
-      footer={
+      footer={partial ? (
+        <Button variant="primary" onClick={() => onSaved(partial.request, partial.intent)}>Continue to {partial.request.crNo}</Button>
+      ) : (
         <>
           <Button onClick={onClose}>Cancel</Button>
-          {editing ? (
+          {busy === 'upload' ? (
+            <Button variant="primary" busy>Uploading documents…</Button>
+          ) : editing ? (
             <Button variant="primary" busy={busy === 'save'} onClick={() => save('save')}>Save changes</Button>
           ) : (
             <>
@@ -83,7 +96,7 @@ export default function RequestForm({ request, onClose, onSaved }) {
             </>
           )}
         </>
-      }
+      )}
     >
       <div className="ccb-form-section">
         <h4><span className="ccb-step-badge">1</span>Business requirement</h4>
@@ -222,6 +235,16 @@ export default function RequestForm({ request, onClose, onSaved }) {
           </Field>
         )}
       </div>
+      <div className="ccb-form-section">
+        <h4><span className="ccb-step-badge"><PaperclipIcon size={12} /></span>Attachments</h4>
+        <p>The BRD, approvals, screenshots or anything else that supports the request. More can be added on the request page at any stage.</p>
+        <FilePicker files={files} onChange={setFiles} existing={attachments} />
+      </div>
+      {partial && (
+        <div className="ccb-error">
+          <AlertIcon size={13} /> {partial.request.crNo} was saved, but {partial.failed.length === 1 ? 'one document' : `${partial.failed.length} documents`} did not upload: {partial.failed.join(' ')} You can attach {partial.failed.length === 1 ? 'it' : 'them'} from the request page.
+        </div>
+      )}
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>
   );

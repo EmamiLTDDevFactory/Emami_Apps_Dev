@@ -82,8 +82,6 @@ export default function ChangeLog() {
     };
   }, [email]);
 
-  if (!email) return null;
-
   const changedByOptions = useMemo(
     () => Array.from(new Set(rows.map((r) => r.changedByUsername).filter(Boolean))).sort(),
     [rows]
@@ -122,6 +120,8 @@ export default function ChangeLog() {
     setSearch(''); setChangedBy(''); setFieldFilter(''); setAreaFilter(''); setStatusFilter(''); setDateStart(''); setDateEnd('');
   }
   const filtersActive = !!(search || changedBy || fieldFilter || areaFilter || statusFilter || dateStart || dateEnd);
+
+  if (!email) return null;
 
   return (
     <div className="app-shell">

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ccbApi } from './api.js';
 import RequestForm from './RequestForm.jsx';
+import { AttachmentsCard, FilePicker, uploadAll } from './Attachments.jsx';
 import {
   Blocker, Button, Card, DefinitionList, Field, Loading, Meta, Modal, Person, Pill, ProcessStepper, Prose, ScopePill, useToast,
 } from './ui.jsx';
@@ -42,7 +43,7 @@ const HISTORY_LABEL = {
   return: 'returned it to the IT SPOC', reject: 'rejected it as not feasible', recommend: 'recommended it to the CCB',
   approve_out_of_scope: 'approved it (outside CCB scope)', approve_emergency: 'gave emergency approval', mark_informed: 'marked the CCB informed', ccb_informed_auto: 'sent the emergency intimation to the CCB (marked informed)',
   terminate: 'terminated development', commented: 'commented', ccb_decision: 'recorded the CCB decision', ccb_ratification: 'recorded the CCB ratification',
-  removed_from_agenda: 'removed it from a meeting agenda',
+  removed_from_agenda: 'removed it from a meeting agenda', attachment_added: 'attached', attachment_removed: 'removed the attachment',
 };
 
 export default function RequestDetail({ crKey, me, onBack }) {
@@ -63,7 +64,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
   if (state.loading) return <Loading label="Loading change request…" />;
   if (state.error) return <Blocker error={state.error} onRetry={load} />;
 
-  const { request: r, comments, history, agenda, devItem, devHistory = [], devComments = [], names, actions } = state.detail;
+  const { request: r, comments, history, agenda, devItem, devHistory = [], devComments = [], names, actions, attachments = [], canAttach = false } = state.detail;
   const nameOf = (e) => (e ? names[e] || e : null);
   const category = CATEGORY_META[r.category];
   const workflowActions = ACTION_ORDER.filter((a) => actions.includes(a));
@@ -144,6 +145,8 @@ export default function RequestDetail({ crKey, me, onBack }) {
               r.isEmergency && ['Urgency', r.emergencyReason],
             ]} />
           </Card>
+
+          <AttachmentsCard request={r} attachments={attachments} canAttach={canAttach} nameOf={nameOf} onChanged={load} showToast={showToast} />
 
           <Card title="Scope & feasibility review" sub="Step 4 · IT Application Head">
             {r.reviewedAt ? (
@@ -267,6 +270,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
               {history.map((h) => (
                 <li key={h.id}>
                   <strong>{nameOf(h.actorEmail)}</strong> {HISTORY_LABEL[h.action] || h.action.replace(/_/g, ' ')}
+                  {h.details?.fileName && <> <b>{h.details.fileName}</b></>}
                   {h.details?.decision && <> — <b>{DECISION_META[h.details.decision]?.label}</b></>}
                   {h.details?.devTrackerIssueNo != null && <> · created <a href={devTrackerLink(h.details.devTrackerIssueNo)}>Assignment-{h.details.devTrackerIssueNo}</a></>}
                   <small>{fmtDateTime(h.occurredAt)}{h.toStatus && h.toStatus !== h.fromStatus ? ` · ${STATUS_META[h.toStatus]?.label || h.toStatus}` : ''}</small>
@@ -283,9 +287,11 @@ export default function RequestDetail({ crKey, me, onBack }) {
           action={dialog}
           request={r}
           me={me}
+          canAttach={canAttach}
           onClose={() => setDialog(null)}
-          onDone={(updated) => {
+          onDone={(updated, failed = []) => {
             setDialog(null);
+            if (failed.length) { showToast(`${r.crNo}: ${STATUS_META[updated.status]?.label || 'updated'}, but some documents did not upload: ${failed.join(' ')}`, 'error'); load(); return; }
             const msg = updated.devTrackerIssueNo != null && updated.devTrackerIssueNo !== r.devTrackerIssueNo
               ? `${r.crNo} approved — Assignment-${updated.devTrackerIssueNo} created in Dev Tracker.`
               : `${r.crNo}: ${STATUS_META[updated.status]?.label || 'updated'}.`;
@@ -295,20 +301,21 @@ export default function RequestDetail({ crKey, me, onBack }) {
         />
       )}
       {editing && (
-        <RequestForm request={r} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); showToast('Changes saved.'); load(); }} />
+        <RequestForm request={r} attachments={attachments} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); showToast('Changes saved.'); load(); }} />
       )}
       {toast}
     </>
   );
 }
 
-function ActionDialog({ action, request: r, me, onClose, onDone }) {
+function ActionDialog({ action, request: r, me, canAttach, onClose, onDone }) {
   const A = actionFor(action, r, me);
   const [note, setNote] = useState(action === 'approve_emergency' ? r.emergencyReason || '' : '');
   const [feasibility, setFeasibility] = useState(r.feasibility && r.feasibility !== 'not_feasible' ? r.feasibility : 'feasible');
   const [impact, setImpact] = useState(r.crossModuleImpact || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [files, setFiles] = useState([]);
 
   async function go() {
     setBusy(true);
@@ -318,7 +325,9 @@ function ActionDialog({ action, request: r, me, onClose, onDone }) {
       if (A.review) Object.assign(extra, { feasibility, crossModuleImpact: impact });
       if (action === 'approve_emergency') extra.crossModuleImpact = impact;
       const d = await ccbApi.act(r.id, action, extra);
-      onDone(d.request);
+      // Documents go up once the action has gone through, so a refused action never leaves stray uploads.
+      const failed = files.length ? await uploadAll(r.id, files) : [];
+      onDone(d.request, failed);
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -371,6 +380,11 @@ function ActionDialog({ action, request: r, me, onClose, onDone }) {
       )}
       {!A.review && !A.note && !A.optionalNote && action !== 'approve_emergency' && (
         <p style={{ margin: 0, fontSize: 12.5, color: 'var(--text-2)' }}>Confirm to continue.</p>
+      )}
+      {canAttach && (
+        <Field label="Attach documents" hint="Optional — e.g. the feasibility note, approval mail or sign-off." group>
+          <FilePicker files={files} onChange={setFiles} compact />
+        </Field>
       )}
       {error && <div className="ccb-error"><AlertIcon size={13} /> {error}</div>}
     </Modal>

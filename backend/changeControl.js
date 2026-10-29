@@ -275,6 +275,21 @@ async function initSchema() {
     await pool.query(`ALTER TABLE ccb.requests ADD CONSTRAINT requests_status_check CHECK (status IN (${sqlList(STATUSES)}))`);
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadReviewedAt" timestamptz');
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadNotes" text');
+    // Supporting documents (BRD, sign-offs, test evidence…) attached to a request at any stage.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS ccb.attachments (
+            id serial PRIMARY KEY,
+            "requestId" int NOT NULL REFERENCES ccb.requests(id) ON DELETE CASCADE,
+            "fileName" text NOT NULL,
+            "mimeType" text NOT NULL,
+            "sizeBytes" int NOT NULL,
+            data bytea NOT NULL,
+            stage text NOT NULL,
+            "uploadedBy" text NOT NULL,
+            "uploadedAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS ccb_attachments_request_idx ON ccb.attachments ("requestId")');
     console.log('[change-control] CCB schema up to date (ccb.requests, meetings, meeting_items, attendance, roles, history).');
 }
 
@@ -641,7 +656,7 @@ router.get('/requests/:key', async (req, res) => {
         if (!/^CCB-/i.test(req.params.key) && !Number.isInteger(Number(req.params.key))) return res.status(400).json({ success: false, error: 'Invalid request.' });
         const r = await loadRequestByKey(req.params.key);
         if (!r) return res.status(404).json({ success: false, error: 'Change request not found.' });
-        const [comments, history, agenda, dev, devHistory, devComments] = await Promise.all([
+        const [comments, history, agenda, dev, devHistory, devComments, attachments] = await Promise.all([
             pool.query('SELECT * FROM ccb.comments WHERE "requestId" = $1 ORDER BY "createdAt"', [r.id]),
             pool.query('SELECT * FROM ccb.history WHERE "requestId" = $1 ORDER BY "occurredAt" DESC, id DESC', [r.id]),
             pool.query(`SELECT mi.*, m."meetingNo", m.title AS "meetingTitle", m."scheduledAt", m.status AS "meetingStatus"
@@ -658,14 +673,16 @@ router.get('/requests/:key', async (req, res) => {
             r.devTrackerItemId
                 ? pool.query(`SELECT id, body, "authorName" AS "by", "createdAt" AS "at" FROM dev_tracker.comments WHERE "itemId" = $1 ORDER BY "createdAt" DESC LIMIT 100`, [r.devTrackerItemId]).catch(() => ({ rows: [] }))
                 : { rows: [] },
+            pool.query(`SELECT ${ATTACHMENT_COLS} FROM ccb.attachments WHERE "requestId" = $1 ORDER BY "uploadedAt"`, [r.id]),
         ]);
         const names = await namesFor([
-            r.loggedBy, r.reviewedBy, r.decidedBy, r.moduleLeadEmail,
+            r.loggedBy, r.reviewedBy, r.decidedBy, r.moduleLeadEmail, ...attachments.rows.map((a) => a.uploadedBy),
             ...comments.rows.map((c) => c.authorEmail), ...history.rows.map((h) => h.actorEmail), ...agenda.rows.map((a) => a.decidedBy),
         ]);
         res.json({
             success: true,
-            detail: { request: r, comments: comments.rows, history: history.rows, agenda: agenda.rows, devItem: dev.rows[0] || null, devHistory: devHistory.rows, devComments: devComments.rows, names, actions: availableActions(r, req) },
+            detail: { request: r, comments: comments.rows, history: history.rows, agenda: agenda.rows, devItem: dev.rows[0] || null, devHistory: devHistory.rows, devComments: devComments.rows, names, actions: availableActions(r, req),
+                attachments: attachments.rows.map((a) => ({ ...a, canRemove: canRemoveAttachment(a, r, req) })), canAttach: canAttach(r, req) },
         });
     } catch (err) {
         fail(res, err, 'Could not load the change request.');
@@ -915,6 +932,96 @@ router.post('/requests/:id/comments', async (req, res) => {
         res.json({ success: true, comment: out });
     } catch (err) {
         fail(res, err, 'Could not add the comment.');
+    }
+});
+
+/* ---------- Attachments ---------- */
+
+// Office documents, PDFs, images, mail and archives. The type is taken from the extension, never the browser.
+const ATTACHMENT_TYPES = {
+    pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    csv: 'text/csv', txt: 'text/plain', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+    msg: 'application/vnd.ms-outlook', eml: 'message/rfc822', zip: 'application/zip', vsdx: 'application/vnd.ms-visio.drawing',
+};
+const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024; // nginx allows 10 MB per request
+const ATTACHMENT_MAX_PER_REQUEST = 25;
+const UNDECIDED = ['draft', 'module_lead_review', 'feasibility_review', 'awaiting_ccb'];
+const ATTACHMENT_COLS = 'id, "requestId", "fileName", "mimeType", "sizeBytes", stage, "uploadedBy", "uploadedAt"';
+
+/** Who may add documents: the request's IT SPOC and Module Lead, and anyone holding a CCB role. */
+const canAttach = (r, req) => r.loggedBy === req.verifiedEmail || r.moduleLeadEmail === req.verifiedEmail || req.roles.length > 0;
+/** The uploader may remove their own file until the request is decided — after that it is part of the record. */
+const canRemoveAttachment = (a, r, req) => a.uploadedBy === req.verifiedEmail && UNDECIDED.includes(r.status);
+
+const rawBody = express.raw({ type: () => true, limit: ATTACHMENT_MAX_BYTES });
+function readFile(req, res, next) {
+    rawBody(req, res, (err) => {
+        if (err) return res.status(err.status === 413 ? 413 : 400).json({ success: false, error: err.status === 413 ? 'The file is larger than 8 MB.' : 'Could not read the file.' });
+        next();
+    });
+}
+
+router.post('/requests/:id/attachments', readFile, async (req, res) => {
+    const id = Number(req.params.id);
+    const fileName = str(req.query.name, 200).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+    const ext = (/\.([a-z0-9]+)$/i.exec(fileName)?.[1] || '').toLowerCase();
+    const data = Buffer.isBuffer(req.body) ? req.body : null;
+    try {
+        if (!fileName || !ATTACHMENT_TYPES[ext]) throw new HttpError(400, `This file type is not allowed. Allowed: ${Object.keys(ATTACHMENT_TYPES).join(', ')}.`);
+        if (!data || !data.length) throw new HttpError(400, 'The file is empty.');
+        const out = await withTransaction(async (db) => {
+            const r = (await db.query('SELECT * FROM ccb.requests WHERE id = $1 FOR UPDATE', [id])).rows[0];
+            if (!r) throw new HttpError(404, 'Change request not found.');
+            if (!canAttach(r, req)) throw new HttpError(403, 'Only the people working on this request can attach documents.');
+            const n = (await db.query('SELECT COUNT(*)::int n FROM ccb.attachments WHERE "requestId" = $1', [id])).rows[0].n;
+            if (n >= ATTACHMENT_MAX_PER_REQUEST) throw new HttpError(409, `A request can hold up to ${ATTACHMENT_MAX_PER_REQUEST} documents.`);
+            const ins = await db.query(
+                `INSERT INTO ccb.attachments ("requestId", "fileName", "mimeType", "sizeBytes", data, stage, "uploadedBy")
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${ATTACHMENT_COLS}`,
+                [id, fileName, ATTACHMENT_TYPES[ext], data.length, data, r.status, req.verifiedEmail]
+            );
+            await logHistory(db, { requestId: id, actorEmail: req.verifiedEmail, action: 'attachment_added', details: { fileName, sizeBytes: data.length } });
+            return ins.rows[0];
+        });
+        res.json({ success: true, attachment: out });
+    } catch (err) {
+        fail(res, err, 'Could not attach the document.');
+    }
+});
+
+router.get('/requests/:id/attachments/:attId', async (req, res) => {
+    try {
+        const { rows } = await pool.query('SELECT "fileName", "mimeType", data FROM ccb.attachments WHERE id = $1 AND "requestId" = $2', [Number(req.params.attId), Number(req.params.id)]);
+        if (!rows.length) return res.status(404).json({ success: false, error: 'Document not found.' });
+        const a = rows[0];
+        res.set({
+            'Content-Type': a.mimeType,
+            'Content-Disposition': `attachment; filename="${a.fileName.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(a.fileName)}`,
+            'X-Content-Type-Options': 'nosniff',
+            'Cache-Control': 'private, no-store',
+        });
+        res.send(a.data);
+    } catch (err) {
+        fail(res, err, 'Could not download the document.');
+    }
+});
+
+router.delete('/requests/:id/attachments/:attId', async (req, res) => {
+    const id = Number(req.params.id);
+    try {
+        await withTransaction(async (db) => {
+            const r = (await db.query('SELECT * FROM ccb.requests WHERE id = $1 FOR UPDATE', [id])).rows[0];
+            const a = r && (await db.query(`SELECT ${ATTACHMENT_COLS} FROM ccb.attachments WHERE id = $1 AND "requestId" = $2`, [Number(req.params.attId), id])).rows[0];
+            if (!a) throw new HttpError(404, 'Document not found.');
+            if (!canRemoveAttachment(a, r, req)) throw new HttpError(403, 'Only the person who attached it can remove it, and only before the request is decided.');
+            await db.query('DELETE FROM ccb.attachments WHERE id = $1', [a.id]);
+            await logHistory(db, { requestId: id, actorEmail: req.verifiedEmail, action: 'attachment_removed', details: { fileName: a.fileName } });
+        });
+        res.json({ success: true });
+    } catch (err) {
+        fail(res, err, 'Could not remove the document.');
     }
 });
 
