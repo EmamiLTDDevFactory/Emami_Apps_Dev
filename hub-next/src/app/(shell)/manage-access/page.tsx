@@ -3,7 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ShieldAlert, Search, X, Users, UserCheck, UserX, LogIn, MousePointerClick, TrendingUp, Download,
+  ArrowLeft, ArrowUpRight, ShieldAlert, Search, X, Users, UserCheck, UserX, LogIn, MousePointerClick, TrendingUp, Download,
   UserPlus, LayoutGrid, History, Settings2, ChevronRight, ChevronDown, ChevronUp, KeyRound, FileSpreadsheet,
   CheckCircle2, AlertCircle, Crown, ShieldCheck, Eye, Sparkles, AppWindow, Square, CheckSquare, MinusSquare, Clock, Rocket,
 } from 'lucide-react';
@@ -34,8 +34,8 @@ import {
  * The old /administration routes redirect here. */
 
 type Tab = 'overview' | 'people' | 'apps' | 'status' | 'activity' | 'settings';
-type StatusFilter = 'all' | 'active' | 'inactive' | 'never';
-type SortKey = 'name' | 'lastSeen' | 'apps' | 'level';
+type StatusFilter = 'all' | 'active' | 'inactive' | 'never' | 'recent7';
+type SortKey = 'name' | 'lastSeen' | 'apps' | 'level' | 'signins';
 type ChangeFilter = 'all' | 'grants' | 'revokes' | 'people' | 'status' | 'level';
 
 const BULK_CONCURRENCY = 8;
@@ -147,6 +147,7 @@ function AdminCenter() {
       if (statusFilter === 'active' && !u.isActive) return false;
       if (statusFilter === 'inactive' && u.isActive) return false;
       if (statusFilter === 'never' && (!u.usage || u.usage.hasLoggedIn)) return false;
+      if (statusFilter === 'recent7' && !seenWithin(u, 7)) return false;
       if (levelFilter !== 'all' && u.accessLevel !== levelFilter) return false;
       if (appFilter === 'none' && u.apps.length > 0) return false;
       if (appFilter !== 'all' && appFilter !== 'none' && !roleOf(u, appFilter)) return false;
@@ -158,6 +159,8 @@ function AdminCenter() {
           return (new Date(a.usage?.lastLogin || 0).getTime() - new Date(b.usage?.lastLogin || 0).getTime()) * -1;
         case 'apps':
           return b.apps.length - a.apps.length;
+        case 'signins':
+          return (b.usage?.logins ?? 0) - (a.usage?.logins ?? 0);
         case 'level':
           return LEVEL_RANK[a.accessLevel] - LEVEL_RANK[b.accessLevel];
         default:
@@ -169,8 +172,9 @@ function AdminCenter() {
 
   const filtersActive = !!search.trim() || statusFilter !== 'all' || levelFilter !== 'all' || appFilter !== 'all';
   const resetFilters = () => { setSearch(''); setStatusFilter('all'); setLevelFilter('all'); setAppFilter('all'); };
-  const showPeople = (patch: { status?: StatusFilter; level?: AccessLevel | 'all'; app?: string }) => {
+  const showPeople = (patch: { status?: StatusFilter; level?: AccessLevel | 'all'; app?: string; sort?: SortKey }) => {
     setSearch('');
+    setSort({ key: patch.sort ?? 'name', dir: 1 });
     setStatusFilter(patch.status ?? 'all');
     setLevelFilter(patch.level ?? 'all');
     setAppFilter(patch.app ?? 'all');
@@ -300,6 +304,7 @@ function AdminCenter() {
   const drawerUser = openEmail ? people.find((u) => u.email === openEmail) ?? null : null;
   const activeCount = users.filter((u) => u.isActive).length;
   const neverCount = people.filter((u) => u.usage && !u.usage.hasLoggedIn).length;
+  const recent7Count = people.filter((u) => seenWithin(u, 7)).length;
   const noAppsCount = users.filter((u) => u.apps.length === 0).length;
   const adminCount = users.filter((u) => u.accessLevel !== 'Viewer').length;
   const pad = isWide ? 24 : 14;
@@ -365,8 +370,8 @@ function AdminCenter() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isWide ? 190 : 150}px, 1fr))`, gap: 12 }}>
               <Kpi icon={Users} accent={colors.rust} label="People with access" value={usersLoading ? null : users.length} sub={`${activeCount} can sign in`} onClick={() => showPeople({})} />
-              <Kpi icon={UserCheck} accent={colors.green} label="Active last 7 days" value={statsLoading ? null : overview?.activeLast7Days ?? '—'} sub={overview ? `${overview.activeLast30Days} in 30 days` : ''} />
-              <Kpi icon={LogIn} accent="#0EA5E9" label="Total sign-ins" value={statsLoading ? null : overview?.totalLogins ?? '—'} sub="all time" />
+              <Kpi icon={UserCheck} accent={colors.green} label="Active last 7 days" value={statsLoading ? null : overview?.activeLast7Days ?? '—'} sub={overview ? `${overview.activeLast30Days} in 30 days` : ''} onClick={() => showPeople({ status: 'recent7', sort: 'lastSeen' })} />
+              <Kpi icon={LogIn} accent="#0EA5E9" label="Total sign-ins" value={statsLoading ? null : overview?.totalLogins ?? '—'} sub="all time" onClick={() => showPeople({ sort: 'signins' })} />
               <Kpi icon={MousePointerClick} accent="#9333EA" label="App opens" value={statsLoading ? null : overview?.totalAppOpens ?? '—'} sub="all time" onClick={() => goTab('apps')} />
               <Kpi icon={TrendingUp} accent="#F59E0B" label="Most used app" value={statsLoading ? null : overview?.mostUsedApp ? appLabel(overview.mostUsedApp.appId) : '—'} sub={overview?.mostUsedApp ? `${overview.mostUsedApp.opens} opens` : 'no activity yet'} small onClick={overview?.mostUsedApp ? () => openApp(overview.mostUsedApp!.appId) : undefined} />
             </div>
@@ -446,6 +451,7 @@ function AdminCenter() {
                   ['active', 'Active', activeCount],
                   ['inactive', 'Inactive', users.length - activeCount],
                   ['never', 'Never signed in', neverCount],
+                  ['recent7', 'Active last 7 days', recent7Count],
                 ] as [StatusFilter, string, number][]).map(([id, label, n]) => (
                   <button key={id} type="button" onClick={() => setStatusFilter(id)} style={chipStyle(statusFilter === id)}>
                     {label} <span style={{ opacity: 0.7 }}>{n}</span>
@@ -469,6 +475,7 @@ function AdminCenter() {
               <SortHead label="Person" k="name" sort={sort} setSort={setSort} style={{ flex: 1, minWidth: 0 }} />
               {isWide && <SortHead label="Level" k="level" sort={sort} setSort={setSort} style={{ width: 120 }} />}
               <SortHead label="Apps" k="apps" sort={sort} setSort={setSort} style={{ width: isWide ? 150 : 70 }} />
+              {isWide && <SortHead label="Sign-ins" k="signins" sort={sort} setSort={setSort} style={{ width: 80 }} />}
               {isWide && <SortHead label="Last seen" k="lastSeen" sort={sort} setSort={setSort} style={{ width: 110 }} />}
               {isWide && <span style={{ ...labelStyle, width: 80 }}>Status</span>}
               <span style={{ width: 16 }} />
@@ -517,6 +524,11 @@ function AdminCenter() {
                       </div>
                       {isWide && <span style={{ width: 120 }}><LevelBadge level={u.accessLevel} compact /></span>}
                       <span style={{ width: isWide ? 150 : 70 }}><AppStack apps={u.apps.map((g) => g.appId)} max={isWide ? 4 : 1} /></span>
+                      {isWide && (
+                        <span style={{ width: 80, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: u.usage?.logins ? colors.ink : colors.inkSoft }}>
+                          {u.usage ? u.usage.logins.toLocaleString() : '—'}
+                        </span>
+                      )}
                       {isWide && (
                         <span style={{ width: 110, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: u.usage?.hasLoggedIn ? colors.ink : colors.inkSoft }} title={u.usage?.lastLogin ? new Date(u.usage.lastLogin).toLocaleString() : undefined}>
                           {u.usage ? (u.usage.hasLoggedIn ? timeAgo(u.usage.lastLogin) : 'Never') : '—'}
@@ -785,6 +797,13 @@ function ActivityPanel({ history, loading, onOpenUser }: { history: AccessChange
 
 // ── Small pieces ─────────────────────────────────────────────────────────────────────────────
 
+/** Can sign in and did within the last `days` days — the same rule as the Overview's "Active last 7 days". */
+function seenWithin(u: AdminUser, days: number) {
+  if (!u.isActive) return false;
+  const t = u.usage?.lastLogin ? new Date(u.usage.lastLogin).getTime() : 0;
+  return t > 0 && Date.now() - t <= days * 86400000;
+}
+
 function Kpi({ icon: Icon, accent, label, value, sub, onClick, small }: { icon: React.ElementType; accent: string; label: string; value: number | string | null; sub: string; onClick?: () => void; small?: boolean }) {
   const Tag = onClick ? 'button' : 'div';
   return (
@@ -792,6 +811,7 @@ function Kpi({ icon: Icon, accent, label, value, sub, onClick, small }: { icon: 
       <span style={{ width: 34, height: 34, borderRadius: radii.md, backgroundColor: `${accent}17`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={17} color={accent} />
       </span>
+      {onClick && <ArrowUpRight size={16} color={colors.inkSoft} style={{ position: 'absolute', top: 14, right: 14 }} aria-hidden />}
       <span>
         {value === null ? (
           <Skeleton width={70} height={22} />
