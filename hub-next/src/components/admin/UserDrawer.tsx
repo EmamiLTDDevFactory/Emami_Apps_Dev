@@ -1,16 +1,17 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle, ArrowUpRight } from 'lucide-react';
+import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../types';
 import { getMyProfile, type UserProfile } from '../../lib/authApi';
-import { getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
+import type { MyActivity } from '../../lib/authApi';
+import { getAdminUserActivity, getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
 import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, setAccessLevel, setAppAccess, setCcbRoles, setUserActive } from '../../lib/accessApi';
 import { exportUserReportToExcel } from '../../lib/exportAdminExcel';
 import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
 import ChangeTimeline from './ChangeTimeline';
+import { SessionList, SignInList } from './UserActivityLists';
 import {
   AUDIT_CAPA_APP_ID, AUDIT_CAPA_DEPOTS, auditCapaRoleNeedsDepot, GRANTABLE_LEVELS, ROLE_MANAGED_INTERNALLY, SORTED_APPS,
   AppIcon, EmptyState, Initials, LevelBadge, Skeleton, Spinner, StatusDot, Switch,
@@ -55,7 +56,6 @@ export default function UserDrawer({
   onRemoved: (email: string) => void;
   notify: (message: string, tone?: 'success' | 'error') => void;
 }) {
-  const router = useRouter();
   const usageRef = useRef<HTMLParagraphElement>(null);
   const [tab, setTab] = useState<Tab>('access');
   const [draft, setDraft] = useState<Draft>(() => draftFrom(user));
@@ -72,6 +72,19 @@ export default function UserDrawer({
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoaded, setActivityLoaded] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
+  // Sign-ins / Sessions cards open their full list inline, below the cards (like Access Tracker).
+  const [openList, setOpenList] = useState<'signins' | 'sessions' | null>(null);
+  const [detail, setDetail] = useState<{ email: string; activity?: MyActivity; error?: string } | null>(null);
+  useEffect(() => { setOpenList(null); }, [user.email]);
+  useEffect(() => {
+    if (!openList || detail?.email === user.email) return;
+    let live = true;
+    setDetail({ email: user.email });
+    getAdminUserActivity(user.email).then((r) => { if (live) setDetail({ email: user.email, activity: r.activity, error: r.ok ? undefined : r.error }); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openList, user.email]);
+  const toggleList = (v: 'signins' | 'sessions') => setOpenList((o) => (o === v ? null : v));
 
   const [history, setHistory] = useState<AccessChangeEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -232,8 +245,6 @@ export default function UserDrawer({
 
   const name = displayName(user.email, user.usage?.name);
   // The full sign-in / session history for this person (My Profile's activity page in admin mode).
-  const openActivity = (view: 'signins' | 'sessions') =>
-    router.push(`/settings/activity?view=${view}&user=${encodeURIComponent(user.email)}${user.usage?.name ? `&name=${encodeURIComponent(user.usage.name)}` : ''}`);
 
   const header = (
     <>
@@ -449,13 +460,22 @@ export default function UserDrawer({
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} onClick={() => openActivity('signins')} />
-                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} hint="See every sign-in" onClick={() => openActivity('signins')} />
-                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} hint="See each visit and its apps" onClick={() => openActivity('sessions')} />
-                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} hint="See how long each session lasted" onClick={() => openActivity('sessions')} />
+                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} onClick={() => toggleList('signins')} open={openList === 'signins'} />
+                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} hint="See every sign-in" onClick={() => toggleList('signins')} open={openList === 'signins'} />
+                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} hint="See each visit and its apps" onClick={() => toggleList('sessions')} open={openList === 'sessions'} />
+                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} hint="See how long each session lasted" onClick={() => toggleList('sessions')} open={openList === 'sessions'} />
                 <Stat label="Apps opened" value={String(profile?.appsOpened ?? user.usage?.appsOpened ?? 0)} hint="Jump to usage by app" onClick={() => usageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
                 <Stat label="Downloads" value={String(profile?.downloads ?? 0)} />
               </div>
+              {openList && (detail?.email !== user.email || (!detail.activity && !detail.error) ? (
+                <div style={{ marginTop: 12 }}><Skeleton height={160} radius={14} /></div>
+              ) : detail.error || !detail.activity ? (
+                <p style={errorTextStyle}>{detail.error || 'Could not load this person’s activity.'}</p>
+              ) : openList === 'signins' ? (
+                <SignInList activity={detail.activity} email={user.email} />
+              ) : (
+                <SessionList activity={detail.activity} email={user.email} />
+              ))}
 
               <p ref={usageRef} style={{ ...labelStyle, margin: '22px 0 10px', scrollMarginTop: 12 }}>Usage by app</p>
               {appStats.length === 0 ? (
@@ -556,17 +576,20 @@ export function Segmented<T extends string | null>({
   );
 }
 
-function Stat({ label, value, hint, onClick }: { label: string; value: string; hint?: string; onClick?: () => void }) {
+function Stat({ label, value, hint, onClick, open }: { label: string; value: string; hint?: string; onClick?: () => void; open?: boolean }) {
   const Tag = onClick ? 'button' : 'div';
   return (
     <Tag
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       title={hint}
+      aria-expanded={onClick && open !== undefined ? open : undefined}
       className={onClick ? 'ac-card' : undefined}
-      style={{ position: 'relative', textAlign: 'left', width: '100%', cursor: onClick ? 'pointer' : 'default', border: `1px solid ${colors.border}`, borderRadius: radii.xl, padding: '12px 14px', backgroundColor: colors.white, font: 'inherit' }}
+      style={{ position: 'relative', textAlign: 'left', width: '100%', cursor: onClick ? 'pointer' : 'default', border: open ? `1.5px solid ${colors.rust}` : `1px solid ${colors.border}`, boxShadow: open ? `0 0 0 3px ${colors.rust}1F` : undefined, borderRadius: radii.xl, padding: '12px 14px', backgroundColor: colors.white, font: 'inherit' }}
     >
-      {onClick && <ArrowUpRight size={14} color={colors.inkSoft} style={{ position: 'absolute', top: 10, right: 10 }} aria-hidden />}
+      {onClick && (open
+        ? <ChevronUp size={14} color={colors.rust} style={{ position: 'absolute', top: 10, right: 10 }} aria-hidden />
+        : <ChevronDown size={14} color={colors.inkSoft} style={{ position: 'absolute', top: 10, right: 10 }} aria-hidden />)}
       <span style={{ ...labelStyle, display: 'block', margin: 0, fontSize: 10 }}>{label}</span>
       <span style={{ display: 'block', margin: '4px 0 0', fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink }}>{value}</span>
     </Tag>
