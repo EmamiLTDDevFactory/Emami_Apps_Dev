@@ -40,7 +40,7 @@ const HISTORY_LABEL = {
   forward_to_head: 'sent it to the IT Application Head', return_to_spoc: 'returned it to the IT SPOC for correction',
   logged: 'logged the request', submit: 'submitted it for feasibility review', edited: 'edited the request', withdraw: 'withdrew the request',
   return: 'returned it to the IT SPOC', reject: 'rejected it as not feasible', recommend: 'recommended it to the CCB',
-  approve_out_of_scope: 'approved it (outside CCB scope)', approve_emergency: 'gave emergency approval', mark_informed: 'marked the CCB informed',
+  approve_out_of_scope: 'approved it (outside CCB scope)', approve_emergency: 'gave emergency approval', mark_informed: 'marked the CCB informed', ccb_informed_auto: 'sent the emergency intimation to the CCB (marked informed)',
   terminate: 'terminated development', commented: 'commented', ccb_decision: 'recorded the CCB decision', ccb_ratification: 'recorded the CCB ratification',
   removed_from_agenda: 'removed it from a meeting agenda',
 };

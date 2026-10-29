@@ -991,7 +991,9 @@ router.post('/meetings', async (req, res) => {
             return rows[0];
         });
         // The meeting is saved; the Teams meeting is added on top and never undoes the scheduling.
-        res.json({ success: true, meeting: await syncTeams(meeting.id, 'create', req.verifiedEmail) || meeting });
+        const synced = await syncTeams(meeting.id, 'create', req.verifiedEmail) || meeting;
+        notifyMeeting(synced, 'scheduled', req.verifiedEmail);
+        res.json({ success: true, meeting: synced });
     } catch (err) {
         fail(res, err, 'Could not schedule the meeting.');
     }
@@ -1161,6 +1163,7 @@ router.put('/meetings/:id', async (req, res) => {
         });
         // Keep the Teams invitation in step with the app (new time, title, venue or mode).
         const synced = out.invite && out.meeting.teamsEventId && out.meeting.status !== 'completed' ? await syncTeams(id, 'update', req.verifiedEmail) : null;
+        if (out.invite && out.meeting.status === 'scheduled') notifyMeeting(synced || out.meeting, 'updated', req.verifiedEmail);
         res.json({ success: true, meeting: synced || out.meeting });
     } catch (err) {
         fail(res, err, 'Could not save the meeting.');
@@ -1316,7 +1319,8 @@ router.post('/meetings/:id/cancel', async (req, res) => {
             await db.query(`UPDATE ccb.meetings SET status = 'cancelled', minutes = $2, "updatedAt" = now() WHERE id = $1`, [id, `Cancelled: ${note}`]);
             await logHistory(db, { meetingId: id, actorEmail: req.verifiedEmail, action: 'meeting_cancelled', details: { note } });
         });
-        await syncTeams(id, 'cancel', req.verifiedEmail, note);
+        const cancelled = await syncTeams(id, 'cancel', req.verifiedEmail, note) || await loadMeeting(id);
+        notifyMeeting(cancelled, 'cancelled', req.verifiedEmail, note);
         res.json({ success: true });
     } catch (err) {
         fail(res, err, 'Could not cancel the meeting.');
@@ -1561,11 +1565,87 @@ function ccbRolesAdminRouter(requireAccessManager) {
 
 const requestPath = (r) => `/apps/dev-tracker/ccb/requests/?cr=${encodeURIComponent(r.crNo)}`;
 
-/** Tells the IT SPOC who logged `r`, and their Module Lead, about a milestone (never about something they did themselves). */
-function notifySpoc(r, actorEmail, { kind = 'info', title, body = '', refKey = null }) {
-    for (const email of new Set([r?.loggedBy, r?.moduleLeadEmail].filter(Boolean))) {
+/**
+ * Tells the IT SPOC who logged `r` and their Module Lead about a milestone (never about something they did
+ * themselves). `requester: true` also tells the function person who raised it ("Raised by") — used for the
+ * outcomes they care about: approved / rejected, ready for UAT, live.
+ */
+function notifySpoc(r, actorEmail, { kind = 'info', title, body = '', refKey = null, requester = false }) {
+    for (const email of new Set([r?.loggedBy, r?.moduleLeadEmail, requester ? r?.requestedByEmail : null].filter(Boolean))) {
         if (email === actorEmail) continue;
         notify({ email, appId: HOST_APP_ID, kind, title: `${r.crNo}: ${title}`, body: body ? `${r.title}\n${body}` : r.title, link: requestPath(r), refKey });
+    }
+}
+
+/** Everyone holding any of `roles` (minus `exclude`) gets the same notification. Never throws. */
+async function notifyRoles(roles, n, exclude = []) {
+    try {
+        const { rows } = await pool.query('SELECT DISTINCT email FROM ccb.roles WHERE role = ANY($1)', [roles]);
+        const to = rows.map((x) => x.email).filter((e) => !exclude.includes(e));
+        for (const email of to) notify({ appId: HOST_APP_ID, ...n, email });
+        return to.length;
+    } catch (err) {
+        console.error('[change-control] Role notification failed:', err.message);
+        return 0;
+    }
+}
+const BOARD = ['CCB Member', 'CCB Secretary', 'IT Application Head'];
+const meetingPath = (m) => `/apps/dev-tracker/ccb/meetings/?id=${m.id}`;
+const istDateTime = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
+
+/** The whole board hears about a meeting being scheduled, changed, cancelled — and a day before it. */
+async function notifyMeeting(m, what, actorEmail, note = '') {
+    if (!m) return;
+    try {
+        const items = (await pool.query('SELECT COUNT(*)::int n FROM ccb.meeting_items WHERE "meetingId" = $1', [m.id])).rows[0].n;
+        const when = `${istDateTime(m.scheduledAt)} IST · ${m.mode === 'offline' ? 'in person' : m.mode}${m.venue ? ` · ${m.venue}` : ''}`;
+        const msg = {
+            scheduled: { kind: 'action', title: `${m.meetingNo}: CCB meeting scheduled`, body: `${m.title}\n${when}\n${items} item(s) on the agenda. Please review them before the meeting.` },
+            updated: { kind: 'action', title: `${m.meetingNo}: CCB meeting changed`, body: `${m.title}\nNow: ${when}` },
+            cancelled: { kind: 'bad', title: `${m.meetingNo}: CCB meeting cancelled`, body: `${m.title}\n${note}` },
+            reminder: { kind: 'action', title: `${m.meetingNo}: CCB meeting tomorrow`, body: `${m.title}\n${when}\n${items} item(s) on the agenda.${m.teamsJoinUrl ? `\nJoin: ${m.teamsJoinUrl}` : ''}` },
+        }[what];
+        const refKey = `ccb:mtg:${m.id}:${what}:${what === 'updated' ? new Date(m.scheduledAt).getTime() : ''}`;
+        await notifyRoles(BOARD, { ...msg, link: meetingPath(m), refKey }, actorEmail ? [actorEmail] : []);
+    } catch (err) {
+        console.error('[change-control] Meeting notification failed:', err.message);
+    }
+}
+
+/**
+ * Reminders, checked with the delivery watch: the board a day before a meeting, and whoever is holding a
+ * request once it is past its service level (Module Lead / IT Application Head review, CCB queue). Each
+ * reminder goes once per stage (ref keys).
+ */
+async function sendReminders() {
+    try {
+        const meetings = (await pool.query(`SELECT * FROM ccb.meetings WHERE status = 'scheduled' AND "scheduledAt" BETWEEN now() AND now() + interval '24 hours'`)).rows;
+        for (const m of meetings) await notifyMeeting(m, 'reminder', null);
+
+        const settings = await getSettings();
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        const { rows } = await pool.query(`SELECT * FROM ccb.requests WHERE status IN ('module_lead_review', 'feasibility_review', 'awaiting_ccb')`);
+        for (const r of rows) {
+            const since = r.status === 'module_lead_review' ? r.submittedAt
+                : r.status === 'feasibility_review' ? (r.moduleLeadReviewedAt && r.moduleLeadReviewedAt > r.submittedAt ? r.moduleLeadReviewedAt : r.submittedAt)
+                : (r.reviewedAt || r.submittedAt);
+            if (!since) continue;
+            const due = r.status === 'awaiting_ccb'
+                ? new Date(new Date(since).getTime() + settings.ccbSlaDays * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+                : addBusinessDays(since, settings.reviewSlaDays);
+            if (today <= due) continue;
+            const refKey = `ccb:${r.id}:overdue:${r.status}:${new Date(since).getTime()}`;
+            const n = { kind: 'bad', link: requestPath(r), refKey };
+            if (r.status === 'module_lead_review' && r.moduleLeadEmail) {
+                notify({ ...n, appId: HOST_APP_ID, email: r.moduleLeadEmail, title: `${r.crNo}: Module Lead review overdue`, body: `${r.title}\nWaiting since ${istDateTime(since)} (target ${settings.reviewSlaDays} business days). Please send it on or return it.` });
+            } else if (r.status === 'feasibility_review') {
+                await notifyRoles(['IT Application Head'], { ...n, title: `${r.crNo}: feasibility review overdue`, body: `${r.title}\nWaiting since ${istDateTime(since)} (target ${settings.reviewSlaDays} business days).` }, [r.loggedBy]);
+            } else if (r.status === 'awaiting_ccb') {
+                await notifyRoles(['CCB Secretary'], { ...n, title: `${r.crNo}: waiting for the CCB beyond ${settings.ccbSlaDays} days`, body: `${r.title}\nRecommended on ${istDateTime(since)}. Please take it up at the next meeting.` });
+            }
+        }
+    } catch (err) {
+        console.error('[change-control] Reminders failed:', err.message);
     }
 }
 
@@ -1586,15 +1666,31 @@ async function notifyNextReviewer(action, r, actorEmail) {
 function notifyAction(action, r, actorEmail, note) {
     const assignment = r.devTrackerIssueNo != null ? ` Dev Tracker task Assignment-${r.devTrackerIssueNo} has been created.` : '';
     if (action === 'submit' || action === 'forward_to_head') notifyNextReviewer(action, r, actorEmail, note);
+    if (action === 'recommend') {
+        notifyRoles(['CCB Secretary'], { kind: 'action', title: `${r.crNo}: recommended to the CCB`, body: `${r.title}\nPlease take it up at the next CCB meeting (it is added to the agenda automatically).`, link: requestPath(r), refKey: `ccb:${r.id}:queued:${new Date(r.updatedAt).getTime()}` }, [actorEmail]);
+    }
+    if (action === 'approve_emergency') {
+        // The written intimation the policy asks for: every board member is informed of the emergency approval.
+        notifyRoles(['CCB Member', 'CCB Secretary'], {
+            kind: 'action', title: `${r.crNo}: emergency approval — for the CCB's information`,
+            body: `${r.title}\nApproved by the IT Application Head under the urgent-need exception.${r.emergencyReason ? `\nJustification: ${r.emergencyReason}` : ''}\nIt will be put to the board for ratification at the next CCB meeting.`,
+            link: requestPath(r), refKey: `ccb:${r.id}:emergency-intimation`,
+        }, [actorEmail]).then(async (sent) => {
+            // That notice is the written intimation, so the request counts as "CCB informed" once it went out.
+            if (!sent) return;
+            const upd = await pool.query('UPDATE ccb.requests SET "ccbInformedAt" = now() WHERE id = $1 AND "ccbInformedAt" IS NULL RETURNING id', [r.id]);
+            if (upd.rows.length) await logHistory(pool, { requestId: r.id, actorEmail: actorEmail || 'system', action: 'ccb_informed_auto', details: { recipients: sent } });
+        }).catch((err) => console.error('[change-control] Auto-inform failed:', err.message));
+    }
     const msg = {
         submit: r.status === 'module_lead_review' ? { kind: 'action', title: 'submitted for Module Lead review', body: 'Please review it and send it to the IT Application Head, or return it to the IT SPOC.' } : null,
         forward_to_head: { kind: 'info', title: 'sent to the IT Application Head by the Module Lead', body: note ? `Module Lead's note: ${note}` : 'It is now in feasibility review.' },
         return_to_spoc: { kind: 'action', title: 'returned by the Module Lead for correction', body: `Please correct and resubmit.\n${note}` },
         return: { kind: 'action', title: 'returned for clarification', body: `Please update and resubmit.\n${note}` },
-        reject: { kind: 'bad', title: 'rejected at feasibility review', body: note },
+        reject: { kind: 'bad', title: 'rejected at feasibility review', body: note, requester: true },
         recommend: { kind: 'info', title: 'recommended to the CCB', body: 'It is on the agenda for the next CCB meeting.' },
-        approve_out_of_scope: { kind: 'good', title: 'approved', body: `Approved by the IT Application Head (outside CCB scope).${assignment}` },
-        approve_emergency: { kind: 'good', title: 'emergency approval given', body: `Approved by the IT Application Head; to be ratified at the next CCB meeting.${assignment}` },
+        approve_out_of_scope: { kind: 'good', title: 'approved', body: `Approved by the IT Application Head (outside CCB scope).${assignment}`, requester: true },
+        approve_emergency: { kind: 'good', title: 'emergency approval given', body: `Approved by the IT Application Head; to be ratified at the next CCB meeting.${assignment}`, requester: true },
         terminate: { kind: 'bad', title: 'development terminated', body: note },
         withdraw: { kind: 'bad', title: 'withdrawn', body: note },
     }[action];
@@ -1604,9 +1700,9 @@ function notifyAction(action, r, actorEmail, note) {
 function notifyDecision(decision, r, actorEmail, notes) {
     const assignment = r.devTrackerIssueNo != null ? ` Dev Tracker task Assignment-${r.devTrackerIssueNo} has been created.` : '';
     const msg = {
-        approved: { kind: 'good', title: 'approved by the CCB', body: `${notes ? `${notes}\n` : ''}${assignment.trim()}` },
-        approved_with_modifications: { kind: 'good', title: 'approved by the CCB with modifications', body: `${notes}\n${assignment.trim()}` },
-        rejected: { kind: 'bad', title: 'rejected by the CCB', body: notes },
+        approved: { kind: 'good', title: 'approved by the CCB', body: `${notes ? `${notes}\n` : ''}${assignment.trim()}`, requester: true },
+        approved_with_modifications: { kind: 'good', title: 'approved by the CCB with modifications', body: `${notes}\n${assignment.trim()}`, requester: true },
+        rejected: { kind: 'bad', title: 'rejected by the CCB', body: notes, requester: true },
         deferred: { kind: 'info', title: 'deferred by the CCB', body: `${notes}\nIt stays on the queue for the next meeting.` },
         not_ratified: { kind: 'bad', title: 'emergency approval not ratified by the CCB', body: notes },
         ratified: { kind: 'good', title: 'emergency approval ratified by the CCB', body: notes },
@@ -1640,9 +1736,9 @@ async function watchDelivery() {
                 }
                 if (now.status !== seen.status) {
                     const m = {
-                        'User Testing': { kind: 'action', title: 'ready for user acceptance testing', body: `Please arrange UAT with ${r.requestedBy} (${r.requestingFunction}).` },
-                        Hypercare: { kind: 'good', title: 'deployed to production', body: 'The change is live and in hypercare.' },
-                        Completed: { kind: 'good', title: 'completed', body: 'Development is closed in Dev Tracker.' },
+                        'User Testing': { kind: 'action', title: 'ready for user acceptance testing', body: `UAT by ${r.requestedBy} (${r.requestingFunction}); the IT SPOC coordinates it.`, requester: true },
+                        Hypercare: { kind: 'good', title: 'deployed to production', body: 'The change is live and in hypercare.', requester: true },
+                        Completed: { kind: 'good', title: 'completed', body: 'Development is closed in Dev Tracker.', requester: true },
                         Cancelled: { kind: 'bad', title: 'cancelled in Dev Tracker', body: '' },
                         'On Hold': { kind: 'action', title: 'put on hold in Dev Tracker', body: '' },
                     }[now.status];
@@ -1663,8 +1759,11 @@ async function watchDelivery() {
 }
 setTimeout(watchDelivery, 15_000).unref();
 setInterval(watchDelivery, 5 * 60_000).unref();
+setTimeout(sendReminders, 30_000).unref();
+setInterval(sendReminders, 30 * 60_000).unref();
 
 module.exports = router;
 module.exports.watchDelivery = watchDelivery;
+module.exports.sendReminders = sendReminders;
 module.exports.CATEGORIES = CATEGORIES;
 module.exports.ccbRolesAdminRouter = ccbRolesAdminRouter;
