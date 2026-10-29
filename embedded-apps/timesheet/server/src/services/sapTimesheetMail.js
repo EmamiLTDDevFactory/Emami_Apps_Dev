@@ -1,6 +1,6 @@
 import { pool } from '../db/pool.js'
 
-// Tells SAP (ZIT_TIMESHEET_SRV on the shared NGD gateway) that a manager approved or rejected a
+// Tells SAP (ZIT_TIMESHEET_SRV on the NWP gateway) that a manager approved or rejected a
 // timesheet. SAP's CREATE_DEEP_ENTITY then e-mails the employee (TO = MailId, CC = whatever is
 // maintained for the vendor in ZIT_TSHEET_MAIL) with the month attached as an Excel sheet.
 //
@@ -15,7 +15,7 @@ import { pool } from '../db/pool.js'
 
 const SAP_TIMESHEET_URL =
   process.env.SAP_TIMESHEET_URL ||
-  'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NGD/ZIT_TIMESHEET_SRV/EmpSet'
+  'https://emdcindpwebapp1-bag2gfhjd9d4gkh6.centralindia-01.azurewebsites.net/api/NWP/ZIT_TIMESHEET_SRV/EmpSet'
 const REQUEST_TIMEOUT_MS = Number(process.env.SAP_TIMESHEET_TIMEOUT_MS || 30000)
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
