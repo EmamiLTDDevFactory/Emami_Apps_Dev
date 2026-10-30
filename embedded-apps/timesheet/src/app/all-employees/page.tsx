@@ -9,7 +9,7 @@ import StatusBadge from '../../components/StatusBadge';
 import TimesheetGrid from '../../components/TimesheetGrid';
 import BackButton from '../../components/BackButton';
 import MonthSelector from '../../components/MonthSelector';
-import { addMonths, currentMonthStartIso, formatDateTime, formatMonthLabel, parseISODate, toISODate } from '../../utils/date';
+import { currentMonthStartIso, formatDateTime, formatMonthLabel } from '../../utils/date';
 import { computeTotals, getDisplayStatus, isOverdue } from '../../utils/timesheet';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
 
@@ -38,7 +38,7 @@ function EmployeeList() {
   const router = useRouter();
   const { users, getTimesheet, getUserById, teamSettings } = useApp();
   const thisMonth = currentMonthStartIso();
-  const [month, setMonth] = useState(toISODate(addMonths(parseISODate(thisMonth), -1)));
+  const [month, setMonth] = useState(thisMonth);
   const [query, setQuery] = useState('');
 
   const rows = useMemo(() => {

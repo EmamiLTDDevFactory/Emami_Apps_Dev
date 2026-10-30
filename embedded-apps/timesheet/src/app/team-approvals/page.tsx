@@ -10,7 +10,7 @@ import TimesheetGrid from '../../components/TimesheetGrid';
 import ApprovalQueueTable from '../../components/ApprovalQueueTable';
 import BackButton from '../../components/BackButton';
 import MonthSelector from '../../components/MonthSelector';
-import { addMonths, currentMonthStartIso, formatDayNum, formatMonthLabel, hoursBetween, parseISODate, toISODate } from '../../utils/date';
+import { currentMonthStartIso, formatDayNum, formatMonthLabel, hoursBetween, parseISODate } from '../../utils/date';
 import { computeTotals, expectedMonthlyHours, getDisplayStatus, isOverdue, MAX_HOURS_PER_DAY } from '../../utils/timesheet';
 import { exportTimesheetToExcel } from '../../utils/exportTimesheet';
 
@@ -38,8 +38,7 @@ function ApprovalList() {
   const router = useRouter();
   const { directReports, getTimesheet, teamSettings, bulkApprove, workingDayOverridesSet } = useApp();
   const thisMonth = currentMonthStartIso();
-  const lastCompletedMonth = toISODate(addMonths(parseISODate(thisMonth), -1));
-  const [month, setMonth] = useState(lastCompletedMonth);
+  const [month, setMonth] = useState(thisMonth);
   const { showToast } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
 

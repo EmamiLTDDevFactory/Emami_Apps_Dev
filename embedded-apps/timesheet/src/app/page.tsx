@@ -6,7 +6,7 @@ import { ClipboardCheck, History as HistoryIcon, Users, BarChart3, CalendarClock
 import { useApp } from '../context/AppContext';
 import StatusBadge from '../components/StatusBadge';
 import LeaveDetailsModal from '../components/LeaveDetailsModal';
-import { addMonths, currentMonthStartIso, formatMonthLabel, formatMonthShort, parseISODate, recentMonthStarts, toISODate } from '../utils/date';
+import { currentMonthStartIso, formatMonthLabel, formatMonthShort, recentMonthStarts } from '../utils/date';
 import { computeTotals, expectedMonthlyHours, getDisplayStatus, isActionable, isOverdue } from '../utils/timesheet';
 
 const MANAGER_CARDS = [
@@ -47,26 +47,25 @@ export default function DashboardPage() {
 
   const thisMonth = currentMonthStartIso();
   const isManager = currentUser.role === 'manager';
-  const lastCompletedMonth = toISODate(addMonths(parseISODate(thisMonth), -1));
   const pendingApprovals = isManager
-    ? directReports.filter((u: any) => isActionable(getTimesheet(u.id, lastCompletedMonth) || {})).length
+    ? directReports.filter((u: any) => isActionable(getTimesheet(u.id, thisMonth) || {})).length
     : 0;
 
-  // Team pulse: each direct report's standing for the last fully-completed month, used for both
+  // Team pulse: each direct report's standing for the current month, used for both
   // the stat tiles and the roster list below the section cards.
   const teamPulse = useMemo(() => {
     if (!isManager) return [];
     return directReports
       .map((user: any) => {
-        const ts = getTimesheet(user.id, lastCompletedMonth);
-        const overdueTs = isOverdue(ts || { status: 'Draft', monthStartDate: lastCompletedMonth }, teamSettings);
+        const ts = getTimesheet(user.id, thisMonth);
+        const overdueTs = isOverdue(ts || { status: 'Draft', monthStartDate: thisMonth }, teamSettings);
         const status = overdueTs ? 'Overdue' : getDisplayStatus(ts || { status: 'Draft' });
-        const hours = ts ? computeTotals(ts.entries, lastCompletedMonth).monthTotal : 0;
+        const hours = ts ? computeTotals(ts.entries, thisMonth).monthTotal : 0;
         return { user, status, hours };
       })
       .sort((a: any, b: any) => a.user.name.localeCompare(b.user.name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, directReports, lastCompletedMonth]);
+  }, [isManager, directReports, thisMonth]);
 
   const teamStats = useMemo(
     () => ({
@@ -154,7 +153,7 @@ export default function DashboardPage() {
           <div className="glass-card overflow-hidden">
             <div className="border-b border-glassBorder bg-white/40 px-6 py-4">
               <h2 className="font-semibold text-ink">Team pulse</h2>
-              <p className="mt-0.5 text-xs text-inkSoft">{formatMonthLabel(lastCompletedMonth)}</p>
+              <p className="mt-0.5 text-xs text-inkSoft">{formatMonthLabel(thisMonth)}</p>
             </div>
             <div className="grid grid-cols-2 gap-px bg-border">
               {[
@@ -190,7 +189,7 @@ export default function DashboardPage() {
                   <li key={user.id}>
                     <button
                       type="button"
-                      onClick={() => reviewable && router.push(`/team-approvals/?reviewUserId=${user.id}&reviewMonth=${lastCompletedMonth}`)}
+                      onClick={() => reviewable && router.push(`/team-approvals/?reviewUserId=${user.id}&reviewMonth=${thisMonth}`)}
                       disabled={!reviewable}
                       className={`flex w-full items-center gap-3 px-6 py-3 text-left transition-colors focus:outline-none disabled:cursor-default ${
                         reviewable ? 'hover:bg-white/50' : ''
