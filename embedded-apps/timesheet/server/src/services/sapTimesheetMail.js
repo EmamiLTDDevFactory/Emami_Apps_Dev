@@ -142,11 +142,14 @@ async function send(timesheetId, flag, managerEmail) {
   console.log(`[sap-timesheet-mail] ${timesheetId}: sent (Flag ${flag}, vendor ${payload.Lifnr})`)
 }
 
-// decision: 'Approved' | 'Rejected'. managerEmail is whoever's session performed this action (see
-// routes/timesheets.js). Returns immediately; never throws.
+// decision: 'Submitted' | 'Approved' | 'Rejected' -> Flag 'S' | 'A' | 'R'. Submitted covers both a
+// fresh submit and a resubmit after rejection - both are the same Flag 'S' call (see routes/
+// timesheets.js's /submit). managerEmail is whoever's session performed this action - for a
+// submit that's the employee themselves, same mechanism as approve/reject. Returns immediately;
+// never throws.
 export function notifySapTimesheetDecision(timesheetId, decision, managerEmail) {
   if (!isEnabled()) return
-  const flag = decision === 'Rejected' ? 'R' : 'A'
+  const flag = decision === 'Rejected' ? 'R' : decision === 'Submitted' ? 'S' : 'A'
   send(timesheetId, flag, managerEmail).catch((err) => {
     console.error(`[sap-timesheet-mail] ${timesheetId}: failed (Flag ${flag}) - ${err.message}`)
   })

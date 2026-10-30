@@ -240,6 +240,7 @@ router.post('/submit', async (req, res, next) => {
     )
     await client.query('COMMIT')
     res.json(await loadTimesheet(pool, id))
+    notifySapTimesheetDecision(id, 'Submitted', req.user.email)
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
