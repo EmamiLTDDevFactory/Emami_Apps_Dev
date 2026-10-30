@@ -5,7 +5,8 @@
    A sliding one-minute window per signed-in person and bucket:
      read    normal screens                       300 / min
      write   creating / changing / replying         60 / min
-     heavy   report export, list upload, checks     10 / min
+     heavy   reports, ticket export, analytics,     10 / min
+             list upload, checks
      ai      new AI analysis (ticket / dashboard)   20 / min
    Over the limit -> 429 with Retry-After. Kept in memory per backend copy (bounded in size), so it protects
    each copy from a runaway script or a stuck browser tab without any extra infrastructure.
@@ -18,7 +19,7 @@ const hits = new Map(); // key -> array of timestamps
 
 function bucketFor(req) {
     const path = req.path;
-    if (/^\/(reports\/daily|admin\/distributors\/import|jobs\/run)/.test(path)) return 'heavy';
+    if (/^\/(reports\/daily|tickets\/export$|analytics|admin\/distributors\/import|jobs\/run)/.test(path)) return 'heavy';
     if (/\/insights/.test(path) && (req.query.generate === '1' || req.query.refresh === '1')) return 'ai';
     return req.method === 'GET' ? 'read' : 'write';
 }

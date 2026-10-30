@@ -8,8 +8,9 @@
  */
 import { getHubToken } from './hub';
 import type {
-  ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, AuditEvent, AutomationRule, BellEvent, BellItem, ContactMatch, Counts, Dashboard,
-  DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow,
+  ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
+  ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
+  SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -71,6 +72,11 @@ export const portalConfig = () => get<{ enabled: boolean; categories?: string[] 
 export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
   request<{ ticket: { id: number } }>('POST', '/portal/tickets', body).then((r) => r.ticket);
 export const portalStatus = (id: number, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
+export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
+export const portalArticles = (q = '') => get<{ items: PortalArticle[] }>(`/portal/articles${qs({ q })}`).then((r) => r.items);
+export interface CsatSurvey { ticketId: number; subject: string; agentName: string | null; answered: boolean }
+export const portalCsat = (token: string) => get<{ survey: CsatSurvey }>(`/portal/csat/${encodeURIComponent(token)}`).then((r) => r.survey);
+export const portalCsatAnswer = (token: string, rating: 1 | 2 | 3, comment: string) => request('POST', `/portal/csat/${encodeURIComponent(token)}`, { rating, comment });
 
 // ---------- Me & reference data ----------
 export const getMe = () =>
@@ -92,6 +98,17 @@ export const lookupDistributor = (code: string) => get<{ distributor: Distributo
 // ---------- Tickets ----------
 export interface TicketQuery {
   view?: string;
+  region?: string;
+  state?: string;
+  depot?: string;
+  salesOrg?: string;
+  l2Agent?: string;
+  asmName?: string;
+  created?: string;
+  resDue?: string;
+  frDue?: string;
+  requesterId?: string;
+  companyId?: string;
   statusId?: string;
   priority?: string;
   severity?: string;
@@ -115,15 +132,51 @@ export const getCounts = () => get<{ counts: Counts }>('/tickets/counts').then((
 export const getTicket = (id: number) => get<TicketDetail>(`/tickets/${id}`);
 export const createTicket = (body: Json) => request<{ ticket: Ticket }>('POST', '/tickets', body).then((r) => r.ticket);
 export const updateTicket = (id: number, patch: Json) => request<{ ticket: Ticket }>('PATCH', `/tickets/${id}`, patch).then((r) => r.ticket);
-export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string }) =>
+export const addMessage = (id: number, body: { kind: 'REPLY' | 'NOTE' | 'FORWARD'; text: string; to?: string; cc?: string; statusAfter?: number }) =>
   request<{ delivery: { sent: boolean; reason?: string } | null }>('POST', `/tickets/${id}/messages`, body).then((r) => r.delivery);
 export const logCall = (id: number, body: { phone: string; direction: 'OUTBOUND' | 'INBOUND'; outcome: string; durationMins: number; notes: string }) =>
   request('POST', `/tickets/${id}/calls`, body);
 export const addTimeLog = (id: number, minutes: number, note: string) => request('POST', `/tickets/${id}/time-logs`, { minutes, note });
+export const watchTicket = (id: number, watch: boolean) => request('POST', `/tickets/${id}/watch`, { watch });
+export const linkTickets = (id: number, ids: number[], unlink = false) => request<{ linked: number[] }>('POST', `/tickets/${id}/links`, { ids, unlink });
+export const mergeTickets = (id: number, ids: number[]) => request<{ merged: number[] }>('POST', `/tickets/${id}/merge`, { ids });
+export const runScenario = (id: number, scenarioId: number) => request<{ name: string }>('POST', `/tickets/${id}/scenarios/${scenarioId}`, {});
+export const reportPresence = (id: number, mode: 'viewing' | 'replying' | 'leave') =>
+  request<{ others: PresenceAgent[] }>('POST', `/tickets/${id}/presence`, { mode }).then((r) => r.others);
+export type BulkAction = 'update' | 'close' | 'watch' | 'unwatch' | 'spam' | 'unspam' | 'trash' | 'restore' | 'purge' | 'merge';
+export const bulkTickets = (ids: number[], action: BulkAction, patch?: Json) =>
+  request<{ done: number[]; failed: { id: number; error: string }[] }>('POST', '/tickets/bulk', { ids, action, patch });
+export const exportColumns = () => get<{ columns: string[] }>('/tickets/export/columns').then((r) => r.columns);
+export const exportTickets = (q: TicketQuery, columns: string[]) =>
+  get<{ columns: string[]; rows: (string | number)[][] }>(`/tickets/export${qs({ ...q, page: undefined, pageSize: undefined, columns: columns.join(',') })}`);
+
+// ---------- To-dos, saved views, search ----------
+export const getTodos = () => get<{ items: Todo[] }>('/todos').then((r) => r.items);
+export const addTodo = (b: { text: string; dueAt?: string | null; ticketId?: number | null }) => request<{ todo: Todo }>('POST', '/todos', b).then((r) => r.todo);
+export const updateTodo = (id: number, b: { done?: boolean; text?: string; dueAt?: string | null }) => request('PATCH', `/todos/${id}`, b);
+export const deleteTodo = (id: number) => request('DELETE', `/todos/${id}`);
+export const getViews = () => get<{ views: SavedView[] }>('/views').then((r) => r.views);
+export const saveView = (b: { name: string; shared: boolean; query: TicketQuery }) => request<{ id: number }>('POST', '/views', b).then((r) => r.id);
+export const deleteView = (id: number) => request('DELETE', `/views/${id}`);
+export const globalSearch = (q: string) => get<SearchResults>(`/search${qs({ q })}`);
+
+// ---------- Contacts, companies, Solutions ----------
+export const listContacts = (q: { q?: string; page?: number; companyId?: number }) => get<{ items: ContactRow[]; total: number; page: number }>(`/contacts${qs(q)}`);
+export const getContact = (id: number) => get<ContactDetail>(`/contacts/${id}`);
+export const updateContact = (id: number, b: { name?: string; email?: string; phone?: string; mobile?: string; companyId?: number | null }) => request('PATCH', `/contacts/${id}`, b);
+export const listCompanies = () => get<{ items: Company[] }>('/companies').then((r) => r.items);
+export const saveCompany = (b: { id?: number; name: string; description?: string; domains?: string }) => request('POST', '/companies', b);
+export const listArticles = (q: { q?: string; category?: string }) => get<{ items: ArticleRow[] }>(`/articles${qs(q)}`).then((r) => r.items);
+export const getArticle = (id: number) => get<{ article: Article }>(`/articles/${id}`).then((r) => r.article);
+export const saveArticle = (b: { id?: number; category: string; folder: string; title: string; body: string; status: 'published' | 'draft'; tags: string }) => request('POST', '/articles', b);
+export const deleteArticle = (id: number) => request('DELETE', `/articles/${id}`);
+export const articleFeedback = (id: number, helpful: boolean) => request('POST', `/articles/${id}/feedback`, { helpful });
 
 // ---------- Board, dashboard, reports ----------
 export const getBoard = (q: { mine?: string; groupId?: string }) => get<{ items: TicketRow[] }>(`/board${qs(q)}`).then((r) => r.items);
 export const getDashboard = () => get<Dashboard>('/dashboard');
+export const getBreakdown = (q: { days?: number; groupId?: number }) => get<Breakdown>(`/dashboard/breakdown${qs(q)}`);
+export const getAnalytics = (q: { days?: number; groupId?: number }) => get<Analytics>(`/analytics${qs(q)}`);
 export const getDashboardInsights = (refresh = false) =>
   get<{ insights: DashboardInsights }>(`/insights/dashboard${refresh ? '?refresh=1' : ''}`).then((r) => r.insights);
 export const getTicketInsights = (id: number, generate = false) => get<TicketInsights>(`/tickets/${id}/insights${generate ? '?generate=1' : ''}`);
@@ -163,6 +216,9 @@ export const admin = {
   toggleAutomation: (id: number, active: boolean) => request('PATCH', `/admin/automations/${id}`, { active }),
   audit: () => get<{ events: AuditEvent[] }>('/admin/audit').then((r) => r.events),
   parkedMail: () => get<{ items: ParkedMail[] }>('/admin/parked-mail').then((r) => r.items),
+  scenarios: () => get<{ scenarios: Scenario[] }>('/admin/scenarios').then((r) => r.scenarios),
+  saveScenario: (b: { id?: number; name: string; description: string; actions: ScenarioAction[] }) => request('POST', '/admin/scenarios', b),
+  deleteScenario: (id: number) => request('DELETE', `/admin/scenarios/${id}`),
 };
 
 export type { ActivityItem };

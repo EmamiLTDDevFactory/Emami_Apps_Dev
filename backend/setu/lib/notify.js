@@ -43,6 +43,8 @@ function placeholders(t, extra = {}) {
         'ticket.requester.email': t.requesterEmail ?? '',
         'ticket.first_response_due': fmtIst(t.firstResponseDueAt),
         'ticket.resolution_due': fmtIst(t.resolutionDueAt),
+        'ticket.distributor.code': t.distributorCode ?? '',
+        'ticket.distributor.name': t.distributorName ?? '',
         helpdesk_name: 'Emami Secondary Helpdesk',
         ...extra,
     };
@@ -55,6 +57,9 @@ function render(text, values, html) {
         return html ? esc(v).replace(/\n/g, '<br>') : v;
     });
 }
+
+/** Plain-text {{placeholder}} fill for a ticket (scenario replies, canned text). */
+const fillPlaceholders = (text, t, extra = {}) => render(String(text), placeholders(t, extra), false);
 
 async function renderTemplate(key, t, extra = {}) {
     const { rows } = await pool.query('SELECT subject, body, enabled FROM setu.email_templates WHERE key = $1', [key]);
@@ -90,4 +95,4 @@ async function notifyAgents(t, template, to, extra = {}) {
         notify({ email, appId: APP_ID, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `setu:${t.id}:${template}` })));
 }
 
-module.exports = { emailRequester, loadTicket, notifyAgents, renderTemplate };
+module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate };

@@ -33,6 +33,25 @@ Its README covers the folder layout, roles, security measures, configuration and
 - **Canned responses**: shared ones in Admin, personal ones under **My responses** in the reply box (only the owner sees them).
 - **Daily report**: load a date range, filter on any of the 36 columns, preview, then download the matching rows.
 
+## More Freshdesk features (schema v5)
+
+- **Ticket list**: quick views plus More views (my overdue, open in my groups, urgent & high, due today, created today,
+  watching, resolved, spam, trash) with live counts; **saved views** (private, or shared by a Supervisor / Admin); filters
+  for region, state, depot, sales org, L2 agent, ASM, category, created (relative), resolution / first-response due; 8 sorts;
+  **bulk actions** on selected tickets (assign, group, status, priority, add tag, close, merge, watch, spam, trash; restore
+  and delete forever from Trash); **Export** to Excel with a column picker (Supervisor / Admin, up to 5,000 rows).
+- **Ticket**: Watch (w), Previous / Next in the list (k / j), **Scenarios** (one-click action sets, Admin > Scenarios),
+  **Merge** (conversations, calls, time logs and watchers move; later replies to the merged ticket land on the primary),
+  **Link** tickets, **child tickets** (one level; a parent resolves after its children), Print, Spam, Trash; "X is
+  replying" **collision detection**; **to-dos**; **send and set status**; canned responses fill `{{placeholders}}`;
+  **Insert article** from Solutions; the requester's **CSAT** rating.
+- **CSAT**: closing a ticket emails the requester a one-click survey (portal page `?csat=<token>`, no sign-in).
+- **Dashboard**: due today, unresolved by group, recent activity, my to-dos, CSAT; **Helpdesk dashboard** (region /
+  status / type / source / category / depot / state, every bar opens those tickets).
+- **Contacts & companies**, **Solutions** (knowledge base; also searchable on the portal), **Analytics** (Supervisor /
+  Admin: overview, volume heat-map, agent performance with CSV, territory & category, satisfaction, calls), header
+  **search** across tickets, contacts and articles.
+
 ## Insights, action points and shortcuts
 
 - **Dashboard > Insights & action points**: headline, prioritised action points, risks and this week's themes for the

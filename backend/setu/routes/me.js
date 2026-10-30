@@ -93,7 +93,7 @@ async function loadFields() {
 }
 
 router.get('/meta', wrap(async (req, res) => {
-    const [statuses, groups, agents, canned, { fields, tree }, callMode, portalEnabled] = await Promise.all([
+    const [statuses, groups, agents, canned, { fields, tree }, callMode, portalEnabled, scenarios] = await Promise.all([
         pool.query('SELECT * FROM setu.ticket_statuses ORDER BY position, id'),
         pool.query('SELECT id, name, assignment FROM setu.groups ORDER BY name'),
         pool.query('SELECT id, name, email, role, active, availability FROM setu.agents ORDER BY name'),
@@ -106,6 +106,7 @@ router.get('/meta', wrap(async (req, res) => {
         loadFields(),
         setting('call.mode'),
         setting('portal.enabled'),
+        pool.query('SELECT id, name, description FROM setu.scenarios ORDER BY position, name'),
     ]);
     res.json({
         success: true,
@@ -122,6 +123,7 @@ router.get('/meta', wrap(async (req, res) => {
         callMode: CALL_MODES.includes(callMode) ? callMode : 'tel',
         callOutcomes: CALL_OUTCOMES,
         portalEnabled: portalEnabled !== false,
+        scenarios: scenarios.rows,
     });
 }));
 

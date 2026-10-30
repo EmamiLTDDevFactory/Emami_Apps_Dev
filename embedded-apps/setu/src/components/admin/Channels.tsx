@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Bell, Copy, Globe, MessageCircle, PhoneCall } from 'lucide-react';
+import { Bell, Copy, Globe, MessageCircle, PhoneCall, Smile } from 'lucide-react';
 import { admin, setuApiUrl } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { useSetu } from '@/lib/context';
@@ -35,6 +35,7 @@ export function ChannelsTab() {
   const [events, setEvents] = useState<BellEvent[]>(['requester_reply']);
   const [scope, setScope] = useState('assignee');
   const [portal, setPortal] = useState(true);
+  const [csat, setCsat] = useState(true);
   const [callMode, setCallMode] = useState<CallMode>('tel');
   const [threadDays, setThreadDays] = useState('7');
   const [portalUrl, setPortalUrl] = useState('');
@@ -44,6 +45,7 @@ export function ChannelsTab() {
     setEvents(Array.isArray(data['bell.events']) ? (data['bell.events'] as BellEvent[]) : ['requester_reply']);
     setScope(String(data['bell.scope'] ?? 'assignee'));
     setPortal(data['portal.enabled'] !== false);
+    setCsat(data['csat.enabled'] !== false);
     setCallMode(data['call.mode'] === 'teams' ? 'teams' : 'tel');
     setThreadDays(String(data['whatsapp.threadDays'] ?? 7));
   }, [data]);
@@ -53,7 +55,7 @@ export function ChannelsTab() {
   if (!data) return <Card><Skeleton /></Card>;
   const save = async () => {
     const ok = await act.run(
-      () => admin.saveSettings({ 'bell.events': events, 'bell.scope': scope, 'portal.enabled': portal, 'call.mode': callMode, 'whatsapp.threadDays': Number(threadDays) }),
+      () => admin.saveSettings({ 'bell.events': events, 'bell.scope': scope, 'portal.enabled': portal, 'csat.enabled': csat, 'call.mode': callMode, 'whatsapp.threadDays': Number(threadDays) }),
       'Channel and bell settings saved.',
     );
     if (ok) { reload(); reloadMeta(); }
@@ -96,6 +98,15 @@ export function ChannelsTab() {
             <CopyLine value={portalUrl} />
           </Field>
           <p className="text-2xs text-muted">Each request needs a name and email; the requester gets the usual acknowledgement email. Limits: 5 tickets per 10 minutes per network, 10 per email a day.</p>
+        </div>
+      </Card>
+
+      <Card title={<span className="inline-flex items-center gap-2"><Smile size={15} className="text-accent" /> Customer satisfaction survey</span>} sub="Ask requesters to rate the support once their ticket is closed.">
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-[13px] font-medium">
+            <input type="checkbox" className={checkboxCls} checked={csat} onChange={(e) => setCsat(e.target.checked)} /> Send the survey
+          </label>
+          <p className="text-2xs text-muted">When a ticket is closed, the requester gets one email with a link to rate the support (Extremely satisfied / Neither / Extremely dissatisfied, with an optional comment). No sign-in needed. The email wording is the &apos;requester.csat&apos; template in Content. Ratings show on the ticket, the dashboard and Analytics.</p>
         </div>
       </Card>
 

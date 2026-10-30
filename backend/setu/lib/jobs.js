@@ -16,7 +16,7 @@ async function runSlaChecks(now = new Date()) {
     // ticket - are loaded, so the check stays cheap however large the queue grows.
     const { rows } = await pool.query(
         `SELECT t.id FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
-         WHERE NOT s."pausesSla" AND (
+         WHERE NOT s."pausesSla" AND NOT t.spam AND t."deletedAt" IS NULL AND (
                (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" <= $1 AND (NOT t."frReminded" OR NOT t."frViolated"))
             OR (t."resolvedAt" IS NULL AND t."resolutionDueAt" <= $1 AND (NOT t."resReminded" OR NOT t."resViolated")))`,
         [new Date(now.getTime() + lead)],
@@ -49,7 +49,7 @@ async function runTimeTriggers(now = new Date()) {
     const rules = await rulesFor('TIME');
     if (!rules.length) return 0;
     const { rows } = await pool.query(
-        `SELECT t.* FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isClosed"`,
+        `SELECT t.* FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isClosed" AND NOT t.spam AND t."deletedAt" IS NULL`,
     );
     let fired = 0;
     for (const r of rules) {

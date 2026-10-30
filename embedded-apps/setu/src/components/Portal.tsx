@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { CheckCircle2, Headset, LifeBuoy, Search, Send } from 'lucide-react';
-import { portalConfig, portalCreate, portalStatus, type PortalTicketStatus } from '@/lib/api';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Frown, Headset, LifeBuoy, Meh, Search, Send, Smile, type LucideIcon } from 'lucide-react';
+import { portalArticles, portalConfig, portalCreate, portalCsat, portalCsatAnswer, portalStatus, type CsatSurvey, type PortalArticle, type PortalTicketStatus } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { fmtDateTime } from '@/lib/format';
 import { Button, Field, Notice, Pill, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
@@ -17,7 +17,11 @@ export default function Portal() {
   const [tab, setTab] = useState<'new' | 'status'>('new');
   const [config, setConfig] = useState<{ enabled: boolean; categories?: string[] } | null>(null);
   const [error, setError] = useState('');
+  // A survey link from the ticket-closed email (?csat=<token>) shows the survey instead of the portal.
+  const [csat, setCsat] = useState<{ token: string; home: string } | null>(null);
   useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('csat');
+    if (token) { setCsat({ token, home: window.location.pathname }); return; }
     portalConfig().then(setConfig).catch((e) => setError(e instanceof Error ? e.message : 'The helpdesk could not be reached.'));
   }, []);
 
@@ -34,8 +38,9 @@ export default function Portal() {
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-6">
+        {csat && <CsatSurveyCard token={csat.token} home={csat.home} />}
         {error && <Notice>{error}</Notice>}
-        {!config && !error && <div className="grid h-40 place-items-center"><Spinner /></div>}
+        {!csat && !config && !error && <div className="grid h-40 place-items-center"><Spinner /></div>}
         {config && !config.enabled && (
           <div className="rounded-2xl border border-line bg-panel p-6 text-center shadow-card">
             <LifeBuoy size={28} className="mx-auto text-accent" />
@@ -43,10 +48,10 @@ export default function Portal() {
             <p className="mt-1 text-sm text-muted">Please email <a className="font-semibold text-accent" href="mailto:emami.helpdesk@emamigroup.com">emami.helpdesk@emamigroup.com</a> instead.</p>
           </div>
         )}
-        {config?.enabled && (
+        {!csat && config?.enabled && (
           <>
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
-            {tab === 'new' ? <NewRequest categories={config.categories ?? []} /> : <StatusCheck />}
+            {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} /></> : <StatusCheck />}
           </>
         )}
         <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href="mailto:emami.helpdesk@emamigroup.com">emami.helpdesk@emamigroup.com</a>. Please do not share passwords or OTPs in a ticket.</p>
@@ -156,6 +161,159 @@ function StatusCheck() {
           </dl>
           <p className="mt-3 text-2xs text-muted">The helpdesk&apos;s replies are in your email. To add information, reply to that email.</p>
         </div>
+      )}
+    </div>
+  );
+}
+
+const RATINGS: { value: 1 | 2 | 3; label: string; icon: LucideIcon; tone: string }[] = [
+  { value: 3, label: 'Extremely satisfied', icon: Smile, tone: 'text-good' },
+  { value: 2, label: 'Neither satisfied nor dissatisfied', icon: Meh, tone: 'text-warn' },
+  { value: 1, label: 'Extremely dissatisfied', icon: Frown, tone: 'text-bad' },
+];
+
+/** Satisfaction survey opened from the link in the ticket-closed email. No sign-in; the token identifies the ticket. */
+function CsatSurveyCard({ token, home }: { token: string; home: string }) {
+  const [survey, setSurvey] = useState<CsatSurvey | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [rating, setRating] = useState<1 | 2 | 3 | null>(null);
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    portalCsat(token).then(setSurvey).catch((e) => setLoadError(e instanceof Error ? e.message : 'This survey link could not be opened.'));
+  }, [token]);
+
+  const submit = async () => {
+    if (!rating) return;
+    setBusy(true);
+    setError('');
+    try {
+      await portalCsatAnswer(token, rating, comment.trim());
+      setDone(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send your rating.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const homeLink = <a href={home} className="inline-flex items-center gap-1 text-sm font-semibold text-accent"><ArrowLeft size={14} /> Go to the support portal</a>;
+  const box = (children: ReactNode, border = 'border-line') => <div className={cx('rounded-2xl border bg-panel p-6 shadow-card', border)}>{children}</div>;
+
+  if (loadError) {
+    return box(
+      <div className="text-center">
+        <LifeBuoy size={28} className="mx-auto text-accent" />
+        <h2 className="mt-2 text-base font-bold">We could not open this survey</h2>
+        <p className="mt-1 text-sm text-muted">{loadError}</p>
+        <p className="mt-1 text-sm text-muted">The link may have expired or been copied incompletely. Thank you for taking the time all the same.</p>
+        <div className="mt-4">{homeLink}</div>
+      </div>,
+    );
+  }
+  if (!survey) return <div className="grid h-40 place-items-center"><Spinner /></div>;
+  if (done || survey.answered) {
+    return box(
+      <div className="text-center">
+        <CheckCircle2 size={32} className="mx-auto text-good" />
+        <h2 className="mt-2 text-lg font-extrabold">{done ? 'Thank you for your feedback' : 'Thank you - we already have your rating'}</h2>
+        <p className="mt-1 text-sm text-muted">Ticket #{survey.ticketId} - {survey.subject}</p>
+        <div className="mt-4">{homeLink}</div>
+      </div>,
+      'border-good/30',
+    );
+  }
+  return box(
+    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Headset size={16} className="text-accent" />
+          <span className="min-w-0 flex-1 font-semibold"><span className="num text-muted">Ticket #{survey.ticketId}</span> - {survey.subject}</span>
+        </div>
+        {survey.agentName && <p className="mt-1 text-xs text-muted">Handled by {survey.agentName}</p>}
+      </div>
+      <h2 className="text-base font-bold">How would you rate your overall satisfaction for the resolution provided by the agent?</h2>
+      <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Your rating">
+        {RATINGS.map((r) => {
+          const Icon = r.icon;
+          const on = rating === r.value;
+          return (
+            <button
+              key={r.value}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => setRating(r.value)}
+              className={cx('flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-center text-sm font-semibold transition-all', on ? 'border-accent bg-accent/10 ring-2 ring-accent/20' : 'border-line hover:bg-sunken')}
+            >
+              <Icon size={36} className={r.tone} />
+              {r.label}
+            </button>
+          );
+        })}
+      </div>
+      <Field label="Comment (optional)" hint={`${comment.length}/1000`}>
+        <textarea rows={4} className={textareaCls} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={1000} placeholder="Anything you would like to tell us" />
+      </Field>
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="submit" variant="primary" disabled={busy || !rating}>{busy ? <Spinner /> : <Send size={14} />} Submit</Button>
+        {homeLink}
+      </div>
+    </form>,
+  );
+}
+
+/** "Find an answer first": search the published help articles before raising a ticket. Bodies are shown as plain text. */
+function ArticleSearch() {
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState<PortalArticle[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [openId, setOpenId] = useState<number | null>(null);
+  useEffect(() => {
+    const term = q.trim();
+    if (!term) { setItems(null); setError(''); setBusy(false); return; }
+    let live = true;
+    setBusy(true);
+    const t = setTimeout(() => {
+      portalArticles(term)
+        .then((r) => { if (live) { setItems(r.slice(0, 8)); setError(''); } })
+        .catch((e) => { if (live) { setItems(null); setError(e instanceof Error ? e.message : 'Could not search the articles.'); } })
+        .finally(() => { if (live) setBusy(false); });
+    }, 350);
+    return () => { live = false; clearTimeout(t); };
+  }, [q]);
+
+  const term = q.trim();
+  return (
+    <div className="space-y-2 rounded-2xl border border-line bg-panel p-4 shadow-card">
+      <label className="relative block">
+        <span className="sr-only">Search help articles</span>
+        <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+        <input className={cx(inputCls, 'pl-8 pr-9')} type="search" placeholder="Search help articles" value={q} onChange={(e) => setQ(e.target.value)} maxLength={200} />
+        {busy && <Spinner className="absolute right-3 top-2.5 text-faint" />}
+      </label>
+      {term && error && <p className="text-2xs text-bad">{error}</p>}
+      {term && !busy && items && items.length === 0 && <p className="text-xs text-muted">No articles found - raise a ticket below.</p>}
+      {term && items && items.length > 0 && (
+        <ul className="divide-y divide-line">
+          {items.map((a) => {
+            const open = openId === a.id;
+            return (
+              <li key={a.id}>
+                <button type="button" aria-expanded={open} onClick={() => setOpenId(open ? null : a.id)} className="flex w-full items-center gap-2 py-2 text-left text-sm font-semibold hover:text-accent">
+                  {open ? <ChevronDown size={14} className="shrink-0" /> : <ChevronRight size={14} className="shrink-0" />}
+                  <BookOpen size={14} className="shrink-0 text-accent" />
+                  <span className="min-w-0 flex-1">{a.title}</span>
+                </button>
+                {open && <div className="whitespace-pre-wrap break-words pb-3 pl-6 text-[13px] text-ink">{a.body}</div>}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

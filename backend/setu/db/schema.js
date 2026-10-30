@@ -7,7 +7,7 @@ const { seed } = require('./seed');
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 async function initSchema() {
     try {
@@ -390,6 +390,7 @@ async function initSchema() {
 
     await upgradeV3();
     await upgradeV4();
+    await upgradeV5();
     await seed();
     await pool.query(
         `INSERT INTO setu.settings (key, value) VALUES ('schema.version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
@@ -465,6 +466,108 @@ async function upgradeV4() {
         `UPDATE setu.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
           WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%'`,
     );
+}
+
+// v5: Freshdesk parity - watchers, linked / parent-child / merged tickets, spam and trash, to-dos, saved views,
+// scenarios, collision detection, CSAT survey links and the Solutions knowledge base.
+async function upgradeV5() {
+    await pool.query(`
+        ALTER TABLE setu.tickets
+            ADD COLUMN IF NOT EXISTS "parentId" integer REFERENCES setu.tickets(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS "mergedIntoId" integer REFERENCES setu.tickets(id) ON DELETE SET NULL,
+            ADD COLUMN IF NOT EXISTS spam boolean NOT NULL DEFAULT false,
+            ADD COLUMN IF NOT EXISTS "deletedAt" timestamptz
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS tickets_parent_idx ON setu.tickets ("parentId") WHERE "parentId" IS NOT NULL');
+    await pool.query('CREATE INDEX IF NOT EXISTS tickets_hidden_idx ON setu.tickets ("deletedAt", spam) WHERE spam OR "deletedAt" IS NOT NULL');
+    for (const col of ['region', 'state', 'depot']) {
+        await pool.query(`CREATE INDEX IF NOT EXISTS tickets_${col}_idx ON setu.tickets (${col})`);
+    }
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.ticket_watchers (
+            "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY ("ticketId", "agentId")
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS ticket_watchers_agent_idx ON setu.ticket_watchers ("agentId")');
+    // A link is stored both ways, so either ticket finds the other with one indexed lookup.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.ticket_links (
+            "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            "linkedId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY ("ticketId", "linkedId"),
+            CHECK ("ticketId" <> "linkedId")
+        )
+    `);
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.todos (
+            id serial PRIMARY KEY,
+            "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            "ticketId" integer REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            text text NOT NULL,
+            done boolean NOT NULL DEFAULT false,
+            "dueAt" timestamptz,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS todos_agent_idx ON setu.todos ("agentId", done)');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.saved_views (
+            id serial PRIMARY KEY,
+            "ownerAgentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            name text NOT NULL,
+            shared boolean NOT NULL DEFAULT false,
+            query jsonb NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    // Who has a ticket open right now ("X is replying"). Rows older than a minute are ignored and cleared lazily.
+    await pool.query(`
+        CREATE UNLOGGED TABLE IF NOT EXISTS setu.ticket_presence (
+            "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            mode text NOT NULL CHECK (mode IN ('viewing', 'replying')),
+            at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY ("ticketId", "agentId")
+        )
+    `);
+    await pool.query(`
+        ALTER TABLE setu.scenarios
+            ADD COLUMN IF NOT EXISTS description text,
+            ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0
+    `);
+    // CSAT: one survey link per closed ticket; the answer keeps the agent it was about.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.csat_requests (
+            "ticketId" integer PRIMARY KEY REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            token text NOT NULL UNIQUE,
+            "sentAt" timestamptz NOT NULL DEFAULT now(),
+            "answeredAt" timestamptz
+        )
+    `);
+    await pool.query('ALTER TABLE setu.csat_responses ADD COLUMN IF NOT EXISTS "agentId" integer REFERENCES setu.agents(id) ON DELETE SET NULL');
+    await pool.query('CREATE INDEX IF NOT EXISTS csat_responses_ticket_idx ON setu.csat_responses ("ticketId")');
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.articles (
+            id serial PRIMARY KEY,
+            category text NOT NULL DEFAULT 'General',
+            folder text NOT NULL DEFAULT 'General',
+            title text NOT NULL UNIQUE,
+            body text NOT NULL,
+            status text NOT NULL DEFAULT 'draft' CHECK (status IN ('published', 'draft')),
+            tags text[] NOT NULL DEFAULT '{}',
+            views integer NOT NULL DEFAULT 0,
+            helpful integer NOT NULL DEFAULT 0,
+            "notHelpful" integer NOT NULL DEFAULT 0,
+            "authorAgentId" integer REFERENCES setu.agents(id) ON DELETE SET NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('ALTER TABLE setu.companies ADD COLUMN IF NOT EXISTS "createdAt" timestamptz NOT NULL DEFAULT now()');
 }
 
 module.exports = { SCHEMA_VERSION, initSchema };

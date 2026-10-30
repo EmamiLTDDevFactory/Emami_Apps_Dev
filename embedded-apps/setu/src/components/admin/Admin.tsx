@@ -10,8 +10,9 @@ import { CannedTab, TemplatesTab } from './Content';
 import { DistributorsTab } from './Distributors';
 import { AuditTab, AutomationsTab, ContactsTab, ParkedTab, SettingsTab } from './System';
 import { ChannelsTab } from './Channels';
+import ScenariosTab from './Scenarios';
 
-type TabId = 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'groups', label: 'Groups' },
@@ -21,6 +22,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'fields', label: 'Fields' },
   { id: 'templates', label: 'Email templates' },
   { id: 'canned', label: 'Canned responses' },
+  { id: 'scenarios', label: 'Scenarios' },
   { id: 'distributors', label: 'Distributor master' },
   { id: 'settings', label: 'Settings' },
   { id: 'channels', label: 'Channels & bell' },
@@ -72,6 +74,7 @@ export default function Admin() {
         {tab === 'fields' && <FieldsTab />}
         {tab === 'templates' && <TemplatesTab />}
         {tab === 'canned' && <CannedTab />}
+        {tab === 'scenarios' && <ScenariosTab />}
         {tab === 'distributors' && <DistributorsTab />}
         {tab === 'settings' && <SettingsTab />}
         {tab === 'channels' && <ChannelsTab />}

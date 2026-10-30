@@ -108,7 +108,23 @@ const SEED_TEMPLATES = [
     { key: 'agent.resolution_violated', audience: 'agent', subject: 'Resolution overdue: {{ticket.subject}} [#{{ticket.id}}]', body: 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}' + SIGN },
     { key: 'agent.first_response_reminder', audience: 'agent', subject: 'First response due soon: {{ticket.subject}} [#{{ticket.id}}]', body: 'Ticket {{ticket.id}} needs a first response by {{ticket.first_response_due}}.<br><br>Open ticket: {{ticket.url}}' + SIGN },
     { key: 'agent.resolution_reminder', audience: 'agent', subject: 'Resolution due soon: {{ticket.subject}} [#{{ticket.id}}]', body: 'Ticket {{ticket.id}} is due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}' + SIGN },
+    {
+        key: 'requester.csat', audience: 'requester',
+        subject: 'How did we do? Ticket {{ticket.id}} - {{ticket.subject}}',
+        body: 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Secondary Helpdesk',
+    },
     { key: 'agent.escalation_l3', audience: 'agent', subject: 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', body: 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}' + SIGN },
+];
+
+// Scenarios mirrored from the Freshdesk account: one click runs a set of actions on the ticket.
+const SEED_SCENARIOS = [
+    { name: 'Assign to QA', description: 'Customer reported bugs are assigned to L2 in a single click', actions: [{ type: 'setField', field: 'type', value: 'CDMS' }, { type: 'setGroup', group: 'L2 Support' }] },
+    { name: 'Mark as Feature Request', description: 'Mark as New Requirement and move to L2', actions: [{ type: 'setStatus', value: 13 }, { type: 'setGroup', group: 'L2 Support' }] },
+    {
+        name: 'Request Details from sender via Email', description: 'Asks the requester for missing distributor details',
+        actions: [{ type: 'setStatus', value: 12 }, { type: 'reply', text: 'Dear {{ticket.requester.name}},\n\nPlease share the Distributor Code, Depot and a screenshot of the error so we can proceed.' }],
+    },
+    { name: 'Send Acknowledgement', description: 'Acknowledges receipt to the requester', actions: [{ type: 'reply', text: 'Dear {{ticket.requester.name}},\n\nWe have received your request #{{ticket.id}}. Our team is working on it.' }] },
 ];
 
 async function seed() {
@@ -182,6 +198,13 @@ async function seed() {
             [r.name, r.trigger, r.position, JSON.stringify(r.conditions), JSON.stringify(r.actions)],
         );
     }
+    for (const [i, s] of SEED_SCENARIOS.entries()) {
+        const actions = s.actions.map(({ group, ...a }) => (group ? { ...a, value: groupIds[group] ?? null } : a));
+        await pool.query(
+            'INSERT INTO setu.scenarios (name, description, actions, position) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO NOTHING',
+            [s.name, s.description, JSON.stringify(actions), i],
+        );
+    }
     for (const t of SEED_TEMPLATES) {
         await pool.query(
             'INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING',
@@ -194,6 +217,7 @@ async function seed() {
     for (const [key, value] of [
         ['escalation.groupId', 0], ['escalation.notifyEmails', []], ['sla.reminderMinutes', 30],
         ['bell.events', ['requester_reply']], ['bell.scope', 'assignee'], ['portal.enabled', true], ['call.mode', 'tel'], ['whatsapp.threadDays', 7],
+        ['csat.enabled', true],
     ]) {
         await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, JSON.stringify(value)]);
     }
