@@ -87,6 +87,14 @@ async function resolveDisplayName(req) {
  * public.items/item_history (left behind by an earlier standalone run against this same DB) into
  * the new schema — the originals are left in place, not dropped.
  */
+const AREA_GROUPS = ['SAP', 'Non-SAP'];
+const AREA_GROUP_DEFAULTS = {
+    SAP: ['sap', 'sd', 'fi-ar', 'fi', 'co', 'mm', 'pp', 'wm', 'qm', 'hr', 'bw', 'bo', 'sac', 'fiori', 'fiori application',
+        'enterprise portal - sap', '3rd party application / sap', 'cross-functional', 'mdm', 'p2p'],
+    'Non-SAP': ['3rd party application/non sap', 'cdms', 'happay', 'tableau', 'msfa', 'rpa', 'emami apps'],
+};
+const areaGroupOf = (v) => (AREA_GROUPS.includes(v) ? v : null);
+
 async function initSchema() {
     await pool.query('CREATE SCHEMA IF NOT EXISTS dev_tracker');
     await pool.query(`
@@ -191,6 +199,14 @@ async function initSchema() {
     // 'holiday' (Resource Utilization's working-day calendar) added after this table already
     // existed in some deployments — widen the CHECK constraint the same idempotent way
     // "changedByUsername" was added to item_history above, instead of a one-off migration script.
+    // Areas are grouped SAP / Non-SAP. Known names are classified once; anything else (and anything an admin
+    // has not classified yet) stays NULL until an admin picks a group in Master Data.
+    await pool.query(`ALTER TABLE dev_tracker.master_data ADD COLUMN IF NOT EXISTS "areaGroup" text`);
+    await pool.query(
+        `UPDATE dev_tracker.master_data SET "areaGroup" = CASE WHEN lower(value) = ANY($1) THEN 'SAP' ELSE 'Non-SAP' END
+          WHERE category = 'area' AND "areaGroup" IS NULL AND (lower(value) = ANY($1) OR lower(value) = ANY($2))`,
+        [AREA_GROUP_DEFAULTS.SAP, AREA_GROUP_DEFAULTS['Non-SAP']]
+    );
     await pool.query(`ALTER TABLE dev_tracker.master_data DROP CONSTRAINT IF EXISTS master_data_category_check`);
     await pool.query(`
         ALTER TABLE dev_tracker.master_data ADD CONSTRAINT master_data_category_check CHECK (category IN
@@ -313,6 +329,22 @@ async function initProjectManagementSchema() {
         )
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS comments_item_idx ON dev_tracker.comments ("itemId")`);
+
+    // Documents attached to an issue itself (the CCB request's own documents stay in ccb.attachments).
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS dev_tracker.attachments (
+            id serial PRIMARY KEY,
+            "itemId" text NOT NULL REFERENCES dev_tracker.items(id) ON DELETE CASCADE,
+            "fileName" text NOT NULL,
+            "mimeType" text NOT NULL,
+            "sizeBytes" int NOT NULL,
+            data bytea NOT NULL,
+            "uploadedBy" text NOT NULL,
+            "uploadedByName" text,
+            "uploadedAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS attachments_item_idx ON dev_tracker.attachments ("itemId")');
 }
 
 // Seeded once, only if the table is empty — these match exactly what used to be hardcoded in
@@ -442,6 +474,9 @@ async function canAssign(email) {
         throw err;
     }
 }
+// A Completed or Cancelled issue's assignment is frozen; reopening it (in the same save or before) unlocks it.
+const ASSIGN_LOCKED_STATUSES = ['Completed', 'Cancelled'];
+const ASSIGN_LOCKED_ERROR = 'Task Assigned to cannot be changed on a Completed or Cancelled issue. Reopen it first.';
 const samePeople = (a, b) => String(a || '').split(',').map((x) => x.trim()).filter(Boolean).sort().join('|')
     === String(b || '').split(',').map((x) => x.trim()).filter(Boolean).sort().join('|');
 
@@ -507,8 +542,11 @@ router.put('/items/:id', requireDevTrackerAccess, async (req, res) => {
         if ((row.developer || null) !== (existing.developer || null) && !assigneeAllowed(row.developer)) {
             return res.status(400).json({ error: ASSIGNEE_ERROR });
         }
-        if (!samePeople(row.developer, existing.developer) && !(await canAssign(req.verifiedEmail))) {
-            return res.status(403).json({ error: ASSIGN_ROLE_ERROR });
+        if (!samePeople(row.developer, existing.developer)) {
+            if (ASSIGN_LOCKED_STATUSES.includes(existing.status) && ASSIGN_LOCKED_STATUSES.includes(row.status)) {
+                return res.status(409).json({ error: ASSIGN_LOCKED_ERROR });
+            }
+            if (!(await canAssign(req.verifiedEmail))) return res.status(403).json({ error: ASSIGN_ROLE_ERROR });
         }
         if (row.epicId && row.epicId === req.params.id) row.epicId = null;
         if (row.parentId && row.parentId === req.params.id) row.parentId = null;
@@ -639,6 +677,147 @@ router.delete('/comments/:id', requireDevTrackerAccess, async (req, res) => {
     } catch (err) {
         console.error('[dev-tracker]', err);
         res.status(500).json({ error: 'Failed to delete comment' });
+    }
+});
+
+
+// ============================================================
+// Attachments — documents on an issue. Anyone with app access can view and add them; the uploader or a
+// Dev Tracker admin can remove one. An issue created from an approved CCB request also shows that
+// request's documents (read-only here, managed in the CCB).
+// ============================================================
+const ATTACHMENT_TYPES = {
+    pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    csv: 'text/csv', txt: 'text/plain', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+    msg: 'application/vnd.ms-outlook', eml: 'message/rfc822', zip: 'application/zip', vsdx: 'application/vnd.ms-visio.drawing',
+};
+const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024; // nginx allows 10 MB per request
+const ATTACHMENT_MAX_PER_ITEM = 25;
+const ATTACHMENT_COLS = 'id, "itemId", "fileName", "mimeType", "sizeBytes", "uploadedBy", "uploadedByName", "uploadedAt"';
+const rawAttachment = express.raw({ type: () => true, limit: ATTACHMENT_MAX_BYTES });
+function readAttachment(req, res, next) {
+    rawAttachment(req, res, (err) => {
+        if (err) return res.status(err.status === 413 ? 413 : 400).json({ error: err.status === 413 ? 'The file is larger than 8 MB.' : 'Could not read the file.' });
+        next();
+    });
+}
+function sendFile(res, a) {
+    res.set({
+        'Content-Type': a.mimeType,
+        'Content-Disposition': `attachment; filename="${a.fileName.replace(/[^\x20-\x7e]|"/g, '_')}"; filename*=UTF-8''${encodeURIComponent(a.fileName)}`,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'private, no-store',
+    });
+    res.send(a.data);
+}
+/** The CCB request this issue came from, with its documents — null when there is none (or no CCB on this server). */
+async function ccbDocumentsFor(itemId) {
+    try {
+        const { rows: [r] } = await pool.query('SELECT id, "crNo", title FROM ccb.requests WHERE "devTrackerItemId" = $1 ORDER BY id DESC LIMIT 1', [itemId]);
+        if (!r) return null;
+        const { rows } = await pool.query(
+            `SELECT a.id, a."fileName", a."mimeType", a."sizeBytes", a.stage, a."uploadedBy", a."uploadedAt",
+                    COALESCE(NULLIF((SELECT u.name FROM emami_apps.users u WHERE u.email = a."uploadedBy" LIMIT 1), ''), a."uploadedBy") AS "uploadedByName"
+               FROM ccb.attachments a
+              WHERE a."requestId" = $1 ORDER BY a."uploadedAt"`,
+            [r.id]
+        );
+        return { requestId: r.id, crNo: r.crNo, title: r.title, attachments: rows };
+    } catch (err) {
+        if (err.code === '42P01' || err.code === '3F000') return null;
+        throw err;
+    }
+}
+
+router.get('/items/:id/attachments', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = callerEmail(req);
+        const admin = await isAdminEmail(email);
+        const { rows } = await pool.query(`SELECT ${ATTACHMENT_COLS} FROM dev_tracker.attachments WHERE "itemId" = $1 ORDER BY "uploadedAt"`, [req.params.id]);
+        res.json({
+            attachments: rows.map((a) => ({ ...a, canRemove: admin || a.uploadedBy === email })),
+            ccb: await ccbDocumentsFor(req.params.id),
+        });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Failed to load attachments' });
+    }
+});
+
+router.post('/items/:id/attachments', requireDevTrackerAccess, readAttachment, async (req, res) => {
+    const fileName = String(req.query.name || '').trim().slice(0, 200).replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+    const ext = (/\.([a-z0-9]+)$/i.exec(fileName)?.[1] || '').toLowerCase();
+    const data = Buffer.isBuffer(req.body) ? req.body : null;
+    if (!fileName || !ATTACHMENT_TYPES[ext]) return res.status(400).json({ error: `This file type is not allowed. Allowed: ${Object.keys(ATTACHMENT_TYPES).join(', ')}.` });
+    if (!data || !data.length) return res.status(400).json({ error: 'The file is empty.' });
+    try {
+        const { rows: [item] } = await pool.query('SELECT id FROM dev_tracker.items WHERE id = $1', [req.params.id]);
+        if (!item) return res.status(404).json({ error: 'Item not found' });
+        const n = (await pool.query('SELECT COUNT(*)::int n FROM dev_tracker.attachments WHERE "itemId" = $1', [req.params.id])).rows[0].n;
+        if (n >= ATTACHMENT_MAX_PER_ITEM) return res.status(409).json({ error: `An issue can hold up to ${ATTACHMENT_MAX_PER_ITEM} documents.` });
+        const name = await resolveDisplayName(req);
+        const { rows: [a] } = await pool.query(
+            `INSERT INTO dev_tracker.attachments ("itemId", "fileName", "mimeType", "sizeBytes", data, "uploadedBy", "uploadedByName")
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${ATTACHMENT_COLS}`,
+            [req.params.id, fileName, ATTACHMENT_TYPES[ext], data.length, data, callerEmail(req), name]
+        );
+        await pool.query(
+            `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, 'attachment', '', $2, $3)`,
+            [req.params.id, fileName, name]
+        );
+        await pool.query('UPDATE dev_tracker.items SET "updatedAt" = now() WHERE id = $1', [req.params.id]);
+        res.status(201).json({ ...a, canRemove: true });
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Could not attach the document.' });
+    }
+});
+
+router.get('/items/:id/attachments/:attId', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const { rows: [a] } = await pool.query('SELECT "fileName", "mimeType", data FROM dev_tracker.attachments WHERE id = $1 AND "itemId" = $2', [Number(req.params.attId) || 0, req.params.id]);
+        if (!a) return res.status(404).json({ error: 'Document not found.' });
+        sendFile(res, a);
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Could not download the document.' });
+    }
+});
+
+// A CCB document, only through the issue that request created.
+router.get('/items/:id/ccb-attachments/:attId', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const { rows: [a] } = await pool.query(
+            `SELECT a."fileName", a."mimeType", a.data FROM ccb.attachments a JOIN ccb.requests r ON r.id = a."requestId"
+              WHERE a.id = $1 AND r."devTrackerItemId" = $2`,
+            [Number(req.params.attId) || 0, req.params.id]
+        );
+        if (!a) return res.status(404).json({ error: 'Document not found.' });
+        sendFile(res, a);
+    } catch (err) {
+        if (err.code === '42P01' || err.code === '3F000') return res.status(404).json({ error: 'Document not found.' });
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Could not download the document.' });
+    }
+});
+
+router.delete('/items/:id/attachments/:attId', requireDevTrackerAccess, async (req, res) => {
+    try {
+        const email = callerEmail(req);
+        const { rows: [a] } = await pool.query(`SELECT ${ATTACHMENT_COLS} FROM dev_tracker.attachments WHERE id = $1 AND "itemId" = $2`, [Number(req.params.attId) || 0, req.params.id]);
+        if (!a) return res.status(404).json({ error: 'Document not found.' });
+        if (a.uploadedBy !== email && !(await isAdminEmail(email))) return res.status(403).json({ error: 'Only the person who attached it (or an admin) can remove it.' });
+        await pool.query('DELETE FROM dev_tracker.attachments WHERE id = $1', [a.id]);
+        await pool.query(
+            `INSERT INTO dev_tracker.item_history ("itemId", field, "oldValue", "newValue", "changedByUsername") VALUES ($1, 'attachment', $2, '', $3)`,
+            [req.params.id, a.fileName, await resolveDisplayName(req)]
+        );
+        res.status(204).end();
+    } catch (err) {
+        console.error('[dev-tracker]', err);
+        res.status(500).json({ error: 'Could not remove the document.' });
     }
 });
 
@@ -838,7 +1017,7 @@ router.get('/master-data', requireDevTrackerAccess, async (req, res) => {
 
 // CREATE a new dropdown value
 router.post('/master-data', requireDevTrackerAdmin, async (req, res) => {
-    const { category, value, color, softColor } = req.body || {};
+    const { category, value, color, softColor, areaGroup } = req.body || {};
     if (!MASTER_DATA_CATEGORIES.includes(category)) {
         return res.status(400).json({ error: 'Invalid category' });
     }
@@ -852,9 +1031,9 @@ router.post('/master-data', requireDevTrackerAdmin, async (req, res) => {
         );
         const id = crypto.randomUUID();
         const result = await pool.query(
-            `INSERT INTO dev_tracker.master_data (id, category, value, color, "softColor", "sortOrder")
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [id, category, String(value).trim(), color || null, softColor || null, maxResult.rows[0].next]
+            `INSERT INTO dev_tracker.master_data (id, category, value, color, "softColor", "sortOrder", "areaGroup")
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [id, category, String(value).trim(), color || null, softColor || null, maxResult.rows[0].next, category === 'area' ? areaGroupOf(areaGroup) : null]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -868,7 +1047,7 @@ router.post('/master-data', requireDevTrackerAdmin, async (req, res) => {
 
 // UPDATE a dropdown value — rename, recolor, or toggle active (soft-delete)
 router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
-    const { value, color, softColor, active, sortOrder } = req.body || {};
+    const { value, color, softColor, active, sortOrder, areaGroup } = req.body || {};
     try {
         const existing = await pool.query('SELECT * FROM dev_tracker.master_data WHERE id = $1', [req.params.id]);
         if (!existing.rows[0]) return res.status(404).json({ error: 'Not found' });
@@ -876,7 +1055,7 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
 
         const result = await pool.query(
             `UPDATE dev_tracker.master_data SET
-                value = $2, color = $3, "softColor" = $4, active = $5, "sortOrder" = $6, "updatedAt" = now()
+                value = $2, color = $3, "softColor" = $4, active = $5, "sortOrder" = $6, "areaGroup" = $7, "updatedAt" = now()
              WHERE id = $1 RETURNING *`,
             [
                 req.params.id,
@@ -884,7 +1063,8 @@ router.put('/master-data/:id', requireDevTrackerAdmin, async (req, res) => {
                 color !== undefined ? color : current.color,
                 softColor !== undefined ? softColor : current.softColor,
                 active !== undefined ? active : current.active,
-                sortOrder !== undefined ? sortOrder : current.sortOrder
+                sortOrder !== undefined ? sortOrder : current.sortOrder,
+                current.category === 'area' && areaGroup !== undefined ? areaGroupOf(areaGroup) : current.areaGroup,
             ]
         );
         res.json(result.rows[0]);

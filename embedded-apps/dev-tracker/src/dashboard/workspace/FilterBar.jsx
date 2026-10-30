@@ -3,6 +3,7 @@ import { Avatar, Popover, TypeIcon } from './ui.jsx';
 import { UNASSIGNED, EMPTY_FILTERS, activeFilterCount } from './filters.js';
 import { ISSUE_TYPES, issueKey, parseLabels, splitPeople } from '../../shared/pm.js';
 import { SearchIcon } from '../../shared/icons.jsx';
+import { LANDSCAPES, UNCLASSIFIED, landscapeOf } from '../../shared/masterData.js';
 
 const VISIBLE_AVATARS = 7;
 
@@ -146,7 +147,12 @@ export default function FilterBar({ filters, setFilters, items, epics, options, 
         options={ISSUE_TYPES.map((t) => ({ value: t.key, label: t.key }))}
         renderOption={(o) => <><TypeIcon type={o.value} /> <span>{o.label}</span></>}
       />
-      <MultiSelect label="Module" values={filters.areas} onChange={(v) => set({ areas: v })} options={(options.area || []).map((a) => ({ value: a, label: a }))} />
+      <MultiSelect label="Landscape" values={filters.landscapes || []} onChange={(v) => set({ landscapes: v })} options={[...LANDSCAPES, UNCLASSIFIED].map((g) => ({ value: g, label: g }))} />
+      <MultiSelect
+        label="Module" values={filters.areas} onChange={(v) => set({ areas: v })}
+        options={(options.area || []).filter((a) => !(filters.landscapes || []).length || filters.landscapes.includes(landscapeOf(a, options.areaGroupOf))).map((a) => ({ value: a, label: a, group: landscapeOf(a, options.areaGroupOf) }))}
+        renderOption={(o) => <><span>{o.label}</span><span className="pm-pop-tag">{o.group}</span></>}
+      />
       {labelOptions.length > 0 && <MultiSelect label="Label" values={filters.labels} onChange={(v) => set({ labels: v })} options={labelOptions} />}
 
       <button type="button" className={`pm-filter-btn${filters.onlyMine ? ' is-on' : ''}`} onClick={() => set({ onlyMine: !filters.onlyMine })} aria-pressed={filters.onlyMine}>Only my issues</button>

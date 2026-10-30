@@ -78,7 +78,10 @@ export const ROLES = Object.keys(ROLE_META);
 
 // IT area of a request (stored in the request's "sapSystem" column) and suggested systems / modules for
 // each — the CCB covers every IT change, not only ERP. Users can also type their own.
-export const IT_AREAS = ['ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
+// New requests pick SAP or Non-SAP (LANDSCAPES), then the affected areas from Dev Tracker's Area master data
+// in that group. The older areas stay valid for requests logged before.
+export const LANDSCAPES = ['SAP', 'Non-SAP'];
+export const IT_AREAS = [...LANDSCAPES, 'ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
 export const AREA_MODULES = {
   ERP: ['SD', 'MM', 'PP', 'QM', 'PM', 'WM', 'FI', 'CO', 'HR', 'BW', 'ABAP', 'Basis'],
   'Application Development': ['Web portal', 'Mobile app', 'Emami Apps hub', 'Integration / API', 'Workflow', 'Database'],

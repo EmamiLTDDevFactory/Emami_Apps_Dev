@@ -25,3 +25,12 @@
   color: var(--accent); background: var(--bg-alt); border-bottom: 1px solid var(--border);
 }
 .shelf-group:first-child { border-radius: 18px 18px 0 0; }
+
+/* Area: SAP / Non-SAP groups; "→ Non-SAP" moves a value across (shown on hover). */
+.area-group + .area-group { margin-top: 14px; }
+.area-group-head { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2, var(--muted)); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.area-group-head span { font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: var(--muted); letter-spacing: 0; }
+.area-move { display: none; }
+.chip:hover .area-move, .chip:focus-within .area-move { display: inline-flex; }
+.area-move button { background: none; border: 1px solid currentColor; border-radius: 999px; padding: 0 7px; margin-left: 4px; font: inherit; font-size: 10.5px; line-height: 17px; color: inherit; opacity: .7; cursor: pointer; white-space: nowrap; }
+.area-move button:hover { opacity: 1; }

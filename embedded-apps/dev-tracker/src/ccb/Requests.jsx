@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
 import RequestForm from './RequestForm.jsx';
 import RequestDetail from './RequestDetail.jsx';
-import { Blocker, Button, Card, CcbShell, Empty, Loading, Meta, PageHeader, Person, Pill, ScopePill, Tabs, useCcbMe, useToast } from './ui.jsx';
-import { CATEGORY_META, PRIORITY_META, PROCESS_STEPS, SLA_TONE, STATUS_META, currentStepIndex, dateOnly, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, slaOf, stageLabel, todayIso } from './model.js';
+import { Blocker, Button, Card, CcbShell, Empty, LandscapePill, Loading, Meta, PageHeader, Person, Pill, ScopePill, Tabs, useCcbMe, useToast } from './ui.jsx';
+import { CATEGORY_META, LANDSCAPES, PRIORITY_META, PROCESS_STEPS, SLA_TONE, STATUS_META, currentStepIndex, dateOnly, fmtDate, isClosed, isDelivered, isInDelivery, relative, requestLink, slaOf, stageLabel, todayIso } from './model.js';
 import { BoltIcon, ClipboardIcon, ClockIcon, DownloadIcon, PlusIcon, SearchIcon } from '../shared/icons.jsx';
 
 const TABS = [
@@ -63,6 +63,7 @@ function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [fn, setFn] = useState('');
+  const [landscape, setLandscape] = useState(''); // '' | 'SAP' | 'Non-SAP' | 'earlier'
   const [mine, setMine] = useState(false);
   // ?step=<process step> (from the Overview "Process pipeline"): open requests currently at that step.
   const [step, setStep] = useState(PROCESS_STEPS.some((s) => s.key === initialStep) ? initialStep : '');
@@ -83,12 +84,13 @@ function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }
     if (step && (isClosed(r) || PROCESS_STEPS[currentStepIndex(r)]?.key !== step)) return false;
     if (category && r.category !== category) return false;
     if (fn && r.requestingFunction !== fn) return false;
+    if (landscape && (landscape === 'earlier' ? LANDSCAPES.includes(r.sapSystem) : r.sapSystem !== landscape)) return false;
     if (mine && r.loggedBy !== me.email) return false;
     if (overdueOnly && slaOf(r, data.settings)?.state !== 'over') return false;
     const q = search.trim().toLowerCase();
-    if (q && !`${r.crNo} ${r.title} ${r.requestingFunction} ${r.requestedBy} ${(r.sapModules || []).join(' ')}`.toLowerCase().includes(q)) return false;
+    if (q && !`${r.crNo} ${r.title} ${r.requestingFunction} ${r.requestedBy} ${r.sapSystem} ${(r.sapModules || []).join(' ')}`.toLowerCase().includes(q)) return false;
     return true;
-  }), [data.requests, step, category, fn, mine, search, me.email, overdueOnly, data.settings]);
+  }), [data.requests, step, category, fn, landscape, mine, search, me.email, overdueOnly, data.settings]);
   const overdueCount = useMemo(() => data.requests.filter((r) => slaOf(r, data.settings)?.state === 'over').length, [data.requests, data.settings]);
   const rows = useMemo(() => base.filter(TABS.find((t) => t.key === tab).test), [base, tab]);
   const nameOf = (e) => (e ? data.names[e] || e : '');
@@ -98,7 +100,7 @@ function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }
       const XLSX = await import('xlsx');
       const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({
         'CR No': r.crNo, Title: r.title, Function: r.requestingFunction, 'Raised by': r.requestedBy, 'BRD reference': r.brdReference,
-        'IT area': r.sapSystem, 'Systems / modules': (r.sapModules || []).join(', '), Category: CATEGORY_META[r.category]?.label,
+        'IT landscape': r.sapSystem, 'Areas affected': (r.sapModules || []).join(', '), Category: CATEGORY_META[r.category]?.label,
         'CCB scope': CATEGORY_META[r.category]?.inScope ? 'In scope' : 'Out of scope', Priority: PRIORITY_META[r.priority]?.label,
         Emergency: r.isEmergency ? 'Yes' : 'No', Status: STATUS_META[r.status]?.label, Stage: stageLabel(r), Feasibility: r.feasibility || '',
         Decision: r.decision || '', 'Decision notes': r.decisionNotes || '', Meeting: r.meetingNo || '', 'Decided on': r.decidedAt ? fmtDate(r.decidedAt) : '',
@@ -141,11 +143,16 @@ function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }
         <div className="ccb-toolbar">
           <div className="ccb-search">
             <SearchIcon size={14} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search CR number, title, function, module…" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search CR number, title, function, SAP / Non-SAP, area…" />
           </div>
           <select className="ccb-select" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">All categories</option>
             {Object.entries(CATEGORY_META).map(([k, c]) => <option key={k} value={k}>{c.label}</option>)}
+          </select>
+          <select className="ccb-select" value={landscape} onChange={(e) => setLandscape(e.target.value)} aria-label="IT landscape">
+            <option value="">SAP + Non-SAP</option>
+            {LANDSCAPES.map((g) => <option key={g} value={g}>{g}</option>)}
+            <option value="earlier">Earlier IT areas</option>
           </select>
           <select className="ccb-select" value={fn} onChange={(e) => setFn(e.target.value)}>
             <option value="">All functions</option>
@@ -183,7 +190,7 @@ function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }
                     <td><a className="ccb-key" href={requestLink(r.crNo)} onClick={(e) => { e.preventDefault(); }}>{r.crNo}</a></td>
                     <td className="title-cell">
                       <strong>{r.isEmergency && <BoltIcon size={12} style={{ color: 'var(--st-red)', marginRight: 4, verticalAlign: '-1px' }} />}{r.title}</strong>
-                      <small>{r.requestingFunction} · {r.sapSystem}{r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}</small>
+                      <small><LandscapePill system={r.sapSystem} /> {r.requestingFunction}{r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}</small>
                     </td>
                     <td><ScopePill category={r.category} categories={CATEGORY_META} /></td>
                     <td><Meta meta={PRIORITY_META} value={r.priority} /></td>

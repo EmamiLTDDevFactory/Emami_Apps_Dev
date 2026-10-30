@@ -7,28 +7,37 @@ import { ISSUE_TYPES, PRIORITY_META, PROJECT_NAME, issueKey, typeOf, isEpic, sta
 import { RISK_META, ASSIGNABLE_DEVELOPERS } from '../../shared/constants.js';
 import { ChevronRightIcon, MoreIcon, PlusIcon, TrashIcon, GavelIcon } from '../../shared/icons.jsx';
 import { ROUTES } from '../../shared/routes.js';
-import { ASSIGN_ROLES, useCanAssign } from './assignRights.js';
+import IssueAttachments from './IssueAttachments.jsx';
+import { areasByLandscape, landscapeOf } from '../../shared/masterData.js';
+import { ASSIGN_LOCKED_STATUSES, ASSIGN_ROLES, useCanAssign } from './assignRights.js';
 
 const PM_LABELS = {
   issueType: 'Issue Type', description: 'Description', storyPoints: 'Story Points', epicId: 'Epic',
   sprintId: 'Sprint', parentId: 'Parent', labels: 'Labels', reporter: 'Reporter', developer: 'Task Assigned to',
-  devList: 'Summary', targetDate: 'Due Date',
+  devList: 'Summary', targetDate: 'Due Date', attachment: 'Attachment',
 };
 const labelFor = (f) => PM_LABELS[f] || FIELD_LABELS[f] || f;
+const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 // Jira-style issue view: content on the left (summary, description, child issues, activity),
 // fields on the right. Every field saves on its own as soon as it's changed — there is no global
 // Save button, same as Jira.
 export default function IssueView({ id, ws, email, profileName, isAdmin, onClose, onOpen, onError, onCreate }) {
   const { byId, items, sprints, options, statusOrder, people, epics, updateItem, createItem, deleteItem, pmReady } = ws;
-  const canAssign = useCanAssign();
+  const hasAssignRole = useCanAssign();
   const assignOptions = useMemo(() => [...new Set([...ASSIGNABLE_DEVELOPERS, ...people])], [people]);
   const it = byId.get(String(id));
+  // Assignment is frozen once the issue is Completed or Cancelled (the server enforces it too).
+  const assignLocked = ASSIGN_LOCKED_STATUSES.includes(it?.status);
+  const canAssign = hasAssignRole && !assignLocked;
   const [history, setHistory] = useState(null);
   const [comments, setComments] = useState(null);
   const [tab, setTab] = useState('comments');
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyTick, setHistoryTick] = useState(0);
+  const [histView, setHistView] = useState('list'); // History tab: 'list' (feed) or 'columns' (table)
+  const [histField, setHistField] = useState('');
+  const [histNewestFirst, setHistNewestFirst] = useState(true);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -120,8 +129,28 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
     return v;
   };
 
+  const histFields = [...new Set((history || []).map((r) => r.field))].sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+  const histRows = (history || [])
+    .filter((r) => !histField || r.field === histField)
+    .sort((a, b) => (histNewestFirst ? -1 : 1) * (new Date(a.changedAt) - new Date(b.changedAt)));
+  const exportHistory = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const lines = [['When', 'Changed by', 'Field', 'From', 'To'], ...histRows.map((r) => [
+      fmtDateTime(r.changedAt), r.changedByUsername || '', r.field === '__created__' ? 'Created the issue' : labelFor(r.field),
+      r.field === '__created__' ? '' : displayValue(r.field, r.oldValue), r.field === '__created__' ? '' : displayValue(r.field, r.newValue),
+    ])].map((l) => l.map(esc).join(','));
+    const url = URL.createObjectURL(new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${issueKey(it)}-history.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  };
+
   const activity = (() => {
-    const h = (history || []).map((r) => ({ kind: 'history', at: r.changedAt, row: r }));
+    const h = (tab === 'history' ? histRows : history || []).map((r) => ({ kind: 'history', at: r.changedAt, row: r }));
     const c = (comments || []).map((r) => ({ kind: 'comment', at: r.createdAt, row: r }));
     if (tab === 'history') return h;
     if (tab === 'comments') return c;
@@ -169,6 +198,8 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               )}
             </section>
 
+            <IssueAttachments itemId={it.id} email={email} onError={onError} onChanged={() => setHistoryTick((t) => t + 1)} />
+
             {pmReady && type !== 'Sub-task' && (
               <ChildIssues
                 parent={it}
@@ -189,6 +220,45 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
                   <button type="button" role="tab" aria-selected={tab === k} key={k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l}</button>
                 ))}
               </div>
+              {tab === 'history' && history && history.length > 0 && (
+                <div className="pm-hist-toolbar">
+                  <div className="pm-seg" role="group" aria-label="History layout">
+                    {[['list', 'List'], ['columns', 'Columns']].map(([k, l]) => (
+                      <button type="button" key={k} aria-pressed={histView === k} className={histView === k ? 'is-on' : ''} onClick={() => setHistView(k)}>{l}</button>
+                    ))}
+                  </div>
+                  <select className="pm-hist-select" value={histField} onChange={(e) => setHistField(e.target.value)} aria-label="Filter by field">
+                    <option value="">All fields</option>
+                    {histFields.map((f) => <option key={f} value={f}>{f === '__created__' ? 'Created' : labelFor(f)}</option>)}
+                  </select>
+                  <button type="button" className="pm-link-btn" onClick={() => setHistNewestFirst((v) => !v)}>{histNewestFirst ? 'Newest first' : 'Oldest first'}</button>
+                  <span className="pm-muted pm-hist-count">{histRows.length} change{histRows.length === 1 ? '' : 's'}</span>
+                  <button type="button" className="pm-btn pm-btn-subtle pm-btn-sm" onClick={exportHistory} disabled={!histRows.length}>Export</button>
+                </div>
+              )}
+              {tab === 'history' && histView === 'columns' && histRows.length > 0 && (
+                <div className="pm-hist-table-wrap">
+                  <table className="pm-hist-table">
+                    <thead>
+                      <tr>
+                        <th><button type="button" className="pm-hist-sort" onClick={() => setHistNewestFirst((v) => !v)}>When {histNewestFirst ? '↓' : '↑'}</button></th>
+                        <th>Changed by</th><th>Field</th><th>From</th><th>To</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {histRows.map((r, i) => (
+                        <tr key={`${r.id ?? r.changedAt}-${r.field}-${i}`}>
+                          <td className="pm-nowrap" title={relativeTime(r.changedAt)}>{fmtDateTime(r.changedAt)}</td>
+                          <td><span className="pm-person-cell"><Avatar name={r.changedByUsername} size={18} /> {r.changedByUsername || 'Someone'}</span></td>
+                          <td className="pm-nowrap"><b>{r.field === '__created__' ? 'Created the issue' : labelFor(r.field)}</b></td>
+                          <td>{r.field === '__created__' ? '' : r.field === 'status' ? <StatusLozenge status={r.oldValue} /> : <span className="pm-hist-old">{displayValue(r.field, r.oldValue)}</span>}</td>
+                          <td>{r.field === '__created__' ? '' : r.field === 'status' ? <StatusLozenge status={r.newValue} /> : displayValue(r.field, r.newValue)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {tab !== 'history' && pmReady && (
                 <CommentComposer
                   name={profileName || email}
@@ -202,7 +272,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               {tab !== 'history' && !pmReady && <p className="pm-muted">Comments become available once the updated API is deployed.</p>}
               <div className="pm-activity">
                 {(tab === 'history' ? history === null : tab === 'comments' ? comments === null && pmReady : history === null) && <div className="pm-muted">Loading…</div>}
-                {activity.map((a) => (a.kind === 'comment' ? (
+                {!(tab === 'history' && histView === 'columns') && activity.map((a) => (a.kind === 'comment' ? (
                   <Comment
                     key={`c-${a.row.id}`}
                     c={a.row}
@@ -223,10 +293,12 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
                     <div>
                       <div className="pm-hist-line">
                         <b>{a.row.changedByUsername || 'Someone'}</b>{' '}
-                        {a.row.field === '__created__' ? 'created the issue' : <>changed the <b>{labelFor(a.row.field)}</b></>}
+                        {a.row.field === '__created__' ? 'created the issue'
+                          : a.row.field === 'attachment' ? <>{a.row.newValue ? 'attached' : 'removed'} <b>{a.row.newValue || a.row.oldValue}</b></>
+                            : <>changed the <b>{labelFor(a.row.field)}</b></>}
                         <span className="pm-muted"> · {relativeTime(a.row.changedAt)}</span>
                       </div>
-                      {a.row.field !== '__created__' && (
+                      {a.row.field !== '__created__' && a.row.field !== 'attachment' && (
                         <div className="pm-hist-change">
                           {a.row.field === 'status' ? <StatusLozenge status={a.row.oldValue} /> : <span className="pm-hist-old">{displayValue(a.row.field, a.row.oldValue)}</span>}
                           <span aria-hidden="true">→</span>
@@ -238,6 +310,7 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
                 )))}
                 {tab === 'comments' && comments && !comments.length && <div className="pm-muted">No comments yet.</div>}
                 {tab === 'history' && history && !history.length && <div className="pm-muted">No changes recorded yet.</div>}
+                {tab === 'history' && history && history.length > 0 && !histRows.length && <div className="pm-muted">No changes to this field.</div>}
               </div>
             </section>
           </div>
@@ -255,10 +328,11 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
               <Field label="Task Assigned to">
                 {/* One or more people, stored comma-separated in `developer`. */}
                 {canAssign ? <MultiPersonField value={it.developer} people={assignOptions} onSave={(v) => save({ developer: v })} placeholder="Unassigned — add a person…" /> : (
-                  <span className="pm-multi-person" title={`Only a ${ASSIGN_ROLES.join(' or the ')} can change this`}>
+                  <span className="pm-multi-person" title={assignLocked ? `Locked — this issue is ${it.status}. Reopen it to change the assignment.` : `Only a ${ASSIGN_ROLES.join(' or the ')} can change this`}>
                     {splitPeople(it.developer).length ? splitPeople(it.developer).map((n) => <span className="pm-multi-chip" key={n}><Avatar name={n} size={18} /> {n}</span>) : <span className="pm-muted">Unassigned</span>}
                   </span>
                 )}
+                {assignLocked && <span className="pm-muted pm-assign-lock">Locked — issue is {it.status}</span>}
                 {canAssign && profileName && !splitPeople(it.developer).includes(profileName) && (
                   <button type="button" className="pm-link-btn pm-assign-me" onClick={() => save({ developer: [...splitPeople(it.developer), profileName].join(', ') })}>Assign to me</button>
                 )}
@@ -314,8 +388,17 @@ export default function IssueView({ id, ws, email, profileName, isAdmin, onClose
                   <LabelsField value={it.labels} onSave={(v) => save({ labels: v })} />
                 </Field>
               )}
+              <Field label="Landscape">
+                {/* Derived from the Module's group in Master Data › Area — change the Module to change it. */}
+                {it.area ? <span className={`pm-landscape-badge is-${landscapeOf(it.area, options.areaGroupOf) === 'SAP' ? 'sap' : landscapeOf(it.area, options.areaGroupOf) === 'Non-SAP' ? 'nonsap' : 'none'}`} title="Set by the Module">{landscapeOf(it.area, options.areaGroupOf)}</span> : <span className="pm-muted">Set by the Module</span>}
+              </Field>
               <Field label="Module">
-                <SelectField value={it.area} options={options.area || []} onSave={(v) => save({ area: v })} />
+                <SelectField
+                  value={it.area} searchable onSave={(v) => save({ area: v })}
+                  options={areasByLandscape(options.area || [], options.areaGroupOf).flatMap(([, list]) => list)}
+                  render={(a) => <span className="pm-area-opt">{a}<span className="pm-pop-tag">{landscapeOf(a, options.areaGroupOf)}</span></span>}
+                  match={(a) => `${a} ${landscapeOf(a, options.areaGroupOf)}`}
+                />
               </Field>
               <Field label="Start date">
                 <InlineText type="date" value={it.startDate || ''} onSave={(v) => save({ startDate: v })} display={(v) => (v ? fmtDate(v) : 'None')} />
@@ -418,12 +501,12 @@ export function InlineText({ value, onSave, type = 'text', placeholder = 'None',
   );
 }
 
-function SelectField({ value, options, onSave, render, noneLabel = 'None', searchable = false }) {
+function SelectField({ value, options, onSave, render, match, noneLabel = 'None', searchable = false }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const list = [...options];
   if (value && !list.includes(value)) list.unshift(value);
-  const shown = searchable && q ? list.filter((o) => String(render ? (typeof render(o) === 'string' ? render(o) : o) : o).toLowerCase().includes(q.toLowerCase())) : list;
+  const shown = searchable && q ? list.filter((o) => String(match ? match(o) : render ? (typeof render(o) === 'string' ? render(o) : o) : o).toLowerCase().includes(q.toLowerCase())) : list;
   return (
     <span className="pm-rel">
       <button type="button" className={`pm-inline-view${value ? '' : ' is-empty'}`} onClick={() => setOpen((o) => !o)}>

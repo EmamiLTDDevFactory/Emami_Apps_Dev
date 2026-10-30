@@ -59,6 +59,23 @@ export function Pill({ tone = 'gray', children, title, strong = false }) {
   return <span className={`ccb-pill tone-${tone}${strong ? ' is-strong' : ''}`} title={title}>{children}</span>;
 }
 
+/** IT landscape of a request: SAP / Non-SAP, or the older IT area it was logged under. */
+export function LandscapePill({ system }) {
+  if (!system) return null;
+  const tone = system === 'SAP' ? 'blue' : system === 'Non-SAP' ? 'teal' : 'gray';
+  return <Pill tone={tone} strong title={system === 'SAP' || system === 'Non-SAP' ? 'IT landscape' : 'Logged under an earlier IT area'}>{system}</Pill>;
+}
+
+/** The landscape plus the areas affected, for detail views. */
+export function LandscapeAreas({ system, modules }) {
+  return (
+    <span className="ccb-landscape-line">
+      <LandscapePill system={system} />
+      {(modules || []).map((m) => <span key={m} className="ccb-landscape-area">{m}</span>)}
+    </span>
+  );
+}
+
 export function Meta({ meta, value, strong }) {
   const m = meta[value];
   if (!m) return null;

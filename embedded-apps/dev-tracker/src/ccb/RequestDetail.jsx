@@ -3,8 +3,7 @@ import { ccbApi } from './api.js';
 import RequestForm from './RequestForm.jsx';
 import { AttachmentsCard, FilePicker, uploadAll } from './Attachments.jsx';
 import {
-  Blocker, Button, Card, DefinitionList, Field, Loading, Meta, Modal, Person, Pill, ProcessStepper, Prose, ScopePill, useToast,
-} from './ui.jsx';
+  Blocker, Button, Card, DefinitionList, Field, Loading, Meta, Modal, Person, Pill, ProcessStepper, Prose, ScopePill, useToast, LandscapeAreas } from './ui.jsx';
 import {
   CATEGORY_META, DECISION_META, FEASIBILITY_META, PRIORITY_META, ROUTE_META, STATUS_META,
   devTrackerLink, fmtDate, fmtDateTime, informOverdue, meetingLink, relative, stageLabel,
@@ -138,7 +137,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
               ['Requesting function', r.requestingFunction],
               ['Raised by', r.requestedByEmail ? <Person name={r.requestedBy} sub={r.requestedByEmail} /> : r.requestedBy],
               ['BRD reference', r.brdReference && (/^https?:\/\//.test(r.brdReference) ? <a href={r.brdReference} target="_blank" rel="noreferrer">{r.brdReference} <ExternalIcon size={11} /></a> : r.brdReference)],
-              ['IT area', `${r.sapSystem}${r.sapModules?.length ? ` · ${r.sapModules.join(', ')}` : ''}`],
+              ['IT landscape', <LandscapeAreas system={r.sapSystem} modules={r.sapModules} />],
               ['CCB category', <ScopePill category={r.category} categories={CATEGORY_META} />],
               ['Financial impact', r.financialImpact],
               ['Required by', r.requiredBy ? fmtDate(r.requiredBy) : null],

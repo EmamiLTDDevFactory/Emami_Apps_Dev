@@ -4,7 +4,7 @@ import Topbar from '../shared/Topbar.jsx';
 import { apiList, apiMasterData, apiActivity, getCurrentUserEmail } from '../shared/api.js';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
-import { activeValues, areaColorMap } from '../shared/masterData.js';
+import { LANDSCAPES, activeValues, areaColorMap, areaGroupMap, areasByLandscape, landscapeOf } from '../shared/masterData.js';
 import { isOverdue, relativeTime, initialsHome, revisedTarget, daysBetween, daysSinceUpdate, riskLevel, todayStr } from '../shared/utils.js';
 import { DIST_WINDOWS, RISK_META } from '../shared/constants.js';
 import { ROUTES } from '../shared/routes.js';
@@ -99,6 +99,8 @@ export default function Home() {
 
   const areas = useMemo(() => activeValues(masterData, 'area'), [masterData]);
   const areaColors = useMemo(() => areaColorMap(masterData), [masterData]);
+  const areaGroupOf = useMemo(() => areaGroupMap(masterData), [masterData]);
+  const [distLandscape, setDistLandscape] = useState(''); // '' = all, or 'SAP' / 'Non-SAP'
 
   const activeItems = useMemo(() => items.filter((i) => !['Completed', 'Cancelled'].includes(i.status)), [items]);
   const overdueItems = useMemo(() => items.filter(isOverdue), [items]);
@@ -133,14 +135,17 @@ export default function Home() {
   const moduleDistribution = useMemo(() => {
     const cutoff = distWindowCutoff(DIST_WINDOWS[distWindowIdx]);
     const scoped = cutoff == null ? items : items.filter((it) => it.createdAt && new Date(it.createdAt).getTime() >= cutoff);
-    const rows = areas.map((area) => ({
+    // SAP modules first, then Non-SAP (Master Data › Area groups); optionally only one landscape.
+    const ordered = areasByLandscape(areas, areaGroupOf).flatMap(([, list]) => list).filter((a) => !distLandscape || landscapeOf(a, areaGroupOf) === distLandscape);
+    const rows = ordered.map((area) => ({
       area,
+      landscape: landscapeOf(area, areaGroupOf),
       count: scoped.filter((it) => it.area === area).length,
       color: areaColors[area]?.color || AREA_FALLBACK.color,
     }));
     const max = Math.max(1, ...rows.map((r) => r.count));
     return rows.map((r) => ({ ...r, pct: Math.round((r.count / max) * 100) }));
-  }, [areas, items, areaColors, distWindowIdx]);
+  }, [areas, items, areaColors, distWindowIdx, areaGroupOf, distLandscape]);
 
   // Needs-attention rows — every active item that isn't cleanly on-track, ranked worst
   // first: overdue (by how many days), then stalled (no field change in a while), then
@@ -255,6 +260,10 @@ export default function Home() {
             <div className="widget-col-head">
               <div className="widget-icon tone-amber"><BarChartIcon size={14} /></div>
               <span className="widget-title">Module-wise distribution</span>
+              <select className="widget-select" value={distLandscape} onChange={(e) => setDistLandscape(e.target.value)} aria-label="Landscape">
+                <option value="">SAP + Non-SAP</option>
+                {LANDSCAPES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
               <select className="widget-select" value={distWindowIdx} onChange={(e) => setDistWindowIdx(Number(e.target.value))}>
                 {DIST_WINDOWS.map((w, i) => <option key={w.label} value={i}>{w.label}</option>)}
               </select>
@@ -262,7 +271,7 @@ export default function Home() {
             <div className="widget-body-fill">
               <div className="dist-chart">
                 {moduleDistribution.map((m) => (
-                  <div className="dist-bar-col" key={m.area} title={`${m.area}: ${m.count}`}>
+                  <div className="dist-bar-col" key={m.area} title={`${m.area} (${m.landscape}): ${m.count}`}>
                     <span className="dist-bar-count">{m.count}</span>
                     <div className="dist-bar-track"><div className="dist-bar-fill" style={{ height: `${m.pct}%`, background: m.color }} /></div>
                     <span className="dist-bar-label">{m.area}</span>

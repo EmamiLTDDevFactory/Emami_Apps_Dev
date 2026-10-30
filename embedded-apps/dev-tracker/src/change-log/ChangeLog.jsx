@@ -4,7 +4,8 @@ import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { apiActivityLog, apiMasterData, getCurrentUserEmail } from '../shared/api.js';
-import { activeValues } from '../shared/masterData.js';
+import { activeValues, areaGroupMap } from '../shared/masterData.js';
+import AreaOptions from '../shared/AreaOptions.jsx';
 import { FIELD_LABELS } from '../shared/constants.js';
 import { initialsHome } from '../shared/utils.js';
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from '../shared/icons.jsx';
@@ -91,6 +92,7 @@ export default function ChangeLog() {
     [rows]
   );
   const areaOptions = useMemo(() => activeValues(masterData, 'area'), [masterData]);
+  const areaGroupOf = useMemo(() => areaGroupMap(masterData), [masterData]);
   const statusOptions = useMemo(() => activeValues(masterData, 'status'), [masterData]);
 
   const filtered = useMemo(() => {
@@ -151,7 +153,7 @@ export default function ChangeLog() {
           </select>
           <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
             <option value="">All Modules</option>
-            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+            <AreaOptions values={areaOptions} groupOf={areaGroupOf} />
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>

@@ -1,4 +1,5 @@
 import { isOverdue } from '../../shared/utils.js';
+import { UNCLASSIFIED, landscapeOf } from '../../shared/masterData.js';
 import { issueKey, nameMatches, isDone, parseLabels, splitPeople } from '../../shared/pm.js';
 
 // One filter object shared by board, backlog, list and timeline, so switching views keeps the
@@ -11,6 +12,7 @@ export const EMPTY_FILTERS = {
   epics: [], // epic ids; '__none__' = no epic
   types: [],
   areas: [],
+  landscapes: [], // 'SAP' | 'Non-SAP' | 'Not classified' — derived from the Module's group in Master Data
   labels: [],
   status: '',
   priority: '',
@@ -34,12 +36,13 @@ export function activeFilterCount(f) {
   return n;
 }
 
-export function applyFilters(items, f, { myNames = [] } = {}) {
+export function applyFilters(items, f, { myNames = [], areaGroupOf = {} } = {}) {
   const q = f.search.trim().toLowerCase();
   const assignees = new Set(f.assignees);
   const epics = new Set(f.epics);
   const types = new Set(f.types);
   const areas = new Set(f.areas);
+  const landscapes = new Set(f.landscapes || []);
   const labels = new Set(f.labels);
   const weekAgo = Date.now() - 7 * 86400000;
   return items.filter((it) => {
@@ -58,6 +61,7 @@ export function applyFilters(items, f, { myNames = [] } = {}) {
     }
     if (types.size && !types.has(it.issueType || 'Task')) return false;
     if (areas.size && !areas.has(it.area)) return false;
+    if (landscapes.size && !landscapes.has(landscapeOf(it.area, areaGroupOf) || UNCLASSIFIED)) return false;
     if (labels.size && !parseLabels(it.labels).some((l) => labels.has(l))) return false;
     if (f.status && it.status !== f.status) return false;
     if (f.priority && it.priority !== f.priority) return false;
@@ -71,7 +75,7 @@ export function applyFilters(items, f, { myNames = [] } = {}) {
     if (f.dateStart && (!it.targetDate || it.targetDate < f.dateStart)) return false;
     if (f.dateEnd && (!it.targetDate || it.targetDate > f.dateEnd)) return false;
     if (q) {
-      const hay = [issueKey(it), it.devList, it.func, it.developer, it.remarks, it.spocFunction, it.spocIT, it.labels, it.description, it.area]
+      const hay = [issueKey(it), it.devList, it.func, it.developer, it.remarks, it.spocFunction, it.spocIT, it.labels, it.description, it.area, landscapeOf(it.area, areaGroupOf)]
         .map((v) => String(v || '').toLowerCase()).join(' ');
       if (!hay.includes(q)) return false;
     }

@@ -38,3 +38,20 @@ export function categoryColorMap(rows, category) {
 export function areaColorMap(rows) {
   return categoryColorMap(rows, 'area');
 }
+
+// Areas (Modules) are grouped SAP / Non-SAP in Master Data › Area ("areaGroup"). The landscape of an issue or a
+// change request is always derived from its area this way — it is never stored separately.
+export const LANDSCAPES = ['SAP', 'Non-SAP'];
+export const UNCLASSIFIED = 'Not classified';
+export function areaGroupMap(rows) {
+  const map = {};
+  for (const r of rows || []) if (r.category === 'area' && r.areaGroup) map[r.value] = r.areaGroup;
+  return map;
+}
+export const landscapeOf = (area, groupOf) => (area ? groupOf?.[area] || UNCLASSIFIED : '');
+/** Active area values split by landscape, in Master Data order: [['SAP', [...]], ['Non-SAP', [...]], ['Not classified', [...]]]. */
+export function areasByLandscape(values, groupOf) {
+  const out = [...LANDSCAPES, UNCLASSIFIED].map((g) => [g, []]);
+  for (const v of values || []) out.find(([g]) => g === (groupOf?.[v] || UNCLASSIFIED))[1].push(v);
+  return out.filter(([, list]) => list.length);
+}

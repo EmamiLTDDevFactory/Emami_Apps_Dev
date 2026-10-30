@@ -70,7 +70,9 @@ const CATEGORIES = {
 const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 // The CCB covers every IT change, not just ERP. The "sapSystem" / "sapModules" columns predate that and
 // now hold the IT area and the systems / modules affected; renaming the columns isn't worth the churn.
-const IT_AREAS = ['ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
+// New requests use SAP / Non-SAP, with the areas affected taken from Dev Tracker's Area master data; the
+// older areas stay valid for requests logged before.
+const IT_AREAS = ['SAP', 'Non-SAP', 'ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
 const FEASIBILITY = ['feasible', 'feasible_with_conditions', 'not_feasible'];
 const STATUSES = ['draft', 'module_lead_review', 'feasibility_review', 'awaiting_ccb', 'approved', 'rejected', 'withdrawn', 'terminated'];
 const ROUTES_TAKEN = ['ccb', 'out_of_scope', 'emergency'];
@@ -453,17 +455,23 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         r.description,
         `Business justification:\n${r.justification}`,
         `Requesting function: ${r.requestingFunction} (${r.requestedBy}${r.requestedByEmail ? `, ${r.requestedByEmail}` : ''})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
-        `IT area: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
+        `IT landscape: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
         r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
         r.moduleLeadEmail && `Module Lead (assigns the developer): ${r.moduleLeadName || nameOf(r.moduleLeadEmail)}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
     ].filter(Boolean).join('\n\n');
 
     let area = null;
-    // Dev Tracker's Module master data is ERP-specific (SD, FI-AR, MM, …); only map ERP requests onto it.
-    const mapped = r.sapSystem === 'ERP' ? [...new Set(r.sapModules.map((m) => MODULE_TO_AREA[m]).filter(Boolean))] : [];
-    if (mapped.length === 1 && r.sapModules.length === 1) area = mapped[0];
-    else if (r.sapSystem === 'ERP' && r.sapModules.length > 1) area = 'Cross-Functional';
+    // SAP / Non-SAP requests pick their areas straight from Dev Tracker's Area master data: one area carries over
+    // as is; several SAP areas become Cross-Functional. Older ERP requests map their module names onto it.
+    if (r.sapSystem === 'SAP' || r.sapSystem === 'Non-SAP') {
+        if (r.sapModules.length === 1) area = r.sapModules[0];
+        else if (r.sapSystem === 'SAP' && r.sapModules.length > 1) area = 'Cross-Functional';
+    } else {
+        const mapped = r.sapSystem === 'ERP' ? [...new Set(r.sapModules.map((m) => MODULE_TO_AREA[m]).filter(Boolean))] : [];
+        if (mapped.length === 1 && r.sapModules.length === 1) area = mapped[0];
+        else if (r.sapSystem === 'ERP' && r.sapModules.length > 1) area = 'Cross-Functional';
+    }
     if (area) {
         const { rows } = await db.query(`SELECT 1 FROM dev_tracker.master_data WHERE category = 'area' AND value = $1`, [area]);
         if (!rows.length) area = null;
@@ -696,9 +704,10 @@ async function assertActiveUsers(f, before = {}) {
         if (!email || email === (before[key] || null)) continue;
         const { rows } = await pool.query('SELECT 1 FROM emami_apps.authorized_users WHERE lower(email) = $1 AND is_active = true', [email]);
         if (!rows.length) throw new HttpError(400, `${label}: pick an active Emami Apps user from the list.`);
-        // IT SPOCs log requests; they are never the function's requester or the Module Lead (unless also a Module Lead).
+        // IT SPOCs log requests; they are never the function's requester or the Module Lead — unless also a Module Lead
+        // (same rule for both fields).
         const roles = (await pool.query('SELECT role FROM ccb.roles WHERE email = $1', [email])).rows.map((x) => x.role);
-        if (roles.includes('IT SPOC') && !(key === 'moduleLeadEmail' && roles.includes('Module Lead'))) {
+        if (roles.includes('IT SPOC') && !roles.includes('Module Lead')) {
             throw new HttpError(400, `${label}: an IT SPOC cannot be chosen here.`);
         }
     }
@@ -733,7 +742,7 @@ function readRequestFields(b, partial = false) {
         ('moduleLeadEmail' in f && f.moduleLeadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.moduleLeadEmail) && 'Pick the Module Lead from the directory.') ||
         ('description' in f && !f.description && 'Describe the business requirement.') ||
         ('justification' in f && !f.justification && 'Business justification is required.') ||
-        ('sapSystem' in f && !IT_AREAS.includes(f.sapSystem) && 'Choose the IT area.') ||
+        ('sapSystem' in f && !IT_AREAS.includes(f.sapSystem) && 'Choose SAP or Non-SAP under IT landscape.') ||
         ('category' in f && !CATEGORIES[f.category] && 'Choose the CCB category.') ||
         ('priority' in f && !PRIORITIES.includes(f.priority) && 'Choose a priority.') ||
         ('requiredBy' in f && f.requiredBy && !/^\d{4}-\d{2}-\d{2}$/.test(f.requiredBy) && 'Invalid required-by date.') ||

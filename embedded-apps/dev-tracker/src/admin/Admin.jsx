@@ -20,6 +20,7 @@ export default function Admin() {
   const [addingCategory, setAddingCategory] = useState(null);
   const [addValue, setAddValue] = useState('');
   const [addColor, setAddColor] = useState('#3e7cb1');
+  const [addGroup, setAddGroup] = useState(null); // Area only: 'SAP' | 'Non-SAP' for the value being added
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const email = getCurrentUserEmail();
@@ -76,6 +77,16 @@ export default function Admin() {
     }
   }
 
+  async function moveArea(row, areaGroup) {
+    setError(null);
+    try {
+      await apiMasterDataUpdate(row.id, { areaGroup }, email);
+      loadMasterData();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function submitAdd(cat) {
     if (!addValue.trim()) {
       setError('Enter a value first.');
@@ -84,6 +95,7 @@ export default function Admin() {
     setError(null);
     try {
       const payload = { category: cat.key, value: addValue.trim() };
+      if (cat.key === 'area' && addGroup) payload.areaGroup = addGroup;
       if (cat.hasColor) {
         payload.color = addColor;
         payload.softColor = hexToSoft(addColor);
@@ -96,6 +108,88 @@ export default function Admin() {
     } catch (e) {
       setError(e.message);
     }
+  }
+
+  function renderChip(cat, row, move) {
+    return (
+      <span className={`chip${row.active ? '' : ' inactive'}`} key={row.id} style={cat.hasColor ? { background: row.softColor || undefined, color: row.color || undefined } : undefined}>
+        {cat.hasColor && (
+          <span className="swatch-dot" style={{ background: row.color || 'var(--mod-fallback)' }}>
+            <input type="color" value={row.color || '#888888'} onChange={(e) => updateColor(row, e.target.value)} title="Recolor" />
+          </span>
+        )}
+        {renamingId === row.id ? (
+          <input
+            autoFocus
+            className="rename-input"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename(row);
+              if (e.key === 'Escape') setRenamingId(null);
+            }}
+            onBlur={() => commitRename(row)}
+          />
+        ) : (
+          <span onClick={() => { setRenamingId(row.id); setRenameValue(row.value); }} style={{ cursor: 'pointer' }}>{row.value}</span>
+        )}
+        {move}
+        <button className="chip-toggle" title={row.active ? 'Deactivate' : 'Activate'} onClick={() => toggleActive(row)}>
+          {row.active ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          )}
+        </button>
+      </span>
+    );
+  }
+
+  function renderAdd(cat, group) {
+    const open = addingCategory === cat.key && (!group || addGroup === group);
+    return open ? (
+      <span className="add-inline">
+        {cat.hasColor && <input type="color" value={addColor} onChange={(e) => setAddColor(e.target.value)} />}
+        <input
+          type="text"
+          autoFocus
+          placeholder={cat.key === 'holiday' ? 'YYYY-MM-DD Holiday name' : 'New value'}
+          value={addValue}
+          onChange={(e) => setAddValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submitAdd(cat)}
+        />
+        <button onClick={() => submitAdd(cat)}>Add</button>
+      </span>
+      ) : (
+      <button className="chip-add" onClick={() => { setAddingCategory(cat.key); setAddGroup(group || null); setAddValue(''); setError(null); }}>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+        Add {cat.key === 'area' ? `${group ? `${group} ` : ''}area` : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : cat.key === 'holiday' ? 'holiday' : cat.key === 'requestingFunction' ? 'function' : ''}
+      </button>
+      );
+  }
+
+  // Area: one row per group (SAP / Non-SAP), plus any value not classified yet. Each chip can be moved across.
+  function renderAreaGroups(cat, values) {
+    const groups = [['SAP', 'SAP'], ['Non-SAP', 'Non-SAP'], [null, 'Not classified yet']];
+    return groups.map(([g, label]) => {
+      const list = values.filter((row) => (row.areaGroup || null) === g);
+      if (!g && !list.length) return null;
+      return (
+        <div className="area-group" key={label}>
+          <div className="area-group-head">{label} <span>{list.length}</span></div>
+          <div className="chips">
+            {list.map((row) => renderChip(cat, row, (
+              <span className="area-move">
+                {['SAP', 'Non-SAP'].filter((x) => x !== g).map((x) => (
+                  <button key={x} type="button" title={`Move to ${x}`} onClick={() => moveArea(row, x)}>→ {x}</button>
+                ))}
+              </span>
+            )))}
+            {g && renderAdd(cat, g)}
+          </div>
+        </div>
+      );
+    });
   }
 
   if (!email) return null;
@@ -144,59 +238,12 @@ export default function Admin() {
                 <span className="shelf-name">{cat.label}</span>
                 <span className="shelf-count">{values.length} values{cat.hasColor ? ' · drives color coding everywhere' : ''}</span>
               </div>
-              <div className="chips">
-                {values.map((row) => (
-                  <span className={`chip${row.active ? '' : ' inactive'}`} key={row.id} style={cat.hasColor ? { background: row.softColor || undefined, color: row.color || undefined } : undefined}>
-                    {cat.hasColor && (
-                      <span className="swatch-dot" style={{ background: row.color || 'var(--mod-fallback)' }}>
-                        <input type="color" value={row.color || '#888888'} onChange={(e) => updateColor(row, e.target.value)} title="Recolor" />
-                      </span>
-                    )}
-                    {renamingId === row.id ? (
-                      <input
-                        autoFocus
-                        className="rename-input"
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitRename(row);
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={() => commitRename(row)}
-                      />
-                    ) : (
-                      <span onClick={() => { setRenamingId(row.id); setRenameValue(row.value); }} style={{ cursor: 'pointer' }}>{row.value}</span>
-                    )}
-                    <button className="chip-toggle" title={row.active ? 'Deactivate' : 'Activate'} onClick={() => toggleActive(row)}>
-                      {row.active ? (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                      )}
-                    </button>
-                  </span>
-                ))}
-
-                {addingCategory === cat.key ? (
-                  <span className="add-inline">
-                    {cat.hasColor && <input type="color" value={addColor} onChange={(e) => setAddColor(e.target.value)} />}
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder={cat.key === 'holiday' ? 'YYYY-MM-DD Holiday name' : 'New value'}
-                      value={addValue}
-                      onChange={(e) => setAddValue(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && submitAdd(cat)}
-                    />
-                    <button onClick={() => submitAdd(cat)}>Add</button>
-                  </span>
-                ) : (
-                  <button className="chip-add" onClick={() => { setAddingCategory(cat.key); setAddValue(''); setError(null); }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                    Add {cat.key === 'area' ? 'area' : cat.key === 'reasonCategory' ? 'reason' : cat.key === 'status' ? 'status' : cat.key === 'holiday' ? 'holiday' : cat.key === 'requestingFunction' ? 'function' : ''}
-                  </button>
-                )}
-              </div>
+              {cat.key === 'area' ? renderAreaGroups(cat, values) : (
+                <div className="chips">
+                  {values.map((row) => renderChip(cat, row))}
+                  {renderAdd(cat)}
+                </div>
+              )}
               {addingCategory === cat.key && error && <div className="md-error">{error}</div>}
             </div>
             </React.Fragment>

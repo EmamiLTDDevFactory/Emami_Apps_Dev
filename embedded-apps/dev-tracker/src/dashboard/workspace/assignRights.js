@@ -3,6 +3,8 @@ import { ccbApi } from '../../ccb/api.js';
 
 // "Task Assigned to" can only be set by a Module Lead or the IT Application Head (their CCB roles). The
 // server enforces the same rule (backend/devTracker.js) — this only decides whether the field is editable.
+// No one can change the assignment of a Completed or Cancelled issue — reopen it first.
+export const ASSIGN_LOCKED_STATUSES = ['Completed', 'Cancelled'];
 export const ASSIGN_ROLES = ['Module Lead', 'IT Application Head'];
 
 let pending = null;

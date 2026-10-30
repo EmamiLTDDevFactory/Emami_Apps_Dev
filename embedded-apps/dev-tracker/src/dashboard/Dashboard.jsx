@@ -189,7 +189,7 @@ export default function Dashboard() {
   }
 
   const myNames = useMemo(() => namesForMe(profileName, email), [profileName, email]);
-  const filtered = useMemo(() => applyFilters(ws.items, filters, { myNames }), [ws.items, filters, myNames]);
+  const filtered = useMemo(() => applyFilters(ws.items, filters, { myNames, areaGroupOf: ws.options.areaGroupOf }), [ws.items, filters, myNames, ws.options.areaGroupOf]);
   const activeNav = fromMyWork && view === 'list' && filters.onlyMine ? 'myWork' : VIEWS.find((v) => v.key === view)?.nav;
   const viewMeta = VIEWS.find((v) => v.key === view);
 

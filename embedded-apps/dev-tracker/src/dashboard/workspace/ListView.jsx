@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
+import { landscapeOf } from '../../shared/masterData.js';
 import { Avatar, PriorityIcon, StatusPicker, EpicLozenge, TypeAndKey } from './ui.jsx';
 import { FIELDS, FIELD_LABELS, PRIORITY_RANK } from '../../shared/constants.js';
 import { issueKey, points, fmtPoints, dueDate, typeOf, statusCategory, splitPeople } from '../../shared/pm.js';
@@ -46,10 +47,11 @@ export default function ListView({ ws, items, filters, setFilters, onOpen, onErr
 
   function exportRows() {
     const extra = pmReady ? ['Key', 'Issue Type', 'Epic', 'Sprint', 'Story Points', 'Labels', 'Reporter', 'Description'] : [];
-    const header = [...extra, ...FIELDS.map((f) => FIELD_LABELS[f] || f)];
+    const header = [...extra, ...FIELDS.map((f) => FIELD_LABELS[f] || f), 'Landscape'];
     const body = sorted.map((it) => [
       ...(pmReady ? [issueKey(it), typeOf(it), it.epicId ? byId.get(String(it.epicId))?.devList || '' : '', sprintName(it.sprintId), it.storyPoints ?? '', it.labels || '', it.reporter || '', it.description || ''] : []),
       ...FIELDS.map((f) => (it[f] == null ? '' : it[f])),
+      landscapeOf(it.area, options.areaGroupOf),
     ]);
     const sheet = XLSX.utils.aoa_to_sheet([header, ...body]);
     sheet['!cols'] = header.map(() => ({ wch: 22 }));
@@ -126,7 +128,7 @@ export default function ListView({ ws, items, filters, setFilters, onOpen, onErr
                       case 'epic': return <td key={c.key}>{epic ? <EpicLozenge epic={epic} /> : ''}</td>;
                       case 'sprint': return <td key={c.key} className="pm-td-muted">{sprintName(it.sprintId)}</td>;
                       case 'points': return <td key={c.key} className="pm-td-num">{points(it) ? fmtPoints(points(it)) : ''}</td>;
-                      case 'module': return <td key={c.key}>{it.area || ''}</td>;
+                      case 'module': return <td key={c.key}>{it.area || ''}{it.area && <span className="pm-pop-tag pm-list-land">{landscapeOf(it.area, options.areaGroupOf)}</span>}</td>;
                       case 'due': return (
                         <td key={c.key} className={`pm-td-date${overdue ? ' is-overdue' : ''}`} title={due && !overdue ? `${daysBetween(todayStr(), due)} days left` : undefined}>
                           {due ? fmtDate(due) : ''}

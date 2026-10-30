@@ -4,6 +4,7 @@ import { ISSUE_TYPES, PROJECT_NAME, isEpic, byRank, issueKey, splitPeople } from
 import { stageDateKeyFor } from '../../shared/utils.js';
 import { FIELD_LABELS, ASSIGNABLE_DEVELOPERS } from '../../shared/constants.js';
 import { useCanAssign } from './assignRights.js';
+import { LANDSCAPES, landscapeOf } from '../../shared/masterData.js';
 
 // Jira's "Create issue" dialog. Required fields match what the original New Item panel required
 // (summary, status, module, functional area, priority) for anything but an epic or sub-task,
@@ -18,6 +19,7 @@ export default function CreateIssueModal({ ws, preset = {}, profileName, onClose
     spocFunction: '', spocIT: '', devFactory: '', remarks: '',
     ...preset,
   }));
+  const [landscape, setLandscape] = useState(() => landscapeOf(form.area, options.areaGroupOf) || 'SAP');
   const [another, setAnother] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -126,11 +128,22 @@ export default function CreateIssueModal({ ws, preset = {}, profileName, onClose
             </select>
           </label>
         </div>
+        <div className="pm-field pm-landscape">
+          <span>Landscape</span>
+          <div className="pm-seg" role="radiogroup" aria-label="Landscape">
+            {LANDSCAPES.map((g) => (
+              <button
+                type="button" role="radio" key={g} aria-checked={landscape === g} className={landscape === g ? 'is-on' : ''}
+                onClick={() => { setLandscape(g); if (form.area && landscapeOf(form.area, options.areaGroupOf) !== g) set('area', ''); }}
+              >{g}</button>
+            ))}
+          </div>
+        </div>
         <div className="pm-field-row">
-          <label className="pm-field"><span>Module{!light && <i>*</i>}</span>
+          <label className="pm-field"><span>{landscape} module{!light && <i>*</i>}</span>
             <select className={bad('area') ? 'is-invalid' : ''} value={form.area} onChange={(e) => set('area', e.target.value)}>
               <option value="">Select</option>
-              {(options.area || []).map((a) => <option key={a}>{a}</option>)}
+              {(options.area || []).filter((a) => landscapeOf(a, options.areaGroupOf) === landscape || a === form.area).map((a) => <option key={a}>{a}</option>)}
             </select>
           </label>
           <label className="pm-field"><span>Functional area / process{!light && <i>*</i>}</span>

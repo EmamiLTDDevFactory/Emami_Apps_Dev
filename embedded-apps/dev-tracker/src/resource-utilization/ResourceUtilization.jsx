@@ -4,7 +4,8 @@ import Topbar from '../shared/Topbar.jsx';
 import { useDevTrackerSession } from '../shared/useDevTrackerSession.js';
 import { useNotifications } from '../shared/useNotifications.js';
 import { apiList, apiMasterData, getCurrentUserEmail } from '../shared/api.js';
-import { groupMasterData, activeValues, areaColorMap } from '../shared/masterData.js';
+import { groupMasterData, activeValues, areaColorMap, areaGroupMap } from '../shared/masterData.js';
+import AreaOptions from '../shared/AreaOptions.jsx';
 import { fmtDate, revisedTarget } from '../shared/utils.js';
 import { issueKey } from '../shared/pm.js';
 import { ROUTES } from '../shared/routes.js';
@@ -281,6 +282,7 @@ export default function ResourceUtilization() {
     return out;
   }, [masterData]);
   const areaColors = useMemo(() => areaColorMap(masterData), [masterData]);
+  const areaGroupOf = useMemo(() => areaGroupMap(masterData), [masterData]);
   const holidaySet = useMemo(() => buildHolidaySet(masterData), [masterData]);
 
   const universe = useMemo(() => buildResourceUniverse(items), [items]);
@@ -529,7 +531,7 @@ export default function ResourceUtilization() {
           </select>
           <select value={filterModule} onChange={(e) => setFilterModule(e.target.value)}>
             <option value="">All Modules</option>
-            {(options.area || []).map((a) => <option key={a} value={a}>{a}</option>)}
+            <AreaOptions values={options.area || []} groupOf={areaGroupOf} />
           </select>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
             <option value="">All Statuses</option>

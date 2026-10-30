@@ -736,3 +736,54 @@ textarea.pm-inline-input { resize: vertical; line-height: 1.45; }
   .ag-tl-row { grid-template-columns: 110px minmax(0, 1fr) 44px; }
   .ag-search { min-width: 0; flex: 1; }
 }
+
+.pm-assign-lock { display: block; margin-top: 4px; font-size: 11.5px; }
+
+/* Issue view → Activity → History: List / Columns layouts, field filter, export */
+.pm-hist-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 12px; }
+.pm-hist-select { height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; font-size: 12.5px; padding: 0 6px; max-width: 200px; }
+.pm-hist-count { font-size: 12px; margin-left: auto; }
+.pm-hist-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.pm-hist-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pm-hist-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); background: var(--bg-alt); padding: 8px 10px; position: sticky; top: 0; }
+.pm-hist-table td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; color: var(--text); }
+.pm-hist-table td b { font-weight: 600; }
+.pm-hist-table tbody tr:hover { background: var(--bg-alt); }
+.pm-hist-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.pm-nowrap { white-space: nowrap; }
+
+/* Issue view → Attachments (own documents + the CCB request's, read-only) */
+.pm-att-count { font-weight: 400; font-size: 13px; }
+.pm-att-group + .pm-att-group { margin-top: 12px; }
+.pm-att-group-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
+.pm-att-group-head a { color: var(--accent); text-decoration: none; }
+.pm-att-group-head a:hover { text-decoration: underline; }
+.pm-att-group-head .pm-muted { font-weight: 400; }
+.pm-att-list { list-style: none; margin: 0 0 8px; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.pm-att { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.pm-att + .pm-att { border-top: 1px solid var(--border); }
+.pm-att-ext { flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.pm-att-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pm-att-name { background: none; border: 0; padding: 0; text-align: left; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-att-name:hover { color: var(--accent); text-decoration: underline; }
+.pm-att-sub { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-att-actions { flex: none; display: inline-flex; gap: 2px; }
+.pm-att-empty { font-size: 12.5px; margin-bottom: 8px; }
+.pm-att-drop { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1.5px dashed var(--border); border-radius: 8px; color: var(--muted); font-size: 13px; transition: border-color .15s, background .15s; }
+.pm-att-drop.is-compact { padding: 9px 12px; }
+.pm-att-drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
+.pm-att-drop strong { color: var(--text); font-weight: 600; }
+.pm-att-drop small { display: block; font-size: 11.5px; margin-top: 2px; }
+.pm-att-drop.is-compact small { display: none; }
+
+/* Landscape (SAP / Non-SAP), derived from the Module's group in Master Data › Area */
+.pm-landscape { margin-bottom: 12px; }
+.pm-landscape .pm-seg { align-self: flex-start; }
+.pm-landscape-badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
+.pm-landscape-badge.is-sap { background: var(--accent-soft); color: var(--accent); }
+.pm-landscape-badge.is-nonsap { background: var(--st-teal-soft, var(--bg-alt)); color: var(--st-teal, var(--text-2)); }
+.pm-landscape-badge.is-none { background: var(--bg-alt); color: var(--muted); }
+.pm-pop-tag { margin-left: auto; padding-left: 10px; font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.pm-area-opt { display: flex; align-items: center; width: 100%; }
+.pm-pop-check .pm-pop-tag { margin-left: auto; }
+.pm-list-land { margin-left: 0; padding-left: 6px; }

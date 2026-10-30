@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ccbApi } from './api.js';
 import { Blocker, Button, Card, CcbShell, Empty, KpiTile, Loading, PageHeader, Pill, useCcbMe, useToast } from './ui.jsx';
-import { CATEGORY_META, actionOverdue, businessDaysBetween, fiscalYearStart, fmtDate, meetingLink } from './model.js';
+import { CATEGORY_META, LANDSCAPES, actionOverdue, businessDaysBetween, fiscalYearStart, fmtDate, meetingLink } from './model.js';
 import { BarChartIcon, BoltIcon, CheckCircleIcon, ClipboardIcon, ClockIcon, DownloadIcon, GavelIcon, UsersIcon } from '../shared/icons.jsx';
 
 /*
@@ -113,6 +113,7 @@ function Content() {
       monthly,
       byCategory: group((r) => r.category, (k) => CATEGORY_META[k]?.label || k),
       byFunction: group((r) => r.requestingFunction),
+      byLandscape: group((r) => (LANDSCAPES.includes(r.sapSystem) ? r.sapSystem : 'Earlier IT areas')),
       byModule: group((r) => (r.sapModules?.length ? r.sapModules : ['—'])).slice(0, 10),
       completed, attendanceAvg: attendance.length ? Math.round(attendance.reduce((a, b) => a + b, 0) / attendance.length) : null,
       quorumMet: completed.filter((m) => m.membersPresent >= settings.quorum).length,
@@ -147,7 +148,8 @@ function Content() {
       const g = (rows) => rows.map((o) => ({ Group: o.label, Logged: o.logged, Approved: o.approved, Rejected: o.rejected, 'Approval rate %': o.rate ?? '', 'Median cycle (business days)': o.cycleMedian ?? '' }));
       add('By category', g(x.byCategory));
       add('By function', g(x.byFunction));
-      add('By module', g(x.byModule));
+      add('By landscape', g(x.byLandscape));
+      add('By area', g(x.byModule));
       add('Monthly', x.monthly.map(([k, v]) => ({ Month: monthLabel(k), Logged: v.logged, Approved: v.approved, Rejected: v.rejected })));
       add('Meetings', x.completed.map((m) => ({ Meeting: m.meetingNo, Date: fmtDate(m.scheduledAt), Items: m.items, Approved: m.approved, Rejected: m.rejected, Deferred: m.deferred, 'Members present': m.membersPresent, Quorum: x.settings.quorum })));
       XLSX.writeFile(wb, `CCB-insights-${p.key}-${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -219,7 +221,11 @@ function Content() {
       </div>
 
       <div className="ccb-grid halves" style={{ marginTop: 16 }}>
-        <BreakdownCard title="By system / module (top 10)" rows={x.byModule} />
+        <BreakdownCard title="By IT landscape (SAP / Non-SAP)" rows={x.byLandscape} />
+        <BreakdownCard title="By area affected (top 10)" rows={x.byModule} />
+      </div>
+
+      <div style={{ marginTop: 16 }}>
         <Card title="Meetings" sub={`${x.completed.length} held · attendance ${x.attendanceAvg === null ? '—' : `${x.attendanceAvg}%`} · quorum met ${x.quorumMet}/${x.completed.length}`}>
           {x.completed.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No meetings held in this period.</p> : (
             <div className="ccb-table-wrap">

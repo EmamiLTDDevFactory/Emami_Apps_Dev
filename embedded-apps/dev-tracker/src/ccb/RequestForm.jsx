@@ -4,7 +4,8 @@ import { apiMasterData, getCurrentUserEmail } from '../shared/api.js';
 import { activeValues } from '../shared/masterData.js';
 import { Button, DirectoryPicker, Field, Modal } from './ui.jsx';
 import { FilePicker, uploadAll } from './Attachments.jsx';
-import { AREA_MODULES, CATEGORY_HELP, CATEGORY_META, IT_AREAS, PRIORITY_META, dateOnly } from './model.js';
+import { CATEGORY_HELP, CATEGORY_META, PRIORITY_META, dateOnly } from './model.js';
+import ItLandscape from './ItLandscape.jsx';
 import { AlertIcon, BoltIcon, InfoIcon, PaperclipIcon, SendIcon } from '../shared/icons.jsx';
 
 const EMPTY = {
@@ -28,23 +29,26 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
   const [partial, setPartial] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }));
-  const toggleModule = (m) => setForm((f) => ({ ...f, sapModules: f.sapModules.includes(m) ? f.sapModules.filter((x) => x !== m) : [...f.sapModules, m] }));
   const cat = CATEGORY_META[form.category];
   // Requesting functions are maintained by admins in Master Data (category 'requestingFunction').
-  // IT SPOCs (and the person logging) are never the function's requester or the Module Lead.
+  // IT SPOCs (and the person logging) are never the function's requester or the Module Lead, unless they are a Module Lead.
   const [notPickable, setNotPickable] = useState({ spocs: new Set(), leads: new Set(), me: (getCurrentUserEmail() || '').toLowerCase() });
   useEffect(() => {
     Promise.all([ccbApi.people('IT SPOC'), ccbApi.people('Module Lead')])
       .then(([s, l]) => setNotPickable((n) => ({ ...n, spocs: new Set(s.people.map((p) => p.email)), leads: new Set(l.people.map((p) => p.email)) })))
       .catch(() => {});
   }, []);
+  // Raised by and Module Lead pick from the same people: IT SPOCs and the person filling in the form are
+  // left out — unless they are also a Module Lead.
+  const pickExclude = (p) => (notPickable.spocs.has(p.email) || p.email === notPickable.me) && !notPickable.leads.has(p.email);
   // Is the person filling in the form a Module Lead? Then they are this request's Module Lead.
   const isLead = notPickable.leads.has(notPickable.me) && (!editing || request.moduleLeadEmail === notPickable.me || !request.moduleLeadEmail);
   const [functions, setFunctions] = useState(null);
+  const [areas, setAreas] = useState(null); // Dev Tracker's Area master data, grouped SAP / Non-SAP
   useEffect(() => {
     apiMasterData(getCurrentUserEmail())
-      .then((rows) => setFunctions(activeValues(rows, 'requestingFunction')))
-      .catch(() => setFunctions([]));
+      .then((rows) => { setFunctions(activeValues(rows, 'requestingFunction')); setAreas((rows || []).filter((r) => r.category === 'area' && r.active)); })
+      .catch(() => { setFunctions([]); setAreas([]); });
   }, []);
   // An edited request keeps its function even if an admin has since retired that value.
   const functionOptions = functions && form.requestingFunction && !functions.includes(form.requestingFunction) ? [form.requestingFunction, ...functions] : functions || [];
@@ -114,7 +118,7 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
           <Field label="Raised by (function)" required group hint="Search active Emami Apps users and pick the person who raised the requirement.">
             <DirectoryPicker
               value={{ name: form.requestedBy, email: form.requestedByEmail }}
-              exclude={(p) => notPickable.spocs.has(p.email) || p.email === notPickable.me}
+              exclude={pickExclude}
               onChange={(p) => setForm((f) => ({ ...f, requestedBy: p.name, requestedByEmail: p.email }))}
             />
           </Field>
@@ -133,36 +137,12 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
       <div className="ccb-form-section">
         <h4><span className="ccb-step-badge">2</span>IT landscape</h4>
         <p>Where the change lands. The IT Application Head assesses the impact on other systems and modules.</p>
-        <div className="ccb-form-grid">
-          <Field label="IT area" required group wide>
-            <div className="ccb-chips">
-              {IT_AREAS.map((s) => (
-                <button key={s} type="button" className={`ccb-chip-toggle${form.sapSystem === s ? ' on' : ''}`} onClick={() => set('sapSystem')(s)}>{s}</button>
-              ))}
-            </div>
-          </Field>
-          <Field label="Systems / modules affected" hint="Pick every system or module the change touches, or add your own." group wide>
-            <div className="ccb-chips">
-              {[...new Set([...(AREA_MODULES[form.sapSystem] || []), ...form.sapModules])].map((m) => (
-                <button key={m} type="button" className={`ccb-chip-toggle${form.sapModules.includes(m) ? ' on' : ''}`} onClick={() => toggleModule(m)}>{m}</button>
-              ))}
-              <input
-                className="ccb-input"
-                style={{ width: 200, padding: '5px 10px', borderRadius: 999, fontSize: 11.5 }}
-                maxLength={30}
-                placeholder="+ Add another, press Enter"
-                onKeyDown={(e) => {
-                  const v = e.currentTarget.value.trim();
-                  if (e.key === 'Enter' && v) {
-                    e.preventDefault();
-                    if (!form.sapModules.includes(v)) toggleModule(v);
-                    e.currentTarget.value = '';
-                  }
-                }}
-              />
-            </div>
-          </Field>
-        </div>
+        <ItLandscape
+          system={form.sapSystem}
+          modules={form.sapModules}
+          areas={areas}
+          onChange={(sapSystem, sapModules) => setForm((f) => ({ ...f, sapSystem, sapModules }))}
+        />
       </div>
 
       <div className="ccb-form-section">
@@ -216,7 +196,7 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
           <Field label="Module Lead" required wide group hint="The IT SPOC’s upline — search active Emami Apps users. Reviews the request before it goes to the IT Application Head, assigns the developer once it is approved, and gets its updates.">
             <DirectoryPicker
               value={{ name: form.moduleLeadName, email: form.moduleLeadEmail }}
-              exclude={(p) => (notPickable.spocs.has(p.email) && !notPickable.leads.has(p.email)) || (p.email === notPickable.me && !notPickable.leads.has(p.email))}
+              exclude={pickExclude}
               onChange={(p) => setForm((f) => ({ ...f, moduleLeadName: p.name, moduleLeadEmail: p.email }))}
             />
           </Field>

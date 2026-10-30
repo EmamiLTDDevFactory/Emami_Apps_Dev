@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiList, apiMasterData, apiUpdate, apiCreate, apiDelete, apiSprints } from '../../shared/api.js';
-import { activeValues, categoryColorMap } from '../../shared/masterData.js';
+import { activeValues, areaGroupMap, categoryColorMap } from '../../shared/masterData.js';
 import { CATEGORIES } from '../../shared/constants.js';
 import { buildPayload, isEpic, splitPeople } from '../../shared/pm.js';
 
@@ -59,6 +59,7 @@ export function useWorkspace(email) {
   const options = useMemo(() => {
     const out = {};
     for (const cat of CATEGORIES) out[cat.key] = activeValues(masterData, cat.key);
+    out.areaGroupOf = areaGroupMap(masterData); // area → 'SAP' | 'Non-SAP'
     return out;
   }, [masterData]);
   const statusOrder = useMemo(() => {

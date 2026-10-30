@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { landscapeOf } from '../../shared/masterData.js';
 import * as XLSX from 'xlsx';
 import { apiActivityLog } from '../../shared/api.js';
 import { ccbApi } from '../../ccb/api.js';
@@ -45,6 +46,7 @@ const STAGE_DATE_STATUS = [
 const DIMENSIONS = [
   { key: 'status', label: 'Status' },
   { key: 'bucket', label: 'Age bucket' },
+  { key: 'landscape', label: 'Landscape (SAP / Non-SAP)' },
   { key: 'area', label: 'Module' },
   { key: 'priority', label: 'Priority' },
   { key: 'assignee', label: 'Task Assigned to' },
@@ -166,11 +168,12 @@ function dimValue(row, dim, measure) {
     case 'due': return [row.dueState];
     case 'started': return [row.startAt ? new Date(row.startAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—'];
     case 'issueType': return [it.issueType || 'Task'];
+    case 'landscape': return [row.landscape || '—'];
     default: return [String(it[dim] || '').trim() || '—'];
   }
 }
 
-export default function AgeingReport({ items, statusOrder, email, onOpen }) {
+export default function AgeingReport({ items, statusOrder, areaGroupOf, email, onOpen }) {
   const [log, setLog] = useState(null);
   const [requests, setRequests] = useState([]);
   const [loadErr, setLoadErr] = useState('');
@@ -190,7 +193,10 @@ export default function AgeingReport({ items, statusOrder, email, onOpen }) {
   }, [email]);
 
   const now = useMemo(() => Date.now(), [log]); // eslint-disable-line react-hooks/exhaustive-deps
-  const all = useMemo(() => (log ? buildModel(items, log, requests, now) : []), [items, log, requests, now]);
+  const all = useMemo(
+    () => (log ? buildModel(items, log, requests, now).map((r) => ({ ...r, landscape: landscapeOf(r.it.area, areaGroupOf) })) : []),
+    [items, log, requests, now, areaGroupOf],
+  );
   const rows = useMemo(() => all.filter((r) => (scope === 'open' ? !r.closed : scope === 'closed' ? r.closed : true)), [all, scope]);
   const statuses = useMemo(() => {
     const seen = new Set(all.flatMap((r) => r.segs.map((s) => s.status).concat(r.status)));
@@ -615,8 +621,8 @@ function Dot({ c }) { return <i className="ag-dot" style={{ background: c }} />;
 function exportAgeing(rows, statuses) {
   const cols = [...GOV.map((g) => g.key), ...statuses.filter((s) => !TERMINAL.includes(s))];
   const r1 = (d) => (d == null ? '' : Math.round(d * 10) / 10);
-  const head = ['Key', 'CR no.', 'Title', 'Status', 'Module', 'Priority', 'Task Assigned to', 'Function Owner', 'Start', 'Due', 'Due state', 'Days in status', 'Age (days)', 'End-to-end (days)', 'Days since last move', 'Sent back', 'Journey', 'Estimated', ...cols.map((c) => `${c} (days)`)];
-  const body = rows.map((r) => [r.key, r.crNo || '', r.title, r.status, r.it.area || '', r.it.priority || '', r.it.developer || '', r.it.spocFunction || '', r.startAt ? new Date(r.startAt).toISOString().slice(0, 10) : '', r.due || '', r.dueState,
+  const head = ['Key', 'CR no.', 'Title', 'Status', 'Landscape', 'Module', 'Priority', 'Task Assigned to', 'Function Owner', 'Start', 'Due', 'Due state', 'Days in status', 'Age (days)', 'End-to-end (days)', 'Days since last move', 'Sent back', 'Journey', 'Estimated', ...cols.map((c) => `${c} (days)`)];
+  const body = rows.map((r) => [r.key, r.crNo || '', r.title, r.status, r.landscape || '', r.it.area || '', r.it.priority || '', r.it.developer || '', r.it.spocFunction || '', r.startAt ? new Date(r.startAt).toISOString().slice(0, 10) : '', r.due || '', r.dueState,
     r.closed ? '' : r1(r.inStatus), r1(r.age), r1(r.e2e), r.closed ? '' : r1(r.idle), r.back, r.path.join(' → '), r.estimated ? 'Yes' : '', ...cols.map((c) => r1(r.dwell[c]))]);
   const seg = [['Key', 'CR no.', 'Title', 'Phase / status', 'From', 'To', 'Days']];
   for (const r of rows) for (const s of [...r.gov, ...r.segs]) {

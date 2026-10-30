@@ -280,6 +280,38 @@ export async function apiCommentUpdate(id, body, email) {
 export async function apiCommentDelete(id, email) {
   return json(await fetch(`${API_BASE}/comments/${id}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
 }
+// --- Attachments (an issue's own documents, plus its CCB request's, read-only) ---
+export async function apiAttachments(itemId, email) {
+  return json(await fetch(`${API_BASE}/items/${itemId}/attachments`, { headers: { ...authHeaders(email) } }));
+}
+export async function apiAttachmentUpload(itemId, file, email) {
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/items/${itemId}/attachments?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream', ...authHeaders(email) }, body: file,
+    });
+  } catch {
+    throw new Error(`Could not upload ${file.name}. Check your connection and try again.`);
+  }
+  if (res.status === 413) throw new Error(`${file.name} is too large.`);
+  return json(res);
+}
+export async function apiAttachmentDelete(itemId, attId, email) {
+  return json(await fetch(`${API_BASE}/items/${itemId}/attachments/${attId}`, { method: 'DELETE', headers: { ...authHeaders(email) } }));
+}
+/** Fetches the file with the session token and hands it to the browser as a download. */
+export async function apiAttachmentDownload(itemId, a, email, fromCcb = false) {
+  const res = await fetch(`${API_BASE}/items/${itemId}/${fromCcb ? 'ccb-attachments' : 'attachments'}/${a.id}`, { headers: { ...authHeaders(email) } }).catch(() => null);
+  if (!res || !res.ok) throw new Error('Could not download the document.');
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = a.fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
 export async function apiSprints(email) {
   return json(await fetch(`${API_BASE}/sprints`, { headers: { ...authHeaders(email) } }));
 }

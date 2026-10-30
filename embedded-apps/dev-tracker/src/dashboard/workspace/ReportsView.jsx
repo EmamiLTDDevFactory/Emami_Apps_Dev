@@ -35,7 +35,7 @@ export default function ReportsView({ ws, items, email, onOpen }) {
         ))}
       </nav>
       <div className="pm-report-body">
-        {report === 'ageing' && <AgeingReport items={items} statusOrder={ws.statusOrder} email={email} onOpen={onOpen} />}
+        {report === 'ageing' && <AgeingReport items={items} statusOrder={ws.statusOrder} areaGroupOf={ws.options.areaGroupOf} email={email} onOpen={onOpen} />}
         {report === 'burndown' && <Burndown ws={ws} />}
         {report === 'velocity' && <Velocity ws={ws} />}
         {report === 'created' && <CreatedResolved items={items} />}
