@@ -649,6 +649,108 @@ INSERT INTO setu.settings (key, value) VALUES ('whatsapp.threadDays', '7') ON CO
 UPDATE setu.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
   WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%';
 
-INSERT INTO setu.settings (key, value) VALUES ('schema.version', '4') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+-- v5: Freshdesk parity - watchers, linked / parent-child / merged tickets, spam and trash, to-dos, saved views,
+-- scenarios, collision detection, CSAT survey links and the Solutions knowledge base
+ALTER TABLE setu.tickets
+    ADD COLUMN IF NOT EXISTS "parentId" integer REFERENCES setu.tickets(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS "mergedIntoId" integer REFERENCES setu.tickets(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS spam boolean NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "deletedAt" timestamptz;
+CREATE INDEX IF NOT EXISTS tickets_parent_idx ON setu.tickets ("parentId") WHERE "parentId" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS tickets_hidden_idx ON setu.tickets ("deletedAt", spam) WHERE spam OR "deletedAt" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS tickets_region_idx ON setu.tickets (region);
+CREATE INDEX IF NOT EXISTS tickets_state_idx ON setu.tickets (state);
+CREATE INDEX IF NOT EXISTS tickets_depot_idx ON setu.tickets (depot);
+
+CREATE TABLE IF NOT EXISTS setu.ticket_watchers (
+    "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    "createdAt" timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("ticketId", "agentId")
+);
+CREATE INDEX IF NOT EXISTS ticket_watchers_agent_idx ON setu.ticket_watchers ("agentId");
+
+CREATE TABLE IF NOT EXISTS setu.ticket_links (
+    "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    "linkedId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    "createdAt" timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("ticketId", "linkedId"),
+    CHECK ("ticketId" <> "linkedId")
+);
+
+CREATE TABLE IF NOT EXISTS setu.todos (
+    id serial PRIMARY KEY,
+    "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    "ticketId" integer REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    text text NOT NULL,
+    done boolean NOT NULL DEFAULT false,
+    "dueAt" timestamptz,
+    "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS todos_agent_idx ON setu.todos ("agentId", done);
+
+CREATE TABLE IF NOT EXISTS setu.saved_views (
+    id serial PRIMARY KEY,
+    "ownerAgentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    shared boolean NOT NULL DEFAULT false,
+    query jsonb NOT NULL,
+    "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNLOGGED TABLE IF NOT EXISTS setu.ticket_presence (
+    "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    mode text NOT NULL CHECK (mode IN ('viewing', 'replying')),
+    at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY ("ticketId", "agentId")
+);
+
+ALTER TABLE setu.scenarios
+    ADD COLUMN IF NOT EXISTS description text,
+    ADD COLUMN IF NOT EXISTS position integer NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS setu.csat_requests (
+    "ticketId" integer PRIMARY KEY REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    token text NOT NULL UNIQUE,
+    "sentAt" timestamptz NOT NULL DEFAULT now(),
+    "answeredAt" timestamptz
+);
+ALTER TABLE setu.csat_responses ADD COLUMN IF NOT EXISTS "agentId" integer REFERENCES setu.agents(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS csat_responses_ticket_idx ON setu.csat_responses ("ticketId");
+
+CREATE TABLE IF NOT EXISTS setu.articles (
+    id serial PRIMARY KEY,
+    category text NOT NULL DEFAULT 'General',
+    folder text NOT NULL DEFAULT 'General',
+    title text NOT NULL UNIQUE,
+    body text NOT NULL,
+    status text NOT NULL DEFAULT 'draft' CHECK (status IN ('published', 'draft')),
+    tags text[] NOT NULL DEFAULT '{}',
+    views integer NOT NULL DEFAULT 0,
+    helpful integer NOT NULL DEFAULT 0,
+    "notHelpful" integer NOT NULL DEFAULT 0,
+    "authorAgentId" integer REFERENCES setu.agents(id) ON DELETE SET NULL,
+    "createdAt" timestamptz NOT NULL DEFAULT now(),
+    "updatedAt" timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE setu.companies ADD COLUMN IF NOT EXISTS "createdAt" timestamptz NOT NULL DEFAULT now();
+
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('requester.csat', 'requester', 'How did we do? Ticket {{ticket.id}} - {{ticket.subject}}', 'Dear {{ticket.requester.name}},<br><br>Your ticket {{ticket.id}} is now closed. How would you rate your overall satisfaction for the resolution provided by the agent?<br><br><a href="{{csat.url}}">Rate the support you received</a> (one click, no sign-in)<br><br>Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.scenarios (name, description, actions, position) VALUES
+    ('Assign to QA', 'Customer reported bugs are assigned to L2 in a single click',
+     jsonb_build_array(jsonb_build_object('type', 'setField', 'field', 'type', 'value', 'CDMS'), jsonb_build_object('type', 'setGroup', 'value', (SELECT id FROM setu.groups WHERE name = 'L2 Support'))), 0),
+    ('Mark as Feature Request', 'Mark as New Requirement and move to L2',
+     jsonb_build_array(jsonb_build_object('type', 'setStatus', 'value', 13), jsonb_build_object('type', 'setGroup', 'value', (SELECT id FROM setu.groups WHERE name = 'L2 Support'))), 1),
+    ('Request Details from sender via Email', 'Asks the requester for missing distributor details',
+     jsonb_build_array(jsonb_build_object('type', 'setStatus', 'value', 12), jsonb_build_object('type', 'reply', 'text', E'Dear {{ticket.requester.name}},\n\nPlease share the Distributor Code, Depot and a screenshot of the error so we can proceed.')), 2),
+    ('Send Acknowledgement', 'Acknowledges receipt to the requester',
+     jsonb_build_array(jsonb_build_object('type', 'reply', 'text', E'Dear {{ticket.requester.name}},\n\nWe have received your request #{{ticket.id}}. Our team is working on it.')), 3)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('csat.enabled', 'true') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('schema.version', '5') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;

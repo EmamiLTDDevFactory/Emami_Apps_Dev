@@ -2,95 +2,85 @@
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
 const express = require('express');
 const { pool } = require('../../db');
-const { ACTIVITY_KINDS, CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES, SOURCES } = require('../constants');
+const { CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES, SOURCES } = require('../constants');
 const { loadTicket } = require('../lib/notify');
 const { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, createTicket, updateTicket } = require('../lib/tickets');
-const { fail, intOrNull, logActivity, textToHtml, touchActivity, updateRow, wrap } = require('../lib/util');
+const { LIVE, VIEWS, VIEW_IDS, ticketFilter } = require('../lib/ticketQuery');
+const { assertResolvable, hideTickets, linkTickets, mergeTickets, presence, runScenario, setWatching } = require('../lib/ticketOps');
+const { audit, fail, intOrNull, logActivity, stripTags, textToHtml, touchActivity, updateRow, wrap } = require('../lib/util');
+const { isAdmin, requireSupervisor } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ---------- Routes: tickets ----------
 
-
-
 router.get('/tickets', wrap(async (req, res) => {
-    const where = [];
-    const params = [];
-    const p = (v) => { params.push(v); return `$${params.length}`; };
-    const qy = req.query;
-    switch (qy.view) {
-        case 'mine': where.push(`t."agentId" = ${p(req.agent.id)}`, 'NOT s."isClosed"'); break;
-        case 'unassigned': where.push('t."agentId" IS NULL', 'NOT s."isResolved"'); break;
-        case 'open': where.push('NOT s."isResolved"'); break;
-        // Pending: waiting on someone else (a status that pauses the SLA), not yet resolved.
-        case 'pending': where.push('s."pausesSla"', 'NOT s."isResolved"'); break;
-        case 'overdue': where.push('NOT s."isResolved"', '(t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now()))'); break;
-        case 'resolved': where.push('s."isResolved"'); break;
-        default: break;
-    }
-    // Every list filter takes one value or several, comma separated ("4,5" = Resolved or Closed).
-    const ints = (v) => String(v).split(',').map(Number).filter(Number.isInteger);
-    const texts = (v) => String(v).split(',').map((x) => x.trim().slice(0, 200)).filter(Boolean).slice(0, 50);
-    if (qy.statusId) where.push(`t."statusId" = ANY(${p(ints(qy.statusId))}::int[])`);
-    if (qy.priority) where.push(`t.priority = ANY(${p(ints(qy.priority))}::int[])`);
-    if (qy.severity) where.push(`t.severity = ANY(${p(texts(qy.severity))}::text[])`);
-    if (qy.groupId) where.push(`t."groupId" = ANY(${p(ints(qy.groupId))}::int[])`);
-    if (qy.agentId) {
-        const wanted = texts(qy.agentId);
-        const ids = ints(wanted.filter((x) => x !== 'none').join(','));
-        const parts = [...(ids.length ? [`t."agentId" = ANY(${p(ids)}::int[])`] : []), ...(wanted.includes('none') ? ['t."agentId" IS NULL'] : [])];
-        if (parts.length) where.push(`(${parts.join(' OR ')})`);
-    }
-    if (qy.source) where.push(`t.source = ANY(${p(texts(qy.source))}::text[])`);
-    if (qy.type) where.push(`t.type = ANY(${p(texts(qy.type))}::text[])`);
-    if (qy.category) where.push(`t.category = ANY(${p(texts(qy.category))}::text[])`);
-    if (qy.activity) where.push(`t."lastActivityKind" = ANY(${p(texts(qy.activity).filter((k) => ACTIVITY_KINDS.includes(k)))}::text[])`);
-    if (qy.tag) where.push(`t.tags @> ARRAY[${p(String(qy.tag).trim().slice(0, 100))}]::text[]`);
-    const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v));
-    if (qy.from && !isDate(qy.from)) throw fail(400, 'Dates must be YYYY-MM-DD.');
-    if (qy.to && !isDate(qy.to)) throw fail(400, 'Dates must be YYYY-MM-DD.');
-    if (qy.from) where.push(`t."createdAt" >= ${p(`${qy.from}T00:00:00+05:30`)}::timestamptz`);
-    if (qy.to) where.push(`t."createdAt" <= ${p(`${qy.to}T23:59:59.999+05:30`)}::timestamptz`);
-    if (qy.due && [15, 60, 240].includes(Number(qy.due))) {
-        where.push('NOT s."isResolved"', `t."resolutionDueAt" BETWEEN now() AND now() + ${p(`${Number(qy.due)} minutes`)}::interval`);
-    }
-    if (qy.q) {
-        const term = String(qy.q).trim().slice(0, 200);
-        if (/^\d+$/.test(term)) where.push(`(t.id = ${p(Number(term))} OR t."distributorCode" = ${p(term)})`);
-        else {
-            const like = p(`%${term}%`);
-            where.push(`(t.subject ILIKE ${like} OR c.name ILIKE ${like} OR c.email ILIKE ${like} OR t."distributorName" ILIKE ${like} OR t."distributorCode" ILIKE ${like})`);
-        }
-    }
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const SORTS = {
-        created: 't."createdAt" DESC', updated: 't."updatedAt" DESC', activity: 't."lastActivityAt" DESC NULLS LAST',
-        due: 't."resolutionDueAt" ASC NULLS LAST', priority: 't.priority DESC, t."createdAt" DESC',
-    };
-    const order = SORTS[qy.sort] || SORTS.created;
-    const pageSize = Math.min(200, Math.max(10, Number(qy.pageSize) || 50));
-    const page = Math.max(1, Number(qy.page) || 1);
+    const { where, params, order } = ticketFilter(req.query, req.agent.id);
+    const pageSize = Math.min(200, Math.max(10, Number(req.query.pageSize) || 50));
+    const page = Math.max(1, Number(req.query.page) || 1);
     const [items, total] = await Promise.all([
-        pool.query(`SELECT ${LIST_COLUMNS} ${LIST_FROM} ${whereSql} ORDER BY ${order} LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`, params),
-        pool.query(`SELECT count(*)::int AS n ${LIST_FROM} ${whereSql}`, params),
+        pool.query(`SELECT ${LIST_COLUMNS} ${LIST_FROM} ${where} ORDER BY ${order}, t.id DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`, params),
+        pool.query(`SELECT count(*)::int AS n ${LIST_FROM} ${where}`, params),
     ]);
     res.json({ success: true, items: items.rows, total: total.rows[0].n, page, pageSize });
 }));
 
+/** Counts for every built-in view, plus the caller's own and shared saved views (keyed "saved:<id>"). */
 router.get('/tickets/counts', wrap(async (req, res) => {
-    const { rows } = await pool.query(
-        `SELECT
-            count(*) FILTER (WHERE t."agentId" = $1 AND NOT s."isClosed")::int AS mine,
-            count(*) FILTER (WHERE t."agentId" IS NULL AND NOT s."isResolved")::int AS unassigned,
-            count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
-            count(*) FILTER (WHERE s."pausesSla" AND NOT s."isResolved")::int AS pending,
-            count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
-            count(*)::int AS "all"
-         FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`,
-        [req.agent.id],
-    );
-    res.json({ success: true, counts: rows[0] });
+    const [builtIn, saved] = await Promise.all([
+        pool.query(
+            `SELECT ${VIEW_IDS.map((v) => `count(*) FILTER (WHERE ${VIEWS[v]('$1')})::int AS "${v}"`).join(', ')}, count(*) FILTER (WHERE ${LIVE})::int AS "all"
+             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`,
+            [req.agent.id],
+        ),
+        pool.query('SELECT id, query FROM setu.saved_views WHERE "ownerAgentId" = $1 OR shared ORDER BY id LIMIT 30', [req.agent.id]),
+    ]);
+    const counts = { ...builtIn.rows[0] };
+    await Promise.all(saved.rows.map(async (v) => {
+        try {
+            const f = ticketFilter(v.query ?? {}, req.agent.id);
+            counts[`saved:${v.id}`] = (await pool.query(`SELECT count(*)::int AS n ${LIST_FROM} ${f.where}`, f.params)).rows[0].n;
+        } catch {
+            counts[`saved:${v.id}`] = null;
+        }
+    }));
+    res.json({ success: true, counts });
 }));
+
+// Export: the list's filters, the columns the person picked. Supervisors and admins (it carries requester details).
+const EXPORT_COLUMNS = {
+    'Ticket ID': (t) => t.id, Subject: (t) => t.subject, Status: (t) => t.statusName, Priority: (t) => PRIORITIES[t.priority], Severity: (t) => t.severity,
+    Source: (t) => t.source, Type: (t) => t.type, Group: (t) => t.groupName, Agent: (t) => t.agentName, Requester: (t) => t.requesterName,
+    'Requester email': (t) => t.requesterEmail, 'Created time': (t) => t.createdAt, 'Resolution due': (t) => t.resolutionDueAt,
+    'First response due': (t) => t.firstResponseDueAt, 'First responded at': (t) => t.firstRespondedAt, 'Resolved at': (t) => t.resolvedAt,
+    'Closed at': (t) => t.closedAt, 'Last activity': (t) => t.lastActivityAt, Region: (t) => t.region, 'Distributor Code': (t) => t.distributorCode,
+    'Distributor Name': (t) => t.distributorName, 'Sales Org': (t) => t.salesOrg, State: (t) => t.state, Depot: (t) => t.depot, 'ASM Name': (t) => t.asmName,
+    'Depot Co-ordinator': (t) => t.depotCoordinator, 'MR UID': (t) => t.mrUid, Category: (t) => t.category, Function: (t) => t.function,
+    'L2 Agent': (t) => t.l2Agent, 'HelpDesk Analysis': (t) => stripTags(t.helpdeskAnalysis), 'RCA/Solution': (t) => stripTags(t.rcaSolution), Tags: (t) => (t.tags ?? []).join('; '),
+    'First response SLA': (t) => (t.firstResponseDueAt ? (t.frViolated || (t.firstRespondedAt ?? new Date()) > t.firstResponseDueAt ? 'SLA violated' : 'Within SLA') : ''),
+    'Resolution SLA': (t) => (t.resolutionDueAt ? (t.resViolated || (t.resolvedAt ?? new Date()) > t.resolutionDueAt ? 'SLA violated' : 'Within SLA') : ''),
+    CSAT: (t) => ({ 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' })[t.csatRating] ?? '',
+};
+const safeCell = (v) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
+const istCell = (v) => (v instanceof Date ? v.toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }) : v ?? '');
+
+router.get('/tickets/export', wrap(async (req, res) => {
+    requireSupervisor(req);
+    const { where, params, order } = ticketFilter(req.query, req.agent.id);
+    const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => EXPORT_COLUMNS[c]);
+    const columns = wanted.length ? wanted : Object.keys(EXPORT_COLUMNS);
+    const { rows } = await pool.query(
+        `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", a.name AS "agentName", g.name AS "groupName", s.name AS "statusName",
+                (SELECT rating FROM setu.csat_responses r WHERE r."ticketId" = t.id ORDER BY r.id DESC LIMIT 1) AS "csatRating"
+         ${LIST_FROM} ${where} ORDER BY ${order}, t.id DESC LIMIT 5001`,
+        params,
+    );
+    if (rows.length > 5000) throw fail(400, 'More than 5,000 tickets match. Narrow the filters (for example a date range) and export again.');
+    const out = rows.map((t) => columns.map((c) => safeCell(istCell(EXPORT_COLUMNS[c](t)))));
+    await audit(req.verifiedEmail, 'tickets_exported', { rows: out.length, view: req.query.view ?? '', columns: columns.length });
+    res.json({ success: true, columns, rows: out });
+}));
+router.get('/tickets/export/columns', wrap(async (req, res) => res.json({ success: true, columns: Object.keys(EXPORT_COLUMNS) })));
 
 function cleanFields(body) {
     const out = {};
@@ -111,16 +101,6 @@ function cleanFields(body) {
     return out;
 }
 
-/** Required fields must be filled before a ticket can be resolved or closed. Throws 400 listing what is missing. */
-async function assertResolvable(statusId, ticket) {
-    const next = (await pool.query('SELECT "isResolved" FROM setu.ticket_statuses WHERE id = $1', [statusId])).rows[0];
-    if (!next) throw fail(400, 'Unknown status.');
-    if (!next.isResolved) return;
-    const required = (await pool.query('SELECT key, label FROM setu.field_definitions WHERE required')).rows;
-    const missing = required.filter((f) => (f.key === 'category' ? !ticket.category || !ticket.function : !ticket[f.key])).map((f) => f.label);
-    if (missing.length) throw fail(400, `Fill in all required fields before resolving: ${missing.join(', ')}.`);
-}
-
 router.post('/tickets', wrap(async (req, res) => {
     const b = req.body ?? {};
     const subject = String(b.subject || '').trim();
@@ -134,6 +114,14 @@ router.post('/tickets', wrap(async (req, res) => {
     const fields = cleanFields(b);
     const statusId = intOrNull(b.statusId);
     if (Number.isNaN(statusId)) throw fail(400, 'Invalid statusId.');
+    // Child ticket: one level only (a child cannot have children), and never under a trashed / merged ticket.
+    const parentId = intOrNull(b.parentId);
+    if (Number.isNaN(parentId)) throw fail(400, 'Invalid parent ticket.');
+    if (parentId) {
+        const parent = await loadTicket(parentId);
+        if (parent.parentId) throw fail(400, `#${parentId} is itself a child ticket - add the child to #${parent.parentId} instead.`);
+        if (parent.deletedAt || parent.mergedIntoId) throw fail(400, `#${parentId} is in the trash or merged.`);
+    }
     if (statusId) await assertResolvable(statusId, fields);
     const t = await createTicket({
         subject,
@@ -145,7 +133,12 @@ router.post('/tickets', wrap(async (req, res) => {
         actorName: req.agent.name,
         notifyRequester: b.notifyRequester === true,
     });
-    const final = statusId && statusId !== t.statusId ? await updateTicket(t.id, { statusId }, req.agent.id) : t;
+    if (parentId) {
+        await updateRow('tickets', t.id, { parentId });
+        await logActivity(t.id, 'child_of', { ticket: parentId }, req.agent.id);
+        await logActivity(parentId, 'child_added', { ticket: t.id }, req.agent.id);
+    }
+    const final = statusId && statusId !== t.statusId ? await updateTicket(t.id, { statusId }, req.agent.id) : await loadTicket(t.id);
     res.status(201).json({ success: true, ticket: final });
 }));
 
@@ -153,7 +146,8 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
-    const [conversations, activities, timeLogs, others, calls] = await Promise.all([
+    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt" FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`;
+    const [conversations, activities, timeLogs, others, calls, watchers, links, children, parent, csat, todos] = await Promise.all([
         pool.query(
             `SELECT cv.*, a.name AS "agentName" FROM setu.conversations cv LEFT JOIN setu.agents a ON a.id = cv."agentId"
              WHERE cv."ticketId" = $1 ORDER BY cv."createdAt", cv.id`,
@@ -168,19 +162,24 @@ router.get('/tickets/:id', wrap(async (req, res) => {
             `SELECT tl.*, a.name AS "agentName" FROM setu.time_logs tl JOIN setu.agents a ON a.id = tl."agentId" WHERE tl."ticketId" = $1 ORDER BY tl."createdAt" DESC`,
             [id],
         ),
-        pool.query(
-            `SELECT t.id, t.subject, s.name AS "statusName", t."createdAt" FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
-             WHERE t."requesterId" = $1 AND t.id <> $2 ORDER BY t."createdAt" DESC LIMIT 10`,
-            [t.requesterId, id],
-        ),
+        pool.query(`${related} WHERE t."requesterId" = $1 AND t.id <> $2 AND ${LIVE} ORDER BY t."createdAt" DESC LIMIT 10`, [t.requesterId, id]),
         pool.query(
             `SELECT cl.*, a.name AS "agentName" FROM setu.call_logs cl JOIN setu.agents a ON a.id = cl."agentId" WHERE cl."ticketId" = $1 ORDER BY cl."createdAt"`,
             [id],
         ),
+        pool.query('SELECT a.id, a.name FROM setu.ticket_watchers w JOIN setu.agents a ON a.id = w."agentId" WHERE w."ticketId" = $1 ORDER BY a.name', [id]),
+        pool.query(`${related} JOIN setu.ticket_links l ON l."linkedId" = t.id WHERE l."ticketId" = $1 ORDER BY t.id`, [id]),
+        pool.query(`${related} WHERE t."parentId" = $1 AND t."deletedAt" IS NULL ORDER BY t.id`, [id]),
+        t.parentId ? pool.query(`${related} WHERE t.id = $1`, [t.parentId]) : { rows: [] },
+        pool.query('SELECT rating, comment, "createdAt" FROM setu.csat_responses WHERE "ticketId" = $1 ORDER BY id DESC LIMIT 1', [id]),
+        pool.query('SELECT * FROM setu.todos WHERE "ticketId" = $1 AND "agentId" = $2 ORDER BY done, "dueAt" NULLS LAST, id', [id, req.agent.id]),
     ]);
     res.json({
         success: true, ticket: t, conversations: conversations.rows, activities: activities.rows, timeLogs: timeLogs.rows,
         requesterTickets: others.rows, calls: calls.rows,
+        watchers: watchers.rows, watching: watchers.rows.some((w) => w.id === req.agent.id),
+        links: links.rows, children: children.rows, parent: parent.rows[0] ?? null,
+        csat: csat.rows[0] ?? null, todos: todos.rows,
     });
 }));
 
@@ -214,6 +213,95 @@ router.patch('/tickets/:id', wrap(async (req, res) => {
     res.json({ success: true, ticket: t });
 }));
 
+/**
+ * Bulk actions on up to 100 selected tickets: update (status / priority / group / agent / add tag), close, watch,
+ * unwatch, spam, unspam, trash, restore, purge (Admin; trashed only), merge (into patch.primaryId or the oldest).
+ * Each ticket is checked like a single update; the ones that could not be changed come back with the reason.
+ */
+router.post('/tickets/bulk', wrap(async (req, res) => {
+    const b = req.body ?? {};
+    const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(Number).filter(Number.isInteger))];
+    if (!ids.length) throw fail(400, 'Select at least one ticket.');
+    if (ids.length > 100) throw fail(400, 'Select at most 100 tickets at a time.');
+    const action = String(b.action || '');
+    const failed = [];
+    let done = [];
+    if (['spam', 'unspam', 'trash', 'restore', 'purge'].includes(action)) {
+        if (action === 'purge' && !isAdmin(req)) throw fail(403, 'Only admins can delete tickets for good.');
+        done = await hideTickets(ids, action, req.agent.id);
+        if (action === 'purge') await audit(req.verifiedEmail, 'tickets_purged', { ids: done });
+    } else if (action === 'watch' || action === 'unwatch') {
+        for (const id of ids) {
+            try { await setWatching(id, req.agent.id, action === 'watch'); done.push(id); } catch (e) { failed.push({ id, error: e.message }); }
+        }
+    } else if (action === 'merge') {
+        if (ids.length < 2) throw fail(400, 'Select two or more tickets to merge.');
+        const primaryId = ids.includes(Number(b.patch?.primaryId)) ? Number(b.patch.primaryId) : Math.min(...ids);
+        done = await mergeTickets(primaryId, ids.filter((i) => i !== primaryId), req.agent);
+    } else if (action === 'update' || action === 'close') {
+        const patch = {};
+        const p = b.patch ?? {};
+        if (action === 'close') {
+            const closed = (await pool.query('SELECT id FROM setu.ticket_statuses WHERE "isClosed" ORDER BY position LIMIT 1')).rows[0];
+            patch.statusId = closed.id;
+        }
+        for (const k of ['statusId', 'priority', 'groupId', 'agentId']) {
+            if (p[k] === undefined) continue;
+            const n = p[k] === 'me' ? req.agent.id : intOrNull(p[k]);
+            if (Number.isNaN(n) || ((k === 'statusId' || k === 'priority') && n === null)) throw fail(400, `Invalid ${k}.`);
+            patch[k] = n;
+        }
+        if (patch.priority !== undefined && !PRIORITIES[patch.priority]) throw fail(400, 'Invalid priority.');
+        const addTag = String(p.addTag || '').trim().slice(0, 100);
+        if (!Object.keys(patch).length && !addTag) throw fail(400, 'Choose what to change.');
+        for (const id of ids) {
+            try {
+                const current = await loadTicket(id);
+                const one = { ...patch };
+                if (addTag && !(current.tags ?? []).includes(addTag)) one.tags = [...(current.tags ?? []), addTag].slice(0, 20);
+                if (one.statusId !== undefined) await assertResolvable(one.statusId, { ...current, ...one });
+                await updateTicket(id, one, req.agent.id);
+                done.push(id);
+            } catch (e) {
+                failed.push({ id, error: e.status && e.status < 500 ? e.message : 'Could not update.' });
+            }
+        }
+    } else {
+        throw fail(400, 'Unknown bulk action.');
+    }
+    res.json({ success: true, done, failed });
+}));
+
+router.post('/tickets/:id/merge', wrap(async (req, res) => {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number);
+    const merged = await mergeTickets(Number(req.params.id), ids, req.agent);
+    res.json({ success: true, merged });
+}));
+
+router.post('/tickets/:id/links', wrap(async (req, res) => {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : String(req.body?.ids || '').split(/[\s,#]+/)).map(Number).filter(Number.isInteger);
+    const linked = await linkTickets(Number(req.params.id), ids, req.agent.id, req.body?.unlink === true);
+    res.json({ success: true, linked });
+}));
+
+router.post('/tickets/:id/watch', wrap(async (req, res) => {
+    await setWatching(Number(req.params.id), req.agent.id, req.body?.watch !== false);
+    res.json({ success: true });
+}));
+
+router.post('/tickets/:id/scenarios/:sid', wrap(async (req, res) => {
+    const name = await runScenario(Number(req.params.id), Number(req.params.sid), req.agent);
+    res.json({ success: true, name });
+}));
+
+/** Collision detection: the page reports viewing / replying every ~20 s and hears who else has the ticket open. */
+router.post('/tickets/:id/presence', wrap(async (req, res) => {
+    const mode = ['viewing', 'replying', 'leave'].includes(req.body?.mode) ? req.body.mode : 'viewing';
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
+    res.json({ success: true, others: await presence(id, req.agent.id, mode) });
+}));
+
 router.post('/tickets/:id/messages', wrap(async (req, res) => {
     const id = Number(req.params.id);
     const b = req.body ?? {};
@@ -226,7 +314,12 @@ router.post('/tickets/:id/messages', wrap(async (req, res) => {
     const cc = list(b.cc);
     if ([...to, ...cc].some((x) => !EMAIL_RE.test(x))) throw fail(400, 'One of the email addresses is not valid.');
     if (kind === 'FORWARD' && !to.length) throw fail(400, 'Add at least one email address to forward to.');
+    // "Send and set status": the status is checked before anything is sent, so a refused close sends nothing.
+    const statusAfter = intOrNull(b.statusAfter);
+    if (Number.isNaN(statusAfter)) throw fail(400, 'Invalid status.');
+    if (statusAfter) await assertResolvable(statusAfter, await loadTicket(id));
     const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc }, req.agent);
+    if (statusAfter) await updateTicket(id, { statusId: statusAfter }, req.agent.id);
     res.status(201).json({ success: true, delivery });
 }));
 

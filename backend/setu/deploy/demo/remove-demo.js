@@ -31,10 +31,20 @@ async function main() {
     const choices = await client.query('DELETE FROM setu.field_choices WHERE id = ANY($1::int[])', [m.choiceIds || []]);
     const rules = await client.query('DELETE FROM setu.severity_rules WHERE id = ANY($1::int[])', [m.severityRuleIds || []]);
     await client.query(`DELETE FROM setu.settings WHERE key = 'demo.manifest'`);
+    // PulseDesk extract (load-pulsedesk.js): its articles and companies. Its tickets, requesters and agents went above
+    // (tag demo, @demo.setu.local); the configuration values it added are the real Freshdesk set-up and stay.
+    const pd = (await client.query(`SELECT value FROM setu.settings WHERE key = 'pulsedesk.manifest'`)).rows[0]?.value || { articleIds: [], companyIds: [] };
+    const articles = await client.query('DELETE FROM setu.articles WHERE id = ANY($1::int[])', [pd.articleIds || []]);
+    const companies = await client.query(
+      `DELETE FROM setu.companies co WHERE co.id = ANY($1::int[])
+         AND NOT EXISTS (SELECT 1 FROM setu.contacts c WHERE c."companyId" = co.id) AND NOT EXISTS (SELECT 1 FROM setu.tickets t WHERE t."companyId" = co.id)`,
+      [pd.companyIds || []],
+    );
+    await client.query(`DELETE FROM setu.settings WHERE key = 'pulsedesk.manifest'`);
     // Hub inbox rows the demo created for the demo agents (addresses nobody owns)
     const notes = await client.query(`DELETE FROM emami_apps.notifications WHERE app_id = 'setu' AND email LIKE $1`, [DOMAIN]);
     await client.query('COMMIT');
-    console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications.`);
+    console.log(`Removed: ${tickets.rowCount} demo tickets, ${contacts.rowCount} demo contacts, ${agents.rowCount} demo agents, ${dists.rowCount} demo distributors, ${canned.rowCount} demo canned replies, ${articles.rowCount} articles and ${companies.rowCount} companies from PulseDesk, ${choices.rowCount} field choices and ${rules.rowCount} severity rules added by the demo, ${notes.rowCount} demo notifications.`);
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;

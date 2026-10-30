@@ -227,6 +227,7 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     }
     if (changed.includes('agentId') && t.agentId && t.agentId !== actorAgentId) await notifyAgents(t, 'agent.assigned_agent', 'assignee');
     if (changed.includes('groupId') && t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');
+    if (changed.includes('statusId') && t.isClosed && !before.isClosed) await require('./ticketOps').maybeSendCsat(t);
     if (!opts.skipAutomations) await runRules('ON_UPDATE', id, changed);
     return t;
 }
@@ -305,6 +306,9 @@ async function addRequesterReply(ticketId, m) {
     await touchActivity(ticketId, 'requester_reply', after.requesterName, m.channel === 'whatsapp' ? 'WhatsApp' : null, new Date());
     await logActivity(ticketId, 'requester_replied', { channel: m.channel ?? 'email' });
     await ring(after, 'requester_reply', { title: `${after.requesterName} replied on #${after.id}`, body: stripTags(m.html).slice(0, 200) });
+    // Agents watching the ticket hear about requester replies too (their own bell mute still applies).
+    const watchers = (await pool.query('SELECT "agentId" FROM setu.ticket_watchers WHERE "ticketId" = $1', [ticketId])).rows.map((r) => r.agentId).filter((a) => a !== after.agentId);
+    if (watchers.length) await ring(after, 'requester_reply', { title: `${after.requesterName} replied on #${after.id} (watching)`, body: stripTags(m.html).slice(0, 200), only: watchers });
 }
 
 module.exports = { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, addRequesterReply, createTicket, runActions, updateTicket };

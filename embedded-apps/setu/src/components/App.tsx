@@ -1,9 +1,9 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PlusCircle, RefreshCw, Settings, ShieldX, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
-import { SetuContext, type Screen, type Setu } from '@/lib/context';
+import { SetuContext, type NewTicketPreset, type Screen, type Setu } from '@/lib/context';
 import { hasHubSession } from '@/lib/hub';
 import type { Availability, BellEvent, Me, Meta } from '@/lib/types';
 import { useScreenHistory } from '@/lib/useScreenHistory';
@@ -16,19 +16,28 @@ import dynamic from 'next/dynamic';
 import { Skeleton as LoadingSkeleton } from './ui';
 import Shortcuts from './Shortcuts';
 import Bell from './Bell';
+import GlobalSearch from './GlobalSearch';
 
 // Loaded only when opened: keeps the first load small for agents who never open Admin or the report.
 const loading = () => <LoadingSkeleton />;
 const Board = dynamic(() => import('./Board'), { loading });
 const Reports = dynamic(() => import('./Reports'), { loading });
 const Admin = dynamic(() => import('./admin/Admin'), { loading });
+const Helpdesk = dynamic(() => import('./Helpdesk'), { loading });
+const Analytics = dynamic(() => import('./Analytics'), { loading });
+const Contacts = dynamic(() => import('./Contacts'), { loading });
+const Solutions = dynamic(() => import('./Solutions'), { loading });
 
 type NavItem = { id: Screen; label: string; hint: string; icon: LucideIcon; show?: (s: { sup: boolean; admin: boolean }) => boolean };
 const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', hint: "Today's queue and trends", icon: LayoutDashboard },
-  { id: 'tickets', label: 'Tickets', hint: 'Views, filters and search', icon: Inbox },
+  { id: 'helpdesk', label: 'Helpdesk dashboard', hint: 'Region, status, type, source', icon: PieChart },
+  { id: 'tickets', label: 'Tickets', hint: 'Views, filters, bulk actions', icon: Inbox },
   { id: 'board', label: 'Board', hint: 'Drag tickets between statuses', icon: Columns3 },
   { id: 'new', label: 'New ticket', hint: 'On behalf of a requester', icon: PlusCircle },
+  { id: 'contacts', label: 'Contacts', hint: 'Requesters and companies', icon: Users },
+  { id: 'solutions', label: 'Solutions', hint: 'Knowledge base articles', icon: BookOpen },
+  { id: 'analytics', label: 'Analytics', hint: 'SLA, agents, CSAT, trends', icon: BarChart3, show: (s) => s.sup },
   { id: 'reports', label: 'Daily report', hint: 'Excel in the template order', icon: FileSpreadsheet, show: (s) => s.sup },
   { id: 'admin', label: 'Admin', hint: 'Agents, SLA, fields, templates', icon: Settings, show: (s) => s.admin },
 ];
@@ -71,6 +80,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const [ticketId, setTicketId] = useState<number | null>(null);
   const [preset, setPreset] = useState<{ n: number; q: TicketQuery }>({ n: 0, q: {} });
+  const [newPreset, setNewPreset] = useState<{ n: number; p?: NewTicketPreset }>({ n: 0 });
+  const [listIds, setListIds] = useState<number[]>([]);
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
   const [availBusy, setAvailBusy] = useState(false);
@@ -128,11 +139,14 @@ export default function App() {
       reloadMeta,
       openTicket: (id: number) => { setTicketId(id); setScreen('ticket'); setMenu(false); },
       openList: (q: TicketQuery = {}) => { setPreset((p) => ({ n: p.n + 1, q })); setScreen('tickets'); setMenu(false); },
-      go: (s: Screen) => { setScreen(s); setMenu(false); },
+      go: (s: Screen) => { if (s === 'new') setNewPreset((p) => ({ n: p.n + 1 })); setScreen(s); setMenu(false); },
+      newTicket: (p?: NewTicketPreset) => { setNewPreset((x) => ({ n: x.n + 1, p })); setScreen('new'); setMenu(false); },
+      listIds,
+      setListIds,
       isSupervisor: sup,
       isAdmin: state.me.role === 'Admin',
     };
-  }, [state, reloadMeta]);
+  }, [state, reloadMeta, listIds]);
 
   if (state.kind === 'checking') {
     return <div className="grid h-screen place-items-center bg-bg"><div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
@@ -248,6 +262,7 @@ export default function App() {
                 Mail off
               </span>
             )}
+            <GlobalSearch />
             <Bell events={state.bellEvents} muted={state.bellMuted} />
             <button type="button" onClick={() => window.dispatchEvent(new Event('setu:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
             <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>
@@ -258,7 +273,11 @@ export default function App() {
               {screen === 'dashboard' && <Dashboard />}
               {screen === 'tickets' && <Tickets key={preset.n} preset={preset.q} />}
               {screen === 'ticket' && ticketId && <TicketView key={ticketId} id={ticketId} />}
-              {screen === 'new' && <NewTicket />}
+              {screen === 'new' && <NewTicket key={newPreset.n} preset={newPreset.p} />}
+              {screen === 'helpdesk' && <Helpdesk />}
+              {screen === 'contacts' && <Contacts />}
+              {screen === 'solutions' && <Solutions />}
+              {screen === 'analytics' && ctx.isSupervisor && <Analytics />}
               {screen === 'board' && <Board />}
               {screen === 'reports' && ctx.isSupervisor && <Reports />}
               {screen === 'admin' && ctx.isAdmin && <Admin />}

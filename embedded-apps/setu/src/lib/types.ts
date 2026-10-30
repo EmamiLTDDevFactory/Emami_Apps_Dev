@@ -81,6 +81,13 @@ export interface Meta {
   callMode: CallMode;
   callOutcomes: string[];
   portalEnabled: boolean;
+  scenarios: ScenarioRef[];
+}
+
+export interface ScenarioRef {
+  id: number;
+  name: string;
+  description: string | null;
 }
 
 /** Ticket columns an agent can edit from the properties panel (backend EDITABLE_FIELDS). */
@@ -141,6 +148,11 @@ export interface Ticket extends TicketRow, Record<EditableField, string | null> 
   slaPausedMins: number;
   escalatedAt: string | null;
   agentEmail: string | null;
+  companyId: number | null;
+  parentId: number | null;
+  mergedIntoId: number | null;
+  spam: boolean;
+  deletedAt: string | null;
 }
 
 export interface Conversation {
@@ -183,17 +195,157 @@ export interface CallLog {
   durationSecs: number;
   notes: string | null;
   agentName: string;
+  ticketId: number;
   createdAt: string;
 }
+
+export interface RelatedTicket { id: number; subject: string; statusName: string; isResolved: boolean; createdAt: string }
 
 export interface TicketDetail {
   ticket: Ticket;
   conversations: Conversation[];
   activities: ActivityItem[];
   timeLogs: TimeLog[];
-  requesterTickets: { id: number; subject: string; statusName: string; createdAt: string }[];
+  requesterTickets: RelatedTicket[];
   calls: CallLog[];
+  watchers: { id: number; name: string }[];
+  watching: boolean;
+  links: RelatedTicket[];
+  children: RelatedTicket[];
+  parent: RelatedTicket | null;
+  csat: { rating: 1 | 2 | 3; comment: string | null; createdAt: string } | null;
+  todos: Todo[];
 }
+
+export interface Todo {
+  id: number;
+  agentId: number;
+  ticketId: number | null;
+  ticketSubject?: string | null;
+  text: string;
+  done: boolean;
+  dueAt: string | null;
+  createdAt: string;
+}
+
+export interface SavedView {
+  id: number;
+  name: string;
+  shared: boolean;
+  query: Record<string, string>;
+  ownerAgentId: number;
+  ownerName: string;
+}
+
+export interface PresenceAgent { agentId: number; name: string; mode: 'viewing' | 'replying' }
+
+export interface SearchResults {
+  tickets: TicketRow[];
+  contacts: { id: number; name: string; email: string | null; mobile: string | null }[];
+  articles: { id: number; title: string; category: string; status: ArticleStatus }[];
+}
+
+export interface ContactRow {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  companyId: number | null;
+  companyName: string | null;
+  createdAt: string;
+  tickets: number;
+  open: number;
+  lastTicketAt: string | null;
+}
+
+export interface ContactDetail {
+  contact: ContactRow & { anonymizedAt: string | null };
+  tickets: TicketRow[];
+  calls: (CallLog & { ticketSubject: string })[];
+  stats: { total: number; open: number; csatAvg: string | null };
+}
+
+export interface Company {
+  id: number;
+  name: string;
+  description: string | null;
+  domains: string[];
+  contacts: number;
+  open: number;
+  tickets: number;
+}
+
+export type ArticleStatus = 'published' | 'draft';
+export interface ArticleRow {
+  id: number;
+  category: string;
+  folder: string;
+  title: string;
+  excerpt: string;
+  status: ArticleStatus;
+  tags: string[];
+  views: number;
+  helpful: number;
+  notHelpful: number;
+  updatedAt: string;
+  authorName: string | null;
+}
+export interface Article extends Omit<ArticleRow, 'excerpt'> {
+  body: string;
+  createdAt: string;
+}
+
+export interface NameValue { name: string; value: number }
+
+export interface Breakdown {
+  days: number;
+  totals: { total: number; unresolved: number };
+  region: NameValue[];
+  status: (NameValue & { id: number | null })[];
+  type: NameValue[];
+  source: NameValue[];
+  category: NameValue[];
+  depot: NameValue[];
+  state: NameValue[];
+  critical: { id: number; subject: string; severity: Severity; statusName: string; createdAt: string }[];
+}
+
+export interface AgentPerformance {
+  id: number;
+  name: string;
+  active: boolean;
+  assigned: number;
+  resolved: number;
+  open: number;
+  avgFirstResponseMins: number | null;
+  avgResolutionMins: number | null;
+  firstResponseSlaPct: number | null;
+  resolutionSlaPct: number | null;
+  csatPositivePct: number | null;
+  csatResponses: number;
+  minutesLogged: number;
+}
+
+export interface Analytics {
+  days: number;
+  totals: {
+    created: number; resolved: number; unresolved: number;
+    avgFirstResponseMins: number | null; avgResolutionMins: number | null;
+    firstResponseSlaPct: number | null; resolutionSlaPct: number | null;
+    reopenedPct: number | null; wrongTicketPct: number | null; perAgentPerDay: number | null;
+  };
+  trend: { day: string; created: number; resolved: number }[];
+  heat: { dow: string; hours: number[] }[];
+  agents: AgentPerformance[];
+  byCategory: NameValue[]; byRegion: NameValue[]; byState: NameValue[]; byDepot: NameValue[];
+  byType: NameValue[]; bySource: NameValue[]; byStatus: NameValue[]; bySeverity: NameValue[]; byPriority: NameValue[];
+  csat: { responses: number; positive: number; neutral: number; negative: number; comments: { rating: 1 | 2 | 3; comment: string; createdAt: string; ticketId: number; agentName: string | null }[] };
+  calls: { total: number; outbound: number; inbound: number; connected: number; avgMins: number | null; byOutcome: NameValue[] };
+}
+
+export interface ScenarioAction { type: 'setStatus' | 'setPriority' | 'setGroup' | 'setAgent' | 'setField' | 'addTag' | 'reply' | 'note'; value?: number | string; field?: string; text?: string }
+export interface Scenario extends ScenarioRef { actions: ScenarioAction[]; position: number }
 
 export interface BellItem {
   id: number;
@@ -217,20 +369,17 @@ export interface AgentPrefs {
   bellMuted?: BellEvent[];
 }
 
-export interface Counts {
-  mine: number;
-  unassigned: number;
-  open: number;
-  pending: number;
-  overdue: number;
-  all: number;
-}
+/** Ticket counts per view id (built-in views, and "saved:<id>" for saved views). */
+export type Counts = Record<string, number | null>;
 
 export interface Dashboard {
-  counts: { open: number; unassigned: number; overdue: number; dueSoon: number; onHold: number; mine: number };
+  counts: { open: number; unassigned: number; overdue: number; dueSoon: number; onHold: number; mine: number; dueToday: number };
   byStatus: { id: number; name: string; n: number }[];
   bySeverity: Record<Severity, number>;
   byAgent: { id: number; name: string; availability: Availability; open: number }[];
+  byGroup: { group: string; groupId: number | null; statusId: number; n: number }[];
+  recent: { id: number; ticketId: number; action: string; details: Record<string, unknown>; createdAt: string; actorName: string | null; subject: string }[];
+  csat: Record<'1' | '2' | '3', number>;
   trends: {
     hours: { hour: number; today: number; yesterday: number }[];
     hourNow: number;

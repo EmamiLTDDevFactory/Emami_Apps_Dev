@@ -10,6 +10,7 @@ const BTN: Record<string, string> = {
   primary: 'bg-gradient-to-br from-accent to-accent-deep text-accent-ink border-transparent shadow-sm hover:shadow-md',
   secondary: 'bg-panel text-ink border-line hover:bg-sunken',
   ghost: 'bg-transparent text-ink border-transparent hover:bg-sunken',
+  danger: 'bg-panel text-bad border-bad/40 hover:bg-bad/10',
 };
 const SIZE: Record<string, string> = { sm: 'h-8 px-2.5 text-xs gap-1.5 rounded-lg', md: 'h-9 px-3.5 text-sm gap-1.5 rounded-xl' };
 

@@ -96,3 +96,22 @@ test('whatsapp: messages from a webhook payload, receipts ignored, media as a pl
 test('whatsapp: reply HTML becomes plain text with line breaks', () => {
     assert.equal(htmlToWhatsAppText('<p>Hi Ravi,</p><p>Done &amp; dusted<br>Line 2</p><br><br><br>#TICKET No - 100001'), 'Hi Ravi,\nDone & dusted\nLine 2\n\n#TICKET No - 100001');
 });
+
+test('ticket list filter: views, multi-value filters and placeholders line up', () => {
+    const { ticketFilter, VIEW_IDS } = require('../lib/ticketQuery');
+    // Every view builds; only views that use the agent get the agent as a parameter.
+    for (const view of ['', ...VIEW_IDS]) {
+        const f = ticketFilter({ view }, 7);
+        const used = new Set((f.where.match(/\$\d+/g) ?? []).map((x) => Number(x.slice(1))));
+        assert.equal(used.size, f.params.length, `view ${view || 'all'}: every parameter is used`);
+    }
+    assert.match(ticketFilter({ view: 'trash' }, 7).where, /"deletedAt" IS NOT NULL/);
+    assert.match(ticketFilter({ view: 'open' }, 7).where, /NOT t\.spam AND t\."deletedAt" IS NULL/);
+    const f = ticketFilter({ view: 'mine', region: 'EAST, WEST', agentId: 'me,none', created: 'week', resDue: 'overdue,bogus', q: '#100123' }, 7);
+    assert.deepEqual(f.params.slice(0, 3), [7, [7], ['EAST', 'WEST']]);
+    assert.ok(f.params.includes(100123));
+    assert.match(f.where, /t\."agentId" IS NULL/);
+    assert.throws(() => ticketFilter({ view: 'nope' }, 7), /Unknown view/);
+    assert.throws(() => ticketFilter({ from: '30-10-2026' }, 7), /YYYY-MM-DD/);
+    assert.equal(ticketFilter({ sort: 'x; DROP TABLE' }, 7).order, 't."createdAt" DESC');
+});

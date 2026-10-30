@@ -36,8 +36,13 @@ async function processMessage(m) {
 
     const html = (m.uniqueBody ?? m.body).content;
     const number = ticketNumberFromSubject(m.subject);
+    // A reply quoting a merged ticket's number goes to the ticket it was merged into.
     const existing = number
-        ? (await pool.query('SELECT t.id, c.email FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId" WHERE t.id = $1', [number])).rows[0]
+        ? (await pool.query(
+            `SELECT t.id, c.email FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId"
+             WHERE t.id = (SELECT COALESCE("mergedIntoId", id) FROM setu.tickets WHERE id = $1)`,
+            [number],
+        )).rows[0]
         : null;
     // Only the requester, or someone already on the ticket's email thread, can add to it.
     let onThread = false;

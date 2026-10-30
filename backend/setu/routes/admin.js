@@ -4,7 +4,7 @@ const { clearSeverityCache } = require('../lib/severity');
 const { clearSlaCache } = require('../lib/sla');
 const express = require('express');
 const { pool } = require('../../db');
-const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EMAIL_RE, SEVERITIES } = require('../constants');
+const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EDITABLE_FIELDS, EMAIL_RE, SEVERITIES } = require('../constants');
 const { deleteCanned, saveCanned } = require('../lib/canned');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
 const { isAdmin } = require('../middleware/auth');
@@ -111,6 +111,7 @@ admin.put('/settings', wrap(async (req, res) => {
         updates.push(['bell.scope', b['bell.scope']]);
     }
     if (b['portal.enabled'] !== undefined) updates.push(['portal.enabled', b['portal.enabled'] === true]);
+    if (b['csat.enabled'] !== undefined) updates.push(['csat.enabled', b['csat.enabled'] === true]);
     if (b['call.mode'] !== undefined) {
         if (!CALL_MODES.includes(b['call.mode'])) throw fail(400, 'Unknown calling option.');
         updates.push(['call.mode', b['call.mode']]);
@@ -124,6 +125,62 @@ admin.put('/settings', wrap(async (req, res) => {
         await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, JSON.stringify(value)]);
     }
     await audit(req.verifiedEmail, 'settings_saved', Object.fromEntries(updates));
+    res.json({ success: true });
+}));
+
+// Scenarios: named sets of actions an agent runs on a ticket in one click (Ticket > Scenarios).
+const SCENARIO_ACTIONS = ['setStatus', 'setPriority', 'setGroup', 'setAgent', 'setField', 'addTag', 'reply', 'note'];
+function cleanScenarioActions(list) {
+    if (!Array.isArray(list) || !list.length) throw fail(400, 'Add at least one action.');
+    if (list.length > 10) throw fail(400, 'A scenario can have up to 10 actions.');
+    return list.map((a) => {
+        if (!SCENARIO_ACTIONS.includes(a?.type)) throw fail(400, 'Unknown scenario action.');
+        if (a.type === 'reply' || a.type === 'note') {
+            const text = String(a.text || '').trim().slice(0, 5000);
+            if (!text) throw fail(400, 'A reply or note action needs its text.');
+            return { type: a.type, text };
+        }
+        if (a.type === 'setField') {
+            if (!EDITABLE_FIELDS.includes(a.field)) throw fail(400, 'Unknown field in scenario.');
+            return { type: a.type, field: a.field, value: String(a.value ?? '').slice(0, 500) };
+        }
+        if (a.type === 'addTag') return { type: a.type, value: String(a.value || '').trim().slice(0, 100) };
+        if (a.type === 'setAgent' && a.value === 'me') return { type: a.type, value: 'me' };
+        const n = Number(a.value);
+        if (!Number.isInteger(n)) throw fail(400, 'Scenario action needs a value.');
+        return { type: a.type, value: n };
+    });
+}
+
+admin.get('/scenarios', wrap(async (req, res) => {
+    res.json({ success: true, scenarios: (await pool.query('SELECT * FROM setu.scenarios ORDER BY position, name')).rows });
+}));
+
+admin.post('/scenarios', wrap(async (req, res) => {
+    const b = req.body ?? {};
+    const name = String(b.name || '').trim().slice(0, 120);
+    if (!name) throw fail(400, 'Give the scenario a name.');
+    const actions = JSON.stringify(cleanScenarioActions(b.actions));
+    const description = String(b.description || '').trim().slice(0, 500) || null;
+    const id = intOrNull(b.id);
+    try {
+        if (id) {
+            const { rowCount } = await pool.query('UPDATE setu.scenarios SET name = $2, description = $3, actions = $4 WHERE id = $1', [id, name, description, actions]);
+            if (!rowCount) throw fail(404, 'Scenario not found.');
+        } else {
+            await pool.query('INSERT INTO setu.scenarios (name, description, actions, position) VALUES ($1, $2, $3, (SELECT coalesce(max(position), 0) + 1 FROM setu.scenarios))', [name, description, actions]);
+        }
+    } catch (e) {
+        if (e.code === '23505') throw fail(409, 'A scenario with that name already exists.');
+        throw e;
+    }
+    await audit(req.verifiedEmail, 'scenario_saved', { id, name });
+    res.json({ success: true });
+}));
+
+admin.delete('/scenarios/:id', wrap(async (req, res) => {
+    await pool.query('DELETE FROM setu.scenarios WHERE id = $1', [Number(req.params.id)]);
+    await audit(req.verifiedEmail, 'scenario_deleted', { id: Number(req.params.id) });
     res.json({ success: true });
 }));
 

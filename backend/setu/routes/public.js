@@ -110,6 +110,56 @@ router.post('/portal/status', wrap(async (req, res) => {
     res.json({ success: true, ticket: rows[0] });
 }));
 
+// Knowledge base on the portal: published articles only, so requesters can help themselves before raising a ticket.
+router.get('/portal/articles', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'status');
+    if (!(await portalEnabled())) return res.json({ success: true, items: [] });
+    const term = String(req.query.q || '').trim().slice(0, 100);
+    const params = term ? [`%${term}%`] : [];
+    const { rows } = await pool.query(
+        `SELECT id, category, folder, title, body, tags FROM setu.articles WHERE status = 'published'
+         ${term ? 'AND (title ILIKE $1 OR body ILIKE $1 OR array_to_string(tags, \' \') ILIKE $1)' : ''}
+         ORDER BY ${term ? 'views DESC' : 'category, folder, title'} LIMIT ${term ? 8 : 60}`,
+        params,
+    );
+    res.json({ success: true, items: rows });
+}));
+
+// CSAT survey link from the closing email: the token alone identifies the ticket (no sign-in, no other details shown).
+async function csatRequest(token) {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(String(token))) throw fail(404, 'This survey link is not valid.');
+    const { rows } = await pool.query(
+        `SELECT r."ticketId", r."answeredAt", t.subject, t."agentId", a.name AS "agentName"
+         FROM setu.csat_requests r JOIN setu.tickets t ON t.id = r."ticketId" LEFT JOIN setu.agents a ON a.id = t."agentId" WHERE r.token = $1`,
+        [token],
+    );
+    if (!rows.length) throw fail(404, 'This survey link is not valid or has expired.');
+    return rows[0];
+}
+
+router.get('/portal/csat/:token', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'status');
+    const r = await csatRequest(req.params.token);
+    res.json({ success: true, survey: { ticketId: r.ticketId, subject: r.subject, agentName: r.agentName, answered: Boolean(r.answeredAt) } });
+}));
+
+router.post('/portal/csat/:token', wrap(async (req, res) => {
+    await ready;
+    portalLimit(req, 'status');
+    const r = await csatRequest(req.params.token);
+    if (r.answeredAt) throw fail(409, 'Thank you - we already have your rating for this ticket.');
+    const rating = Number(req.body?.rating);
+    if (![1, 2, 3].includes(rating)) throw fail(400, 'Pick a rating.');
+    const comment = String(req.body?.comment || '').trim().slice(0, 1000) || null;
+    const done = await pool.query('UPDATE setu.csat_requests SET "answeredAt" = now() WHERE token = $1 AND "answeredAt" IS NULL RETURNING "ticketId"', [req.params.token]);
+    if (!done.rows.length) throw fail(409, 'Thank you - we already have your rating for this ticket.');
+    await pool.query('INSERT INTO setu.csat_responses ("ticketId", rating, comment, "agentId") VALUES ($1, $2, $3, $4)', [r.ticketId, rating, comment, r.agentId]);
+    await pool.query('INSERT INTO setu.activities ("ticketId", action, details) VALUES ($1, $2, $3)', [r.ticketId, 'csat_received', JSON.stringify({ rating })]);
+    res.json({ success: true });
+}));
+
 // WhatsApp Cloud API webhook. GET: Meta's one-time verification. POST: messages (signed with the app secret).
 router.get('/whatsapp/webhook', (req, res) => {
     const ok = WHATSAPP.verifyToken && req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === WHATSAPP.verifyToken;

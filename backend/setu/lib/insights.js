@@ -251,7 +251,8 @@ async function ticketInsights(id, { generate = false } = {}) {
 
 async function dashboardStats() {
     const q = (sql, params = []) => pool.query(sql, params).then((r) => r.rows);
-    const OPEN = `JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isResolved"`;
+    // Spam and trashed tickets never count.
+    const OPEN = `JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isResolved" AND NOT t.spam AND t."deletedAt" IS NULL`;
     const [totals, byCategory, prevCategory, byGroup, repeatDistributors, oldest, agents, waiting, daily, sources] = await Promise.all([
         q(`SELECT count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
                   count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
@@ -260,29 +261,29 @@ async function dashboardStats() {
                   count(*) FILTER (WHERE t."resolvedAt" >= now() - interval '7 days')::int AS "resolvedLast7d",
                   count(*) FILTER (WHERE t."resolvedAt" >= now() - interval '7 days' AND (t."resViolated" OR t."resolvedAt" > t."resolutionDueAt"))::int AS "resolvedLateLast7d",
                   count(*) FILTER (WHERE t."firstRespondedAt" >= now() - interval '7 days' AND t."frViolated")::int AS "firstResponseLateLast7d"
-           FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`),
+           FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT t.spam AND t."deletedAt" IS NULL`),
         q(`SELECT coalesce(category, 'Uncategorised') AS category, coalesce("function", '') AS "function", count(*)::int AS n,
                   count(*) FILTER (WHERE "resolvedAt" IS NULL AND "resolutionDueAt" < now())::int AS overdue
-           FROM setu.tickets WHERE "createdAt" >= now() - interval '7 days' GROUP BY 1, 2 ORDER BY n DESC LIMIT 12`),
+           FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1, 2 ORDER BY n DESC LIMIT 12`),
         q(`SELECT coalesce(category, 'Uncategorised') AS category, count(*)::int AS n FROM setu.tickets
-           WHERE "createdAt" >= now() - interval '14 days' AND "createdAt" < now() - interval '7 days' GROUP BY 1`),
+           t WHERE "createdAt" >= now() - interval '14 days' AND "createdAt" < now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1`),
         q(`SELECT coalesce(g.name, 'No group') AS "group", count(*)::int AS open,
                   count(*) FILTER (WHERE t."resolutionDueAt" < now())::int AS overdue,
                   count(*) FILTER (WHERE t."agentId" IS NULL)::int AS unassigned
            FROM setu.tickets t ${OPEN.replace('WHERE', 'LEFT JOIN setu.groups g ON g.id = t."groupId" WHERE')} GROUP BY 1 ORDER BY open DESC`),
         q(`SELECT "distributorCode" AS code, max("distributorName") AS name, count(*)::int AS n, string_agg(DISTINCT coalesce(category, '?'), ', ') AS categories
-           FROM setu.tickets WHERE "createdAt" >= now() - interval '7 days' AND "distributorCode" IS NOT NULL
+           FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND "distributorCode" IS NOT NULL AND NOT t.spam AND t."deletedAt" IS NULL
            GROUP BY 1 HAVING count(*) >= 3 ORDER BY n DESC LIMIT 8`),
         q(`SELECT t.id, t.subject, s.name AS status, t.severity, t.priority, round(extract(epoch FROM now() - t."createdAt") / 3600)::int AS "ageHours"
            FROM setu.tickets t ${OPEN} ORDER BY t."createdAt" ASC LIMIT 5`),
         q(`SELECT a.name, a.availability, count(t.id)::int AS open FROM setu.agents a
-           LEFT JOIN setu.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM setu.ticket_statuses WHERE NOT "isResolved")
+           LEFT JOIN setu.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM setu.ticket_statuses WHERE NOT "isResolved") AND NOT t.spam AND t."deletedAt" IS NULL
            WHERE a.active GROUP BY a.id ORDER BY open DESC`),
         q(`SELECT count(*)::int AS n FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
-           WHERE NOT s."isResolved" AND s."pausesSla" AND t."statusChangedAt" < now() - interval '48 hours'`),
+           WHERE NOT s."isResolved" AND s."pausesSla" AND t."statusChangedAt" < now() - interval '48 hours' AND NOT t.spam AND t."deletedAt" IS NULL`),
         q(`SELECT to_char(t."createdAt" AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day, count(*)::int AS n
-           FROM setu.tickets t WHERE t."createdAt" >= now() - interval '7 days' GROUP BY 1 ORDER BY 1`),
-        q(`SELECT source, count(*)::int AS n FROM setu.tickets WHERE "createdAt" >= now() - interval '7 days' GROUP BY 1 ORDER BY n DESC`),
+           FROM setu.tickets t WHERE t."createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY 1`),
+        q(`SELECT source, count(*)::int AS n FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY n DESC`),
     ]);
     const prev = Object.fromEntries(prevCategory.map((r) => [r.category, r.n]));
     const thisWeek = {};

@@ -6,13 +6,14 @@ const { businessMinutesBetween, loadCalendar } = require('../lib/businessHours')
 const { audit, fail, istDayStart, stripTags, wrap } = require('../lib/util');
 const { requireSupervisor } = require('../middleware/auth');
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
+const { LIVE } = require('../lib/ticketQuery');
 
 const router = express.Router();
 
 // ---------- Routes: board, dashboard, reports ----------
 
 router.get('/board', wrap(async (req, res) => {
-    const where = ['NOT s."isClosed"'];
+    const where = ['NOT s."isClosed"', LIVE];
     const params = [];
     if (req.query.mine === '1') { params.push(req.agent.id); where.push(`t."agentId" = $${params.length}`); }
     if (req.query.groupId) { params.push(Number(req.query.groupId)); where.push(`t."groupId" = $${params.length}`); }
@@ -26,35 +27,49 @@ router.get('/board', wrap(async (req, res) => {
 router.get('/dashboard', wrap(async (req, res) => {
     const today = istDayStart(0);
     const yesterday = istDayStart(-1);
-    const [counts, byStatus, bySeverity, received, resolvedToday, frToday, resolvedWithDue, byAgent] = await Promise.all([
+    const [counts, byStatus, bySeverity, received, resolvedToday, frToday, resolvedWithDue, byAgent, byGroup, recent, csat] = await Promise.all([
         pool.query(
             `SELECT count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
                     count(*) FILTER (WHERE NOT s."isResolved" AND t."agentId" IS NULL)::int AS unassigned,
                     count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
                     count(*) FILTER (WHERE NOT s."isResolved" AND t."resolutionDueAt" BETWEEN now() AND now() + interval '4 hours')::int AS "dueSoon",
                     count(*) FILTER (WHERE s."pausesSla" AND NOT s."isResolved")::int AS "onHold",
-                    count(*) FILTER (WHERE t."agentId" = $1 AND NOT s."isClosed")::int AS mine
-             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`,
+                    count(*) FILTER (WHERE t."agentId" = $1 AND NOT s."isClosed")::int AS mine,
+                    count(*) FILTER (WHERE NOT s."isResolved" AND t."resolutionDueAt" >= date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'
+                                     AND t."resolutionDueAt" < date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata' + interval '1 day')::int AS "dueToday"
+             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE}`,
             [req.agent.id],
         ),
         pool.query(
             `SELECT s.id, s.name, count(t.id)::int AS n FROM setu.ticket_statuses s
-             LEFT JOIN setu.tickets t ON t."statusId" = s.id WHERE NOT s."isClosed" GROUP BY s.id ORDER BY s.position`,
+             LEFT JOIN setu.tickets t ON t."statusId" = s.id AND ${LIVE} WHERE NOT s."isClosed" GROUP BY s.id ORDER BY s.position`,
         ),
         pool.query(
             `SELECT t.severity, count(*)::int AS n FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
-             WHERE NOT s."isResolved" GROUP BY t.severity`,
+             WHERE NOT s."isResolved" AND ${LIVE} GROUP BY t.severity`,
         ),
-        pool.query('SELECT "createdAt" FROM setu.tickets WHERE "createdAt" >= $1', [yesterday]),
-        pool.query('SELECT count(*)::int AS n FROM setu.tickets WHERE "resolvedAt" >= $1', [today]),
-        pool.query('SELECT "createdAt", "firstRespondedAt" FROM setu.tickets WHERE "firstRespondedAt" >= $1', [today]),
-        pool.query('SELECT "resolvedAt", "resolutionDueAt" FROM setu.tickets WHERE "resolvedAt" >= $1 AND "resolutionDueAt" IS NOT NULL', [today]),
+        pool.query(`SELECT "createdAt" FROM setu.tickets t WHERE "createdAt" >= $1 AND ${LIVE}`, [yesterday]),
+        pool.query(`SELECT count(*)::int AS n FROM setu.tickets t WHERE "resolvedAt" >= $1 AND ${LIVE}`, [today]),
+        pool.query(`SELECT "createdAt", "firstRespondedAt" FROM setu.tickets t WHERE "firstRespondedAt" >= $1 AND ${LIVE}`, [today]),
+        pool.query(`SELECT "resolvedAt", "resolutionDueAt" FROM setu.tickets t WHERE "resolvedAt" >= $1 AND "resolutionDueAt" IS NOT NULL AND ${LIVE}`, [today]),
         pool.query(
             `SELECT a.id, a.name, a.availability, count(t.id)::int AS open
              FROM setu.agents a
-             LEFT JOIN setu.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM setu.ticket_statuses WHERE NOT "isResolved")
+             LEFT JOIN setu.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM setu.ticket_statuses WHERE NOT "isResolved") AND ${LIVE}
              WHERE a.active GROUP BY a.id ORDER BY open DESC, a.name LIMIT 20`,
         ),
+        // Unresolved tickets per group and status (Freshdesk "Unresolved tickets by group").
+        pool.query(
+            `SELECT coalesce(g.name, 'No group') AS "group", t."groupId", s.id AS "statusId", count(*)::int AS n
+             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" LEFT JOIN setu.groups g ON g.id = t."groupId"
+             WHERE NOT s."isResolved" AND ${LIVE} GROUP BY 1, 2, 3`,
+        ),
+        pool.query(
+            `SELECT ac.id, ac."ticketId", ac.action, ac.details, ac."createdAt", a.name AS "actorName", t.subject
+             FROM setu.activities ac JOIN setu.tickets t ON t.id = ac."ticketId" LEFT JOIN setu.agents a ON a.id = ac."actorAgentId"
+             WHERE ac."createdAt" > now() - interval '3 days' AND ac.action <> 'automation' ORDER BY ac."createdAt" DESC, ac.id DESC LIMIT 25`,
+        ),
+        pool.query(`SELECT rating, count(*)::int AS n FROM setu.csat_responses WHERE "createdAt" > now() - interval '30 days' GROUP BY rating`),
     ]);
     const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, today: 0, yesterday: 0 }));
     for (const r of received.rows) {
@@ -71,6 +86,9 @@ router.get('/dashboard', wrap(async (req, res) => {
         byStatus: byStatus.rows,
         bySeverity: Object.fromEntries(SEVERITIES.map((s) => [s, bySeverity.rows.find((r) => r.severity === s)?.n ?? 0])),
         byAgent: byAgent.rows,
+        byGroup: byGroup.rows,
+        recent: recent.rows,
+        csat: Object.fromEntries([1, 2, 3].map((r) => [r, csat.rows.find((x) => x.rating === r)?.n ?? 0])),
         trends: {
             hours,
             hourNow: Math.floor((Date.now() - today.getTime()) / 3_600_000),
@@ -79,6 +97,147 @@ router.get('/dashboard', wrap(async (req, res) => {
             resolvedToday: resolvedToday.rows[0].n,
             avgFirstResponseMins: frMins.length ? Math.round(frMins.reduce((a, b) => a + b, 0) / frMins.length) : null,
             resolutionWithinSlaPct: resolvedWithDue.rows.length ? Math.round((within * 100) / resolvedWithDue.rows.length) : null,
+        },
+    });
+}));
+
+/**
+ * "Emami Secondary Helpdesk Dashboard": ticket counts by region, status, type and source, plus unresolved by category,
+ * depot and state, and the open Fatal / Serious tickets. Every bar links to the matching ticket list in the app.
+ */
+router.get('/dashboard/breakdown', wrap(async (req, res) => {
+    const days = [7, 30, 90, 365].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const params = [days];
+    let extra = '';
+    if (req.query.groupId) { params.push(Number(req.query.groupId) || 0); extra = ` AND t."groupId" = $${params.length}`; }
+    const base = `FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`;
+    const by = (expr, onlyOpen = false, limit = 15) => pool.query(
+        `SELECT coalesce(nullif(${expr}::text, ''), 'None') AS name, count(*)::int AS value ${base}${onlyOpen ? ' AND NOT s."isResolved"' : ''}
+         GROUP BY 1 ORDER BY value DESC LIMIT ${limit}`,
+        params,
+    );
+    const [totals, region, status, type, source, category, depot, state, critical] = await Promise.all([
+        pool.query(`SELECT count(*)::int AS total, count(*) FILTER (WHERE NOT s."isResolved")::int AS unresolved ${base}`, params),
+        by('t.region'), by('s.name'), by('t.type'), by('t.source'),
+        by('t.category', true, 12), by('t.depot', true, 12), by('t.state', false, 15),
+        pool.query(
+            `SELECT t.id, t.subject, t.severity, s.name AS "statusName", t."createdAt" ${base} AND NOT s."isResolved" AND t.severity IN ('FATAL', 'SERIOUS')
+             ORDER BY t.severity, t."createdAt" LIMIT 25`,
+            params,
+        ),
+    ]);
+    const statusIds = (await pool.query('SELECT id, name FROM setu.ticket_statuses')).rows;
+    res.json({
+        success: true, days, totals: totals.rows[0],
+        region: region.rows, status: status.rows.map((r) => ({ ...r, id: statusIds.find((s) => s.name === r.name)?.id ?? null })),
+        type: type.rows, source: source.rows, category: category.rows, depot: depot.rows, state: state.rows, critical: critical.rows,
+    });
+}));
+
+/**
+ * Analytics (supervisors and admins): volume, response and resolution times in business minutes, SLA compliance,
+ * agent performance, territory / category mix, arrival heat-map, CSAT and calls for the last 7, 30 or 90 days.
+ */
+router.get('/analytics', wrap(async (req, res) => {
+    requireSupervisor(req);
+    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const params = [days];
+    let extra = '';
+    if (req.query.groupId) { params.push(Number(req.query.groupId) || 0); extra = ` AND t."groupId" = $${params.length}`; }
+    const { rows: T } = await pool.query(
+        `SELECT t.id, t."createdAt", t."firstRespondedAt", t."resolvedAt", t."firstResponseDueAt", t."resolutionDueAt", t."frViolated", t."resViolated",
+                t."agentId", t.priority, t.severity, t.source, t.type, t.category, t.region, t.state, t.depot, s.name AS "statusName", s."isResolved"
+         FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
+         WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1)${extra}`,
+        params,
+    );
+    const ids = T.map((t) => t.id);
+    const [agents, csat, calls, time, reopened] = await Promise.all([
+        pool.query('SELECT id, name, active FROM setu.agents'),
+        pool.query(
+            `SELECT r.rating, r.comment, r."createdAt", r."ticketId", r."agentId", a.name AS "agentName" FROM setu.csat_responses r
+             LEFT JOIN setu.agents a ON a.id = r."agentId" WHERE r."ticketId" = ANY($1::int[]) ORDER BY r."createdAt" DESC`,
+            [ids],
+        ),
+        pool.query(
+            `SELECT direction, outcome, "durationSecs", "agentId" FROM setu.call_logs WHERE "createdAt" >= now() - make_interval(days => $1)`,
+            [days],
+        ),
+        pool.query('SELECT "agentId", sum(minutes)::int AS minutes FROM setu.time_logs WHERE "ticketId" = ANY($1::int[]) GROUP BY 1', [ids]),
+        // Reopened: a requester reply on a ticket that had been resolved (addRequesterReply sets it back to Open).
+        pool.query(
+            `SELECT count(DISTINCT ac."ticketId")::int AS n FROM setu.activities ac JOIN setu.tickets t ON t.id = ac."ticketId"
+             WHERE ac."ticketId" = ANY($1::int[]) AND ac.action = 'requester_replied' AND t."resolvedAt" IS NOT NULL AND ac."createdAt" > t."resolvedAt"`,
+            [ids],
+        ),
+    ]);
+    const cal = await loadCalendar();
+    const bm = (a, b) => (a && b ? businessMinutesBetween(a, b, cal) : null);
+    const avg = (xs) => { const v = xs.filter((x) => x !== null && x !== undefined); return v.length ? Math.round(v.reduce((s, x) => s + x, 0) / v.length) : null; };
+    const pct = (n, d) => (d ? Math.round((n * 1000) / d) / 10 : null);
+    const frMet = (t) => t.firstRespondedAt && !t.frViolated && (!t.firstResponseDueAt || t.firstRespondedAt <= t.firstResponseDueAt);
+    const resMet = (t) => t.resolvedAt && !t.resViolated && (!t.resolutionDueAt || t.resolvedAt <= t.resolutionDueAt);
+    const responded = T.filter((t) => t.firstRespondedAt);
+    const resolved = T.filter((t) => t.resolvedAt);
+
+    const dayKey = (d) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Asia/Kolkata' });
+    const trend = {};
+    for (let i = days - 1; i >= 0; i--) trend[dayKey(Date.now() - i * 86_400_000)] = { day: '', created: 0, resolved: 0 };
+    for (const k of Object.keys(trend)) trend[k].day = k;
+    for (const t of T) {
+        if (trend[dayKey(t.createdAt)]) trend[dayKey(t.createdAt)].created++;
+        if (t.resolvedAt && trend[dayKey(t.resolvedAt)]) trend[dayKey(t.resolvedAt)].resolved++;
+    }
+    const heat = Array.from({ length: 7 }, (_, d) => ({ dow: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d], hours: Array(24).fill(0) }));
+    for (const t of T) {
+        const ist = new Date(new Date(t.createdAt).getTime() + 330 * 60_000);
+        heat[ist.getUTCDay()].hours[ist.getUTCHours()]++;
+    }
+    const count = (key, rows = T, limit = 15) => Object.entries(rows.reduce((m, t) => { const k = t[key] || 'None'; m[k] = (m[k] || 0) + 1; return m; }, {}))
+        .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, limit);
+    const timeBy = Object.fromEntries(time.rows.map((r) => [r.agentId, r.minutes]));
+    const agentRows = agents.rows.map((a) => {
+        const mine = T.filter((t) => t.agentId === a.id);
+        const mineResolved = mine.filter((t) => t.resolvedAt);
+        const cs = csat.rows.filter((r) => r.agentId === a.id);
+        return {
+            id: a.id, name: a.name, active: a.active, assigned: mine.length, resolved: mineResolved.length,
+            open: mine.filter((t) => !t.isResolved).length,
+            avgFirstResponseMins: avg(mine.map((t) => bm(t.createdAt, t.firstRespondedAt))),
+            avgResolutionMins: avg(mineResolved.map((t) => bm(t.createdAt, t.resolvedAt))),
+            firstResponseSlaPct: pct(mine.filter(frMet).length, mine.filter((t) => t.firstRespondedAt).length),
+            resolutionSlaPct: pct(mineResolved.filter(resMet).length, mineResolved.length),
+            csatPositivePct: pct(cs.filter((r) => r.rating === 3).length, cs.length), csatResponses: cs.length,
+            minutesLogged: timeBy[a.id] ?? 0,
+        };
+    }).filter((a) => a.assigned > 0 || a.minutesLogged > 0).sort((a, b) => b.assigned - a.assigned);
+
+    res.json({
+        success: true, days,
+        totals: {
+            created: T.length, resolved: resolved.length, unresolved: T.filter((t) => !t.isResolved).length,
+            avgFirstResponseMins: avg(responded.map((t) => bm(t.createdAt, t.firstRespondedAt))),
+            avgResolutionMins: avg(resolved.map((t) => bm(t.createdAt, t.resolvedAt))),
+            firstResponseSlaPct: pct(responded.filter(frMet).length, responded.length),
+            resolutionSlaPct: pct(resolved.filter(resMet).length, resolved.length),
+            reopenedPct: pct(reopened.rows[0].n, resolved.length),
+            wrongTicketPct: pct(T.filter((t) => String(t.type).toLowerCase() === 'wrong ticket').length, T.length),
+            perAgentPerDay: agentRows.length ? Math.round((T.length / agentRows.length / days) * 10) / 10 : null,
+        },
+        trend: Object.values(trend), heat, agents: agentRows,
+        byCategory: count('category', T, 12), byRegion: count('region'), byState: count('state'), byDepot: count('depot'),
+        byType: count('type'), bySource: count('source'), byStatus: count('statusName'), bySeverity: count('severity'),
+        byPriority: Object.entries(PRIORITIES).map(([p, name]) => ({ name, value: T.filter((t) => t.priority === Number(p)).length })).reverse(),
+        csat: {
+            responses: csat.rows.length,
+            positive: csat.rows.filter((r) => r.rating === 3).length, neutral: csat.rows.filter((r) => r.rating === 2).length, negative: csat.rows.filter((r) => r.rating === 1).length,
+            comments: csat.rows.filter((r) => r.comment).slice(0, 10),
+        },
+        calls: {
+            total: calls.rows.length, outbound: calls.rows.filter((c) => c.direction === 'OUTBOUND').length, inbound: calls.rows.filter((c) => c.direction === 'INBOUND').length,
+            connected: calls.rows.filter((c) => c.outcome === 'Connected').length,
+            avgMins: avg(calls.rows.filter((c) => c.durationSecs).map((c) => c.durationSecs / 60)),
+            byOutcome: count('outcome', calls.rows),
         },
     });
 }));
@@ -106,7 +265,7 @@ router.get('/reports/daily', wrap(async (req, res) => {
                 c.mobile AS "requesterMobile", c.phone AS "requesterPhone", c.email AS "requesterEmail"
          FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" JOIN setu.contacts c ON c.id = t."requesterId"
          LEFT JOIN setu.agents a ON a.id = t."agentId"
-         WHERE t."createdAt" BETWEEN $1::timestamptz AND $2::timestamptz ORDER BY t.id`,
+         WHERE t."createdAt" BETWEEN $1::timestamptz AND $2::timestamptz AND ${LIVE} ORDER BY t.id`,
         [`${from}T00:00:00+05:30`, `${to}T23:59:59.999+05:30`],
     );
     const now = new Date();

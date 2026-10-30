@@ -11,6 +11,8 @@ import { CallPanel } from './Calls';
 import { MyCannedButton } from './MyCanned';
 import TicketFields, { type Values } from './TicketFields';
 import { INSERT_REPLY_EVENT, TicketAssist } from './Insights';
+import { InsertArticleButton } from './Solutions';
+import { CsatCard, PresenceBar, RelatedTickets, TicketBanners, TicketTodos, TicketToolbar, fillCanned } from './TicketExtras';
 import { Avatar, Button, Card, Field, Notice, Pill, Skeleton, Spinner, Tabs, cx, inputBase, inputCls, textareaCls } from './ui';
 
 /**
@@ -83,19 +85,26 @@ export default function TicketView({ id }: { id: number }) {
 
 function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
   const { ticket: t } = data;
+  const [replying, setReplying] = useState(false);
   return (
     <div className="space-y-4">
+      <TicketToolbar data={data} reload={reload} />
+      <TicketBanners ticket={t} reload={reload} />
+      <PresenceBar ticketId={t.id} replying={replying} />
       <TicketHeader ticket={t} reload={reload} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-4">
           <Thread data={data} />
-          <Composer ticket={t} reload={reload} />
+          <Composer ticket={t} reload={reload} onTyping={setReplying} />
           <ActivityLog items={data.activities} />
         </div>
         <div className="space-y-4">
           <TicketAssist ticket={t} reload={reload} />
           <Properties ticket={t} reload={reload} />
+          <RelatedTickets data={data} reload={reload} />
           <Requester data={data} reload={reload} />
+          <CsatCard data={data} />
+          <TicketTodos data={data} reload={reload} />
           <TimeLogs data={data} reload={reload} />
         </div>
       </div>
@@ -240,16 +249,20 @@ function Message({ kind, who, sub, at, html, whatsapp }: { kind: Conversation['k
   );
 }
 
-function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
-  const { meta, mailEnabled, whatsappEnabled } = useSetu();
+function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promise<void>; onTyping: (typing: boolean) => void }) {
+  const { me, meta, mailEnabled, whatsappEnabled } = useSetu();
   const viaWhatsApp = t.source === 'WhatsApp' && Boolean(t.requesterMobile || t.requesterPhone);
   const [kind, setKind] = useState<'REPLY' | 'NOTE' | 'FORWARD'>('REPLY');
   const [text, setText] = useState('');
   const [to, setTo] = useState('');
   const [cc, setCc] = useState('');
   const [busy, setBusy] = useState(false);
+  const [statusAfter, setStatusAfter] = useState('');
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
+  // Collision detection: the others see "replying" while there is text in the box.
+  const typing = text.trim().length > 0;
+  useEffect(() => { onTyping(typing); }, [typing, onTyping]);
   // "My responses" (private to me) first, then the shared folders.
   const folders = useMemo(() => {
     const m = new Map<string, typeof meta.cannedResponses>();
@@ -262,7 +275,7 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
 
   const insert = (body: string, replaceFrom?: number) => {
     const el = area.current;
-    const plain = htmlToText(body);
+    const plain = fillCanned(htmlToText(body), t, me.name);
     if (!el) return setText((x) => x + plain);
     const start = replaceFrom ?? el.selectionStart;
     const end = el.selectionEnd;
@@ -307,7 +320,8 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
     setBusy(true);
     setMsg(null);
     try {
-      const delivery = await addMessage(t.id, { kind, text, ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc && !viaWhatsApp ? { cc } : {}) });
+      const delivery = await addMessage(t.id, { kind, text, ...(statusAfter ? { statusAfter: Number(statusAfter) } : {}), ...(kind === 'FORWARD' ? { to, cc } : kind === 'REPLY' && cc && !viaWhatsApp ? { cc } : {}) });
+      setStatusAfter('');
       setText('');
       setTo('');
       setCc('');
@@ -341,6 +355,7 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
       actions={
         <div className="flex items-center gap-1.5">
         <MyCannedButton />
+        <InsertArticleButton onInsert={(body) => insert(body)} />
         {meta.cannedResponses.length > 0 && (
           <select
             aria-label="Insert canned response"
@@ -386,7 +401,11 @@ function Composer({ ticket: t, reload }: Props & { reload: () => Promise<void> }
           aria-label="Message"
         />
         {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <select aria-label="Then set status" value={statusAfter} onChange={(e) => setStatusAfter(e.target.value)} className={cx('h-9 max-w-[240px] text-xs', inputBase)} title="Change the status in the same step (required fields are checked first)">
+            <option value="">Keep status ({t.statusName})</option>
+            {meta.statuses.filter((s) => s.id !== t.statusId).map((s) => <option key={s.id} value={s.id}>Then set: {s.name}</option>)}
+          </select>
           <Button variant="primary" onClick={send} disabled={busy || !text.trim() || (kind === 'FORWARD' && !to.trim())}>
             {busy ? <Spinner /> : kind === 'NOTE' ? <MessageSquare size={14} /> : <Send size={14} />} {kind === 'NOTE' ? 'Add note' : kind === 'REPLY' ? 'Send reply' : 'Forward'}
           </Button>
@@ -570,6 +589,9 @@ function ActivityLog({ items }: { items: ActivityItem[] }) {
     if (a.action === 'requester_replied') return d.channel === 'whatsapp' ? 'On WhatsApp' : 'By email';
     if (a.action === 'call_logged') return `${d.direction === 'INBOUND' ? 'Call from requester' : 'Call to requester'} - ${String(d.outcome ?? '')}${d.minutes ? `, ${String(d.minutes)} min` : ''}`;
     if (a.action === 'whatsapp_failed') return String(d.reason ?? '');
+    if (["linked", "unlinked", "merged_into", "merged_from", "child_of", "child_added"].includes(a.action)) return `#${String(d.ticket ?? '')}`;
+    if (a.action === 'scenario') return String(d.name ?? '');
+    if (a.action === 'csat_received') return ({ 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' } as Record<string, string>)[String(d.rating)] ?? '';
     if (a.action === 'whatsapp_sent') return 'Delivered to WhatsApp';
     return JSON.stringify(d);
   };

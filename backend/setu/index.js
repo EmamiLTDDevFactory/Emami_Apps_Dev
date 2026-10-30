@@ -36,6 +36,7 @@ router.use(require('./routes/public'));
 router.use(requireAccess, rateLimit);
 router.use(require('./routes/me'));
 router.use(require('./routes/tickets'));
+router.use(require('./routes/work'));
 router.use(require('./routes/reports'));
 router.use(require('./routes/insights'));
 router.use('/admin', require('./routes/admin'));

@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { AlarmClock, AlertTriangle, CheckCircle2, Hourglass, Inbox, PauseCircle, RefreshCw, Timer, User, UserX } from 'lucide-react';
+import { AlarmClock, AlertTriangle, CalendarClock, CheckCircle2, Hourglass, Inbox, PauseCircle, PieChart, RefreshCw, Timer, User, UserX } from 'lucide-react';
+import DashboardExtras from './DashboardExtras';
 import { getDashboard } from '@/lib/api';
 import { useSetu } from '@/lib/context';
 import { fmtMins, fmtNum, fmtTime } from '@/lib/format';
@@ -12,7 +13,7 @@ import { Button, Card, Kpi, Notice, Pill, Skeleton } from './ui';
 const SEV_BAR: Record<string, string> = { FATAL: 'bg-bad', SERIOUS: 'bg-warn', NORMAL: 'bg-accent' };
 
 export default function Dashboard() {
-  const { openList, meta, me } = useSetu();
+  const { openList, meta, me, go } = useSetu();
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');
   const [loadedAt, setLoadedAt] = useState('');
@@ -51,14 +52,18 @@ export default function Dashboard() {
           <h2 className="text-xl font-extrabold tracking-tight">Good to see you, {me.name.split(' ')[0]}</h2>
           <p className="text-sm text-muted">Live queue for Emami Secondary Support{loadedAt && ` · updated ${fmtTime(loadedAt)}`}</p>
         </div>
-        <Button size="sm" onClick={load} disabled={busy}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> Refresh</Button>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => go('helpdesk')}><PieChart size={13} /> Helpdesk dashboard</Button>
+          <Button size="sm" onClick={load} disabled={busy}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> Refresh</Button>
+        </div>
       </div>
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Kpi label="Open" value={fmtNum(counts.open)} icon={Inbox} onClick={() => openList({ view: 'open' })} />
         <Kpi label="Unassigned" value={fmtNum(counts.unassigned)} icon={UserX} tone={counts.unassigned ? 'warn' : 'good'} onClick={() => openList({ view: 'unassigned' })} />
         <Kpi label="Overdue" value={fmtNum(counts.overdue)} icon={AlertTriangle} tone={counts.overdue ? 'bad' : 'good'} onClick={() => openList({ view: 'overdue' })} />
+        <Kpi label="Due today" value={fmtNum(counts.dueToday)} icon={CalendarClock} tone={counts.dueToday ? "warn" : "good"} onClick={() => openList({ view: "due_today", sort: "due" })} />
         <Kpi label="Due in 4 h" value={fmtNum(counts.dueSoon)} icon={AlarmClock} tone="warn" onClick={() => openList({ view: 'open', due: '240', sort: 'due' })} />
         <Kpi label="On hold" value={fmtNum(counts.onHold)} sub="SLA paused" icon={PauseCircle} onClick={() => openList({ view: 'open', statusId: meta.statuses.filter((s) => s.pausesSla && !s.isResolved).map((s) => s.id).join(',') })} />
         <Kpi label="Mine" value={fmtNum(counts.mine)} icon={User} onClick={() => openList({ view: 'mine' })} />
@@ -123,6 +128,8 @@ export default function Dashboard() {
           )}
         </Card>
       </div>
+
+      <DashboardExtras data={data} />
     </div>
   );
 }

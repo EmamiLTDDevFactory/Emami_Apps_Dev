@@ -79,6 +79,18 @@ export const ACTION_LABEL: Record<string, string> = {
   call_logged: 'Call',
   whatsapp_sent: 'WhatsApp sent',
   whatsapp_failed: 'WhatsApp not sent',
+  linked: 'Linked',
+  unlinked: 'Unlinked',
+  merged_into: 'Merged into',
+  merged_from: 'Merged in',
+  child_of: 'Child ticket of',
+  child_added: 'Child ticket added',
+  scenario: 'Scenario',
+  spam: 'Marked as spam',
+  unspam: 'Not spam',
+  trashed: 'Moved to trash',
+  restored: 'Restored',
+  csat_received: 'Rated the support',
 };
 
 /** Last-activity wording in the ticket list ("Requester replied", "Status changed" ...). */

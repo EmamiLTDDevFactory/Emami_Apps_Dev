@@ -21,6 +21,9 @@ backend/setu/
     severity.js          Category -> Function severity matrix
     assignment.js        round robin within a group (row lock, Available agents only)
     automation.js        rule conditions (all / any, operators, time measures)
+    ticketQuery.js       ticket list views, filters and sorts (list, counts, export, saved views); spam / trash excluded
+    ticketOps.js         resolve checks (required fields, open children), watch, link, merge, spam / trash, scenarios,
+                         collision detection, CSAT survey link
     tickets.js           create, update, replies / notes / forwards, automation actions
     notify.js            email templates, requester mail, agent notifications (Emami Apps inbox)
     mail.js              Microsoft Graph send, subject parsing, noise filter, sender verification
@@ -36,7 +39,9 @@ backend/setu/
     canned.js            shared (Admin) and personal (one agent only) canned responses
     whatsapp.js          WhatsApp Cloud API: webhook signature, inbound messages, sending replies
     whatsappIngest.js    WhatsApp message -> new ticket or reply on the sender's open WhatsApp ticket
-  routes/                me.js (+ bell, preferences, personal canned, contact search), tickets.js (+ calls), reports.js
+  routes/                me.js (+ bell, preferences, personal canned, contact search), tickets.js (+ calls, bulk, export,
+                         merge, links, watch, scenarios, presence), work.js (to-dos, saved views, search, contacts,
+                         companies, Solutions articles), reports.js (+ Helpdesk breakdown, analytics)
                          (board, dashboard, daily report), insights.js, admin.js, jobs.js,
                          public.js (requester portal + WhatsApp webhook: no hub sign-in, their own limits)
   tests/                 unit.test.js (no DB), api.test.js (end to end, local DB only), mock-anthropic.js

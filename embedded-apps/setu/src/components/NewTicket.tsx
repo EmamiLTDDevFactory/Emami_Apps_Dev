@@ -3,17 +3,21 @@ import { useEffect, useState } from 'react';
 import { PlusCircle, UserSearch } from 'lucide-react';
 import { createTicket, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
-import { useSetu } from '@/lib/context';
+import { useSetu, type NewTicketPreset } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', subject: '', description: '', source: 'Phone', statusId: '2', groupId: '', agentId: '', priority: '', tags: '' };
 
-export default function NewTicket() {
+// Top-of-form keys a preset can fill; everything else in a preset is a ticket field (TicketFields values).
+const TOP_KEYS = Object.keys(EMPTY_TOP);
+
+export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
   const { meta, openTicket } = useSetu();
-  const [top, setTop] = useState(EMPTY_TOP);
-  const [fields, setFields] = useState<Values>({});
+  const parentId = preset?.parentId;
+  const [top, setTop] = useState({ ...EMPTY_TOP, ...Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => TOP_KEYS.includes(k) && typeof v === 'string')) });
+  const [fields, setFields] = useState<Values>(Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => !TOP_KEYS.includes(k) && k !== 'parentId' && typeof v === 'string' && v)) as Values);
   const [another, setAnother] = useState(false);
   const [notify, setNotify] = useState(true);
   const [matches, setMatches] = useState<ContactMatch[]>([]);
@@ -52,6 +56,7 @@ export default function NewTicket() {
         notifyRequester: notify,
         tags: top.tags.split(',').map((x) => x.trim()).filter(Boolean),
       };
+      if (parentId) body.parentId = parentId;
       if (top.groupId) body.groupId = Number(top.groupId);
       if (top.agentId) body.agentId = Number(top.agentId);
       if (top.priority) body.priority = Number(top.priority);
@@ -74,7 +79,7 @@ export default function NewTicket() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-extrabold tracking-tight">New ticket</h2>
+        <h2 className="text-xl font-extrabold tracking-tight">{parentId ? `New child ticket of #${parentId}` : 'New ticket'}</h2>
         <p className="text-sm text-muted">Log a ticket on a requester&apos;s behalf (call, walk-in, message). Their email is needed: replies and updates go there. Email, portal and WhatsApp tickets arrive on their own.</p>
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
