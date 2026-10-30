@@ -101,7 +101,7 @@ export default function Bell({ events, muted: initialMuted }: { events: BellEven
             <div className="border-b border-line bg-sunken/60 px-3 py-2.5">
               <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">Show me</div>
               {events.length === 0 ? (
-                <p className="text-xs text-muted">The bell is switched off by your Setu admin.</p>
+                <p className="text-xs text-muted">The bell is switched off by your Samadhan admin.</p>
               ) : events.map((e) => (
                 <label key={e} className="flex items-center gap-2 py-0.5 text-xs">
                   <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--accent))]" checked={!muted.includes(e)} onChange={() => toggleMute(e)} />

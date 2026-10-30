@@ -1,6 +1,7 @@
 # Setu backend
 
-API for **Setu Helpdesk** (Emami Secondary Support), mounted at `/api/setu` by `backend/server.js`.
+API for **Samadhan** (Emami Secondary Support helpdesk), mounted at `/api/setu` by `backend/server.js`.
+Users see the app as **Samadhan**; `setu` stays the internal name (app id in Manage Access, schema, routes, folders).
 The frontend lives in `embedded-apps/setu`. Data lives in its own `setu` Postgres schema.
 
 ## Layout

@@ -30,21 +30,21 @@ export function AgentsTab() {
   return (
     <Card
       title="Agents"
-      sub="An agent appears here the first time they open Setu, or when you add them. Access and role come from Manage Access."
+      sub="An agent appears here the first time they open Samadhan, or when you add them. Access and role come from Manage Access."
       actions={<Button size="sm" variant="primary" onClick={() => open()}><Plus size={13} /> Add agent</Button>}
       bodyClass="p-0"
     >
       {error && <div className="p-4"><Notice>{error}</Notice></div>}
       {act.msg && !edit && <div className="p-4 pb-0"><Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice></div>}
       {!data ? <div className="p-4"><Skeleton /></div> : data.length === 0 ? <Empty title="No agents yet" icon={Users} /> : (
-        <Table head={['Agent', 'Role', 'Groups', 'Status', 'Setu access', 'Last seen', '']}>
+        <Table head={['Agent', 'Role', 'Groups', 'Status', 'Samadhan access', 'Last seen', '']}>
           {data.map((a) => (
             <tr key={a.id} className={cx(!a.active && 'opacity-60')}>
               <td className="px-3 py-2"><Person email={a.email} name={a.name} /></td>
               <td className="px-3 py-2"><Pill tone={a.role === 'Admin' ? 'accent' : a.role === 'Supervisor' ? 'warn' : 'neutral'}>{a.role}</Pill></td>
               <td className="px-3 py-2 text-xs">{a.groupIds.map((g) => meta.groups.find((x) => x.id === g)?.name).filter(Boolean).join(', ') || '—'}</td>
               <td className="px-3 py-2 text-xs">{a.active ? meta.agentStatuses[a.availability] : <span className="font-semibold text-bad">Deactivated</span>}</td>
-              <td className="px-3 py-2">{a.hasAccess ? <Pill tone="good">Granted</Pill> : <Pill tone="warn" title="Grant Setu in Emami Apps Manage Access so they can sign in">Not granted</Pill>}</td>
+              <td className="px-3 py-2">{a.hasAccess ? <Pill tone="good">Granted</Pill> : <Pill tone="warn" title="Grant Samadhan in Emami Apps Manage Access so they can sign in">Not granted</Pill>}</td>
               <td className="px-3 py-2 text-xs text-muted">{a.lastSeenAt ? relative(a.lastSeenAt) : 'Never'}</td>
               <td className="px-3 py-2 text-right"><Button size="sm" variant="ghost" onClick={() => open(a)} aria-label={`Edit ${a.name}`}><Pencil size={13} /></Button></td>
             </tr>
@@ -71,9 +71,9 @@ export function AgentsTab() {
             </div>
             <label className="flex items-center gap-2 text-[13px] font-medium">
               <input type="checkbox" className={checkboxCls} checked={edit.active} disabled={edit.email === me.email} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} />
-              Active (deactivated agents cannot open Setu and get no tickets)
+              Active (deactivated agents cannot open Samadhan and get no tickets)
             </label>
-            <p className="text-2xs text-muted">The role (Agent, Supervisor, Admin) is the Setu role granted in Emami Apps Manage Access.</p>
+            <p className="text-2xs text-muted">The role (Agent, Supervisor, Admin) is the Samadhan role granted in Emami Apps Manage Access.</p>
             {act.msg && <Notice tone={act.msg.tone}>{act.msg.text}</Notice>}
             <div className="flex justify-end gap-2">
               <Button onClick={() => setEdit(null)}>Cancel</Button>

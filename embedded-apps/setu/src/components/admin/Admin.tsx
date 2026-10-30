@@ -55,7 +55,7 @@ export default function Admin() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">Admin</h2>
-          <p className="text-sm text-muted">Setu configuration. Who can open Setu, and as Agent, Supervisor or Admin, is set in Emami Apps Manage Access.</p>
+          <p className="text-sm text-muted">Samadhan configuration. Who can open Samadhan, and as Agent, Supervisor or Admin, is set in Emami Apps Manage Access.</p>
         </div>
         <Button onClick={run} disabled={busy} title="Mail ingest, SLA reminders and violations, time-based automations (they also run every few minutes on their own)">
           {busy ? <Spinner /> : <Play size={14} />} Run scheduled checks now

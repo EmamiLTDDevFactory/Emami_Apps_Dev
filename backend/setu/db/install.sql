@@ -611,23 +611,23 @@ INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('forward
 
 INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('requester.closing_reminder', 'requester', '{{ticket.id}} {{ticket.subject}}', 'Hi,<br><br>This is a gentle reminder that we have not received any update from your side, so the ticket is now closed. Please send a new email to open a new ticket.<br><br>Thanks &amp; Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.assigned_group', 'agent', 'New in {{ticket.group.name}}: {{ticket.subject}} [#{{ticket.id}}]', 'A ticket has been routed to {{ticket.group.name}}.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.assigned_group', 'agent', 'New in {{ticket.group.name}}: {{ticket.subject}} [#{{ticket.id}}]', 'A ticket has been routed to {{ticket.group.name}}.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.assigned_agent', 'agent', 'Assigned to you: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>Ticket {{ticket.id}} is now assigned to you.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.assigned_agent', 'agent', 'Assigned to you: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>Ticket {{ticket.id}} is now assigned to you.<br><br><b>{{ticket.subject}}</b><br>{{ticket.description}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.requester_replied', 'agent', 'Requester replied: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>{{ticket.requester.name}} has replied on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.requester_replied', 'agent', 'Requester replied: {{ticket.subject}} [#{{ticket.id}}]', 'Hi {{ticket.agent.name}},<br><br>{{ticket.requester.name}} has replied on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.note_added', 'agent', 'Note added: {{ticket.subject}} [#{{ticket.id}}]', 'A colleague added a private note on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.note_added', 'agent', 'Note added: {{ticket.subject}} [#{{ticket.id}}]', 'A colleague added a private note on ticket {{ticket.id}}:<br><br>{{comment.body}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.first_response_violated', 'agent', 'First response overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due a first response by {{ticket.first_response_due}} and has not had one.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.first_response_violated', 'agent', 'First response overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due a first response by {{ticket.first_response_due}} and has not had one.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.resolution_violated', 'agent', 'Resolution overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.resolution_violated', 'agent', 'Resolution overdue: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} from {{ticket.requester.email}} was due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.first_response_reminder', 'agent', 'First response due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} needs a first response by {{ticket.first_response_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.first_response_reminder', 'agent', 'First response due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} needs a first response by {{ticket.first_response_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.resolution_reminder', 'agent', 'Resolution due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} is due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.resolution_reminder', 'agent', 'Resolution due soon: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} is due to be resolved by {{ticket.resolution_due}}.<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.escalation_l3', 'agent', 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Setu – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
+INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('agent.escalation_l3', 'agent', 'Escalated to L3: {{ticket.subject}} [#{{ticket.id}}]', 'Ticket {{ticket.id}} has been moved to Escalation to L3 Support.<br><br><b>{{ticket.subject}}</b><br>Assigned to: {{ticket.agent.name}}<br><br>Open ticket: {{ticket.url}}<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO setu.settings (key, value) VALUES ('escalation.groupId', '0') ON CONFLICT (key) DO NOTHING;
 
@@ -645,6 +645,10 @@ INSERT INTO setu.settings (key, value) VALUES ('call.mode', '"tel"') ON CONFLICT
 
 INSERT INTO setu.settings (key, value) VALUES ('whatsapp.threadDays', '7') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.settings (key, value) VALUES ('schema.version', '3') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+-- v4: the app is shown as Samadhan - default email sign-off in templates already stored
+UPDATE setu.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
+  WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%';
+
+INSERT INTO setu.settings (key, value) VALUES ('schema.version', '4') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;

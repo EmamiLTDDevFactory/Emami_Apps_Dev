@@ -61,7 +61,7 @@ export function ChannelsTab() {
 
   return (
     <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
-      <Card title={<span className="inline-flex items-center gap-2"><Bell size={15} className="text-accent" /> Notification bell</span>} sub="The bell in the Setu header. Agents can switch any of these off for themselves.">
+      <Card title={<span className="inline-flex items-center gap-2"><Bell size={15} className="text-accent" /> Notification bell</span>} sub="The bell in the Samadhan header. Agents can switch any of these off for themselves.">
         <div className="space-y-4">
           <div>
             <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">What reaches the bell</div>

@@ -30,7 +30,7 @@ async function requireAccess(req, res, next) {
     try {
         await ready;
         const grant = await pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]);
-        if (!grant.rows.length) return res.status(403).json({ success: false, error: 'You do not have access to Setu. Ask an admin to grant it in Manage Access.' });
+        if (!grant.rows.length) return res.status(403).json({ success: false, error: 'You do not have access to Samadhan. Ask an admin to grant it in Manage Access.' });
         // The grant's role is the source of truth; older 'User' grants count as Agent.
         const role = ROLES.includes(grant.rows[0].role) ? grant.rows[0].role : 'Agent';
         const user = await pool.query('SELECT name FROM emami_apps.users WHERE lower(email) = $1 LIMIT 1', [email]);
@@ -41,7 +41,7 @@ async function requireAccess(req, res, next) {
              RETURNING id, name, email, role, active, availability`,
             [email, fallbackName, role],
         );
-        if (!rows[0].active) return res.status(403).json({ success: false, error: 'Your Setu agent account is deactivated. Ask a Setu admin to reactivate it.' });
+        if (!rows[0].active) return res.status(403).json({ success: false, error: 'Your Samadhan agent account is deactivated. Ask a Samadhan admin to reactivate it.' });
         req.agent = rows[0];
         req.verifiedEmail = email;
         if (jobsDue()) runJobs().catch(() => {});

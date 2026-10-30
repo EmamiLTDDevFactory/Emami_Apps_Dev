@@ -139,10 +139,10 @@ export default function App() {
   }
   if (state.kind !== 'ready' || !ctx) {
     const copy = {
-      nohub: { title: 'Sign in to Emami Apps first', body: 'Open Setu from the Emami Apps hub - your sign-in comes from there.' },
-      expired: { title: 'Your session has expired', body: `${state.kind === 'expired' ? state.message : ''} Open Setu again from Emami Apps.` },
-      denied: { title: 'No access to Setu', body: state.kind === 'denied' ? state.message : '' },
-      error: { title: 'Could not load Setu', body: state.kind === 'error' ? state.message : '' },
+      nohub: { title: 'Sign in to Emami Apps first', body: 'Open Samadhan from the Emami Apps hub - your sign-in comes from there.' },
+      expired: { title: 'Your session has expired', body: `${state.kind === 'expired' ? state.message : ''} Open Samadhan again from Emami Apps.` },
+      denied: { title: 'No access to Samadhan', body: state.kind === 'denied' ? state.message : '' },
+      error: { title: 'Could not load Samadhan', body: state.kind === 'error' ? state.message : '' },
     }[state.kind as 'nohub' | 'expired' | 'denied' | 'error'];
     return (
       <div className="flex min-h-screen flex-col bg-bg">
@@ -240,7 +240,7 @@ export default function App() {
           <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
             <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>
             <Headset size={18} className="text-accent" />
-            <h1 className="text-[15px] font-extrabold">Setu Helpdesk</h1>
+            <h1 className="text-[15px] font-extrabold">Samadhan</h1>
             <span className="hidden text-2xs text-muted sm:inline">Emami Secondary Support</span>
             <div className="flex-1" />
             {!state.mailEnabled && (
