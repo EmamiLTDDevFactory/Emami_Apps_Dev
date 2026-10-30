@@ -160,3 +160,8 @@ INSERT INTO timesheet.vendors (code, name) VALUES
   ('201835', 'Infrabeat'),
   ('226470', 'Protiviti')
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
+
+-- Mirrors the hub's own 'Super Admin' access level (emami_apps.authorized_users.access_level),
+-- re-read at every POST /auth/hub-login. A Super Admin can view every employee's timesheet,
+-- whoever they report to (see the frontend's /all-employees page).
+ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT false;

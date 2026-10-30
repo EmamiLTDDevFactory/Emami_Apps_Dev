@@ -70,14 +70,23 @@ export async function fetchAllTimesheetGrantedEmails(req) {
  * really asking (see POST /hub-login below). Exported for routes/users.js's "Add employee" form
  * to reuse the exact same check, rather than duplicating this call. */
 export async function fetchHubRoleForTimesheet(email, req) {
+  return (await fetchHubAccess(email, req)).role
+}
+
+/** Same /access/me call as above, but also returns the person's hub-wide access level - only
+ * POST /hub-login needs that, to flag Super Admins (see users.is_super_admin). */
+async function fetchHubAccess(email, req) {
   try {
     const res = await fetch(`${hubAccessApiBaseFor(req)}/access/me?email=${encodeURIComponent(email)}`)
     const data = await res.json().catch(() => null)
-    if (!res.ok || !data) return null
+    if (!res.ok || !data) return { role: null, accessLevel: null }
     const apps = Array.isArray(data.apps) ? data.apps : []
-    return apps.find((a) => a.appId === APP_ID)?.role || null // 'Admin' | 'User' | null
+    return {
+      role: apps.find((a) => a.appId === APP_ID)?.role || null, // 'Admin' | 'User' | null
+      accessLevel: data.accessLevel || null, // 'Super Admin' | 'Admin' | 'Viewer' | null
+    }
   } catch {
-    return null
+    return { role: null, accessLevel: null }
   }
 }
 
@@ -115,9 +124,9 @@ router.post('/hub-login', async (req, res, next) => {
     const email = String(hubPayload?.email || '').trim().toLowerCase()
     if (!email) return res.status(401).json({ error: 'Invalid Emami Apps session.' })
 
-    const hubRole = await fetchHubRoleForTimesheet(email, req)
+    const { role: hubRole, accessLevel } = await fetchHubAccess(email, req)
     const role = hubRole === 'Admin' ? 'manager' : 'employee'
-    const user = await upsertHubUser(email, role)
+    const user = await upsertHubUser(email, role, accessLevel === 'Super Admin')
     const token = issueSessionToken(user)
 
     res.json({ user, token })

@@ -19,6 +19,7 @@ export function mapUser(row) {
     managerId: row.manager_id,
     status: row.status,
     vendorId: row.vendor_id,
+    isSuperAdmin: !!row.is_super_admin,
   }
 }
 
@@ -57,15 +58,16 @@ export function nameFromEmail(email) {
  * never gated). Left out of the UPDATE branch entirely so it's never touched on repeat sign-ins -
  * an already-active employee re-syncing their role stays active, and someone still sitting in
  * 'pending' stays there until approved, regardless of how many times they open the app. */
-export async function upsertHubUser(email, role) {
+export async function upsertHubUser(email, role, isSuperAdmin = false) {
   const { rows } = await pool.query(
-    `INSERT INTO users (id, name, email, role, manager_id, status)
-     VALUES ($1, $2, $3, $4, NULL, CASE WHEN $4 = 'manager' THEN 'active' ELSE 'pending' END)
+    `INSERT INTO users (id, name, email, role, manager_id, status, is_super_admin)
+     VALUES ($1, $2, $3, $4, NULL, CASE WHEN $4 = 'manager' THEN 'active' ELSE 'pending' END, $5)
      ON CONFLICT (email) DO UPDATE SET
        role = EXCLUDED.role,
-       manager_id = CASE WHEN EXCLUDED.role = 'manager' THEN NULL ELSE users.manager_id END
+       manager_id = CASE WHEN EXCLUDED.role = 'manager' THEN NULL ELSE users.manager_id END,
+       is_super_admin = EXCLUDED.is_super_admin
      RETURNING *`,
-    [`u_${randomUUID()}`, nameFromEmail(email), email, role],
+    [`u_${randomUUID()}`, nameFromEmail(email), email, role, isSuperAdmin],
   )
   return mapUser(rows[0])
 }

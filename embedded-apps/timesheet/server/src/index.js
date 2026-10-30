@@ -60,5 +60,9 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: err.message || 'Internal server error' })
 })
 
+// Idempotent - lets this deploy pick up users.is_super_admin (see schema.sql) without a separate
+// migrate run. upsertHubUser writes that column on every sign-in, so it has to exist first.
+await pool.query('ALTER TABLE timesheet.users ADD COLUMN IF NOT EXISTS is_super_admin BOOLEAN NOT NULL DEFAULT false')
+
 const port = process.env.PORT || 4000
 app.listen(port, () => console.log(`TimeSheet API listening on http://localhost:${port}`))

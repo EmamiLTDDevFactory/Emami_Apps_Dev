@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Users,
   BarChart3,
+  Building2,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -33,6 +34,8 @@ const MANAGER_NAV = [
   { href: '/manage-team/', label: 'Manage Team', icon: Users },
   { href: '/team-reports/', label: 'Team Reports', icon: BarChart3 },
 ];
+// Only for the hub's Super Admins (currentUser.isSuperAdmin), on top of whichever list above.
+const SUPER_ADMIN_NAV = [{ href: '/all-employees/', label: 'All Employees', icon: Building2 }];
 
 function useIsWideScreen() {
   const [wide, setWide] = useState(true);
@@ -54,7 +57,7 @@ export default function SidePane({ isOpen, onClose }: { isOpen: boolean; onClose
   const isWideScreen = useIsWideScreen();
   const { currentUser } = useApp();
   const isManager = currentUser?.role === 'manager';
-  const navItems = isManager ? MANAGER_NAV : EMPLOYEE_NAV;
+  const navItems = [...(isManager ? MANAGER_NAV : EMPLOYEE_NAV), ...(currentUser?.isSuperAdmin ? SUPER_ADMIN_NAV : [])];
 
   const paneClasses = isWideScreen
     ? 'relative w-64 shrink-0'
