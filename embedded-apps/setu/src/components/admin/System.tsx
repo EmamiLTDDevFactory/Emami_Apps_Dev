@@ -47,13 +47,27 @@ export function SettingsTab() {
 const TRIGGER_LABEL = { ON_CREATE: 'When a ticket is created', ON_UPDATE: 'When a ticket is updated', TIME: 'Time-based (checked every few minutes)' };
 const OP: Record<string, string> = { eq: 'is', ne: 'is not', in: 'is one of', not_in: 'is not one of', gt: '>', gte: '≥', lt: '<', is_empty: 'is empty', not_empty: 'is set' };
 
-function RuleText({ r }: { r: AutomationRule }) {
+type CondGroup = 'all' | 'any';
+type Thresholds = Record<string, string>;
+const condKey = (g: CondGroup, i: number) => `${g}:${i}`;
+/** Plain words for the condition fields that carry a number. */
+const FIELD_LABEL: Record<string, string> = {
+  hoursSinceResolved: 'hours since resolved', hoursSinceStatusChange: 'hours in the current status', hoursPastResolutionDue: 'hours past resolution due',
+  priority: 'priority', statusId: 'status', groupId: 'group', severity: 'severity', source: 'source',
+};
+const fieldWords = (f: string) => FIELD_LABEL[f] ?? f.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
+
+function RuleText({ r, edit, onEdit }: { r: AutomationRule; edit?: Thresholds; onEdit?: (key: string, v: string) => void }) {
   const { meta } = useSetu();
   const val = (field: string, v: unknown): string => {
     const one = (x: unknown) => (field === 'statusId' ? meta.statuses.find((s) => s.id === x)?.name ?? String(x) : field === 'groupId' ? meta.groups.find((g) => g.id === x)?.name ?? String(x) : String(x));
     return Array.isArray(v) ? v.map(one).join(', ') : v === undefined ? '' : one(v);
   };
-  const conds = [...(r.conditions.all ?? []), ...(r.conditions.any ?? [])];
+  const conds = [
+    ...(r.conditions.all ?? []).map((c, i) => ({ c, g: 'all' as CondGroup, i })),
+    ...(r.conditions.any ?? []).map((c, i) => ({ c, g: 'any' as CondGroup, i })),
+  ];
+  const hasAll = (r.conditions.all ?? []).length > 0;
   const action = (a: AutomationRule['actions'][number]): string => {
     switch (a.type) {
       case 'setStatus': return `set status to ${val('statusId', a.value)}`;
@@ -69,9 +83,68 @@ function RuleText({ r }: { r: AutomationRule }) {
   return (
     <div className="text-xs text-muted">
       <span className="font-semibold text-ink">If </span>
-      {conds.length ? conds.map((c, i) => <span key={i}>{i > 0 && ' and '}<code className="rounded bg-sunken px-1">{c.field}</code> {OP[c.op] ?? c.op} {val(c.field, c.value)}</span>) : 'always'}
+      {conds.length ? conds.map(({ c, g, i }, n) => {
+        const key = condKey(g, i);
+        const numeric = typeof c.value === 'number' && !['statusId', 'groupId', 'priority'].includes(c.field);
+        const joiner = n === 0 ? null : g === 'any' && i === 0 && hasAll ? ' and any of: ' : g === 'any' ? ' or ' : ' and ';
+        return (
+          <span key={key}>
+            {joiner}
+            {n === 0 && g === 'any' && conds.length > 1 && 'any of: '}
+            <span title={c.field}>{fieldWords(c.field)}</span> {OP[c.op] ?? c.op}{' '}
+            {numeric && edit && onEdit ? (
+              <input
+                type="number"
+                min={0}
+                max={8760}
+                step="any"
+                aria-label={`${r.name}: ${fieldWords(c.field)}`}
+                className={cx('num h-7 w-20 px-2 text-xs', inputBase, edit[key] !== String(c.value) && 'border-accent bg-accent/[0.06] font-semibold')}
+                value={edit[key] ?? String(c.value)}
+                onChange={(e) => onEdit(key, e.target.value)}
+              />
+            ) : <span className="font-semibold text-ink">{val(c.field, c.value)}</span>}
+          </span>
+        );
+      }) : 'always'}
       <span className="font-semibold text-ink"> then </span>{r.actions.map(action).join(', then ')}.
     </div>
+  );
+}
+
+function numericThresholds(r: AutomationRule): Thresholds {
+  const out: Thresholds = {};
+  (['all', 'any'] as const).forEach((g) => (r.conditions[g] ?? []).forEach((c, i) => { if (typeof c.value === 'number') out[condKey(g, i)] = String(c.value); }));
+  return out;
+}
+
+function RuleItem({ r, onToggle, onSaved }: { r: AutomationRule; onToggle: (active: boolean) => void; onSaved: () => void }) {
+  const base = numericThresholds(r);
+  const [edit, setEdit] = useState<Thresholds>(base);
+  const act = useAction();
+  useEffect(() => { setEdit(numericThresholds(r)); }, [r]);
+  const dirty = Object.keys(base).filter((k) => edit[k] !== base[k]);
+  const bad = dirty.some((k) => { const n = Number(edit[k]); return edit[k].trim() === '' || !Number.isFinite(n) || n < 0 || n > 8760; });
+  const save = async () => {
+    const thresholds = dirty.map((k) => { const [g, i] = k.split(':'); return { group: g as CondGroup, index: Number(i), value: Number(edit[k]) }; });
+    if (await act.run(() => admin.saveAutomationThresholds(r.id, thresholds), `${r.name}: thresholds saved.`)) onSaved();
+  };
+  return (
+    <li className="flex items-start gap-3 px-4 py-3">
+      <input type="checkbox" className={cx(checkboxCls, 'mt-0.5')} checked={r.active} aria-label={`${r.name} active`} onChange={(e) => onToggle(e.target.checked)} />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-center gap-2 text-[13px] font-semibold">{r.name}{!r.active && <Pill>Off</Pill>}</div>
+        <RuleText r={r} edit={edit} onEdit={(k, v) => setEdit({ ...edit, [k]: v })} />
+        {dirty.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="primary" disabled={act.busy || bad} onClick={save}>Save thresholds</Button>
+            <Button size="sm" disabled={act.busy} onClick={() => { setEdit(base); act.setMsg(null); }}>Undo</Button>
+            {bad && <span className="text-2xs font-semibold text-bad">Use a number from 0 to 8,760.</span>}
+          </div>
+        )}
+        {act.msg && <Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice>}
+      </div>
+    </li>
   );
 }
 
@@ -82,18 +155,13 @@ export function AutomationsTab() {
   if (!data) return <Card><Skeleton /></Card>;
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted">Switch a rule on or off, or change the numbers in its conditions (for example the hours before a resolved ticket closes). What a rule does cannot be changed here.</p>
       {act.msg && <Notice tone={act.msg.tone} onClose={() => act.setMsg(null)}>{act.msg.text}</Notice>}
       {(['ON_CREATE', 'ON_UPDATE', 'TIME'] as const).map((trig) => (
         <Card key={trig} title={TRIGGER_LABEL[trig]} bodyClass="p-0">
           <ul className="divide-y divide-line">
             {data.filter((r) => r.trigger === trig).map((r) => (
-              <li key={r.id} className="flex items-start gap-3 px-4 py-3">
-                <input type="checkbox" className={cx(checkboxCls, 'mt-0.5')} checked={r.active} aria-label={`${r.name} active`} onChange={async (e) => { await act.run(() => admin.toggleAutomation(r.id, e.target.checked), `${r.name}: ${e.target.checked ? 'on' : 'off'}.`); reload(); }} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-[13px] font-semibold">{r.name}{!r.active && <Pill>Off</Pill>}</div>
-                  <RuleText r={r} />
-                </div>
-              </li>
+              <RuleItem key={r.id} r={r} onSaved={reload} onToggle={async (on) => { await act.run(() => admin.toggleAutomation(r.id, on), `${r.name}: ${on ? 'on' : 'off'}.`); reload(); }} />
             ))}
             {data.filter((r) => r.trigger === trig).length === 0 && <li className="px-4 py-3 text-sm text-muted">None.</li>}
           </ul>

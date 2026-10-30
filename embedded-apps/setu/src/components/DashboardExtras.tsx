@@ -1,25 +1,19 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckSquare, ListTodo, Plus, Smile, Square, X } from 'lucide-react';
+import { Activity, CheckSquare, ListTodo, Plus, Smile, Square, X } from 'lucide-react';
 import { addTodo, deleteTodo, getTodos, updateTodo } from '@/lib/api';
 import { useSetu } from '@/lib/context';
 import { ACTION_LABEL, fmtNum, relative } from '@/lib/format';
 import type { Dashboard as Data, Todo } from '@/lib/types';
-import { Button, Card, Notice, cx, inputCls } from './ui';
+import { EmptyLine, WCard } from './dashboard/frame';
+import { Button, Notice, cx, inputCls } from './ui';
 
-/** Unresolved by group, recent activity, the agent's to-dos and CSAT - the rest of the Freshdesk "My Dashboard". */
-export default function DashboardExtras({ data }: { data: Data }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <ByGroup data={data} />
-      <Todos />
-      <Csat data={data} />
-      <Recent data={data} />
-    </div>
-  );
-}
+/*
+ * Unresolved by group, recent activity, the agent's to-dos and CSAT - the rest of the Freshdesk "My Dashboard".
+ * Each is a dashboard widget (ids byGroup, recent, todos, csat); the Dashboard places them in the agent's chosen order.
+ */
 
-function ByGroup({ data }: { data: Data }) {
+export function ByGroup({ data }: { data: Data }) {
   const { meta, openList } = useSetu();
   // Only the statuses that occur, in the configured order.
   const statuses = useMemo(() => meta.statuses.filter((s) => data.byGroup.some((r) => r.statusId === s.id)), [meta.statuses, data.byGroup]);
@@ -35,8 +29,8 @@ function ByGroup({ data }: { data: Data }) {
   }, [data.byGroup]);
   const go = (groupId: number | null, statusId?: number) => openList({ view: 'open', groupId: groupId ? String(groupId) : 'none', ...(statusId ? { statusId: String(statusId) } : {}) });
   return (
-    <Card className="lg:col-span-2" title="Unresolved tickets by group" sub="Click a number to open those tickets">
-      {groups.length === 0 ? <p className="text-sm text-muted">Nothing unresolved.</p> : (
+    <WCard title="Unresolved tickets by group" sub="Click a number to open those tickets">
+      {groups.length === 0 ? <EmptyLine>Nothing unresolved.</EmptyLine> : (
         <div className="scroll-thin overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -62,11 +56,11 @@ function ByGroup({ data }: { data: Data }) {
           </table>
         </div>
       )}
-    </Card>
+    </WCard>
   );
 }
 
-function Todos() {
+export function Todos() {
   const { openTicket } = useSetu();
   const [items, setItems] = useState<Todo[] | null>(null);
   const [text, setText] = useState('');
@@ -76,7 +70,7 @@ function Todos() {
   const run = async (fn: () => Promise<unknown>) => { try { await fn(); await load(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save.'); } };
   const open = items?.filter((t) => !t.done).length ?? 0;
   return (
-    <Card title={<span className="inline-flex items-center gap-1.5"><ListTodo size={15} className="text-accent" /> My to-dos</span>} sub={items ? `${open} open · only you see these` : undefined}>
+    <WCard title={<span className="inline-flex items-center gap-1.5"><ListTodo size={15} className="text-accent" /> My to-dos</span>} sub={items ? `${open} open · only you see these` : undefined}>
       <ul className="scroll-thin max-h-56 space-y-1 overflow-y-auto">
         {items?.length === 0 && <li className="text-xs text-muted">Nothing to do. Add reminders here or from a ticket.</li>}
         {items?.map((td) => (
@@ -89,7 +83,7 @@ function Todos() {
               {td.ticketId && <button type="button" onClick={() => openTicket(td.ticketId!)} className="ml-1 text-2xs font-semibold text-accent hover:underline">#{td.ticketId}</button>}
               {td.dueAt && <span className={cx('ml-1 text-2xs', !td.done && new Date(td.dueAt) < new Date() ? 'text-bad' : 'text-muted')}>· {relative(td.dueAt)}</span>}
             </span>
-            <button type="button" onClick={() => run(() => deleteTodo(td.id))} className="text-faint opacity-0 hover:text-bad group-hover:opacity-100" aria-label="Delete to-do"><X size={13} /></button>
+            <button type="button" onClick={() => run(() => deleteTodo(td.id))} className="text-faint opacity-0 hover:text-bad focus-visible:opacity-100 group-hover:opacity-100" aria-label="Delete to-do"><X size={13} /></button>
           </li>
         ))}
       </ul>
@@ -98,22 +92,24 @@ function Todos() {
         <Button size="sm" type="submit" disabled={!text.trim()} aria-label="Add to-do"><Plus size={13} /></Button>
       </form>
       {error && <div className="mt-2"><Notice onClose={() => setError('')}>{error}</Notice></div>}
-    </Card>
+    </WCard>
   );
 }
 
-function Csat({ data }: { data: Data }) {
+export function Csat({ data }: { data: Data }) {
   const pos = data.csat['3'];
   const neu = data.csat['2'];
   const neg = data.csat['1'];
   const total = pos + neu + neg;
   const pct = (n: number) => (total ? Math.round((n * 100) / total) : 0);
   return (
-    <Card title={<span className="inline-flex items-center gap-1.5"><Smile size={15} className="text-accent" /> Customer satisfaction</span>} sub="Survey answers, last 30 days">
+    <WCard title={<span className="inline-flex items-center gap-1.5"><Smile size={15} className="text-accent" /> Customer satisfaction</span>} sub="Survey answers, last 30 days">
       {total === 0 ? <p className="text-xs text-muted">No answers yet. Requesters get a one-click survey when their ticket closes.</p> : (
         <div className="space-y-2">
-          <div className="flex h-3 overflow-hidden rounded-full bg-sunken">
-            <span className="bg-good" style={{ width: `${pct(pos)}%` }} /><span className="bg-line" style={{ width: `${pct(neu)}%` }} /><span className="bg-bad" style={{ width: `${pct(neg)}%` }} />
+          <div className="flex h-3 gap-[2px]" role="img" aria-label={`${pct(pos)}% satisfied, ${pct(neu)}% neutral, ${pct(neg)}% dissatisfied`}>
+            {([[pos, 'bg-good', 'Satisfied'], [neu, 'bg-faint/40', 'Neutral'], [neg, 'bg-bad', 'Dissatisfied']] as const).filter(([n]) => n > 0).map(([n, c, l], i, arr) => (
+              <span key={l} title={`${l}: ${fmtNum(n)}`} className={cx(c, i === 0 && 'rounded-l-full', i === arr.length - 1 && 'rounded-r-full')} style={{ flexGrow: n, flexBasis: 0 }} />
+            ))}
           </div>
           <dl className="grid grid-cols-3 gap-2 text-center text-2xs">
             <div><dt className="text-muted">Satisfied</dt><dd className="num text-base font-extrabold text-good">{pct(pos)}%</dd></div>
@@ -123,15 +119,15 @@ function Csat({ data }: { data: Data }) {
           <p className="text-2xs text-muted">{fmtNum(total)} response{total === 1 ? '' : 's'}</p>
         </div>
       )}
-    </Card>
+    </WCard>
   );
 }
 
-function Recent({ data }: { data: Data }) {
+export function Recent({ data }: { data: Data }) {
   const { openTicket } = useSetu();
   return (
-    <Card className="lg:col-span-2" title="Recent activity" sub="Across all tickets, last 3 days">
-      {data.recent.length === 0 ? <p className="text-sm text-muted">Nothing yet.</p> : (
+    <WCard title={<span className="inline-flex items-center gap-1.5"><Activity size={15} className="text-accent" /> Recent activity</span>} sub="Across all tickets, last 3 days">
+      {data.recent.length === 0 ? <EmptyLine>Nothing yet.</EmptyLine> : (
         <ul className="scroll-thin max-h-72 divide-y divide-line overflow-y-auto">
           {data.recent.map((a) => (
             <li key={a.id}>
@@ -146,6 +142,6 @@ function Recent({ data }: { data: Data }) {
           ))}
         </ul>
       )}
-    </Card>
+    </WCard>
   );
 }

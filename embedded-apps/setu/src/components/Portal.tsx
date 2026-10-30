@@ -15,7 +15,7 @@ const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
  */
 export default function Portal() {
   const [tab, setTab] = useState<'new' | 'status'>('new');
-  const [config, setConfig] = useState<{ enabled: boolean; categories?: string[] } | null>(null);
+  const [config, setConfig] = useState<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string } | null>(null);
   const [error, setError] = useState('');
   // A survey link from the ticket-closed email (?csat=<token>) shows the survey instead of the portal.
   const [csat, setCsat] = useState<{ token: string; home: string } | null>(null);
@@ -25,6 +25,11 @@ export default function Portal() {
     portalConfig().then(setConfig).catch((e) => setError(e instanceof Error ? e.message : 'The helpdesk could not be reached.'));
   }, []);
 
+  // Admin > General values when the server sends them; the built-in text otherwise.
+  const helpdeskName = config?.helpdeskName?.trim() || 'Emami Secondary Helpdesk';
+  const supportEmail = config?.supportEmail?.trim() || 'emami.helpdesk@emamigroup.com';
+  const intro = config?.intro?.trim() || '';
+
   return (
     <div className="min-h-screen bg-bg">
       <header className="bg-plum text-white">
@@ -32,7 +37,7 @@ export default function Portal() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami" width={56} height={46} className="rounded-lg bg-white p-1" />
           <div>
-            <h1 className="text-lg font-extrabold leading-tight">Emami Secondary Helpdesk</h1>
+            <h1 className="text-lg font-extrabold leading-tight">{helpdeskName}</h1>
             <p className="text-xs text-white/75">Support for mSecSales, SalesCode DMS / SFA and distributor systems</p>
           </div>
         </div>
@@ -45,16 +50,17 @@ export default function Portal() {
           <div className="rounded-2xl border border-line bg-panel p-6 text-center shadow-card">
             <LifeBuoy size={28} className="mx-auto text-accent" />
             <h2 className="mt-2 text-base font-bold">The support portal is closed right now</h2>
-            <p className="mt-1 text-sm text-muted">Please email <a className="font-semibold text-accent" href="mailto:emami.helpdesk@emamigroup.com">emami.helpdesk@emamigroup.com</a> instead.</p>
+            <p className="mt-1 text-sm text-muted">Please email <a className="font-semibold text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a> instead.</p>
           </div>
         )}
         {!csat && config?.enabled && (
           <>
+            {intro && <p className="whitespace-pre-line text-sm text-muted">{intro}</p>}
             <Tabs label="Portal" value={tab} onChange={setTab} tabs={[{ id: 'new', label: 'Raise a ticket' }, { id: 'status', label: 'Check a ticket' }]} />
             {tab === 'new' ? <><ArticleSearch /><NewRequest categories={config.categories ?? []} /></> : <StatusCheck />}
           </>
         )}
-        <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href="mailto:emami.helpdesk@emamigroup.com">emami.helpdesk@emamigroup.com</a>. Please do not share passwords or OTPs in a ticket.</p>
+        <p className="pt-2 text-center text-2xs text-faint">You can also email <a className="text-accent" href={`mailto:${supportEmail}`}>{supportEmail}</a>. Please do not share passwords or OTPs in a ticket.</p>
       </main>
     </div>
   );
@@ -234,7 +240,7 @@ function CsatSurveyCard({ token, home }: { token: string; home: string }) {
         </div>
         {survey.agentName && <p className="mt-1 text-xs text-muted">Handled by {survey.agentName}</p>}
       </div>
-      <h2 className="text-base font-bold">How would you rate your overall satisfaction for the resolution provided by the agent?</h2>
+      <h2 className="text-base font-bold">{survey.question?.trim() || 'How would you rate your overall satisfaction for the resolution provided by the agent?'}</h2>
       <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Your rating">
         {RATINGS.map((r) => {
           const Icon = r.icon;
@@ -249,7 +255,7 @@ function CsatSurveyCard({ token, home }: { token: string; home: string }) {
               className={cx('flex flex-col items-center gap-2 rounded-2xl border px-3 py-4 text-center text-sm font-semibold transition-all', on ? 'border-accent bg-accent/10 ring-2 ring-accent/20' : 'border-line hover:bg-sunken')}
             >
               <Icon size={36} className={r.tone} />
-              {r.label}
+              {survey.labels?.[String(r.value) as '1' | '2' | '3']?.trim() || r.label}
             </button>
           );
         })}

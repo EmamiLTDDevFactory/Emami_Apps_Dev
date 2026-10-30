@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext } from 'react';
 import type { TicketQuery } from './api';
-import type { Me, Meta } from './types';
+import type { AgentPrefs, Me, Meta } from './types';
 
 export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions';
 
@@ -23,6 +23,8 @@ export interface Setu {
   setListIds: (ids: number[]) => void;
   isSupervisor: boolean;
   isAdmin: boolean;
+  /** The agent's own settings (My preferences). */
+  prefs: AgentPrefs;
 }
 
 export type NewTicketPreset = { parentId?: number; [key: string]: string | number | undefined };

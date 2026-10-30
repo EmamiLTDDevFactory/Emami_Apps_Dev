@@ -1,11 +1,12 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, Users, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { SetuContext, type NewTicketPreset, type Screen, type Setu } from '@/lib/context';
 import { hasHubSession } from '@/lib/hub';
-import type { Availability, BellEvent, Me, Meta } from '@/lib/types';
+import type { AgentPrefs, Availability, BellEvent, Me, Meta } from '@/lib/types';
+import MyPreferences from './MyPreferences';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import { Avatar, Button, cx } from './ui';
 import Dashboard from './Dashboard';
@@ -52,7 +53,7 @@ type State =
   | { kind: 'expired'; message: string }
   | { kind: 'denied'; message: string }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; bellMuted: BellEvent[] };
+  | { kind: 'ready'; me: Me; meta: Meta; mailEnabled: boolean; whatsappEnabled: boolean; bellEvents: BellEvent[]; prefs: AgentPrefs };
 
 /** ?ticket=<id> deep link (hub notifications and emails point there). */
 function ticketFromUrl(): number | null {
@@ -82,6 +83,7 @@ export default function App() {
   const [preset, setPreset] = useState<{ n: number; q: TicketQuery }>({ n: 0, q: {} });
   const [newPreset, setNewPreset] = useState<{ n: number; p?: NewTicketPreset }>({ n: 0 });
   const [listIds, setListIds] = useState<number[]>([]);
+  const [prefsOpen, setPrefsOpen] = useState<'notifications' | 'list' | null>(null);
   const [menu, setMenu] = useState(false);
   const [today, setToday] = useState('');
   const [availBusy, setAvailBusy] = useState(false);
@@ -101,7 +103,7 @@ export default function App() {
       const [me, meta] = await Promise.all([getMe(), getMeta()]);
       setState({
         kind: 'ready', me: me.me, meta, mailEnabled: me.mailEnabled, whatsappEnabled: me.whatsappEnabled,
-        bellEvents: me.bellEvents ?? ['requester_reply'], bellMuted: me.prefs?.bellMuted ?? [],
+        bellEvents: me.bellEvents ?? ['requester_reply'], prefs: me.prefs ?? {},
       });
       const deep = ticketFromUrl();
       if (deep) {
@@ -145,6 +147,7 @@ export default function App() {
       setListIds,
       isSupervisor: sup,
       isAdmin: state.me.role === 'Admin',
+      prefs: state.prefs,
     };
   }, [state, reloadMeta, listIds]);
 
@@ -243,6 +246,7 @@ export default function App() {
               </select>
             </label>
             <p className="mt-2 px-1 text-[11px] leading-snug text-faint">Only agents who are Available get round-robin tickets.</p>
+            <button type="button" onClick={() => setPrefsOpen('list')} className="mt-2 flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-xs font-semibold text-muted hover:bg-sunken hover:text-ink"><SlidersHorizontal size={13} /> My preferences</button>
           </div>
         </aside>
 
@@ -263,7 +267,7 @@ export default function App() {
               </span>
             )}
             <GlobalSearch />
-            <Bell events={state.bellEvents} muted={state.bellMuted} />
+            <Bell events={state.bellEvents} muted={state.prefs.bellMuted ?? []} onSettings={() => setPrefsOpen('notifications')} />
             <button type="button" onClick={() => window.dispatchEvent(new Event('setu:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
             <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>
             <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 md:flex"><Calendar size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{today}</span></div>
@@ -283,6 +287,14 @@ export default function App() {
               {screen === 'admin' && ctx.isAdmin && <Admin />}
             </div>
             <Shortcuts />
+            <MyPreferences
+              open={prefsOpen !== null}
+              start={prefsOpen ?? 'notifications'}
+              onClose={() => setPrefsOpen(null)}
+              prefs={state.prefs}
+              events={state.bellEvents}
+              onSaved={(p) => setState((s) => (s.kind === 'ready' ? { ...s, prefs: p } : s))}
+            />
           </main>
         </div>
       </div>

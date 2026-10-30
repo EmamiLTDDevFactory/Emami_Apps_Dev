@@ -2,7 +2,8 @@
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
 const express = require('express');
 const { pool } = require('../../db');
-const { CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES, SOURCES } = require('../constants');
+const { CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES } = require('../constants');
+const { option, sources } = require('../lib/config');
 const { loadTicket } = require('../lib/notify');
 const { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, createTicket, updateTicket } = require('../lib/tickets');
 const { LIVE, VIEWS, VIEW_IDS, ticketFilter } = require('../lib/ticketQuery');
@@ -67,15 +68,16 @@ const istCell = (v) => (v instanceof Date ? v.toLocaleString('sv-SE', { timeZone
 router.get('/tickets/export', wrap(async (req, res) => {
     requireSupervisor(req);
     const { where, params, order } = ticketFilter(req.query, req.agent.id);
+    const maxRows = Number(await option('export.maxRows')) || 5000;
     const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => EXPORT_COLUMNS[c]);
     const columns = wanted.length ? wanted : Object.keys(EXPORT_COLUMNS);
     const { rows } = await pool.query(
         `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", a.name AS "agentName", g.name AS "groupName", s.name AS "statusName",
                 (SELECT rating FROM setu.csat_responses r WHERE r."ticketId" = t.id ORDER BY r.id DESC LIMIT 1) AS "csatRating"
-         ${LIST_FROM} ${where} ORDER BY ${order}, t.id DESC LIMIT 5001`,
+         ${LIST_FROM} ${where} ORDER BY ${order}, t.id DESC LIMIT ${maxRows + 1}`,
         params,
     );
-    if (rows.length > 5000) throw fail(400, 'More than 5,000 tickets match. Narrow the filters (for example a date range) and export again.');
+    if (rows.length > maxRows) throw fail(400, `More than ${maxRows.toLocaleString('en-IN')} tickets match. Narrow the filters (for example a date range) and export again.`);
     const out = rows.map((t) => columns.map((c) => safeCell(istCell(EXPORT_COLUMNS[c](t)))));
     await audit(req.verifiedEmail, 'tickets_exported', { rows: out.length, view: req.query.view ?? '', columns: columns.length });
     res.json({ success: true, columns, rows: out });
@@ -110,7 +112,7 @@ router.post('/tickets', wrap(async (req, res) => {
     // A ticket logged on someone's behalf needs their email: replies, the acknowledgement and the portal use it.
     if (!requesterEmail) throw fail(400, 'Requester email is needed.');
     if (!EMAIL_RE.test(requesterEmail)) throw fail(400, 'Requester email is not valid.');
-    const source = SOURCES.includes(b.source) ? b.source : 'Phone';
+    const source = (await sources()).includes(b.source) ? b.source : 'Phone';
     const fields = cleanFields(b);
     const statusId = intOrNull(b.statusId);
     if (Number.isNaN(statusId)) throw fail(400, 'Invalid statusId.');

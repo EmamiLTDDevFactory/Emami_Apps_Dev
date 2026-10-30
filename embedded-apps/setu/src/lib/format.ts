@@ -110,6 +110,32 @@ export const BELL_EVENT_LABEL: Record<string, string> = {
   new_ticket: 'New tickets from email, portal or WhatsApp',
   assigned: 'Tickets assigned to me',
   note: 'Private notes on my tickets',
+  mention: 'Someone @mentioned me in a note',
+  status_changed: "Someone else changed my ticket's status",
+  escalated: 'Tickets escalated to L3',
+  sla_warning: 'First response / resolution due soon',
+  sla_breach: 'SLA breached',
+  csat: 'Requester rated the support',
+  watching: 'Updates on tickets I watch',
+};
+
+/** Short names for the bell's filter chips. */
+export const BELL_EVENT_SHORT: Record<string, string> = {
+  requester_reply: 'Replies', new_ticket: 'New', assigned: 'Assigned', note: 'Notes', mention: 'Mentions', status_changed: 'Status',
+  escalated: 'Escalated', sla_warning: 'Due soon', sla_breach: 'SLA breach', csat: 'CSAT', watching: 'Watching',
+};
+
+/** Agent email / Emami Apps inbox notifications an agent can switch off (backend AGENT_EMAIL_TEMPLATES). */
+export const EMAIL_NOTICE_LABEL: Record<string, string> = {
+  'agent.assigned_agent': 'A ticket is assigned to me',
+  'agent.assigned_group': 'A ticket is routed to my group',
+  'agent.requester_replied': 'The requester replied on my ticket',
+  'agent.note_added': 'A colleague added a note on my ticket',
+  'agent.first_response_reminder': 'First response due soon',
+  'agent.resolution_reminder': 'Resolution due soon',
+  'agent.first_response_violated': 'First response overdue',
+  'agent.resolution_violated': 'Resolution overdue',
+  'agent.escalation_l3': 'Ticket escalated to L3',
 };
 
 /** Seconds as "4m 30s" / "1h 5m". */

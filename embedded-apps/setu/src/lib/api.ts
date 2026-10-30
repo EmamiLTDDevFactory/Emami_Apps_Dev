@@ -11,6 +11,7 @@ import type {
   ActivityItem, AdminAgent, AdminField, AdminGroup, AgentPrefs, Analytics, Article, ArticleRow, AuditEvent, AutomationRule, BellEvent, BellItem, Breakdown, Company,
   ContactDetail, ContactMatch, ContactRow, Counts, Dashboard, DashboardInsights, DayWindow, Distributor, EmailTemplate, Me, Meta, ParkedMail, PresenceAgent,
   SavedView, Scenario, ScenarioAction, SearchResults, SeverityRule, SlaPolicy, Ticket, TicketDetail, TicketInsights, TicketRow, Todo,
+  AccessUser, Overview, ReportVariantConfig, Role, Variant,
 } from './types';
 
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
@@ -68,24 +69,27 @@ const qs = (o: Record<string, string | number | undefined | null>) => {
 
 // ---------- Requester portal (no hub sign-in; the backend ignores the empty token on these routes) ----------
 export interface PortalTicketStatus { id: number; subject: string; status: string; isResolved: boolean; isClosed: boolean; createdAt: string; lastActivityAt: string | null; resolvedAt: string | null }
-export const portalConfig = () => get<{ enabled: boolean; categories?: string[] }>('/portal/config');
+export const portalConfig = () => get<{ enabled: boolean; categories?: string[]; helpdeskName?: string; intro?: string; supportEmail?: string }>('/portal/config');
 export const portalCreate = (body: { name: string; email: string; phone: string; distributorCode: string; category: string; subject: string; description: string; website: string }) =>
   request<{ ticket: { id: number } }>('POST', '/portal/tickets', body).then((r) => r.ticket);
 export const portalStatus = (id: number, email: string) => request<{ ticket: PortalTicketStatus }>('POST', '/portal/status', { id, email }).then((r) => r.ticket);
 export interface PortalArticle { id: number; category: string; folder: string; title: string; body: string; tags: string[] }
 export const portalArticles = (q = '') => get<{ items: PortalArticle[] }>(`/portal/articles${qs({ q })}`).then((r) => r.items);
-export interface CsatSurvey { ticketId: number; subject: string; agentName: string | null; answered: boolean }
+export interface CsatSurvey { ticketId: number; subject: string; agentName: string | null; answered: boolean; question?: string; labels?: Record<'1' | '2' | '3', string> }
 export const portalCsat = (token: string) => get<{ survey: CsatSurvey }>(`/portal/csat/${encodeURIComponent(token)}`).then((r) => r.survey);
 export const portalCsatAnswer = (token: string, rating: 1 | 2 | 3, comment: string) => request('POST', `/portal/csat/${encodeURIComponent(token)}`, { rating, comment });
 
 // ---------- Me & reference data ----------
 export const getMe = () =>
   get<{ me: Me; agentStatuses: Meta['agentStatuses']; mailEnabled: boolean; whatsappEnabled: boolean; prefs: AgentPrefs; bellEvents: BellEvent[] }>('/me');
-export const savePrefs = (prefs: { bellMuted: BellEvent[] }) => request<{ prefs: AgentPrefs }>('PUT', '/me/preferences', prefs).then((r) => r.prefs);
+/** Only the keys sent change (bellMuted, emailMuted, listView, pageSize, dashboardWidgets, defaultVariants). */
+export const savePrefs = (prefs: Partial<AgentPrefs>) => request<{ prefs: AgentPrefs }>('PUT', '/me/preferences', prefs).then((r) => r.prefs);
 export const searchContacts = (q: string) => get<{ items: ContactMatch[] }>(`/contacts/search${qs({ q })}`).then((r) => r.items);
 
 // ---------- In-app bell ----------
-export const getBell = () => get<{ items: BellItem[]; unread: number }>('/notifications');
+export const getBell = (q: { unread?: boolean; events?: BellEvent[]; before?: number } = {}) =>
+  get<{ items: BellItem[]; unread: number; more: boolean; unreadByEvent: Partial<Record<BellEvent, number>> }>(`/notifications${qs({ unread: q.unread ? 1 : undefined, events: q.events?.join(','), before: q.before })}`);
+export const clearReadBell = () => request<{ cleared: number }>('POST', '/notifications/clear', {});
 export const markBellRead = (body: { ids: number[] } | { all: true }) => request('POST', '/notifications/read', body);
 
 // ---------- Personal canned responses (private to the signed-in agent) ----------
@@ -175,6 +179,10 @@ export const articleFeedback = (id: number, helpful: boolean) => request('POST',
 // ---------- Board, dashboard, reports ----------
 export const getBoard = (q: { mine?: string; groupId?: string }) => get<{ items: TicketRow[] }>(`/board${qs(q)}`).then((r) => r.items);
 export const getDashboard = () => get<Dashboard>('/dashboard');
+export const getOverview = (days = 30) => get<Overview>(`/dashboard/overview${qs({ days })}`);
+export const getVariants = (kind: 'report') => get<{ variants: Variant[] }>(`/variants${qs({ kind })}`).then((r) => r.variants);
+export const saveVariant = (b: { id?: number; kind: 'report'; name: string; shared: boolean; config: ReportVariantConfig }) => request<{ id: number }>('POST', '/variants', b).then((r) => r.id);
+export const deleteVariant = (id: number) => request('DELETE', `/variants/${id}`);
 export const getBreakdown = (q: { days?: number; groupId?: number }) => get<Breakdown>(`/dashboard/breakdown${qs(q)}`);
 export const getAnalytics = (q: { days?: number; groupId?: number }) => get<Analytics>(`/analytics${qs(q)}`);
 export const getDashboardInsights = (refresh = false) =>
@@ -214,6 +222,14 @@ export const admin = {
   deleteHoliday: (id: number) => request('DELETE', `/admin/holidays/${id}`),
   automations: () => get<{ rules: AutomationRule[] }>('/admin/automations').then((r) => r.rules),
   toggleAutomation: (id: number, active: boolean) => request('PATCH', `/admin/automations/${id}`, { active }),
+  /** Change numeric thresholds of a rule's conditions: [{ group: 'all' | 'any', index, value }]. */
+  saveAutomationThresholds: (id: number, thresholds: { group: 'all' | 'any'; index: number; value: number }[]) => request('PATCH', `/admin/automations/${id}`, { thresholds }),
+  saveStatus: (b: { id?: number; name: string; pausesSla: boolean; isResolved?: boolean }) => request('POST', '/admin/statuses', b),
+  orderStatuses: (ids: number[]) => request('PUT', '/admin/statuses/order', { ids }),
+  deleteStatus: (id: number) => request('DELETE', `/admin/statuses/${id}`),
+  access: (q = '') => get<{ users: AccessUser[]; roles: Role[] }>(`/admin/access${qs({ q })}`),
+  setRole: (email: string, role: Role) => request('PUT', `/admin/access/${encodeURIComponent(email)}`, { role }),
+  removeAccess: (email: string) => request('DELETE', `/admin/access/${encodeURIComponent(email)}`),
   audit: () => get<{ events: AuditEvent[] }>('/admin/audit').then((r) => r.events),
   parkedMail: () => get<{ items: ParkedMail[] }>('/admin/parked-mail').then((r) => r.items),
   scenarios: () => get<{ scenarios: Scenario[] }>('/admin/scenarios').then((r) => r.scenarios),

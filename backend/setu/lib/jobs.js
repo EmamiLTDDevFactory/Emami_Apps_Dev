@@ -3,6 +3,7 @@ const { ready } = require('../db/ready');
 const { pool } = require('../../db');
 const { MIN } = require('../constants');
 const { ruleMatches, rulesFor } = require('./automation');
+const { ring } = require('./bell');
 const { ingestMail } = require('./mailIngest');
 const { loadTicket, notifyAgents } = require('./notify');
 const { runActions } = require('./tickets');
@@ -29,18 +30,22 @@ async function runSlaChecks(now = new Date()) {
         if (!t.firstRespondedAt && !t.frReminded && fr && now < fr && fr - now <= lead) {
             await updateRow('tickets', id, { frReminded: true });
             await notifyAgents(t, 'agent.first_response_reminder', to);
+            await ring(t, 'sla_warning', { title: `First response due soon: #${t.id}`, body: t.subject });
         }
         if (!t.resolvedAt && !t.resReminded && res && now < res && res - now <= lead) {
             await updateRow('tickets', id, { resReminded: true });
             await notifyAgents(t, 'agent.resolution_reminder', to);
+            await ring(t, 'sla_warning', { title: `Resolution due soon: #${t.id}`, body: t.subject });
         }
         if (!t.firstRespondedAt && !t.frViolated && fr && now > fr) {
             await updateRow('tickets', id, { frViolated: true });
             await notifyAgents(t, 'agent.first_response_violated', to);
+            await ring(t, 'sla_breach', { title: `First response overdue: #${t.id}`, body: t.subject });
         }
         if (!t.resolvedAt && !t.resViolated && res && now > res) {
             await updateRow('tickets', id, { resViolated: true });
             await notifyAgents(t, 'agent.resolution_violated', to);
+            await ring(t, 'sla_breach', { title: `Resolution overdue: #${t.id}`, body: t.subject });
         }
     }
 }

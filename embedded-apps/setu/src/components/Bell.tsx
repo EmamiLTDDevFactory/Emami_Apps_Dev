@@ -1,38 +1,42 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell as BellIcon, BellOff, CheckCheck, Settings2 } from 'lucide-react';
-import { getBell, markBellRead, savePrefs } from '@/lib/api';
+import { Bell as BellIcon, BellOff, CheckCheck, Settings2, Trash2 } from 'lucide-react';
+import { clearReadBell, getBell, markBellRead } from '@/lib/api';
 import { useSetu } from '@/lib/context';
-import { BELL_EVENT_LABEL, fmtDateTime, relative } from '@/lib/format';
+import { BELL_EVENT_SHORT, fmtDateTime, relative } from '@/lib/format';
 import type { BellEvent, BellItem } from '@/lib/types';
 import { cx } from './ui';
 
 const POLL_MS = 60_000;
 
 /**
- * Header bell. What reaches it is set in Admin > System (by default only replies from requesters); each agent can
- * mute any of those events for themselves here. Polls every minute while the tab is visible.
+ * Header bell. What reaches it is set in Admin > Channels & bell (events and who sees each); each agent mutes events
+ * in My preferences (gear). The list filters by unread and by event type; it polls every minute while the tab is visible.
  */
-export default function Bell({ events, muted: initialMuted }: { events: BellEvent[]; muted: BellEvent[] }) {
+export default function Bell({ events, muted, onSettings }: { events: BellEvent[]; muted: BellEvent[]; onSettings: () => void }) {
   const { openTicket } = useSetu();
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState(false);
   const [items, setItems] = useState<BellItem[]>([]);
+  const [more, setMore] = useState(false);
   const [unread, setUnread] = useState(0);
-  const [muted, setMuted] = useState<BellEvent[]>(initialMuted);
+  const [byEvent, setByEvent] = useState<Partial<Record<BellEvent, number>>>({});
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [filter, setFilter] = useState<BellEvent[]>([]);
   const [error, setError] = useState('');
   const box = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (append = false, before?: number) => {
     try {
-      const r = await getBell();
-      setItems(r.items);
+      const r = await getBell({ unread: onlyUnread, events: filter, before });
+      setItems((list) => (append ? [...list, ...r.items] : r.items));
+      setMore(r.more);
       setUnread(r.unread);
+      setByEvent(r.unreadByEvent);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load notifications.');
     }
-  }, []);
+  }, [onlyUnread, filter]);
 
   useEffect(() => {
     load();
@@ -60,29 +64,18 @@ export default function Bell({ events, muted: initialMuted }: { events: BellEven
     }
     openTicket(n.ticketId);
   };
+  const readAll = async () => { await markBellRead({ all: true }).catch(() => {}); await load(); };
+  const clearRead = async () => { await clearReadBell().catch(() => {}); await load(); };
+  const toggleFilter = (e: BellEvent) => setFilter((f) => (f.includes(e) ? f.filter((x) => x !== e) : [...f, e]));
 
-  const readAll = async () => {
-    await markBellRead({ all: true }).catch(() => {});
-    await load();
-  };
-
-  const toggleMute = async (e: BellEvent) => {
-    const next = muted.includes(e) ? muted.filter((x) => x !== e) : [...muted, e];
-    setMuted(next);
-    try {
-      await savePrefs({ bellMuted: next });
-    } catch (err) {
-      setMuted(muted);
-      setError(err instanceof Error ? err.message : 'Could not save.');
-    }
-  };
-
-  const allMuted = events.length > 0 && events.every((e) => muted.includes(e));
+  const shown = events.filter((e) => !muted.includes(e));
+  const allMuted = events.length > 0 && shown.length === 0;
+  const chip = (active: boolean) => cx('inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold transition', active ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink');
   return (
     <div ref={box} className="relative">
       <button
         type="button"
-        onClick={() => { setOpen((o) => !o); setSettings(false); if (!open) load(); }}
+        onClick={() => { setOpen((o) => !o); if (!open) load(); }}
         aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'}
         aria-expanded={open}
         className="relative grid h-8 w-8 place-items-center rounded-lg border border-line text-muted hover:text-ink"
@@ -91,42 +84,45 @@ export default function Bell({ events, muted: initialMuted }: { events: BellEven
         {unread > 0 && <span className="num absolute -right-1.5 -top-1.5 min-w-[18px] rounded-full bg-bad px-1 text-center text-[10px] font-bold leading-[18px] text-white">{unread > 99 ? '99+' : unread}</span>}
       </button>
       {open && (
-        <div className="absolute right-0 z-40 mt-2 w-[360px] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-line bg-panel shadow-pop">
+        <div className="absolute right-0 z-40 mt-2 w-[380px] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-line bg-panel shadow-pop">
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <span className="flex-1 text-[13px] font-bold">Notifications</span>
             {unread > 0 && <button type="button" onClick={readAll} className="inline-flex items-center gap-1 text-2xs font-bold text-accent hover:underline"><CheckCheck size={12} /> Mark all read</button>}
-            <button type="button" onClick={() => setSettings((x) => !x)} aria-label="Notification settings" aria-expanded={settings} className={cx('rounded-md p-1 hover:bg-sunken', settings ? 'text-accent' : 'text-muted')}><Settings2 size={14} /></button>
+            <button type="button" onClick={clearRead} title="Remove notifications you have read" className="rounded-md p-1 text-muted hover:bg-sunken hover:text-ink" aria-label="Clear read notifications"><Trash2 size={13} /></button>
+            <button type="button" onClick={() => { setOpen(false); onSettings(); }} aria-label="Notification settings" title="What I get notified about" className="rounded-md p-1 text-muted hover:bg-sunken hover:text-ink"><Settings2 size={14} /></button>
           </div>
-          {settings && (
-            <div className="border-b border-line bg-sunken/60 px-3 py-2.5">
-              <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">Show me</div>
-              {events.length === 0 ? (
-                <p className="text-xs text-muted">The bell is switched off by your Samadhan admin.</p>
-              ) : events.map((e) => (
-                <label key={e} className="flex items-center gap-2 py-0.5 text-xs">
-                  <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--accent))]" checked={!muted.includes(e)} onChange={() => toggleMute(e)} />
-                  {BELL_EVENT_LABEL[e] ?? e}
-                </label>
+          {events.length > 0 && (
+            <div className="scroll-thin flex gap-1 overflow-x-auto border-b border-line px-3 py-2">
+              <button type="button" className={chip(!onlyUnread && !filter.length)} onClick={() => { setOnlyUnread(false); setFilter([]); }}>All</button>
+              <button type="button" className={chip(onlyUnread)} onClick={() => setOnlyUnread((x) => !x)}>Unread{unread > 0 && <span className="num">{unread}</span>}</button>
+              {shown.map((e) => (
+                <button key={e} type="button" className={chip(filter.includes(e))} onClick={() => toggleFilter(e)} aria-pressed={filter.includes(e)}>
+                  {BELL_EVENT_SHORT[e] ?? e}{byEvent[e] ? <span className="num rounded-full bg-bad/15 px-1 text-bad">{byEvent[e]}</span> : null}
+                </button>
               ))}
-              <p className="mt-1.5 text-[11px] leading-snug text-faint">Your admin chooses which events can reach the bell; you can turn any of them off for yourself.</p>
             </div>
           )}
           {error && <p className="px-3 py-2 text-xs text-bad">{error}</p>}
           <ul className="scroll-thin max-h-[420px] overflow-y-auto">
-            {items.length === 0 ? (
-              <li className="px-3 py-6 text-center text-xs text-muted">Nothing yet. Replies from requesters on your tickets show up here.</li>
+            {events.length === 0 ? (
+              <li className="px-3 py-6 text-center text-xs text-muted">The bell is switched off by your Samadhan admin.</li>
+            ) : items.length === 0 ? (
+              <li className="px-3 py-6 text-center text-xs text-muted">{onlyUnread || filter.length ? 'Nothing matches these filters.' : 'Nothing yet. Updates on your tickets show up here.'}</li>
             ) : items.map((n) => (
               <li key={n.id}>
                 <button type="button" onClick={() => openItem(n)} className={cx('flex w-full gap-2.5 border-b border-line/60 px-3 py-2.5 text-left hover:bg-sunken', !n.readAt && 'bg-accent/[0.05]')}>
-                  <span aria-hidden className={cx('mt-1.5 h-2 w-2 shrink-0 rounded-full', n.readAt ? 'bg-transparent' : 'bg-accent')} />
+                  <span aria-hidden className={cx('mt-1.5 h-2 w-2 shrink-0 rounded-full', n.readAt ? 'bg-transparent' : n.event === 'sla_breach' || n.event === 'escalated' ? 'bg-bad' : 'bg-accent')} />
                   <span className="min-w-0 flex-1">
                     <span className={cx('block truncate text-[13px]', !n.readAt && 'font-semibold')}>{n.title}</span>
                     {n.body && <span className="line-clamp-2 block text-2xs text-muted">{n.body}</span>}
-                    <span className="block text-[11px] text-faint" title={fmtDateTime(n.createdAt)}>{relative(n.createdAt)}</span>
+                    <span className="block text-[11px] text-faint" title={fmtDateTime(n.createdAt)}>{BELL_EVENT_SHORT[n.event] ?? n.event} · {relative(n.createdAt)}</span>
                   </span>
                 </button>
               </li>
             ))}
+            {more && (
+              <li><button type="button" onClick={() => load(true, items[items.length - 1]?.id)} className="w-full px-3 py-2 text-center text-2xs font-bold text-accent hover:bg-sunken">Load older</button></li>
+            )}
           </ul>
         </div>
       )}

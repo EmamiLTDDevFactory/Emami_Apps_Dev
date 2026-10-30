@@ -7,7 +7,7 @@ const { seed } = require('./seed');
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 async function initSchema() {
     try {
@@ -391,6 +391,7 @@ async function initSchema() {
     await upgradeV3();
     await upgradeV4();
     await upgradeV5();
+    await upgradeV6();
     await seed();
     await pool.query(
         `INSERT INTO setu.settings (key, value) VALUES ('schema.version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
@@ -568,6 +569,26 @@ async function upgradeV5() {
         )
     `);
     await pool.query('ALTER TABLE setu.companies ADD COLUMN IF NOT EXISTS "createdAt" timestamptz NOT NULL DEFAULT now()');
+}
+
+// v6: more bell events (mention, status change, escalation, SLA, CSAT, watching) and saved variants (report layouts).
+async function upgradeV6() {
+    await pool.query('ALTER TABLE setu.notifications DROP CONSTRAINT IF EXISTS notifications_event_check');
+    await pool.query(`ALTER TABLE setu.notifications ADD CONSTRAINT notifications_event_check CHECK (event IN (${sqlList(BELL_EVENTS)}))`);
+    // A named set of options for one screen (kind = 'report' for the daily report): private, or shared with everyone.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.variants (
+            id serial PRIMARY KEY,
+            kind text NOT NULL,
+            "ownerAgentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            name text NOT NULL,
+            shared boolean NOT NULL DEFAULT false,
+            config jsonb NOT NULL,
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS variants_kind_owner_idx ON setu.variants (kind, "ownerAgentId")');
 }
 
 module.exports = { SCHEMA_VERSION, initSchema };

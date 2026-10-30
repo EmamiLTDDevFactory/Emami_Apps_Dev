@@ -6,7 +6,8 @@ export type Severity = 'FATAL' | 'SERIOUS' | 'NORMAL';
 export type Availability = 'AVAILABLE' | 'UNAVAILABLE' | 'MEETING' | 'BREAK' | 'TRAINING' | 'LUNCH';
 export type ConversationKind = 'INCOMING' | 'REPLY' | 'NOTE' | 'FORWARD';
 export type ActivityKind = 'created' | 'status' | 'assigned' | 'agent_reply' | 'requester_reply' | 'note' | 'forward' | 'call';
-export type BellEvent = 'requester_reply' | 'new_ticket' | 'assigned' | 'note';
+export type BellEvent = 'requester_reply' | 'new_ticket' | 'assigned' | 'note' | 'mention' | 'status_changed' | 'escalated' | 'sla_warning' | 'sla_breach' | 'csat' | 'watching';
+export type BellScope = 'assignee' | 'group' | 'all';
 export type CallMode = 'tel' | 'teams';
 
 export interface Me {
@@ -82,6 +83,9 @@ export interface Meta {
   callOutcomes: string[];
   portalEnabled: boolean;
   scenarios: ScenarioRef[];
+  options: UiOptions;
+  bellEventList: BellEvent[];
+  agentEmailTemplates: string[];
 }
 
 export interface ScenarioRef {
@@ -367,6 +371,75 @@ export interface ContactMatch {
 
 export interface AgentPrefs {
   bellMuted?: BellEvent[];
+  /** Agent email / hub-inbox notifications this agent switched off (template keys such as agent.note_added). */
+  emailMuted?: string[];
+  listView?: string | null;
+  pageSize?: number | null;
+  /** Dashboard widgets to show, in order; null / missing = the Admin default. */
+  dashboardWidgets?: DashboardWidget[] | null;
+  defaultVariants?: { report: number | null };
+}
+
+/** Admin > General options every screen can read (meta.options). */
+export interface UiOptions {
+  'general.helpdeskName': string;
+  'general.supportEmail': string;
+  'general.supportPhone': string;
+  'csat.question': string;
+  'csat.labels': Record<'1' | '2' | '3', string>;
+  'export.maxRows': number;
+  'list.defaultView': string;
+  'list.pageSize': number;
+  'presence.enabled': boolean;
+  'dashboard.widgets': DashboardWidget[];
+  'severity.priority': Record<Severity, number>;
+}
+
+export const DASHBOARD_WIDGETS = ['kpis', 'insights', 'trends', 'sla', 'backlog', 'ageing', 'risk', 'byStatus', 'bySeverity', 'agentLoad', 'leaderboard',
+  'regionStatus', 'categories', 'sources', 'byGroup', 'todos', 'csat', 'recent'] as const;
+export type DashboardWidget = (typeof DASHBOARD_WIDGETS)[number];
+
+/** Daily report variant: the date range (relative or fixed), the columns in order and the filters per column. */
+export interface ReportVariantConfig {
+  range: 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth' | 'lastMonth' | 'custom';
+  from?: string;
+  to?: string;
+  columns: string[];
+  filters: Record<string, { values?: string[]; contains?: string }>;
+}
+export interface Variant<C = ReportVariantConfig> {
+  id: number;
+  kind: 'report';
+  name: string;
+  shared: boolean;
+  config: C;
+  ownerAgentId: number;
+  ownerName: string;
+  updatedAt: string;
+}
+
+export interface Overview {
+  days: number;
+  backlog: { day: string; open: number; created: number; resolved: number }[];
+  ageing: { bucket: '0-4h' | '4-24h' | '1-3d' | '3-7d' | '7d+'; severity: Severity; n: number }[];
+  sla: { firstResponsePct: number | null; resolutionPct: number | null; csatPct: number | null; csatResponses: number; open: number; overdue: number; onTrackPct: number | null };
+  leaderboard: { id: number; name: string; availability: Availability; resolved: number; open: number; avgFirstResponseMins: number | null; csatPct: number | null }[];
+  regionStatus: { region: string; statusId: number; status: string; n: number }[];
+  categories: NameValue[];
+  sources: NameValue[];
+  risk: { id: number; subject: string; severity: Severity; priority: number; resolutionDueAt: string | null; firstResponseDueAt: string | null; firstRespondedAt: string | null; agentName: string | null; statusName: string }[];
+  hourly: { hour: number; today: number; avg: number }[];
+  hourNow: number;
+}
+
+export interface AccessUser {
+  email: string;
+  hubActive: boolean;
+  name: string | null;
+  role: Role | null;
+  agentId: number | null;
+  agentActive: boolean | null;
+  lastSeenAt: string | null;
 }
 
 /** Ticket counts per view id (built-in views, and "saved:<id>" for saved views). */

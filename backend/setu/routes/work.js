@@ -97,6 +97,55 @@ router.delete('/views/:id', wrap(async (req, res) => {
     res.json({ success: true });
 }));
 
+// ---- Variants: named screen layouts (the daily report: date range, columns, filters), private or shared ----
+const VARIANT_KINDS = ['report'];
+
+router.get('/variants', wrap(async (req, res) => {
+    const kind = String(req.query.kind || '');
+    if (!VARIANT_KINDS.includes(kind)) throw fail(400, 'Unknown variant kind.');
+    const { rows } = await pool.query(
+        `SELECT v.id, v.kind, v.name, v.shared, v.config, v."ownerAgentId", a.name AS "ownerName", v."updatedAt"
+         FROM setu.variants v JOIN setu.agents a ON a.id = v."ownerAgentId"
+         WHERE v.kind = $1 AND (v."ownerAgentId" = $2 OR v.shared) ORDER BY v.shared, lower(v.name)`,
+        [kind, req.agent.id],
+    );
+    res.json({ success: true, variants: rows });
+}));
+
+router.post('/variants', wrap(async (req, res) => {
+    const b = req.body ?? {};
+    if (!VARIANT_KINDS.includes(b.kind)) throw fail(400, 'Unknown variant kind.');
+    const name = text(b.name, 80);
+    if (!name) throw fail(400, 'Give the variant a name.');
+    const shared = b.shared === true;
+    if (shared && !isSupervisorRole(req)) throw fail(403, 'Only supervisors and admins can share a variant with everyone.');
+    const config = b.config && typeof b.config === 'object' ? b.config : {};
+    const json = JSON.stringify(config);
+    if (json.length > 50_000) throw fail(400, 'That variant is too large.');
+    const id = intOrNull(b.id);
+    if (id) {
+        const { rows } = await pool.query(
+            `UPDATE setu.variants SET name = $3, shared = $4, config = $5, "updatedAt" = now() WHERE id = $1 AND ("ownerAgentId" = $2 OR $6) RETURNING id`,
+            [id, req.agent.id, name, shared, json, isAdmin(req)],
+        );
+        if (!rows.length) throw fail(404, 'Variant not found, or it is not yours to change.');
+        return res.json({ success: true, id });
+    }
+    const mine = await pool.query('SELECT count(*)::int AS n FROM setu.variants WHERE "ownerAgentId" = $1 AND kind = $2', [req.agent.id, b.kind]);
+    if (mine.rows[0].n >= 30) throw fail(400, 'You have 30 variants here - delete one first.');
+    const { rows } = await pool.query(
+        'INSERT INTO setu.variants (kind, "ownerAgentId", name, shared, config) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [b.kind, req.agent.id, name, shared, json],
+    );
+    res.status(201).json({ success: true, id: rows[0].id });
+}));
+
+router.delete('/variants/:id', wrap(async (req, res) => {
+    const { rowCount } = await pool.query('DELETE FROM setu.variants WHERE id = $1 AND ("ownerAgentId" = $2 OR $3)', [Number(req.params.id), req.agent.id, isAdmin(req)]);
+    if (!rowCount) throw fail(404, 'Variant not found, or it is not yours to delete.');
+    res.json({ success: true });
+}));
+
 // ---- Global search (header): tickets, contacts and knowledge-base articles ----
 router.get('/search', wrap(async (req, res) => {
     const term = text(req.query.q, 100).replace(/^#/, '');
