@@ -101,15 +101,24 @@ async function buildPayload(timesheetId, flag, managerEmail) {
   if (!ts.vendor_id) return { skip: 'no vendor_id maintained for this employee' }
   if (!ts.email) return { skip: 'employee has no e-mail' }
 
-  const [{ rows: entries }, { rows: tasks }, { rows: overrideRows }] = await Promise.all([
+  const [{ rows: entries }, { rows: tasks }, { rows: overrideRows }, { rows: managerRows }] = await Promise.all([
     pool.query('SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY entry_date', [timesheetId]),
     pool.query('SELECT t.id, t.name, p.name AS project_name FROM tasks t JOIN projects p ON p.id = t.project_id'),
     ts.manager_id
       ? pool.query('SELECT override_date FROM working_day_overrides WHERE manager_id = $1', [ts.manager_id])
       : Promise.resolve({ rows: [] }),
+    // Only needed on Submit (see ManagerMail below) - harmless to run otherwise, but skipped when
+    // there's no manager_id so a brand-new/unassigned employee's submit doesn't error.
+    flag === 'S' && ts.manager_id
+      ? pool.query('SELECT email FROM users WHERE id = $1', [ts.manager_id])
+      : Promise.resolve({ rows: [] }),
   ])
   const taskNames = Object.fromEntries(tasks.map((t) => [t.id, `${t.project_name} - ${t.name}`]))
   const overrides = new Set(overrideRows.map((r) => r.override_date))
+  // On Submit, ManagerMail is the employee's ASSIGNED manager (who needs to review this) - looked
+  // up via manager_id, not whoever's session is doing the submitting (the employee themselves).
+  // Approve/Reject keep using the acting manager's own email, passed straight through.
+  const resolvedManagerEmail = flag === 'S' ? managerRows[0]?.email || '' : managerEmail
 
   return {
     payload: {
@@ -117,7 +126,7 @@ async function buildPayload(timesheetId, flag, managerEmail) {
       MailId: ts.email,
       Flag: flag,
       Comment: flag === 'R' ? ts.manager_comment || '' : '',
-      ManagerMail: managerEmail || '',
+      ManagerMail: resolvedManagerEmail || '',
       NAV_EMPTOMAIL: buildDayRows(ts.month_start_date, entries, taskNames, overrides),
     },
   }
