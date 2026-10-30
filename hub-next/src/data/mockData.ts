@@ -59,7 +59,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'inventory', name: 'Mould Health Inspection', desc: 'Monitors mould condition and preventive maintenance health checks.', cat: 'Packaging', icon: Activity, uses: 29, stage: 'UAT' },
   { id: 'audit-capa', name: 'Audit & CAPA', desc: 'Manage audits and track Corrective and Preventive Actions (CAPA) to closure.', cat: 'CQA', icon: ClipboardCheck, uses: 0, stage: 'UAT' },
   { id: 'market-rate', name: 'Current Market Rate', desc: 'Update Material Rate for tracking Market Trend', cat: 'CPD', icon: TrendingUp, uses: 0, stage: 'Live' },
-  { id: 'dev-tracker', name: 'Change Control Board & CR Tracker', desc: 'IT change governance and delivery in one place — ERP, application development, analytics and infrastructure change requests, CCB meetings and approvals, flowing straight into development tracking, UAT and go-live.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
+  { id: 'dev-tracker', name: 'Change Control Board & CR Tracker', desc: 'IT Change Governance and delivery in one place — ERP, application development, analytics and infrastructure change requests, CCB meetings and approvals, flowing straight into development tracking, UAT and go-live.', cat: 'IT', icon: Code2, uses: 0, stage: 'Live' },
   { id: 'po-followup', name: 'Delivery Confirmation', desc: 'Track upcoming and pending shipments from Emami', cat: 'CPD', icon: PackageSearch, uses: 0 },
   { id: 'payment-tracking', name: 'Service PO Automation', desc: 'Service PO provisions, deliveries and SES status in one place.', cat: 'IBD', icon: Wallet, uses: 0, stage: 'UAT' },
   { id: 'timesheet', name: 'TimeSheet', desc: 'Log work hours, submit monthly timesheets, and manage team approvals.', cat: 'IT', icon: CalendarClock, uses: 0, stage: 'WIP' },

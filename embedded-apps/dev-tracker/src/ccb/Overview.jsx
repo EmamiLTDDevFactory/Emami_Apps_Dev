@@ -100,7 +100,7 @@ function Dashboard({ me, ov, onCreate }) {
     <>
       <PageHeader
         eyebrow={<><GavelIcon size={13} /> Change Control Board</>}
-        title="IT change governance"
+        title="IT Change Governance"
         sub="Changes to business applications, ERP, analytics and infrastructure are verified, planned, reviewed, approved and implemented in a controlled, orderly way — from the function’s requirement to go-live in Production."
       >
         {me.can.runMeetings && <a className="ccb-btn" href={`${ROUTES.ccbMeetings}?action=schedule`}><CalendarIcon size={15} /> Schedule meeting</a>}
