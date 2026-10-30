@@ -10,8 +10,11 @@ import { pool } from '../db/pool.js'
 // skipped for any employee with no vendor_id maintained in timesheet.users.
 //
 // Payload shape (property names/formats confirmed against the live service):
-//   { Lifnr, MailId, Flag: 'A' | 'R', Comment, NAV_EMPTOMAIL: [one row per calendar day of the month] }
+//   { Lifnr, MailId, Flag: 'A' | 'R', Comment, ManagerMail, NAV_EMPTOMAIL: [one row per calendar day of the month] }
 // Comment carries the manager's rejection reason (blank on approval) for SAP's mail body.
+// ManagerMail is whoever actually clicked approve/reject just now (from their own session, see
+// routes/timesheets.js) - not a stored "this employee's manager" lookup, so it's still correct if
+// someone other than the employee's usual manager acted on it.
 
 const SAP_TIMESHEET_URL =
   process.env.SAP_TIMESHEET_URL ||
@@ -86,7 +89,7 @@ function buildDayRows(monthStartDate, entries, taskNames, overrides) {
   })
 }
 
-async function buildPayload(timesheetId, flag) {
+async function buildPayload(timesheetId, flag, managerEmail) {
   const { rows: tsRows } = await pool.query(
     `SELECT ts.month_start_date, ts.manager_comment, u.email, u.vendor_id, u.manager_id
      FROM timesheets ts JOIN users u ON u.id = ts.user_id
@@ -114,13 +117,14 @@ async function buildPayload(timesheetId, flag) {
       MailId: ts.email,
       Flag: flag,
       Comment: flag === 'R' ? ts.manager_comment || '' : '',
+      ManagerMail: managerEmail || '',
       NAV_EMPTOMAIL: buildDayRows(ts.month_start_date, entries, taskNames, overrides),
     },
   }
 }
 
-async function send(timesheetId, flag) {
-  const { payload, skip } = await buildPayload(timesheetId, flag)
+async function send(timesheetId, flag, managerEmail) {
+  const { payload, skip } = await buildPayload(timesheetId, flag, managerEmail)
   if (skip) {
     console.log(`[sap-timesheet-mail] ${timesheetId}: skipped (${skip})`)
     return
@@ -138,11 +142,12 @@ async function send(timesheetId, flag) {
   console.log(`[sap-timesheet-mail] ${timesheetId}: sent (Flag ${flag}, vendor ${payload.Lifnr})`)
 }
 
-// decision: 'Approved' | 'Rejected'. Returns immediately; never throws.
-export function notifySapTimesheetDecision(timesheetId, decision) {
+// decision: 'Approved' | 'Rejected'. managerEmail is whoever's session performed this action (see
+// routes/timesheets.js). Returns immediately; never throws.
+export function notifySapTimesheetDecision(timesheetId, decision, managerEmail) {
   if (!isEnabled()) return
   const flag = decision === 'Rejected' ? 'R' : 'A'
-  send(timesheetId, flag).catch((err) => {
+  send(timesheetId, flag, managerEmail).catch((err) => {
     console.error(`[sap-timesheet-mail] ${timesheetId}: failed (Flag ${flag}) - ${err.message}`)
   })
 }

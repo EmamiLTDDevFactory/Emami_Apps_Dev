@@ -363,7 +363,7 @@ router.post('/:id/approve', async (req, res, next) => {
     )
     await client.query('COMMIT')
     res.json(await loadTimesheet(pool, req.params.id))
-    notifySapTimesheetDecision(req.params.id, 'Approved')
+    notifySapTimesheetDecision(req.params.id, 'Approved', req.user.email)
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
@@ -390,7 +390,7 @@ router.post('/:id/reject', async (req, res, next) => {
     )
     await client.query('COMMIT')
     res.json(await loadTimesheet(pool, req.params.id))
-    notifySapTimesheetDecision(req.params.id, 'Rejected')
+    notifySapTimesheetDecision(req.params.id, 'Rejected', req.user.email)
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
@@ -416,7 +416,7 @@ router.post('/bulk-approve', async (req, res, next) => {
     }
     await client.query('COMMIT')
     res.json(await Promise.all(timesheetIds.map((id) => loadTimesheet(pool, id))))
-    timesheetIds.forEach((id) => notifySapTimesheetDecision(id, 'Approved'))
+    timesheetIds.forEach((id) => notifySapTimesheetDecision(id, 'Approved', req.user.email))
   } catch (err) {
     await client.query('ROLLBACK')
     next(err)
