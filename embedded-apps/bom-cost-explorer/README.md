@@ -236,6 +236,30 @@ responses (`npx tsx mock/dump-fixtures.ts` regenerates them).
   hub-token sign-in, B tree/drawer/dashboard/simulator, C pivot, R paging, SAP error, cancel, and
   API 401/403.
 
+## Actual vs rate sources (Admin only, behind a flag)
+
+Route `/apps/bom-cost-explorer/actual/`, sidebar item "Actual vs rate sources" under Analysis. It shows the quantity-weighted
+average ACTUAL cost per unit (INR) of finished goods for a period and manufacturing units, split into RM / PM / Perfume, and
+compares it with the Selected rate, C-MAP, Consumption and Average rate. SAP computes everything (sets `WacRowSet`,
+`WacCompareSet`, `WacCompSet`, `WacDocSet` of `ZMM_BOM_COST_SRV`); the only number computed in the browser is the "selection
+total" row (quantity-weighted, decimal.js), shown only when every row has the same unit.
+
+- **Flags (build time):** `NEXT_PUBLIC_WAC_ENABLED` (also `WAC_ENABLED`; default false; `DEPLOYED_WAC_ENABLED` in
+  `next.config.mjs` is `false` here because NGQ has no Wac sets, set it to `'true'` in the NWP / PRD copy) and
+  `NEXT_PUBLIC_WAC_RECON_WARN_PCT` (default 2: the reconciliation icon shows when `ActRecon` is above that % of `ActLanded`).
+  Off = no nav item, no request, and no WAC code in any bundle (the route's `import()` is dropped at build time).
+- **Access:** Admin role of this app only (nav item and page). Plants offered are the ones SAP lists for the person.
+- **Calls:** straight from the browser through the existing SAP client, like every other call of this static app (no API
+  routes). No timeout of any kind: a request ends when SAP answers, on Stop, or when the page is left. Nothing loads until Run;
+  a result is kept in memory for the same inputs until Refresh (`src/lib/wac/cache.ts`). Comparison and Components run SAP's live
+  costing (about 10-15 s per 25 finished goods, 25 at most per call) and load only when a row's tab is opened.
+- **Real contract (checked on NWP, 2026-10-31):** the key property is `Rowid` (numeric). A source without rates answers `0.0000`
+  / `0.000000` with a blank flag, so a source column shows only when the comparison switch is on and some row has a flag or a
+  non-zero variance; component rate columns with only zeros are hidden. `$top` is ignored by the service.
+- **Files:** `src/lib/wac/**`, `src/components/wac/**`, `src/app/actual/**`, `mock/wac.ts`, `tests/unit/wac-*.test.ts`;
+  shared files only got a nav item (`Shell.tsx`), the flag in `next.config.mjs` and one dispatch line in `mock/sap.ts`.
+- **Check the names against a system:** `npm run check:wac-metadata` (needs a gateway that serves `$metadata`).
+
 ## Not in scope / open points
 
 - SAP `$metadata` has not been checked against the real service yet. Run `npm run check:metadata`

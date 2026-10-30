@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "mock:sap": "tsx mock/server.ts",
     "check:metadata": "tsx scripts/check-metadata.ts",
+    "check:wac-metadata": "tsx scripts/check-wac-metadata.ts",
     "eval": "tsx evals/run.ts"
   },
   "dependencies": {

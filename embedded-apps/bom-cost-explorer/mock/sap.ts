@@ -8,6 +8,7 @@
  * standalone HTTP server for Playwright (mock/server.ts).
  */
 import { handleHier } from './hier';
+import { handleWac } from './wac';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
   SELECTION, CONFIG, selectionField, type FieldKind,
@@ -520,6 +521,9 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   // HierVHSet + MaterialVHSet filtered by Brand / Product / CRS (mock/hier.ts).
   const hierRes = handleHier(set, sp, { json, odataError, parseFilter });
   if (hierRes) { await sleep(60, signal); return hierRes; }
+  // Weighted average actual cost sets (mock/wac.ts).
+  const wacRes = handleWac(set, sp, { json, odataError, parseFilter });
+  if (wacRes) { await sleep(60, signal); return wacRes; }
   if (set === ENTITY_SET.MATERIALS) {
     await sleep(80, signal);
     // Like SAP: no search term and no filter -> empty list by design.
