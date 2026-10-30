@@ -81,6 +81,12 @@ export const ROLES = Object.keys(ROLE_META);
 // New requests pick SAP or Non-SAP (LANDSCAPES), then the affected areas from Dev Tracker's Area master data
 // in that group. The older areas stay valid for requests logged before.
 export const LANDSCAPES = ['SAP', 'Non-SAP'];
+// SAP requests only: Workbench (repository objects) and / or Customizing (configuration) — decides the transport type.
+export const CHANGE_TYPES = ['Workbench', 'Customizing'];
+export const CHANGE_TYPE_META = {
+  Workbench: { tone: 'purple', text: 'Repository objects — ABAP programs, reports, enhancements, forms, interfaces, Fiori apps. Cross-client workbench transport.' },
+  Customizing: { tone: 'amber', text: 'Configuration in SPRO — org structure, master settings, condition / pricing, output, tables maintained via IMG. Client-specific customizing transport.' },
+};
 export const IT_AREAS = [...LANDSCAPES, 'ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
 export const AREA_MODULES = {
   ERP: ['SD', 'MM', 'PP', 'QM', 'PM', 'WM', 'FI', 'CO', 'HR', 'BW', 'ABAP', 'Basis'],

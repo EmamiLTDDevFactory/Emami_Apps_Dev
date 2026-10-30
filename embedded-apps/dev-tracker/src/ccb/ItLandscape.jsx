@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { LANDSCAPES } from './model.js';
+import { CHANGE_TYPES, CHANGE_TYPE_META, LANDSCAPES } from './model.js';
 import { AlertIcon, CheckIcon, SearchIcon, XIcon } from '../shared/icons.jsx';
 
 // "IT landscape" step of the request form: SAP or Non-SAP, then every area the change touches. The areas are
 // Dev Tracker's Area master data in that group (Master Data › Area), with their colors; anything else can be typed.
 const META = {
-  SAP: { tag: 'SAP landscape', text: 'ERP modules, Fiori, BW / SAC / BO, Enterprise Portal and SAP-integrated third-party applications.' },
-  'Non-SAP': { tag: 'Beyond SAP', text: 'Emami Apps, analytics tools, RPA, mobile and other third-party applications.' },
+  SAP: { tag: 'SAP landscape', text: 'ERP modules, Fiori, Enterprise Portal and SAP-integrated third-party applications.' },
+  'Non-SAP': { tag: 'Beyond SAP', text: 'Emami Apps, RPA, mobile and other third-party applications.' },
 };
 
-export default function ItLandscape({ system, modules, areas, onChange }) {
+export default function ItLandscape({ system, modules, changeTypes = [], areas, onChange, onChangeTypes }) {
   const [q, setQ] = useState('');
   const [custom, setCustom] = useState('');
   const isLandscape = LANDSCAPES.includes(system);
@@ -51,6 +51,26 @@ export default function ItLandscape({ system, modules, areas, onChange }) {
       </div>
       {system && !isLandscape && (
         <div className="ccb-land-legacy"><AlertIcon size={13} /> Logged under the earlier IT area <strong>{system}</strong>. Pick SAP or Non-SAP to reclassify it.</div>
+      )}
+
+      {system === 'SAP' && (
+        <div className="ccb-land-types">
+          <div className="ccb-field-label">SAP change type<em>*</em> <span className="ccb-land-sub">— pick one or both</span></div>
+          <div className="ccb-land-type-grid">
+            {CHANGE_TYPES.map((t) => {
+              const on = changeTypes.includes(t);
+              return (
+                <button
+                  key={t} type="button" aria-pressed={on} className={`ccb-land-type tone-${CHANGE_TYPE_META[t].tone}${on ? ' on' : ''}`}
+                  onClick={() => onChangeTypes(on ? changeTypes.filter((x) => x !== t) : CHANGE_TYPES.filter((x) => x === t || changeTypes.includes(x)))}
+                >
+                  <span className="ccb-land-check">{on && <CheckIcon size={11} />}</span>
+                  <span className="ccb-land-body"><strong>{t}</strong><span className="ccb-land-text">{CHANGE_TYPE_META[t].text}</span></span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {isLandscape && (

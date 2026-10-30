@@ -564,3 +564,16 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-landscape-line { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .ccb-landscape-area { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-alt); font-size: 11.5px; font-weight: 600; color: var(--text-2); }
 .title-cell small .ccb-pill { font-size: 10px; padding: 0 6px; margin-right: 2px; vertical-align: 1px; }
+
+/* IT landscape → SAP change type (Workbench / Customizing) */
+.ccb-land-types { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+.ccb-land-types .ccb-land-sub { display: inline; font-weight: 400; }
+.ccb-land-type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ccb-land-type { display: flex; align-items: flex-start; gap: 10px; text-align: left; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface); cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, background .15s; }
+.ccb-land-type:hover { border-color: var(--t); }
+.ccb-land-type.on { border-color: var(--t); background: var(--ts); }
+.ccb-land-type strong { font-size: 13.5px; color: var(--text); }
+.ccb-land-type.on strong { color: var(--t); }
+.ccb-land-check { flex: none; display: inline-grid; place-items: center; width: 17px; height: 17px; margin-top: 1px; border-radius: 5px; border: 1.5px solid var(--border-strong); color: #fff; }
+.ccb-land-type.on .ccb-land-check { background: var(--t); border-color: var(--t); }
+@media (max-width: 640px) { .ccb-land-type-grid { grid-template-columns: 1fr; } }

@@ -113,6 +113,7 @@ function Content() {
       monthly,
       byCategory: group((r) => r.category, (k) => CATEGORY_META[k]?.label || k),
       byFunction: group((r) => r.requestingFunction),
+      byChangeType: group((r) => (r.sapSystem === 'SAP' ? (r.changeTypes?.length ? r.changeTypes : ['Not specified']) : [])),
       byLandscape: group((r) => (LANDSCAPES.includes(r.sapSystem) ? r.sapSystem : 'Earlier IT areas')),
       byModule: group((r) => (r.sapModules?.length ? r.sapModules : ['—'])).slice(0, 10),
       completed, attendanceAvg: attendance.length ? Math.round(attendance.reduce((a, b) => a + b, 0) / attendance.length) : null,
@@ -149,6 +150,7 @@ function Content() {
       add('By category', g(x.byCategory));
       add('By function', g(x.byFunction));
       add('By landscape', g(x.byLandscape));
+      add('By SAP change type', g(x.byChangeType));
       add('By area', g(x.byModule));
       add('Monthly', x.monthly.map(([k, v]) => ({ Month: monthLabel(k), Logged: v.logged, Approved: v.approved, Rejected: v.rejected })));
       add('Meetings', x.completed.map((m) => ({ Meeting: m.meetingNo, Date: fmtDate(m.scheduledAt), Items: m.items, Approved: m.approved, Rejected: m.rejected, Deferred: m.deferred, 'Members present': m.membersPresent, Quorum: x.settings.quorum })));
@@ -222,10 +224,11 @@ function Content() {
 
       <div className="ccb-grid halves" style={{ marginTop: 16 }}>
         <BreakdownCard title="By IT landscape (SAP / Non-SAP)" rows={x.byLandscape} />
-        <BreakdownCard title="By area affected (top 10)" rows={x.byModule} />
+        <BreakdownCard title="SAP: Workbench / Customizing" rows={x.byChangeType} />
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div className="ccb-grid halves" style={{ marginTop: 16 }}>
+        <BreakdownCard title="By area affected (top 10)" rows={x.byModule} />
         <Card title="Meetings" sub={`${x.completed.length} held · attendance ${x.attendanceAvg === null ? '—' : `${x.attendanceAvg}%`} · quorum met ${x.quorumMet}/${x.completed.length}`}>
           {x.completed.length === 0 ? <p className="ccb-muted" style={{ margin: 0, fontSize: 12.5 }}>No meetings held in this period.</p> : (
             <div className="ccb-table-wrap">

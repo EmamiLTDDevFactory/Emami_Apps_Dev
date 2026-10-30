@@ -66,11 +66,17 @@ export function LandscapePill({ system }) {
   return <Pill tone={tone} strong title={system === 'SAP' || system === 'Non-SAP' ? 'IT landscape' : 'Logged under an earlier IT area'}>{system}</Pill>;
 }
 
+/** Workbench / Customizing (SAP requests). */
+export function ChangeTypePills({ types }) {
+  return (types || []).map((t) => <Pill key={t} tone={t === 'Workbench' ? 'purple' : 'amber'} title="SAP change type">{t}</Pill>);
+}
+
 /** The landscape plus the areas affected, for detail views. */
-export function LandscapeAreas({ system, modules }) {
+export function LandscapeAreas({ system, modules, changeTypes }) {
   return (
     <span className="ccb-landscape-line">
       <LandscapePill system={system} />
+      <ChangeTypePills types={changeTypes} />
       {(modules || []).map((m) => <span key={m} className="ccb-landscape-area">{m}</span>)}
     </span>
   );

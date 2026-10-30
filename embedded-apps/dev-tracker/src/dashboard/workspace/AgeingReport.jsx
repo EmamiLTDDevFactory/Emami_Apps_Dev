@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { apiActivityLog } from '../../shared/api.js';
 import { ccbApi } from '../../ccb/api.js';
 import { STATUS_PROGRESS_ORDER } from '../../shared/constants.js';
-import { issueKey, isEpic, splitPeople } from '../../shared/pm.js';
+import { issueKey, isEpic, splitPeople, parseLabels } from '../../shared/pm.js';
 import { ROUTES } from '../../shared/routes.js';
 import { fmtDate, revisedTarget, todayStr } from '../../shared/utils.js';
 
@@ -47,6 +47,7 @@ const DIMENSIONS = [
   { key: 'status', label: 'Status' },
   { key: 'bucket', label: 'Age bucket' },
   { key: 'landscape', label: 'Landscape (SAP / Non-SAP)' },
+  { key: 'changeType', label: 'SAP change type (Workbench / Customizing)' },
   { key: 'area', label: 'Module' },
   { key: 'priority', label: 'Priority' },
   { key: 'assignee', label: 'Task Assigned to' },
@@ -169,6 +170,7 @@ function dimValue(row, dim, measure) {
     case 'started': return [row.startAt ? new Date(row.startAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—'];
     case 'issueType': return [it.issueType || 'Task'];
     case 'landscape': return [row.landscape || '—'];
+    case 'changeType': { const t = parseLabels(it.labels).filter((l) => l === 'Workbench' || l === 'Customizing'); return t.length ? t : ['—']; }
     default: return [String(it[dim] || '').trim() || '—'];
   }
 }

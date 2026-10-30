@@ -10,7 +10,7 @@ import { AlertIcon, BoltIcon, InfoIcon, PaperclipIcon, SendIcon } from '../share
 
 const EMPTY = {
   title: '', requestingFunction: '', requestedBy: '', brdReference: '', description: '', justification: '',
-  sapSystem: '', sapModules: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
+  sapSystem: '', sapModules: [], changeTypes: [], category: '', financialImpact: '', priority: 'medium', requiredBy: '',
   isEmergency: false, emergencyReason: '', moduleLeadEmail: '', moduleLeadName: '', requestedByEmail: '',
 };
 
@@ -57,6 +57,7 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
     setError('');
     // Older requests keep a typed name until someone changes it.
     if (form.requestedBy && !form.requestedByEmail && form.requestedBy !== request?.requestedBy) return setError('Pick the person who raised the requirement from the list of Emami Apps users.');
+    if (form.sapSystem === 'SAP' && !form.changeTypes.length) return setError('Under IT landscape, choose whether the SAP change is Workbench, Customizing or both.');
     if (!isLead && form.moduleLeadName && !form.moduleLeadEmail && form.moduleLeadName !== (request?.moduleLeadName || request?.moduleLeadEmail)) return setError('Pick the Module Lead from the list of Emami Apps users, or clear the field.');
     setBusy(intent);
     try {
@@ -140,8 +141,10 @@ export default function RequestForm({ request, attachments = [], onClose, onSave
         <ItLandscape
           system={form.sapSystem}
           modules={form.sapModules}
+          changeTypes={form.changeTypes}
           areas={areas}
-          onChange={(sapSystem, sapModules) => setForm((f) => ({ ...f, sapSystem, sapModules }))}
+          onChange={(sapSystem, sapModules) => setForm((f) => ({ ...f, sapSystem, sapModules, changeTypes: sapSystem === 'SAP' ? f.changeTypes : [] }))}
+          onChangeTypes={(changeTypes) => setForm((f) => ({ ...f, changeTypes }))}
         />
       </div>
 

@@ -137,7 +137,7 @@ export default function RequestDetail({ crKey, me, onBack }) {
               ['Requesting function', r.requestingFunction],
               ['Raised by', r.requestedByEmail ? <Person name={r.requestedBy} sub={r.requestedByEmail} /> : r.requestedBy],
               ['BRD reference', r.brdReference && (/^https?:\/\//.test(r.brdReference) ? <a href={r.brdReference} target="_blank" rel="noreferrer">{r.brdReference} <ExternalIcon size={11} /></a> : r.brdReference)],
-              ['IT landscape', <LandscapeAreas system={r.sapSystem} modules={r.sapModules} />],
+              ['IT landscape', <LandscapeAreas system={r.sapSystem} modules={r.sapModules} changeTypes={r.changeTypes} />],
               ['CCB category', <ScopePill category={r.category} categories={CATEGORY_META} />],
               ['Financial impact', r.financialImpact],
               ['Required by', r.requiredBy ? fmtDate(r.requiredBy) : null],

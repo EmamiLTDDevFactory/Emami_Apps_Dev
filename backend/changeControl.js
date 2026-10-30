@@ -73,6 +73,9 @@ const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 // New requests use SAP / Non-SAP, with the areas affected taken from Dev Tracker's Area master data; the
 // older areas stay valid for requests logged before.
 const IT_AREAS = ['SAP', 'Non-SAP', 'ERP', 'Application Development', 'Analytics', 'Infrastructure', 'Cybersecurity', 'Other'];
+// SAP requests say whether the change is Workbench (repository objects: ABAP, reports, enhancements, forms…),
+// Customizing (configuration in SPRO / client-specific settings) or both — it decides the transport type.
+const CHANGE_TYPES = ['Workbench', 'Customizing'];
 const FEASIBILITY = ['feasible', 'feasible_with_conditions', 'not_feasible'];
 const STATUSES = ['draft', 'module_lead_review', 'feasibility_review', 'awaiting_ccb', 'approved', 'rejected', 'withdrawn', 'terminated'];
 const ROUTES_TAKEN = ['ccb', 'out_of_scope', 'emergency'];
@@ -271,6 +274,7 @@ async function initSchema() {
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "devSeen" jsonb');
     // People picked from the directory (Entra ID) keep their email and display name with the request.
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "requestedByEmail" text');
+    await pool.query(`ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "changeTypes" text[] NOT NULL DEFAULT '{}'`);
     await pool.query('ALTER TABLE ccb.requests ADD COLUMN IF NOT EXISTS "moduleLeadName" text');
     // Module Lead review sits between the IT SPOC's submission and the IT Application Head's feasibility review.
     await pool.query('ALTER TABLE ccb.requests DROP CONSTRAINT IF EXISTS requests_status_check');
@@ -455,7 +459,7 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         r.description,
         `Business justification:\n${r.justification}`,
         `Requesting function: ${r.requestingFunction} (${r.requestedBy}${r.requestedByEmail ? `, ${r.requestedByEmail}` : ''})${r.brdReference ? `\nBRD: ${r.brdReference}` : ''}`,
-        `IT landscape: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}`,
+        `IT landscape: ${r.sapSystem}${r.sapModules.length ? ` · ${r.sapModules.join(', ')}` : ''}${r.changeTypes?.length ? `\nSAP change type: ${r.changeTypes.join(' + ')}` : ''}`,
         r.crossModuleImpact && `Impact on other systems / modules (IT Application Head):\n${r.crossModuleImpact}`,
         r.moduleLeadEmail && `Module Lead (assigns the developer): ${r.moduleLeadName || nameOf(r.moduleLeadEmail)}`,
         `${route} on ${istToday()} by ${approver}.${r.decisionNotes ? `\nConditions / modifications:\n${r.decisionNotes}` : ''}`,
@@ -491,7 +495,7 @@ async function createDevTrackerAssignment(db, r, approverEmail) {
         reporter: approver,
         startDate: istToday(),
         targetDate: r.requiredBy ? new Date(r.requiredBy).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : null,
-        labels: `CCB, ${r.crNo}`,
+        labels: ['CCB', r.crNo, ...(r.changeTypes || [])].join(', '),
         remarks: `Auto-created from ${r.crNo} — ${route}.`,
         rank: Date.now(),
     };
@@ -724,6 +728,9 @@ function readRequestFields(b, partial = false) {
     set('description', str(b.description));
     set('justification', str(b.justification));
     set('sapSystem', b.sapSystem);
+    set('changeTypes', Array.isArray(b.changeTypes) ? CHANGE_TYPES.filter((t) => b.changeTypes.includes(t)) : []);
+    // Workbench / Customizing only applies to SAP; anything else never carries it.
+    if ('sapSystem' in f && f.sapSystem !== 'SAP') f.changeTypes = [];
     set('sapModules', Array.isArray(b.sapModules) ? [...new Set(b.sapModules.map((m) => str(m, 30)).filter(Boolean))].slice(0, 20) : []);
     set('category', b.category);
     set('financialImpact', str(b.financialImpact, 500));
@@ -743,6 +750,7 @@ function readRequestFields(b, partial = false) {
         ('description' in f && !f.description && 'Describe the business requirement.') ||
         ('justification' in f && !f.justification && 'Business justification is required.') ||
         ('sapSystem' in f && !IT_AREAS.includes(f.sapSystem) && 'Choose SAP or Non-SAP under IT landscape.') ||
+        ('sapSystem' in f && f.sapSystem === 'SAP' && 'changeTypes' in f && !f.changeTypes.length && 'Choose whether the SAP change is Workbench, Customizing or both.') ||
         ('category' in f && !CATEGORIES[f.category] && 'Choose the CCB category.') ||
         ('priority' in f && !PRIORITIES.includes(f.priority) && 'Choose a priority.') ||
         ('requiredBy' in f && f.requiredBy && !/^\d{4}-\d{2}-\d{2}$/.test(f.requiredBy) && 'Invalid required-by date.') ||
@@ -1204,7 +1212,7 @@ router.get('/meetings/:id', async (req, res) => {
         const settings = await getSettings();
         const [items, attendance, members, pending] = await Promise.all([
             pool.query(`
-                SELECT mi.*, r."crNo", r.title, r.category, r.priority, r."requestingFunction", r."requestedBy", r."sapSystem", r."sapModules",
+                SELECT mi.*, r."crNo", r.title, r.category, r.priority, r."requestingFunction", r."requestedBy", r."sapSystem", r."sapModules", r."changeTypes",
                        r.description, r.justification, r."financialImpact", r.feasibility, r."crossModuleImpact", r."reviewNotes", r.status AS "requestStatus",
                        r."isEmergency", r."emergencyReason", r."decidedAt" AS "requestDecidedAt", r."decidedBy" AS "requestDecidedBy", r."loggedBy",
                        r."devTrackerIssueNo", r."requiredBy"
@@ -1564,7 +1572,7 @@ router.get('/insights', async (req, res) => {
     try {
         const [requests, meetings, actions] = await Promise.all([
             pool.query(`
-                SELECT r.id, r."crNo", r.title, r.category, r."requestingFunction", r."sapModules", r."sapSystem", r.priority, r.status,
+                SELECT r.id, r."crNo", r.title, r.category, r."requestingFunction", r."sapModules", r."sapSystem", r."changeTypes", r.priority, r.status,
                        r."approvalRoute", r.decision, r."isEmergency", r."ratificationStatus", r."createdAt", r."submittedAt", r."reviewedAt",
                        r."decidedAt", r."closedAt", r."informDueBy", r."ccbInformedAt", i.status AS "devStatus", i."completedDate" AS "devCompletedDate"
                   FROM ccb.requests r LEFT JOIN dev_tracker.items i ON i.id = r."devTrackerItemId"`),

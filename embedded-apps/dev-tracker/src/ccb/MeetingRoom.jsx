@@ -279,7 +279,7 @@ function AgendaItem({ it, n, live, canDecide, canRemove, nameOf, onDecide, onRem
             <span className="ccb-key">{it.crNo}</span>
             <ScopePill category={it.category} categories={CATEGORY_META} />
             <Meta meta={PRIORITY_META} value={it.priority} />
-            <span className="ccb-muted" style={{ fontSize: 11.5 }}>{it.requestingFunction} · {it.sapSystem === 'SAP' || it.sapSystem === 'Non-SAP' ? it.sapSystem : `Earlier: ${it.sapSystem}`}{it.sapModules?.length ? ` · ${it.sapModules.join(', ')}` : ''}</span>
+            <span className="ccb-muted" style={{ fontSize: 11.5 }}>{it.requestingFunction} · {it.sapSystem === 'SAP' || it.sapSystem === 'Non-SAP' ? it.sapSystem : `Earlier: ${it.sapSystem}`}{it.changeTypes?.length ? ` (${it.changeTypes.join(' + ')})` : ''}{it.sapModules?.length ? ` · ${it.sapModules.join(', ')}` : ''}</span>
           </div>
         </div>
         {canRemove && !it.decision && (
