@@ -136,12 +136,12 @@ function Dashboard({ me, ov, onCreate }) {
         <Card title="Process pipeline" sub="Open requests by the step they are at. Steps 2–6 are the new CCB controls.">
           <div className="ccb-pipeline">
             {PROCESS_STEPS.map((s, i) => (
-              <div key={s.key} className={`ccb-pipe-row${s.isNew ? ' is-new' : ''}`}>
+              <a key={s.key} href={`${ROUTES.ccbRequests}?view=all&step=${s.key}`} className={`ccb-pipe-row is-link${s.isNew ? ' is-new' : ''}`} title={`Open requests at “${s.label}”`}>
                 <span className="ccb-pipe-no">{i + 1}</span>
                 <span>{s.label}</span>
                 <span className="ccb-pipe-track"><span className="ccb-pipe-fill" style={{ width: `${(pipeline[i] / maxPipe) * 100}%`, opacity: pipeline[i] ? 1 : 0 }} /></span>
                 <span className="ccb-pipe-count">{pipeline[i]}</span>
-              </div>
+              </a>
             ))}
           </div>
           <div className="ccb-legend">

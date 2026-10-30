@@ -19,7 +19,7 @@ const TABS = [
 
 function readParams() {
   const p = new URLSearchParams(window.location.search);
-  return { cr: p.get('cr'), action: p.get('action'), tab: p.get('tab'), view: p.get('view') };
+  return { cr: p.get('cr'), action: p.get('action'), tab: p.get('tab'), view: p.get('view'), step: p.get('step') };
 }
 
 export default function Requests() {
@@ -44,7 +44,7 @@ export default function Requests() {
       {loading ? <Loading /> : error ? <Blocker error={error} onRetry={reload} /> : params.cr ? (
         <RequestDetail key={params.cr} crKey={params.cr} me={me} onBack={() => go(null)} />
       ) : (
-        <Register me={me} initialTab={params.tab} initialView={params.view} onOpen={go} onCreate={() => setCreating(true)} />
+        <Register me={me} initialTab={params.tab} initialView={params.view} initialStep={params.step} onOpen={go} onCreate={() => setCreating(true)} />
       )}
       {creating && me && (
         <RequestForm
@@ -56,7 +56,7 @@ export default function Requests() {
   );
 }
 
-function Register({ me, initialTab, initialView, onOpen, onCreate }) {
+function Register({ me, initialTab, initialView, initialStep, onOpen, onCreate }) {
   const [data, setData] = useState({ loading: true, requests: [], names: {}, settings: null, error: null });
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [tab, setTab] = useState(TABS.some((t) => t.key === initialTab) ? initialTab : 'all');
@@ -64,9 +64,12 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
   const [category, setCategory] = useState('');
   const [fn, setFn] = useState('');
   const [mine, setMine] = useState(false);
+  // ?step=<process step> (from the Overview "Process pipeline"): open requests currently at that step.
+  const [step, setStep] = useState(PROCESS_STEPS.some((s) => s.key === initialStep) ? initialStep : '');
+  const stepMeta = PROCESS_STEPS.find((s) => s.key === step);
   const [toast, showToast] = useToast();
   // People who log requests (IT SPOC / Module Lead) land on their own and their team's requests; everyone else on the register.
-  const [view, setView] = useState(initialView === 'all' || initialView === 'mine' ? initialView : me.can.log ? 'mine' : 'all');
+  const [view, setView] = useState(initialView === 'all' || initialView === 'mine' ? initialView : stepMeta ? 'all' : me.can.log ? 'mine' : 'all');
 
   const load = useCallback(() => {
     ccbApi.requests()
@@ -77,6 +80,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
 
   const functions = useMemo(() => [...new Set(data.requests.map((r) => r.requestingFunction))].sort(), [data.requests]);
   const base = useMemo(() => data.requests.filter((r) => {
+    if (step && (isClosed(r) || PROCESS_STEPS[currentStepIndex(r)]?.key !== step)) return false;
     if (category && r.category !== category) return false;
     if (fn && r.requestingFunction !== fn) return false;
     if (mine && r.loggedBy !== me.email) return false;
@@ -84,7 +88,7 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
     const q = search.trim().toLowerCase();
     if (q && !`${r.crNo} ${r.title} ${r.requestingFunction} ${r.requestedBy} ${(r.sapModules || []).join(' ')}`.toLowerCase().includes(q)) return false;
     return true;
-  }), [data.requests, category, fn, mine, search, me.email, overdueOnly, data.settings]);
+  }), [data.requests, step, category, fn, mine, search, me.email, overdueOnly, data.settings]);
   const overdueCount = useMemo(() => data.requests.filter((r) => slaOf(r, data.settings)?.state === 'over').length, [data.requests, data.settings]);
   const rows = useMemo(() => base.filter(TABS.find((t) => t.key === tab).test), [base, tab]);
   const nameOf = (e) => (e ? data.names[e] || e : '');
@@ -147,6 +151,12 @@ function Register({ me, initialTab, initialView, onOpen, onCreate }) {
             <option value="">All functions</option>
             {functions.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
+          {stepMeta && (
+            <button type="button" className="ccb-chip-toggle on" title="Clear this filter" onClick={() => {
+              setStep('');
+              const url = new URL(window.location.href); url.searchParams.delete('step'); window.history.replaceState({}, '', url);
+            }}>Step {PROCESS_STEPS.indexOf(stepMeta) + 1}: {stepMeta.label} ×</button>
+          )}
           {me.can.log && (
             <button type="button" className={`ccb-chip-toggle${mine ? ' on' : ''}`} onClick={() => setMine((m) => !m)}>Logged by me</button>
           )}

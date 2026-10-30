@@ -521,3 +521,8 @@ a.ccb-kpi:hover { transform: translateY(-2px); box-shadow: 0 1px 2px oklch(0% 0 
 .ccb-file-sub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ccb-file-actions { display: inline-flex; gap: 2px; flex: none; }
 .ccb-step-badge svg { display: block; }
+
+/* Overview "Process pipeline": each step opens the register filtered to that step. */
+.ccb-pipe-row.is-link { color: inherit; text-decoration: none; border-radius: 8px; margin: 0 -6px; padding-left: 6px; padding-right: 6px; cursor: pointer; }
+.ccb-pipe-row.is-link:hover { background: var(--accent-soft); }
+.ccb-pipe-row.is-link:hover .ccb-pipe-count { color: var(--accent); }
