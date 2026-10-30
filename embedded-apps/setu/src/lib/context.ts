@@ -9,6 +9,7 @@ export interface Setu {
   me: Me;
   meta: Meta;
   mailEnabled: boolean;
+  whatsappEnabled: boolean;
   /** Re-read reference data (after an Admin change to groups, fields, canned responses ...). */
   reloadMeta: () => Promise<void>;
   openTicket: (id: number) => void;

@@ -2,10 +2,10 @@
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
 const express = require('express');
 const { pool } = require('../../db');
-const { EMAIL_RE, PATCHABLE, PRIORITIES, SOURCES } = require('../constants');
+const { ACTIVITY_KINDS, CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES, SOURCES } = require('../constants');
 const { loadTicket } = require('../lib/notify');
 const { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, createTicket, updateTicket } = require('../lib/tickets');
-const { fail, intOrNull, textToHtml, wrap } = require('../lib/util');
+const { fail, intOrNull, logActivity, textToHtml, touchActivity, updateRow, wrap } = require('../lib/util');
 
 const router = express.Router();
 
@@ -22,19 +22,29 @@ router.get('/tickets', wrap(async (req, res) => {
         case 'mine': where.push(`t."agentId" = ${p(req.agent.id)}`, 'NOT s."isClosed"'); break;
         case 'unassigned': where.push('t."agentId" IS NULL', 'NOT s."isResolved"'); break;
         case 'open': where.push('NOT s."isResolved"'); break;
+        // Pending: waiting on someone else (a status that pauses the SLA), not yet resolved.
+        case 'pending': where.push('s."pausesSla"', 'NOT s."isResolved"'); break;
         case 'overdue': where.push('NOT s."isResolved"', '(t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now()))'); break;
         case 'resolved': where.push('s."isResolved"'); break;
         default: break;
     }
+    // Every list filter takes one value or several, comma separated ("4,5" = Resolved or Closed).
     const ints = (v) => String(v).split(',').map(Number).filter(Number.isInteger);
-    if (qy.statusId) where.push(`t."statusId" = ANY(${p(ints(qy.statusId))})`);
-    if (qy.priority) where.push(`t.priority = ANY(${p(ints(qy.priority))})`);
-    if (qy.severity) where.push(`t.severity = ANY(${p(String(qy.severity).split(','))})`);
-    if (qy.groupId) where.push(`t."groupId" = ${p(Number(qy.groupId))}`);
-    if (qy.agentId) where.push(qy.agentId === 'none' ? 't."agentId" IS NULL' : `t."agentId" = ${p(Number(qy.agentId))}`);
-    if (qy.source) where.push(`t.source = ${p(String(qy.source))}`);
-    if (qy.type) where.push(`t.type = ${p(String(qy.type))}`);
-    if (qy.category) where.push(`t.category = ${p(String(qy.category))}`);
+    const texts = (v) => String(v).split(',').map((x) => x.trim().slice(0, 200)).filter(Boolean).slice(0, 50);
+    if (qy.statusId) where.push(`t."statusId" = ANY(${p(ints(qy.statusId))}::int[])`);
+    if (qy.priority) where.push(`t.priority = ANY(${p(ints(qy.priority))}::int[])`);
+    if (qy.severity) where.push(`t.severity = ANY(${p(texts(qy.severity))}::text[])`);
+    if (qy.groupId) where.push(`t."groupId" = ANY(${p(ints(qy.groupId))}::int[])`);
+    if (qy.agentId) {
+        const wanted = texts(qy.agentId);
+        const ids = ints(wanted.filter((x) => x !== 'none').join(','));
+        const parts = [...(ids.length ? [`t."agentId" = ANY(${p(ids)}::int[])`] : []), ...(wanted.includes('none') ? ['t."agentId" IS NULL'] : [])];
+        if (parts.length) where.push(`(${parts.join(' OR ')})`);
+    }
+    if (qy.source) where.push(`t.source = ANY(${p(texts(qy.source))}::text[])`);
+    if (qy.type) where.push(`t.type = ANY(${p(texts(qy.type))}::text[])`);
+    if (qy.category) where.push(`t.category = ANY(${p(texts(qy.category))}::text[])`);
+    if (qy.activity) where.push(`t."lastActivityKind" = ANY(${p(texts(qy.activity).filter((k) => ACTIVITY_KINDS.includes(k)))}::text[])`);
     if (qy.tag) where.push(`t.tags @> ARRAY[${p(String(qy.tag).trim().slice(0, 100))}]::text[]`);
     const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v));
     if (qy.from && !isDate(qy.from)) throw fail(400, 'Dates must be YYYY-MM-DD.');
@@ -53,7 +63,10 @@ router.get('/tickets', wrap(async (req, res) => {
         }
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const SORTS = { created: 't."createdAt" DESC', updated: 't."updatedAt" DESC', due: 't."resolutionDueAt" ASC NULLS LAST', priority: 't.priority DESC, t."createdAt" DESC' };
+    const SORTS = {
+        created: 't."createdAt" DESC', updated: 't."updatedAt" DESC', activity: 't."lastActivityAt" DESC NULLS LAST',
+        due: 't."resolutionDueAt" ASC NULLS LAST', priority: 't.priority DESC, t."createdAt" DESC',
+    };
     const order = SORTS[qy.sort] || SORTS.created;
     const pageSize = Math.min(200, Math.max(10, Number(qy.pageSize) || 50));
     const page = Math.max(1, Number(qy.page) || 1);
@@ -70,6 +83,7 @@ router.get('/tickets/counts', wrap(async (req, res) => {
             count(*) FILTER (WHERE t."agentId" = $1 AND NOT s."isClosed")::int AS mine,
             count(*) FILTER (WHERE t."agentId" IS NULL AND NOT s."isResolved")::int AS unassigned,
             count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
+            count(*) FILTER (WHERE s."pausesSla" AND NOT s."isResolved")::int AS pending,
             count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
             count(*)::int AS "all"
          FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`,
@@ -113,7 +127,9 @@ router.post('/tickets', wrap(async (req, res) => {
     const requesterName = String(b.requesterName || '').trim();
     const requesterEmail = String(b.requesterEmail || '').trim().toLowerCase();
     if (!subject || !requesterName) throw fail(400, 'Subject and requester name are needed.');
-    if (requesterEmail && !EMAIL_RE.test(requesterEmail)) throw fail(400, 'Requester email is not valid.');
+    // A ticket logged on someone's behalf needs their email: replies, the acknowledgement and the portal use it.
+    if (!requesterEmail) throw fail(400, 'Requester email is needed.');
+    if (!EMAIL_RE.test(requesterEmail)) throw fail(400, 'Requester email is not valid.');
     const source = SOURCES.includes(b.source) ? b.source : 'Phone';
     const fields = cleanFields(b);
     const statusId = intOrNull(b.statusId);
@@ -126,6 +142,8 @@ router.post('/tickets', wrap(async (req, res) => {
         source,
         fields,
         actorAgentId: req.agent.id,
+        actorName: req.agent.name,
+        notifyRequester: b.notifyRequester === true,
     });
     const final = statusId && statusId !== t.statusId ? await updateTicket(t.id, { statusId }, req.agent.id) : t;
     res.status(201).json({ success: true, ticket: final });
@@ -135,7 +153,7 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
-    const [conversations, activities, timeLogs, others] = await Promise.all([
+    const [conversations, activities, timeLogs, others, calls] = await Promise.all([
         pool.query(
             `SELECT cv.*, a.name AS "agentName" FROM setu.conversations cv LEFT JOIN setu.agents a ON a.id = cv."agentId"
              WHERE cv."ticketId" = $1 ORDER BY cv."createdAt", cv.id`,
@@ -155,8 +173,15 @@ router.get('/tickets/:id', wrap(async (req, res) => {
              WHERE t."requesterId" = $1 AND t.id <> $2 ORDER BY t."createdAt" DESC LIMIT 10`,
             [t.requesterId, id],
         ),
+        pool.query(
+            `SELECT cl.*, a.name AS "agentName" FROM setu.call_logs cl JOIN setu.agents a ON a.id = cl."agentId" WHERE cl."ticketId" = $1 ORDER BY cl."createdAt"`,
+            [id],
+        ),
     ]);
-    res.json({ success: true, ticket: t, conversations: conversations.rows, activities: activities.rows, timeLogs: timeLogs.rows, requesterTickets: others.rows });
+    res.json({
+        success: true, ticket: t, conversations: conversations.rows, activities: activities.rows, timeLogs: timeLogs.rows,
+        requesterTickets: others.rows, calls: calls.rows,
+    });
 }));
 
 router.patch('/tickets/:id', wrap(async (req, res) => {
@@ -201,14 +226,37 @@ router.post('/tickets/:id/messages', wrap(async (req, res) => {
     const cc = list(b.cc);
     if ([...to, ...cc].some((x) => !EMAIL_RE.test(x))) throw fail(400, 'One of the email addresses is not valid.');
     if (kind === 'FORWARD' && !to.length) throw fail(400, 'Add at least one email address to forward to.');
-    await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc }, req.agent);
-    res.status(201).json({ success: true });
+    const { delivery } = await addAgentMessage(id, { kind, html: textToHtml(text.slice(0, 50000)), to, cc }, req.agent);
+    res.status(201).json({ success: true, delivery });
 }));
 
 router.post('/tickets/:id/time-logs', wrap(async (req, res) => {
     const minutes = Number(req.body?.minutes);
     if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) throw fail(400, 'Enter minutes between 1 and 1440.');
     await pool.query('INSERT INTO setu.time_logs ("ticketId", "agentId", minutes, note) VALUES ($1, $2, $3, $4)', [Number(req.params.id), req.agent.id, minutes, String(req.body?.note || '').slice(0, 500) || null]);
+    res.status(201).json({ success: true });
+}));
+
+/** A phone call with the requester (made from the ticket, or received): number, outcome, length and notes. */
+router.post('/tickets/:id/calls', wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    const b = req.body ?? {};
+    const phone = String(b.phone || '').trim();
+    if (!PHONE_RE.test(phone)) throw fail(400, 'Enter a valid phone number.');
+    if (!CALL_OUTCOMES.includes(b.outcome)) throw fail(400, 'Pick how the call went.');
+    const mins = Number(b.durationMins ?? 0);
+    if (!Number.isFinite(mins) || mins < 0 || mins > 600) throw fail(400, 'Call length must be 0 to 600 minutes.');
+    const direction = b.direction === 'INBOUND' ? 'INBOUND' : 'OUTBOUND';
+    const notes = String(b.notes || '').trim().slice(0, 5000) || null;
+    await loadTicket(id);
+    await pool.query(
+        'INSERT INTO setu.call_logs ("ticketId", "agentId", phone, direction, outcome, "durationSecs", notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [id, req.agent.id, phone, direction, b.outcome, Math.round(mins * 60), notes],
+    );
+    const now = new Date();
+    await updateRow('tickets', id, { updatedAt: now });
+    await logActivity(id, 'call_logged', { direction, outcome: b.outcome, minutes: mins }, req.agent.id);
+    await touchActivity(id, 'call', req.agent.name, `${direction === 'INBOUND' ? 'Call from' : 'Call to'} ${phone} - ${b.outcome}`, now);
     res.status(201).json({ success: true });
 }));
 

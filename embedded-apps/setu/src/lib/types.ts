@@ -5,6 +5,9 @@ export type Role = 'Agent' | 'Supervisor' | 'Admin';
 export type Severity = 'FATAL' | 'SERIOUS' | 'NORMAL';
 export type Availability = 'AVAILABLE' | 'UNAVAILABLE' | 'MEETING' | 'BREAK' | 'TRAINING' | 'LUNCH';
 export type ConversationKind = 'INCOMING' | 'REPLY' | 'NOTE' | 'FORWARD';
+export type ActivityKind = 'created' | 'status' | 'assigned' | 'agent_reply' | 'requester_reply' | 'note' | 'forward' | 'call';
+export type BellEvent = 'requester_reply' | 'new_ticket' | 'assigned' | 'note';
+export type CallMode = 'tel' | 'teams';
 
 export interface Me {
   id: number;
@@ -45,6 +48,8 @@ export interface CannedResponse {
   title: string;
   shortCode: string | null;
   body: string;
+  /** null = shared (Admin); otherwise the agent it belongs to - only that agent ever receives it. */
+  ownerAgentId: number | null;
 }
 
 export interface FieldDef {
@@ -73,6 +78,9 @@ export interface Meta {
   severities: Severity[];
   sources: string[];
   agentStatuses: Record<Availability, string>;
+  callMode: CallMode;
+  callOutcomes: string[];
+  portalEnabled: boolean;
 }
 
 /** Ticket columns an agent can edit from the properties panel (backend EDITABLE_FIELDS). */
@@ -109,6 +117,10 @@ export interface TicketRow {
   slaPausedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  lastActivityAt: string | null;
+  lastActivityKind: ActivityKind | null;
+  lastActivityBy: string | null;
+  lastActivityDetail: string | null;
   requesterName: string;
   requesterEmail: string | null;
   agentName: string | null;
@@ -138,6 +150,8 @@ export interface Conversation {
   bodyHtml: string;
   bodyText: string;
   fromEmail: string | null;
+  fromPhone: string | null;
+  channel: 'email' | 'whatsapp' | 'portal';
   toEmails: string[];
   ccEmails: string[];
   agentId: number | null;
@@ -161,18 +175,53 @@ export interface TimeLog {
   createdAt: string;
 }
 
+export interface CallLog {
+  id: number;
+  phone: string;
+  direction: 'OUTBOUND' | 'INBOUND';
+  outcome: string;
+  durationSecs: number;
+  notes: string | null;
+  agentName: string;
+  createdAt: string;
+}
+
 export interface TicketDetail {
   ticket: Ticket;
   conversations: Conversation[];
   activities: ActivityItem[];
   timeLogs: TimeLog[];
   requesterTickets: { id: number; subject: string; statusName: string; createdAt: string }[];
+  calls: CallLog[];
+}
+
+export interface BellItem {
+  id: number;
+  ticketId: number;
+  event: BellEvent;
+  title: string;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface ContactMatch {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+}
+
+export interface AgentPrefs {
+  bellMuted?: BellEvent[];
 }
 
 export interface Counts {
   mine: number;
   unassigned: number;
   open: number;
+  pending: number;
   overdue: number;
   all: number;
 }

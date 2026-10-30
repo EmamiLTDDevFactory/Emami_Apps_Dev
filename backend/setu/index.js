@@ -31,6 +31,8 @@ const router = express.Router();
 
 // Scheduler entry point - authenticates itself (admin session or internal secret), so it sits before requireAccess.
 router.use(require('./routes/jobs'));
+// Requester portal and WhatsApp webhook: no hub sign-in, their own limits (routes/public.js).
+router.use(require('./routes/public'));
 router.use(requireAccess, rateLimit);
 router.use(require('./routes/me'));
 router.use(require('./routes/tickets'));

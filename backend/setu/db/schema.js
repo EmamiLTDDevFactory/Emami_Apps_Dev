@@ -1,13 +1,13 @@
 'use strict';
 const { pool } = require('../../db');
-const { AGENT_STATUSES, CONVERSATION_KINDS, ROLES, SEVERITIES, TRIGGERS, sqlList } = require('../constants');
+const { AGENT_STATUSES, BELL_EVENTS, CALL_OUTCOMES, CONVERSATION_KINDS, ROLES, SEVERITIES, TRIGGERS, sqlList } = require('../constants');
 const { seed } = require('./seed');
 
 // Creates the setu schema and every table / index, then inserts any missing base configuration (seed.js).
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 async function initSchema() {
     try {
@@ -388,11 +388,74 @@ async function initSchema() {
         )
     `);
 
+    await upgradeV3();
     await seed();
     await pool.query(
         `INSERT INTO setu.settings (key, value) VALUES ('schema.version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
         [JSON.stringify(SCHEMA_VERSION)],
     );
+}
+
+// v3: last activity on tickets, personal canned responses, call logs, the in-app bell, WhatsApp / portal channels.
+async function upgradeV3() {
+    // Last activity (status change, reply, note, call ...) shown in the ticket list.
+    await pool.query(`
+        ALTER TABLE setu.tickets
+            ADD COLUMN IF NOT EXISTS "lastActivityAt" timestamptz,
+            ADD COLUMN IF NOT EXISTS "lastActivityKind" text,
+            ADD COLUMN IF NOT EXISTS "lastActivityBy" text,
+            ADD COLUMN IF NOT EXISTS "lastActivityDetail" text
+    `);
+    await pool.query(`UPDATE setu.tickets SET "lastActivityAt" = "updatedAt", "lastActivityKind" = 'created' WHERE "lastActivityAt" IS NULL`);
+    await pool.query('CREATE INDEX IF NOT EXISTS tickets_last_activity_idx ON setu.tickets ("lastActivityAt")');
+
+    // Canned responses: ownerAgentId NULL = shared (Admin), otherwise private to that agent. Short codes are unique
+    // per owner, so two agents can both have /thanks.
+    await pool.query('ALTER TABLE setu.canned_responses ADD COLUMN IF NOT EXISTS "ownerAgentId" integer REFERENCES setu.agents(id) ON DELETE CASCADE');
+    await pool.query('ALTER TABLE setu.canned_responses DROP CONSTRAINT IF EXISTS "canned_responses_shortCode_key"');
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS canned_owner_code_idx ON setu.canned_responses (COALESCE("ownerAgentId", 0), lower("shortCode")) WHERE "shortCode" IS NOT NULL`);
+
+    // Messages from WhatsApp carry the sender's number instead of an email address.
+    await pool.query(`
+        ALTER TABLE setu.conversations
+            ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'email' CHECK (channel IN ('email', 'whatsapp', 'portal')),
+            ADD COLUMN IF NOT EXISTS "fromPhone" text
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS contacts_mobile_idx ON setu.contacts (mobile)');
+
+    // Agent preferences (bell events they muted).
+    await pool.query(`ALTER TABLE setu.agents ADD COLUMN IF NOT EXISTS prefs jsonb NOT NULL DEFAULT '{}'`);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.call_logs (
+            id serial PRIMARY KEY,
+            "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            "agentId" integer NOT NULL REFERENCES setu.agents(id),
+            phone text NOT NULL,
+            direction text NOT NULL DEFAULT 'OUTBOUND' CHECK (direction IN ('OUTBOUND', 'INBOUND')),
+            outcome text NOT NULL CHECK (outcome IN (${sqlList(CALL_OUTCOMES)})),
+            "durationSecs" integer NOT NULL DEFAULT 0 CHECK ("durationSecs" BETWEEN 0 AND 86400),
+            notes text,
+            "createdAt" timestamptz NOT NULL DEFAULT now()
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS call_logs_ticket_idx ON setu.call_logs ("ticketId", "createdAt")');
+
+    // In-app bell (Setu header). Separate from the hub inbox / Outlook notifications.
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS setu.notifications (
+            id serial PRIMARY KEY,
+            "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+            "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+            event text NOT NULL CHECK (event IN (${sqlList(BELL_EVENTS)})),
+            title text NOT NULL,
+            body text NOT NULL DEFAULT '',
+            "createdAt" timestamptz NOT NULL DEFAULT now(),
+            "readAt" timestamptz
+        )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS notifications_agent_idx ON setu.notifications ("agentId", "createdAt" DESC)');
+    await pool.query('CREATE INDEX IF NOT EXISTS notifications_unread_idx ON setu.notifications ("agentId") WHERE "readAt" IS NULL');
 }
 
 module.exports = { SCHEMA_VERSION, initSchema };

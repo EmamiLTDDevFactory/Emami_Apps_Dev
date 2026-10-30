@@ -87,11 +87,11 @@ async function rawCall(token, method, url, body) {
   r = await call('agent1@emamigroup.com', 'PATCH', `/tickets/${t2.id}`, { category: 'Something else', function: null }); check(r.body.ticket.severity === 'NORMAL' && r.body.ticket.priority === 1, 'category change -> severity/priority recomputed');
   r = await call('agent1@emamigroup.com', 'PATCH', `/tickets/${t2.id}`, { statusId: 8 }); check(r.status === 200, 'escalate to L3 (ON_UPDATE automation)');
   // Iteration 1 additions
-  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'With L2 fields', requesterName: 'Kiran', l2Agent: 'L2 Team A', helpdeskAnalysis: 'Analysed', rcaSolution: 'Fixed config' });
+  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'With L2 fields', requesterName: 'Kiran', requesterEmail: 'kiran@example.com', l2Agent: 'L2 Team A', helpdeskAnalysis: 'Analysed', rcaSolution: 'Fixed config' });
   check(r.status === 201 && r.body.ticket.l2Agent === 'L2 Team A' && r.body.ticket.rcaSolution === 'Fixed config', 'create keeps l2Agent / analysis / RCA', r.body.ticket && { l2: r.body.ticket.l2Agent });
-  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'Born resolved', requesterName: 'Kiran', statusId: 4 });
+  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'Born resolved', requesterName: 'Kiran', requesterEmail: 'kiran@example.com', statusId: 4 });
   check(r.status === 400 && /required/.test(r.body.error), 'create as Resolved without required fields -> 400', r.body.error);
-  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'Bad status', requesterName: 'Kiran', statusId: 999 });
+  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'Bad status', requesterName: 'Kiran', requesterEmail: 'kiran@example.com', statusId: 999 });
   check(r.status === 400, 'create with unknown status -> 400');
   r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'x', requesterName: 'K', requesterEmail: 'not-an-email' });
   check(r.status === 400, 'invalid requester email -> 400');
@@ -189,6 +189,77 @@ async function rawCall(token, method, url, body) {
   check(leftovers.rows[0].n === 0, 'no trace of the removed address remains', leftovers.rows[0].n);
   const scrubbed = (await call('admin@emamigroup.com', 'GET', `/tickets/${t1.id}`)).body.ticket;
   check(/Removed at the requester/.test(scrubbed.description) && !scrubbed.mobileNo && !scrubbed.callerName, 'their ticket text and phone numbers are removed too');
+  // ---- Freshdesk-parity features ----
+  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'No email', requesterName: 'Kiran' });
+  check(r.status === 400 && /email is needed/.test(r.body.error), 'ticket on behalf of a user needs their email', r.body.error);
+  // Multi-option filters and the Pending view
+  r = await call('agent1@emamigroup.com', 'GET', '/tickets?view=&statusId=4,5');
+  check(r.status === 200 && r.body.items.length > 0 && r.body.items.every((x) => [4, 5].includes(x.statusId)), 'status filter takes several values', r.body.items.map((x) => x.statusId));
+  r = await call('agent1@emamigroup.com', 'GET', `/tickets?view=&agentId=none,${a1.id}`);
+  check(r.status === 200 && r.body.items.every((x) => x.agentId === null || x.agentId === a1.id), 'agent filter: unassigned or a chosen agent');
+  r = await call('agent1@emamigroup.com', 'GET', '/tickets?view=pending');
+  check(r.status === 200 && r.body.items.every((x) => x.pausesSla && !x.isResolved), 'pending view = waiting statuses, not resolved');
+  r = await call('agent1@emamigroup.com', 'GET', '/tickets/counts'); check(typeof r.body.counts.pending === 'number', 'pending count');
+  // Last activity: created -> reply -> status change -> call
+  r = await call('agent1@emamigroup.com', 'POST', '/tickets', { subject: 'Activity check', requesterName: 'Meena', requesterEmail: 'meena@example.com', source: 'Phone' });
+  const ta1 = r.body.ticket;
+  check(ta1.lastActivityKind === 'created' && ta1.lastActivityBy === a1.name, 'new ticket: last activity = created by the agent', { k: ta1.lastActivityKind, by: ta1.lastActivityBy });
+  await call('agent1@emamigroup.com', 'POST', `/tickets/${ta1.id}/messages`, { kind: 'REPLY', text: 'Looking into it' });
+  r = await call('agent1@emamigroup.com', 'GET', `/tickets/${ta1.id}`); check(r.body.ticket.lastActivityKind === 'agent_reply', 'reply -> last activity agent_reply', r.body.ticket.lastActivityKind);
+  await call('agent1@emamigroup.com', 'PATCH', `/tickets/${ta1.id}`, { statusId: 3 });
+  r = await call('agent1@emamigroup.com', 'GET', `/tickets/${ta1.id}`);
+  check(r.body.ticket.lastActivityKind === 'status' && /Pending/.test(r.body.ticket.lastActivityDetail), 'status change -> last activity status', r.body.ticket.lastActivityDetail);
+  r = await call('agent1@emamigroup.com', 'GET', '/tickets?view=&activity=status&sort=activity');
+  check(r.body.items.some((x) => x.id === ta1.id) && r.body.items.every((x) => x.lastActivityKind === 'status'), 'filter by last activity');
+  // Calls
+  r = await call('agent1@emamigroup.com', 'POST', `/tickets/${ta1.id}/calls`, { phone: 'call me', outcome: 'Connected' }); check(r.status === 400, 'call with a bad number -> 400');
+  r = await call('agent1@emamigroup.com', 'POST', `/tickets/${ta1.id}/calls`, { phone: '+91 98300 12345', outcome: 'Teleported' }); check(r.status === 400, 'call with an unknown outcome -> 400');
+  r = await call('agent1@emamigroup.com', 'POST', `/tickets/${ta1.id}/calls`, { phone: '+91 98300 12345', outcome: 'Connected', durationMins: 4.5, notes: 'Explained sync steps' });
+  check(r.status === 201, 'log a call');
+  r = await call('agent1@emamigroup.com', 'GET', `/tickets/${ta1.id}`);
+  check(r.body.calls.length === 1 && r.body.calls[0].durationSecs === 270 && r.body.ticket.lastActivityKind === 'call', 'call on the ticket, last activity = call', r.body.calls[0]);
+  // Personal canned responses are private; short codes are per owner
+  r = await call('agent1@emamigroup.com', 'POST', '/me/canned', { title: 'My thanks', shortCode: 'thanks', body: 'Thanks, Agent 1' }); check(r.status === 200, 'agent saves a personal canned response');
+  r = await call('agent2@emamigroup.com', 'POST', '/me/canned', { title: 'My thanks', shortCode: 'thanks', body: 'Thanks, Agent 2' }); check(r.status === 200, 'another agent can use the same short code');
+  r = await call('agent1@emamigroup.com', 'POST', '/me/canned', { title: 'Dup', shortCode: 'thanks', body: 'x' }); check(r.status === 409, 'same short code twice for one agent -> 409');
+  const mine1 = (await call('agent1@emamigroup.com', 'GET', '/meta')).body.cannedResponses;
+  const mine2 = (await call('agent2@emamigroup.com', 'GET', '/meta')).body.cannedResponses;
+  const adminList = (await call('admin@emamigroup.com', 'GET', '/meta')).body.cannedResponses;
+  const own1 = mine1.find((c) => c.body === 'Thanks, Agent 1');
+  check(own1 && own1.ownerAgentId === a1.id && !mine2.some((c) => c.body === 'Thanks, Agent 1') && !adminList.some((c) => c.ownerAgentId), 'personal responses are seen only by their owner (not other agents, not admins)');
+  check(mine1.some((c) => c.ownerAgentId === null), 'shared responses are still seen by everyone');
+  r = await call('agent2@emamigroup.com', 'DELETE', `/me/canned/${own1.id}`); check(r.status === 404, "an agent cannot delete someone else's response");
+  r = await call('admin@emamigroup.com', 'POST', '/admin/canned', { id: own1.id, title: 'Hijack', body: 'x' }); check(r.status === 404, "admin screen cannot edit an agent's personal response");
+  r = await call('agent1@emamigroup.com', 'DELETE', `/me/canned/${own1.id}`); check(r.status === 200, 'owner deletes their response');
+  // Portal (no sign-in) + bell
+  r = await call(null, 'GET', '/portal/config'); check(r.status === 200 && r.body.enabled === true && Array.isArray(r.body.categories), 'portal config without sign-in');
+  r = await call(null, 'POST', '/portal/tickets', { name: 'Dist User', subject: 'Help', description: 'x' }); check(r.status === 400, 'portal needs an email');
+  const before = (await db.query('SELECT count(*)::int AS n FROM setu.tickets')).rows[0].n;
+  r = await call(null, 'POST', '/portal/tickets', { name: 'Bot', email: 'bot@example.com', subject: 'spam', description: 'spam', website: 'http://spam' });
+  check(r.status === 201 && (await db.query('SELECT count(*)::int AS n FROM setu.tickets')).rows[0].n === before, 'portal honeypot: no ticket');
+  r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'bell.events': ['requester_reply', 'nonsense'] }); check(r.status === 400, 'unknown bell event -> 400');
+  r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'bell.events': ['requester_reply', 'new_ticket'], 'bell.scope': 'all' }); check(r.status === 200, 'admin configures the bell');
+  r = await call('agent2@emamigroup.com', 'PUT', '/me/preferences', { bellMuted: ['new_ticket'] }); check(r.status === 200, 'agent mutes an event for themselves');
+  r = await call(null, 'POST', '/portal/tickets', { name: 'Dist User', email: 'dist@example.com', phone: '+91 90000 00001', subject: 'Scheme not applied', description: 'Scheme missing on invoice' });
+  check(r.status === 201 && r.body.ticket.id > 0, 'portal creates a ticket');
+  const portalId = r.body.ticket.id;
+  r = await call('agent1@emamigroup.com', 'GET', `/tickets/${portalId}`); check(r.body.ticket.source === 'Portal' && r.body.ticket.requesterEmail === 'dist@example.com', 'portal ticket: source Portal, requester email');
+  r = await call('agent1@emamigroup.com', 'GET', '/notifications');
+  const bellItem = r.body.items.find((n) => n.ticketId === portalId && n.event === 'new_ticket');
+  check(bellItem && r.body.unread > 0, 'bell: new portal ticket reaches agent1 (scope all)', r.body.unread);
+  r = await call('agent2@emamigroup.com', 'GET', '/notifications'); check(!r.body.items.some((n) => n.ticketId === portalId), 'bell: muted event does not reach agent2');
+  r = await call('agent2@emamigroup.com', 'POST', '/notifications/read', { ids: [bellItem.id] });
+  r = await call('agent1@emamigroup.com', 'GET', '/notifications'); check(!r.body.items.find((n) => n.id === bellItem.id).readAt, "one agent cannot mark another's notification read");
+  await call('agent1@emamigroup.com', 'POST', '/notifications/read', { all: true });
+  r = await call('agent1@emamigroup.com', 'GET', '/notifications'); check(r.body.unread === 0, 'mark all read');
+  r = await call(null, 'POST', '/portal/status', { id: portalId, email: 'someone@example.com' }); check(r.status === 404, 'portal status needs the matching email');
+  r = await call(null, 'POST', '/portal/status', { id: portalId, email: 'dist@example.com' }); check(r.status === 200 && r.body.ticket.status === 'Open' && !('description' in r.body.ticket), 'portal status: status only, no ticket text');
+  await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'bell.events': ['requester_reply'], 'bell.scope': 'assignee', 'portal.enabled': false });
+  r = await call(null, 'POST', '/portal/tickets', { name: 'Dist User', email: 'dist@example.com', subject: 'x', description: 'y' }); check(r.status === 403, 'closed portal refuses tickets');
+  await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'portal.enabled': true });
+  // WhatsApp webhook is off unless configured; verification needs the token
+  r = await call(null, 'POST', '/whatsapp/webhook', { entry: [] }); check(r.status === 404 || r.status === 401, 'whatsapp webhook refused when not configured / unsigned', r.status);
+  r = await fetch(`${API}/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=1`); check(r.status === 403, 'whatsapp verification with a wrong token -> 403');
   // Rate limiting: heavy bucket allows 10 per minute per person
   let limited = null;
   for (let i = 0; i < 12 && !limited; i++) {

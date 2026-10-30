@@ -74,4 +74,36 @@ export const ACTION_LABEL: Record<string, string> = {
   updated: 'Updated',
   automation: 'Automation',
   email_sent: 'Email sent',
+  message: 'Message',
+  requester_replied: 'Requester replied',
+  call_logged: 'Call',
+  whatsapp_sent: 'WhatsApp sent',
+  whatsapp_failed: 'WhatsApp not sent',
 };
+
+/** Last-activity wording in the ticket list ("Requester replied", "Status changed" ...). */
+export const ACTIVITY_LABEL: Record<string, string> = {
+  created: 'Created',
+  status: 'Status changed',
+  assigned: 'Assigned',
+  agent_reply: 'Agent replied',
+  requester_reply: 'Requester replied',
+  note: 'Note added',
+  forward: 'Forwarded',
+  call: 'Call logged',
+};
+
+export const BELL_EVENT_LABEL: Record<string, string> = {
+  requester_reply: 'Requester replies',
+  new_ticket: 'New tickets from email, portal or WhatsApp',
+  assigned: 'Tickets assigned to me',
+  note: 'Private notes on my tickets',
+};
+
+/** Seconds as "4m 30s" / "1h 5m". */
+export function fmtSecs(secs: number): string {
+  if (secs < 60) return `${secs}s`;
+  const m = Math.floor(secs / 60);
+  if (m < 60) return secs % 60 ? `${m}m ${secs % 60}s` : `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}

@@ -558,6 +558,51 @@ INSERT INTO setu.automation_rules (name, trigger, position, conditions, actions)
 
 INSERT INTO setu.automation_rules (name, trigger, position, conditions, actions) VALUES ('Close after 14 days without user information', 'TIME', 3, '{"all":[{"field":"statusId","op":"in","value":[12]},{"field":"hoursSinceStatusChange","op":"gte","value":336}]}', '[{"type":"sendReplyTemplate","template":"requester.closing_reminder"},{"type":"setStatus","value":5}]') ON CONFLICT (name) DO NOTHING;
 
+-- v3: last activity, personal canned responses, WhatsApp / portal messages, call logs, in-app bell
+ALTER TABLE setu.tickets
+    ADD COLUMN IF NOT EXISTS "lastActivityAt" timestamptz,
+    ADD COLUMN IF NOT EXISTS "lastActivityKind" text,
+    ADD COLUMN IF NOT EXISTS "lastActivityBy" text,
+    ADD COLUMN IF NOT EXISTS "lastActivityDetail" text;
+CREATE INDEX IF NOT EXISTS tickets_last_activity_idx ON setu.tickets ("lastActivityAt");
+
+ALTER TABLE setu.canned_responses ADD COLUMN IF NOT EXISTS "ownerAgentId" integer REFERENCES setu.agents(id) ON DELETE CASCADE;
+ALTER TABLE setu.canned_responses DROP CONSTRAINT IF EXISTS "canned_responses_shortCode_key";
+CREATE UNIQUE INDEX IF NOT EXISTS canned_owner_code_idx ON setu.canned_responses (COALESCE("ownerAgentId", 0), lower("shortCode")) WHERE "shortCode" IS NOT NULL;
+
+ALTER TABLE setu.conversations
+    ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'email' CHECK (channel IN ('email', 'whatsapp', 'portal')),
+    ADD COLUMN IF NOT EXISTS "fromPhone" text;
+CREATE INDEX IF NOT EXISTS contacts_mobile_idx ON setu.contacts (mobile);
+
+ALTER TABLE setu.agents ADD COLUMN IF NOT EXISTS prefs jsonb NOT NULL DEFAULT '{}';
+
+CREATE TABLE IF NOT EXISTS setu.call_logs (
+    id serial PRIMARY KEY,
+    "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    "agentId" integer NOT NULL REFERENCES setu.agents(id),
+    phone text NOT NULL,
+    direction text NOT NULL DEFAULT 'OUTBOUND' CHECK (direction IN ('OUTBOUND', 'INBOUND')),
+    outcome text NOT NULL CHECK (outcome IN ('Connected', 'No answer', 'Busy', 'Switched off', 'Wrong number', 'Call back later')),
+    "durationSecs" integer NOT NULL DEFAULT 0 CHECK ("durationSecs" BETWEEN 0 AND 86400),
+    notes text,
+    "createdAt" timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS call_logs_ticket_idx ON setu.call_logs ("ticketId", "createdAt");
+
+CREATE TABLE IF NOT EXISTS setu.notifications (
+    id serial PRIMARY KEY,
+    "agentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    "ticketId" integer NOT NULL REFERENCES setu.tickets(id) ON DELETE CASCADE,
+    event text NOT NULL CHECK (event IN ('requester_reply', 'new_ticket', 'assigned', 'note')),
+    title text NOT NULL,
+    body text NOT NULL DEFAULT '',
+    "createdAt" timestamptz NOT NULL DEFAULT now(),
+    "readAt" timestamptz
+);
+CREATE INDEX IF NOT EXISTS notifications_agent_idx ON setu.notifications ("agentId", "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS notifications_unread_idx ON setu.notifications ("agentId") WHERE "readAt" IS NULL;
+
 INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('requester.ticket_received', 'requester', 'Ticket Received - {{ticket.subject}} || {{ticket.id}}', 'Dear {{ticket.requester.name}},<br><br>Thank you for writing in. Your request is logged as ticket {{ticket.id}}, and someone from the helpdesk team will reply to you, normally within one working day.<br><br>When you write about this issue again, please keep the ticket number in the subject line so your message reaches the same ticket.<br><br>Regards,<br>Emami Secondary Helpdesk') ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ('reply.signature', 'requester', '-', '#TICKET No - {{ticket.id}}<br><br>Thanks &amp; Regards,<br>{{ticket.agent.name}}<br>Emami Secondary Helpdesk<br>Mail ID - emami.helpdesk@emamigroup.com<br>Phone No - 06289423435') ON CONFLICT (key) DO NOTHING;
@@ -590,6 +635,16 @@ INSERT INTO setu.settings (key, value) VALUES ('escalation.notifyEmails', '[]') 
 
 INSERT INTO setu.settings (key, value) VALUES ('sla.reminderMinutes', '30') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.settings (key, value) VALUES ('schema.version', '2') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO setu.settings (key, value) VALUES ('bell.events', '["requester_reply"]') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('bell.scope', '"assignee"') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('portal.enabled', 'true') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('call.mode', '"tel"') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('whatsapp.threadDays', '7') ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO setu.settings (key, value) VALUES ('schema.version', '3') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;

@@ -3,21 +3,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Filter, Inbox, RefreshCw, Search, X } from 'lucide-react';
 import { getCounts, listTickets, type TicketQuery } from '@/lib/api';
 import { useSetu } from '@/lib/context';
-import { fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
+import { ACTIVITY_LABEL, fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
 import type { Counts, TicketRow } from '@/lib/types';
-import { PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
-import { Button, Card, Empty, Notice, Select, Skeleton, cx, inputCls } from './ui';
+import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
+import { Button, Card, Empty, MultiSelect, Notice, Select, Skeleton, cx, inputCls } from './ui';
 
 const VIEWS: { id: string; label: string; count?: keyof Counts }[] = [
   { id: 'mine', label: 'Mine', count: 'mine' },
   { id: 'unassigned', label: 'Unassigned', count: 'unassigned' },
   { id: 'open', label: 'Open', count: 'open' },
+  { id: 'pending', label: 'Pending', count: 'pending' },
   { id: 'overdue', label: 'Overdue', count: 'overdue' },
   { id: 'resolved', label: 'Resolved' },
   { id: '', label: 'All', count: 'all' },
 ];
 
-const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'due', 'tag', 'from', 'to', 'category'];
+const FILTER_KEYS: (keyof TicketQuery)[] = ['statusId', 'priority', 'severity', 'groupId', 'agentId', 'source', 'type', 'activity', 'due', 'tag', 'from', 'to', 'category'];
+type ListKey = 'statusId' | 'priority' | 'severity' | 'groupId' | 'agentId' | 'source' | 'type' | 'activity';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
   const { meta, openTicket } = useSetu();
@@ -59,6 +61,9 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const types = useMemo(() => meta.fields.find((f) => f.key === 'type')?.choices ?? [], [meta.fields]);
   const opt = (label: string) => [{ value: '', label }];
+  // Multi-option filters travel as comma-separated values ("4,5" = Resolved or Closed).
+  const many = (k: ListKey) => (query[k] ? String(query[k]).split(',') : []);
+  const setMany = (k: ListKey) => (v: string[]) => set({ [k]: v.join(',') || undefined });
 
   return (
     <div className="space-y-3">
@@ -93,18 +98,19 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
       {showFilters && (
         <Card bodyClass="p-3">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-            <Select label="Status" value={query.statusId ?? ''} onChange={(v) => set({ statusId: v })} options={[...opt('Any status'), ...meta.statuses.map((s) => ({ value: String(s.id), label: s.name }))]} />
-            <Select label="Priority" value={query.priority ?? ''} onChange={(v) => set({ priority: v })} options={[...opt('Any priority'), ...Object.entries(meta.priorities).reverse().map(([k, l]) => ({ value: k, label: l }))]} />
-            <Select label="Severity" value={query.severity ?? ''} onChange={(v) => set({ severity: v })} options={[...opt('Any severity'), { value: 'FATAL', label: 'Fatal' }, { value: 'SERIOUS', label: 'Serious' }, { value: 'NORMAL', label: 'Normal' }]} />
-            <Select label="Group" value={query.groupId ?? ''} onChange={(v) => set({ groupId: v })} options={[...opt('Any group'), ...meta.groups.map((g) => ({ value: String(g.id), label: g.name }))]} />
-            <Select label="Agent" value={query.agentId ?? ''} onChange={(v) => set({ agentId: v })} options={[...opt('Any agent'), { value: 'none', label: 'Unassigned' }, ...meta.agents.filter((a) => a.active).map((a) => ({ value: String(a.id), label: a.name }))]} />
-            <Select label="Source" value={query.source ?? ''} onChange={(v) => set({ source: v })} options={[...opt('Any source'), ...meta.sources.map((s) => ({ value: s, label: s }))]} />
-            <Select label="Type" value={query.type ?? ''} onChange={(v) => set({ type: v })} options={[...opt('Any type'), ...types.map((s) => ({ value: s, label: s }))]} />
+            <MultiSelect label="Status" values={many('statusId')} onChange={setMany('statusId')} options={meta.statuses.map((s) => ({ value: String(s.id), label: s.name }))} />
+            <MultiSelect label="Priority" values={many('priority')} onChange={setMany('priority')} options={Object.entries(meta.priorities).reverse().map(([k, l]) => ({ value: k, label: l }))} />
+            <MultiSelect label="Severity" values={many('severity')} onChange={setMany('severity')} options={[{ value: 'FATAL', label: 'Fatal' }, { value: 'SERIOUS', label: 'Serious' }, { value: 'NORMAL', label: 'Normal' }]} />
+            <MultiSelect label="Group" values={many('groupId')} onChange={setMany('groupId')} options={meta.groups.map((g) => ({ value: String(g.id), label: g.name }))} />
+            <MultiSelect label="Agent" values={many('agentId')} onChange={setMany('agentId')} options={[{ value: 'none', label: 'Unassigned' }, ...meta.agents.filter((a) => a.active).map((a) => ({ value: String(a.id), label: a.name }))]} />
+            <MultiSelect label="Source" values={many('source')} onChange={setMany('source')} options={meta.sources.map((s) => ({ value: s, label: s }))} />
+            <MultiSelect label="Type" values={many('type')} onChange={setMany('type')} options={types.map((s) => ({ value: s, label: s }))} />
+            <MultiSelect label="Last activity" values={many('activity')} onChange={setMany('activity')} options={Object.entries(ACTIVITY_LABEL).map(([k, l]) => ({ value: k, label: l }))} align="right" />
             <Select label="Resolution due" value={query.due ?? ''} onChange={(v) => set({ due: v })} options={[...opt('Any due time'), { value: '15', label: 'Due in 15 min' }, { value: '60', label: 'Due in 1 hour' }, { value: '240', label: 'Due in 4 hours' }]} />
             <input aria-label="Tag" placeholder="Tag" value={query.tag ?? ''} onChange={(e) => set({ tag: e.target.value })} className={inputCls} />
             <label className="flex items-center gap-1.5 text-2xs font-semibold text-muted">From<input type="date" value={query.from ?? ''} onChange={(e) => set({ from: e.target.value })} className={inputCls} /></label>
             <label className="flex items-center gap-1.5 text-2xs font-semibold text-muted">To<input type="date" value={query.to ?? ''} onChange={(e) => set({ to: e.target.value })} className={inputCls} /></label>
-            <Select label="Sort" value={query.sort ?? 'created'} onChange={(v) => set({ sort: v })} options={[{ value: 'created', label: 'Newest first' }, { value: 'updated', label: 'Recently updated' }, { value: 'due', label: 'Resolution due' }, { value: 'priority', label: 'Priority' }]} />
+            <Select label="Sort" value={query.sort ?? 'created'} onChange={(v) => set({ sort: v })} options={[{ value: 'created', label: 'Newest first' }, { value: 'activity', label: 'Latest activity' }, { value: 'updated', label: 'Recently updated' }, { value: 'due', label: 'Resolution due' }, { value: 'priority', label: 'Priority' }]} />
           </div>
           {activeFilters.length > 0 && (
             <button type="button" onClick={() => set(Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])))} className="mt-2 inline-flex items-center gap-1 text-2xs font-bold text-accent hover:underline">
@@ -139,6 +145,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
                       {t.category && <span className="truncate">· {t.category}{t.function ? ` → ${t.function}` : ''}</span>}
                       {t.tags.map((tag) => <span key={tag} className="rounded bg-sunken px-1">{tag}</span>)}
                     </div>
+                    <ActivityLine t={t} className="mt-1" />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 md:justify-end">
                     <SeverityPill severity={t.severity} />

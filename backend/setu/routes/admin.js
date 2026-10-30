@@ -4,7 +4,8 @@ const { clearSeverityCache } = require('../lib/severity');
 const { clearSlaCache } = require('../lib/sla');
 const express = require('express');
 const { pool } = require('../../db');
-const { APP_ID, EMAIL_RE, SEVERITIES } = require('../constants');
+const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EMAIL_RE, SEVERITIES } = require('../constants');
+const { deleteCanned, saveCanned } = require('../lib/canned');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
 const { isAdmin } = require('../middleware/auth');
 
@@ -101,6 +102,24 @@ admin.put('/settings', wrap(async (req, res) => {
         if (!Number.isInteger(n) || n < 5 || n > 24 * 60) throw fail(400, 'Reminder lead time must be 5 to 1440 minutes.');
         updates.push(['sla.reminderMinutes', n]);
     }
+    if (b['bell.events'] !== undefined) {
+        if (!Array.isArray(b['bell.events']) || b['bell.events'].some((e) => !BELL_EVENTS.includes(e))) throw fail(400, 'Unknown bell event.');
+        updates.push(['bell.events', [...new Set(b['bell.events'])]]);
+    }
+    if (b['bell.scope'] !== undefined) {
+        if (!BELL_SCOPES.includes(b['bell.scope'])) throw fail(400, 'Unknown bell audience.');
+        updates.push(['bell.scope', b['bell.scope']]);
+    }
+    if (b['portal.enabled'] !== undefined) updates.push(['portal.enabled', b['portal.enabled'] === true]);
+    if (b['call.mode'] !== undefined) {
+        if (!CALL_MODES.includes(b['call.mode'])) throw fail(400, 'Unknown calling option.');
+        updates.push(['call.mode', b['call.mode']]);
+    }
+    if (b['whatsapp.threadDays'] !== undefined) {
+        const n = Number(b['whatsapp.threadDays']);
+        if (!Number.isInteger(n) || n < 1 || n > 60) throw fail(400, 'WhatsApp threading must be 1 to 60 days.');
+        updates.push(['whatsapp.threadDays', n]);
+    }
     for (const [key, value] of updates) {
         await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, JSON.stringify(value)]);
     }
@@ -123,22 +142,14 @@ admin.put('/templates/:key', wrap(async (req, res) => {
     res.json({ success: true });
 }));
 
+// Shared canned responses only: agents' personal ones are private (routes/me.js), Admins included.
 admin.post('/canned', wrap(async (req, res) => {
-    const b = req.body ?? {};
-    const title = String(b.title || '').trim();
-    const body = String(b.body || '').trim();
-    if (!title || !body) throw fail(400, 'Title and text are needed.');
-    const shortCode = String(b.shortCode || '').trim().replace(/^\//, '').toLowerCase() || null;
-    if (shortCode && !/^[a-z0-9_-]{1,30}$/.test(shortCode)) throw fail(400, 'Short codes use letters, numbers, - and _ only.');
-    const folder = String(b.folder || 'General').trim() || 'General';
-    const id = intOrNull(b.id);
-    if (id) await pool.query('UPDATE setu.canned_responses SET folder = $2, title = $3, "shortCode" = $4, body = $5, "updatedAt" = now() WHERE id = $1', [id, folder, title, shortCode, body]);
-    else await pool.query('INSERT INTO setu.canned_responses (folder, title, "shortCode", body) VALUES ($1, $2, $3, $4)', [folder, title, shortCode, body]);
+    await saveCanned(req.body ?? {}, null);
     res.json({ success: true });
 }));
 
 admin.delete('/canned/:id', wrap(async (req, res) => {
-    await pool.query('DELETE FROM setu.canned_responses WHERE id = $1', [Number(req.params.id)]);
+    await deleteCanned(req.params.id, null);
     res.json({ success: true });
 }));
 
@@ -205,13 +216,16 @@ admin.post('/distributors/import', wrap(async (req, res) => {
 }));
 
 admin.post('/contacts/anonymize', wrap(async (req, res) => {
+    // By email, or by phone number for WhatsApp requesters who have no email.
     const email = String(req.body?.email || '').trim().toLowerCase();
+    const phone = String(req.body?.phone || '').trim();
+    if (!email && !phone) throw fail(400, 'Give an email address or a phone number.');
     const { rows } = await pool.query(
         `UPDATE setu.contacts SET name = 'Removed contact', email = NULL, phone = NULL, mobile = NULL, "anonymizedAt" = now()
-         WHERE email = $1 RETURNING id`,
-        [email],
+         WHERE ${email ? 'email = $1' : '(mobile = $1 OR phone = $1)'} RETURNING id`,
+        [email || phone],
     );
-    if (!rows.length) throw fail(404, 'No contact with that email address.');
+    if (!rows.length) throw fail(404, email ? 'No contact with that email address.' : 'No contact with that phone number.');
     // The address also appears on email conversations, activity entries and parked mail: remove it there too.
     await pool.query(
         `UPDATE setu.conversations SET "fromEmail" = CASE WHEN "fromEmail" = $1 THEN NULL ELSE "fromEmail" END,
@@ -225,16 +239,29 @@ admin.post('/contacts/anonymize', wrap(async (req, res) => {
     await pool.query(
         `UPDATE setu.tickets SET description = $2, "callerName" = NULL, "callerContactNumber" = NULL, "mobileNo" = NULL,
                 "alternateMobileNo" = NULL, "updatedAt" = now()
-         WHERE "requesterId" = $1`,
-        [rows[0].id, `<p>${REMOVED_TEXT}</p>`],
+         WHERE "requesterId" = ANY($1::int[])`,
+        [rows.map((r) => r.id), `<p>${REMOVED_TEXT}</p>`],
     );
     await pool.query(
         `UPDATE setu.conversations SET "bodyHtml" = $2, "bodyText" = $3
-         WHERE kind = 'INCOMING' AND "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = $1)`,
-        [rows[0].id, `<p>${REMOVED_TEXT}</p>`, REMOVED_TEXT],
+         WHERE kind = 'INCOMING' AND "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`,
+        [rows.map((r) => r.id), `<p>${REMOVED_TEXT}</p>`, REMOVED_TEXT],
     );
-    await pool.query(`UPDATE setu.parked_mail SET "fromEmail" = 'removed' WHERE "fromEmail" = $1`, [email]);
-    await audit(req.verifiedEmail, 'contact_anonymized', { contactId: rows[0].id });
+    const ids = rows.map((r) => r.id);
+    await pool.query(
+        `UPDATE setu.conversations SET "fromPhone" = NULL WHERE "fromPhone" IS NOT NULL AND "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`,
+        [ids],
+    );
+    await pool.query(`UPDATE setu.call_logs SET phone = 'removed' WHERE "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`, [ids]);
+    // Bell entries quote the requester's name and words.
+    await pool.query('DELETE FROM setu.notifications WHERE "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))', [ids]);
+    await pool.query(
+        `UPDATE setu.tickets SET "lastActivityBy" = 'Removed contact'
+         WHERE "requesterId" = ANY($1::int[]) AND ("lastActivityKind" = 'requester_reply' OR ("lastActivityKind" = 'created' AND source IN ('Email', 'Portal', 'WhatsApp')))`,
+        [ids],
+    );
+    if (email) await pool.query(`UPDATE setu.parked_mail SET "fromEmail" = 'removed' WHERE "fromEmail" = $1`, [email]);
+    await audit(req.verifiedEmail, 'contact_anonymized', { contactIds: rows.map((r) => r.id) });
     res.json({ success: true });
 }));
 

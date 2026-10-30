@@ -18,6 +18,19 @@ Its README covers the folder layout, roles, security measures, configuration and
 - While mail is off on the server (`SETU_MAIL_ENABLED`), replies are saved on the ticket and the header shows
   "Mail off".
 
+## Freshdesk-style features
+
+- **Ways in**: email, the requester **portal** at `/apps/setu/portal/` (no Emami Apps login), **WhatsApp** (when connected
+  on the server), and **New ticket** for agents logging one on a requester's behalf (their email is required; lookup of
+  existing requesters; optional confirmation email).
+- **Ticket list**: multi-option filters (status, priority, severity, group, agent, source, type, last activity), a
+  **Pending** view, and each ticket's **last activity** (status change, reply, note, call ...), with "Latest activity" sort.
+- **Bell** (header): requester replies by default; Admin > Channels & bell sets the events and audience, each agent can
+  mute events for themselves.
+- **Calls**: Call buttons on every number on the ticket (phone app or Teams), a running timer, and "Log call".
+- **Canned responses**: shared ones in Admin, personal ones under **My responses** in the reply box (only the owner sees them).
+- **Daily report**: load a date range, filter on any of the 36 columns, preview, then download the matching rows.
+
 ## Insights, action points and shortcuts
 
 - **Dashboard > Insights & action points**: headline, prioritised action points, risks and this week's themes for the
@@ -30,12 +43,13 @@ Its README covers the folder layout, roles, security measures, configuration and
 
 ```
 src/app/            page shell, global styles (shared Emami Apps design tokens), icon
+src/app/portal/     requester portal page (no hub sign-in)
 src/components/     App (sidebar, top bar, routing), Dashboard, Tickets, TicketView, TicketFields, NewTicket,
-                    Board, Reports, Insights (dashboard insights, ticket Assist), Shortcuts, ui (cards, pills,
-                    inputs), badges, charts
+                    Board, Reports, Insights (dashboard insights, ticket Assist), Shortcuts, Bell, Calls, MyCanned,
+                    Portal, ui (cards, pills, inputs, multi-select), badges (incl. last activity), charts
 src/components/admin/  Admin sections: People (agents, groups), Sla (SLA, business hours), Fields (severity
-                    matrix, fields), Content (templates, canned responses), Distributors, System (settings,
-                    automations, contacts, audit, parked mail)
+                    matrix, fields), Content (templates, shared canned responses), Distributors, Channels (bell,
+                    portal, calling, WhatsApp), System (settings, automations, contacts, audit, parked mail)
 src/lib/            api (all backend calls), types, format (IST dates, durations), context, hub session
 ```
 

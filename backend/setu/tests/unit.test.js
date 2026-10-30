@@ -2,11 +2,15 @@
 /*
    Setu unit tests - pure logic, no database or network. Run: node --test backend/setu/tests/unit.test.js
 */
+// WhatsApp signature tests sign with this secret (read when constants.js loads, so set before any require).
+process.env.SETU_WHATSAPP_APP_SECRET = 'unit-test-secret';
+const crypto = require('node:crypto');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ticketNumberFromSubject, noiseReason, senderUnverified } = require('../lib/mail');
 const { addMinutes, businessMinutesBetween, minutesBetween } = require('../lib/businessHours');
 const { ruleMatches } = require('../lib/automation');
+const { htmlToWhatsAppText, inboundMessages, metaJson, validSignature } = require('../lib/whatsapp');
 
 const IST_CAL = { timezone: 'Asia/Kolkata', days: [1, 2, 3, 4, 5, 6].map((day) => ({ day, start: '09:00', end: '20:00' })), holidays: ['2026-10-19'] };
 const ist = (s) => new Date(`${s}+05:30`);
@@ -59,4 +63,36 @@ test('automation conditions: all / any, operators and time measures', () => {
     assert.equal(ruleMatches({ all: [{ field: 'changed', op: 'in', value: ['statusId'] }] }, { ticket, changed: ['priority'] }), false);
     assert.equal(ruleMatches({ any: [{ field: 'statusId', op: 'eq', value: 2 }, { field: 'statusId', op: 'eq', value: 4 }] }, { ticket }), true);
     assert.equal(ruleMatches({ all: [{ field: 'statusId', op: 'unknown_op', value: 4 }] }, { ticket }), false, 'unknown operators never match');
+});
+
+test('whatsapp: webhook signature over the body exactly as Meta serialises it', () => {
+    const B = String.fromCharCode(92); // a backslash
+    // Meta escapes "/" and every non-ASCII character (an accented letter, an emoji as a surrogate pair).
+    const raw = `{"entry":[{"changes":[{"field":"messages","value":{"messages":[{"from":"919830012345","id":"wamid.1","type":"text","text":{"body":"caf${B}u00e9 ${B}ud83d${B}ude00 http:${B}/${B}/x"}}]}}]}]}`;
+    const sig = `sha256=${crypto.createHmac('sha256', 'unit-test-secret').update(raw).digest('hex')}`;
+    assert.equal(metaJson(JSON.parse(raw)), raw, 're-serialised body matches the signed bytes');
+    assert.equal(validSignature(Buffer.from(metaJson(JSON.parse(raw))), sig), true);
+    assert.equal(validSignature(Buffer.from(raw), sig.replace(/.$/, (c) => (c === '0' ? '1' : '0'))), false, 'tampered signature');
+    assert.equal(validSignature(Buffer.from(`${raw} `), sig), false, 'tampered body');
+    assert.equal(validSignature(Buffer.from(raw), ''), false, 'missing signature');
+});
+
+test('whatsapp: messages from a webhook payload, receipts ignored, media as a placeholder', () => {
+    const payload = { entry: [{ changes: [
+        { field: 'messages', value: { contacts: [{ wa_id: '919830012345', profile: { name: 'Ravi' } }], messages: [
+            { from: '919830012345', id: 'wamid.1', timestamp: '1761700000', type: 'text', text: { body: 'Order not syncing' } },
+            { from: '919830012345', id: 'wamid.2', type: 'image', image: { caption: 'screenshot' } },
+        ] } },
+        { field: 'messages', value: { statuses: [{ id: 'wamid.0', status: 'read' }] } },
+    ] }] };
+    const out = inboundMessages(payload);
+    assert.equal(out.length, 2);
+    assert.deepEqual([out[0].from, out[0].name, out[0].text], ['+919830012345', 'Ravi', 'Order not syncing']);
+    assert.equal(out[0].at.toISOString(), new Date(1761700000 * 1000).toISOString());
+    assert.match(out[1].text, /^\[image received on WhatsApp.*\]\nscreenshot$/);
+    assert.deepEqual(inboundMessages({}), []);
+});
+
+test('whatsapp: reply HTML becomes plain text with line breaks', () => {
+    assert.equal(htmlToWhatsAppText('<p>Hi Ravi,</p><p>Done &amp; dusted<br>Line 2</p><br><br><br>#TICKET No - 100001'), 'Hi Ravi,\nDone & dusted\nLine 2\n\n#TICKET No - 100001');
 });

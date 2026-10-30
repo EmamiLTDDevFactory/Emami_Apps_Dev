@@ -1,6 +1,6 @@
 'use client';
-import { forwardRef, useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { ChevronRight, X, type LucideIcon } from 'lucide-react';
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Check, ChevronDown, ChevronRight, X, type LucideIcon } from 'lucide-react';
 import { nameFromEmail } from '@/lib/hub';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -102,6 +102,71 @@ export function Select({ value, onChange, options, label, className }: { value: 
     <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className={cx('h-9', inputBase, 'pr-8', className)}>
       {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+  );
+}
+
+/**
+ * Dropdown with checkboxes: pick any number of values ("Pending" and "Resolved" together). An empty pick means "any".
+ * The button reads "Status: Any", the single choice, or "Status: 3 selected".
+ */
+export function MultiSelect({ label, values, onChange, options, className, align = 'left' }: {
+  label: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const picked = new Set(values);
+  const shown = filter ? options.filter((o) => o.label.toLowerCase().includes(filter.toLowerCase())) : options;
+  const summary = values.length === 0 ? 'Any' : values.length === 1 ? options.find((o) => o.value === values[0])?.label ?? values[0] : `${values.length} selected`;
+  const toggle = (v: string) => onChange(picked.has(v) ? values.filter((x) => x !== v) : [...values, v]);
+  return (
+    <div ref={box} className={cx('relative', className)}>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={cx('flex h-9 w-full items-center gap-1.5 text-left', inputBase, values.length > 0 && 'border-accent/50 bg-accent/[0.04]')}
+      >
+        <span className="shrink-0 text-2xs font-bold uppercase tracking-wide text-muted">{label}</span>
+        <span className={cx('min-w-0 flex-1 truncate text-[13px]', values.length ? 'font-semibold text-accent' : 'text-muted')}>{summary}</span>
+        <ChevronDown size={14} className="shrink-0 text-faint" />
+      </button>
+      {open && (
+        <div role="listbox" aria-multiselectable="true" aria-label={label} className={cx('absolute z-30 mt-1 w-64 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-panel p-1.5 shadow-pop', align === 'right' ? 'right-0' : 'left-0')}>
+          {options.length > 8 && (
+            <input autoFocus value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find…" aria-label={`Find ${label}`} className={cx(inputCls, 'mb-1 h-8 text-xs')} />
+          )}
+          <ul className="scroll-thin max-h-64 overflow-y-auto">
+            {shown.map((o) => (
+              <li key={o.value}>
+                <button type="button" role="option" aria-selected={picked.has(o.value)} onClick={() => toggle(o.value)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-sunken">
+                  <span className={cx('grid h-4 w-4 shrink-0 place-items-center rounded border', picked.has(o.value) ? 'border-accent bg-accent text-white' : 'border-line bg-panel')}>{picked.has(o.value) && <Check size={11} strokeWidth={3} />}</span>
+                  <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                </button>
+              </li>
+            ))}
+            {shown.length === 0 && <li className="px-2 py-1.5 text-xs text-muted">No match</li>}
+          </ul>
+          {values.length > 0 && (
+            <button type="button" onClick={() => onChange([])} className="mt-1 w-full rounded-lg px-2 py-1 text-left text-2xs font-bold text-accent hover:bg-sunken">Clear ({values.length})</button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
