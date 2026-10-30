@@ -83,7 +83,7 @@ const SEED_SLA = [
     },
 ];
 
-const SIGN = '<br><br>Regards,<br>Setu – Emami Secondary Helpdesk';
+const SIGN = '<br><br>Regards,<br>Samadhan – Emami Secondary Helpdesk';
 const SEED_TEMPLATES = [
     {
         key: 'requester.ticket_received', audience: 'requester',

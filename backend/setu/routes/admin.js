@@ -12,7 +12,7 @@ const { isAdmin } = require('../middleware/auth');
 // ---------- Routes: admin ----------
 
 const admin = express.Router();
-admin.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ success: false, error: 'Setu admins only.' })));
+admin.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ success: false, error: 'Samadhan admins only.' })));
 
 admin.get('/agents', wrap(async (req, res) => {
     const { rows } = await pool.query(

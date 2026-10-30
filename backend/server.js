@@ -74,7 +74,7 @@ try {
     apiRouter.use('/setu', require('./setu'));
 } catch (err) {
     console.error('[setu] failed to load, Setu is unavailable:', err.message);
-    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Setu is temporarily unavailable.' }));
+    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Samadhan is temporarily unavailable.' }));
 }
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.

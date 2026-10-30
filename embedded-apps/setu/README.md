@@ -1,4 +1,6 @@
-# Setu Helpdesk
+# Samadhan (internal name: Setu)
+
+Users see the app as **Samadhan**. `setu` stays the internal name: app id in Manage Access, `setu` schema, `/api/setu` routes, folders.
 
 Helpdesk for Emami Secondary Support: tickets from the Microsoft 365 support mailbox or logged by agents,
 ticket detail fields, the Category → Function severity matrix, SLA timers on business hours, round-robin

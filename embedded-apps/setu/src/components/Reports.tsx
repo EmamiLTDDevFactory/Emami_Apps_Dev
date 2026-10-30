@@ -81,7 +81,7 @@ export default function Reports() {
       ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: columns.length - 1 } }) };
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-      XLSX.writeFile(wb, `Setu_Daily_Report_${report.from}_to_${report.to}${active ? '_filtered' : ''}.xlsx`);
+      XLSX.writeFile(wb, `Samadhan_Daily_Report_${report.from}_to_${report.to}${active ? '_filtered' : ''}.xlsx`);
       setMsg({ tone: 'good', text: `Downloaded ${rows.length} ticket${rows.length === 1 ? '' : 's'}${active ? ` (${active} filter${active === 1 ? '' : 's'} applied)` : ''}.` });
     } catch (e) {
       setMsg({ tone: 'bad', text: e instanceof Error ? e.message : 'Could not build the report.' });

@@ -66,7 +66,7 @@ export function MyCannedButton() {
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-muted">Only you see these. Shared responses for the whole team are managed by your Setu admin.</p>
+            <p className="text-xs text-muted">Only you see these. Shared responses for the whole team are managed by your Samadhan admin.</p>
             {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
             {mine.length === 0 ? (
               <Empty title="No personal responses yet" icon={BookUser}>Save the replies you type often.</Empty>

@@ -8,7 +8,7 @@
 #   1. Backs up server.js, notifications.js, package.json, package-lock.json as *.bak-preSetu-<timestamp>
 #   2. Moves the uploaded ~/setu-upload folder into the backend as setu/
 #   3. server.js: adds the isolated Setu mount and Setu's roles (keeps this server's own local edits)
-#   4. notifications.js: adds Setu's display name
+#   4. notifications.js: adds Setu's display name (Samadhan - the name users see)
 #   5. Installs @anthropic-ai/sdk 0.128.0 (same version the hub uses)
 #   6. Syntax-checks everything, restarts ONLY emami-hub-backend-dev, and checks it answers
 #   If a check fails before the restart, nothing is restarted. To undo, run the "undo" lines it prints.
@@ -43,9 +43,11 @@ try {
     apiRouter.use('/setu', require('./setu'));
 } catch (err) {
     console.error('[setu] failed to load, Setu is unavailable:', err.message);
-    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Setu is temporarily unavailable.' }));
+    apiRouter.use('/setu', (req, res) => res.status(503).json({ success: false, error: 'Samadhan is temporarily unavailable.' }));
 }`);
 }
+// Setu is shown to users as Samadhan; servers set up before the rename still carry the old 503 text.
+s = s.split("error: 'Setu is temporarily unavailable.'").join("error: 'Samadhan is temporarily unavailable.'");
 if (!/VALID_ROLES_BY_APP = \{[^\n]*'setu'/.test(s)) {
   const re = /(const VALID_ROLES_BY_APP = \{[^\n]*?)\s*\};/;
   if (!re.test(s)) throw new Error('VALID_ROLES_BY_APP line not found - stopping');
@@ -54,14 +56,17 @@ if (!/VALID_ROLES_BY_APP = \{[^\n]*'setu'/.test(s)) {
 fs.writeFileSync('server.js', s);
 JS
 
-echo "== 4. notifications.js: Setu display name"
+echo "== 4. notifications.js: display name Samadhan"
 node - <<'JS'
 const fs = require('fs');
 let s = fs.readFileSync('notifications.js', 'utf8');
-if (!s.includes("setu: 'Setu Helpdesk'")) {
+if (s.includes("setu: 'Setu Helpdesk'")) {
+  s = s.replace("setu: 'Setu Helpdesk'", "setu: 'Samadhan'");   // set up before the rename
+  fs.writeFileSync('notifications.js', s);
+} else if (!s.includes("setu: 'Samadhan'")) {
   const re = /const APP_NAMES = \{([^\n]*?)\s*\};/;
   if (!re.test(s)) throw new Error('APP_NAMES line not found - stopping');
-  s = s.replace(re, "const APP_NAMES = {$1, setu: 'Setu Helpdesk' };");
+  s = s.replace(re, "const APP_NAMES = {$1, setu: 'Samadhan' };");
   fs.writeFileSync('notifications.js', s);
 }
 JS

@@ -180,7 +180,7 @@ function Thread({ data }: { data: TicketDetail }) {
           key={e.key}
           kind={e.c.kind}
           whatsapp={e.c.channel === 'whatsapp'}
-          who={e.c.kind === 'INCOMING' ? incomingWho(e.c) : e.c.agentName ?? 'Setu automation'}
+          who={e.c.kind === 'INCOMING' ? incomingWho(e.c) : e.c.agentName ?? 'Samadhan automation'}
           sub={e.c.kind === 'INCOMING' ? e.c.fromPhone ?? e.c.fromEmail ?? '' : sentTo(e.c)}
           at={e.c.createdAt}
           html={e.c.bodyHtml}
@@ -585,7 +585,7 @@ function ActivityLog({ items }: { items: ActivityItem[] }) {
                 {a.action === 'automation' ? <Zap size={12} /> : a.action === 'email_sent' ? <Mail size={12} /> : a.action === 'call_logged' ? <Phone size={12} /> : a.action.startsWith('whatsapp') ? <MessageCircle size={12} /> : <ArrowRightLeft size={12} />}
               </span>
               <div className="min-w-0 flex-1">
-                <div><span className="font-semibold">{a.actorName ?? 'Setu'}</span> <span className="text-muted">· {ACTION_LABEL[a.action] ?? a.action}</span></div>
+                <div><span className="font-semibold">{a.actorName ?? 'Samadhan'}</span> <span className="text-muted">· {ACTION_LABEL[a.action] ?? a.action}</span></div>
                 <div className="break-words text-muted">{describe(a)}</div>
               </div>
               <time className="num shrink-0 text-2xs text-faint" title={fmtDateTime(a.createdAt)}>{relative(a.createdAt)}</time>

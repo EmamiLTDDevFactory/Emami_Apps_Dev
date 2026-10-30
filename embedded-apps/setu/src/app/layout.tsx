@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Setu Helpdesk',
+  title: 'Samadhan',
   description: 'Emami Secondary Support helpdesk: tickets, SLA timers, severity matrix and the daily report',
 };
 

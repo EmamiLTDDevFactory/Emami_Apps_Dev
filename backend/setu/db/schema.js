@@ -7,7 +7,7 @@ const { seed } = require('./seed');
 // Everything is CREATE ... IF NOT EXISTS / insert-if-missing, so it is safe to run again. To keep backend cold
 // starts fast it runs only when the stored schema version differs from SCHEMA_VERSION: bump it whenever this
 // file or seed.js changes.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 async function initSchema() {
     try {
@@ -389,6 +389,7 @@ async function initSchema() {
     `);
 
     await upgradeV3();
+    await upgradeV4();
     await seed();
     await pool.query(
         `INSERT INTO setu.settings (key, value) VALUES ('schema.version', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
@@ -456,6 +457,14 @@ async function upgradeV3() {
     `);
     await pool.query('CREATE INDEX IF NOT EXISTS notifications_agent_idx ON setu.notifications ("agentId", "createdAt" DESC)');
     await pool.query('CREATE INDEX IF NOT EXISTS notifications_unread_idx ON setu.notifications ("agentId") WHERE "readAt" IS NULL');
+}
+
+// v4: the app is shown as Samadhan - the default email sign-off in templates already stored follows the new name.
+async function upgradeV4() {
+    await pool.query(
+        `UPDATE setu.email_templates SET body = replace(body, 'Regards,<br>Setu – Emami Secondary Helpdesk', 'Regards,<br>Samadhan – Emami Secondary Helpdesk')
+          WHERE body LIKE '%Regards,<br>Setu – Emami Secondary Helpdesk%'`,
+    );
 }
 
 module.exports = { SCHEMA_VERSION, initSchema };
