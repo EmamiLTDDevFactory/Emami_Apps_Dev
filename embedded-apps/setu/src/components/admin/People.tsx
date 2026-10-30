@@ -30,7 +30,7 @@ export function AgentsTab() {
   return (
     <Card
       title="Agents"
-      sub="An agent appears here the first time they open Samadhan, or when you add them. Access and role come from Manage Access."
+      sub="An agent appears here the first time they open Samadhan, or when you add them. Access and role are set under Roles &amp; access (same as Emami Apps Manage Access)."
       actions={<Button size="sm" variant="primary" onClick={() => open()}><Plus size={13} /> Add agent</Button>}
       bodyClass="p-0"
     >
@@ -73,7 +73,7 @@ export function AgentsTab() {
               <input type="checkbox" className={checkboxCls} checked={edit.active} disabled={edit.email === me.email} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} />
               Active (deactivated agents cannot open Samadhan and get no tickets)
             </label>
-            <p className="text-2xs text-muted">The role (Agent, Supervisor, Admin) is the Samadhan role granted in Emami Apps Manage Access.</p>
+            <p className="text-2xs text-muted">The role (Agent, Supervisor, Admin) is set under Admin &gt; Roles &amp; access (same as Emami Apps Manage Access).</p>
             {act.msg && <Notice tone={act.msg.tone}>{act.msg.text}</Notice>}
             <div className="flex justify-end gap-2">
               <Button onClick={() => setEdit(null)}>Cancel</Button>

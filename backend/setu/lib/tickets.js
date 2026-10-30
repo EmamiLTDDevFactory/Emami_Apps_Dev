@@ -1,7 +1,8 @@
 'use strict';
 const { pool } = require('../../db');
-const { CUSTOMER_SOURCES, EDITABLE_FIELDS, PATCHABLE, SEVERITY_PRIORITY, STATUS, q } = require('../constants');
-const { ring } = require('./bell');
+const { CUSTOMER_SOURCES, EDITABLE_FIELDS, PATCHABLE, STATUS, q } = require('../constants');
+const { mentionedAgents, ring, watchersOf } = require('./bell');
+const { severityPriority } = require('./config');
 const { roundRobinAgent } = require('./assignment');
 const { ruleMatches, rulesFor } = require('./automation');
 const { sendMail } = require('./mail');
@@ -114,7 +115,7 @@ async function createTicket(input) {
         statusChangedAt: createdAt,
         severity,
         ...f,
-        priority: f.priority ?? SEVERITY_PRIORITY[severity],
+        priority: f.priority ?? await severityPriority(severity),
         lastActivityBy: String(input.actorName ?? input.requester.name ?? '').slice(0, 200) || null,
         lastActivityDetail: input.source ?? 'Email',
     };
@@ -174,7 +175,7 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     if (changed.includes('category') || changed.includes('function')) {
         const sev = await severityFor(patch.category !== undefined ? patch.category : before.category, patch.function !== undefined ? patch.function : before.function);
         data.severity = sev;
-        if (!changed.includes('priority')) data.priority = SEVERITY_PRIORITY[sev];
+        if (!changed.includes('priority')) data.priority = await severityPriority(sev);
     }
 
     // Status: pause / resume the SLA clock, stamp resolved and closed times.
@@ -226,6 +227,15 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
         await ring(t, 'assigned', { title: `Assigned to you: #${t.id} ${t.subject}`, body: t.requesterName, only: [t.agentId] });
     }
     if (changed.includes('agentId') && t.agentId && t.agentId !== actorAgentId) await notifyAgents(t, 'agent.assigned_agent', 'assignee');
+    if (changed.includes('statusId')) {
+        const by = actorAgentId ? (await pool.query('SELECT name FROM setu.agents WHERE id = $1', [actorAgentId])).rows[0]?.name ?? 'An agent' : 'Automation';
+        const title = `#${t.id} is now ${t.statusName}`;
+        // The ticket's agent hears when someone else (or an automation) changes the status.
+        if (t.agentId && t.agentId !== actorAgentId) await ring(t, 'status_changed', { title, body: `${by}: ${before.statusName} → ${t.statusName}`, only: [t.agentId] });
+        if (t.statusId === STATUS.ESCALATION_L3) await ring(t, 'escalated', { title: `Escalated to L3: #${t.id} ${t.subject}`, body: by, except: actorAgentId });
+        const watching = await watchersOf(id, [actorAgentId, t.agentId]);
+        if (watching.length) await ring(t, 'watching', { title: `${title} (watching)`, body: `${by}: ${before.statusName} → ${t.statusName}`, only: watching });
+    }
     if (changed.includes('groupId') && t.groupId) await notifyAgents(t, 'agent.assigned_group', 'group');
     if (changed.includes('statusId') && t.isClosed && !before.isClosed) await require('./ticketOps').maybeSendCsat(t);
     if (!opts.skipAutomations) await runRules('ON_UPDATE', id, changed);
@@ -276,6 +286,10 @@ async function addAgentMessage(ticketId, m, agent) {
         if (!t.agentId) await updateTicket(ticketId, { agentId: agent.id }, agent.id);
     } else {
         await updateRow('tickets', ticketId, { updatedAt: now });
+        if (m.kind === 'NOTE') {
+            const mentioned = (await mentionedAgents(stripTags(m.html))).filter((a) => a !== agent.id);
+            if (mentioned.length) await ring(t, 'mention', { title: `${agent.name} mentioned you on #${t.id}`, body: stripTags(m.html).slice(0, 200), only: mentioned });
+        }
         if (m.kind === 'NOTE' && t.agentId && t.agentId !== agent.id) {
             await notifyAgents(t, 'agent.note_added', 'assignee', { 'comment.body': stripTags(m.html) });
             await ring(t, 'note', { title: `${agent.name} added a note on #${t.id}`, body: stripTags(m.html).slice(0, 200), only: [t.agentId] });
@@ -307,8 +321,8 @@ async function addRequesterReply(ticketId, m) {
     await logActivity(ticketId, 'requester_replied', { channel: m.channel ?? 'email' });
     await ring(after, 'requester_reply', { title: `${after.requesterName} replied on #${after.id}`, body: stripTags(m.html).slice(0, 200) });
     // Agents watching the ticket hear about requester replies too (their own bell mute still applies).
-    const watchers = (await pool.query('SELECT "agentId" FROM setu.ticket_watchers WHERE "ticketId" = $1', [ticketId])).rows.map((r) => r.agentId).filter((a) => a !== after.agentId);
-    if (watchers.length) await ring(after, 'requester_reply', { title: `${after.requesterName} replied on #${after.id} (watching)`, body: stripTags(m.html).slice(0, 200), only: watchers });
+    const watchers = await watchersOf(ticketId, [after.agentId]);
+    if (watchers.length) await ring(after, 'watching', { title: `${after.requesterName} replied on #${after.id} (watching)`, body: stripTags(m.html).slice(0, 200), only: watchers });
 }
 
 module.exports = { CREATE_FIELDS, LONG_TEXT_FIELDS, addAgentMessage, addRequesterReply, createTicket, runActions, updateTicket };

@@ -751,6 +751,21 @@ ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO setu.settings (key, value) VALUES ('csat.enabled', 'true') ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO setu.settings (key, value) VALUES ('schema.version', '5') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+-- v6: more bell events and saved variants (report layouts)
+ALTER TABLE setu.notifications DROP CONSTRAINT IF EXISTS notifications_event_check;
+ALTER TABLE setu.notifications ADD CONSTRAINT notifications_event_check CHECK (event IN ('requester_reply', 'new_ticket', 'assigned', 'note', 'mention', 'status_changed', 'escalated', 'sla_warning', 'sla_breach', 'csat', 'watching'));
+CREATE TABLE IF NOT EXISTS setu.variants (
+    id serial PRIMARY KEY,
+    kind text NOT NULL,
+    "ownerAgentId" integer NOT NULL REFERENCES setu.agents(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    shared boolean NOT NULL DEFAULT false,
+    config jsonb NOT NULL,
+    "createdAt" timestamptz NOT NULL DEFAULT now(),
+    "updatedAt" timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS variants_kind_owner_idx ON setu.variants (kind, "ownerAgentId");
+
+INSERT INTO setu.settings (key, value) VALUES ('schema.version', '6') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 COMMIT;

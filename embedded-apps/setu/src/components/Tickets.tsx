@@ -37,8 +37,11 @@ const SORTS = [
 const EXPORT_PREF = 'samadhan.exportColumns';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
-  const { me, meta, openTicket, isSupervisor, isAdmin, setListIds } = useSetu();
-  const [query, setQuery] = useState<TicketQuery>({ view: preset.view ?? (Object.keys(preset).length ? '' : 'open'), sort: 'created', page: 1, ...preset });
+  const { me, meta, openTicket, isSupervisor, isAdmin, setListIds, prefs } = useSetu();
+  // Where the list opens and how long a page is: the agent's own choice, else the Admin default.
+  const startView = prefs.listView ?? meta.options['list.defaultView'] ?? 'open';
+  const pageSize = Number(prefs.pageSize || meta.options['list.pageSize']) || 50;
+  const [query, setQuery] = useState<TicketQuery>({ view: preset.view ?? (Object.keys(preset).length ? '' : startView), sort: 'created', page: 1, ...preset });
   const [search, setSearch] = useState(preset.q ?? '');
   const [rows, setRows] = useState<TicketRow[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -52,7 +55,6 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [dialog, setDialog] = useState<'save' | 'export' | 'merge' | null>(null);
-  const pageSize = 50;
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -68,7 +70,7 @@ export default function Tickets({ preset }: { preset: TicketQuery }) {
     } finally {
       setBusy(false);
     }
-  }, [query]);
+  }, [query, pageSize]);
 
   useEffect(() => { load(); }, [load]);
   // A new page / view / filter starts with nothing selected.

@@ -5,16 +5,26 @@ import { admin, setuApiUrl } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
 import { useSetu } from '@/lib/context';
 import { BELL_EVENT_LABEL } from '@/lib/format';
-import type { BellEvent, CallMode } from '@/lib/types';
-import { Button, Card, Field, Notice, Pill, Skeleton, cx, inputCls } from '../ui';
+import type { BellEvent, BellScope, CallMode } from '@/lib/types';
+import { Button, Card, Field, Notice, Pill, Skeleton, cx, inputBase, inputCls } from '../ui';
 import { checkboxCls, useAction, useLoad } from './shared';
 
-const EVENTS: BellEvent[] = ['requester_reply', 'new_ticket', 'assigned', 'note'];
-const SCOPES = [
-  { id: 'assignee', label: "The ticket's agent", hint: 'Everyone in its group while it is unassigned' },
-  { id: 'group', label: "The ticket's whole group", hint: 'The agent plus every member of the group' },
-  { id: 'all', label: 'Every agent', hint: 'Busy helpdesks: use with "requester replies" only' },
+const FALLBACK_EVENTS: BellEvent[] = ['requester_reply', 'new_ticket', 'assigned', 'note'];
+const SCOPES: { id: BellScope; label: string; hint: string }[] = [
+  { id: 'assignee', label: "Ticket's agent", hint: "The ticket's agent; everyone in its group while it is unassigned" },
+  { id: 'group', label: 'Whole group', hint: "The ticket's agent plus every member of its group" },
+  { id: 'all', label: 'Everyone', hint: 'Every active agent - busy helpdesks: keep this for rare events' },
 ];
+const isScope = (v: unknown): v is BellScope => v === 'assignee' || v === 'group' || v === 'all';
+/** These always go to the specific people involved (the new assignee, the people mentioned, the ticket's watchers). */
+const PERSONAL: BellEvent[] = ['assigned', 'mention', 'watching'];
+const EVENT_HINT: Record<string, string> = {
+  requester_reply: 'Requester replied', new_ticket: 'New ticket from email / portal / WhatsApp', assigned: 'Ticket assigned to me',
+  note: 'Private note on my ticket', mention: 'Someone @mentioned me in a note', status_changed: "Someone else changed my ticket's status",
+  escalated: 'Ticket escalated to L3', sla_warning: 'First response / resolution due soon', sla_breach: 'SLA breached',
+  csat: 'Requester rated the support', watching: 'Updates on tickets I watch',
+};
+const prettify = (id: string) => id.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 function CopyLine({ value }: { value: string }) {
   const [done, setDone] = useState(false);
@@ -30,10 +40,11 @@ function CopyLine({ value }: { value: string }) {
 
 /** Admin > Channels & bell: the in-app bell, the requester portal, calling, WhatsApp. */
 export function ChannelsTab() {
-  const { whatsappEnabled, reloadMeta } = useSetu();
+  const { whatsappEnabled, reloadMeta, meta } = useSetu();
+  const eventList = meta.bellEventList?.length ? meta.bellEventList : FALLBACK_EVENTS;
   const { data, error, reload } = useLoad(admin.settings);
   const [events, setEvents] = useState<BellEvent[]>(['requester_reply']);
-  const [scope, setScope] = useState('assignee');
+  const [audience, setAudience] = useState<Partial<Record<BellEvent, BellScope>>>({});
   const [portal, setPortal] = useState(true);
   const [csat, setCsat] = useState(true);
   const [callMode, setCallMode] = useState<CallMode>('tel');
@@ -43,11 +54,15 @@ export function ChannelsTab() {
   useEffect(() => {
     if (!data) return;
     setEvents(Array.isArray(data['bell.events']) ? (data['bell.events'] as BellEvent[]) : ['requester_reply']);
-    setScope(String(data['bell.scope'] ?? 'assignee'));
+    // Per-event audience; an event never set falls back to the older single 'bell.scope' setting.
+    const fallback: BellScope = isScope(data['bell.scope']) ? data['bell.scope'] : 'assignee';
+    const saved = (data['bell.audience'] && typeof data['bell.audience'] === 'object' ? data['bell.audience'] : {}) as Record<string, unknown>;
+    setAudience(Object.fromEntries(eventList.filter((e) => !PERSONAL.includes(e)).map((e) => [e, isScope(saved[e]) ? saved[e] : fallback])));
     setPortal(data['portal.enabled'] !== false);
     setCsat(data['csat.enabled'] !== false);
     setCallMode(data['call.mode'] === 'teams' ? 'teams' : 'tel');
     setThreadDays(String(data['whatsapp.threadDays'] ?? 7));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
   useEffect(() => { setPortalUrl(`${window.location.origin}${BASE_PATH}/portal/`); }, []);
 
@@ -55,7 +70,7 @@ export function ChannelsTab() {
   if (!data) return <Card><Skeleton /></Card>;
   const save = async () => {
     const ok = await act.run(
-      () => admin.saveSettings({ 'bell.events': events, 'bell.scope': scope, 'portal.enabled': portal, 'csat.enabled': csat, 'call.mode': callMode, 'whatsapp.threadDays': Number(threadDays) }),
+      () => admin.saveSettings({ 'bell.events': events, 'bell.audience': audience, 'portal.enabled': portal, 'csat.enabled': csat, 'call.mode': callMode, 'whatsapp.threadDays': Number(threadDays) }),
       'Channel and bell settings saved.',
     );
     if (ok) { reload(); reloadMeta(); }
@@ -63,29 +78,44 @@ export function ChannelsTab() {
 
   return (
     <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
-      <Card title={<span className="inline-flex items-center gap-2"><Bell size={15} className="text-accent" /> Notification bell</span>} sub="The bell in the Samadhan header. Agents can switch any of these off for themselves.">
-        <div className="space-y-4">
-          <div>
-            <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">What reaches the bell</div>
-            {EVENTS.map((e) => (
-              <label key={e} className="flex items-center gap-2 py-1 text-[13px]">
-                <input type="checkbox" className={checkboxCls} checked={events.includes(e)} onChange={(x) => setEvents(x.target.checked ? [...events, e] : events.filter((y) => y !== e))} />
-                {BELL_EVENT_LABEL[e]}
-                {e === 'requester_reply' && <Pill tone="accent">Default</Pill>}
-              </label>
-            ))}
-            {events.length === 0 && <p className="mt-1 text-2xs text-warn">Nothing selected: the bell stays empty for everyone.</p>}
+      <Card title={<span className="inline-flex items-center gap-2"><Bell size={15} className="text-accent" /> Notification bell</span>} sub="The bell in the Samadhan header. Agents can switch any of these off for themselves." className="lg:col-span-2">
+        <div className="space-y-2">
+          <div className="hidden grid-cols-[minmax(0,1fr)_10rem] gap-3 text-2xs font-bold uppercase tracking-wide text-muted sm:grid">
+            <span>What reaches the bell</span><span>Who gets it</span>
           </div>
-          <div>
-            <div className="mb-1.5 text-2xs font-bold uppercase tracking-wide text-muted">Who sees requester replies and new tickets</div>
-            {SCOPES.map((s) => (
-              <label key={s.id} className="flex items-start gap-2 py-1 text-[13px]">
-                <input type="radio" name="bell-scope" className={cx(checkboxCls, 'mt-0.5')} checked={scope === s.id} onChange={() => setScope(s.id)} />
-                <span>{s.label}<span className="block text-2xs text-muted">{s.hint}</span></span>
-              </label>
-            ))}
-            <p className="mt-1 text-2xs text-faint">Assignments and notes always go to the ticket&apos;s agent only.</p>
-          </div>
+          <ul className="divide-y divide-line">
+            {eventList.map((e) => {
+              const on = events.includes(e);
+              return (
+                <li key={e} className="grid gap-1.5 py-2 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:gap-3">
+                  <label className="flex items-start gap-2 text-[13px]">
+                    <input type="checkbox" className={cx(checkboxCls, 'mt-0.5')} checked={on} onChange={(x) => setEvents(x.target.checked ? [...events, e] : events.filter((y) => y !== e))} />
+                    <span className="min-w-0">
+                      <span className="font-medium">{BELL_EVENT_LABEL[e] ?? prettify(e)}</span>
+                      {e === 'requester_reply' && <span className="ml-1.5"><Pill tone="accent">Default</Pill></span>}
+                      {EVENT_HINT[e] && EVENT_HINT[e] !== BELL_EVENT_LABEL[e] && <span className="block text-2xs text-muted">{EVENT_HINT[e]}</span>}
+                    </span>
+                  </label>
+                  {PERSONAL.includes(e) ? (
+                    <span className={cx('pl-6 text-2xs text-muted sm:pl-0', !on && 'opacity-50')}>Specific people</span>
+                  ) : (
+                    <select
+                      aria-label={`Who gets: ${BELL_EVENT_LABEL[e] ?? prettify(e)}`}
+                      title={SCOPES.find((x) => x.id === audience[e])?.hint}
+                      className={cx('ml-6 h-8 text-xs sm:ml-0', inputBase, !on && 'opacity-50')}
+                      value={audience[e] ?? 'assignee'}
+                      disabled={!on}
+                      onChange={(x) => setAudience({ ...audience, [e]: x.target.value as BellScope })}
+                    >
+                      {SCOPES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                    </select>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {events.length === 0 && <p className="text-2xs text-warn">Nothing selected: the bell stays empty for everyone.</p>}
+          <p className="text-2xs text-faint">Ticket&apos;s agent = the assigned agent, or everyone in the group while it is unassigned. Whole group = the agent plus every group member. Everyone = every active agent. Assignments, @mentions and watched-ticket updates always go to the specific people involved.</p>
         </div>
       </Card>
 

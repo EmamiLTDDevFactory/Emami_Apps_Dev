@@ -21,6 +21,7 @@ backend/setu/
     severity.js          Category -> Function severity matrix
     assignment.js        round robin within a group (row lock, Available agents only)
     automation.js        rule conditions (all / any, operators, time measures)
+    config.js            Admin > General options with their defaults (helpdesk name, CSAT wording, export limit, ...)
     ticketQuery.js       ticket list views, filters and sorts (list, counts, export, saved views); spam / trash excluded
     ticketOps.js         resolve checks (required fields, open children), watch, link, merge, spam / trash, scenarios,
                          collision detection, CSAT survey link
@@ -41,7 +42,8 @@ backend/setu/
     whatsappIngest.js    WhatsApp message -> new ticket or reply on the sender's open WhatsApp ticket
   routes/                me.js (+ bell, preferences, personal canned, contact search), tickets.js (+ calls, bulk, export,
                          merge, links, watch, scenarios, presence), work.js (to-dos, saved views, search, contacts,
-                         companies, Solutions articles), reports.js (+ Helpdesk breakdown, analytics)
+                         companies, Solutions articles, report variants), reports.js (+ Helpdesk breakdown,
+                         dashboard overview, analytics); admin.js also has roles & access, statuses, settings
                          (board, dashboard, daily report), insights.js, admin.js, jobs.js,
                          public.js (requester portal + WhatsApp webhook: no hub sign-in, their own limits)
   tests/                 unit.test.js (no DB), api.test.js (end to end, local DB only), mock-anthropic.js

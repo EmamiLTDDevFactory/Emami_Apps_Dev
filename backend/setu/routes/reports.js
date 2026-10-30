@@ -102,6 +102,90 @@ router.get('/dashboard', wrap(async (req, res) => {
 }));
 
 /**
+ * Overview widgets for the dashboard: backlog trend (open at the end of each day, created, resolved), ageing of open
+ * tickets by severity, SLA health, agent leaderboard (last 7 days), open tickets by region x status, open categories,
+ * source mix, tickets at risk (due within 2 hours or overdue) and today's arrivals against the 7-day hourly average.
+ */
+router.get('/dashboard/overview', wrap(async (req, res) => {
+    const days = [7, 14, 30, 60].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const IST_DAY = `date_trunc('day', now() AT TIME ZONE 'Asia/Kolkata')`;
+    const OPEN = `JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE} AND NOT s."isResolved"`;
+    const [backlog, ageing, sla, csat, leaders, regionStatus, categories, sources, risk, hourly] = await Promise.all([
+        pool.query(
+            `SELECT to_char(d, 'YYYY-MM-DD') AS day,
+                    (SELECT count(*)::int FROM setu.tickets t WHERE ${LIVE} AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata'
+                        AND (t."resolvedAt" IS NULL OR t."resolvedAt" >= (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata')) AS open,
+                    (SELECT count(*)::int FROM setu.tickets t WHERE ${LIVE} AND t."createdAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."createdAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS created,
+                    (SELECT count(*)::int FROM setu.tickets t WHERE ${LIVE} AND t."resolvedAt" >= d AT TIME ZONE 'Asia/Kolkata' AND t."resolvedAt" < (d + interval '1 day') AT TIME ZONE 'Asia/Kolkata') AS resolved
+             FROM generate_series(${IST_DAY} - make_interval(days => $1 - 1), ${IST_DAY}, interval '1 day') AS d ORDER BY d`,
+            [days],
+        ),
+        pool.query(
+            `SELECT CASE WHEN now() - t."createdAt" < interval '4 hours' THEN '0-4h' WHEN now() - t."createdAt" < interval '1 day' THEN '4-24h'
+                         WHEN now() - t."createdAt" < interval '3 days' THEN '1-3d' WHEN now() - t."createdAt" < interval '7 days' THEN '3-7d' ELSE '7d+' END AS bucket,
+                    t.severity, count(*)::int AS n
+             FROM setu.tickets t ${OPEN} GROUP BY 1, 2`,
+        ),
+        pool.query(
+            `SELECT count(*) FILTER (WHERE t."firstRespondedAt" >= now() - make_interval(days => $1))::int AS responded,
+                    count(*) FILTER (WHERE t."firstRespondedAt" >= now() - make_interval(days => $1) AND NOT t."frViolated" AND (t."firstResponseDueAt" IS NULL OR t."firstRespondedAt" <= t."firstResponseDueAt"))::int AS "respondedInSla",
+                    count(*) FILTER (WHERE t."resolvedAt" >= now() - make_interval(days => $1))::int AS resolved,
+                    count(*) FILTER (WHERE t."resolvedAt" >= now() - make_interval(days => $1) AND NOT t."resViolated" AND (t."resolutionDueAt" IS NULL OR t."resolvedAt" <= t."resolutionDueAt"))::int AS "resolvedInSla",
+                    count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
+                    count(*) FILTER (WHERE NOT s."isResolved")::int AS open
+             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE ${LIVE}`,
+            [days],
+        ),
+        pool.query(`SELECT rating, count(*)::int AS n FROM setu.csat_responses WHERE "createdAt" >= now() - make_interval(days => $1) GROUP BY rating`, [days]),
+        pool.query(
+            `SELECT a.id, a.name, a.availability,
+                    count(t.id) FILTER (WHERE t."resolvedAt" >= now() - interval '7 days')::int AS resolved,
+                    count(t.id) FILTER (WHERE t."resolvedAt" IS NULL)::int AS open,
+                    round(avg(extract(epoch FROM t."firstRespondedAt" - t."createdAt") / 60) FILTER (WHERE t."firstRespondedAt" >= now() - interval '7 days'))::int AS "avgFirstResponseMins",
+                    (SELECT round(100.0 * count(*) FILTER (WHERE r.rating = 3) / NULLIF(count(*), 0)) FROM setu.csat_responses r WHERE r."agentId" = a.id AND r."createdAt" >= now() - interval '30 days')::int AS "csatPct"
+             FROM setu.agents a LEFT JOIN setu.tickets t ON t."agentId" = a.id AND ${LIVE}
+             WHERE a.active GROUP BY a.id HAVING count(t.id) > 0 ORDER BY resolved DESC, open DESC LIMIT 10`,
+        ),
+        pool.query(`SELECT coalesce(nullif(t.region, ''), 'None') AS region, s.id AS "statusId", s.name AS status, count(*)::int AS n FROM setu.tickets t ${OPEN} GROUP BY 1, 2, 3`),
+        pool.query(`SELECT coalesce(nullif(t.category, ''), 'Uncategorised') AS name, count(*)::int AS value FROM setu.tickets t ${OPEN} GROUP BY 1 ORDER BY 2 DESC LIMIT 12`),
+        pool.query(`SELECT t.source AS name, count(*)::int AS value FROM setu.tickets t WHERE ${LIVE} AND t."createdAt" >= now() - make_interval(days => $1) GROUP BY 1 ORDER BY 2 DESC`, [days]),
+        pool.query(
+            `SELECT t.id, t.subject, t.severity, t.priority, t."resolutionDueAt", t."firstResponseDueAt", t."firstRespondedAt", a.name AS "agentName", s.name AS "statusName"
+             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" LEFT JOIN setu.agents a ON a.id = t."agentId"
+             WHERE ${LIVE} AND NOT s."isResolved" AND NOT s."pausesSla"
+               AND (t."resolutionDueAt" < now() + interval '2 hours' OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now() + interval '2 hours'))
+             ORDER BY LEAST(t."resolutionDueAt", CASE WHEN t."firstRespondedAt" IS NULL THEN t."firstResponseDueAt" END) LIMIT 12`,
+        ),
+        pool.query(
+            `SELECT extract(hour FROM t."createdAt" AT TIME ZONE 'Asia/Kolkata')::int AS hour,
+                    count(*) FILTER (WHERE t."createdAt" >= ${IST_DAY} AT TIME ZONE 'Asia/Kolkata')::int AS today,
+                    round(count(*) FILTER (WHERE t."createdAt" < ${IST_DAY} AT TIME ZONE 'Asia/Kolkata') / 7.0, 1)::float AS avg
+             FROM setu.tickets t WHERE ${LIVE} AND t."createdAt" >= (${IST_DAY} - interval '7 days') AT TIME ZONE 'Asia/Kolkata' GROUP BY 1 ORDER BY 1`,
+        ),
+    ]);
+    const s = sla.rows[0];
+    const pct = (n, d) => (d ? Math.round((n * 1000) / d) / 10 : null);
+    const c = Object.fromEntries([1, 2, 3].map((r) => [r, csat.rows.find((x) => x.rating === r)?.n ?? 0]));
+    const csatTotal = c[1] + c[2] + c[3];
+    res.json({
+        success: true, days,
+        backlog: backlog.rows,
+        ageing: ageing.rows,
+        sla: {
+            firstResponsePct: pct(s.respondedInSla, s.responded), resolutionPct: pct(s.resolvedInSla, s.resolved),
+            csatPct: pct(c[3], csatTotal), csatResponses: csatTotal, open: s.open, overdue: s.overdue, onTrackPct: pct(s.open - s.overdue, s.open),
+        },
+        leaderboard: leaders.rows,
+        regionStatus: regionStatus.rows,
+        categories: categories.rows,
+        sources: sources.rows,
+        risk: risk.rows,
+        hourly: Array.from({ length: 24 }, (_, h) => hourly.rows.find((r) => r.hour === h) ?? { hour: h, today: 0, avg: 0 }),
+        hourNow: Number(new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false })),
+    });
+}));
+
+/**
  * "Emami Secondary Helpdesk Dashboard": ticket counts by region, status, type and source, plus unresolved by category,
  * depot and state, and the open Fatal / Serious tickets. Every bar links to the matching ticket list in the app.
  */

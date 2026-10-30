@@ -52,6 +52,22 @@ Its README covers the folder layout, roles, security measures, configuration and
   Admin: overview, volume heat-map, agent performance with CSV, territory & category, satisfaction, calls), header
   **search** across tickets, contacts and articles.
 
+## Configuration, roles and personal settings (schema v6)
+
+- **Roles & access** (Admin > People): set anyone in the Emami Apps hub to Agent, Supervisor or Admin, or remove their
+  Samadhan access - the same grant as Manage Access, recorded in its access history; Samadhan always keeps one Admin.
+- **Admin > General**: helpdesk name / email / phone, portal intro, CSAT question and labels, export limit, default ticket
+  view and page size, severity -> priority, extra ticket sources, collision detection on/off, the default dashboard.
+- **Statuses** (rename, SLA pause, order, custom statuses), **automation thresholds** (e.g. close after N hours), and the
+  **bell**: which events (requester reply, new ticket, assigned, note, @mention, status change, escalation, SLA due soon /
+  breached, CSAT, watching) and who sees each (agent, group, everyone).
+- **My preferences** (sidebar, or the bell's gear): bell events and email / inbox notifications to turn off, the ticket list's
+  start view and page size. The bell filters by unread and by event type.
+- **Daily report variants**: columns (chosen and ordered), multi-select filters on every column and the date range saved
+  under a name, private or shared; your default variant loads automatically.
+- **Dashboard**: choose and order the widgets (Customise); new SLA health, backlog trend, ageing, tickets at risk,
+  leaderboard, region x status, open categories and source mix.
+
 ## Insights, action points and shortcuts
 
 - **Dashboard > Insights & action points**: headline, prioritised action points, risks and this week's themes for the

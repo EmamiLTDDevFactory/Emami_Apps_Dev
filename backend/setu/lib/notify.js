@@ -45,7 +45,7 @@ function placeholders(t, extra = {}) {
         'ticket.resolution_due': fmtIst(t.resolutionDueAt),
         'ticket.distributor.code': t.distributorCode ?? '',
         'ticket.distributor.name': t.distributorName ?? '',
-        helpdesk_name: 'Emami Secondary Helpdesk',
+        helpdesk_name: extra.helpdesk_name ?? 'Emami Secondary Helpdesk',
         ...extra,
     };
 }
@@ -64,7 +64,7 @@ const fillPlaceholders = (text, t, extra = {}) => render(String(text), placehold
 async function renderTemplate(key, t, extra = {}) {
     const { rows } = await pool.query('SELECT subject, body, enabled FROM setu.email_templates WHERE key = $1', [key]);
     if (!rows.length || !rows[0].enabled) return null;
-    const values = placeholders(t, extra);
+    const values = placeholders(t, { helpdesk_name: await require('./config').option('general.helpdeskName'), ...extra });
     return { subject: render(rows[0].subject, values, false), html: render(rows[0].body, values, true) };
 }
 
@@ -87,6 +87,15 @@ async function notifyAgents(t, template, to, extra = {}) {
         );
         recipients = rows.map((r) => r.email);
     } else if (Array.isArray(to)) recipients = to;
+    // Agents who switched this notification off for themselves (My notifications) are left out.
+    if (recipients.length) {
+        const muted = await pool.query(
+            `SELECT lower(email) AS email FROM setu.agents WHERE lower(email) = ANY($1::text[]) AND COALESCE(prefs -> 'emailMuted', '[]'::jsonb) ? $2`,
+            [recipients.map((r) => String(r).toLowerCase()), template],
+        );
+        const skip = new Set(muted.rows.map((r) => r.email));
+        recipients = recipients.filter((r) => !skip.has(String(r).toLowerCase()));
+    }
     if (!recipients.length) return;
     const msg = await renderTemplate(template, t, extra);
     if (!msg) return;

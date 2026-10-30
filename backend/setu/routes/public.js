@@ -42,7 +42,11 @@ async function categories() {
 router.get('/portal/config', wrap(async (req, res) => {
     await ready;
     if (!(await portalEnabled())) return res.json({ success: true, enabled: false });
-    res.json({ success: true, enabled: true, categories: await categories() });
+    const { option } = require('../lib/config');
+    res.json({
+        success: true, enabled: true, categories: await categories(),
+        helpdeskName: await option('general.helpdeskName'), intro: await option('portal.intro'), supportEmail: await option('general.supportEmail'),
+    });
 }));
 
 router.post('/portal/tickets', wrap(async (req, res) => {
@@ -142,7 +146,11 @@ router.get('/portal/csat/:token', wrap(async (req, res) => {
     await ready;
     portalLimit(req, 'status');
     const r = await csatRequest(req.params.token);
-    res.json({ success: true, survey: { ticketId: r.ticketId, subject: r.subject, agentName: r.agentName, answered: Boolean(r.answeredAt) } });
+    const { option } = require('../lib/config');
+    res.json({
+        success: true,
+        survey: { ticketId: r.ticketId, subject: r.subject, agentName: r.agentName, answered: Boolean(r.answeredAt), question: await option('csat.question'), labels: await option('csat.labels') },
+    });
 }));
 
 router.post('/portal/csat/:token', wrap(async (req, res) => {
@@ -157,6 +165,12 @@ router.post('/portal/csat/:token', wrap(async (req, res) => {
     if (!done.rows.length) throw fail(409, 'Thank you - we already have your rating for this ticket.');
     await pool.query('INSERT INTO setu.csat_responses ("ticketId", rating, comment, "agentId") VALUES ($1, $2, $3, $4)', [r.ticketId, rating, comment, r.agentId]);
     await pool.query('INSERT INTO setu.activities ("ticketId", action, details) VALUES ($1, $2, $3)', [r.ticketId, 'csat_received', JSON.stringify({ rating })]);
+    // The ticket's agent (or the configured audience) hears about the rating.
+    const { ring } = require('../lib/bell');
+    const { loadTicket } = require('../lib/notify');
+    const t = await loadTicket(r.ticketId);
+    const labels = await require('../lib/config').option('csat.labels');
+    await ring(t, 'csat', { title: `#${t.id} rated: ${labels?.[rating] ?? rating}`, body: comment ?? t.subject });
     res.json({ success: true });
 }));
 

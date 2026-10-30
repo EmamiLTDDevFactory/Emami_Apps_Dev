@@ -11,14 +11,20 @@ import { DistributorsTab } from './Distributors';
 import { AuditTab, AutomationsTab, ContactsTab, ParkedTab, SettingsTab } from './System';
 import { ChannelsTab } from './Channels';
 import ScenariosTab from './Scenarios';
+import { GeneralTab } from './General';
+import { AccessTab } from './Access';
+import { StatusesTab } from './Statuses';
 
-type TabId = 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
+type TabId = 'general' | 'access' | 'statuses' | 'agents' | 'groups' | 'sla' | 'hours' | 'severity' | 'fields' | 'templates' | 'canned' | 'scenarios' | 'distributors' | 'settings' | 'channels' | 'automations' | 'contacts' | 'audit' | 'parked';
 const TABS: { id: TabId; label: string }[] = [
+  { id: 'general', label: 'General' },
   { id: 'agents', label: 'Agents' },
+  { id: 'access', label: 'Roles & access' },
   { id: 'groups', label: 'Groups' },
   { id: 'sla', label: 'SLA' },
   { id: 'hours', label: 'Business hours' },
   { id: 'severity', label: 'Severity matrix' },
+  { id: 'statuses', label: 'Statuses' },
   { id: 'fields', label: 'Fields' },
   { id: 'templates', label: 'Email templates' },
   { id: 'canned', label: 'Canned responses' },
@@ -33,7 +39,7 @@ const TABS: { id: TabId; label: string }[] = [
 ];
 
 export default function Admin() {
-  const [tab, setTab] = useState<TabId>('agents');
+  const [tab, setTab] = useState<TabId>('general');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
 
@@ -57,7 +63,7 @@ export default function Admin() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">Admin</h2>
-          <p className="text-sm text-muted">Samadhan configuration. Who can open Samadhan, and as Agent, Supervisor or Admin, is set in Emami Apps Manage Access.</p>
+          <p className="text-sm text-muted">Samadhan configuration. Who can open Samadhan, and as Agent, Supervisor or Admin, is set under Roles &amp; access (the same as Emami Apps Manage Access).</p>
         </div>
         <Button onClick={run} disabled={busy} title="Mail ingest, SLA reminders and violations, time-based automations (they also run every few minutes on their own)">
           {busy ? <Spinner /> : <Play size={14} />} Run scheduled checks now
@@ -66,7 +72,10 @@ export default function Admin() {
       {msg && <Notice tone={msg.tone} onClose={() => setMsg(null)}>{msg.text}</Notice>}
       <Tabs label="Admin sections" tabs={TABS} value={tab} onChange={setTab} />
       <div>
+        {tab === 'general' && <GeneralTab />}
         {tab === 'agents' && <AgentsTab />}
+        {tab === 'access' && <AccessTab />}
+        {tab === 'statuses' && <StatusesTab />}
         {tab === 'groups' && <GroupsTab />}
         {tab === 'sla' && <SlaTab />}
         {tab === 'hours' && <BusinessHoursTab />}

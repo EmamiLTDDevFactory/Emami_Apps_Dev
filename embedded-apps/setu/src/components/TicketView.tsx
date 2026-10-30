@@ -85,12 +85,13 @@ export default function TicketView({ id }: { id: number }) {
 
 function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
   const { ticket: t } = data;
+  const { meta } = useSetu();
   const [replying, setReplying] = useState(false);
   return (
     <div className="space-y-4">
       <TicketToolbar data={data} reload={reload} />
       <TicketBanners ticket={t} reload={reload} />
-      <PresenceBar ticketId={t.id} replying={replying} />
+      {meta.options['presence.enabled'] !== false && <PresenceBar ticketId={t.id} replying={replying} />}
       <TicketHeader ticket={t} reload={reload} />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0 space-y-4">

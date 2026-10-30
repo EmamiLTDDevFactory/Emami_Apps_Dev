@@ -4,7 +4,9 @@ const { clearSeverityCache } = require('../lib/severity');
 const { clearSlaCache } = require('../lib/sla');
 const express = require('express');
 const { pool } = require('../../db');
-const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EDITABLE_FIELDS, EMAIL_RE, SEVERITIES } = require('../constants');
+const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EDITABLE_FIELDS, EMAIL_RE, ROLES, SEVERITIES, SOURCES } = require('../constants');
+const { DEFAULTS, clearConfigCache } = require('../lib/config');
+const { VIEW_IDS } = require('../lib/ticketQuery');
 const { deleteCanned, saveCanned } = require('../lib/canned');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
 const { isAdmin } = require('../middleware/auth');
@@ -112,6 +114,65 @@ admin.put('/settings', wrap(async (req, res) => {
     }
     if (b['portal.enabled'] !== undefined) updates.push(['portal.enabled', b['portal.enabled'] === true]);
     if (b['csat.enabled'] !== undefined) updates.push(['csat.enabled', b['csat.enabled'] === true]);
+    // Bell: who sees each event (assignee / group / all).
+    if (b['bell.audience'] !== undefined) {
+        const a = b['bell.audience'] ?? {};
+        if (typeof a !== 'object' || Object.entries(a).some(([e, s]) => !BELL_EVENTS.includes(e) || !BELL_SCOPES.includes(s))) throw fail(400, 'Unknown bell event or audience.');
+        updates.push(['bell.audience', a]);
+    }
+    // Admin > General (lib/config.js has the defaults).
+    const text = (key, max, required = true) => {
+        if (b[key] === undefined) return;
+        const v = String(b[key] ?? '').trim().slice(0, max);
+        if (required && !v) throw fail(400, 'That setting cannot be empty.');
+        updates.push([key, v]);
+    };
+    text('general.helpdeskName', 120);
+    text('general.supportPhone', 40, false);
+    text('csat.question', 300);
+    text('portal.intro', 1000, false);
+    if (b['general.supportEmail'] !== undefined) {
+        const v = String(b['general.supportEmail'] || '').trim().toLowerCase();
+        if (v && !EMAIL_RE.test(v)) throw fail(400, 'Support email is not valid.');
+        updates.push(['general.supportEmail', v]);
+    }
+    if (b['csat.labels'] !== undefined) {
+        const l = b['csat.labels'] ?? {};
+        const labels = Object.fromEntries([3, 2, 1].map((k) => [k, String(l[k] ?? '').trim().slice(0, 80)]));
+        if (Object.values(labels).some((v) => !v)) throw fail(400, 'Give all three rating labels.');
+        updates.push(['csat.labels', labels]);
+    }
+    if (b['export.maxRows'] !== undefined) {
+        const n = Number(b['export.maxRows']);
+        if (!Number.isInteger(n) || n < 100 || n > 5000) throw fail(400, 'Export limit must be 100 to 5,000 rows.');
+        updates.push(['export.maxRows', n]);
+    }
+    if (b['list.defaultView'] !== undefined) {
+        if (!VIEW_IDS.includes(b['list.defaultView']) && b['list.defaultView'] !== '') throw fail(400, 'Unknown view.');
+        updates.push(['list.defaultView', b['list.defaultView']]);
+    }
+    if (b['list.pageSize'] !== undefined) {
+        if (![25, 50, 100].includes(Number(b['list.pageSize']))) throw fail(400, 'Page size must be 25, 50 or 100.');
+        updates.push(['list.pageSize', Number(b['list.pageSize'])]);
+    }
+    if (b['severity.priority'] !== undefined) {
+        const m = b['severity.priority'] ?? {};
+        const map = Object.fromEntries(SEVERITIES.map((s) => [s, Number(m[s])]));
+        if (Object.values(map).some((p) => !Number.isInteger(p) || p < 1 || p > 4)) throw fail(400, 'Each severity needs a priority from 1 (Low) to 4 (Urgent).');
+        updates.push(['severity.priority', map]);
+    }
+    if (b['sources.extra'] !== undefined) {
+        const list = (Array.isArray(b['sources.extra']) ? b['sources.extra'] : String(b['sources.extra'] || '').split(','))
+            .map((s) => String(s).trim().slice(0, 40)).filter((s) => s && !SOURCES.includes(s));
+        updates.push(['sources.extra', [...new Set(list)].slice(0, 20)]);
+    }
+    if (b['presence.enabled'] !== undefined) updates.push(['presence.enabled', b['presence.enabled'] === true]);
+    if (b['dashboard.widgets'] !== undefined) {
+        const all = DEFAULTS['dashboard.widgets'];
+        const list = Array.isArray(b['dashboard.widgets']) ? [...new Set(b['dashboard.widgets'].filter((w) => all.includes(w)))] : [];
+        if (!list.length) throw fail(400, 'Keep at least one dashboard widget.');
+        updates.push(['dashboard.widgets', list]);
+    }
     if (b['call.mode'] !== undefined) {
         if (!CALL_MODES.includes(b['call.mode'])) throw fail(400, 'Unknown calling option.');
         updates.push(['call.mode', b['call.mode']]);
@@ -124,6 +185,7 @@ admin.put('/settings', wrap(async (req, res) => {
     for (const [key, value] of updates) {
         await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, JSON.stringify(value)]);
     }
+    clearConfigCache();
     await audit(req.verifiedEmail, 'settings_saved', Object.fromEntries(updates));
     res.json({ success: true });
 }));
@@ -471,10 +533,146 @@ admin.get('/automations', wrap(async (req, res) => {
     res.json({ success: true, rules: (await pool.query('SELECT * FROM setu.automation_rules ORDER BY trigger, position, id')).rows });
 }));
 
+/**
+ * Switch a rule on / off, and change its numeric thresholds (e.g. "close after 48 hours"): only the number in an
+ * existing condition can change - never the field, the operator or the actions - so a rule keeps doing the same thing.
+ */
 admin.patch('/automations/:id', wrap(async (req, res) => {
-    if (typeof req.body?.active !== 'boolean') throw fail(400, 'Send active: true or false.');
-    await pool.query('UPDATE setu.automation_rules SET active = $2 WHERE id = $1', [Number(req.params.id), req.body.active]);
-    await audit(req.verifiedEmail, 'automation_toggled', { id: Number(req.params.id), active: req.body.active });
+    const id = Number(req.params.id);
+    const b = req.body ?? {};
+    const rule = (await pool.query('SELECT * FROM setu.automation_rules WHERE id = $1', [id])).rows[0];
+    if (!rule) throw fail(404, 'Rule not found.');
+    if (b.active !== undefined) {
+        if (typeof b.active !== 'boolean') throw fail(400, 'Send active: true or false.');
+        await pool.query('UPDATE setu.automation_rules SET active = $2 WHERE id = $1', [id, b.active]);
+    }
+    if (Array.isArray(b.thresholds)) {
+        // thresholds: [{ group: 'all' | 'any', index, value }]
+        const conditions = JSON.parse(JSON.stringify(rule.conditions ?? {}));
+        for (const t of b.thresholds) {
+            const c = conditions?.[t.group]?.[t.index];
+            if (!c || typeof c.value !== 'number') throw fail(400, 'Only numeric thresholds can be changed.');
+            const n = Number(t.value);
+            if (!Number.isFinite(n) || n < 0 || n > 24 * 365) throw fail(400, 'Thresholds must be between 0 and 8,760 hours.');
+            c.value = n;
+        }
+        await pool.query('UPDATE setu.automation_rules SET conditions = $2 WHERE id = $1', [id, JSON.stringify(conditions)]);
+    }
+    await audit(req.verifiedEmail, 'automation_saved', { id, active: b.active, thresholds: b.thresholds });
+    res.json({ success: true });
+}));
+
+// ---------- Ticket statuses: rename, SLA pause, order, custom ones ----------
+// Open (2), Resolved (4) and Closed (5) are built in: they can be renamed and moved but keep their meaning.
+const CORE_STATUSES = [2, 4, 5];
+
+admin.post('/statuses', wrap(async (req, res) => {
+    const b = req.body ?? {};
+    const name = String(b.name || '').trim().slice(0, 80);
+    if (!name) throw fail(400, 'Give the status a name.');
+    const id = intOrNull(b.id);
+    try {
+        if (id) {
+            const cur = (await pool.query('SELECT * FROM setu.ticket_statuses WHERE id = $1', [id])).rows[0];
+            if (!cur) throw fail(404, 'Status not found.');
+            const core = CORE_STATUSES.includes(id);
+            await pool.query(
+                'UPDATE setu.ticket_statuses SET name = $2, "pausesSla" = $3, "isResolved" = $4 WHERE id = $1',
+                [id, name, id === 2 ? false : b.pausesSla === true, core ? cur.isResolved : b.isResolved === true],
+            );
+        } else {
+            const next = (await pool.query('SELECT GREATEST(100, coalesce(max(id), 0) + 1) AS id, coalesce(max(position), 0) + 1 AS pos FROM setu.ticket_statuses')).rows[0];
+            await pool.query(
+                'INSERT INTO setu.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, $4, false, $5)',
+                [next.id, name, b.pausesSla !== false, b.isResolved === true, next.pos],
+            );
+        }
+    } catch (e) {
+        if (e.code === '23505') throw fail(409, 'A status with that name already exists.');
+        throw e;
+    }
+    clearSlaCache();
+    await audit(req.verifiedEmail, 'status_saved', { id, name });
+    res.json({ success: true });
+}));
+
+admin.put('/statuses/order', wrap(async (req, res) => {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
+    for (const [i, sid] of ids.entries()) await pool.query('UPDATE setu.ticket_statuses SET position = $2 WHERE id = $1', [sid, i]);
+    await audit(req.verifiedEmail, 'statuses_reordered', { ids });
+    res.json({ success: true });
+}));
+
+admin.delete('/statuses/:id', wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (CORE_STATUSES.includes(id) || id < 100) throw fail(400, 'Built-in statuses cannot be deleted - rename them instead.');
+    const used = await pool.query('SELECT count(*)::int AS n FROM setu.tickets WHERE "statusId" = $1', [id]);
+    if (used.rows[0].n) throw fail(400, `${used.rows[0].n} tickets have this status - move them to another status first.`);
+    await pool.query('DELETE FROM setu.ticket_statuses WHERE id = $1', [id]);
+    await audit(req.verifiedEmail, 'status_deleted', { id });
+    res.json({ success: true });
+}));
+
+// ---------- People & roles: Samadhan access for people in the Emami Apps hub ----------
+// The grant lives in Manage Access (emami_apps.authorized_user_apps, app 'setu'); changing it here is the same change,
+// recorded in the same access history. The person must already be an authorized Emami Apps user.
+function accessHistory(entry) {
+    try { require('../../accessHistory').recordAccessChange(entry); } catch { /* history is best-effort, never blocks the change */ }
+}
+
+admin.get('/access', wrap(async (req, res) => {
+    const term = String(req.query.q || '').trim().toLowerCase().slice(0, 100);
+    const params = [APP_ID];
+    let where = '';
+    if (term) { params.push(`%${term}%`); where = `AND (lower(u.email) LIKE $2 OR lower(coalesce(p.name, '')) LIKE $2)`; }
+    const { rows } = await pool.query(
+        `SELECT u.email, u.is_active AS "hubActive", coalesce(p.name, a.name) AS name, g.role, a.id AS "agentId", a.active AS "agentActive", a."lastSeenAt"
+         FROM emami_apps.authorized_users u
+         LEFT JOIN emami_apps.authorized_user_apps g ON g.email = u.email AND g.app_id = $1
+         LEFT JOIN LATERAL (SELECT name FROM emami_apps.users x WHERE lower(x.email) = lower(u.email) LIMIT 1) p ON true
+         LEFT JOIN setu.agents a ON lower(a.email) = lower(u.email)
+         WHERE true ${where}
+         ORDER BY (g.role IS NULL), g.role, coalesce(p.name, u.email) LIMIT 300`,
+        params,
+    );
+    res.json({ success: true, users: rows, roles: ROLES });
+}));
+
+admin.put('/access/:email', wrap(async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    const role = req.body?.role;
+    if (!ROLES.includes(role)) throw fail(400, `Role must be one of: ${ROLES.join(', ')}.`);
+    const user = await pool.query('SELECT 1 FROM emami_apps.authorized_users WHERE email = $1', [email]);
+    if (!user.rows.length) throw fail(404, 'That person is not an Emami Apps user yet - add them in Manage Access first.');
+    const before = (await pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID])).rows[0];
+    if (email === req.verifiedEmail && role !== 'Admin') throw fail(400, 'You cannot take away your own Admin role - ask another admin.');
+    if (before?.role === 'Admin' && role !== 'Admin') {
+        const admins = await pool.query('SELECT count(*)::int AS n FROM emami_apps.authorized_user_apps WHERE app_id = $1 AND role = $2', [APP_ID, 'Admin']);
+        if (admins.rows[0].n <= 1) throw fail(400, 'Samadhan needs at least one admin.');
+    }
+    await pool.query(
+        `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role) VALUES ($1, $2, $3)
+         ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role`,
+        [email, APP_ID, role],
+    );
+    await pool.query('UPDATE setu.agents SET role = $2 WHERE lower(email) = $1', [email, role]);
+    if (before?.role !== role) accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: APP_ID, oldValue: before?.role ?? null, newValue: role });
+    await audit(req.verifiedEmail, 'access_role_set', { email, from: before?.role ?? null, to: role });
+    res.json({ success: true });
+}));
+
+admin.delete('/access/:email', wrap(async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    if (email === req.verifiedEmail) throw fail(400, 'You cannot remove your own access.');
+    const before = (await pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID])).rows[0];
+    if (!before) return res.json({ success: true });
+    if (before.role === 'Admin') {
+        const admins = await pool.query('SELECT count(*)::int AS n FROM emami_apps.authorized_user_apps WHERE app_id = $1 AND role = $2', [APP_ID, 'Admin']);
+        if (admins.rows[0].n <= 1) throw fail(400, 'Samadhan needs at least one admin.');
+    }
+    await pool.query('DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]);
+    accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: APP_ID, oldValue: before.role, newValue: null });
+    await audit(req.verifiedEmail, 'access_removed', { email, role: before.role });
     res.json({ success: true });
 }));
 
