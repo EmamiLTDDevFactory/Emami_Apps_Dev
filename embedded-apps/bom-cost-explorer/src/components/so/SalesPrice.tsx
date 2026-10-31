@@ -4,6 +4,7 @@
  * Read-only. SAP chose the order and computed every price; this page presents them (and the live "Compare with cost" ratios, also SAP's).
  * Nothing loads before a click (Load sales areas / Load filter lists / Show), never from the URL, and no request has a time limit.
  */
+import BomCostingPanel from '../costline/BomCostingPanel';
 import { Fragment, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Clipboard, ClipboardCheck, FileSpreadsheet, Lock, Play, RefreshCw, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
@@ -99,6 +100,22 @@ function PricingPanel({ row, f, ctx }: { row: SoPriceRow; f: SoUrlState; ctx: st
 }
 
 /* ------------------------- pricing procedure and rules tabs ------------------------- */
+/* ------------------------- details of one row: order pricing and BOM costing ------------------------- */
+function RowDetails({ row, f, ctx }: { row: SoPriceRow; f: SoUrlState; ctx: string }) {
+  const [sub, setSub] = useState<'pricing' | 'bom'>('pricing');
+  return (
+    <div className="flex flex-col gap-3">
+      <div role="tablist" aria-label="Row details" className="flex gap-1">
+        {([['pricing', 'Pricing of the selected order'], ['bom', 'BOM costing (all costs)']] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={sub === k} onClick={() => setSub(k)} className={cx('rounded-full border px-3 py-1 text-xs font-bold', sub === k ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink')}>{label}</button>
+        ))}
+      </div>
+      {sub === 'pricing' && <PricingPanel row={row} f={f} ctx={ctx} />}
+      {sub === 'bom' && (row.Werks ? <BomCostingPanel matnr={row.Matnr} werks={row.Werks} uom={row.Uom} defaultQty={1} /> : <p className="text-sm text-muted">SAP gave no plant for this order item, so the BOM cannot be costed here.</p>)}
+    </div>
+  );
+}
+
 function ProcedureTab({ rows }: { rows: SoPriceRow[] }) {
   const procs = useMemo(() => proceduresIn(rows), [rows]);
   const [kalsm, setKalsm] = useState('');
@@ -386,7 +403,7 @@ function Screen() {
                                   </div>
                                 </td>
                               </tr>
-                              {isOpen && <tr className="border-t border-line/60 bg-sunken/30"><td colSpan={14} className="px-4 py-3" onClick={(e) => e.stopPropagation()}><PricingPanel row={r} f={ran.f} ctx={runCtx} /></td></tr>}
+                              {isOpen && <tr className="border-t border-line/60 bg-sunken/30"><td colSpan={14} className="px-4 py-3" onClick={(e) => e.stopPropagation()}><RowDetails row={r} f={ran.f} ctx={runCtx} /></td></tr>}
                             </Fragment>
                           );
                         })}

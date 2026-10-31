@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, FileSpreadsheet, Lock, Play, RefreshCw, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
 import type { PlantsState } from '../FilterPanel';
+import BomCostingPanel from '../costline/BomCostingPanel';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from '../Pickers';
 import { Button, Card, Empty, Field, Spinner, Tabs, cx, inputCls } from '../ui';
 import WacMessages from '../wac/WacMessages';
@@ -27,7 +28,7 @@ import { ckSearch, parseCkUrl } from '@/lib/ck/url';
 import type { CkCompRow, CkHeaderRow, CkItemRow, CkListRow } from '@/lib/ck/types';
 import { breadcrumb, compareEstimates, currentMaterial, defaultEstimate, keyFromRow, popStack, pushStack, sapKeyText } from '@/lib/ck/view';
 
-type Tab = 'components' | 'items' | 'estimates';
+type Tab = 'components' | 'items' | 'estimates' | 'bom';
 interface Form { mat: string[]; plant: string[]; klvar: string; tvers: string }
 interface View { root: string; werks: string; klvar: string; tvers: string; key: CkEstimateKey | null; at: Date }
 
@@ -261,8 +262,9 @@ function Screen() {
 
       {header && (
         <>
-          <Tabs<Tab> label="Cost estimate views" value={tab} onChange={setTab} tabs={[{ id: 'components', label: 'Cost components' }, { id: 'items', label: 'Itemization' }, { id: 'estimates', label: 'Estimates', badge: listRows ? <span className="rounded-full bg-sunken px-1.5 text-2xs font-bold">{listRows.length}</span> : undefined }]} />
+          <Tabs<Tab> label="Cost estimate views" value={tab} onChange={setTab} tabs={[{ id: 'components', label: 'Cost components' }, { id: 'items', label: 'Itemization' }, { id: 'bom', label: 'BOM costing (all costs)' }, { id: 'estimates', label: 'Estimates', badge: listRows ? <span className="rounded-full bg-sunken px-1.5 text-2xs font-bold">{listRows.length}</span> : undefined }]} />
           {tab === 'components' && (comps ? <ComponentsTab comps={comps} /> : <p className="text-sm text-muted">{compE?.status === 'error' ? 'The components could not be loaded.' : 'Loading the cost components…'}</p>)}
+          {tab === 'bom' && <BomCostingPanel matnr={header.Matnr} werks={header.Werks} uom={header.Meeht} defaultQty={header.Losgr} />}
           {tab === 'items' && (items ? <ItemsTab items={items} onOpen={drill} /> : <p className="text-sm text-muted">{itemE?.status === 'error' ? 'The items could not be loaded.' : 'Loading the itemization from SAP…'}</p>)}
           {tab === 'estimates' && (listRows ? <EstimatesTab rows={listRows} active={effKey ?? keyFromRow(defaultEstimate(listRows) ?? ({} as CkListRow))} onOpen={openEstimate} onCompare={(a, b) => { const ka = keyFromRow(a), kb = keyFromRow(b); if (ka && kb) setCompareKeys({ a: ka, b: kb, la: estimateLabel(a), lb: estimateLabel(b) }); }} compare={compare} /> : <p className="text-sm text-muted">Loading the estimates…</p>)}
         </>

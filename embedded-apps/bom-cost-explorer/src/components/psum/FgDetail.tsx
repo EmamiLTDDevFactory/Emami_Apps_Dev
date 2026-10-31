@@ -5,14 +5,10 @@
  * The two SAP reads start only when their tab is opened; no request has a time limit (closing the pop-up aborts them).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, X } from 'lucide-react';
-import BomTree, { type NodeAgg } from '../BomTree';
-import { Button, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
-import { fmtMs, fmtNum } from '@/lib/format';
-import { buildTree, grandTotal, leafPrefix, nodeTotals } from '@/lib/cost/tree';
-import { EMPTY_SIM, simulate } from '@/lib/cost/simulate';
-import { defaultQuery } from '@/lib/query/schema';
-import { fetchCostLines, type CostLinesResult } from '@/lib/sap/service';
+import { X } from 'lucide-react';
+import BomCostingPanel from '../costline/BomCostingPanel';
+import { Button, Spinner, Stat, Tabs } from '../ui';
+import { fmtNum } from '@/lib/format';
 import type { PlantRow } from '@/lib/sap/fields';
 import { dec } from '@/lib/wac/view';
 import { fmtVarPct } from '@/lib/wac/view';
@@ -92,7 +88,7 @@ export default function FgDetail({ v, period, totals, plants, loadedComps, onClo
             </div>
           )}
           {tab === 'comps' && <ComponentsTab v={v} period={period} loaded={loadedComps} />}
-          {tab === 'bom' && <BomTab v={v} plants={plants} />}
+          {tab === 'bom' && <BomCostingPanel matnr={r.Matnr} werks={r.Werks} uom={r.Uom} defaultQty={v.qty} plants={plants} />}
         </div>
       </div>
     </div>
@@ -144,61 +140,6 @@ function ComponentsTab({ v, period, loaded }: { v: FgValue; period: { dateFrom: 
         </table>
       </div>
       <p className="text-xs text-muted">Costs per unit are SAP&apos;s live costing at today&apos;s rates and the current BOM (selected source first, then C-MAP, consumption and average with the variance of the selected cost against each). &quot;Cost for the quantity&quot; = cost per unit x quantity produced, computed here.</p>
-    </div>
-  );
-}
-
-/* ------------------------- BOM costing breakup ------------------------- */
-function BomTab({ v, plants }: { v: FgValue; plants: PlantRow[] }) {
-  const r = v.row;
-  const [qty, setQty] = useState(() => { const n = v.qty.isFinite() && v.qty.gte(1) ? v.qty.toDecimalPlaces(0).toFixed() : '1'; return n; });
-  const [state, setState] = useState<{ status: 'idle' | 'loading' | 'done' | 'error' | 'cancelled'; data?: CostLinesResult; error?: string; startedAt?: number }>({ status: 'idle' });
-  const ctl = useRef<AbortController | null>(null);
-  const started = useRef(false);
-  const [, tick] = useState(0);
-  useEffect(() => () => ctl.current?.abort(), []);
-  useEffect(() => { if (state.status !== 'loading') return; const t = setInterval(() => tick((n) => n + 1), 500); return () => clearInterval(t); }, [state.status]);
-
-  const load = () => {
-    ctl.current?.abort();
-    const c = new AbortController();
-    ctl.current = c;
-    setState({ status: 'loading', startedAt: Date.now() });
-    const query = { ...defaultQuery('B'), materials: [r.Matnr], plants: [r.Werks], explQty: qty.trim() || '1' };
-    fetchCostLines(query, { signal: c.signal, noTimeout: true })
-      .then((data) => { if (!c.signal.aborted) setState({ status: 'done', data }); })
-      .catch((e: Error) => { if (c.signal.aborted || e.name === 'AbortError') setState({ status: 'cancelled' }); else setState({ status: 'error', error: e.message }); });
-  };
-  useEffect(() => { if (!started.current) { started.current = true; load(); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const plantNames = useMemo(() => Object.fromEntries(plants.map((p) => [p.Werks, p.Name1])), [plants]);
-  const plantCurr = useMemo(() => { const m: Record<string, string> = Object.fromEntries(plants.map((p) => [p.Werks, p.Waers])); for (const x of state.data?.rows ?? []) m[x.Hwerks] ??= x.LocCurr; return m; }, [plants, state.data]);
-  const tree = useMemo(() => (state.data && state.data.rows.length ? buildTree(state.data.rows, plantNames) : null), [state.data, plantNames]);
-  const sim = useMemo(() => (tree ? simulate(tree.rows, EMPTY_SIM) : []), [tree]);
-  const agg: NodeAgg | null = useMemo(() => (tree ? { inr: nodeTotals(tree, leafPrefix(tree, (i) => tree.rows[i].TotCostInr)), loc: nodeTotals(tree, leafPrefix(tree, (i) => tree.rows[i].TotCostLoc)), sim: null } : null), [tree]);
-  const total = useMemo(() => (tree ? grandTotal(leafPrefix(tree, (i) => tree.rows[i].TotCostInr)) : null), [tree]);
-  const q = dec(qty);
-
-  return (
-    <div className="flex h-full min-h-[50vh] flex-col gap-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-2xs font-bold uppercase tracking-wide text-muted">Cost for quantity ({r.Uom})
-          <input className={cx(inputCls, 'w-40')} inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Quantity to cost" />
-        </label>
-        <Button size="sm" onClick={load} disabled={state.status === 'loading'}><Play size={13} /> Cost again</Button>
-        {state.status === 'loading' && <span className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> Costing in SAP… {fmtMs(Date.now() - (state.startedAt ?? Date.now()))} (no time limit)</span>}
-        {state.status === 'done' && total && <span className="num text-sm"><b>{fmtNum(total, 2, 'INR')} INR</b> total for {qty} {r.Uom}{q && q.gt(0) ? <> · {fmtNum(total.div(q), 4, 'INR')} INR per {r.Uom}</> : null} <span className="text-xs text-muted">(SAP figures; {fmtMs(state.data!.ms)} in SAP)</span></span>}
-      </div>
-      <p className="text-xs text-muted">The same costing as the BOM costing tab (current BOM and rates at the plant), for the quantity above. It starts the moment this tab opens.</p>
-      {state.status === 'error' && <p role="alert" className="rounded-xl border border-bad/40 bg-bad/5 px-3 py-2 text-sm text-bad">{state.error}</p>}
-      {state.status === 'cancelled' && <p className="text-sm text-muted">Cancelled.</p>}
-      {state.data?.messages.length ? <ul className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">{state.data.messages.map((m, i) => <li key={i}>{m.message}</li>)}</ul> : null}
-      {state.status === 'done' && !tree && <p className="text-sm text-muted">SAP returned no BOM lines for this finished good and plant.</p>}
-      {tree && agg && (
-        <div className="min-h-[50vh] flex-1 overflow-hidden rounded-xl border border-line">
-          <BomTree tree={tree} sim={sim} simOn={false} agg={agg} plantCurr={plantCurr} onOpen={() => undefined} />
-        </div>
-      )}
     </div>
   );
 }

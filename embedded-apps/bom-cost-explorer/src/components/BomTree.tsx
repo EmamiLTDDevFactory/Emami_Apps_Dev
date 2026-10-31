@@ -183,11 +183,13 @@ const KIND_STYLE: Record<string, string> = {
 const ROW_H = 30;
 
 export default function BomTree({
-  tree, sim, simOn, agg, plantCurr, onOpen, focusRow, freightRun,
+  tree, sim, simOn, agg, plantCurr, onOpen, focusRow, freightRun, preset,
 }: {
   tree: CostTree; sim: SimRow[]; simOn: boolean; agg: NodeAgg; plantCurr: Record<string, string>; onOpen: (row: number) => void; focusRow?: number | null;
   /** FreightDays / StdFrt of the run that produced the rows: enables the freight break-up on freight values (omitted = as before) */
   freightRun?: FreightRun | null;
+  /** Embedded use (Plant production summary, Standard cost, Sales price): start on this column preset instead of the saved choice. Not saved. */
+  preset?: string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(allExpandableIds(tree, 2)));
   const [colIds, setColIds] = useState<string[]>(PRESETS.Standard);
@@ -209,7 +211,7 @@ export default function BomTree({
       }
       ls.set('bce:tree-cols-v2', true);
     }
-    setColIds(saved);
+    setColIds(preset && PRESETS[preset] ? PRESETS[preset] : saved);
     setPresets(ls.get('bce:tree-presets', {}));
   }, []);
   useEffect(() => setExpanded(new Set(allExpandableIds(tree, 2))), [tree]);
