@@ -25,13 +25,13 @@ const DEPLOYED_WATCH_ENABLED = 'true';
 // Plant-wide costing (one plant + Materials empty = all its header materials, batched, no time limit). Code default off.
 const DEPLOYED_PLANT_WIDE_ENABLED = 'true';
 // Actual vs rate sources (weighted average actual cost vs the other rate sources; ZMM_BOM_COST_SRV Wac* sets, live on NWP only).
-// Off here by default (PRD turns it on). The Wac sets answer on NGD, NGQ and NWP. WAC_ENABLED / NEXT_PUBLIC_WAC_ENABLED win.
-const DEPLOYED_WAC_ENABLED = 'false';
-// Standard cost (CK13N), Sales price + Compare with cost, Price context: all off by default; the Ck / So / Cogm sets are not published on
-// any SAP system yet. CK_ENABLED / COGM_SO_ENABLED / PRICE_CONTEXT_ENABLED (or the NEXT_PUBLIC_ names) win.
-const DEPLOYED_CK_ENABLED = 'false';
-const DEPLOYED_COGM_SO_ENABLED = 'false';
-const DEPLOYED_PRICE_CONTEXT_ENABLED = 'false';
+// On for deployed builds. The Wac sets answer on NGD, NGQ and NWP. WAC_ENABLED / NEXT_PUBLIC_WAC_ENABLED win.
+const DEPLOYED_WAC_ENABLED = 'true';
+// Standard cost (CK13N), Sales price + Compare with cost, Price context: on for deployed builds; the Ck / So / Cogm sets may not be published on
+// every SAP system yet (the screens then show SAP's not-found message). CK_ENABLED / COGM_SO_ENABLED / PRICE_CONTEXT_ENABLED (or the NEXT_PUBLIC_ names) win.
+const DEPLOYED_CK_ENABLED = 'true';
+const DEPLOYED_COGM_SO_ENABLED = 'true';
+const DEPLOYED_PRICE_CONTEXT_ENABLED = 'true';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
