@@ -1,4 +1,5 @@
 'use client';
+import { costPropVisible } from '../sap/allCosts';
 import type { CostQuery } from '../query/schema';
 import { describeQuery } from '../query/schema';
 import { COST_LINE, type CostLine, type RateOption } from '../sap/fields';
@@ -126,7 +127,8 @@ export async function exportRows({ fmt, name, query, cols, rows, totals }: { fmt
 export async function exportCostLines({ fmt, query, rows, sim, settings, messages }: { fmt: 'xlsx' | 'csv'; query: CostQuery; rows: CostLine[]; sim: SimRow[]; settings: SimSettings; messages: SapMessage[] }) {
   const simOn = !isIdentity(settings);
   const kinds = COST_LINE as Record<string, readonly [string, string]>;
-  const cols: XCol[] = Object.keys(kinds).map((k) => {
+  const keys = Object.keys(kinds).filter((k) => costPropVisible(k));
+  const cols: XCol[] = keys.map((k) => {
     const kind = kinds[k][1];
     const inr = /Inr$/.test(k) || k === 'BudLanded';
     // Freight as SAP gave it, also where it is not added (Consumption / MBEW rates include it; see "Freight added").
@@ -134,7 +136,7 @@ export async function exportCostLines({ fmt, query, rows, sim, settings, message
     if (kind === 'd') return { header: k, dp: /Rate|Fx|Pc/.test(k) ? 4 : k.startsWith('Cov') ? 0 : 2, curr: inr ? 'INR' : undefined, width: 14, get: (i) => num((rows[i] as unknown as Record<string, unknown>)[k]) };
     return { header: k, width: k === 'Maktx' || k === 'Headtxt' ? 30 : 10, get: (i) => String((rows[i] as unknown as Record<string, unknown>)[k] ?? '') };
   });
-  cols.splice(Object.keys(kinds).indexOf('Idnrk') + 1, 0, { header: 'Structure', width: 40, get: (i) => `${'  '.repeat(Math.max(0, rows[i].Level - 1))}${rows[i].Idnrk}` });
+  cols.splice(keys.indexOf('Idnrk') + 1, 0, { header: 'Structure', width: 40, get: (i) => `${'  '.repeat(Math.max(0, rows[i].Level - 1))}${rows[i].Idnrk}` });
   cols.push({ header: 'RateOptions (count)', width: 10, get: (i) => rows[i].RateOptions?.length ?? 0 });
   cols.push({ header: 'Freight added', width: 12, get: (i) => (!rows[i].HasChild?.trim() ? ((rows[i] as FreightTagged).FrtIncluded ? 'No (included in rate)' : 'Yes') : '') });
   if (simOn) {

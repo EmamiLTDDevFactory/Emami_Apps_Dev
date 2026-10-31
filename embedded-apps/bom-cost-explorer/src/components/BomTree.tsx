@@ -12,6 +12,7 @@ import { Button, cx, Modal, SimTag, SourceBadge, inputBase, inputCls } from './u
 import { FreightValue } from './freight/FreightValue';
 import type { FreightRun } from '@/lib/freight/breakup';
 import type { FreightTagged } from '@/lib/cost/freightIncluded';
+import { ALL_COSTS_ENABLED } from '@/lib/sap/allCosts';
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 
 export interface NodeAgg {
@@ -40,6 +41,24 @@ const Amt = ({ v, curr, dp = 2, muted }: { v: Decimal | string; curr: string; dp
 );
 
 const parentTitle = 'SAP roll-up of this sub-tree. Not added again to totals (totals sum leaf rows only).';
+
+/** "All costs" columns: every cost figure CostLineSet carries that has no column of its own. A zero from SAP means "none", so it shows blank. */
+const ALL_COST_COLUMNS: Col[] = [
+  { id: 'selRate', label: 'Rate / price unit', width: 140, right: true, line: ({ r, leaf }) => (leaf && r.SelSource && !D(r.SelRate).isZero() ? <Amt v={r.SelRate} curr={r.SelCurr} dp={4} /> : null) },
+  { id: 'selRateInr', label: 'Rate / price unit INR', width: 150, right: true, line: ({ r, leaf }) => (leaf && r.SelSource && !D(r.SelRateInr).isZero() ? <Amt v={r.SelRateInr} curr="INR" dp={4} /> : null) },
+  { id: 'compCost', label: 'Component cost (rate currency)', width: 190, right: true, line: ({ r, leaf }) => (leaf && !D(r.CompCost).isZero() ? <Amt v={r.CompCost} curr={r.SelCurr} /> : null) },
+  { id: 'totPcLoc', label: 'Total / pc local', width: 136, right: true, line: ({ r, leaf }) => (leaf && !D(r.TotCostPcLoc).isZero() ? <Amt v={r.TotCostPcLoc} curr={r.LocCurr} dp={4} /> : null) },
+  {
+    id: 'actRatePc', label: 'Actual rate / pc', width: 140, right: true, title: 'Rate from actual documents (SAP figure)',
+    line: ({ r, leaf }) => (leaf && !D(r.ActRatePc).isZero() ? <Amt v={r.ActRatePc} curr={r.SelCurr} dp={4} /> : null),
+  },
+  { id: 'actRatePcInr', label: 'Actual rate / pc INR', width: 150, right: true, line: ({ r, leaf }) => (leaf && !D(r.ActRatePcInr).isZero() ? <Amt v={r.ActRatePcInr} curr="INR" dp={4} /> : null) },
+  {
+    id: 'budAmt', label: 'Budget source amount', width: 170, right: true,
+    line: ({ r, leaf }) => (leaf && !D(r.BudSrcamt).isZero() ? <span title={`Budget ${r.BudGjahr} (${r.BudSource}) @ ${r.BudExchrate}`}><Amt v={r.BudSrcamt} curr={r.BudSrccurr} dp={4} /></span> : null),
+  },
+  { id: 'bomSrc', label: 'BOM source', width: 110, line: ({ r }) => (r.BomSrc ? <span className="text-xs text-muted" title={r.BomSrcDate ? `BOM of ${r.BomSrcDate}` : undefined}>{r.BomSrc}{r.BomPlant ? ` · ${r.BomPlant}` : ''}</span> : null) },
+];
 
 export const TREE_COLUMNS: Col[] = [
   { id: 'level', label: 'Lvl', width: 44, right: true, line: ({ r }) => <span className="num text-muted">{r.Level}</span> },
@@ -113,6 +132,7 @@ export const TREE_COLUMNS: Col[] = [
       );
     },
   },
+  ...(ALL_COSTS_ENABLED ? ALL_COST_COLUMNS : []),
   { id: 'donor', label: 'Donor', width: 70, line: ({ r }) => (r.Donor ? <span className="rounded bg-warn/15 px-1 text-2xs font-semibold text-warn" title={`Costed from donor plant ${r.Donor}`}>{r.Donor}</span> : null) },
   { id: 'matkl', label: 'Mat. group', width: 100, line: ({ r }) => <span className="text-xs text-muted">{r.Matkl}</span> },
   { id: 'mtart', label: 'Type', width: 60, line: ({ r }) => <span className="text-xs text-muted">{r.Mtart}</span> },
@@ -148,6 +168,7 @@ export const PRESETS: Record<string, string[]> = {
   Standard: ['level', 'qty', 'skusize', 'compOgrp', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'frtPc', 'totLoc', 'totInr', 'budget', 'cover'],
   Rates: ['level', 'qty', 'source', 'vendor', 'ratePc', 'fx', 'ratePcLoc', 'ratePcInr', 'donor'],
   Freight: ['level', 'qty', 'source', 'frtPc', 'frtPcInr', 'totPcInr', 'totInr'],
+  ...(ALL_COSTS_ENABLED ? { 'All costs': ['level', 'qty', 'source', 'selRate', 'selRateInr', 'ratePc', 'ratePcLoc', 'ratePcInr', 'actRatePc', 'actRatePcInr', 'frtPc', 'frtPcInr', 'totPcLoc', 'totPcInr', 'compCost', 'totLoc', 'totInr', 'budget', 'budAmt'] } : {}),
   'Budget & coverage': ['level', 'qty', 'totPcInr', 'budget', 'cover', 'totInr'],
   All: TREE_COLUMNS.map((c) => c.id),
 };

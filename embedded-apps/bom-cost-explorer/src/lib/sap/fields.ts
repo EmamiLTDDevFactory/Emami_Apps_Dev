@@ -124,6 +124,12 @@ export const COST_LINE = def({
   TotCostLoc: ['TotCostLoc', 'd'],
   TotCostPcInr: ['TotCostPcInr', 'd'],
   TotCostInr: ['TotCostInr', 'd'],
+  // Cost fields the live service sends but the screens did not read before: the actual rate and the BOM source.
+  ActRatePc: ['ActRatePc', 'd'],
+  ActRatePcInr: ['ActRatePcInr', 'd'],
+  BomSrc: ['BomSrc', 's'],
+  BomPlant: ['BomPlant', 's'],
+  BomSrcDate: ['BomSrcDate', 't'],
   BudGjahr: ['BudGjahr', 's'],
   BudSource: ['BudSource', 's'],
   BudSrccurr: ['BudSrccurr', 's'],

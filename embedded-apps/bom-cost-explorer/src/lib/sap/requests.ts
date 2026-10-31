@@ -5,6 +5,7 @@
 import { ENTITY_SET, MODE_TO_ENTITY, NAV_RATE_OPTIONS } from './entities';
 import { COST_LINE, OPTIONAL_PROPS } from './fields';
 import { buildSelectionFilter } from './filter';
+import { costPropVisible } from './allCosts';
 import type { CostQuery } from '../query/schema';
 
 export interface SapRequest {
@@ -19,7 +20,7 @@ export interface SapRequest {
  * of an unknown property. With $expand the navigation must be selected too, or OData V2 drops it.
  */
 export function costLineSelect(expand: boolean): string {
-  const props = Object.values(COST_LINE).map(([name]) => name).filter((n) => !OPTIONAL_PROPS.has(n));
+  const props = Object.values(COST_LINE).map(([name]) => name).filter((n) => !OPTIONAL_PROPS.has(n) && costPropVisible(n));
   return [...props, ...(expand ? [NAV_RATE_OPTIONS] : [])].join(',');
 }
 
