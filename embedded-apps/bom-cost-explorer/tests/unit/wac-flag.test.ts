@@ -17,7 +17,7 @@ describe('feature flag', () => {
   });
   it('flag off: the route imports the screen only when on, the nav item makes no request, nothing shared was renamed', () => {
     expect(src('src/app/actual/page.tsx')).toMatch(/process\.env\.NEXT_PUBLIC_WAC_ENABLED === 'true' \? dynamic\(\(\) => import\('@\/components\/wac\/ActualVsSources'\)/);
-    expect(src('src/components/Shell.tsx')).toMatch(/if \(\(WAC_ENABLED \|\| CK_ENABLED \|\| COGM_SO_ENABLED\) && email\) void fetchIsAdmin/);
+    expect(src('src/components/Shell.tsx')).toMatch(/if \(\(WAC_ENABLED \|\| CK_ENABLED \|\| COGM_SO_ENABLED \|\| PSUM_ENABLED\) && email\) void fetchIsAdmin/);
     expect(Object.values(ENTITY_SET)).not.toContain('WacRowSet'); // the shared entity-set map is untouched
     expect(WAC_SET).toEqual({ ROWS: 'WacRowSet', COMPARE: 'WacCompareSet', COMP: 'WacCompSet', DOCS: 'WacDocSet' });
   });

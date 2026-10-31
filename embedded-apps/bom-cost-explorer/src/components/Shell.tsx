@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, BellRing, Boxes, Calendar, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BellRing, Boxes, Calendar, Factory, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { AI_ENABLED } from '@/lib/ai/config';
 import { WATCH_ENABLED } from '@/lib/watch/api';
 import { WAC_ENABLED, wacNavVisible } from '@/lib/wac/flag';
+import { PSUM_ENABLED } from '@/lib/psum/flag';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
@@ -47,9 +48,9 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum';
 
-function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean }) {
+function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean }) {
   const pane = wide
     ? 'relative w-64 shrink-0 border-r border-line bg-panel'
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-panel shadow-pop transition-transform duration-200', open ? 'translate-x-0' : '-translate-x-full');
@@ -75,6 +76,7 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
           {(['R', 'F', 'M'] as Mode[]).map((m) => <NavItem key={m} m={m} active={!planActive && mode === m} onClick={() => { onMode(m); onClose(); }} />)}
           <NavLink href={`${BASE_PATH}/freight-compare/`} icon={GitCompareArrows} label="Freight comparison" hint="Actual vs standard, plant and FG wise" active={planActive === 'freight'} />
           {wacVisible && <NavLink href={`${BASE_PATH}/actual/`} icon={Scale} label="Actual vs rate sources" hint="Weighted average actual cost vs rates" active={planActive === 'wac'} />}
+          {psumVisible && <NavLink href={`${BASE_PATH}/plant-summary/`} icon={Factory} label="Plant production summary" hint="FGs, cost and components by plant" active={planActive === 'psum'} />}
           {ckVisible && <NavLink href={`${BASE_PATH}/standard-cost/`} icon={Layers} label="Standard cost" hint="Cost estimate, like CK13N" active={planActive === 'ck'} />}
           {soVisible && <NavLink href={`${BASE_PATH}/sales-price/`} icon={Tags} label="Sales price" hint="MRP and selling price, latest order" active={planActive === 'so'} />}
           {PLAN_MODULE_ENABLED && (
@@ -153,7 +155,7 @@ export function EnvBadge({ system, appEnv }: { system: string; appEnv: string })
 export default function Shell({ mode, onMode, email, actions, children, env, onBack, planActive }: { mode: Mode; onMode: (m: Mode) => void; email: string; actions?: ReactNode; children: ReactNode; env: { system: string; appEnv: string }; onBack?: () => void; planActive?: PlanNav }) {
   // Admin-only nav item of the Actual vs rate sources page; with the flag off no request is made.
   const [wacAdmin, setWacAdmin] = useState(false);
-  useEffect(() => { if ((WAC_ENABLED || CK_ENABLED || COGM_SO_ENABLED) && email) void fetchIsAdmin(email).then(setWacAdmin); }, [email]);
+  useEffect(() => { if ((WAC_ENABLED || CK_ENABLED || COGM_SO_ENABLED || PSUM_ENABLED) && email) void fetchIsAdmin(email).then(setWacAdmin); }, [email]);
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -162,7 +164,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   return (
     <PriceContextProvider email={email}>
     <div className="flex h-screen overflow-clip bg-plum">
-      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} />
+      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} psumVisible={wacNavVisible(PSUM_ENABLED, wacAdmin)} />
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <div className="flex bg-plum no-print">
           {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}
