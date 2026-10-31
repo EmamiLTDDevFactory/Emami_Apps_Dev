@@ -25,8 +25,13 @@ const DEPLOYED_WATCH_ENABLED = 'true';
 // Plant-wide costing (one plant + Materials empty = all its header materials, batched, no time limit). Code default off.
 const DEPLOYED_PLANT_WIDE_ENABLED = 'true';
 // Actual vs rate sources (weighted average actual cost vs the other rate sources; ZMM_BOM_COST_SRV Wac* sets, live on NWP only).
-// Off here: NGQ has no Wac sets. The PRD copy (NWP) turns it on. WAC_ENABLED / NEXT_PUBLIC_WAC_ENABLED win.
+// Off here by default (PRD turns it on). The Wac sets answer on NGD, NGQ and NWP. WAC_ENABLED / NEXT_PUBLIC_WAC_ENABLED win.
 const DEPLOYED_WAC_ENABLED = 'false';
+// Standard cost (CK13N), Sales price + Compare with cost, Price context: all off by default; the Ck / So / Cogm sets are not published on
+// any SAP system yet. CK_ENABLED / COGM_SO_ENABLED / PRICE_CONTEXT_ENABLED (or the NEXT_PUBLIC_ names) win.
+const DEPLOYED_CK_ENABLED = 'false';
+const DEPLOYED_COGM_SO_ENABLED = 'false';
+const DEPLOYED_PRICE_CONTEXT_ENABLED = 'false';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
@@ -56,6 +61,8 @@ const nextConfig = {
     NEXT_PUBLIC_AI_ENABLED: process.env.NEXT_PUBLIC_AI_ENABLED || process.env.AI_ENABLED || (isBuild ? DEPLOYED_AI_ENABLED : 'false'),
     NEXT_PUBLIC_WATCH_ENABLED: process.env.NEXT_PUBLIC_WATCH_ENABLED || process.env.WATCH_ENABLED || (isBuild ? DEPLOYED_WATCH_ENABLED : 'false'),
     NEXT_PUBLIC_WAC_ENABLED: pick('WAC_ENABLED') || (isBuild ? DEPLOYED_WAC_ENABLED : 'false'), NEXT_PUBLIC_WAC_RECON_WARN_PCT: pick('WAC_RECON_WARN_PCT', '2'),
+    NEXT_PUBLIC_CK_ENABLED: pick('CK_ENABLED') || (isBuild ? DEPLOYED_CK_ENABLED : 'false'), NEXT_PUBLIC_COGM_SO_ENABLED: pick('COGM_SO_ENABLED') || (isBuild ? DEPLOYED_COGM_SO_ENABLED : 'false'),
+    NEXT_PUBLIC_PRICE_CONTEXT_ENABLED: pick('PRICE_CONTEXT_ENABLED') || (isBuild ? DEPLOYED_PRICE_CONTEXT_ENABLED : 'false'), NEXT_PUBLIC_SO_STALE_DAYS: pick('SO_STALE_DAYS', '60'),
     NEXT_PUBLIC_PLANT_WIDE_ENABLED: pick('PLANT_WIDE_ENABLED') || (isBuild ? DEPLOYED_PLANT_WIDE_ENABLED : 'false'),
     NEXT_PUBLIC_VH_CAP: pick('VH_CAP', '500'), NEXT_PUBLIC_PLANT_WIDE_BATCH: pick('PLANT_WIDE_BATCH', '25'), NEXT_PUBLIC_PLANT_WIDE_MTART: pick('PLANT_WIDE_MTART', 'FERT'),
     NEXT_PUBLIC_PLANT_WIDE_MAX_CONCURRENCY: pick('PLANT_WIDE_MAX_CONCURRENCY', '1'), NEXT_PUBLIC_PLANT_WIDE_CONFIRM_ABOVE: pick('PLANT_WIDE_CONFIRM_ABOVE', '0'),

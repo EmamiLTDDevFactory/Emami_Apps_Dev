@@ -10,6 +10,7 @@ import { AlertTriangle, Play, RefreshCw } from 'lucide-react';
 import { Button, Spinner, Tabs, cx, inputCls } from '../ui';
 import { useChartTheme } from '../charts';
 import VarCell from './VarCell';
+import { PriceBlank, PriceCells, PriceHeads, PriceScope, PriceStrip } from '../price-context/slots';
 import { fmtDate, fmtNum, fmtQty } from '@/lib/format';
 import type { WacEntry } from '@/lib/wac/cache';
 import type { WacFilterInput } from '@/lib/wac/filter';
@@ -52,7 +53,7 @@ function RunButton({ onRun, label }: { onRun: () => void; label: string }) {
 const SRC_ORDER: WacSource[] = ['SEL', 'CMAP', 'CON', 'AVG'];
 const GRP_ORDER = ['RM', 'PM', 'PERF', 'MAT'];
 
-function Comparison({ rows }: { rows: WacCompareRow[] }) {
+function Comparison({ rows, matnr, plant }: { rows: WacCompareRow[]; matnr: string; plant: string }) {
   const t = useChartTheme();
   const groups = GRP_ORDER.filter((g) => rows.some((r) => r.Grp === g));
   const sources = SRC_ORDER.filter((s) => rows.some((r) => r.Src === s));
@@ -69,7 +70,7 @@ function Comparison({ rows }: { rows: WacCompareRow[] }) {
     <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr><th className={th}>Group</th><th className={thN}>Actual / unit</th>{sources.map((s) => <th key={s} className={thN}>{SRC_LABEL[s]}</th>)}</tr></thead>
+          <thead><tr><th className={th}>Group</th><th className={thN}>Actual / unit</th>{sources.map((s) => <th key={s} className={thN}>{SRC_LABEL[s]}</th>)}<PriceHeads className={thN} /></tr></thead>
           <tbody>
             {groups.map((g) => (
               <tr key={g} className={cx('border-t border-line/60', g === 'MAT' && 'bg-sunken/50 font-semibold')}>
@@ -90,6 +91,7 @@ function Comparison({ rows }: { rows: WacCompareRow[] }) {
                     </td>
                   );
                 })}
+                {g === 'MAT' ? <PriceCells matnr={matnr} plant={plant} className={tdN} costCurr="INR" costValue={actual(g)} /> : <PriceBlank className={tdN} />}
               </tr>
             ))}
           </tbody>
@@ -199,10 +201,12 @@ export default function RowDetail({ row, run, cmpOn }: { row: WacRow; run: WacFi
   const docs = useWacDocuments(q, tab === 'documents', run);
 
   return (
+    <PriceScope materials={[row.Matnr]}>
     <div className="flex flex-col gap-3 px-3 py-3" onClick={(e) => e.stopPropagation()}>
+      <PriceStrip matnr={row.Matnr} plant={row.Werks} costCurr="INR" />
       <Tabs<Tab> label="Detail views" value={tab} onChange={setTab} tabs={[{ id: 'comparison', label: 'Comparison' }, { id: 'components', label: 'Components' }, { id: 'documents', label: 'Documents' }]} />
       {tab === 'comparison' && (started.compare
-        ? (compare.entry?.status === 'done' ? <Comparison rows={compare.entry.data as WacCompareRow[]} /> : <State entry={compare.entry} onRetry={compare.retry} what="the comparison" />)
+        ? (compare.entry?.status === 'done' ? <Comparison rows={compare.entry.data as WacCompareRow[]} matnr={row.Matnr} plant={row.Werks} /> : <State entry={compare.entry} onRetry={compare.retry} what="the comparison" />)
         : <RunButton label="Run live comparison" onRun={() => setStarted((s) => ({ ...s, compare: true }))} />)}
       {tab === 'components' && (started.comp
         ? (comps.entry?.status === 'done' ? <Components rows={comps.entry.data as WacCompRow[]} /> : <State entry={comps.entry} onRetry={comps.retry} what="the components" />)
@@ -210,5 +214,6 @@ export default function RowDetail({ row, run, cmpOn }: { row: WacRow; run: WacFi
       {tab === 'documents' && (docs.entry?.status === 'done' ? <Documents rows={docs.entry.data as WacDocRow[]} /> : <State entry={docs.entry} onRetry={docs.retry} what="the documents" />)}
       {tab === 'comparison' && compare.entry?.status === 'done' && compare.entry.messages.length > 0 && <p className="text-xs text-warn">{compare.entry.messages.map((m) => m.message).join(' · ')}</p>}
     </div>
+    </PriceScope>
   );
 }

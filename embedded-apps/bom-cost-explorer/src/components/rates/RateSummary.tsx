@@ -14,6 +14,7 @@ import { CATEGORY_LABEL } from '@/lib/cost/categories';
 import { exportTable, type XCol } from '@/lib/client/export';
 import { fmtNum, fmtQty, fmtRate } from '@/lib/format';
 import { Button, Card, cx, inputBase, sourceColorVar } from '../ui';
+import { PriceCells, PriceHeads, PriceScope } from '../price-context/slots';
 import { WITH_FREIGHT_LABEL, WITH_FREIGHT_SOURCES } from '@/lib/rates/withFreight';
 import type { Decimal } from '@/lib/cost/decimal';
 
@@ -109,6 +110,7 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
         <Button size="sm" className="ml-auto" onClick={exportXlsx}><FileSpreadsheet size={14} /> Excel</Button>
       </div>
 
+      <PriceScope materials={fgs.map((f) => f.headmat)}>
       <Card title={`FG cost per piece by rate type (${fgs.length})`} bodyClass="p-0">
         <div className="scroll-thin max-h-[45vh] overflow-auto">
           <table className="w-full text-xs">
@@ -116,12 +118,14 @@ export default function RateSummary({ rows, rates, query }: { rows: CostLine[]; 
               <th className={th}>FG</th>
               {fgTypes.map((rt) => <th key={rt} className={thN}><Head t={rt}>{RATE_TYPE_LABEL[rt]}</Head></th>)}
               <th className={thN}>Freight</th><th className={thN}>Landed (BOM)</th>
+              <PriceHeads className={thN} />
             </tr></thead>
             <tbody>{fgs.map((f) => <FgLine key={f.key} f={f} types={fgTypes} />)}</tbody>
           </table>
           {!fgs.length && <p className="px-3 py-3 text-xs text-muted">No FG matches.</p>}
         </div>
       </Card>
+      </PriceScope>
 
       <ComponentCard title="RM rates (incl. perfume) · INR per unit" list={rm} types={types} frt={optionsReady} />
       <ComponentCard title="PM rates · INR per unit" list={pm} types={types} frt={optionsReady} />
@@ -151,6 +155,7 @@ function FgLine({ f, types }: { f: FgRow; types: RateType[] }) {
       })}
       <td className={tdN}><Dual inr={f.freightPc} locPerInr={f.locPerInr} curr={f.curr} /></td>
       <td className={cx(tdN, 'font-semibold')}><Dual inr={f.landedPc} locPerInr={f.locPerInr} curr={f.curr} /></td>
+      <PriceCells matnr={f.headmat} plant={f.hwerks} className={tdN} costCurr="INR" />
     </tr>
   );
 }

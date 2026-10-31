@@ -9,6 +9,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, ChevronDown, ChevronRight, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
+import { FgStrips } from '../price-context/slots';
 import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
 import { Button, Card, Empty, Field, Pill, Segmented, Stat, cx, inputCls } from '../ui';
@@ -154,6 +155,7 @@ function Results({ data, stale, ran }: { data: Compared; stale: boolean; ran: { 
         <Stat label="Above / below standard" value={`${totals.over} / ${totals.under}`} sub="finished goods" />
       </div>
 
+      <FgStrips fgs={rows.map((r) => ({ matnr: r.fg, plant: r.plant, text: r.text }))} />
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-64"><Segmented<Filter> size="sm" label="Show" value={filter} onChange={setFilter} options={[{ value: 'all', label: 'All' }, { value: 'over', label: 'Above std' }, { value: 'under', label: 'Below std' }]} /></div>
         <select aria-label="Plant" className={cx(inputCls, 'w-44')} value={plant} onChange={(e) => setPlant(e.target.value)}>

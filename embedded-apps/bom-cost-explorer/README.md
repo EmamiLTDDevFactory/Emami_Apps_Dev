@@ -260,6 +260,30 @@ total" row (quantity-weighted, decimal.js), shown only when every row has the sa
   shared files only got a nav item (`Shell.tsx`), the flag in `next.config.mjs` and one dispatch line in `mock/sap.ts`.
 - **Check the names against a system:** `npm run check:wac-metadata` (needs a gateway that serves `$metadata`).
 
+## Standard cost (CK13N), Sales price and Price context (Admin only, three flags)
+
+Three additive features, all **off by default** and **Admin only** (this app's Manage Access role Admin). Like every other call of this static app they read
+SAP straight from the browser through the existing client (read-only GET, `encodeURIComponent`, no `+`), with **no time limit** (a request ends when SAP
+answers, on Stop, or when the page is left), nothing loads before the person presses Show / turns the switch on, results are kept in memory until Refresh
+(`src/lib/wac/cache.ts`, no expiry). SAP computes every cost, price, ratio and variance; the only figures computed in the browser are labelled
+"computed here" (the difference of two CK13N estimates, and "cost as % of selling price" when both amounts have the same currency).
+
+| Flag (build time; also the `NEXT_PUBLIC_` name) | What it switches on |
+|---|---|
+| `CK_ENABLED` | Page **Standard cost** (`/standard-cost/`, sidebar under Analysis): the standard cost estimate like CK13N: estimates list, header card, cost components (table, bar, donut), itemization with "Open estimate" drill-down (breadcrumb in `?stack=`), compare of two estimates, Excel, "Copy for SAP". Sets `CkListSet`, `CkHeaderSet`, `CkCompSet`, `CkItemSet`. |
+| `COGM_SO_ENABLED` | Page **Sales price** (`/sales-price/`): MRP and selling price from the latest sales order with its full pricing, filter lists (include / exclude), pricing procedure, rules, and "Compare with cost (SAP)" (`CogmRowSet`, live, 25 finished goods at most per call). Sets `SoAreaVHSet`, `SoFilterVHSet`, `SoPriceSet`, `SoPricingSet`, `SoProcSet`, `SoCondSet`. |
+| `PRICE_CONTEXT_ENABLED` | A "Price context" control in the top bar (sales organisations, segment, days; stored in `?pc=` and in session storage) and, with its switch on, a **price strip** (Standard cost, MRP, Selling price, segment / document type chips, order date and age, order and condition in the tooltip) for the finished goods shown on: the Explorer tabs (BOM tree, Cost breakup, Dashboard, Simulator, Rate sources, Rate summary, Plant comparison, and the Freight and RM / PM tables through the selection), Freight comparison, Plan Breakup and Cost breakup, Cost watch alerts and Actual vs rate sources (row detail). The FG matrices (Rate summary, Plan "FG per pc", the Actual vs rate sources comparison) get the extra columns **Standard (CK13N)**, **MRP**, **Selling price** at finished-good level only. Nothing is rendered or requested with the switch off, no sales organisation, or for a non-Admin. |
+
+- `SO_STALE_DAYS` (default 60): a selected order older than this is flagged stale. `WAC_*`, see above.
+- Off = no sidebar item, no request, and none of this code in the existing bundles: routes check the flag literally (`process.env.NEXT_PUBLIC_..._ENABLED === 'true'`)
+  so the build drops the import; the existing screens only use `src/components/price-context/slots.tsx`, whose slots are no-ops when the flag is off.
+- **None of these SAP sets is published yet** (all answer 404 on NWP, NGD and NGQ as of 2026-10-31), so the property names follow the agreed contract and are
+  **unchecked**; there is no mock server for them. Run `npm run check:ck-so-metadata` the moment SAP publishes them and fix names only in `src/lib/ck/fields.ts`
+  and `src/lib/so/fields.ts`. Open points to confirm then: the key property of each set (the Wac sets turned out to use `Rowid`), whether `Kadky` is a date,
+  whether `DaysBack` / `SoDaysIn` are integers, and the exact `Kstat` / `Kinak` / `Excl` flag values.
+- `Role` scoping by market (`cogm`, `cogm-maint`) is not in this app (there is no server): access is this app's Admin role, and SAP applies its own authorisation.
+- Wording: "Amount remaining after manufacturing cost", never "profit"; every amount shows its own currency; nothing is converted in the browser.
+
 ## Not in scope / open points
 
 - SAP `$metadata` has not been checked against the real service yet. Run `npm run check:metadata`

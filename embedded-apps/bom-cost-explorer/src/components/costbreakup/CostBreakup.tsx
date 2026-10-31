@@ -26,6 +26,7 @@ const budatIso = (v: string) => {
 };
 import { sourceLabel } from '@/lib/rates/sourceLabel';
 import { Button, Card, Drawer, Empty, Pill, Segmented, cx } from '../ui';
+import { FgStrips } from '../price-context/slots';
 
 const th = 'sticky top-0 z-10 bg-panel px-2 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted shadow-[0_1px_0_rgb(var(--line))]';
 const thN = `${th} text-right`;
@@ -126,6 +127,7 @@ export default function CostBreakup<T extends BreakupLine>({ lines, qtyOf, fgQty
         </Card>
       )}
 
+      <FgStrips fgs={(one ? [one] : fgs).map((f) => ({ matnr: f.headmat, plant: f.hwerks, text: f.headtxt }))} />
       {one ? (
         <ElementTable title={`${one.headmat} ${one.headtxt} · ${one.hwerks} · ${fmtQty(one.fgQty)} pc`} cells={one.elements} material={one.material} conversion={one.conversion} total={one.total} curr={one.curr} fgQty={one.fgQty} actualOrders={showActual ? one.actual?.orders ?? 0 : null} showActual={showActual} onOpen={(el) => setDetail({ el, fgKey: one.key })} />
       ) : (

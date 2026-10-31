@@ -9,6 +9,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { FileSpreadsheet, Info } from 'lucide-react';
 import { tdCls, tdNum, thCls, thNum } from './common';
 import { Button, Card, Empty, Pill, cx } from '../ui';
+import { PriceCells, PriceHeads, PriceScope } from '../price-context/slots';
 import { useChartTheme } from '../charts';
 import { PLAN_SOURCES, PLAN_SOURCE_COLOR, PLAN_SOURCE_LABEL, byCountry, componentRate, type FgSources, type PlanLineWithOptions, type PlanSource } from '@/lib/plan/sources';
 import { exportTable, type XCol } from '@/lib/client/export';
@@ -105,6 +106,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
           {!optionsReady && <span className="text-warn">C-MAP / Consumption: {rates.status === 'loading' || rates.status === 'idle' ? 'loading rate options…' : <>{rates.note || 'not available'} <button type="button" className="font-semibold text-accent underline" onClick={rates.retest}>Test again</button></>}</span>}
           {noBudget && <span className="text-warn">No budget rates in this run{query.inclBudget ? ` for ${query.budgetYr}` : ' (turn on Budget rates and run again)'}.</span>}
         </div>
+        <PriceScope materials={shownCountries.flatMap((c) => c.rows.map((r) => r.headmat))}>
         <div className="scroll-thin overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -113,6 +115,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
                 {PLAN_SOURCES.map((s) => <th key={s} className={thNum}><span className="mr-1 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: PLAN_SOURCE_COLOR[s] }} />{PLAN_SOURCE_LABEL[s]}</th>)}
                 <th className={thNum} title="Sum of leaf TotCostInr / plan qty">Selected incl. freight</th>
                 <th className={thCls}>Lowest</th>
+                <PriceHeads className={thNum} />
               </tr>
             </thead>
             <tbody>
@@ -136,6 +139,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
                       })}
                       <td className={tdNum}>{r.selectedInclFrt ? fmtRate(r.selectedInclFrt) : '—'}</td>
                       <td className={tdCls}>{r.lowest ? PLAN_SOURCE_LABEL[r.lowest].replace('As per ', '') : '—'}</td>
+                      <PriceCells matnr={r.headmat} plant={r.hwerks} className={tdNum} costCurr="INR" />
                     </tr>
                   ))}
                 </Fragment>
@@ -143,6 +147,7 @@ export default function FgPerPiece({ rows, rates, query, lines }: { rows: FgSour
             </tbody>
           </table>
         </div>
+        </PriceScope>
       </Card>
       <Card title="Per pc by source (INR per FG piece)">
         <div className="h-80">

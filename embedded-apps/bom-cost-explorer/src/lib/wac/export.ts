@@ -92,7 +92,7 @@ const INR_FMT = (dp: number) => { const d = dp ? `.${'0'.repeat(dp)}` : ''; retu
 const numFmt = (dp: number, curr?: string) => (curr === 'INR' ? INR_FMT(dp) : `#,##0${dp ? `.${'0'.repeat(dp)}` : ''}`);
 const stamp = () => { const d = new Date(); const p = (x: number) => String(x).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
 
-export async function downloadWacWorkbook(sheets: WacSheet[], params: [string, string][]): Promise<void> {
+export async function downloadWacWorkbook(sheets: WacSheet[], params: [string, string][], fileBase = 'actual-vs-rate-sources'): Promise<void> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'BOM Simulator';
@@ -114,7 +114,7 @@ export async function downloadWacWorkbook(sheets: WacSheet[], params: [string, s
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-  a.download = `bom-simulator-actual-vs-rate-sources-${stamp()}.xlsx`;
+  a.download = `bom-simulator-${fileBase}-${stamp()}.xlsx`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);

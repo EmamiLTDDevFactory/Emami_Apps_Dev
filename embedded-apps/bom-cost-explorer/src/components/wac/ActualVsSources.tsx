@@ -54,7 +54,8 @@ function Screen() {
   const patch = useCallback((p: Partial<WacForm>) => setForm((f) => ({ ...f, ...p })), []);
   // The URL mirrors the selection (it never starts a run).
   useEffect(() => {
-    const s = wacSearch({ plants: form.plants, from: form.from, to: form.to, mat: form.mat, prodha: splitList(form.prodha), cmp: form.cmp });
+    const pc = new URLSearchParams(window.location.search).get('pc') ?? '';
+    const s = wacSearch({ plants: form.plants, from: form.from, to: form.to, mat: form.mat, prodha: splitList(form.prodha), cmp: form.cmp }, { pc });
     if (s !== window.location.search) window.history.replaceState(null, '', `${window.location.pathname}${s}`);
   }, [form]);
 

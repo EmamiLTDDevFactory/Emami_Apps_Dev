@@ -4,6 +4,7 @@
  * Every morning at 06:00 IST the server costs each watch item in SAP, compares with yesterday / 7 days / 30 days,
  * raises alerts (rules R1-R9) and emails a digest. Planners and Admins edit; everyone with access can read.
  */
+import { FgStrips } from '../price-context/slots';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, BellOff, Check, Pencil, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
@@ -140,6 +141,7 @@ function AlertDetail({ id, onClose }: { id: string; onClose: () => void }) {
       {err && <p className="text-sm text-bad">{err}</p>}
       {a && (
         <div className="flex flex-col gap-3 text-sm">
+          <FgStrips fgs={[{ matnr: a.sku, plant: a.plant, text: '' }]} />
           <div className="flex flex-wrap items-center gap-2"><Pill tone={SEV_TONE[a.severity]}>{a.severity}</Pill><span className="text-muted">{String(ev.text ?? '')}</span></div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="Impact INR" value={inr(a.impact_inr)} sub={`change per piece x ${a.plan1 ? 'planned volume' : 'volume'} ${fmtNum(String(ev.volume ?? a.qty), 0, 'INR')}`} />

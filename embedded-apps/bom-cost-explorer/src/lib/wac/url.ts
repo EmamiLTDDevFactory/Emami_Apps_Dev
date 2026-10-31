@@ -20,14 +20,17 @@ export function parseWacUrl(search: string): Partial<WacUrlState> {
   return out;
 }
 
-export function wacSearch(s: WacUrlState): string {
-  const p = new URLSearchParams();
-  if (s.plants.length) p.set('plants', s.plants.join(','));
-  if (s.from) p.set('from', s.from);
-  if (s.to) p.set('to', s.to);
-  if (s.mat.length) p.set('mat', s.mat.join(','));
-  if (s.prodha.length) p.set('prodha', s.prodha.join(','));
-  if (s.cmp) p.set('cmp', '1');
-  const q = p.toString().replace(/%2C/g, ',');
-  return q ? `?${q}` : '';
+/** The query string of the selection. Values are encoded with encodeURIComponent (a space is %20, never "+"); list separators stay commas.
+ * `keep` carries parameters owned by someone else (the shared price context `pc`) so writing the selection never drops them. */
+export function wacSearch(s: WacUrlState, keep: Record<string, string> = {}): string {
+  const list = (v: string[]) => v.map(encodeURIComponent).join(',');
+  const parts: string[] = [];
+  if (s.plants.length) parts.push(`plants=${list(s.plants)}`);
+  if (s.from) parts.push(`from=${encodeURIComponent(s.from)}`);
+  if (s.to) parts.push(`to=${encodeURIComponent(s.to)}`);
+  if (s.mat.length) parts.push(`mat=${list(s.mat)}`);
+  if (s.prodha.length) parts.push(`prodha=${list(s.prodha)}`);
+  if (s.cmp) parts.push('cmp=1');
+  for (const [k, v] of Object.entries(keep)) if (v) parts.push(`${k}=${encodeURIComponent(v)}`);
+  return parts.length ? `?${parts.join('&')}` : '';
 }

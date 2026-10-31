@@ -40,6 +40,8 @@ import type { SapMessage } from '@/lib/sap/messages';
 import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
 import Shell from './Shell';
+import { FgStrips } from './price-context/slots';
+import { fgsOfLines, fgsOfSelection } from '@/lib/price-context/fgs';
 import { useScreenHistory } from '@/lib/useScreenHistory';
 import BomTree, { type NodeAgg } from './BomTree';
 import RowDrawer from './RowDrawer';
@@ -441,6 +443,8 @@ export default function Explorer() {
           </div>
         )}
 
+        {/* Price context (MRP, selling price, standard cost) of the finished goods shown; nothing without the flag, the switch and a sales organisation. */}
+        {!(activeTab === 'scen' || activeTab === 'dq') && <FgStrips fgs={isPaged ? (ranQuery && ranQuery.mode === mode ? fgsOfSelection(ranQuery.materials, ranQuery.plants) : []) : fgsOfLines(rows)} />}
         <div className={cx('shrink-0 overflow-clip rounded-2xl border border-line bg-panel shadow-card', hasResult || runner.status === 'running' ? 'h-[calc(100vh-150px)] min-h-[420px]' : '')}>
           {isPaged ? (
             ranQuery && ranQuery.mode === mode ? (

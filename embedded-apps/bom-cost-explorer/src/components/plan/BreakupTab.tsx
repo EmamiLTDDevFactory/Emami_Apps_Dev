@@ -8,6 +8,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { CostError, PlanQueryBar, tdCls, tdNum, thCls, thNum } from './common';
+import { FgStrips } from '../price-context/slots';
 import Warnings from '../Warnings';
 import RateSources from '../rates/RateSources';
 import { HBars, useChartTheme } from '../charts';
@@ -230,6 +231,7 @@ export default function BreakupTab({ ws }: { ws: PlanWorkspace }) {
               </div>
             </Card>
           )}
+          <FgStrips fgs={fg.map((r) => ({ matnr: r.headmat, plant: r.hwerks, text: r.headtxt }))} />
           {view === 'tree' && !optionsLoaded && (
             <p className="-mt-1 text-xs text-muted">
               C-MAP and Consumption rates come from SAP&apos;s rate options, loaded on request.{' '}

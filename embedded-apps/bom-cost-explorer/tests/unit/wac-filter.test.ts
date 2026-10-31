@@ -79,4 +79,10 @@ describe('dates and URL state', () => {
     expect(parseWacUrl('?from=nonsense&cmp=0')).toEqual({});
     expect(wacSearch({ plants: [], from: '', to: '', mat: [], prodha: [], cmp: false })).toBe('');
   });
+  it('a space is %20 (never "+"), and parameters of someone else (pc) are kept', () => {
+    const s = wacSearch({ plants: ['UN13'], from: '2026-10-01', to: '2026-10-31', mat: ['A B'], prodha: [], cmp: false }, { pc: '{"on":1,"vk":["1000"]}' });
+    expect(s).not.toContain('+');
+    expect(s).toContain('mat=A%20B');
+    expect(new URLSearchParams(s).get('pc')).toBe('{"on":1,"vk":["1000"]}');
+  });
 });
