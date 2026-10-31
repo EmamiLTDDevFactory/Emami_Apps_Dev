@@ -26,7 +26,7 @@ export const pricingSheet = (rows: SoPricingRow[]): WacSheet => sheet('Pricing',
   { header: 'Step', width: 7, get: (r) => r.Stunr }, { header: 'Counter', width: 8, get: (r) => r.Zaehk }, { header: 'Condition', width: 10, get: (r) => r.Kschl }, { header: 'Text', width: 30, get: (r) => r.Txt },
   { header: 'Rate', dp: 4, width: 13, get: (r) => n(r.Kbetr) }, { header: 'Per', dp: 3, width: 8, get: (r) => n(r.Kpein) }, { header: 'Unit', width: 7, get: (r) => r.Kmein },
   { header: 'Value', dp: 2, width: 14, get: (r) => n(r.Kwert) }, { header: 'Currency', width: 9, get: (r) => r.Waers },
-  { header: 'Inactive', width: 9, get: (r) => yn(r.Kinak) }, { header: 'Statistical', width: 10, get: (r) => yn(r.Kstat) }, { header: 'Role (MRP / SP)', width: 14, get: (r) => r.Role },
+  { header: 'Inactive', width: 9, get: (r) => r.Kinak }, { header: 'Statistical', width: 10, get: (r) => yn(r.Kstat) }, { header: 'Role (MRP / SP)', width: 14, get: (r) => r.Role },
 ]);
 export const procSheet = (rows: SoProcRow[]): WacSheet => sheet('Pricing procedure', rows, [
   { header: 'Procedure', width: 11, get: (r) => r.Kalsm }, { header: 'Procedure text', width: 28, get: (r) => r.KalsmTxt }, { header: 'Step', width: 7, get: (r) => r.Stunr }, { header: 'Counter', width: 8, get: (r) => r.Zaehl },

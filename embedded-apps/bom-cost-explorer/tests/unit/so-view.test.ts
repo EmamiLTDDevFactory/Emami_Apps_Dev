@@ -8,7 +8,7 @@ const price = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({
 });
 const cond = (p: Partial<SoCondRow> = {}): SoCondRow => ({ Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Kalsm: 'ZSDP01', OrgTxt: '', ChnTxt: '', KschlSp: 'ZP12', SpTxt: '', KschlMrp: 'ZMRP', MrpTxt: '', SpBasis: '', SpAbs: '', Fallback: '', Segment: 'DOM', SegTxt: 'Domestic', Excl: false, Text: '', ChBy: '', ...p });
 const area = (v: string, c: string): SoAreaRow => ({ Vkorg: v, Vtweg: c, OrgTxt: '', ChnTxt: '', Curr: 'INR', NOrders: 1, LastDate: null });
-const line = (p: Partial<SoPricingRow> = {}): SoPricingRow => ({ Vbeln: '0000012345', Posnr: '000010', Matnr: 'M1', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Stunr: '010', Zaehk: '01', Kschl: 'ZP12', Txt: 'Selling price', Kbetr: '149', Kpein: '1', Kmein: 'PC', Kwert: '149', Waers: 'INR', Kstat: false, Kinak: false, Role: '', ...p });
+const line = (p: Partial<SoPricingRow> = {}): SoPricingRow => ({ Vbeln: '0000012345', Posnr: '000010', Matnr: 'M1', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Stunr: '010', Zaehk: '01', Kschl: 'ZP12', Txt: 'Selling price', Kbetr: '149', Kpein: '1', Kmein: 'PC', Kwert: '149', Waers: 'INR', Kstat: false, Kinak: '', Role: '', ...p });
 
 describe('warnings of a price row', () => {
   it('a normal row has none', () => expect(rowWarnings(price())).toEqual([]));
@@ -79,9 +79,12 @@ describe('pricing lines, roles and the procedure', () => {
   });
   it('inactive and statistical lines are told apart (inactive wins)', () => {
     expect(lineState(line())).toBe('normal');
-    expect(lineState(line({ Kinak: true }))).toBe('inactive');
+    expect(lineState(line({ Kinak: 'A' }))).toBe('inactive');
     expect(lineState(line({ Kstat: true }))).toBe('statistical');
-    expect(lineState(line({ Kinak: true, Kstat: true }))).toBe('inactive');
+    expect(lineState(line({ Kinak: 'A', Kstat: true }))).toBe('inactive');
+    // live NWP sends 'X' and 'Y' (not only the spec's 'A'): any non-blank code is inactive
+    expect(lineState(line({ Kinak: 'Y', Kstat: true }))).toBe('inactive');
+    expect(lineState(line({ Kinak: 'X' }))).toBe('inactive');
   });
   it('the steps of a procedure in order; the procedures present in the result', () => {
     const steps: SoProcRow[] = [{ Kalsm: 'P', KalsmTxt: '', Stunr: '020', Zaehl: '000', Kschl: 'B', Txt: '', Role: 'SP' }, { Kalsm: 'P', KalsmTxt: '', Stunr: '010', Zaehl: '000', Kschl: 'A', Txt: '', Role: 'MRP' }, { Kalsm: 'Q', KalsmTxt: '', Stunr: '005', Zaehl: '000', Kschl: 'C', Txt: '', Role: '' }];

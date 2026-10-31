@@ -20,7 +20,7 @@ describe('Excel sheets', () => {
     expect(col(s, 'Pricing procedure')).toBe('ZSDP01 - Std');
   });
   it('Pricing: rate, per, value with currency; inactive / statistical / role flagged', () => {
-    const l: SoPricingRow = { Vbeln: '12345', Posnr: '10', Matnr: 'M1', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Stunr: '010', Zaehk: '01', Kschl: 'ZP12', Txt: 'SP', Kbetr: '149', Kpein: '1', Kmein: 'PC', Kwert: '149', Waers: 'INR', Kstat: true, Kinak: false, Role: 'SP' };
+    const l: SoPricingRow = { Vbeln: '12345', Posnr: '10', Matnr: 'M1', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Stunr: '010', Zaehk: '01', Kschl: 'ZP12', Txt: 'SP', Kbetr: '149', Kpein: '1', Kmein: 'PC', Kwert: '149', Waers: 'INR', Kstat: true, Kinak: '', Role: 'SP' };
     const s = pricingSheet([l]);
     expect(s.name).toBe('Pricing');
     expect(col(s, 'Value')).toBe(149);

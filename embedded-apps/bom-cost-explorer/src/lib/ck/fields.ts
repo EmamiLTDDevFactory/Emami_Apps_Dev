@@ -1,7 +1,7 @@
 /**
- * CK13N (standard cost estimate) sets of ZMM_BOM_COST_SRV. NOT yet published on any SAP system (all answer 404 on NWP, NGD
- * and NGQ as of 2026-10-31), so these names follow the agreed contract and have NOT been checked against $metadata:
- * `npm run check:ck-so-metadata` does that the moment the sets exist. Kept apart from lib/sap/fields.ts on purpose.
+ * CK13N (standard cost estimate) sets of ZMM_BOM_COST_SRV. Checked against live NWP responses (HAR, 2026-10-31): CkHeaderSet and
+ * CkCompSet answer and every property below exists; CkListSet and CkItemSet have not been seen live yet, so their names are still the
+ * agreed contract: `npm run check:ck-so-metadata` checks them against $metadata. Kept apart from lib/sap/fields.ts on purpose.
  */
 import type { FieldMap } from '../price-context/odata';
 

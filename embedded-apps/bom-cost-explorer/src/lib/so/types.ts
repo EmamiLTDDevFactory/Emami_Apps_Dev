@@ -7,7 +7,7 @@ export interface SoPriceRow {
 }
 export interface SoPricingRow {
   Vbeln: string; Posnr: string; Matnr: string; Vkorg: string; Vtweg: string; Auart: string; Stunr: string; Zaehk: string; Kschl: string; Txt: string; Kbetr: string; Kpein: string; Kmein: string; Kwert: string; Waers: string;
-  Kstat: boolean; Kinak: boolean; Role: 'MRP' | 'SP' | '' | string;
+  Kstat: boolean; /** SAP's inactive code: '' = active; the live system sends 'X' and 'Y', the spec says 'A' - any non-blank code is inactive */ Kinak: string; Role: 'MRP' | 'SP' | '' | string;
 }
 export interface SoProcRow { Kalsm: string; KalsmTxt: string; Stunr: string; Zaehl: string; Kschl: string; Txt: string; Role: string }
 export interface SoCondRow {

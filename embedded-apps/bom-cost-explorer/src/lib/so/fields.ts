@@ -1,7 +1,10 @@
 /**
  * Sales-order price sets (SoAreaVH / SoFilterVH / SoPrice / SoPricing / SoProc / SoCond) and the live cost simulator set
- * (CogmRowSet) of ZMM_BOM_COST_SRV. Like the CK sets they are NOT published on any SAP system yet (404 on NWP, NGD, NGQ as of
- * 2026-10-31): the names follow the agreed contract and are unchecked until `npm run check:ck-so-metadata` can run.
+ * (CogmRowSet) of ZMM_BOM_COST_SRV. Checked against live NWP responses (HAR, 2026-10-31): SoAreaVHSet, SoPriceSet, SoPricingSet,
+ * SoProcSet and SoCondSet answer and every property read below exists. SoFilterVHSet was not in that capture and CogmRowSet answered
+ * 404 on NWP (not published yet): `npm run check:ck-so-metadata` checks those against $metadata.
+ * Real-data notes: Kinak (inactive) is a code - '' active, 'X' / 'Y' seen live - not the spec's 'A' only; Mrp is 0.000000 when the
+ * MRP condition is not on the order item (SAP says so in Msg).
  */
 import type { FieldMap } from '../price-context/odata';
 
@@ -28,7 +31,7 @@ export const SO_PRICE = def({
 });
 export const SO_PRICING = def({
   Vbeln: ['Vbeln', 's'], Posnr: ['Posnr', 's'], Matnr: ['Matnr', 's'], Vkorg: ['Vkorg', 's'], Vtweg: ['Vtweg', 's'], Auart: ['Auart', 's'], Stunr: ['Stunr', 's'], Zaehk: ['Zaehk', 's'], Kschl: ['Kschl', 's'], Txt: ['Txt', 's'],
-  Kbetr: ['Kbetr', 's'], Kpein: ['Kpein', 's'], Kmein: ['Kmein', 's'], Kwert: ['Kwert', 's'], Waers: ['Waers', 's'], Kstat: ['Kstat', 'f'], Kinak: ['Kinak', 'f'], Role: ['Role', 's'],
+  Kbetr: ['Kbetr', 's'], Kpein: ['Kpein', 's'], Kmein: ['Kmein', 's'], Kwert: ['Kwert', 's'], Waers: ['Waers', 's'], Kstat: ['Kstat', 'f'], Kinak: ['Kinak', 's'], Role: ['Role', 's'],
 });
 export const SO_PROC = def({ Kalsm: ['Kalsm', 's'], KalsmTxt: ['KalsmTxt', 's'], Stunr: ['Stunr', 's'], Zaehl: ['Zaehl', 's'], Kschl: ['Kschl', 's'], Txt: ['Txt', 's'], Role: ['Role', 's'] });
 export const SO_COND = def({
