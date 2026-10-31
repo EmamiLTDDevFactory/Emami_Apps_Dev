@@ -3,7 +3,7 @@
  * loaded is exported; the sheets say which figures are SAP per-unit values x quantity produced. */
 import type { XCol } from '../client/export';
 import { downloadWacWorkbook, type WacSheet } from '../wac/export';
-import { COST_LABEL, sharePct, type CompAgg, type CostMixPart, type FgValue, type MonthPoint, type PlantTotals } from './view';
+import { COST_LABEL, GROUP_CODE, sharePct, type GroupSummary, type CompAgg, type CostMixPart, type FgValue, type MonthPoint, type PlantTotals } from './view';
 import type Decimal from 'decimal.js';
 
 const n = (v: Decimal | null | undefined, dp = 6) => (v ? Number(v.toFixed(dp)) : null);
@@ -68,3 +68,20 @@ export function trendSheet(pts: MonthPoint[]): WacSheet {
 
 export const downloadPsum = (sheets: WacSheet[], params: [string, string][]) => downloadWacWorkbook(sheets, params, 'plant-production-summary');
 export { COST_LABEL };
+
+/** RM / PM / Perfume: plant totals per group, then every loaded component of each group. */
+export function groupSheet(groups: GroupSummary[], comps: CompAgg[]): WacSheet {
+  type R = { group: string; kind: string; item: string; text: string; uom: string; qty: Decimal | null; value: Decimal; share: Decimal | null };
+  const rows: R[] = [];
+  for (const g of groups) {
+    rows.push({ group: g.name, kind: 'Group total', item: '', text: `${g.fgs} finished goods`, uom: '', qty: null, value: g.value, share: g.pctOfTotal });
+    for (const c of comps.filter((x) => x.grp === GROUP_CODE[g.key])) rows.push({ group: g.name, kind: 'Component', item: c.idnrk, text: c.text, uom: c.uom, qty: c.qty, value: c.cost, share: sharePct(c.cost, comps.filter((x) => x.grp === c.grp).reduce((a, x) => a.plus(x.cost), c.cost.minus(c.cost))) });
+  }
+  return sheet('RM PM Perfume', rows.length, [
+    { header: 'Group', width: 24, get: (i) => rows[i].group }, { header: 'Row', width: 12, get: (i) => rows[i].kind },
+    { header: 'Component', width: 14, get: (i) => rows[i].item }, { header: 'Description', width: 36, get: (i) => rows[i].text },
+    { header: 'Uom', width: 7, get: (i) => rows[i].uom }, { header: 'Quantity consumed', dp: 3, width: 18, get: (i) => n(rows[i].qty) },
+    { header: 'Value (group total: all finished goods; component: at selected rate)', dp: 2, curr: 'INR', width: 24, get: (i) => n(rows[i].value) },
+    { header: 'Share % (group total: of plant value; component: of its group)', dp: 2, width: 24, get: (i) => n(rows[i].share, 4) },
+  ]);
+}

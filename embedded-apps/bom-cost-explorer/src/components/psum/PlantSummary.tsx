@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FileSpreadsheet, Lock, Play, RefreshCw, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
+import FgDetail from './FgDetail';
 import { PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
 import { useChartTheme } from '../charts';
@@ -21,8 +22,8 @@ import type { PlantRow } from '@/lib/sap/fields';
 import { fmtMs, fmtNum } from '@/lib/format';
 import { PSUM_PRESET_LABEL, monthSlices, psumRange, type PsumPreset } from '@/lib/psum/dates';
 import { COMP_BATCH, usePsum, type PsumQuery } from '@/lib/psum/useSummary';
-import { COST_LABEL, aggregateComponents, costMix, fgKey, fgValues, groupTotals, monthPoint, plantTotals, sharePct } from '@/lib/psum/view';
-import { componentSheet, downloadPsum, fgSheet, mixSheet, trendSheet } from '@/lib/psum/export';
+import { COST_LABEL, GROUP_CODE, GROUP_KEYS, GROUP_NAME, aggregateComponents, costMix, fgKey, fgValues, groupSummary, groupTotals, monthPoint, plantTotals, sharePct, type FgValue, type GroupKey } from '@/lib/psum/view';
+import { componentSheet, downloadPsum, fgSheet, groupSheet, mixSheet, trendSheet } from '@/lib/psum/export';
 import { intersectPlants } from '@/lib/wac/view';
 import { buildWacFilter } from '@/lib/wac/filter';
 import { parseWacUrl, wacSearch } from '@/lib/wac/url';
@@ -38,7 +39,7 @@ const tdN = `${td} num whitespace-nowrap text-right`;
 const NA = <span className="text-faint" title="No value from SAP">n/a</span>;
 const inr = (v: Decimal | null, dp = 0) => (v === null ? NA : <>{fmtNum(v, dp, 'INR')} <span className="text-muted">INR</span></>);
 const pct = (v: Decimal | null) => (v === null ? '—' : `${v.toFixed(1)} %`);
-type Tab = 'fg' | 'comp' | 'trend';
+type Tab = 'fg' | 'rmpm' | 'comp' | 'trend';
 
 function Screen() {
   const hub = useHubSession();
@@ -70,6 +71,8 @@ function Screen() {
   const [runAt, setRunAt] = useState<Date | null>(null);
   const [tab, setTab] = useState<Tab>('fg');
   const [search, setSearch] = useState('');
+  const [open, setOpen] = useState<FgValue | null>(null);
+  const [grpTab, setGrpTab] = useState<GroupKey>('rm');
 
   const run = () => {
     const e: typeof errors = {};
@@ -106,11 +109,12 @@ function Screen() {
   const loadedFgs = new Set(state.batches.filter((b) => b.entry?.status === 'done').flatMap((b) => b.mats)).size;
 
   const fgRows = useMemo(() => { const s = search.trim().toLowerCase(); return s ? vals.filter((v) => `${v.row.Matnr} ${v.row.Maktx} ${v.row.Zbrand} ${v.row.Prodha}`.toLowerCase().includes(s)) : vals; }, [vals, search]);
+  const grpSums = useMemo(() => GROUP_KEYS.map((k) => groupSummary(vals, k, totals)), [vals, totals]);
   const ct = useChartTheme();
 
   const doExport = async () => {
     if (!q) return;
-    const sheets = [fgSheet(vals, totals), mixSheet(mix), ...(compAgg.length ? [componentSheet(compAgg)] : []), ...(trend.length ? [trendSheet(trend)] : [])];
+    const sheets = [fgSheet(vals, totals), mixSheet(mix), groupSheet(grpSums, compAgg), ...(compAgg.length ? [componentSheet(compAgg)] : []), ...(trend.length ? [trendSheet(trend)] : [])];
     await downloadPsum(sheets, [
       ['Report', 'Plant production summary: finished goods produced, actual cost and component breakup'], ['SAP system', system], ['Run at', runAt?.toLocaleString('en-IN') ?? ''],
       ['Plants', q.plants.join(', ')], ['Period', `${q.dateFrom} to ${q.dateTo}`],
@@ -226,7 +230,7 @@ function Screen() {
           </section>
 
           <div role="tablist" aria-label="Summary views" className="flex gap-1 border-b border-line">
-            {([['fg', `Finished goods (${vals.length})`], ['comp', `Component breakup${q?.withComponents ? ` (${compAgg.length})` : ''}`], ['trend', `Monthly trend${q?.withTrend ? ` (${monthsDone}/${state.months.length})` : ''}`]] as [Tab, string][]).map(([k, label]) => (
+            {([['fg', `Finished goods (${vals.length})`], ['rmpm', 'RM · PM · Perfume'], ['comp', `Component breakup${q?.withComponents ? ` (${compAgg.length})` : ''}`], ['trend', `Monthly trend${q?.withTrend ? ` (${monthsDone}/${state.months.length})` : ''}`]] as [Tab, string][]).map(([k, label]) => (
               <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cx('-mb-px border-b-2 px-3 py-2 text-sm font-bold', tab === k ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink')}>{label}</button>
             ))}
             <div className="ml-auto pb-1"><Button size="sm" onClick={() => void doExport()} title="Excel: Finished goods, Cost mix, Components, Monthly trend, Parameters (only what is loaded)"><FileSpreadsheet size={14} /> Excel</Button></div>
@@ -254,6 +258,7 @@ function Screen() {
                   <h2 className="text-sm font-extrabold">How to read this</h2>
                   <ul className="mt-1 list-disc pl-4 text-xs text-muted">
                     <li>Value = SAP&apos;s actual cost per unit x the quantity produced, added up here (the only arithmetic on this page).</li>
+                    <li><b>Click a finished good</b> (or press Enter) for its full costing: summary, component-wise cost and the BOM costing breakup.</li>
                     <li>Finished goods are ranked by total value; the share column is of the plant total.</li>
                     <li>&quot;Other&quot; is landed cost minus RM, PM, Perfume and Conversion (a reconciliation gap from SAP), shown only when it is above 0.5 %.</li>
                   </ul>
@@ -265,7 +270,7 @@ function Screen() {
                   <thead className="bg-sunken"><tr><th className={th}>Finished good</th><th className={th}>Brand</th><th className={thN}>Quantity</th><th className={thN}>Actual / unit</th><th className={thN}>RM</th><th className={thN}>PM</th><th className={thN}>Perfume</th><th className={thN}>Conversion</th><th className={thN}>Total value</th><th className={thN}>Share</th></tr></thead>
                   <tbody>
                     {fgRows.map((v) => (
-                      <tr key={v.key} className="border-t border-line/60">
+                      <tr key={v.key} className="cursor-pointer border-t border-line/60 hover:bg-sunken focus:bg-sunken focus:outline-none" tabIndex={0} role="button" aria-label={`Open costing of ${v.row.Matnr}`} onClick={() => setOpen(v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(v); } }}>
                         <td className={td}><span className="font-mono font-bold">{v.row.Matnr}</span> <span className="text-muted">{v.row.Maktx}</span></td>
                         <td className={td}>{v.row.Zbrand || NA}</td>
                         <td className={tdN}>{fmtNum(v.qty, 0, 'X')} {v.row.Uom}</td>
@@ -278,6 +283,69 @@ function Screen() {
                   <tfoot><tr className="border-t-2 border-line bg-sunken font-bold"><td className={td} colSpan={4}>Plant total (INR)</td><td className={tdN}>{fmtNum(totals.rm, 0, 'INR')}</td><td className={tdN}>{fmtNum(totals.pm, 0, 'INR')}</td><td className={tdN}>{fmtNum(totals.perf, 0, 'INR')}</td><td className={tdN}>{fmtNum(totals.conv, 0, 'INR')}</td><td className={tdN}>{fmtNum(totals.landed, 0, 'INR')}</td><td className={tdN}>100 %</td></tr></tfoot>
                 </table>
               </div>
+            </section>
+          )}
+
+          {tab === 'rmpm' && (
+            <section role="tabpanel" aria-label="RM, PM and Perfume" className="flex flex-col gap-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                {grpSums.map((g) => (
+                  <button key={g.key} type="button" onClick={() => setGrpTab(g.key)} aria-pressed={grpTab === g.key}
+                    className={cx('rounded-2xl border bg-panel px-4 py-3 text-left shadow-card', grpTab === g.key ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-accent/50')}>
+                    <div className="flex items-center gap-1.5 text-2xs font-bold uppercase tracking-wide text-muted"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: MIX_COLOR[g.key] }} aria-hidden />{g.name}</div>
+                    <div className="num mt-1 text-2xl font-extrabold">{fmtNum(g.value, 0, 'INR')} <span className="text-sm font-semibold text-muted">INR</span></div>
+                    <div className="num text-2xs text-muted">{pct(g.pctOfTotal)} of the plant value · in {g.fgs} finished goods</div>
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const g = grpSums.find((x) => x.key === grpTab)!;
+                const code = GROUP_CODE[grpTab];
+                const cr = compAgg.filter((c) => c.grp === code);
+                const crTotal = cr.reduce((a, c) => a.plus(c.cost), totals.landed.minus(totals.landed));
+                return (
+                  <>
+                    <h2 className="text-sm font-extrabold">{GROUP_NAME[grpTab]}: finished goods that carry most of it</h2>
+                    <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+                      <table className="w-full text-sm">
+                        <thead className="bg-sunken"><tr><th className={th}>Finished good</th><th className={thN}>Quantity</th><th className={thN}>{GROUP_NAME[grpTab]} / unit</th><th className={thN}>Value</th><th className={thN}>Share of {grpTab.toUpperCase()}</th></tr></thead>
+                        <tbody>
+                          {g.top.map((x) => (
+                            <tr key={x.v.key} className="cursor-pointer border-t border-line/60 hover:bg-sunken" onClick={() => setOpen(x.v)}>
+                              <td className={td}><span className="font-mono font-bold">{x.v.row.Matnr}</span> <span className="text-muted">{x.v.row.Maktx}</span></td>
+                              <td className={tdN}>{fmtNum(x.v.qty, 0, 'X')} {x.v.row.Uom}</td>
+                              <td className={tdN}>{fmtNum(x.value.div(x.v.qty), 4, 'INR')}</td><td className={tdN}>{fmtNum(x.value, 0, 'INR')}</td><td className={tdN}>{pct(x.pctOfGroup)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <h2 className="text-sm font-extrabold">{GROUP_NAME[grpTab]}: components (what is consumed)</h2>
+                    {!q?.withComponents ? <p className="text-sm text-muted">Switch on &quot;Component breakup&quot; and press Run to see the {grpTab.toUpperCase()} components.</p> : cr.length === 0 ? (
+                      <p className="flex items-center gap-2 text-sm text-muted">{state.running ? <><Spinner className="h-4 w-4" /> Costing the first batch of {COMP_BATCH} finished goods…</> : 'No component of this group from SAP for the loaded finished goods.'}</p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted">From the components loaded for {loadedFgs} of {vals.length} finished goods ({fmtNum(coverage, 0, 'X')} % of the plant value). Cost at the selected rate x quantity produced, added up here.</p>
+                        <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+                          <table className="w-full text-sm">
+                            <thead className="bg-sunken"><tr><th className={th}>Component</th><th className={thN}>Quantity</th><th className={thN}>Cost at selected rate</th><th className={thN}>Average rate</th><th className={thN}>Used in</th><th className={thN}>Share of {grpTab.toUpperCase()}</th></tr></thead>
+                            <tbody>
+                              {cr.slice(0, 100).map((c) => (
+                                <tr key={`${c.idnrk}|${c.uom}`} className="border-t border-line/60">
+                                  <td className={td}><span className="font-mono font-bold">{c.idnrk}</span> <span className="text-muted">{c.text}</span></td>
+                                  <td className={tdN}>{fmtNum(c.qty, 1, 'X')} {c.uom}</td><td className={tdN}>{c.cost.isZero() && c.noCostFgs ? NA : fmtNum(c.cost, 0, 'INR')}</td>
+                                  <td className={tdN}>{c.avgRate ? fmtNum(c.avgRate, 4, 'INR') : NA}</td><td className={tdN}>{c.fgs} FG</td><td className={tdN}>{pct(sharePct(c.cost, crTotal))}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {cr.length > 100 && <p className="text-xs text-muted">Showing the 100 largest of {cr.length}; the Excel has all of them.</p>}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </section>
           )}
 
@@ -347,6 +415,7 @@ function Screen() {
           )}
         </>
       ))}
+      {open && q && <FgDetail v={open} period={{ dateFrom: q.dateFrom, dateTo: q.dateTo }} totals={totals} plants={plants} loadedComps={comps} onClose={() => setOpen(null)} />}
       {!q && <Empty title="Nothing loaded yet">Pick the plant (for example UB01) and the period (default: last 6 full months), then press Run.</Empty>}
     </>
   );

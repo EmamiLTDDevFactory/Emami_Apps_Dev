@@ -102,3 +102,35 @@ describe('component batches', () => {
     expect(chunk([1, 2, 3], 2)).toEqual([[1, 2], [3]]);
   });
 });
+
+import { fgComponentTotals, fgComponents, groupSummary } from '@/lib/psum/view';
+
+describe('RM / PM / Perfume summary', () => {
+  const vals = fgValues([row({ Matnr: 'A', Qty: '100', ActRm: '10', ActPm: '2' }), row({ Matnr: 'B', Qty: '50', ActRm: '40', ActPm: '0', ActPerf: '3' }), row({ Matnr: 'C', Qty: '10', ActRm: '0', ActPm: '0', ActPerf: '0', ActConv: '1', ActLanded: '1' })]);
+  const t = plantTotals(vals);
+  it('group value is the plant sum of per-unit x quantity; share is of the plant total', () => {
+    const rm = groupSummary(vals, 'rm', t);
+    expect(rm.value.toFixed()).toBe('3000'); // 100x10 + 50x40
+    expect(rm.fgs).toBe(2); // C has no RM
+    expect(rm.top.map((x) => x.v.row.Matnr)).toEqual(['B', 'A']); // 2000 then 1000
+    expect(rm.top[0].pctOfGroup!.toFixed(1)).toBe('66.7');
+    expect(rm.pctOfTotal!.gt(0)).toBe(true);
+  });
+  it('a group nobody has is empty', () => expect(groupSummary(vals, 'pm', t).top.map((x) => x.v.row.Matnr)).toEqual(['A']));
+  it('top N is respected', () => expect(groupSummary(vals, 'rm', t, 1).top).toHaveLength(1));
+});
+
+describe('component-wise cost of one finished good', () => {
+  const comps = [comp({ Idnrk: 'P1', Grp: 'PM', CostSel: '3' }), comp({ Idnrk: 'R2', Grp: 'RM', CostSel: '4' }), comp({ Idnrk: 'R1', Grp: 'RM', CostSel: '10' }), comp({ Idnrk: 'X', Grp: 'PERF', CostSel: '' })];
+  it('RM, PM, Perfume in order; largest cost first inside a group', () => {
+    expect(fgComponents(comps).map((c) => c.Idnrk)).toEqual(['R1', 'R2', 'P1', 'X']);
+  });
+  it('group totals per unit and for the quantity; a row with no cost adds nothing', () => {
+    const g = fgComponentTotals(comps, new Decimal(100));
+    expect(g.map((x) => x.grp)).toEqual(['RM', 'PM', 'PERF']);
+    expect(g[0].perUnit.toFixed()).toBe('14');
+    expect(g[0].atQty.toFixed()).toBe('1400');
+    expect(g[2].perUnit.toFixed()).toBe('0');
+    expect(g[2].items).toBe(1);
+  });
+});

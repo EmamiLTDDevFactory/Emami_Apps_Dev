@@ -97,3 +97,35 @@ export function groupTotals(rows: CompAgg[]): GrpAgg[] {
 
 export interface MonthPoint { key: string; label: string; fgs: number; qtyByUom: PlantTotals['qtyByUom']; landed: Decimal; rm: Decimal; pm: Decimal; perf: Decimal; conv: Decimal }
 export const monthPoint = (key: string, label: string, rows: WacRow[]): MonthPoint => { const t = plantTotals(fgValues(rows)); return { key, label, fgs: t.fgs, qtyByUom: t.qtyByUom, landed: t.landed, rm: t.rm, pm: t.pm, perf: t.perf, conv: t.conv }; };
+
+export type GroupKey = 'rm' | 'pm' | 'perf';
+export const GROUP_KEYS: GroupKey[] = ['rm', 'pm', 'perf'];
+export const GROUP_NAME: Record<GroupKey, string> = { rm: 'Raw material (RM)', pm: 'Packing material (PM)', perf: 'Perfume' };
+/** The Grp code SAP uses in WacCompSet for each group. */
+export const GROUP_CODE: Record<GroupKey, string> = { rm: 'RM', pm: 'PM', perf: 'PERF' };
+
+export interface GroupSummary { key: GroupKey; name: string; value: Decimal; pctOfTotal: Decimal | null; fgs: number; top: { v: FgValue; value: Decimal; pctOfGroup: Decimal | null }[] }
+/** RM / PM / Perfume of the whole plant (every produced finished good): total value, share of the plant total, and the finished goods
+ * that carry most of it. SAP per-unit group cost x quantity produced, added up here. */
+export function groupSummary(values: FgValue[], key: GroupKey, totals: PlantTotals, topN = 10): GroupSummary {
+  const value = totals[key];
+  const ranked = values.map((v) => ({ v, value: v[key] })).filter((x) => x.value.gt(0)).sort((a, b) => b.value.cmp(a.value) || a.v.row.Matnr.localeCompare(b.v.row.Matnr));
+  return { key, name: GROUP_NAME[key], value, pctOfTotal: sharePct(value, totals.landed), fgs: ranked.length, top: ranked.slice(0, topN).map((x) => ({ ...x, pctOfGroup: sharePct(x.value, value) })) };
+}
+
+/** Components of one finished good: RM, PM, Perfume in that order, largest cost first inside a group. */
+export function fgComponents(comps: WacCompRow[]): WacCompRow[] {
+  const order = (g: string) => { const i = ['RM', 'PM', 'PERF'].indexOf(g); return i < 0 ? 9 : i; };
+  return [...comps].sort((a, b) => order(a.Grp) - order(b.Grp) || (dec(b.CostSel) ?? Z).cmp(dec(a.CostSel) ?? Z) || a.Idnrk.localeCompare(b.Idnrk));
+}
+/** Per-unit and produced-quantity cost of each group of one finished good's components (rows with no cost add nothing). */
+export function fgComponentTotals(comps: WacCompRow[], qty: Decimal): { grp: string; perUnit: Decimal; atQty: Decimal; items: number }[] {
+  const m = new Map<string, { grp: string; perUnit: Decimal; atQty: Decimal; items: number }>();
+  for (const c of comps) {
+    const g = m.get(c.Grp) ?? { grp: c.Grp, perUnit: Z, atQty: Z, items: 0 };
+    const cost = dec(c.CostSel);
+    if (cost) { g.perUnit = g.perUnit.plus(cost); g.atQty = g.atQty.plus(cost.times(qty)); }
+    g.items++; m.set(c.Grp, g);
+  }
+  return [...m.values()].sort((a, b) => ['RM', 'PM', 'PERF'].indexOf(a.grp) - ['RM', 'PM', 'PERF'].indexOf(b.grp));
+}
