@@ -60,7 +60,7 @@ function LevelCombo({ label, opts, value, disabled, onPick }: { label: string; o
   );
 }
 
-export default function MaterialCascadePicker({ values, onChange, max, werks: werksProp = NO_WERKS, onClose, pick: pickProp, onPickChange }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; onClose?: () => void; pick?: HierPick; onPickChange?: (p: HierPick) => void }) {
+export default function MaterialCascadePicker({ values, onChange, max, werks: werksProp = NO_WERKS, onClose, pick: pickProp, onPickChange, autoFill = false }: { values: string[]; onChange: (v: string[]) => void; max: number; werks?: string[]; onClose?: () => void; pick?: HierPick; onPickChange?: (p: HierPick) => void; autoFill?: boolean }) {
   // A stable plant list: a new array on every render would re-run the SAP calls in a loop.
   const werksKey = werksProp.join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,6 +132,23 @@ export default function MaterialCascadePicker({ values, onChange, max, werks: we
   }, [criteria, ready, q]);
 
   const rows = mats?.rows ?? [];
+  // Screens that run on a material list (Standard cost, Sales price, Margin ...): choosing a Brand / Product / SKU puts its materials in the list
+  // by itself, like the BOM costing tab runs on the chosen level; materials added by hand stay, and a changed choice replaces only the automatic ones.
+  const auto = useRef<Set<string>>(new Set());
+  const levelChosen = !!(pick.brand || pick.product || pick.sku);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  useEffect(() => {
+    if (!autoFill || matsLoading) return;
+    const manual = valuesRef.current.filter((x) => !auto.current.has(x));
+    const want = levelChosen && mats && !q.trim() ? mats.rows.map((m) => m.Matnr).filter((x) => !manual.includes(x)).slice(0, Math.max(0, max - manual.length)) : [];
+    if (levelChosen && !mats) return;
+    if (max === 1 && want.length !== 1) { if (auto.current.size) { onChange(manual); auto.current = new Set(); } return; }
+    const next = [...manual, ...want];
+    auto.current = new Set(want);
+    if (next.join(',') !== valuesRef.current.join(',')) onChange(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFill, mats, matsLoading, levelChosen, q, max]);
   const room = Math.max(0, max - values.length);
   const addable = rows.filter((m) => !values.includes(m.Matnr));
   const toggle = (matnr: string) => onChange(values.includes(matnr) ? values.filter((v) => v !== matnr) : [...values, matnr].slice(0, max));

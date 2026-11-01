@@ -247,5 +247,5 @@ export function MaterialHierarchyPicker({ values, onChange, max, werks, pick, on
       </button>
     );
   }
-  return <MaterialCascadePicker values={values} onChange={onChange} max={max} werks={werks} onClose={() => setOpen(false)} pick={pick} onPickChange={onPickChange} />;
+  return <MaterialCascadePicker values={values} onChange={onChange} max={max} werks={werks} onClose={() => setOpen(false)} pick={pick} onPickChange={onPickChange} autoFill={!onPickChange} />;
 }
