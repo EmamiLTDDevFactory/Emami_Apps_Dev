@@ -28,6 +28,9 @@ export const SO_PRICE = def({
   Matnr: ['Matnr', 's'], Maktx: ['Maktx', 's'], Vkorg: ['Vkorg', 's'], Vtweg: ['Vtweg', 's'], Auart: ['Auart', 's'], AuartTxt: ['AuartTxt', 's'], Segment: ['Segment', 's'], SegTxt: ['SegTxt', 's'],
   Kalsm: ['Kalsm', 's'], KalsmTxt: ['KalsmTxt', 's'], Curr: ['Curr', 's'], Uom: ['Uom', 's'], Werks: ['Werks', 's'], Mrp: ['Mrp', 's'], Sp: ['Sp', 's'], NetPrice: ['NetPrice', 's'], SpCond: ['SpCond', 's'],
   Vbeln: ['Vbeln', 's'], Posnr: ['Posnr', 's'], Kunnr: ['Kunnr', 's'], Audat: ['Audat', 't'], DaysOld: ['DaysOld', 'i'], NOrders: ['NOrders', 'i'], NSkip: ['NSkip', 'i'], Src: ['Src', 's'], Msg: ['Msg', 's'],
+  // Cost of the latest production order (posting type 01, batch ignored), per base unit in Curr. Cons* = consumed cost, kept apart: never part of PcTotal.
+  RmCost: ['RmCost', 's'], PmCost: ['PmCost', 's'], PerfCost: ['PerfCost', 's'], ConsRm: ['ConsRm', 's'], ConsPm: ['ConsPm', 's'], ConsPerf: ['ConsPerf', 's'],
+  PcTotal: ['PcTotal', 's'], PcRatio: ['PcRatio', 's'], PcDate: ['PcDate', 't'], PcAufnr: ['PcAufnr', 's'], PcWerks: ['PcWerks', 's'], PcCharg: ['PcCharg', 's'], PcMsg: ['PcMsg', 's'],
 });
 export const SO_PRICING = def({
   Vbeln: ['Vbeln', 's'], Posnr: ['Posnr', 's'], Matnr: ['Matnr', 's'], Vkorg: ['Vkorg', 's'], Vtweg: ['Vtweg', 's'], Auart: ['Auart', 's'], Stunr: ['Stunr', 's'], Zaehk: ['Zaehk', 's'], Kschl: ['Kschl', 's'], Txt: ['Txt', 's'],
@@ -46,7 +49,7 @@ export const COGM_ROW = def({
 export const SO_FIELDS = { AREA: SO_AREA, FILTER: SO_FILTER_VH, PRICE: SO_PRICE, PRICING: SO_PRICING, PROC: SO_PROC, COND: SO_COND, COGM: COGM_ROW } as const;
 export const SO_NULLABLE: Record<SoSetKey, ReadonlySet<string>> = {
   AREA: new Set(), FILTER: new Set(['SharePct']),
-  PRICE: new Set(['Mrp', 'Sp', 'NetPrice']),
+  PRICE: new Set(['Mrp', 'Sp', 'NetPrice', 'RmCost', 'PmCost', 'PerfCost', 'ConsRm', 'ConsPm', 'ConsPerf', 'PcTotal', 'PcRatio']),
   PRICING: new Set(['Kbetr', 'Kpein', 'Kwert']), PROC: new Set(), COND: new Set(['SpAbs']),
   COGM: new Set(['Mrp', 'SellPrice', 'CogmStd', 'CogmAct', 'CogmBud', 'CogmCur', 'RatioStd', 'RatioCur', 'RemainStd', 'RemainCur', 'ErosionPct', 'AnnualImpactInr', 'ReqSpRestore']),
 };

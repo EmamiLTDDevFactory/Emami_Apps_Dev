@@ -10,8 +10,8 @@ export function headerSheet(h: CkHeaderRow): WacSheet {
   const rows: [string, string | number | null][] = [
     ['Material', `${h.Matnr} ${h.Maktx}`.trim()], ['Plant', `${h.Werks} ${h.WerksTxt}`.trim()], ['Material type', h.Mtart], ['Costing variant', h.Klvar], ['Costing version', h.Tvers], ['Valuation variant', h.Bwvar], ['Costing type (Kkzma)', h.Kkzma],
     ['Cost estimate number (Kalnr)', h.Kalnr], ['Costing key date (Kadky)', h.Kadky ?? ''], ['Costing date from', h.Kadat ?? ''], ['Costing date to', h.Bidat ?? ''], ['Qty structure date (Aldat)', h.Aldat ?? ''], ['Valuation date (Bwdat)', h.Bwdat ?? ''],
-    ['Costing lot size', [h.Losgr, h.Meeht].filter(Boolean).join(' ')], ['Price unit', h.Peinh], ['Status', h.StatusTxt || h.Status], ['Current standard', h.CurStd ? 'yes' : 'no'],
-    [`Total per lot (${h.Curr})`, n(h.TotalLot)], [`Total per unit (${h.Curr})`, n(h.TotalUnit)], [`Standard price in material master (${h.Curr})`, n(h.StdPrice)], ['Price control', h.PriceCtrl],
+    ['Costing lot size', [h.Losgr, h.Meeht].filter(Boolean).join(' ')], ['Price unit', h.Peinh], ['Status', h.StatusTxt || h.Status], ['Standard (last 30 days)', h.CurStd ? 'yes' : 'no'],
+    [`Total per lot (${h.Curr})`, n(h.TotalLot)], [`Total per unit (${h.Curr})`, n(h.TotalUnit)], [`Standard price (${h.Curr})`, n(h.StdPrice)], [`Moving average price (${h.Curr})`, n(h.MapPrice)], ['Fixed unit', h.FixedUnit], ['Variable unit', h.VarUnit], ['Price control', h.PriceCtrl],
     [`Difference (${h.Curr})`, n(h.StdDiff)], ['Difference %', n(h.StdDiffPct)], ['Value basis', h.ValueBasis], ['Components', h.NComp], ['Items', h.NItem], ['Created by', h.Ernam], ['Created on', h.Erdat ?? ''], ['SAP message', h.Msg],
   ];
   const cols: XCol[] = [{ header: 'Field', width: 36, get: (i) => rows[i][0] }, { header: 'Value', width: 50, get: (i) => rows[i][1] }];
@@ -44,7 +44,7 @@ export function estimatesSheet(rows: CkListRow[]): WacSheet {
     { header: 'Valuation variant', width: 9, get: (i) => rows[i].Bwvar }, { header: 'Costing key date', width: 14, get: (i) => rows[i].Kadky ?? '' }, { header: 'Costing date from', width: 14, get: (i) => rows[i].Kadat ?? '' },
     { header: 'Costing date to', width: 14, get: (i) => rows[i].Bidat ?? '' }, { header: 'Lot size', dp: 3, width: 12, get: (i) => n(rows[i].Losgr) }, { header: 'Unit', width: 7, get: (i) => rows[i].Meeht },
     { header: 'Total per unit', dp: 4, curr: 'INR', width: 14, get: (i) => n(rows[i].Total) }, { header: 'Standard price', dp: 4, curr: 'INR', width: 14, get: (i) => n(rows[i].StdPrice) }, { header: 'Currency', width: 9, get: (i) => rows[i].Curr },
-    { header: 'Current standard', width: 10, get: (i) => (rows[i].CurStd ? 'yes' : '') }, { header: 'Cost estimate number', width: 14, get: (i) => rows[i].Kalnr }, { header: 'Created by', width: 12, get: (i) => rows[i].Ernam }, { header: 'Created on', width: 12, get: (i) => rows[i].Erdat ?? '' },
+    { header: 'Standard (last 30 days)', width: 14, get: (i) => (rows[i].CurStd ? 'yes' : '') }, { header: 'Cost estimate number', width: 14, get: (i) => rows[i].Kalnr }, { header: 'Created by', width: 12, get: (i) => rows[i].Ernam }, { header: 'Created on', width: 12, get: (i) => rows[i].Erdat ?? '' },
   ];
   return { name: 'Estimates', cols, count: rows.length };
 }

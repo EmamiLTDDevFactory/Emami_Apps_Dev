@@ -16,6 +16,11 @@ export const pricesSheet = (rows: SoPriceRow[]): WacSheet => sheet('Prices', row
   { header: 'Currency', width: 9, get: (r) => r.Curr }, { header: 'Unit', width: 7, get: (r) => r.Uom },
   { header: 'MRP (per unit)', dp: 4, width: 14, get: (r) => n(r.Mrp) }, { header: 'Selling price (per unit)', dp: 4, width: 18, get: (r) => n(r.Sp) }, { header: 'Selling price condition', width: 14, get: (r) => r.SpCond },
   { header: 'Net price (reference)', dp: 4, width: 16, get: (r) => n(r.NetPrice) },
+  // Cost of the latest production order, as SAP sent it (consumed cost is its own columns and is not part of the total).
+  { header: 'RM cost (per unit)', dp: 4, width: 14, get: (r) => n(r.RmCost) }, { header: 'PM cost (per unit)', dp: 4, width: 14, get: (r) => n(r.PmCost) }, { header: 'Perfume cost (per unit)', dp: 4, width: 16, get: (r) => n(r.PerfCost) },
+  { header: 'Total cost RM+PM+perfume (per unit)', dp: 4, width: 20, get: (r) => n(r.PcTotal) }, { header: '% of selling price (SAP)', dp: 2, width: 14, get: (r) => n(r.PcRatio) },
+  { header: 'RM consumed (not in total)', dp: 4, width: 16, get: (r) => n(r.ConsRm) }, { header: 'PM consumed (not in total)', dp: 4, width: 16, get: (r) => n(r.ConsPm) }, { header: 'Perfume consumed (not in total)', dp: 4, width: 18, get: (r) => n(r.ConsPerf) },
+  { header: 'Cost order', width: 13, get: (r) => r.PcAufnr }, { header: 'Cost plant', width: 9, get: (r) => r.PcWerks }, { header: 'Cost batch', width: 11, get: (r) => r.PcCharg }, { header: 'Cost order date', width: 12, get: (r) => r.PcDate ?? '' }, { header: 'Cost message', width: 30, get: (r) => r.PcMsg },
   { header: 'Order', width: 13, get: (r) => r.Vbeln }, { header: 'Item', width: 8, get: (r) => r.Posnr }, { header: 'Order date', width: 12, get: (r) => r.Audat ?? '' }, { header: 'Days old', width: 9, get: (r) => r.DaysOld },
   { header: 'Customer', width: 12, get: (r) => r.Kunnr }, { header: 'Pricing procedure', width: 24, get: (r) => [r.Kalsm, r.KalsmTxt].filter(Boolean).join(' - ') },
   { header: 'Orders found', width: 11, get: (r) => r.NOrders }, { header: 'Orders skipped', width: 13, get: (r) => r.NSkip }, { header: 'Werks', width: 7, get: (r) => r.Werks }, { header: 'Source', width: 8, get: (r) => r.Src }, { header: 'SAP message', width: 44, get: (r) => r.Msg },

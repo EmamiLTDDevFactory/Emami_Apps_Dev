@@ -1,8 +1,7 @@
 'use client';
 import MarginFrame from './MarginFrame';
-import { Empty } from '../ui';
+import PortfolioScreen from './portfolio/PortfolioScreen';
 
-// Placeholder: replaced by the real screen.
 export default function Portfolio() {
-  return <MarginFrame active="margin-portfolio" title="Portfolio" subtitle="Margin module">{() => <Empty title="Coming">This screen is being built.</Empty>}</MarginFrame>;
+  return <MarginFrame active="margin-portfolio" title="Portfolio" subtitle="Groups of finished goods: alerts, data gaps, weighted ratios (% of selling price), revenue and annual impact. SAP computes every figure.">{(c) => <PortfolioScreen ctx={c} />}</MarginFrame>;
 }

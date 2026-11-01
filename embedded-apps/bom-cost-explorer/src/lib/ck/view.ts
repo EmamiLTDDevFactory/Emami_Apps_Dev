@@ -41,16 +41,29 @@ export const groupName = (code: string): string => GROUP_NAME[code] ?? code;
 
 /** Components in SAP's order (Seq), the total row (IsSum) kept where SAP put it. */
 export const sortComps = (rows: CkCompRow[]): CkCompRow[] => [...rows].sort((a, b) => a.Seq - b.Seq);
-export const partComps = (rows: CkCompRow[]): CkCompRow[] => sortComps(rows).filter((r) => !r.IsSum && r.Grp !== 'SUM');
+export const partComps = (rows: CkCompRow[]): CkCompRow[] => sortComps(rows).filter((r) => !r.IsSum && r.Grp !== 'SUM' && !r.IsMemo);
 
 /* ------------------------------ header card ------------------------------ */
 export const STD_DIFF_OK_BELOW = 0.5;
-export interface StdCheck { state: 'ok' | 'note' | 'na'; pct: Decimal | null }
-/** Green check when SAP's StdDiffPct is below 0.5 (in absolute value), otherwise an amber note that carries SAP's Msg; n/a when SAP sent no difference. */
-export function stdCheck(h: Pick<CkHeaderRow, 'StdDiffPct'>): StdCheck {
+/** SAP's message says an older estimate than the "last 30 days" one is shown: shown as a neutral note, never as a difference warning. */
+export const isOlderEstimateMsg = (msg: string | undefined): boolean => /\b(older|earlier)\b/i.test(msg ?? '');
+
+export interface StdCheck { state: 'ok' | 'note' | 'plain' | 'na'; pct: Decimal | null; /** SAP's message that explains a difference (never the older-estimate note) */ msg: string }
+/**
+ * The comparison with the material master, from SAP's own StdDiffPct and Msg:
+ *  - no difference from SAP: 'na'
+ *  - price control V (moving average): the standard price is not the cost basis, so no claim either way: 'plain' (numbers only)
+ *  - below 0.5 % (absolute): 'ok' (green check)
+ *  - 0.5 % or more WITH a message from SAP: 'note' (amber, carries SAP's message)
+ *  - 0.5 % or more WITHOUT a message: 'plain': the numbers are shown, no "Differs" block.
+ */
+export function stdCheck(h: Pick<CkHeaderRow, 'StdDiffPct'> & Partial<Pick<CkHeaderRow, 'Msg' | 'PriceCtrl'>>): StdCheck {
   const pct = dec(h.StdDiffPct);
-  if (pct === null) return { state: 'na', pct: null };
-  return { state: pct.abs().lt(STD_DIFF_OK_BELOW) ? 'ok' : 'note', pct };
+  const msg = isOlderEstimateMsg(h.Msg) ? '' : (h.Msg ?? '').trim();
+  if (pct === null) return { state: 'na', pct: null, msg };
+  if ((h.PriceCtrl ?? '').trim().toUpperCase() === 'V') return { state: 'plain', pct, msg };
+  if (pct.abs().lt(STD_DIFF_OK_BELOW)) return { state: 'ok', pct, msg };
+  return { state: msg ? 'note' : 'plain', pct, msg };
 }
 
 /* ------------------------------ estimates ------------------------------ */

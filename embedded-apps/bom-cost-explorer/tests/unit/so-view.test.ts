@@ -4,7 +4,7 @@ import type { SoAreaRow, SoCondRow, SoFilterRow, SoPriceRow, SoPricingRow, SoPro
 
 const price = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({
   Matnr: 'M1', Maktx: 'Oil', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', AuartTxt: 'Domestic', Segment: 'DOM', SegTxt: 'Domestic', Kalsm: 'ZSDP01', KalsmTxt: 'Std pricing', Curr: 'INR', Uom: 'PC', Werks: '',
-  Mrp: '175', Sp: '149', NetPrice: '148', SpCond: 'ZP12', Vbeln: '0000012345', Posnr: '000010', Kunnr: '1000123', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 0, Src: 'O', Msg: '', ...p,
+  Mrp: '175', Sp: '149', NetPrice: '148', SpCond: 'ZP12', Vbeln: '0000012345', Posnr: '000010', Kunnr: '1000123', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 0, Src: 'O', Msg: '', RmCost: '', PmCost: '', PerfCost: '', ConsRm: '', ConsPm: '', ConsPerf: '', PcTotal: '', PcRatio: '', PcDate: null, PcAufnr: '', PcWerks: '', PcCharg: '', PcMsg: '', ...p,
 });
 const cond = (p: Partial<SoCondRow> = {}): SoCondRow => ({ Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', Kalsm: 'ZSDP01', OrgTxt: '', ChnTxt: '', KschlSp: 'ZP12', SpTxt: '', KschlMrp: 'ZMRP', MrpTxt: '', SpBasis: '', SpAbs: '', Fallback: '', Segment: 'DOM', SegTxt: 'Domestic', Excl: false, Text: '', ChBy: '', ...p });
 const area = (v: string, c: string): SoAreaRow => ({ Vkorg: v, Vtweg: c, OrgTxt: '', ChnTxt: '', Curr: 'INR', NOrders: 1, LastDate: null });

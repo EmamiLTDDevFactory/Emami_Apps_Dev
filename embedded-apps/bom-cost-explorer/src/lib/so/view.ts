@@ -10,7 +10,7 @@ import type { CogmRow, SoAreaRow, SoCondRow, SoFilterRow, SoPriceRow, SoPricingR
 /** An amount SAP actually has: not blank and not 0 (SAP answers 0 when there is no usable order). Shown as n/a (grey) otherwise. */
 export const hasAmount = (v: string): boolean => { const d = dec(v); return d !== null && !d.isZero(); };
 
-export type SoWarnKey = 'nosp' | 'sp0' | 'mrp0' | 'stale' | 'skip';
+export type SoWarnKey = 'nosp' | 'sp0' | 'mrp0' | 'stale' | 'skip' | 'pcmsg';
 export interface SoWarning { key: SoWarnKey; label: string; detail?: string }
 
 /** Warnings of one price row: no usable order (Sp = 0 with a message), Mrp = 0, an order older than SO_STALE_DAYS, skipped orders (NSkip > 0). */
@@ -21,6 +21,7 @@ export function rowWarnings(r: SoPriceRow, staleDays: number = SO_STALE_DAYS): S
   if (!hasAmount(r.Mrp)) w.push({ key: 'mrp0', label: 'MRP is 0' });
   if (r.DaysOld > staleDays) w.push({ key: 'stale', label: `Order is ${r.DaysOld} days old`, detail: `older than ${staleDays} days` });
   if (r.NSkip > 0) w.push({ key: 'skip', label: `${r.NSkip} order${r.NSkip === 1 ? '' : 's'} skipped` });
+  if (r.PcMsg?.trim()) w.push({ key: 'pcmsg', label: 'Production cost', detail: r.PcMsg.trim() });
   return w;
 }
 
@@ -104,3 +105,16 @@ export function proceduresIn(rows: SoPriceRow[]): { kalsm: string; text: string 
 /** The "Compare with cost (SAP)" rows, as SAP sent them: the only thing done here is picking the unavailable ones for n/a. */
 export const cogmHasValue = (v: string): boolean => dec(v) !== null;
 export const cogmKey = (r: Pick<CogmRow, 'Matnr' | 'Werks' | 'Market' | 'Channel'>): string => [r.Matnr, r.Werks, r.Market, r.Channel].join('|');
+
+/* ------------------- cost of the latest production order (SAP figures, shown as they come) ------------------- */
+/** SAP has a cost for this row: the total (RM + PM + perfume) is there and not 0. No cost and no message = "n/a" (grey), never a 0. */
+export const hasPcCost = (r: Pick<SoPriceRow, 'PcTotal'>): boolean => hasAmount(r.PcTotal);
+/** Consumed cost (RM / PM / perfume consumed) shows only when SAP sent a non-zero value for any of the three. It is NEVER added to the total. */
+export const hasConsumed = (r: Pick<SoPriceRow, 'ConsRm' | 'ConsPm' | 'ConsPerf'>): boolean => hasAmount(r.ConsRm) || hasAmount(r.ConsPm) || hasAmount(r.ConsPerf);
+export const CONSUMED_NOTE = 'Consumed cost is shown separately and is not part of the total.';
+/** "Cost from order <PcAufnr>, plant <PcWerks>, batch <PcCharg>, dated <PcDate>"; parts SAP did not send are left out; null when there is no order at all. */
+export function pcSource(r: Pick<SoPriceRow, 'PcAufnr' | 'PcWerks' | 'PcCharg' | 'PcDate'>): string | null {
+  if (!r.PcAufnr && !r.PcWerks && !r.PcCharg && !r.PcDate) return null;
+  const parts = [r.PcAufnr && `order ${r.PcAufnr}`, r.PcWerks && `plant ${r.PcWerks}`, r.PcCharg && `batch ${r.PcCharg}`, r.PcDate && `dated ${r.PcDate}`].filter(Boolean);
+  return `Cost from ${parts.join(', ')}`;
+}

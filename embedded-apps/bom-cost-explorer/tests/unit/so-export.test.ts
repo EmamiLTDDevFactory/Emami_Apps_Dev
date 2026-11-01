@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cogmSheet, filterListsSheet, pricesSheet, pricingSheet, procSheet, rulesSheet } from '@/lib/so/export';
 import type { CogmRow, SoCondRow, SoFilterRow, SoPriceRow, SoPricingRow, SoProcRow } from '@/lib/so/types';
 
-const price = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({ Matnr: '=cmd|calc', Maktx: 'Oil', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', AuartTxt: 'Domestic', Segment: 'DOM', SegTxt: 'Domestic', Kalsm: 'ZSDP01', KalsmTxt: 'Std', Curr: 'INR', Uom: 'PC', Werks: '', Mrp: '175.5', Sp: '149', NetPrice: '', SpCond: 'ZP12', Vbeln: '12345', Posnr: '10', Kunnr: '1000123', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 1, Src: 'O', Msg: '', ...p });
+const price = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({ Matnr: '=cmd|calc', Maktx: 'Oil', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', AuartTxt: 'Domestic', Segment: 'DOM', SegTxt: 'Domestic', Kalsm: 'ZSDP01', KalsmTxt: 'Std', Curr: 'INR', Uom: 'PC', Werks: '', Mrp: '175.5', Sp: '149', NetPrice: '', SpCond: 'ZP12', Vbeln: '12345', Posnr: '10', Kunnr: '1000123', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 1, Src: 'O', Msg: '', RmCost: '', PmCost: '', PerfCost: '', ConsRm: '', ConsPm: '', ConsPerf: '', PcTotal: '', PcRatio: '', PcDate: null, PcAufnr: '', PcWerks: '', PcCharg: '', PcMsg: '', ...p });
 const col = <T extends { cols: { header: string; get: (i: number) => string | number | null }[] }>(s: T, h: string, i = 0) => s.cols.find((c) => c.header === h)!.get(i);
 
 describe('Excel sheets', () => {

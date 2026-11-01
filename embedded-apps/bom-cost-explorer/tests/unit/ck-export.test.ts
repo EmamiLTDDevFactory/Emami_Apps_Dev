@@ -4,7 +4,7 @@ import { compareEstimates } from '@/lib/ck/view';
 import type { CkCompRow, CkHeaderRow, CkItemRow, CkListRow } from '@/lib/ck/types';
 
 const get = (s: { cols: { header: string; get: (i: number) => string | number | null }[] }, h: string, i: number) => s.cols.find((c) => c.header === h || c.header.startsWith(h))!.get(i);
-const comp = (p: Partial<CkCompRow> = {}): CkCompRow => ({ CompNo: '100', CompTxt: 'Raw material', Grp: 'RM', Seq: 1, Total: '10.5', SharePct: '50', Curr: 'INR', IsSum: false, ...p });
+const comp = (p: Partial<CkCompRow> = {}): CkCompRow => ({ CompNo: '100', CompTxt: 'Raw material', Grp: 'RM', Seq: 1, Total: '10.5', SharePct: '50', Curr: 'INR', IsSum: false, IsMemo: false, ...p });
 
 describe('Excel sheets of the Standard cost page', () => {
   it('Header: SAP labels, amounts as numbers with the currency in the label, empty values as empty', () => {
@@ -14,8 +14,8 @@ describe('Excel sheets of the Standard cost page', () => {
     const val = (label: string) => { const i = Array.from({ length: s.count }, (_, k) => k).find((k) => String(s.cols[0].get(k)).startsWith(label))!; return s.cols[1].get(i); };
     expect(val('Material')).toBe('M Oil');
     expect(val('Total per unit (INR)')).toBe(10.5);
-    expect(val('Standard price in material master (INR)')).toBeNull();
-    expect(val('Current standard')).toBe('yes');
+    expect(val('Standard price (INR)')).toBeNull();
+    expect(val('Standard (last 30 days)')).toBe('yes');
     expect(val('Costing date to')).toBe('');
   });
   it('Components in SAP order with group names, share and the total row marked', () => {
@@ -41,8 +41,8 @@ describe('Excel sheets of the Standard cost page', () => {
     const s = estimatesSheet([e, { ...e, CurStd: false }]);
     expect(s.count).toBe(2);
     expect(get(s, 'Status', 0)).toBe('Released');
-    expect(get(s, 'Current standard', 0)).toBe('yes');
-    expect(get(s, 'Current standard', 1)).toBe('');
+    expect(get(s, 'Standard (last 30 days)', 0)).toBe('yes');
+    expect(get(s, 'Standard (last 30 days)', 1)).toBe('');
     expect(get(s, 'Standard price', 0)).toBeNull();
   });
   it('Compare: both sides and the difference labelled as computed here, missing sides empty', () => {

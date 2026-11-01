@@ -13,7 +13,7 @@ import { useScope } from './PriceScope';
 import { fmtDate, fmtNum } from '@/lib/format';
 import { usePcApi } from '@/lib/price-context/context';
 import { useStdCost } from '@/lib/price-context/usePriceContext';
-import { currencyDiffers, hasPrice, isStale, orderRows, segmentChip, stripState } from '@/lib/price-context/display';
+import { currencyDiffers, hasPrice, isStale, orderRows, segmentChip, stripState, stripTitle } from '@/lib/price-context/display';
 import { isUsable } from '@/lib/so/service';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
 import type { SoPriceRow } from '@/lib/so/types';
@@ -41,7 +41,7 @@ export function StdCostCell({ matnr, plant, known, costCurr }: { matnr: string; 
 function Chips({ r, costCurr }: { r: SoPriceRow; costCurr?: string }) {
   const stale = isStale(r);
   return (
-    <span className="inline-flex flex-wrap items-center gap-1" title={`Order ${r.Vbeln}${r.Posnr ? `/${r.Posnr}` : ''} · condition ${r.SpCond || 'n/a'} · ${r.Vkorg}/${r.Vtweg} · ${r.Kalsm}${r.KalsmTxt ? ` ${r.KalsmTxt}` : ''}`}>
+    <span className="inline-flex flex-wrap items-center gap-1" title={stripTitle(r)}>
       <span className="rounded-full bg-accent/10 px-1.5 py-px text-2xs font-bold text-accent">{segmentChip(r) || 'order'}</span>
       {r.Audat && <span className={cx('rounded-full px-1.5 py-px text-2xs font-bold', stale ? 'bg-warn/15 text-warn' : 'bg-good/10 text-good')}>{fmtDate(r.Audat)} · {r.DaysOld} d{stale && <span className="sr-only"> (stale)</span>}</span>}
       {currencyDiffers(r.Curr, costCurr) && <span className="rounded bg-warn/15 px-1 text-2xs font-bold text-warn">currency differs</span>}

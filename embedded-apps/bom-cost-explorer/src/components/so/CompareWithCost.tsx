@@ -5,7 +5,7 @@
  * Reusable: the Sales price page and the price strip both use it.
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { AlertTriangle, Play, Square } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Play, Square } from 'lucide-react';
 import { Button, Spinner, cx } from '../ui';
 import WacMessages from '../wac/WacMessages';
 import { fmtMs, fmtNum } from '@/lib/format';
@@ -14,6 +14,9 @@ import { COGM_MAX_MATERIALS } from '@/lib/so/filter';
 import { fetchCogm } from '@/lib/so/service';
 import { EMPTY_LIST, type CogmRow, type ListFilter } from '@/lib/so/types';
 import { cogmHasValue, cogmKey } from '@/lib/so/view';
+import { COGM_ENABLED } from '@/lib/margin/flag';
+import { DEFAULT_SEL, marginSearch } from '@/lib/margin/selection';
+import { BASE_PATH } from '@/lib/client/session';
 
 export interface CompareSelection { vkorg: string[]; vtweg?: string[]; segment?: string[]; daysBack?: number; auart?: ListFilter; pstyv?: ListFilter; kdgrp?: ListFilter; kunnr?: ListFilter }
 
@@ -24,6 +27,10 @@ const tdN = `${td} num whitespace-nowrap text-right`;
 const na = <span className="text-faint" title="No value from SAP">n/a</span>;
 const money = (v: string, curr: string, dp = 2) => (cogmHasValue(v) ? <>{fmtNum(v, dp, curr)} <span className="text-2xs text-muted">{curr}</span></> : na);
 const plain = (v: string, dp = 4) => (cogmHasValue(v) ? fmtNum(v, dp, 'X') : na);
+
+/** The Margin Board link of the same selection: latest sales order (PriceSrcIn 'O'), the sales area, days and the include / exclude lists. The Board never runs from the URL. */
+export const marginBoardHref = (materials: string[], plants: string[] | undefined, s: CompareSelection): string =>
+  `${BASE_PATH}/margin/${marginSearch({ ...DEFAULT_SEL, materials, plants: plants ?? [], priceSrc: 'O', vkorg: s.vkorg, vtweg: s.vtweg ?? [], segment: s.segment?.[0] ?? '', days: s.daysBack ?? DEFAULT_SEL.days, auart: s.auart ?? EMPTY_LIST, pstyv: s.pstyv ?? EMPTY_LIST, kdgrp: s.kdgrp ?? EMPTY_LIST, kunnr: s.kunnr ?? EMPTY_LIST })}`;
 
 export function cogmQuery(materials: string[], plants: string[] | undefined, s: CompareSelection) {
   return { materials: materials.slice(0, COGM_MAX_MATERIALS), plants, vkorg: s.vkorg, vtweg: s.vtweg, segment: s.segment, daysBack: s.daysBack, auart: s.auart ?? EMPTY_LIST, pstyv: s.pstyv ?? EMPTY_LIST, kdgrp: s.kdgrp ?? EMPTY_LIST, kunnr: s.kunnr ?? EMPTY_LIST };
@@ -46,6 +53,18 @@ export default function CompareWithCost({ materials, plants, selection, onRows, 
   const run = () => { void ensure<CogmRow>(key, ctx, 'COGM', (signal) => fetchCogm(q, { signal }), entry?.status === 'done'); };
   const rows = entry?.status === 'done' ? entry.data ?? [] : [];
   const cut = materials.length > COGM_MAX_MATERIALS;
+
+  // With the Margin module on, "Compare with cost" opens the Margin Board with this selection (it runs there, on its own button). Off: the inline comparison below, as before.
+  if (COGM_ENABLED) {
+    return (
+      <div className={cx('flex flex-wrap items-center gap-2', className)}>
+        <a href={marginBoardHref(materials, plants, selection)} className={cx('inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 text-xs font-semibold hover:bg-sunken', !materials.length && 'pointer-events-none opacity-50')} aria-disabled={!materials.length}>
+          <ExternalLink size={13} aria-hidden /> Compare with cost (SAP)
+        </a>
+        <span className="text-xs text-faint">Opens the Margin board with this selection (latest sales order). The producing plant is chosen there; nothing runs until you press Show.</span>
+      </div>
+    );
+  }
 
   return (
     <div className={cx('flex flex-col gap-2', className)}>

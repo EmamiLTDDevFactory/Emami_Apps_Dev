@@ -26,7 +26,7 @@ import type { SalesFiltersValue, SalesPreset } from '@/lib/so/presets';
 import { fetchSo, fetchSoMerged } from '@/lib/so/service';
 import { DEFAULT_SO_URL, parseSoSearch, soSearch, type SoUrlState } from '@/lib/so/url';
 import type { CogmRow, SoAreaRow, SoCondRow, SoFilterRow, SoPriceRow, SoPricingRow, SoProcRow } from '@/lib/so/types';
-import { LINE_STATE_LABEL, groupBySegment, hasAmount, lineState, neverCountedAuarts, pricingLinesOf, priceKey, procSteps, proceduresIn, roleLabel, rowWarnings, segmentOptions } from '@/lib/so/view';
+import { CONSUMED_NOTE, LINE_STATE_LABEL, groupBySegment, hasAmount, hasConsumed, hasPcCost, pcSource, lineState, neverCountedAuarts, pricingLinesOf, priceKey, procSteps, proceduresIn, roleLabel, rowWarnings, segmentOptions } from '@/lib/so/view';
 
 const PAGE_CTX = 'so-page';
 const COND_KEY = 'so|COND';
@@ -50,6 +50,25 @@ const NA = <span className="text-faint" title="No value from SAP">n/a</span>;
 function Amount({ v, curr, unit }: { v: string; curr: string; unit?: string }) {
   if (!hasAmount(v)) return NA;
   return <>{fmtNum(v, 2, curr)} <span className="text-2xs text-muted">{curr}{unit ? `/${unit}` : ''}</span></>;
+}
+/** RM, PM, perfume, total and % of the selling price of the latest production order, exactly as SAP sent them (never computed here); n/a when SAP has no cost.
+ * The consumed cost is its own column, only when not 0, and is never part of the total. */
+function CostCells({ r }: { r: SoPriceRow }) {
+  const src = pcSource(r);
+  const has = hasPcCost(r);
+  return (
+    <>
+      <td className={tdN}><Amount v={r.RmCost} curr={r.Curr} unit={r.Uom} /></td><td className={tdN}><Amount v={r.PmCost} curr={r.Curr} unit={r.Uom} /></td><td className={tdN}><Amount v={r.PerfCost} curr={r.Curr} unit={r.Uom} /></td>
+      <td className={cx(tdN, 'font-bold')} title={src ?? undefined}>
+        <Amount v={r.PcTotal} curr={r.Curr} unit={r.Uom} />
+        {has && src && <div className="max-w-[16rem] whitespace-normal text-2xs font-normal text-muted">{src}</div>}
+      </td>
+      <td className={tdN}>{has && hasAmount(r.PcRatio) ? `${fmtNum(r.PcRatio, 1, 'X')} %` : NA}</td>
+      <td className={tdN} title={hasConsumed(r) ? CONSUMED_NOTE : undefined}>
+        {hasConsumed(r) ? <span className="text-xs">{[['RM', r.ConsRm], ['PM', r.ConsPm], ['Perf', r.ConsPerf]].filter(([, v]) => hasAmount(v)).map(([k, v]) => `${k} ${fmtNum(v, 2, r.Curr)}`).join(' · ')} <span className="text-2xs text-muted">{r.Curr}</span></span> : <span className="text-faint">—</span>}
+      </td>
+    </>
+  );
 }
 function RoleBadge({ role }: { role: string }) {
   if (role !== 'MRP' && role !== 'SP') return null;
@@ -370,12 +389,12 @@ function Screen() {
                 <div className="max-h-[70vh] overflow-auto rounded-2xl border border-line bg-panel shadow-card">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-sunken"><tr>
-                      <th className={th}><span className="sr-only">Expand</span></th><th className={th}>Material</th><th className={th}>Sales area</th><th className={th}>Doc type</th><th className={thN}>MRP</th><th className={thN}>Selling price</th><th className={th}>Condition</th><th className={thN}>Net price (ref.)</th>
+                      <th className={th}><span className="sr-only">Expand</span></th><th className={th}>Material</th><th className={th}>Sales area</th><th className={th}>Doc type</th><th className={thN}>MRP</th><th className={thN}>Selling price</th><th className={th}>Condition</th><th className={thN}>Net price (ref.)</th><th className={thN}>RM</th><th className={thN}>PM</th><th className={thN}>Perfume</th><th className={thN}>Total cost (RM+PM+perfume)</th><th className={thN}>% of selling price</th><th className={thN}>RM/PM/Perfume consumed</th>
                       <th className={th}>Order</th><th className={th}>Order date</th><th className={th}>Customer</th><th className={th}>Pricing procedure</th><th className={thN}>Orders / skipped</th><th className={th}>Warnings</th>
                     </tr></thead>
                     {groups.map((g) => (
                       <tbody key={g.label}>
-                        <tr className="bg-sunken/60"><td colSpan={14} className="px-2.5 py-1.5 text-xs font-extrabold uppercase tracking-wide text-ink">Segment: {g.label} <span className="font-normal text-muted">({g.rows.length})</span></td></tr>
+                        <tr className="bg-sunken/60"><td colSpan={20} className="px-2.5 py-1.5 text-xs font-extrabold uppercase tracking-wide text-ink">Segment: {g.label} <span className="font-normal text-muted">({g.rows.length})</span></td></tr>
                         {g.rows.map((r) => {
                           const k = priceKey(r);
                           const isOpen = expanded.has(k);
@@ -391,6 +410,7 @@ function Screen() {
                                 <td className={td}><span className="font-mono">{r.Auart}</span> <span className="text-muted">{r.AuartTxt}</span></td>
                                 <td className={tdN}><Amount v={r.Mrp} curr={r.Curr} unit={r.Uom} /></td><td className={cx(tdN, 'font-bold')}><Amount v={r.Sp} curr={r.Curr} unit={r.Uom} /></td>
                                 <td className={cx(td, 'font-mono')}>{r.SpCond || '—'}</td><td className={tdN}><Amount v={r.NetPrice} curr={r.Curr} unit={r.Uom} /></td>
+                                <CostCells r={r} />
                                 <td className={cx(td, 'whitespace-nowrap font-mono')}>{r.Vbeln ? <>{r.Vbeln}/{r.Posnr}<Copy text={`${r.Vbeln}/${r.Posnr}`} label={`Copy order ${r.Vbeln} item ${r.Posnr}`} /></> : NA}</td>
                                 <td className={cx(td, 'whitespace-nowrap')}>{r.Audat ? <>{fmtDate(r.Audat)} <span className="text-2xs text-muted">({r.DaysOld} d)</span></> : NA}</td>
                                 <td className={cx(td, 'font-mono')}>{r.Kunnr || '—'}</td>
@@ -398,12 +418,12 @@ function Screen() {
                                 <td className={tdN}>{r.NOrders} / {r.NSkip}</td>
                                 <td className={td}>
                                   <div className="flex flex-col gap-0.5">
-                                    {warn.map((w) => <span key={w.key} title={w.detail} className={cx('inline-flex items-center gap-1 text-xs font-semibold', w.key === 'nosp' ? 'text-bad' : 'text-warn')}><AlertTriangle size={12} aria-hidden />{w.label}{w.detail && w.key === 'nosp' ? `: ${w.detail}` : ''}</span>)}
+                                    {warn.map((w) => <span key={w.key} title={w.detail} className={cx('inline-flex items-center gap-1 text-xs font-semibold', w.key === 'nosp' ? 'text-bad' : 'text-warn')}><AlertTriangle size={12} aria-hidden />{w.label}{w.detail && (w.key === 'nosp' || w.key === 'pcmsg') ? `: ${w.detail}` : ''}</span>)}
                                     {r.Msg && !warn.some((w) => w.key === 'nosp') && <span className="text-xs text-muted">{r.Msg}</span>}
                                   </div>
                                 </td>
                               </tr>
-                              {isOpen && <tr className="border-t border-line/60 bg-sunken/30"><td colSpan={14} className="px-4 py-3" onClick={(e) => e.stopPropagation()}><RowDetails row={r} f={ran.f} ctx={runCtx} /></td></tr>}
+                              {isOpen && <tr className="border-t border-line/60 bg-sunken/30"><td colSpan={20} className="px-4 py-3" onClick={(e) => e.stopPropagation()}><RowDetails row={r} f={ran.f} ctx={runCtx} /></td></tr>}
                             </Fragment>
                           );
                         })}

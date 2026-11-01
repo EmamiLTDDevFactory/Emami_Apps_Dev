@@ -15,7 +15,7 @@ import type { SoPriceRow } from '@/lib/so/types';
 
 const row = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({
   Matnr: 'FG1', Maktx: 'Oil', Vkorg: '1000', Vtweg: '10', Auart: 'ZOD1', AuartTxt: 'Domestic', Segment: 'DOM', SegTxt: 'Domestic', Kalsm: 'ZSDP01', KalsmTxt: 'Std pricing', Curr: 'INR', Uom: 'PC', Werks: 'UN13',
-  Mrp: '120.00', Sp: '95.50', NetPrice: '94.00', SpCond: 'ZP12', Vbeln: '0010000123', Posnr: '000010', Kunnr: 'C1', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 0, Src: 'O', Msg: '', ...p,
+  Mrp: '120.00', Sp: '95.50', NetPrice: '94.00', SpCond: 'ZP12', Vbeln: '0010000123', Posnr: '000010', Kunnr: 'C1', Audat: '2026-10-20', DaysOld: 11, NOrders: 4, NSkip: 0, Src: 'O', Msg: '', RmCost: '', PmCost: '', PerfCost: '', ConsRm: '', ConsPm: '', ConsPerf: '', PcTotal: '', PcRatio: '', PcDate: null, PcAufnr: '', PcWerks: '', PcCharg: '', PcMsg: '', ...p,
 });
 const on: PriceContextState = { ...DEFAULT_PC, on: true, vkorg: ['1000'] };
 const api = (state: PriceContextState, admin = true): PcApi => ({ state, admin, set: () => {}, replace: () => {} });

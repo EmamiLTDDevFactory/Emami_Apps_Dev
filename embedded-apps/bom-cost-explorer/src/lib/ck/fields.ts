@@ -22,9 +22,14 @@ export const CK_HEADER = def({
   Status: ['Status', 's'], StatusTxt: ['StatusTxt', 's'], CurStd: ['CurStd', 'f'], Kadat: ['Kadat', 't'], Bidat: ['Bidat', 't'], Bwdat: ['Bwdat', 't'], Aldat: ['Aldat', 't'], Losgr: ['Losgr', 'd'], Meeht: ['Meeht', 's'], Peinh: ['Peinh', 's'], Curr: ['Curr', 's'],
   TotalLot: ['TotalLot', 's'], TotalUnit: ['TotalUnit', 's'], ValueBasis: ['ValueBasis', 's'], StdPrice: ['StdPrice', 's'], PriceCtrl: ['PriceCtrl', 's'], StdDiff: ['StdDiff', 's'], StdDiffPct: ['StdDiffPct', 's'],
   NComp: ['NComp', 'i'], NItem: ['NItem', 'i'], Ernam: ['Ernam', 's'], Erdat: ['Erdat', 't'], Msg: ['Msg', 's'],
+  // Moving average price and the fixed / variable cost units of the material master. UNVERIFIED optional properties: CK reads send no $select, so a
+  // name SAP does not have simply reads as '' and shows n/a.
+  MapPrice: ['MapPrice', 's'], FixedUnit: ['FixedUnit', 's'], VarUnit: ['VarUnit', 's'],
 });
 export const CK_COMP = def({
   CompNo: ['CompNo', 's'], CompTxt: ['CompTxt', 's'], Grp: ['Grp', 's'], Seq: ['Seq', 'i'], Total: ['Total', 's'], SharePct: ['SharePct', 's'], Curr: ['Curr', 's'], IsSum: ['IsSum', 'f'],
+  // Memo component (shown for information, not part of the cost share). UNVERIFIED optional property name; absent = not a memo.
+  IsMemo: ['IsMemo', 'f'],
 });
 export const CK_ITEM = def({
   Posnr: ['Posnr', 's'], Typps: ['Typps', 's'], TyppsTxt: ['TyppsTxt', 's'], Kstar: ['Kstar', 's'], KstarTxt: ['KstarTxt', 's'], Idnrk: ['Idnrk', 's'], ItemTxt: ['ItemTxt', 's'], Mtart: ['Mtart', 's'], ItemWerks: ['ItemWerks', 's'],
@@ -34,7 +39,7 @@ export const CK_FIELDS = { LIST: CK_LIST, HEADER: CK_HEADER, COMP: CK_COMP, ITEM
 /** kind 's' properties that are amounts / ratios: '' = nothing from SAP, shown as n/a, never as 0 */
 export const CK_NULLABLE: Record<CkSetKey, ReadonlySet<string>> = {
   LIST: new Set(['Total', 'StdPrice']),
-  HEADER: new Set(['TotalLot', 'TotalUnit', 'StdPrice', 'StdDiff', 'StdDiffPct', 'Peinh']),
+  HEADER: new Set(['TotalLot', 'TotalUnit', 'StdPrice', 'StdDiff', 'StdDiffPct', 'Peinh', 'MapPrice']),
   COMP: new Set(['Total', 'SharePct']),
   ITEM: new Set(['Qty', 'Price', 'PriceUnit', 'ValueLot', 'ValueUnit']),
 };

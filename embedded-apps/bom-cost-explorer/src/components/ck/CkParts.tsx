@@ -8,7 +8,7 @@ import { useChartTheme } from '../charts';
 import { fmtDate, fmtNum, fmtQty, fmtSigned } from '@/lib/format';
 import type { WacEntry } from '@/lib/wac/cache';
 import type { CkCompRow, CkHeaderRow, CkItemRow, CkListRow } from '@/lib/ck/types';
-import { compareEstimates, dec, filterItems, groupColor, groupName, itemTypes, keyFromRow, partComps, sameKey, sortComps, statusTone, stdCheck, type StatusTone } from '@/lib/ck/view';
+import { compareEstimates, dec, filterItems, isOlderEstimateMsg, groupColor, groupName, itemTypes, keyFromRow, partComps, sameKey, sortComps, statusTone, stdCheck, type StatusTone } from '@/lib/ck/view';
 import type { CkEstimateKey } from '@/lib/ck/filter';
 
 const th = 'px-2.5 py-1.5 text-left text-2xs font-bold uppercase tracking-wide text-muted';
@@ -37,9 +37,10 @@ export function HeaderCard({ h, onCopy, copied }: { h: CkHeaderRow; onCopy: () =
           <h2 className="text-base font-extrabold"><span className="font-mono text-accent">{h.Matnr}</span> {h.Maktx}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusChip text={h.StatusTxt || h.Status} />
-            {h.CurStd && <Pill tone="accent">Current standard</Pill>}
+            {h.CurStd && <Pill tone="accent" title="The latest released estimate touching the last 30 days">Standard (last 30 days)</Pill>}
             <span className="text-xs text-muted">{h.NComp} components · {h.NItem} items</span>
           </div>
+          {isOlderEstimateMsg(h.Msg) && <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted"><Info size={13} className="mt-0.5 shrink-0" aria-hidden /> <span>{h.Msg}</span></p>}
         </div>
         <Button size="sm" onClick={onCopy} title="Copies the key values to type into CK13N"><ClipboardCopy size={13} /> {copied ? 'Copied' : 'Copy for SAP'}</Button>
       </div>
@@ -64,19 +65,25 @@ export function HeaderCard({ h, onCopy, copied }: { h: CkHeaderRow; onCopy: () =
           <div className="text-2xs text-muted">per lot {money(h.TotalLot, h.Curr, 2)}{h.ValueBasis && <span title={h.ValueBasis} className="ml-1 inline-flex align-middle text-faint"><Info size={12} aria-label={`Value basis: ${h.ValueBasis}`} /></span>}</div>
         </div>
         <div>
-          <div className="text-2xs font-bold uppercase tracking-wide text-muted">Standard price (material master)</div>
+          <div className="text-2xs font-bold uppercase tracking-wide text-muted">Standard price</div>
           <div className="num text-xl font-extrabold">{money(h.StdPrice, h.Curr)}</div>
           <div className="text-2xs text-muted">price control {h.PriceCtrl || 'n/a'} · price unit {dec(h.Peinh) ? fmtQty(h.Peinh) : 'n/a'}</div>
         </div>
         <div>
-          <div className="text-2xs font-bold uppercase tracking-wide text-muted">Difference</div>
+          <div className="text-2xs font-bold uppercase tracking-wide text-muted">Moving average price</div>
+          <div className="num text-xl font-extrabold">{money(h.MapPrice, h.Curr)}</div>
+          <div className="text-2xs text-muted">fixed unit {val(h.FixedUnit)} · variable unit {val(h.VarUnit)}</div>
+        </div>
+        <div>
+          <div className="text-2xs font-bold uppercase tracking-wide text-muted">Difference to standard price</div>
           <div className="num text-xl font-extrabold">{dec(h.StdDiff) ? <>{fmtSigned(dec(h.StdDiff)!, 4, h.Curr)} <span className="text-sm text-muted">{h.Curr}</span></> : NA}</div>
           <div className="text-2xs text-muted">{chk.pct ? `${chk.pct.gt(0) ? '+' : chk.pct.lt(0) ? '−' : ''}${chk.pct.abs().toFixed(2)} %` : 'n/a'}</div>
         </div>
-        <div className="flex items-center">
-          {chk.state === 'ok' && <p className="flex items-start gap-1.5 text-sm text-good"><CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden /> <span><b>Matches the material master</b> (difference below 0.5 %).</span></p>}
-          {chk.state === 'note' && <p className="flex items-start gap-1.5 rounded-lg bg-warn/10 px-2 py-1.5 text-sm text-warn"><AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden /> <span><b>Differs from the material master by {chk.pct!.abs().toFixed(2)} %.</b> {h.Msg}</span></p>}
-          {chk.state === 'na' && <p className="text-sm text-faint">No comparison with the material master from SAP.{h.Msg ? ` ${h.Msg}` : ''}</p>}
+        <div className="flex items-center md:col-span-4">
+          {chk.state === 'ok' && <p className="flex items-start gap-1.5 text-sm text-good"><CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden /> <span><b>Matches the standard price</b> (difference below 0.5 %).</span></p>}
+          {chk.state === 'note' && <p className="flex items-start gap-1.5 rounded-lg bg-warn/10 px-2 py-1.5 text-sm text-warn"><AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden /> <span><b>Differs from the standard price by {chk.pct!.abs().toFixed(2)} %.</b> {chk.msg}</span></p>}
+          {chk.state === 'plain' && chk.msg && <p className="text-sm text-muted">{chk.msg}</p>}
+          {chk.state === 'na' && <p className="text-sm text-faint">No comparison with the standard price from SAP.{chk.msg ? ` ${chk.msg}` : ''}</p>}
         </div>
       </div>
     </section>
@@ -99,11 +106,11 @@ export function ComponentsTab({ comps }: { comps: CkCompRow[] }) {
           <thead className="bg-sunken"><tr><th className={th}>Cost component</th><th className={th}>Group</th><th className={thN}>Total per unit</th><th className={thN}>Share</th></tr></thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={`${r.CompNo}-${i}`} className={cx('border-t border-line/60', r.IsSum && 'bg-sunken/60 font-extrabold')}>
-                <td className={td}>{r.CompNo && <span className="font-mono text-xs text-muted">{r.CompNo} </span>}{r.CompTxt}</td>
+              <tr key={`${r.CompNo}-${i}`} className={cx('border-t border-line/60', r.IsSum && 'bg-sunken/60 font-extrabold', r.IsMemo && 'text-faint')}>
+                <td className={td}>{r.CompNo && <span className="font-mono text-xs text-muted">{r.CompNo} </span>}{r.CompTxt}{r.IsMemo && <span className="ml-1.5 rounded bg-sunken px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted" title="Memo component: shown for information, not part of the cost share">Memo</span>}</td>
                 <td className={td}>{r.IsSum ? <span>Total</span> : <span className="inline-flex items-center gap-1.5"><span aria-hidden className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: groupColor(String(r.Grp)) }} />{groupName(String(r.Grp))}</span>}</td>
                 <td className={tdN}>{money(r.Total, r.Curr)}</td>
-                <td className={tdN}>{dec(r.SharePct) ? `${fmtNum(r.SharePct, 1, 'X')} %` : NA}</td>
+                <td className={tdN}>{r.IsMemo ? <span className="text-faint" title="Memo component: left out of the share">n/a</span> : dec(r.SharePct) ? `${fmtNum(r.SharePct, 1, 'X')} %` : NA}</td>
               </tr>
             ))}
           </tbody>
@@ -211,7 +218,7 @@ export function EstimatesTab({ rows, active, onOpen, onCompare, compare }: { row
               return (
                 <tr key={`${r.Kalnr}-${r.Kadky}-${r.Tvers}-${r.Bwvar}-${i}`} className={cx('border-t border-line/60', isOpen && 'bg-accent/5')}>
                   <td className={td}><input type="checkbox" aria-label={`Select estimate ${label(r)} for compare`} checked={pick.includes(i)} onChange={() => toggle(i)} /></td>
-                  <td className={td}><StatusChip text={r.StatusTxt || r.Status} /> {r.CurStd && <Pill tone="accent">Current standard</Pill>}</td>
+                  <td className={td}><StatusChip text={r.StatusTxt || r.Status} /> {r.CurStd && <Pill tone="accent">Standard (last 30 days)</Pill>}</td>
                   <td className={td}>{val(r.Klvar)}</td><td className={td}>{val(r.Tvers)}</td><td className={td}>{day(r.Kadky)}</td>
                   <td className={td}>{day(r.Kadat)} – {day(r.Bidat)}</td>
                   <td className={tdN}>{dec(r.Losgr) ? <>{fmtQty(r.Losgr)} {r.Meeht}</> : NA}</td>

@@ -6,7 +6,7 @@ import {
 import { ckSearch, parseCkUrl } from '@/lib/ck/url';
 import type { CkCompRow, CkHeaderRow, CkItemRow, CkListRow } from '@/lib/ck/types';
 
-const comp = (p: Partial<CkCompRow> = {}): CkCompRow => ({ CompNo: '100', CompTxt: 'Raw material', Grp: 'RM', Seq: 1, Total: '10', SharePct: '50', Curr: 'INR', IsSum: false, ...p });
+const comp = (p: Partial<CkCompRow> = {}): CkCompRow => ({ CompNo: '100', CompTxt: 'Raw material', Grp: 'RM', Seq: 1, Total: '10', SharePct: '50', Curr: 'INR', IsSum: false, IsMemo: false, ...p });
 const est = (p: Partial<CkListRow> = {}): CkListRow => ({ Matnr: 'M', Maktx: 'x', Werks: 'UN13', Kalnr: '1', Kadky: '2026-10-01', Tvers: '01', Bwvar: 'ZUV', Kkzma: '', Klvar: 'PPC1', Status: 'FR', StatusTxt: 'Released', CurStd: false, Kadat: null, Bidat: null, Losgr: '1000', Meeht: 'PC', Total: '12', StdPrice: '12', Curr: 'INR', Ernam: 'U', Erdat: null, ...p });
 const item = (p: Partial<CkItemRow> = {}): CkItemRow => ({ Posnr: '0001', Typps: 'M', TyppsTxt: 'Material', Kstar: '400000', KstarTxt: 'RM consumption', Idnrk: '1001', ItemTxt: 'Oil', Mtart: 'ROH', ItemWerks: 'UN13', Kostl: '', Lstar: '', Qty: '2', Uom: 'KG', QtyUnit: 'KG', Price: '5', PriceUnit: '1', ValueLot: '10', ValueUnit: '1', Curr: 'INR', HasEst: false, ...p });
 
@@ -46,8 +46,8 @@ describe('header card: difference to the material master', () => {
     expect(stdCheck({ StdDiffPct: '0.4999' }).state).toBe('ok');
     expect(stdCheck({ StdDiffPct: '-0.2' }).state).toBe('ok');
     expect(stdCheck({ StdDiffPct: '0' }).state).toBe('ok');
-    expect(stdCheck({ StdDiffPct: '0.5' }).state).toBe('note');
-    expect(stdCheck({ StdDiffPct: '-3.2' }).state).toBe('note');
+    expect(stdCheck({ StdDiffPct: '0.5', Msg: 'Components do not reproduce the price' }).state).toBe('note');
+    expect(stdCheck({ StdDiffPct: '-3.2', Msg: 'Components do not reproduce the price' }).state).toBe('note');
     expect(stdCheck({ StdDiffPct: '' }).state).toBe('na');
     expect(stdCheck({ StdDiffPct: '' }).pct).toBeNull();
   });
