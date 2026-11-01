@@ -50,7 +50,7 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-upload';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-upload';
 
 function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string }) {
   const pane = wide
@@ -79,6 +79,7 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
           <NavLink href={`${BASE_PATH}/freight-compare/`} icon={GitCompareArrows} label="Freight comparison" hint="Actual vs standard, plant and FG wise" active={planActive === 'freight'} />
           {wacVisible && <NavLink href={`${BASE_PATH}/actual/`} icon={Scale} label="Actual vs rate sources" hint="Weighted average actual cost vs rates" active={planActive === 'wac'} />}
           {psumVisible && <NavLink href={`${BASE_PATH}/plant-summary/`} icon={Factory} label="Plant production summary" hint="FGs, cost and components by plant" active={planActive === 'psum'} />}
+          {psumVisible && <NavLink href={`${BASE_PATH}/cost-report/`} icon={Scale} label="Cost and margin report" hint="Cost per pc vs MRP and selling price" active={planActive === 'psum-report'} />}
           {ckVisible && <NavLink href={`${BASE_PATH}/standard-cost/`} icon={Layers} label="Standard cost" hint="Cost estimate, like CK13N" active={planActive === 'ck'} />}
           {soVisible && <NavLink href={`${BASE_PATH}/sales-price/`} icon={Tags} label="Sales price" hint="MRP and selling price, latest order" active={planActive === 'so'} />}
           {COGM_ENABLED && canDisplay(marginRole) && (
