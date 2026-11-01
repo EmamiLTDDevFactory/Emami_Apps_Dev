@@ -70,7 +70,8 @@ function Screen() {
 
   // Sales areas the person may see (SoAreaVHSet WITHOUT MatnrIn, only areas with orders in the price look-back), loaded on their button; segment texts and
   // "never counted" document types from the rules; the document-type lists from the SKUs of the result (after Run).
-  const areaQ = useMemo(() => ({ daysBack: form.priceDays, onlyOrd: true }), [form.priceDays]);
+  // Before Run: every sales area the person may see. After Run: only the areas with orders for the SKUs of the result (SAP counts orders per material).
+  const areaQ = useMemo(() => ({ materials: rep.materials.slice(0, 50), daysBack: form.priceDays, onlyOrd: true }), [rep.materials, form.priceDays]);
   const areaKey = safe(() => `so|AREA|${buildSoFilter(areaQ, 'AREA')}`);
   const areas = useEntry<SoAreaRow>(areaKey);
   const COND_KEY = 'so|COND|';

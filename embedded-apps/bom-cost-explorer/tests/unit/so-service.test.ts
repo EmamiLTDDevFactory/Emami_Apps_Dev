@@ -113,3 +113,16 @@ describe('sales areas on a SAP that does not know OnlyOrd yet', () => {
     expect(mocked).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('sales areas with OnlyOrd but no material', () => {
+  it('an empty answer is read again without OnlyOrd; with materials it is not', async () => {
+    mocked.mockReset();
+    mocked.mockResolvedValueOnce(resp([])).mockResolvedValueOnce(resp([{ Vkorg: 'EM01', Vtweg: '10' }]));
+    const r = await fetchSo('AREA', { daysBack: 90, onlyOrd: true });
+    expect(mocked).toHaveBeenCalledTimes(2); expect(String(mocked.mock.calls[1][1].$filter)).not.toContain('OnlyOrd'); expect(r.rows).toHaveLength(1);
+    mocked.mockReset();
+    mocked.mockResolvedValueOnce(resp([]));
+    await fetchSo('AREA', { materials: ['A'], daysBack: 90, onlyOrd: true });
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+});

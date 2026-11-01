@@ -17,6 +17,10 @@ export async function fetchSo<K extends SoFilterSet>(set: K, q: SoQuery, opts: {
       r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], buildSoFilter({ ...q, onlyOrd: false }, set), opts.signal, select);
     } else throw e;
   }
+  // OnlyOrd without a material answers nothing (SAP counts orders per material): the list is read again without it, so the sales areas can still be picked.
+  if (set === 'AREA' && q.onlyOrd && !(q.materials ?? []).length && r.rows.length === 0 && !opts.signal?.aborted) {
+    r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], buildSoFilter({ ...q, onlyOrd: false }, set), opts.signal, select);
+  }
   if (set === 'PRICE') r.messages = rowMessages((r.rows as SoPriceRow[]).map((x) => (x.Msg && !isUsable(x) ? x.Msg : '')), r.messages);
   return r;
 }
