@@ -7,7 +7,7 @@ const wac = vi.hoisted(() => ({ fetchWac: vi.fn() }));
 vi.mock('@/lib/so/service', () => ({ fetchSo: so.fetchSo, fetchSoMerged: vi.fn() }));
 vi.mock('@/lib/wac/service', async (orig) => ({ ...(await orig<typeof import('@/lib/wac/service')>()), fetchWac: wac.fetchWac }));
 
-import { buildReport, cogmOf, cogmPending, COGM_PENDING_NOTE, ratioWhy, withoutPrice } from '@/lib/psum/report';
+import { buildReport, cogmNone, cogmOf, cogmPending, COGM_NONE_NOTE, COGM_PENDING_NOTE, ratioWhy, withoutPrice } from '@/lib/psum/report';
 import { PRICE_PARALLEL, fetchReportPrices, priceBatches, priceQuery, REPORT_PRICE_SELECT, type PriceFilters } from '@/lib/psum/reportPrices';
 import { fetchRows, reportSelect, type ReportQuery } from '@/lib/psum/useReport';
 import { buildSoFilter } from '@/lib/so/filter';
@@ -29,6 +29,12 @@ describe('COGM is ActCogm and never ActLanded', () => {
     expect(r.cogm).toBe(''); expect(r.cogmPending).toBe(true); expect(r.rSp).toBeNull(); expect(r.rMrp).toBeNull(); expect(r.sim).toBeNull();
     expect(ratioWhy(r)).toBe(COGM_PENDING_NOTE);
     expect(cogmPending([row])).toBe(true); expect(cogmPending([fg()])).toBe(false); expect(cogmPending([])).toBe(false);
+  });
+  it('ActCogm sent as 0 (no cost documents): n/a with its own note, not "SAP update pending"', () => {
+    const row = fg({ ActCogm: '0.000000' });
+    expect(cogmOf(row)).toBe(''); expect(cogmNone(row)).toBe(true); expect(cogmPending([row])).toBe(false);
+    const r = buildReport([row], [pr()], { pct: '', abs: '' })[0];
+    expect(r.cogmPending).toBe(false); expect(r.rSp).toBeNull(); expect(ratioWhy(r)).toBe(COGM_NONE_NOTE);
   });
   it('an empty ActCogm string is also pending (never 0)', () => expect(cogmOf(fg({ ActCogm: '' }))).toBe(''));
   it('the simulation is applied to ActCogm', () => {

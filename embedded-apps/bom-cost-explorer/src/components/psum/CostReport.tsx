@@ -29,7 +29,7 @@ import { EMPTY_LIST } from '@/lib/so/types';
 import type { SalesFiltersValue } from '@/lib/so/presets';
 import type { SoAreaRow, SoCondRow, SoFilterRow } from '@/lib/so/types';
 import { NEED_ORG, type PriceFilters } from '@/lib/psum/reportPrices';
-import { COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, ratioText, ratioWhy, simulationOn, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
+import { COGM_NONE_NOTE, COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, ratioText, ratioWhy, simulationOn, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
 import { downloadReport, reportSheet } from '@/lib/psum/reportExport';
 import { useReport } from '@/lib/psum/useReport';
 
@@ -247,7 +247,7 @@ function Screen() {
                         <td className={cx(td, 'font-mono font-bold')}>{r.fg.Matnr}</td><td className={td}>{r.fg.Maktx}</td><td className={td}>{r.fg.Werks}</td>
                         <td className={tdN}>{fmtNum(r.fg.Qty, 0, 'X')} {r.fg.Uom}</td>
                         <td className={tdN}>{money(r.fg.ActRm)}</td>{!wip && <td className={tdN}>{money(r.fg.ActPm)}</td>}<td className={tdN}>{money(r.fg.ActPerf)}</td><td className={tdN}>{money(r.fg.ActConv)}</td>
-                        <td className={cx(tdN, 'font-bold')} title={r.cogmPending ? COGM_PENDING_NOTE : undefined}>{money(r.cogm)}</td>
+                        <td className={cx(tdN, 'font-bold')} title={r.cogmPending ? COGM_PENDING_NOTE : !dec(r.cogm) ? COGM_NONE_NOTE : undefined}>{money(r.cogm)}</td>
                         {form.showGr && <td className={tdN} title={`Reconciliation (valued minus actual cost): ${dec(r.fg.ActRecon) === null ? 'n/a' : fmtNum(r.fg.ActRecon, 4, 'INR')} INR; positive = stock valued above the actual cost`}>{money(r.fg.ActLanded)}</td>}
                         <td className={tdN}>{r.price && dec(r.price.Mrp) && !dec(r.price.Mrp)!.isZero() ? <>{fmtNum(r.price.Mrp, 2, r.price.Curr)} <span className="text-2xs text-muted">{r.price.Curr}</span></> : NA}</td>
                         <td className={tdN} title={r.price ? `Order ${r.price.Vbeln} / ${r.price.Posnr}, ${r.price.Audat ?? ''}` : 'No sales order with a selling price in the look-back days'}>{r.price ? <>{fmtNum(r.price.Sp, 2, r.price.Curr)} <span className="text-2xs text-muted">{r.price.Curr}</span></> : NA}</td>

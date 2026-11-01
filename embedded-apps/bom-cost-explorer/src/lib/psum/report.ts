@@ -78,14 +78,17 @@ export interface ReportRow {
 }
 
 /** The COGM of a row is ActCogm, and only that. */
-export const cogmOf = (fg: Pick<WacRow, 'ActCogm'>): string => (dec(fg.ActCogm ?? '') === null ? '' : String(fg.ActCogm));
+export const cogmOf = (fg: Pick<WacRow, 'ActCogm'>): string => { const d = dec(fg.ActCogm ?? ''); return d && !d.isZero() ? String(fg.ActCogm) : ''; };
+/** SAP sent ActCogm but it is 0: no cost documents for this material in the period (n/a, not a COGM of 0). */
+export const cogmNone = (fg: Pick<WacRow, 'ActCogm'>): boolean => { const d = dec(fg.ActCogm ?? ''); return !!d && d.isZero(); };
+export const COGM_NONE_NOTE = 'SAP returned no cost (0) for this material in the period';
 /** No row of the answer carries ActCogm: SAP has not been updated yet (a note, not an error). */
 export const cogmPending = (rows: Pick<WacRow, 'ActCogm'>[]): boolean => rows.length > 0 && rows.every((r) => dec(r.ActCogm ?? '') === null);
 export const COGM_PENDING_NOTE = 'SAP update pending: COGM not available';
 
 /** Why a ratio is n/a (tooltip): no COGM, no price, or the price is not in the cost currency. */
-export function ratioWhy(r: Pick<ReportRow, 'cogm' | 'price' | 'sameCurrency'>): string {
-  if (!dec(r.cogm)) return COGM_PENDING_NOTE;
+export function ratioWhy(r: Pick<ReportRow, 'cogm' | 'price' | 'sameCurrency'> & { cogmPending?: boolean }): string {
+  if (!dec(r.cogm)) return r.cogmPending === false ? COGM_NONE_NOTE : COGM_PENDING_NOTE;
   if (!r.price) return 'No sales order with a selling price';
   if (!r.sameCurrency) return `The price is in ${r.price.Curr || 'another currency'}, the cost in INR: no ratio (never converted here)`;
   return '';
@@ -115,7 +118,7 @@ export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulatio
       const s = simulatedCogm(cogm, sim);
       const c = dec(cogm);
       out.push({
-        key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm, cogmPending: !c, sim: s, variance: s && c ? s.minus(c) : null,
+        key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm, cogmPending: !c && !cogmNone(fg), sim: s, variance: s && c ? s.minus(c) : null,
         rMrp: same && c ? ratio(price!.Mrp, cogm) : null, rSp: same && c ? ratio(price!.Sp, cogm) : null, rSim: same && s ? ratio(price!.Sp, s) : null,
       });
     }
