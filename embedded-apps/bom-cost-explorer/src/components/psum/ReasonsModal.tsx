@@ -11,7 +11,7 @@ import { useWacComponents } from '@/lib/wac/useWac';
 import type { WacFilterInput } from '@/lib/wac/filter';
 import type { WacCompRow } from '@/lib/wac/types';
 import { dec, fmtVarPct, sortComponents } from '@/lib/wac/view';
-import { direction, ratioText, type ReportRow } from '@/lib/psum/report';
+import { direction, marginText, type ReportRow } from '@/lib/psum/report';
 
 const th = 'px-2.5 py-1.5 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
@@ -43,7 +43,7 @@ export default function ReasonsModal({ row, period, onClose }: { row: ReportRow;
         <div className="flex items-start gap-3 border-b border-line px-5 py-3">
           <div className="min-w-0">
             <div className="text-lg font-extrabold"><span className="font-mono">{fg.Matnr}</span> <span className="font-semibold">{fg.Maktx}</span></div>
-            <div className="text-xs text-muted">Plant {fg.Werks} · COGM per pc {fmtNum(row.cogm, 4, 'INR')} INR{row.sim ? <> · simulated {fmtNum(row.sim, 4, 'INR')} INR (computed here){row.variance ? <>, variance {row.variance.gt(0) ? '▲ +' : '▼ '}{fmtNum(row.variance, 4, 'INR')}</> : null}</> : null}{row.rSp ? <> · selling price : COGM {ratioText(row.rSp)}</> : null}</div>
+            <div className="text-xs text-muted">Plant {fg.Werks} · COGM per pc {fmtNum(row.cogm, 4, 'INR')} INR{row.sim ? <> · simulated {fmtNum(row.sim, 4, 'INR')} INR (computed here){row.variance ? <>, variance {row.variance.gt(0) ? '▲ +' : '▼ '}{fmtNum(row.variance, 4, 'INR')}</> : null}</> : null}{row.rSp ? <> · margin on selling price {marginText(row.rSp)}</> : null}</div>
           </div>
           <Button size="sm" variant="ghost" onClick={onClose} className="ml-auto shrink-0" aria-label="Close"><X size={15} /> Close</Button>
         </div>

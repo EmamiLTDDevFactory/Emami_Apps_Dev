@@ -3,7 +3,7 @@
 import type { XCol } from '../client/export';
 import { downloadWacWorkbook, type WacSheet } from '../wac/export';
 import { dec } from '../wac/view';
-import { ratioText, type ReportKind, type ReportRow } from './report';
+import { marginText, type ReportKind, type ReportRow } from './report';
 import type Decimal from 'decimal.js';
 
 const n = (v: string | Decimal | null | undefined, dp = 6): number | null => { const d = typeof v === 'string' ? dec(v) : v ?? null; return d ? Number(d.toFixed(dp)) : null; };
@@ -24,8 +24,8 @@ export function reportSheet(rows: ReportRow[], kind: ReportKind, simulated: bool
     { header: 'Sales order', width: 12, get: (i) => rows[i].price?.Vbeln ?? '' }, { header: 'Document type', width: 10, get: (i) => rows[i].price?.Auart ?? '' },
     ...(simulated ? [{ header: 'Simulated COGM / pc (computed here)', dp: 4, curr: 'INR', width: 18, get: (i: number) => n(rows[i].sim) }, { header: 'Variance vs COGM (computed here)', dp: 4, width: 16, get: (i: number) => n(rows[i].variance) }] : []),
     { header: 'Sale org', width: 9, get: (i) => rows[i].price?.Vkorg ?? '' }, { header: 'Channel', width: 9, get: (i) => rows[i].price?.Vtweg ?? '' },
-    { header: 'Margin ratio MRP : COGM (computed here)', width: 18, get: (i) => ratioText(rows[i].rMrp) }, { header: 'Margin ratio Selling price : COGM (computed here)', width: 20, get: (i) => ratioText(rows[i].rSp) },
-    ...(simulated ? [{ header: 'Margin ratio Simulated COGM : COGM (computed here)', width: 22, get: (i: number) => ratioText(rows[i].rSim) }] : []),
+    { header: 'Margin % on MRP (computed here)', width: 18, get: (i) => marginText(rows[i].rMrp) }, { header: 'Margin % on selling price (computed here)', width: 20, get: (i) => marginText(rows[i].rSp) },
+    ...(simulated ? [{ header: 'Margin % on selling price at simulated COGM (computed here)', width: 22, get: (i: number) => marginText(rows[i].rSim) }] : []),
   ];
   return { name: kind === 'fg' ? 'Cost and margin' : 'WIP cost and margin', cols, count: rows.length };
 }

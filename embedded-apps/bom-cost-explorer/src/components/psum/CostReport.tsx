@@ -1,7 +1,7 @@
 'use client';
 /**
  * Cost and margin report (Admin of this app only): Brand / Product / SKU (or WIP) and look-back days, then per finished good (or WIP) and sales area the
- * plant's actual cost per piece (RM, PM, Perfume, Overheads, COGM), the latest MRP and selling price, a simulated COGM and the margin ratios. The variance
+ * plant's actual cost per piece (RM, PM, Perfume, Overheads, COGM), the latest MRP and selling price, a simulated COGM and the margins. The variance
  * cell opens the reasons (components that pushed the cost up or down). Read-only; nothing loads until Run; no request has a time limit (Stop ends a run).
  */
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
@@ -29,7 +29,7 @@ import { EMPTY_LIST } from '@/lib/so/types';
 import type { SalesFiltersValue } from '@/lib/so/presets';
 import type { SoAreaRow, SoCondRow, SoFilterRow } from '@/lib/so/types';
 import { NEED_ORG, type PriceFilters } from '@/lib/psum/reportPrices';
-import { COGM_NONE_NOTE, COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, ratioText, ratioWhy, simulationOn, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
+import { COGM_NONE_NOTE, COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, marginText, ratioWhy, simulationOn, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
 import { downloadReport, reportSheet } from '@/lib/psum/reportExport';
 import { useReport } from '@/lib/psum/useReport';
 
@@ -168,7 +168,7 @@ function Screen() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-lg font-extrabold">Cost and margin report</h1>
-          <p className="text-xs text-muted">Actual cost per piece (RM, PM, Perfume, Overheads, COGM) against the latest MRP and selling price, with a simulated COGM and the margin ratios. Click a variance for the reasons.</p>
+          <p className="text-xs text-muted">Actual cost per piece (RM, PM, Perfume, Overheads, COGM) against the latest MRP and selling price, with a simulated COGM and the margins. Click a variance for the reasons.</p>
         </div>
         <div className="num text-right text-2xs text-muted">SAP system <span className="font-mono font-bold text-ink">{system || '—'}</span></div>
       </div>
@@ -239,7 +239,7 @@ function Screen() {
                       <th className={th}>Material code</th><th className={th}>Description</th><th className={th}>Plant</th><th className={thN}>Qty</th>
                       <th className={thN}>RM</th>{!wip && <th className={thN}>PM</th>}<th className={thN}>Perfume</th><th className={thN}>Overheads</th><th className={thN} title="SAP's actual COGM per piece (RM + PM + Perfume + conversion)">COGM<br />per pc</th>{form.showGr && <th className={thN} title="Valuation at goods receipt, a reference; not the COGM">Valued at goods<br />receipt per pc</th>}
                       <th className={thN}>Last MRP<br />per pc</th><th className={thN}>Last selling price<br />per pc</th><th className={th}>Order date</th><th className={thN}>Simulated COGM<br />per pc</th><th className={thN} title="Click for the reasons">Variance</th>
-                      <th className={th}>Sale org</th><th className={th}>Channel / doc type</th><th className={thN}>Margin ratio<br />MRP : COGM</th><th className={thN}>Margin ratio<br />Selling price : COGM</th><th className={thN}>Margin ratio<br />Simulated COGM : COGM</th>
+                      <th className={th}>Sale org</th><th className={th}>Channel / doc type</th><th className={thN} title="(MRP - COGM) / MRP: the amount remaining after manufacturing cost as % of the MRP. Computed here.">Margin %<br />on MRP</th><th className={thN} title="(Selling price - COGM) / selling price. Computed here.">Margin %<br />on selling price</th><th className={thN} title="(Selling price - simulated COGM) / selling price. Computed here.">Margin % at<br />simulated COGM</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,15 +260,15 @@ function Screen() {
                           </button>
                         </td>
                         <td className={td}>{r.price?.Vkorg || NA}</td><td className={td}>{r.price ? `${r.price.Vtweg}${r.price.Auart ? ` / ${r.price.Auart}` : ''}` : NA}</td>
-                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : ratioText(r.rMrp)}</td>
-                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : ratioText(r.rSp)}</td>
-                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : simOn ? ratioText(r.rSim) : <span className="text-faint">—</span>}</td>
+                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : marginText(r.rMrp)}</td>
+                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : marginText(r.rSp)}</td>
+                        <td className={tdN} title={ratioWhy(r) || 'computed here'}>{r.price && !r.sameCurrency ? <span className="text-2xs text-warn">currency differs</span> : simOn ? marginText(r.rSim) : <span className="text-faint">—</span>}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-muted">Cost per piece is SAP&apos;s actual cost of the look-back period (goods receipts; Overheads = conversion). MRP and selling price are the latest sales order within the price look-back days, per sales organisation and channel; the cost is SAP's actual COGM (ActCogm), not the goods-receipt valuation. Simulated COGM, the variance and the ratios are computed here (price divided by COGM, only when the price is in INR).{wip ? ' WIP: RM and Perfume only; WIP codes normally have no sales price.' : ''}</p>
+              <p className="text-xs text-muted">Cost per piece is SAP&apos;s actual cost of the look-back period (goods receipts; Overheads = conversion). MRP and selling price are the latest sales order within the price look-back days, per sales organisation and channel; the cost is SAP's actual COGM (ActCogm), not the goods-receipt valuation. Simulated COGM, the variance and the margins are computed here. Margin % = (price - COGM) / price, the amount remaining after manufacturing cost as a share of the price; shown only when the price is in INR like the cost.{wip ? ' WIP: RM and Perfume only; WIP codes normally have no sales price.' : ''}</p>
             </>
           )}
         </>

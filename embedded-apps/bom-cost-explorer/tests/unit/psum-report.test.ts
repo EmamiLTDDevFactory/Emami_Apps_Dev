@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Decimal from 'decimal.js';
-import { buildReport, direction, filterReportRows, latestPerArea, lookbackRange, optionsOf, ratio, ratioText, simulatedCogm, simulationOn } from '@/lib/psum/report';
+import { buildReport, direction, marginPct, marginText, filterReportRows, latestPerArea, lookbackRange, optionsOf, ratio, ratioText, simulatedCogm, simulationOn } from '@/lib/psum/report';
 import type { WacCompRow, WacRow } from '@/lib/wac/types';
 import type { SoPriceRow } from '@/lib/so/types';
 
@@ -53,8 +53,8 @@ describe('report rows', () => {
     const t = buildReport([row()], prices, { pct: '', abs: '' });
     expect(t.map((r) => `${r.price?.Vkorg}/${r.price?.Vtweg}`)).toEqual(['EM01/10', 'EM01/30']);
     expect(t[0].price!.Sp).toBe('40');
-    expect(t[0].rSp!.toFixed()).toBe('2'); // 40 / 20
-    expect(t[0].rMrp!.toFixed()).toBe('3'); // 60 / 20
+    expect(t[0].rSp!.toFixed()).toBe('50'); // (40 - 20) / 40
+    expect(t[0].rMrp!.toFixed(1)).toBe('66.7'); // (60 - 20) / 60
     expect(t[0].sim).toBeNull(); expect(t[0].variance).toBeNull();
   });
   it('no price keeps one row with n/a ratios; a price not in INR gets no ratio', () => {
@@ -65,7 +65,7 @@ describe('report rows', () => {
   });
   it('simulation gives the simulated COGM, the variance and its ratio', () => {
     const t = buildReport([row()], [price()], { pct: '10', abs: '' })[0];
-    expect(t.sim!.toFixed()).toBe('22'); expect(t.variance!.toFixed()).toBe('2'); expect(t.rSim!.toFixed(2)).toBe('1.82');
+    expect(t.sim!.toFixed()).toBe('22'); expect(t.variance!.toFixed()).toBe('2'); expect(t.rSim!.toFixed(1)).toBe('45.0'); // (40 - 22) / 40
   });
   it('latest per area drops rows without a selling price', () => expect(latestPerArea([price({ Sp: '0' })])).toEqual([]));
   it('largest quantity first', () => {
@@ -81,5 +81,17 @@ describe('reasons: increase / decrease of a component', () => {
     expect(direction(comp({ VarpCon: '5', VarpAvg: '-1' }))).toBe('up');
     expect(direction(comp({}))).toBe('none');
     expect(direction(comp({ VarpCmap: '0' }))).toBe('none');
+  });
+});
+
+describe('margin in percent', () => {
+  it('(price - COGM) / price x 100; negative when the cost is above the price', () => {
+    expect(marginPct('40', '20')!.toFixed()).toBe('50');
+    expect(marginPct('10', '15')!.toFixed()).toBe('-50');
+    expect(marginText(marginPct('40', '20'))).toBe('50.0 %');
+    expect(marginText(marginPct('10', '15'))).toBe('▼ −50.0 %');
+  });
+  it('n/a without a price or a cost, never 0', () => {
+    expect(marginPct('', '20')).toBeNull(); expect(marginPct('40', '')).toBeNull(); expect(marginPct('0', '20')).toBeNull(); expect(marginPct('40', '0')).toBeNull(); expect(marginText(null)).toBe('n/a');
   });
 });

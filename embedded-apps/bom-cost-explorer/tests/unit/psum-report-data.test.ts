@@ -20,7 +20,7 @@ const F: PriceFilters = { vkorg: ['EM01', 'EM02'], vtweg: ['10'], segment: ['DOM
 describe('COGM is ActCogm and never ActLanded', () => {
   it('the COGM of a row is ActCogm; the ratios use it', () => {
     const r = buildReport([fg()], [pr()], { pct: '', abs: '' })[0];
-    expect(r.cogm).toBe('5'); expect(r.rSp!.toFixed()).toBe('1.6'); expect(r.rMrp!.toFixed()).toBe('2');
+    expect(r.cogm).toBe('5'); expect(r.rSp!.toFixed()).toBe('37.5'); expect(r.rMrp!.toFixed()).toBe('50'); // (8 - 5) / 8, (10 - 5) / 10
   });
   it('without ActCogm (SAP not updated) COGM is n/a, ratios are n/a, ActLanded is NOT used', () => {
     const row = fg({ ActCogm: undefined });

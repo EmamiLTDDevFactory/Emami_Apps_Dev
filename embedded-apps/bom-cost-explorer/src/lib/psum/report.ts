@@ -3,7 +3,7 @@
  * (RM, PM, Perfume, Overheads, COGM - SAP's per-unit figures of the period), the latest MRP and selling price (SAP's latest sales order within the
  * look-back days), a simulated COGM and the ratios. The ONLY arithmetic done here, each labelled on screen "computed here": the simulated COGM
  * (COGM changed by a percentage and / or an amount), its variance against COGM, and the ratios MRP : COGM, Selling price : COGM and Simulated COGM : COGM
- * (only when the price is in INR like the cost; never converted).
+ * (only when the price is in INR like the cost; never converted). The margins are the amount remaining after manufacturing cost as a percentage of the price.
  */
 import Decimal from 'decimal.js';
 import { toDay } from '../wac/dates';
@@ -60,6 +60,15 @@ export function simulatedCogm(cogm: string, s: Simulation): Decimal | null {
 }
 
 /** "a : b" as a ratio of a to b (a divided by b), null when either is missing or b is zero. */
+/** Margin in percent: the amount remaining after manufacturing cost as a share of the price = (price - COGM) / price x 100. Negative when the cost is above the
+ * price. null when the price or the COGM is missing or not above zero. Computed here (the only arithmetic besides the simulation); never "profit". */
+export function marginPct(price: Decimal | string | null | undefined, cost: Decimal | string | null | undefined): Decimal | null {
+  const p = typeof price === 'string' ? dec(price) : price ?? null;
+  const c = typeof cost === 'string' ? dec(cost) : cost ?? null;
+  return p && c && p.gt(0) && c.gt(0) ? p.minus(c).div(p).times(100) : null;
+}
+export const marginText = (m: Decimal | null): string => (m ? `${m.lt(0) ? '▼ −' : ''}${m.abs().toFixed(1)} %` : 'n/a');
+
 export function ratio(a: Decimal | string | null | undefined, b: Decimal | string | null | undefined): Decimal | null {
   const x = typeof a === 'string' ? dec(a) : a ?? null;
   const y = typeof b === 'string' ? dec(b) : b ?? null;
@@ -119,7 +128,7 @@ export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulatio
       const c = dec(cogm);
       out.push({
         key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm, cogmPending: !c && !cogmNone(fg), sim: s, variance: s && c ? s.minus(c) : null,
-        rMrp: same && c ? ratio(price!.Mrp, cogm) : null, rSp: same && c ? ratio(price!.Sp, cogm) : null, rSim: same && s ? ratio(price!.Sp, s) : null,
+        rMrp: same && c ? marginPct(price!.Mrp, cogm) : null, rSp: same && c ? marginPct(price!.Sp, cogm) : null, rSim: same && s ? marginPct(price!.Sp, s) : null,
       });
     }
   }
