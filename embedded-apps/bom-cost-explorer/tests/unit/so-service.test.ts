@@ -97,3 +97,19 @@ describe('fetchCogm', () => {
     expect(String(mocked.mock.calls[0][1].$filter)).toContain("PriceSrcIn eq 'O'");
   });
 });
+
+describe('sales areas on a SAP that does not know OnlyOrd yet', () => {
+  it('the list is read again without OnlyOrd (once); any other error is not retried', async () => {
+    const { SapError } = await import('@/lib/sap/client');
+    mocked.mockRejectedValueOnce(new SapError('Property OnlyOrd not found in type SoAreaVH', 'http', 400, [], 400)).mockResolvedValueOnce(resp([{ Vkorg: 'EM01', Vtweg: '10' }]));
+    const r = await fetchSo('AREA', { daysBack: 90, onlyOrd: true });
+    expect(mocked).toHaveBeenCalledTimes(2);
+    expect(String(mocked.mock.calls[0][1].$filter)).toContain("OnlyOrd eq 'X'");
+    expect(String(mocked.mock.calls[1][1].$filter)).not.toContain('OnlyOrd');
+    expect(r.rows).toHaveLength(1);
+    mocked.mockReset();
+    mocked.mockRejectedValueOnce(new SapError('boom', 'http', 500, [], 500));
+    await expect(fetchSo('AREA', { daysBack: 90, onlyOrd: true })).rejects.toThrow('boom');
+    expect(mocked).toHaveBeenCalledTimes(1);
+  });
+});

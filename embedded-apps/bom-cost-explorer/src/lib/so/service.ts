@@ -7,7 +7,16 @@ export async function fetchSo<K extends SoFilterSet>(set: K, q: SoQuery, opts: {
   const $filter = buildSoFilter(q, set); // throws FilterError before any request
   // $select on the sets whose property names were seen live on NWP (SoFilterVHSet was not in that capture, so it is read without one).
   const select = opts.select ?? (set === 'FILTER' ? undefined : selectOfMap(SO_FIELDS[set]));
-  const r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], $filter, opts.signal, select);
+  let r: Read<SoRowsBySet[K]>;
+  try {
+    r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], $filter, opts.signal, select);
+  } catch (e) {
+    // A SAP system that does not know OnlyOrd on the sales-area list yet ("Property OnlyOrd not found in type SoAreaVH"): the list is read again without it
+    // (every sales area the person may see, the same list the page showed before OnlyOrd existed).
+    if (set === 'AREA' && q.onlyOrd && !opts.signal?.aborted && /OnlyOrd/i.test((e as Error).message)) {
+      r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], buildSoFilter({ ...q, onlyOrd: false }, set), opts.signal, select);
+    } else throw e;
+  }
   if (set === 'PRICE') r.messages = rowMessages((r.rows as SoPriceRow[]).map((x) => (x.Msg && !isUsable(x) ? x.Msg : '')), r.messages);
   return r;
 }
