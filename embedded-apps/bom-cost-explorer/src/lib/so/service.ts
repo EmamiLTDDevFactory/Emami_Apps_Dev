@@ -1,11 +1,13 @@
-import { readSet, rowMessages, type Read } from '../price-context/odata';
+import { readSet, rowMessages, selectOfMap, type Read } from '../price-context/odata';
 import { SO_FIELDS, SO_NULLABLE, SO_SET, type SoSetKey } from './fields';
 import { COGM_MAX_MATERIALS, SO_MAX_MATERIALS, buildCogmFilter, buildSoFilter, chunkCodes, type SoFilterSet, type SoQuery } from './filter';
 import type { CogmRow, SoPriceRow, SoPricingRow, SoRowsBySet } from './types';
 
 export async function fetchSo<K extends SoFilterSet>(set: K, q: SoQuery, opts: { signal?: AbortSignal } = {}): Promise<Read<SoRowsBySet[K]>> {
   const $filter = buildSoFilter(q, set); // throws FilterError before any request
-  const r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], $filter, opts.signal);
+  // $select on the sets whose property names were seen live on NWP (SoFilterVHSet was not in that capture, so it is read without one).
+  const select = set === 'FILTER' ? undefined : selectOfMap(SO_FIELDS[set]);
+  const r = await readSet<SoRowsBySet[K]>(SO_SET[set], SO_FIELDS[set], SO_NULLABLE[set], $filter, opts.signal, select);
   if (set === 'PRICE') r.messages = rowMessages((r.rows as SoPriceRow[]).map((x) => (x.Msg && !isUsable(x) ? x.Msg : '')), r.messages);
   return r;
 }

@@ -37,6 +37,8 @@ const DEPLOYED_PRICE_CONTEXT_ENABLED = 'true';
 const DEPLOYED_PSUM_ENABLED = 'true';
 // All costs on BOM costing (actual rate, BOM source and the extra cost columns). ALL_COSTS_ENABLED / NEXT_PUBLIC_ALL_COSTS_ENABLED win.
 const DEPLOYED_ALL_COSTS_ENABLED = 'true';
+// Margin module (cost simulator: Board, What-if, Alerts, Portfolio, History, Upload; ZMM_BOM_COST_SRV Cogm* sets). COGM_ENABLED / NEXT_PUBLIC_COGM_ENABLED win.
+const DEPLOYED_COGM_ENABLED = 'true';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
@@ -69,6 +71,7 @@ const nextConfig = {
     NEXT_PUBLIC_CK_ENABLED: pick('CK_ENABLED') || (isBuild ? DEPLOYED_CK_ENABLED : 'false'), NEXT_PUBLIC_COGM_SO_ENABLED: pick('COGM_SO_ENABLED') || (isBuild ? DEPLOYED_COGM_SO_ENABLED : 'false'),
     NEXT_PUBLIC_PRICE_CONTEXT_ENABLED: pick('PRICE_CONTEXT_ENABLED') || (isBuild ? DEPLOYED_PRICE_CONTEXT_ENABLED : 'false'), NEXT_PUBLIC_SO_STALE_DAYS: pick('SO_STALE_DAYS', '60'),
     NEXT_PUBLIC_ALL_COSTS_ENABLED: pick('ALL_COSTS_ENABLED') || (isBuild ? DEPLOYED_ALL_COSTS_ENABLED : 'false'),
+    NEXT_PUBLIC_COGM_ENABLED: pick('COGM_ENABLED') || (isBuild ? DEPLOYED_COGM_ENABLED : 'false'), NEXT_PUBLIC_MARGIN_SELECT: pick('MARGIN_SELECT') || 'false',
     NEXT_PUBLIC_PSUM_ENABLED: pick('PSUM_ENABLED') || (isBuild ? DEPLOYED_PSUM_ENABLED : 'false'),
     NEXT_PUBLIC_PLANT_WIDE_ENABLED: pick('PLANT_WIDE_ENABLED') || (isBuild ? DEPLOYED_PLANT_WIDE_ENABLED : 'false'),
     NEXT_PUBLIC_VH_CAP: pick('VH_CAP', '500'), NEXT_PUBLIC_PLANT_WIDE_BATCH: pick('PLANT_WIDE_BATCH', '25'), NEXT_PUBLIC_PLANT_WIDE_MTART: pick('PLANT_WIDE_MTART', 'FERT'),

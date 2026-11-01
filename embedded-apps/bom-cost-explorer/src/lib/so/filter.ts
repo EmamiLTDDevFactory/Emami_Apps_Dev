@@ -15,6 +15,8 @@ export interface SoQuery {
   auart?: ListFilter; pstyv?: ListFilter; kdgrp?: ListFilter; kunnr?: ListFilter;
   daysBack?: number; dateTo?: string;
   kind?: string[]; kalsm?: string[];
+  /** SoAreaVHSet only: list only the sales areas that have orders for these materials (flag 'X') */
+  onlyOrd?: boolean;
 }
 const uniq = (v: readonly string[] | undefined) => Array.from(new Set((v ?? []).map((x) => String(x).trim()).filter(Boolean)));
 function multi(name: string, values: string[]): string | null {
@@ -48,6 +50,7 @@ export function buildSoFilter(q: SoQuery, set: SoFilterSet): string {
   }
   if (q.dateTo) c.push(`${F.DateTo} eq ${odataDate(q.dateTo)}`);
   if (set === 'FILTER') c.push(multi(F.KindIn, uniq(q.kind)));
+  if (set === 'AREA' && q.onlyOrd) c.push(`${F.OnlyOrd} eq 'X'`);
   return c.filter(Boolean).join(' and ');
 }
 

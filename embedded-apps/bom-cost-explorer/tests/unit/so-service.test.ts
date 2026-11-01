@@ -66,7 +66,8 @@ describe('no time limit, nothing recomputed', () => {
   it('the COND set sends no $filter at all', async () => {
     mocked.mockResolvedValue(resp([]));
     await fetchSo('COND', {});
-    expect(mocked.mock.calls[0][1]).toEqual({});
+    expect(mocked.mock.calls[0][1]).not.toHaveProperty('$filter');
+    expect(typeof (mocked.mock.calls[0][1] as Record<string, string>).$select).toBe('string'); // $select on every set read
   });
   it('a row-level Msg of an unusable price row becomes a warning; SAP values are passed through untouched', async () => {
     mocked.mockResolvedValue(resp([{ Matnr: 'A', Sp: '0.0000', Mrp: '0', Msg: 'No sales order with a selling price condition' }, { Matnr: 'B', Sp: '149.0000', Mrp: '175.0000', Msg: '' }]));

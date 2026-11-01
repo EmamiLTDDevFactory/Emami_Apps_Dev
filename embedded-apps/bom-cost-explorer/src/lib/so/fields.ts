@@ -15,7 +15,7 @@ export type SoSetKey = keyof typeof SO_SET;
 export const SO_FILTER = {
   MatnrIn: 'MatnrIn', WerksIn: 'WerksIn', VkorgIn: 'VkorgIn', VtwegIn: 'VtwegIn', SegmentIn: 'SegmentIn',
   AuartIn: 'AuartIn', AuartEx: 'AuartEx', PstyvIn: 'PstyvIn', PstyvEx: 'PstyvEx', KdgrpIn: 'KdgrpIn', KdgrpEx: 'KdgrpEx', KunnrIn: 'KunnrIn', KunnrEx: 'KunnrEx',
-  DaysBack: 'DaysBack', DateTo: 'DateTo', KindIn: 'KindIn', KalsmIn: 'KalsmIn',
+  DaysBack: 'DaysBack', DateTo: 'DateTo', KindIn: 'KindIn', KalsmIn: 'KalsmIn', OnlyOrd: 'OnlyOrd',
 } as const;
 /** CogmRowSet extra filters. */
 export const COGM_FILTER = { Matnr: 'Matnr', Werks: 'Werks', PriceSrcIn: 'PriceSrcIn', SoDaysIn: 'SoDaysIn', Source: 'Source', PriceDate: 'PriceDate' } as const;

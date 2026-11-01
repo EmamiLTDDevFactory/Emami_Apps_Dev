@@ -7,10 +7,12 @@ import { AI_ENABLED } from '@/lib/ai/config';
 import { WATCH_ENABLED } from '@/lib/watch/api';
 import { WAC_ENABLED, wacNavVisible } from '@/lib/wac/flag';
 import { PSUM_ENABLED } from '@/lib/psum/flag';
+import { COGM_ENABLED } from '@/lib/margin/flag';
+import { canDisplay, canMaintain } from '@/lib/margin/roles';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
-import { fetchIsAdmin } from '@/lib/client/hubAccess';
+import { fetchAppRole, fetchIsAdmin } from '@/lib/client/hubAccess';
 import { MODE_LABEL, type Mode } from '@/lib/query/schema';
 import { BASE_PATH } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
@@ -48,9 +50,9 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-upload';
 
-function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean }) {
+function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string }) {
   const pane = wide
     ? 'relative w-64 shrink-0 border-r border-line bg-panel'
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-panel shadow-pop transition-transform duration-200', open ? 'translate-x-0' : '-translate-x-full');
@@ -79,6 +81,17 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
           {psumVisible && <NavLink href={`${BASE_PATH}/plant-summary/`} icon={Factory} label="Plant production summary" hint="FGs, cost and components by plant" active={planActive === 'psum'} />}
           {ckVisible && <NavLink href={`${BASE_PATH}/standard-cost/`} icon={Layers} label="Standard cost" hint="Cost estimate, like CK13N" active={planActive === 'ck'} />}
           {soVisible && <NavLink href={`${BASE_PATH}/sales-price/`} icon={Tags} label="Sales price" hint="MRP and selling price, latest order" active={planActive === 'so'} />}
+          {COGM_ENABLED && canDisplay(marginRole) && (
+            <>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Margin</p>
+              <NavLink href={`${BASE_PATH}/margin/`} icon={Scale} label="Board" hint="Cost vs selling price, by scenario" active={planActive === 'margin'} />
+              <NavLink href={`${BASE_PATH}/margin/what-if/`} icon={GitCompareArrows} label="What-if" hint="New price or cost, before and after" active={planActive === 'margin-whatif'} />
+              <NavLink href={`${BASE_PATH}/margin/alerts/`} icon={BellRing} label="Alerts" hint="Rules E1-E9 by impact" active={planActive === 'margin-alerts'} />
+              <NavLink href={`${BASE_PATH}/margin/portfolio/`} icon={Boxes} label="Portfolio" hint="Groups, weighted ratios, impact" active={planActive === 'margin-portfolio'} />
+              <NavLink href={`${BASE_PATH}/margin/history/`} icon={Calendar} label="History" hint="Cost scenarios over time" active={planActive === 'margin-history'} />
+              {canMaintain(marginRole) && <NavLink href={`${BASE_PATH}/margin/upload/`} icon={Upload} label="Upload" hint="Prices, volumes, budgets, rules" active={planActive === 'margin-upload'} />}
+            </>
+          )}
           {PLAN_MODULE_ENABLED && (
             <>
               <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Production plan</p>
@@ -156,6 +169,9 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   // Admin-only nav item of the Actual vs rate sources page; with the flag off no request is made.
   const [wacAdmin, setWacAdmin] = useState(false);
   useEffect(() => { if ((WAC_ENABLED || CK_ENABLED || COGM_SO_ENABLED || PSUM_ENABLED) && email) void fetchIsAdmin(email).then(setWacAdmin); }, [email]);
+  // Margin module: the person's role of this app (one lookup per session); with the flag off no request is made.
+  const [marginRole, setMarginRole] = useState('');
+  useEffect(() => { if (COGM_ENABLED && email) void fetchAppRole(email).then(setMarginRole); }, [email]);
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -164,7 +180,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   return (
     <PriceContextProvider email={email}>
     <div className="flex h-screen overflow-clip bg-plum">
-      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} psumVisible={wacNavVisible(PSUM_ENABLED, wacAdmin)} />
+      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} psumVisible={wacNavVisible(PSUM_ENABLED, wacAdmin)} marginRole={marginRole} />
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <div className="flex bg-plum no-print">
           {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}

@@ -4,7 +4,7 @@
  * shared normaliser. SAP computes every figure; nothing is recomputed here. '' (nothing from SAP) stays '' for the
  * nullable decimals so the screens can show n/a instead of a misleading 0.
  */
-import { sapGetCollection } from '../sap/client';
+import { SapError, sapGetCollection } from '../sap/client';
 import { normalizeEntity } from '../sap/normalize';
 import type { FieldKind } from '../sap/fields';
 import type { SapMessage } from '../sap/messages';
@@ -23,9 +23,27 @@ export function normalizeRow<T>(raw: Record<string, unknown>, map: FieldMap, nul
   return o as T;
 }
 
-export async function readSet<T>(setName: string, map: FieldMap, nullable: ReadonlySet<string>, $filter: string, signal?: AbortSignal): Promise<Read<T>> {
-  const r = await sapGetCollection(setName, $filter ? { $filter } : {}, { signal, noTimeout: true, costing: true });
-  return { rows: r.rows.map((raw) => normalizeRow<T>(raw, map, nullable)), messages: [...r.messages], ms: r.ms };
+export const NOT_AVAILABLE = 'This function is not available in this SAP system yet.';
+/** 404 of a set ("Resource not found for the segment ...": not published in this system yet) -> one friendly text; any other error is kept. */
+export function friendlyError(e: unknown): Error {
+  if (e instanceof SapError && e.kind !== 'aborted' && (e.sapStatus === 404 || e.status === 404 || /Resource not found for the segment/i.test(`${e.message} ${e.details.map((d) => d.message).join(' ')}`))) {
+    return new SapError(NOT_AVAILABLE, 'http', 404, e.details, 404);
+  }
+  return e as Error;
+}
+/** $select of the property names of a field map (SAP rejects an unknown one, so only for sets whose names were seen live). */
+export const selectOfMap = (map: FieldMap): string => Array.from(new Set(Object.values(map).map(([n]) => n))).join(',');
+
+export async function readSet<T>(setName: string, map: FieldMap, nullable: ReadonlySet<string>, $filter: string, signal?: AbortSignal, $select?: string): Promise<Read<T>> {
+  try {
+    const params: Record<string, string> = {};
+    if ($filter) params.$filter = $filter;
+    if ($select) params.$select = $select;
+    const r = await sapGetCollection(setName, params, { signal, noTimeout: true, costing: true });
+    return { rows: r.rows.map((raw) => normalizeRow<T>(raw, map, nullable)), messages: [...r.messages], ms: r.ms };
+  } catch (e) {
+    throw friendlyError(e);
+  }
 }
 
 /** Unique, non-empty row-level messages as SAP warnings (never as a failure). */

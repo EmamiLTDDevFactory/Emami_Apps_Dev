@@ -23,9 +23,17 @@ export function effectiveRole(data: AccessMe): string {
   return data.apps?.find((a) => a.appId === APP_ID)?.role ?? '';
 }
 
-async function fetchAccess(email: string): Promise<AccessMe> {
-  const res = await fetch(`${accessApiBase()}/access/me?email=${encodeURIComponent(email)}`, { cache: 'no-store' });
-  return (await res.json()) as AccessMe;
+// One lookup per person per page session (every screen asks; the answer does not change while the app is open). A failed lookup is not kept.
+const accessCache = new Map<string, Promise<AccessMe>>();
+function fetchAccess(email: string): Promise<AccessMe> {
+  const key = email.trim().toLowerCase();
+  let p = accessCache.get(key);
+  if (!p) {
+    p = fetch(`${accessApiBase()}/access/me?email=${encodeURIComponent(email)}`, { cache: 'no-store' }).then((res) => res.json() as Promise<AccessMe>);
+    p.catch(() => accessCache.delete(key));
+    accessCache.set(key, p);
+  }
+  return p;
 }
 
 /** Admin of this app (its Manage Access role Admin): every feature, including the admin tools. Fails closed. */
