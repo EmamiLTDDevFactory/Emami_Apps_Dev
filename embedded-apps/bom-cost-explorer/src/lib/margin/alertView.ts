@@ -27,7 +27,7 @@ export const countBySeverity = (rows: MarginAlert[]): Record<Severity, number> =
 
 /** Scope F = one finished good; scope C = one component across several finished goods (component and number of finished goods). */
 export function scopeText(r: Pick<MarginAlert, 'Scope' | 'Comp' | 'FgCnt' | 'Matnr' | 'Maktx'>): string {
-  if (r.Scope === 'C') return `Component ${r.Comp || 'n/a'} · ${r.FgCnt} finished good${r.FgCnt === 1 ? '' : 's'}`;
+  if (r.Scope === 'C') return r.FgCnt === undefined ? `Component ${r.Comp || 'n/a'}` : `Component ${r.Comp || 'n/a'} · ${r.FgCnt} finished good${r.FgCnt === 1 ? '' : 's'}`;
   return `Finished good ${r.Matnr}${r.Maktx ? ` ${r.Maktx}` : ''}`;
 }
 export const isComponentScope = (r: Pick<MarginAlert, 'Scope'>) => r.Scope === 'C';

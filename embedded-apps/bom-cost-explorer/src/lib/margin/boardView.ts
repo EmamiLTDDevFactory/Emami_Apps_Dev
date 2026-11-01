@@ -22,11 +22,12 @@ export function scenarioCells(r: MarginRow, s: Scenario): ScenarioCells {
   if (!r[OK[s]]) return { ok: false, cogm: '', ratio: '', remain: '' };
   return { ok: true, cogm: r[`Cogm${c}` as 'CogmStd'], ratio: r[`Ratio${c}` as 'RatioStd'], remain: r[`Remain${c}` as 'RemainStd'] };
 }
-/** Variance of the current cost against another scenario, as SAP sent it (positive = cost up). Only when both scenarios are OK. */
+/** Variance as SAP sends it (positive = cost up), per the properties SAP really has: Current vs Standard (VarCurStd), Current vs Budget (VarCurBud) and
+ * Actual vs Standard (VarActStd). It is shown only when both scenarios it compares are OK. */
 export function varianceCells(r: MarginRow, against: 'STD' | 'ACT' | 'BUD'): { abs: string; pct: string } {
+  if (against === 'ACT') return r.OkAct && r.OkStd ? { abs: r.VarActStd, pct: r.VarpActStd } : { abs: '', pct: '' };
   if (!r.OkCur || !r[OK[against]]) return { abs: '', pct: '' };
-  const c = CAP[against];
-  return { abs: r[`VarCur${c}` as 'VarCurStd'], pct: r[`VarpCur${c}` as 'VarpCurStd'] };
+  return against === 'STD' ? { abs: r.VarCurStd, pct: r.VarpCurStd } : { abs: r.VarCurBud, pct: r.VarpCurBud };
 }
 
 /** "Positive annual impact = loss, negative = saving": the word and icon name that go with the number (never colour alone). */
@@ -74,7 +75,7 @@ export const COLUMNS: ColDef[] = [
   { key: 'curRatio', label: 'Ratio %', group: 'Current', defaultVisible: true, numeric: true },
   { key: 'curRemain', label: 'Amount remaining', group: 'Current', defaultVisible: true, numeric: true },
   { key: 'varStd', label: 'Current vs Standard', group: 'Variance', defaultVisible: true, numeric: true },
-  { key: 'varAct', label: 'Current vs Actual', group: 'Variance', defaultVisible: false, numeric: true },
+  { key: 'varAct', label: 'Actual vs Standard', group: 'Variance', defaultVisible: false, numeric: true },
   { key: 'varBud', label: 'Current vs Budget', group: 'Variance', defaultVisible: false, numeric: true },
   { key: 'erosion', label: 'Erosion %', group: 'Erosion and impact', defaultVisible: true, numeric: true },
   { key: 'annual', label: 'Annual impact (INR)', group: 'Erosion and impact', defaultVisible: true, numeric: true },
@@ -164,7 +165,7 @@ export function detailQuery(q: MarginQuery, r: Pick<MarginRow, 'Matnr' | 'Werks'
 /** History is read from stored snapshots by finished good, plant, market and channel (the raw values of the row). */
 export const historyQuery = (r: Pick<MarginRow, 'Matnr' | 'Werks' | 'Market' | 'Channel'>, daysBack: number): MarginQuery => ({ materials: [r.Matnr], plants: r.Werks ? [r.Werks] : [], market: r.Market, channel: r.Channel, daysBack });
 
-export const COST_PARTS = [['Rm', 'Raw material'], ['Pm', 'Packing material'], ['Perf', 'Perfume'], ['Conv', 'Conversion'], ['Oth', 'Other']] as const;
+export const COST_PARTS = [['Rm', 'Raw material'], ['Pm', 'Packing material'], ['Conv', 'Conversion'], ['Ovh', 'Overheads'], ['Oth', 'Other']] as const;
 export interface SplitPart { key: string; label: string; std: string; cur: string }
 /** The cost parts SAP sent for the Standard and Current scenario (each as it came; '' = n/a). */
 export function costSplit(r: MarginRow): SplitPart[] {

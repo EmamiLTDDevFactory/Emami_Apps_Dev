@@ -4,7 +4,7 @@ import { WHATIF_HEADERS, whatIfSheet } from '@/lib/margin/whatifExport';
 import { buildMarginFilter } from '@/lib/margin/filter';
 import type { MarginSim } from '@/lib/margin/types';
 
-const sim = (p: Partial<MarginSim> = {}): MarginSim => ({ Matnr: 'A', Maktx: 'FG', Werks: 'UB01', Market: '', Channel: '', Curr: 'INR', Uom: 'PC', Msg: '', MrpBefore: '100', MrpAfter: '100', SpBefore: '80', SpAfter: '75', CogmBefore: '50', CogmAfter: '50', RemainBefore: '30', RemainAfter: '25', RatioBefore: '62.5', RatioAfter: '66.7', DeltaRemain: '-5', AnnualDeltaInr: '120000', ReqSpRatio: '', ReqSpRemain: '', ReqMrpRestore: '', ...p });
+const sim = (p: Partial<MarginSim> = {}): MarginSim => ({ Matnr: 'A', Maktx: 'FG', Werks: 'UB01', Market: '', Channel: '', Curr: 'INR', SellUom: 'PC', BaseScn: '', VolumeYr: '', AnnualDelta: '', ReqSpRestore: '', Msg: '', MrpBefore: '100', MrpAfter: '100', SpBefore: '80', SpAfter: '75', CogmBefore: '50', CogmAfter: '50', RemainBefore: '30', RemainAfter: '25', RatioBefore: '62.5', RatioAfter: '66.7', DeltaRemain: '-5', AnnualDeltaInr: '120000', ReqSpRatio: '', ReqSpRemain: '', ReqMrpRestore: '', ...p });
 
 describe('What-if inputs', () => {
   it('needs at least one change or target', () => expect(validateWhatIf(EMPTY_WHATIF).general).toBeTruthy());

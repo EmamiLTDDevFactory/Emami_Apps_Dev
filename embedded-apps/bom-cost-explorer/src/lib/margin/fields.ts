@@ -7,10 +7,9 @@ import type { FieldMap } from '../price-context/odata';
 
 export const MARGIN_SET = {
   ROW: 'CogmRowSet', DRIVER: 'CogmDriverSet', SIM: 'CogmSimSet', ALERT: 'CogmAlertSet', HISTORY: 'CogmHistorySet', BOARD: 'CogmBoardSet',
-  PRICE: 'CogmPriceSet', RULE: 'CogmRuleSet', VOLUME: 'CogmVolumeSet', BUDGET: 'CogmBudgetSet', TARGET: 'CogmTargetSet', UPLOAD: 'CogmUploadSet',
+  PRICE: 'CogmPriceSet', RULE: 'CogmRuleSet', VOLUME: 'CogmVolumeSet', BUDGET: 'CogmBudgetSet', TARGET: 'CogmTargetSet',
 } as const;
 export type MarginSetKey = keyof typeof MARGIN_SET;
-export const NAV_UPLOAD_ROWS = 'UploadRows';
 
 /** Filter properties (the same names on every set that supports them). */
 export const MARGIN_FILTER = {
@@ -29,25 +28,24 @@ const t = (n: string) => [n, 't'] as const;
 const many = (names: string, kind: 's' | 'f' | 'i' | 't' = 's') => Object.fromEntries(names.split(/\s+/).filter(Boolean).map((n) => [n, [n, kind] as const]));
 
 export const MARGIN_ROW = def({
-  ...many('Matnr Maktx Werks Market Channel Prodha Brand Curr Uom SellUom PriceFrom PriceSrc Status Msg Src AlertSev AlertTxt'),
-  ...many('Mrp SellPrice CogmStd CogmAct CogmBud CogmCur'),
+  ...many('Matnr Maktx Werks Market Channel Prodha Brand Curr BaseUom SellUom PriceFrom PriceSrc Status Msg Src AlertSev AlertTxt'),
+  ...many('Mrp SellPrice GstPct FxLoc FxInr CogmStd CogmAct CogmBud CogmCur'),
   ...many('OkStd OkAct OkBud OkCur', 'f'),
-  ...many('StdRm StdPm StdPerf StdConv StdOth CurRm CurPm CurPerf CurConv CurOth'),
+  ...many('StdRm StdPm StdConv StdOvh StdOth CurRm CurPm CurConv CurOvh CurOth'),
   ...many('RatioStd RatioAct RatioBud RatioCur RemainStd RemainAct RemainBud RemainCur'),
-  ...many('VarCurStd VarpCurStd VarCurAct VarpCurAct VarCurBud VarpCurBud Erosion ErosionPct AnnualImpact AnnualImpactInr ReqSpRestore ReqMrpRestore SpRisePct ReqSpRatio ReqSpRemain VolumeYr'),
+  ...many('VarCurStd VarpCurStd VarActStd VarpActStd VarCurBud VarpCurBud MrprStd MrprCur TgtRatio TgtRemain Erosion ErosionPct ErosionPp AnnualImpact AnnualImpactInr ReqSpRestore ReqMrpRestore SpRisePct ReqSpRatio ReqSpRemain VolumeYr'),
   AlertCnt: i('AlertCnt'),
 });
 export const MARGIN_DRIVER = def({
-  ...many('Idnrk CompTxt Grp SrcSel PStd PCur PricePct DeltaUnit AnnualInr Curr'),
+  ...many('Matnr Maktx Werks Idnrk CompTxt Mtart Grp SrcSel Uom QtyUnit PStd PCur PricePct DeltaUnit DeltaSellInr VolumeYr AnnualInr Curr'),
   ...many('NoStd NoRate', 'f'),
 });
 export const MARGIN_SIM = def({
-  ...many('Matnr Maktx Werks Market Channel Curr Uom Msg'),
-  ...many('MrpBefore MrpAfter SpBefore SpAfter CogmBefore CogmAfter RemainBefore RemainAfter RatioBefore RatioAfter DeltaRemain AnnualDeltaInr ReqSpRatio ReqSpRemain ReqMrpRestore'),
+  ...many('Matnr Maktx Werks Market Channel Curr SellUom BaseScn Msg'),
+  ...many('VolumeYr AnnualDelta ReqSpRestore MrpBefore MrpAfter SpBefore SpAfter CogmBefore CogmAfter RemainBefore RemainAfter RatioBefore RatioAfter DeltaRemain AnnualDeltaInr ReqSpRatio ReqSpRemain ReqMrpRestore'),
 });
 export const MARGIN_ALERT = def({
-  ...many('Rule Severity Scope Matnr Maktx Werks Market Channel Comp Text Value Threshold ImpactInr Curr'),
-  FgCnt: i('FgCnt'),
+  ...many('Rule Severity Scope Matnr Maktx Werks Market Channel Prodha Brand Comp Text Value Threshold ImpactInr'),
 });
 export const MARGIN_HISTORY = def({
   SnapDate: t('SnapDate'),
@@ -57,8 +55,6 @@ export const MARGIN_BOARD = def({
   ...many('GroupKind GrpKey GrpTxt WratioStd WratioCur RevenueInr AnnualImpactInr'),
   ...many('FgCnt AlertHigh AlertMed NoDataCnt', 'i'),
 });
-export const MARGIN_UPLOAD_HEAD = def({ ...many('UploadId Kind UpdMode Dryrun Status MsgTxt'), Saved: i('Saved'), Errors: i('Errors') });
-export const MARGIN_UPLOAD_ROW = def({ Rowno: i('Rowno'), ...many('Status Msg') });
 
 export const MARGIN_FIELDS = { ROW: MARGIN_ROW, DRIVER: MARGIN_DRIVER, SIM: MARGIN_SIM, ALERT: MARGIN_ALERT, HISTORY: MARGIN_HISTORY, BOARD: MARGIN_BOARD } as const;
 export type MarginReadKey = keyof typeof MARGIN_FIELDS;

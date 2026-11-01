@@ -51,7 +51,7 @@ export default function WhatIfTable({ rows }: { rows: MarginSim[] }) {
         <tbody>
           {rows.map((r, i) => (
             <tr key={simKey(r, i)} className="border-t border-line/60">
-              <td className={td}><span className="font-mono font-bold">{r.Matnr}</span> <span className="text-muted">{r.Maktx}</span><span className="block text-2xs text-muted">plant {r.Werks}{r.Uom ? ` · per ${r.Uom}` : ''}</span></td>
+              <td className={td}><span className="font-mono font-bold">{r.Matnr}</span> <span className="text-muted">{r.Maktx}</span><span className="block text-2xs text-muted">plant {r.Werks}{r.SellUom ? ` · per ${r.SellUom}` : ''}</span></td>
               <td className={td}>{[r.Market, r.Channel].filter(Boolean).join(' / ') || NA}</td><td className={td}>{r.Curr || NA}</td>
               <Pair before={r.MrpBefore} after={r.MrpAfter} /><Pair before={r.SpBefore} after={r.SpAfter} /><Pair before={r.CogmBefore} after={r.CogmAfter} /><Pair before={r.RemainBefore} after={r.RemainAfter} /><Pair before={r.RatioBefore} after={r.RatioAfter} />
               <td className={`${td} whitespace-nowrap`}><RemainChange v={r.DeltaRemain} curr={r.Curr} /></td>

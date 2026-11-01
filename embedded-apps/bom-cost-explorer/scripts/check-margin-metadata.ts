@@ -23,7 +23,7 @@ async function main() {
   if (!cfg.ok) { console.error(`\n  ✗ ${cfg.error}\n`); process.exit(2); }
   const { sapGetMetadata } = await import('../src/lib/sap/client');
   const { parseMetadata } = await import('../src/lib/sap/metadataCheck');
-  const { MARGIN_SET, MARGIN_FIELDS, MARGIN_FILTER, MARGIN_UPLOAD_HEAD, MARGIN_UPLOAD_ROW } = await import('../src/lib/margin/fields');
+  const { MARGIN_SET, MARGIN_FIELDS, MARGIN_FILTER } = await import('../src/lib/margin/fields');
   console.log(`check:margin-metadata → ${cfg.config.baseUrl}/$metadata  (system ${cfg.config.system})`);
   let xml: string;
   try { xml = await sapGetMetadata(); } catch (e) { console.error(`\n  ✗ Could not fetch $metadata: ${(e as Error).message}\n`); process.exit(2); }
@@ -48,8 +48,6 @@ async function main() {
   check(MARGIN_SET.HISTORY, MARGIN_FIELDS.HISTORY, [...entity, F.DaysBack]);
   check(MARGIN_SET.BOARD, MARGIN_FIELDS.BOARD, [...entity, F.Prodha, F.Brand, ...live, F.GroupBy]);
   for (const k of ['PRICE', 'RULE', 'VOLUME', 'BUDGET', 'TARGET'] as const) check(MARGIN_SET[k], null, []);
-  check(MARGIN_SET.UPLOAD, MARGIN_UPLOAD_HEAD, []);
-  void MARGIN_UPLOAD_ROW;
   if (bad) { console.error(`\n  ✗ FAIL - fix the SAP names in src/lib/margin/fields.ts only.\n`); process.exit(1); }
   console.log('\n  OK - now MARGIN_SELECT=true can be set.\n');
 }

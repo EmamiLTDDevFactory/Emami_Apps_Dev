@@ -5,7 +5,7 @@ import { buildMarginFilter } from '@/lib/margin/filter';
 import { parseMarginSearch } from '@/lib/margin/selection';
 import type { MarginAlert } from '@/lib/margin/types';
 
-const al = (p: Partial<MarginAlert> = {}): MarginAlert => ({ Rule: 'E1', Severity: 'M', Scope: 'F', Matnr: 'A', Maktx: 'FG A', Werks: 'UB01', Market: '', Channel: '', Comp: '', Text: 't', Value: '12', Threshold: '10', ImpactInr: '1000', Curr: 'INR', FgCnt: 0, ...p });
+const al = (p: Partial<MarginAlert> = {}): MarginAlert => ({ Rule: 'E1', Severity: 'M', Scope: 'F', Matnr: 'A', Maktx: 'FG A', Werks: 'UB01', Market: '', Channel: '', Comp: '', Text: 't', Value: '12', Threshold: '10', ImpactInr: '1000', Prodha: '', Brand: '', Curr: 'INR', FgCnt: 0, ...p });
 
 describe('Alerts sorting and filtering', () => {
   it('sorted by ImpactInr, largest first; a row with no impact last; input untouched', () => {

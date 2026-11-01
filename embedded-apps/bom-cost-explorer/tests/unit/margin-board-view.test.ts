@@ -5,11 +5,11 @@ import { buildMarginFilter } from '@/lib/margin/filter';
 import type { MarginRow } from '@/lib/margin/types';
 
 const row = (p: Partial<MarginRow> = {}): MarginRow => ({
-  Matnr: '400000001', Maktx: 'FG ONE', Werks: 'UB01', Market: 'IN', Channel: '10', Prodha: 'P1', Brand: 'B1', Curr: 'INR', Uom: 'PC', SellUom: 'PC', Mrp: '100', SellPrice: '80', PriceFrom: '', PriceSrc: '',
+  Matnr: '400000001', Maktx: 'FG ONE', Werks: 'UB01', Market: 'IN', Channel: '10', Prodha: 'P1', Brand: 'B1', Curr: 'INR', BaseUom: 'PC', SellUom: 'PC', Mrp: '100', SellPrice: '80', GstPct: '', FxLoc: '', FxInr: '', PriceFrom: '', PriceSrc: '',
   CogmStd: '50', CogmAct: '52', CogmBud: '48', CogmCur: '55', OkStd: true, OkAct: true, OkBud: true, OkCur: true,
-  StdRm: '30', StdPm: '15', StdPerf: '2', StdConv: '3', StdOth: '', CurRm: '33', CurPm: '16', CurPerf: '2', CurConv: '4', CurOth: '',
+  StdRm: '30', StdPm: '15', StdConv: '3', StdOvh: '', StdOth: '', CurRm: '33', CurPm: '16', CurConv: '4', CurOvh: '', CurOth: '',
   RatioStd: '62.5', RatioAct: '65', RatioBud: '60', RatioCur: '68.75', RemainStd: '30', RemainAct: '28', RemainBud: '32', RemainCur: '25',
-  VarCurStd: '5', VarpCurStd: '10', VarCurAct: '3', VarpCurAct: '5.8', VarCurBud: '7', VarpCurBud: '14.6', Erosion: '5', ErosionPct: '6.25', AnnualImpact: '5000', AnnualImpactInr: '5000', ReqSpRestore: '85', ReqMrpRestore: '106', SpRisePct: '6.25', ReqSpRatio: '', ReqSpRemain: '', VolumeYr: '1000',
+  VarCurStd: '5', VarpCurStd: '10', VarActStd: '3', VarpActStd: '5.8', VarCurBud: '7', VarpCurBud: '14.6', MrprStd: '', MrprCur: '', TgtRatio: '', TgtRemain: '', Erosion: '5', ErosionPct: '6.25', ErosionPp: '', AnnualImpact: '5000', AnnualImpactInr: '5000', ReqSpRestore: '85', ReqMrpRestore: '106', SpRisePct: '6.25', ReqSpRatio: '', ReqSpRemain: '', VolumeYr: '1000',
   AlertCnt: 0, AlertSev: '', AlertTxt: '', Status: '', Msg: '', Src: '', ...p,
 });
 
@@ -77,7 +77,7 @@ describe('row details', () => {
     expect(buildMarginFilter(historyQuery(row(), 180), 'HISTORY')).toBe("Matnr eq '400000001' and Werks eq 'UB01' and Market eq 'IN' and Channel eq '10' and DaysBack eq 180");
   });
   it('cost split keeps what SAP sent; "no price effect" for a driver without a standard price or rate', () => {
-    expect(hasSplit(row())).toBe(true); expect(hasSplit(row({ StdRm: '', StdPm: '', StdPerf: '', StdConv: '', CurRm: '', CurPm: '', CurPerf: '', CurConv: '' }))).toBe(false);
+    expect(hasSplit(row())).toBe(true); expect(hasSplit(row({ StdRm: '', StdPm: '', StdConv: '', StdOvh: '', CurRm: '', CurPm: '', CurConv: '', CurOvh: '' }))).toBe(false);
     expect(costSplit(row()).find((p) => p.key === 'Oth')).toMatchObject({ std: '', cur: '' });
     expect(noEffect({ NoStd: true, NoRate: false })).toBe(true); expect(noEffect({ NoStd: false, NoRate: false })).toBe(false);
     expect(noEffectReason({ NoStd: true, NoRate: true })).toBe('no standard price and no rate');

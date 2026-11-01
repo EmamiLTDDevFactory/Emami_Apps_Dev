@@ -15,7 +15,7 @@ export function whatIfSheet(rows: MarginSim[]): WacSheet {
   const cols = [
     { header: WHATIF_HEADERS[0], width: 14, get: (i: number) => rows[i].Matnr }, { header: WHATIF_HEADERS[1], width: 34, get: (i: number) => rows[i].Maktx },
     { header: WHATIF_HEADERS[2], width: 8, get: (i: number) => rows[i].Werks }, { header: WHATIF_HEADERS[3], width: 10, get: (i: number) => rows[i].Market }, { header: WHATIF_HEADERS[4], width: 12, get: (i: number) => rows[i].Channel },
-    { header: WHATIF_HEADERS[5], width: 9, get: (i: number) => rows[i].Curr }, { header: WHATIF_HEADERS[6], width: 7, get: (i: number) => rows[i].Uom },
+    { header: WHATIF_HEADERS[5], width: 9, get: (i: number) => rows[i].Curr }, { header: WHATIF_HEADERS[6], width: 7, get: (i: number) => rows[i].SellUom },
     ...([['MrpBefore', 7], ['MrpAfter', 8], ['SpBefore', 9], ['SpAfter', 10], ['CogmBefore', 11], ['CogmAfter', 12], ['RemainBefore', 13], ['RemainAfter', 14]] as const).map(([k, h]) => ({ header: WHATIF_HEADERS[h], dp: 4, width: 16, get: (i: number) => n(rows[i][k]) })),
     { header: WHATIF_HEADERS[15], dp: 2, width: 12, get: (i: number) => n(rows[i].RatioBefore) }, { header: WHATIF_HEADERS[16], dp: 2, width: 12, get: (i: number) => n(rows[i].RatioAfter) },
     { header: WHATIF_HEADERS[17], dp: 4, width: 16, get: (i: number) => n(rows[i].DeltaRemain) }, { header: WHATIF_HEADERS[18], width: 24, get: (i: number) => remainWord(rows[i].DeltaRemain) },

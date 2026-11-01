@@ -8,7 +8,7 @@ import { WATCH_ENABLED } from '@/lib/watch/api';
 import { WAC_ENABLED, wacNavVisible } from '@/lib/wac/flag';
 import { PSUM_ENABLED } from '@/lib/psum/flag';
 import { COGM_ENABLED } from '@/lib/margin/flag';
-import { canDisplay, canMaintain } from '@/lib/margin/roles';
+import { canDisplay } from '@/lib/margin/roles';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
@@ -50,7 +50,7 @@ export function nameFromEmail(email: string): string {
 const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-upload';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data';
 
 function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string }) {
   const pane = wide
@@ -90,7 +90,7 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
               <NavLink href={`${BASE_PATH}/margin/alerts/`} icon={BellRing} label="Alerts" hint="Rules E1-E9 by impact" active={planActive === 'margin-alerts'} />
               <NavLink href={`${BASE_PATH}/margin/portfolio/`} icon={Boxes} label="Portfolio" hint="Groups, weighted ratios, impact" active={planActive === 'margin-portfolio'} />
               <NavLink href={`${BASE_PATH}/margin/history/`} icon={Calendar} label="History" hint="Cost scenarios over time" active={planActive === 'margin-history'} />
-              {canMaintain(marginRole) && <NavLink href={`${BASE_PATH}/margin/upload/`} icon={Upload} label="Upload" hint="Prices, volumes, budgets, rules" active={planActive === 'margin-upload'} />}
+              <NavLink href={`${BASE_PATH}/margin/data/`} icon={Tags} label="Data" hint="Prices, rules, volumes, budgets, targets" active={planActive === 'margin-data'} />
             </>
           )}
           {PLAN_MODULE_ENABLED && (

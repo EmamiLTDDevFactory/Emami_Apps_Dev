@@ -38,7 +38,7 @@ function State<T>({ entry, retry, what }: { entry: WacEntry<T> | undefined; retr
 function CostSplit({ r }: { r: MarginRow }) {
   const t = useChartTheme();
   const parts = useMemo(() => costSplit(r), [r]);
-  const colors: Record<string, string> = { Rm: '#4F3FD6', Pm: '#0e9fb5', Perf: '#C2185B', Conv: '#eda100', Oth: '#8B8FA3' };
+  const colors: Record<string, string> = { Rm: '#4F3FD6', Pm: '#0e9fb5', Conv: '#eda100', Ovh: '#2a78d6', Oth: '#8B8FA3' };
   const n = (v: string) => { const d = dec(v); return d ? d.toNumber() : 0; };
   const data = [{ name: 'Standard', ...Object.fromEntries(parts.map((p) => [p.key, n(p.std)])) }, { name: 'Current', ...Object.fromEntries(parts.map((p) => [p.key, n(p.cur)])) }];
   if (!hasSplit(r)) return <p className="text-sm text-muted">SAP sent no cost split for this row.</p>;
@@ -122,7 +122,7 @@ function Alerts({ q, r, enabled }: { q: MarginQuery; r: MarginRow; enabled: bool
             <tr key={`${a.Rule}|${i}`} className="border-t border-line/60">
               <td className={cx(td, 'font-mono font-bold')}>{a.Rule}</td>
               <td className={td}>{a.Severity ? <Pill tone={SEV_TONE[a.Severity as 'H']}>{a.Severity === 'H' ? '▲ ' : a.Severity === 'M' ? '● ' : '○ '}{SEVERITY_WORD[a.Severity as 'H']}</Pill> : NA}</td>
-              <td className={td}>{a.Scope === 'C' ? `Component (${a.FgCnt} finished goods)` : a.Scope === 'F' ? 'Finished good' : NA}</td><td className={td}>{a.Comp || '—'}</td><td className={td}>{a.Text}</td>
+              <td className={td}>{a.Scope === 'C' ? (a.FgCnt === undefined ? 'Component' : `Component (${a.FgCnt} finished goods)`) : a.Scope === 'F' ? 'Finished good' : NA}</td><td className={td}>{a.Comp || '—'}</td><td className={td}>{a.Text}</td>
               <td className={tdN}>{hasAmt(a.Value) ? fmtNum(a.Value, 2, 'X') : NA}</td><td className={tdN}>{hasAmt(a.Threshold) ? fmtNum(a.Threshold, 2, 'X') : NA}</td><td className={tdN}>{hasAmt(a.ImpactInr) ? fmtNum(a.ImpactInr, 0, 'INR') : NA}</td>
             </tr>
           ))}

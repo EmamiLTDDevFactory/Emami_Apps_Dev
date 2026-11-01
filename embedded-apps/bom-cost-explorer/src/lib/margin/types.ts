@@ -6,22 +6,22 @@ export type Severity = 'H' | 'M' | 'L' | '';
 export type RowStatus = 'P' | 'S' | 'C' | '';
 
 export interface MarginRow {
-  Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Prodha: string; Brand: string; Curr: string; Uom: string; SellUom: string;
-  Mrp: string; SellPrice: string; PriceFrom: string; PriceSrc: string;
+  Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Prodha: string; Brand: string; Curr: string; BaseUom: string; SellUom: string;
+  Mrp: string; SellPrice: string; GstPct: string; FxLoc: string; FxInr: string; PriceFrom: string; PriceSrc: string;
   CogmStd: string; CogmAct: string; CogmBud: string; CogmCur: string; OkStd: boolean; OkAct: boolean; OkBud: boolean; OkCur: boolean;
-  StdRm: string; StdPm: string; StdPerf: string; StdConv: string; StdOth: string; CurRm: string; CurPm: string; CurPerf: string; CurConv: string; CurOth: string;
+  StdRm: string; StdPm: string; StdConv: string; StdOvh: string; StdOth: string; CurRm: string; CurPm: string; CurConv: string; CurOvh: string; CurOth: string;
   RatioStd: string; RatioAct: string; RatioBud: string; RatioCur: string; RemainStd: string; RemainAct: string; RemainBud: string; RemainCur: string;
-  VarCurStd: string; VarpCurStd: string; VarCurAct: string; VarpCurAct: string; VarCurBud: string; VarpCurBud: string;
-  Erosion: string; ErosionPct: string; AnnualImpact: string; AnnualImpactInr: string; ReqSpRestore: string; ReqMrpRestore: string; SpRisePct: string; ReqSpRatio: string; ReqSpRemain: string; VolumeYr: string;
+  VarCurStd: string; VarpCurStd: string; VarActStd: string; VarpActStd: string; VarCurBud: string; VarpCurBud: string; MrprStd: string; MrprCur: string; TgtRatio: string; TgtRemain: string;
+  Erosion: string; ErosionPct: string; ErosionPp: string; AnnualImpact: string; AnnualImpactInr: string; ReqSpRestore: string; ReqMrpRestore: string; SpRisePct: string; ReqSpRatio: string; ReqSpRemain: string; VolumeYr: string;
   AlertCnt: number; AlertSev: Severity; AlertTxt: string; Status: RowStatus; Msg: string; Src: string;
 }
-export interface MarginDriver { Idnrk: string; CompTxt: string; Grp: string; SrcSel: string; PStd: string; PCur: string; PricePct: string; DeltaUnit: string; AnnualInr: string; Curr: string; NoStd: boolean; NoRate: boolean }
+export interface MarginDriver { Idnrk: string; CompTxt: string; Grp: string; SrcSel: string; PStd: string; PCur: string; PricePct: string; DeltaUnit: string; AnnualInr: string; Curr: string; Matnr: string; Maktx: string; Werks: string; Mtart: string; Uom: string; QtyUnit: string; DeltaSellInr: string; VolumeYr: string; NoStd: boolean; NoRate: boolean }
 export interface MarginSim {
-  Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Curr: string; Uom: string; Msg: string;
+  Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Curr: string; SellUom: string; BaseScn: string; VolumeYr: string; AnnualDelta: string; ReqSpRestore: string; Msg: string;
   MrpBefore: string; MrpAfter: string; SpBefore: string; SpAfter: string; CogmBefore: string; CogmAfter: string; RemainBefore: string; RemainAfter: string; RatioBefore: string; RatioAfter: string;
   DeltaRemain: string; AnnualDeltaInr: string; ReqSpRatio: string; ReqSpRemain: string; ReqMrpRestore: string;
 }
-export interface MarginAlert { Rule: string; Severity: Severity; Scope: 'F' | 'C' | ''; Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Comp: string; Text: string; Value: string; Threshold: string; ImpactInr: string; Curr: string; FgCnt: number }
+export interface MarginAlert { Rule: string; Severity: Severity; Scope: 'F' | 'C' | ''; Matnr: string; Maktx: string; Werks: string; Market: string; Channel: string; Comp: string; Text: string; Value: string; Threshold: string; ImpactInr: string; Prodha: string; Brand: string; /** not a property of the live set (2026-11-01): kept optional */ Curr?: string; FgCnt?: number }
 export interface MarginHistory { SnapDate: string | null; Matnr: string; Werks: string; Market: string; Channel: string; Curr: string; CogmStd: string; CogmCur: string; CogmAct: string; RatioCur: string; ErosionStd: string; ErosionBase: string }
 export interface MarginBoard { GroupKind: string; GrpKey: string; GrpTxt: string; FgCnt: number; AlertHigh: number; AlertMed: number; NoDataCnt: number; WratioStd: string; WratioCur: string; RevenueInr: string; AnnualImpactInr: string }
 export interface MarginRowsBySet { ROW: MarginRow; DRIVER: MarginDriver; SIM: MarginSim; ALERT: MarginAlert; HISTORY: MarginHistory; BOARD: MarginBoard }
