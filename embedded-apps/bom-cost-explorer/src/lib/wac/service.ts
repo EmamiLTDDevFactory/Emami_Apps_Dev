@@ -33,7 +33,7 @@ export function nullableDecimal(v: unknown): string {
   }
 }
 
-const NULLABLE = /^(Varp|Var|Rate|Cost)|^(ActPu|SrcPu|CoverPct|FxInr)$/;
+const NULLABLE = /^(Varp|Var|Rate|Cost)|^(ActPu|SrcPu|CoverPct|FxInr|ActCogm)$/;
 export const toFlag = (v: unknown): WacFlag => {
   const s = String(v ?? '').trim().toUpperCase();
   return s === 'H' || s === 'M' ? s : '';
@@ -51,9 +51,10 @@ export function normalizeWac<K extends WacSetKey>(set: K, raw: Record<string, un
   return o as unknown as WacRowsBySet[K];
 }
 
-export async function fetchWac<K extends WacSetKey>(set: K, q: WacFilterInput, opts: { signal?: AbortSignal } = {}): Promise<WacResult<WacRowsBySet[K]>> {
+/** `select` (optional): only these properties are requested. Unused by the existing screens, which send no $select. */
+export async function fetchWac<K extends WacSetKey>(set: K, q: WacFilterInput, opts: { signal?: AbortSignal; select?: string } = {}): Promise<WacResult<WacRowsBySet[K]>> {
   const $filter = buildWacFilter(q, set); // throws FilterError (no plant / bad dates) before any request
-  const r = await sapGetCollection(WAC_SET[set], { $filter }, { signal: opts.signal, noTimeout: true, costing: true });
+  const r = await sapGetCollection(WAC_SET[set], opts.select ? { $filter, $select: opts.select } : { $filter }, { signal: opts.signal, noTimeout: true, costing: true });
   const rows = r.rows.map((raw) => normalizeWac(set, raw));
   const messages = [...r.messages];
   if (set === 'ROWS') {

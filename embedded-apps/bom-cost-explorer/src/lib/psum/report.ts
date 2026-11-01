@@ -70,8 +70,25 @@ export interface ReportRow {
   key: string; fg: WacRow; price: SoPriceRow | null;
   /** price currency equals the cost currency (INR): the ratios are shown only then */
   sameCurrency: boolean;
-  cogm: string; sim: Decimal | null; variance: Decimal | null;
+  /** SAP's actual COGM per piece (ActCogm); '' while SAP is not updated. ActLanded is NEVER used as COGM. */
+  cogm: string;
+  cogmPending: boolean;
+  sim: Decimal | null; variance: Decimal | null;
   rMrp: Decimal | null; rSp: Decimal | null; rSim: Decimal | null;
+}
+
+/** The COGM of a row is ActCogm, and only that. */
+export const cogmOf = (fg: Pick<WacRow, 'ActCogm'>): string => (dec(fg.ActCogm ?? '') === null ? '' : String(fg.ActCogm));
+/** No row of the answer carries ActCogm: SAP has not been updated yet (a note, not an error). */
+export const cogmPending = (rows: Pick<WacRow, 'ActCogm'>[]): boolean => rows.length > 0 && rows.every((r) => dec(r.ActCogm ?? '') === null);
+export const COGM_PENDING_NOTE = 'SAP update pending: COGM not available';
+
+/** Why a ratio is n/a (tooltip): no COGM, no price, or the price is not in the cost currency. */
+export function ratioWhy(r: Pick<ReportRow, 'cogm' | 'price' | 'sameCurrency'>): string {
+  if (!dec(r.cogm)) return COGM_PENDING_NOTE;
+  if (!r.price) return 'No sales order with a selling price';
+  if (!r.sameCurrency) return `The price is in ${r.price.Curr || 'another currency'}, the cost in INR: no ratio (never converted here)`;
+  return '';
 }
 
 /** The latest usable price row (selling price above zero, newest order date) of each sales organisation and channel. */
@@ -91,21 +108,31 @@ export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulatio
   for (const p of latestPerArea(prices)) { const l = areas.get(p.Matnr) ?? []; l.push(p); areas.set(p.Matnr, l); }
   const out: ReportRow[] = [];
   for (const fg of [...rows].sort((a, b) => (dec(b.Qty)?.cmp(dec(a.Qty) ?? 0) ?? 0) || a.Matnr.localeCompare(b.Matnr))) {
+    const cogm = cogmOf(fg);
     const list: (SoPriceRow | null)[] = areas.get(fg.Matnr)?.length ? areas.get(fg.Matnr)! : [null];
     for (const price of list) {
       const same = !!price && price.Curr.trim().toUpperCase() === 'INR';
-      const s = simulatedCogm(fg.ActLanded, sim);
-      const c = dec(fg.ActLanded);
+      const s = simulatedCogm(cogm, sim);
+      const c = dec(cogm);
       out.push({
-        key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm: fg.ActLanded, sim: s, variance: s && c ? s.minus(c) : null,
-        rMrp: same ? ratio(price!.Mrp, fg.ActLanded) : null, rSp: same ? ratio(price!.Sp, fg.ActLanded) : null, rSim: same && s ? ratio(price!.Sp, s) : null,
+        key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm, cogmPending: !c, sim: s, variance: s && c ? s.minus(c) : null,
+        rMrp: same && c ? ratio(price!.Mrp, cogm) : null, rSp: same && c ? ratio(price!.Sp, cogm) : null, rSim: same && s ? ratio(price!.Sp, s) : null,
       });
     }
   }
   return out;
 }
 
+/** SKUs with no row carrying a selling price above zero. */
+export const withoutPrice = (table: ReportRow[]): number => {
+  const withP = new Set(table.filter((r) => r.price).map((r) => r.fg.Matnr));
+  return new Set(table.filter((r) => !withP.has(r.fg.Matnr)).map((r) => r.fg.Matnr)).size;
+};
+
 export const ratioText = (r: Decimal | null): string => (r ? `${r.toFixed(2)} : 1` : 'n/a');
+
+/** Age of a sales order in days: warn from this many days (the Sales price page uses the same threshold). */
+export const ageTone = (days: number, stale: number): 'ok' | 'stale' => (days > stale ? 'stale' : 'ok');
 
 /** Net direction of one component against the other rate sources: the variance of largest size decides (+ = actual above the source = cost up). */
 export function direction(c: WacCompRow): 'up' | 'down' | 'none' {

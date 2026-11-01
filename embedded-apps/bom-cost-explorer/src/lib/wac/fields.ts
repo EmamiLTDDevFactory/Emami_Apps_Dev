@@ -27,6 +27,8 @@ export const WAC_ROW = def({
   Uom: ['Uom', 's'], Docs: ['Docs', 'i'], Batches: ['Batches', 'i'], DupDocs: ['DupDocs', 'i'], Qty: ['Qty', 'd'],
   ActRm: ['ActRm', 'd'], ActPm: ['ActPm', 'd'], ActPerf: ['ActPerf', 'd'], ActMat: ['ActMat', 'd'],
   ActConv: ['ActConv', 'd'], ActLanded: ['ActLanded', 'd'], ActRecon: ['ActRecon', 'd'],
+  // The actual COGM per piece (ActMat + ActConv). Read as a string: '' = SAP has not sent it (not updated yet), shown as n/a, never as 0.
+  ActCogm: ['ActCogm', 's'],
   VarpSel: ['VarpSel', 's'], VarpCmap: ['VarpCmap', 's'], VarpCon: ['VarpCon', 's'], VarpAvg: ['VarpAvg', 's'],
   FlagSel: ['FlagSel', 's'], FlagCmap: ['FlagCmap', 's'], FlagCon: ['FlagCon', 's'], FlagAvg: ['FlagAvg', 's'],
   Status: ['Status', 's'], Msg: ['Msg', 's'],

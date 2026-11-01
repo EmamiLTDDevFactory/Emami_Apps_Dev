@@ -6,7 +6,7 @@ export type WacSource = 'SEL' | 'CMAP' | 'CON' | 'AVG';
 export interface WacRow {
   Rowid: number; Matnr: string; Maktx: string; Werks: string; Mtart: string; Zbrand: string; Prodha: string;
   Zskugrcodecrs: string; Zskugroupcrs: string; Uom: string; Docs: number; Batches: number; DupDocs: number; Qty: string;
-  ActRm: string; ActPm: string; ActPerf: string; ActMat: string; ActConv: string; ActLanded: string; ActRecon: string;
+  ActRm: string; ActPm: string; ActPerf: string; ActMat: string; ActConv: string; ActLanded: string; ActRecon: string; /** absent / '' until SAP is updated */ ActCogm?: string;
   VarpSel: string; VarpCmap: string; VarpCon: string; VarpAvg: string;
   FlagSel: WacFlag; FlagCmap: WacFlag; FlagCon: WacFlag; FlagAvg: WacFlag;
   Status: string; Msg: string;
