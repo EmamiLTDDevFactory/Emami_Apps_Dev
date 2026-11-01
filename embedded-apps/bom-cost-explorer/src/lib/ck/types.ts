@@ -15,5 +15,7 @@ export interface CkCompRow { CompNo: string; CompTxt: string; Grp: CkGroup | str
 export interface CkItemRow {
   Posnr: string; Typps: string; TyppsTxt: string; Kstar: string; KstarTxt: string; Idnrk: string; ItemTxt: string; Mtart: string; ItemWerks: string; Kostl: string; Lstar: string;
   Qty: string; Uom: string; QtyUnit: string; Price: string; PriceUnit: string; ValueLot: string; ValueUnit: string; Curr: string; HasEst: boolean;
+  /** origin group (HRKFT); '' when SAP sent none */
+  Hrkft?: string;
 }
 export interface CkRowsBySet { LIST: CkListRow; HEADER: CkHeaderRow; COMP: CkCompRow; ITEM: CkItemRow }

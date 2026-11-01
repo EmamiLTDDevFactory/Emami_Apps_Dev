@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AlertTriangle, CheckCircle2, ClipboardCopy, ExternalLink, Info } from 'lucide-react';
-import { Button, Pill, cx, inputCls } from '../ui';
+import { Button, Pill, Spinner, cx, inputCls } from '../ui';
+import OriginBreakup from '../costline/OriginBreakup';
+import { itemOrigin, originBreakup } from '@/lib/cost/originBreakup';
 import { useChartTheme } from '../charts';
 import { fmtDate, fmtNum, fmtQty, fmtSigned } from '@/lib/format';
 import type { WacEntry } from '@/lib/wac/cache';
@@ -149,11 +151,15 @@ export function ComponentsTab({ comps }: { comps: CkCompRow[] }) {
 }
 
 /* ------------------------------ itemization ------------------------------ */
-export function ItemsTab({ items, onOpen }: { items: CkItemRow[]; onOpen: (matnr: string) => void }) {
+export function ItemsTab({ items, onOpen, originMap, originState, onLoadOrigins }: { items: CkItemRow[]; onOpen: (matnr: string) => void; originMap?: ReadonlyMap<string, string> | null; originState?: { status: 'idle' | 'loading' | 'done' | 'error'; note?: string }; onLoadOrigins?: () => void }) {
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
   const kinds = useMemo(() => itemTypes(items), [items]);
-  const shown = useMemo(() => filterItems(items, types, q), [items, types, q]);
+  const [ogrp, setOgrp] = useState('');
+  const shown = useMemo(() => filterItems(items, types, q).filter((r) => !ogrp || (itemOrigin(r, originMap) || '(none)') === ogrp), [items, types, q, ogrp, originMap]);
+  const origin = useMemo(() => originBreakup(shown.map((r) => ({ origin: itemOrigin(r, originMap), value: r.ValueUnit }))), [shown, originMap]);
+  const knownOrigin = useMemo(() => items.some((r) => itemOrigin(r, originMap)), [items, originMap]);
+  const curr = items.find((r) => r.Curr)?.Curr || 'INR';
   const toggle = (c: string) => setTypes((s) => { const n = new Set(s); if (n.has(c)) n.delete(c); else n.add(c); return n; });
   if (!items.length) return <p className="text-sm text-muted">SAP returned no items for this estimate.</p>;
   return (
@@ -163,12 +169,23 @@ export function ItemsTab({ items, onOpen }: { items: CkItemRow[]; onOpen: (matnr
           <button key={k.code} type="button" aria-pressed={types.has(k.code)} onClick={() => toggle(k.code)} className={cx('rounded-full border px-3 py-1 text-xs font-bold', types.has(k.code) ? 'border-accent bg-accent/10 text-accent' : 'border-line text-muted hover:text-ink')}>{k.text} <span className="font-normal">({k.n})</span></button>
         ))}
         <input aria-label="Search items" className={cx(inputCls, 'w-56')} placeholder="Search item, material, cost element…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select aria-label="Origin group" className={cx(inputCls, 'w-48')} value={ogrp} onChange={(e) => setOgrp(e.target.value)}>
+          <option value="">All origin groups</option>
+          {origin.slices.map((s) => <option key={s.origin} value={s.origin === '(no origin group)' ? '(none)' : s.origin}>{s.origin}</option>)}
+        </select>
         <span className="text-xs text-faint">{shown.length} of {items.length} items</span>
       </div>
+      {!knownOrigin && onLoadOrigins && (
+        <p className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-sunken px-3 py-2 text-xs text-muted">
+          SAP did not send an origin group on these items. {originState?.status === 'loading' ? <><Spinner className="h-3 w-3" /> Reading it from the BOM costing…</> : <Button size="sm" onClick={onLoadOrigins}>Get origin groups from BOM costing</Button>}
+          {originState?.status === 'error' && <span className="text-bad">{originState.note}</span>}
+        </p>
+      )}
+      <OriginBreakup slices={origin.slices} total={origin.total} curr={curr} unit="value per unit of the items shown" note={originState?.status === 'done' ? 'Origin group of each component from the BOM costing (CompOgrp).' : undefined} />
       <div className="max-h-[560px] overflow-auto rounded-xl border border-line">
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-sunken"><tr>
-            <th className={th}>Item</th><th className={th}>Type</th><th className={th}>Cost element</th><th className={th}>Material / activity</th><th className={th}>Description</th>
+            <th className={th}>Item</th><th className={th}>Type</th><th className={th}>Cost element</th><th className={th}>Origin group</th><th className={th}>Material / activity</th><th className={th}>Description</th>
             <th className={thN}>Quantity</th><th className={thN}>Price</th><th className={thN}>Value per lot</th><th className={thN}>Value per unit</th><th className={th}><span className="sr-only">Estimate</span></th>
           </tr></thead>
           <tbody>
@@ -177,6 +194,7 @@ export function ItemsTab({ items, onOpen }: { items: CkItemRow[]; onOpen: (matnr
                 <td className={cx(td, 'font-mono text-xs')}>{r.Posnr}</td>
                 <td className={td}>{r.TyppsTxt || r.Typps}</td>
                 <td className={td}><span className="font-mono text-xs text-muted">{r.Kstar}</span> {r.KstarTxt}</td>
+                <td className={td}>{itemOrigin(r, originMap) || <span className="text-faint">–</span>}</td>
                 <td className={td}><span className="font-mono text-xs">{r.Idnrk || r.Lstar || ''}</span>{r.Kostl && <span className="text-2xs text-muted"> · CC {r.Kostl}</span>}{r.ItemWerks && <span className="text-2xs text-muted"> · {r.ItemWerks}</span>}</td>
                 <td className={td}>{r.ItemTxt}</td>
                 <td className={tdN}>{dec(r.Qty) ? <>{fmtQty(r.Qty)} <span className="text-muted">{r.QtyUnit || r.Uom}</span></> : NA}</td>
@@ -186,7 +204,7 @@ export function ItemsTab({ items, onOpen }: { items: CkItemRow[]; onOpen: (matnr
                 <td className={td}>{r.HasEst && r.Idnrk && <Button size="sm" variant="ghost" onClick={() => onOpen(r.Idnrk)} aria-label={`Open estimate of ${r.Idnrk}`}><ExternalLink size={12} /> Open estimate</Button>}</td>
               </tr>
             ))}
-            {!shown.length && <tr><td colSpan={10} className="px-3 py-5 text-center text-muted">Nothing matches the filter.</td></tr>}
+            {!shown.length && <tr><td colSpan={11} className="px-3 py-5 text-center text-muted">Nothing matches the filter.</td></tr>}
           </tbody>
         </table>
       </div>

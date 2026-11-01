@@ -14,6 +14,9 @@ import { Button, Card, Empty, Field, Spinner, Tabs, cx, inputCls } from '../ui';
 import WacMessages from '../wac/WacMessages';
 import { ComponentsTab, EstimatesTab, HeaderCard, ItemsTab, estimateLabel, type CompareData } from './CkParts';
 import { api } from '@/lib/client/api';
+import { fetchCostLines } from '@/lib/sap/service';
+import { defaultQuery } from '@/lib/query/schema';
+import { originMapOf } from '@/lib/cost/originBreakup';
 import { fetchIsAdmin } from '@/lib/client/hubAccess';
 import { useHubSession } from '@/lib/client/session';
 import { loadSapConfig } from '@/lib/sap/config';
@@ -21,7 +24,7 @@ import type { PlantRow } from '@/lib/sap/fields';
 import { fmtDate, fmtMs } from '@/lib/format';
 import { abortAll, invalidate, stop, type WacEntry } from '@/lib/wac/cache';
 import { downloadWacWorkbook, type WacSheet } from '@/lib/wac/export';
-import { compareSheet, componentsSheet, estimatesSheet, headerSheet, itemsSheet } from '@/lib/ck/export';
+import { compareSheet, componentsSheet, estimatesSheet, headerSheet, itemsSheet, originSheet } from '@/lib/ck/export';
 import { buildCkFilter, type CkEstimateKey, type CkQuery } from '@/lib/ck/filter';
 import { ckKey, startCk, useCkEntry } from '@/lib/ck/useCk';
 import { ckSearch, parseCkUrl } from '@/lib/ck/url';
@@ -151,6 +154,21 @@ function Screen() {
   const header = (doneRows(headerE)?.[0] ?? null) as CkHeaderRow | null;
   const comps = doneRows(compE) as CkCompRow[] | null;
   const items = doneRows(itemE) as CkItemRow[] | null;
+  // Origin group of each component, read from the BOM costing (CostLineSet CompOgrp) when the person asks and SAP sent none on the items.
+  const [originMap, setOriginMap] = useState<Map<string, string> | null>(null);
+  const [originState, setOriginState] = useState<{ status: 'idle' | 'loading' | 'done' | 'error'; note?: string }>({ status: 'idle' });
+  const originFor = useRef('');
+  const loadOrigins = () => {
+    if (!header) return;
+    const key = `${header.Matnr}|${header.Werks}`;
+    originFor.current = key;
+    setOriginState({ status: 'loading' });
+    const query = { ...defaultQuery('B'), materials: [header.Matnr], plants: [header.Werks], explQty: '1' };
+    fetchCostLines(query, { noTimeout: true })
+      .then((r) => { if (originFor.current === key) { setOriginMap(originMapOf(r.rows)); setOriginState({ status: 'done' }); } })
+      .catch((e: Error) => { if (originFor.current === key) setOriginState({ status: 'error', note: e.message }); });
+  };
+  useEffect(() => { originFor.current = ''; setOriginMap(null); setOriginState({ status: 'idle' }); }, [header?.Matnr, header?.Werks]);
   const messages = [...watched.flatMap((e) => e?.messages ?? [])];
   const failed = watched.find((e) => e?.status === 'error');
   const noEstimate = !!view && listE?.status === 'done' && (listRows?.length ?? 0) === 0 && (!detailQ || headerE?.status === 'done' && !header);
@@ -178,7 +196,7 @@ function Screen() {
     const sheets: WacSheet[] = [headerSheet(header)];
     if (comps) sheets.push(componentsSheet(comps));
     const loadedItems = doneRows(itemE) as CkItemRow[] | null;
-    if (loadedItems) sheets.push(itemsSheet(loadedItems));
+    if (loadedItems) sheets.push(itemsSheet(loadedItems, originMap), originSheet(loadedItems, originMap));
     if (listRows) sheets.push(estimatesSheet(listRows));
     if (compareKeys && cmpAE?.status === 'done' && cmpBE?.status === 'done') sheets.push(compareSheet(compareEstimates(cmpAE.data ?? [], cmpBE.data ?? []), compareKeys.la, compareKeys.lb));
     await downloadWacWorkbook(sheets, [
@@ -265,7 +283,7 @@ function Screen() {
           <Tabs<Tab> label="Cost estimate views" value={tab} onChange={setTab} tabs={[{ id: 'components', label: 'Cost components' }, { id: 'items', label: 'Itemization' }, { id: 'bom', label: 'BOM costing (all costs)' }, { id: 'estimates', label: 'Estimates', badge: listRows ? <span className="rounded-full bg-sunken px-1.5 text-2xs font-bold">{listRows.length}</span> : undefined }]} />
           {tab === 'components' && (comps ? <ComponentsTab comps={comps} /> : <p className="text-sm text-muted">{compE?.status === 'error' ? 'The components could not be loaded.' : 'Loading the cost components…'}</p>)}
           {tab === 'bom' && <BomCostingPanel matnr={header.Matnr} werks={header.Werks} uom={header.Meeht} defaultQty={header.Losgr} />}
-          {tab === 'items' && (items ? <ItemsTab items={items} onOpen={drill} /> : <p className="text-sm text-muted">{itemE?.status === 'error' ? 'The items could not be loaded.' : 'Loading the itemization from SAP…'}</p>)}
+          {tab === 'items' && (items ? <ItemsTab items={items} onOpen={drill} originMap={originMap} originState={originState} onLoadOrigins={loadOrigins} /> : <p className="text-sm text-muted">{itemE?.status === 'error' ? 'The items could not be loaded.' : 'Loading the itemization from SAP…'}</p>)}
           {tab === 'estimates' && (listRows ? <EstimatesTab rows={listRows} active={effKey ?? keyFromRow(defaultEstimate(listRows) ?? ({} as CkListRow))} onOpen={openEstimate} onCompare={(a, b) => { const ka = keyFromRow(a), kb = keyFromRow(b); if (ka && kb) setCompareKeys({ a: ka, b: kb, la: estimateLabel(a), lb: estimateLabel(b) }); }} compare={compare} /> : <p className="text-sm text-muted">Loading the estimates…</p>)}
         </>
       )}

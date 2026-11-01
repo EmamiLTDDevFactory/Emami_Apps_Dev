@@ -34,6 +34,8 @@ export const CK_COMP = def({
 export const CK_ITEM = def({
   Posnr: ['Posnr', 's'], Typps: ['Typps', 's'], TyppsTxt: ['TyppsTxt', 's'], Kstar: ['Kstar', 's'], KstarTxt: ['KstarTxt', 's'], Idnrk: ['Idnrk', 's'], ItemTxt: ['ItemTxt', 's'], Mtart: ['Mtart', 's'], ItemWerks: ['ItemWerks', 's'],
   Kostl: ['Kostl', 's'], Lstar: ['Lstar', 's'], Qty: ['Qty', 's'], Uom: ['Uom', 's'], QtyUnit: ['QtyUnit', 's'], Price: ['Price', 's'], PriceUnit: ['PriceUnit', 's'], ValueLot: ['ValueLot', 's'], ValueUnit: ['ValueUnit', 's'], Curr: ['Curr', 's'], HasEst: ['HasEst', 'f'],
+  // Origin group (HRKFT) of the item. UNVERIFIED optional property: when SAP has no such name it reads '' and the group is taken from the BOM costing (CompOgrp).
+  Hrkft: ['Hrkft', 's'],
 });
 export const CK_FIELDS = { LIST: CK_LIST, HEADER: CK_HEADER, COMP: CK_COMP, ITEM: CK_ITEM } as const;
 /** kind 's' properties that are amounts / ratios: '' = nothing from SAP, shown as n/a, never as 0 */

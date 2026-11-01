@@ -2,6 +2,7 @@
 import type { XCol } from '../client/export';
 import type { WacSheet } from '../wac/export';
 import { groupName, dec, type CompareRow } from './view';
+import { itemOrigin, originBreakup } from '../cost/originBreakup';
 import type { CkCompRow, CkHeaderRow, CkItemRow, CkListRow } from './types';
 
 const n = (v: string | null | undefined) => { const d = dec(v); return d ? Number(d.toFixed(6)) : null; };
@@ -27,15 +28,26 @@ export function componentsSheet(rows: CkCompRow[]): WacSheet {
   return { name: 'Components', cols, count: rows.length };
 }
 
-export function itemsSheet(rows: CkItemRow[]): WacSheet {
+export function itemsSheet(rows: CkItemRow[], origins?: ReadonlyMap<string, string> | null): WacSheet {
   const cols: XCol[] = [
     { header: 'Item', width: 8, get: (i) => rows[i].Posnr }, { header: 'Type', width: 18, get: (i) => `${rows[i].Typps} ${rows[i].TyppsTxt}`.trim() }, { header: 'Cost element', width: 26, get: (i) => `${rows[i].Kstar} ${rows[i].KstarTxt}`.trim() },
+    { header: 'Origin group', width: 16, get: (i) => itemOrigin(rows[i], origins) },
     { header: 'Material / activity', width: 18, get: (i) => rows[i].Idnrk || rows[i].Lstar }, { header: 'Plant', width: 8, get: (i) => rows[i].ItemWerks }, { header: 'Cost centre', width: 12, get: (i) => rows[i].Kostl },
     { header: 'Description', width: 34, get: (i) => rows[i].ItemTxt }, { header: 'Quantity', dp: 4, width: 13, get: (i) => n(rows[i].Qty) }, { header: 'Unit', width: 7, get: (i) => rows[i].QtyUnit || rows[i].Uom },
     { header: 'Price', dp: 4, curr: 'INR', width: 13, get: (i) => n(rows[i].Price) }, { header: 'Price unit', width: 10, get: (i) => n(rows[i].PriceUnit) }, { header: 'Value per lot', dp: 4, curr: 'INR', width: 15, get: (i) => n(rows[i].ValueLot) },
     { header: 'Value per unit', dp: 4, curr: 'INR', width: 15, get: (i) => n(rows[i].ValueUnit) }, { header: 'Currency', width: 9, get: (i) => rows[i].Curr }, { header: 'Has own estimate', width: 10, get: (i) => (rows[i].HasEst ? 'yes' : '') },
   ];
   return { name: 'Items', cols, count: rows.length };
+}
+
+export function originSheet(rows: CkItemRow[], origins?: ReadonlyMap<string, string> | null): WacSheet {
+  const { slices, total } = originBreakup(rows.map((r) => ({ origin: itemOrigin(r, origins), value: r.ValueUnit })));
+  const cols: XCol[] = [
+    { header: 'Origin group', width: 24, get: (i) => slices[i].origin }, { header: 'Items', width: 8, get: (i) => slices[i].lines },
+    { header: 'Value per unit', dp: 4, curr: 'INR', width: 16, get: (i) => Number(slices[i].value.toFixed(6)) }, { header: 'Share % (computed here)', dp: 2, width: 12, get: (i) => (slices[i].share ? Number(slices[i].share!.toFixed(4)) : null) },
+  ];
+  void total;
+  return { name: 'Origin groups', cols, count: slices.length };
 }
 
 export function estimatesSheet(rows: CkListRow[]): WacSheet {
