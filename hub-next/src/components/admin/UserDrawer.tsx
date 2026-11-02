@@ -74,8 +74,11 @@ export default function UserDrawer({
   const [reportBusy, setReportBusy] = useState(false);
   // Sign-ins / Sessions cards open their full list inline, below the cards (like Access Tracker).
   const [openList, setOpenList] = useState<'signins' | 'sessions' | null>(null);
+  // Several cards share one list (Last sign-in + Sign-ins, Sessions + Time spent); only the clicked card highlights.
+  type ListCard = 'lastSignin' | 'signins' | 'sessions' | 'timeSpent';
+  const [openCard, setOpenCard] = useState<ListCard | null>(null);
   const [detail, setDetail] = useState<{ email: string; activity?: MyActivity; error?: string } | null>(null);
-  useEffect(() => { setOpenList(null); }, [user.email]);
+  useEffect(() => { setOpenList(null); setOpenCard(null); }, [user.email]);
   useEffect(() => {
     if (!openList || detail?.email === user.email) return;
     let live = true;
@@ -84,7 +87,11 @@ export default function UserDrawer({
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openList, user.email]);
-  const toggleList = (v: 'signins' | 'sessions') => setOpenList((o) => (o === v ? null : v));
+  const toggleList = (v: 'signins' | 'sessions', card: ListCard) => {
+    const closing = openCard === card;
+    setOpenCard(closing ? null : card);
+    setOpenList(closing ? null : v);
+  };
 
   const [history, setHistory] = useState<AccessChangeEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -460,10 +467,10 @@ export default function UserDrawer({
                 </button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} onClick={() => toggleList('signins')} open={openList === 'signins'} />
-                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} hint="See every sign-in" onClick={() => toggleList('signins')} open={openList === 'signins'} />
-                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} hint="See each visit and its apps" onClick={() => toggleList('sessions')} open={openList === 'sessions'} />
-                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} hint="See how long each session lasted" onClick={() => toggleList('sessions')} open={openList === 'sessions'} />
+                <Stat label="Last sign-in" value={profile?.lastLogin ? timeAgo(profile.lastLogin) : timeAgo(user.usage?.lastLogin)} hint={formatDateTime(profile?.lastLogin ?? user.usage?.lastLogin)} onClick={() => toggleList('signins', 'lastSignin')} open={openCard === 'lastSignin'} />
+                <Stat label="Sign-ins" value={String(profile?.logins ?? user.usage?.logins ?? 0)} hint="See every sign-in" onClick={() => toggleList('signins', 'signins')} open={openCard === 'signins'} />
+                <Stat label="Sessions" value={String(profile?.sessionsTotal ?? user.usage?.sessionsTotal ?? 0)} hint="See each visit and its apps" onClick={() => toggleList('sessions', 'sessions')} open={openCard === 'sessions'} />
+                <Stat label="Time spent" value={profile?.timeSpent ?? user.usage?.timeSpent ?? '—'} hint="See how long each session lasted" onClick={() => toggleList('sessions', 'timeSpent')} open={openCard === 'timeSpent'} />
                 <Stat label="Apps opened" value={String(profile?.appsOpened ?? user.usage?.appsOpened ?? 0)} hint="Jump to usage by app" onClick={() => usageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
                 <Stat label="Downloads" value={String(profile?.downloads ?? 0)} />
               </div>
