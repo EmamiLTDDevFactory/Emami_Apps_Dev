@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Sans, IBM_Plex_Serif } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import Shell from '../components/Shell';
 import { AppProvider } from '../context/AppContext';
@@ -10,15 +10,24 @@ import { ToastProvider } from '../context/ToastContext';
 // the equivalent for this Next.js app: self-hosted at build time, no runtime request, same actual
 // font family as the hub, not a stand-in (fm-po-deviation's own Next.js app mistakenly used Inter
 // via an external @import instead — this fixes that for Timesheet).
-const plexSans = IBM_Plex_Sans({
-  weight: ['400', '500', '600', '700'],
-  subsets: ['latin'],
+// Self-hosted IBM Plex (latin, OFL-1.1, from @fontsource 5.3.0) instead of next/font/google: the
+// Google loader downloads font CSS at BUILD time and failed on Amplify ("An error occurred in
+// next/font ... Cannot read properties of null (reading '1')"). Same CSS variables, no build network.
+const plexSans = localFont({
+  src: [
+    { path: './fonts/ibm-plex-sans-latin-400-normal.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/ibm-plex-sans-latin-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/ibm-plex-sans-latin-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/ibm-plex-sans-latin-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
   variable: '--font-plex-sans',
   display: 'swap',
 });
-const plexSerif = IBM_Plex_Serif({
-  weight: ['500', '600'],
-  subsets: ['latin'],
+const plexSerif = localFont({
+  src: [
+    { path: './fonts/ibm-plex-serif-latin-500-normal.woff2', weight: '500', style: 'normal' },
+    { path: './fonts/ibm-plex-serif-latin-600-normal.woff2', weight: '600', style: 'normal' },
+  ],
   variable: '--font-plex-serif',
   display: 'swap',
 });
