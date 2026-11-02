@@ -20,7 +20,7 @@ const validate = (key: string, v: unknown) => (key === 'ZPRICE_IN' ? factorError
 export default function PricingSimulation({ busy, setBusy, showMessage, setFailures, vfrom, vto }: TabProps) {
   const [rows, setRows] = useState<SimRow[]>([]);
   const [simulated, setSimulated] = useState(false);
-  const [params, setParams] = useState({ BUKRS: '1100', KALSM: 'ZEXPRC', PDATE: todayYmd() });
+  const [params, setParams] = useState({ BUKRS: '1020', KALSM: 'ZCASCA', PDATE: todayYmd() });
   const [history, setHistory] = useState<Row[] | null>(null);
   const sel = useSelection(rows);
   const run = useBusyAction({ setBusy, showMessage });
