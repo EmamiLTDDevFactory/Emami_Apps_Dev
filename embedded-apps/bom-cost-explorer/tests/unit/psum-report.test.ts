@@ -6,7 +6,7 @@ import type { SoPriceRow } from '@/lib/so/types';
 
 const row = (p: Partial<WacRow> = {}): WacRow => ({
   Rowid: 1, Matnr: '400000001', Maktx: 'FG ONE', Werks: 'UB01', Mtart: 'FERT', Zbrand: 'NAVRATNA', Prodha: 'P1', Zskugrcodecrs: '', Zskugroupcrs: '', Uom: 'PC', Docs: 2, Batches: 1, DupDocs: 0, Qty: '100',
-  ActRm: '10', ActPm: '5', ActPerf: '1', ActMat: '16', ActConv: '4', ActLanded: '99', ActRecon: '79', ActCogm: '20', VarpSel: '', VarpCmap: '', VarpCon: '', VarpAvg: '', FlagSel: '', FlagCmap: '', FlagCon: '', FlagAvg: '', Status: '', Msg: '', ...p,
+  ActRm: '14', ActPm: '5', ActPerf: '1', ActMat: '16', ActConv: '4', ActLanded: '99', ActRecon: '79', ActCogm: '20', VarpSel: '', VarpCmap: '', VarpCon: '', VarpAvg: '', FlagSel: '', FlagCmap: '', FlagCon: '', FlagAvg: '', Status: '', Msg: '', ...p,
 });
 const price = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({ Matnr: '400000001', Maktx: '', Vkorg: 'EM01', Vtweg: '10', Auart: 'ZOD1', AuartTxt: '', Segment: 'DOM', SegTxt: '', Kalsm: '', KalsmTxt: '', Curr: 'INR', Uom: 'PC', Werks: '', Mrp: '60', Sp: '40', NetPrice: '', SpCond: '', Vbeln: '1', Posnr: '10', Kunnr: '', Audat: '2026-10-01', DaysOld: 5, NOrders: 1, NSkip: 0, Src: '', Msg: '', RmCost: '', PmCost: '', PerfCost: '', ConsRm: '', ConsPm: '', ConsPerf: '', PcTotal: '', PcRatio: '', PcDate: null, PcAufnr: '', PcWerks: '', PcCharg: '', PcMsg: '', ...p } as SoPriceRow);
 const comp = (p: Partial<WacCompRow> = {}): WacCompRow => ({ Rowid: 1, Matnr: 'A', Werks: 'UB01', Idnrk: 'R1', CompTxt: '', Mtart: 'ROH', Grp: 'RM', SrcSel: '', Uom: 'KG', QtyPu: '1', RateSel: '', RateCmap: '', RateCon: '', RateAvg: '', CostSel: '', CostCmap: '', CostCon: '', CostAvg: '', VarpCmap: '', VarpCon: '', VarpAvg: '', Flag: '', ...p });

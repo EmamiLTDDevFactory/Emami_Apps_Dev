@@ -79,20 +79,22 @@ export interface ReportRow {
   key: string; fg: WacRow; price: SoPriceRow | null;
   /** price currency equals the cost currency (INR): the ratios are shown only then */
   sameCurrency: boolean;
-  /** SAP's actual COGM per piece (ActCogm); '' while SAP is not updated. ActLanded is NEVER used as COGM. */
+  /** COGM per piece = RM + PM + Perfume (see cogmOf); '' while SAP sent none of them. ActLanded is NEVER used as COGM. */
   cogm: string;
   cogmPending: boolean;
   sim: Decimal | null; variance: Decimal | null;
   rMrp: Decimal | null; rSp: Decimal | null; rSim: Decimal | null;
 }
 
-/** The COGM of a row is ActCogm, and only that. */
-export const cogmOf = (fg: Pick<WacRow, 'ActCogm'>): string => { const d = dec(fg.ActCogm ?? ''); return d && !d.isZero() ? String(fg.ActCogm) : ''; };
-/** SAP sent ActCogm but it is 0: no cost documents for this material in the period (n/a, not a COGM of 0). */
-export const cogmNone = (fg: Pick<WacRow, 'ActCogm'>): boolean => { const d = dec(fg.ActCogm ?? ''); return !!d && d.isZero(); };
+/** The cost parts that make the COGM: RM + PM + Perfume (WIP has no PM). Overheads (conversion) and ActLanded are NOT part of it. */
+const cogmParts = (fg: Pick<WacRow, 'ActRm' | 'ActPm' | 'ActPerf'>): Decimal[] => [fg.ActRm, fg.ActPm, fg.ActPerf].map((v) => dec(v ?? '')).filter((d): d is Decimal => d !== null);
+/** The COGM of a row = RM + PM + Perfume per piece (SAP's ActRm, ActPm, ActPerf), summed here. '' when SAP sent none of the three or the sum is 0. */
+export const cogmOf = (fg: Pick<WacRow, 'ActRm' | 'ActPm' | 'ActPerf'>): string => { const p = cogmParts(fg); const t = p.reduce((a, d) => a.plus(d), new Decimal(0)); return p.length && !t.isZero() ? t.toFixed() : ''; };
+/** SAP sent the cost parts but they add up to 0: no cost documents for this material in the period (n/a, not a COGM of 0). */
+export const cogmNone = (fg: Pick<WacRow, 'ActRm' | 'ActPm' | 'ActPerf'>): boolean => { const p = cogmParts(fg); return p.length > 0 && p.every((d) => d.isZero()); };
 export const COGM_NONE_NOTE = 'SAP returned no cost (0) for this material in the period';
-/** No row of the answer carries ActCogm: SAP has not been updated yet (a note, not an error). */
-export const cogmPending = (rows: Pick<WacRow, 'ActCogm'>[]): boolean => rows.length > 0 && rows.every((r) => dec(r.ActCogm ?? '') === null);
+/** No row of the answer carries RM, PM or Perfume cost: SAP has not been updated yet (a note, not an error). */
+export const cogmPending = (rows: Pick<WacRow, 'ActRm' | 'ActPm' | 'ActPerf'>[]): boolean => rows.length > 0 && rows.every((r) => cogmParts(r).length === 0);
 export const COGM_PENDING_NOTE = 'SAP update pending: COGM not available';
 
 /** Why a ratio is n/a (tooltip): no COGM, no price, or the price is not in the cost currency. */
@@ -115,7 +117,12 @@ export function latestPerArea(prices: SoPriceRow[]): SoPriceRow[] {
   return [...best.values()].sort((a, b) => a.Matnr.localeCompare(b.Matnr) || a.Vkorg.localeCompare(b.Vkorg) || a.Vtweg.localeCompare(b.Vtweg));
 }
 
-export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulation): ReportRow[] {
+/** Key of a finished good's costing result: plant | material. */
+export const rateCogmKey = (werks: string, matnr: string): string => `${werks}|${matnr}`;
+
+/** `rateCogm`, when given, replaces the percentage / amount simulation: the COGM per piece at the chosen BOM-costing rate type, per plant | material
+ * (a material without an entry stays n/a, never 0). */
+export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulation, rateCogm?: ReadonlyMap<string, Decimal> | null): ReportRow[] {
   const areas = new Map<string, SoPriceRow[]>();
   for (const p of latestPerArea(prices)) { const l = areas.get(p.Matnr) ?? []; l.push(p); areas.set(p.Matnr, l); }
   const out: ReportRow[] = [];
@@ -124,7 +131,7 @@ export function buildReport(rows: WacRow[], prices: SoPriceRow[], sim: Simulatio
     const list: (SoPriceRow | null)[] = areas.get(fg.Matnr)?.length ? areas.get(fg.Matnr)! : [null];
     for (const price of list) {
       const same = !!price && price.Curr.trim().toUpperCase() === 'INR';
-      const s = simulatedCogm(cogm, sim);
+      const s = rateCogm ? rateCogm.get(rateCogmKey(fg.Werks, fg.Matnr)) ?? null : simulatedCogm(cogm, sim);
       const c = dec(cogm);
       out.push({
         key: `${fg.Werks}|${fg.Matnr}|${price ? `${price.Vkorg}|${price.Vtweg}` : '-'}`, fg, price, sameCurrency: same, cogm, cogmPending: !c && !cogmNone(fg), sim: s, variance: s && c ? s.minus(c) : null,

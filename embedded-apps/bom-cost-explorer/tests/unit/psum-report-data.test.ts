@@ -7,37 +7,48 @@ const wac = vi.hoisted(() => ({ fetchWac: vi.fn() }));
 vi.mock('@/lib/so/service', () => ({ fetchSo: so.fetchSo, fetchSoMerged: vi.fn() }));
 vi.mock('@/lib/wac/service', async (orig) => ({ ...(await orig<typeof import('@/lib/wac/service')>()), fetchWac: wac.fetchWac }));
 
-import { buildReport, cogmNone, cogmOf, cogmPending, COGM_NONE_NOTE, COGM_PENDING_NOTE, ratioWhy, withoutPrice } from '@/lib/psum/report';
+import Decimal from 'decimal.js';
+import { buildReport, cogmNone, cogmOf, cogmPending, COGM_NONE_NOTE, COGM_PENDING_NOTE, ratioWhy, rateCogmKey, withoutPrice } from '@/lib/psum/report';
 import { PRICE_PARALLEL, fetchReportPrices, priceBatches, priceQuery, REPORT_PRICE_SELECT, type PriceFilters } from '@/lib/psum/reportPrices';
 import { fetchRows, reportSelect, type ReportQuery } from '@/lib/psum/useReport';
 import { buildSoFilter } from '@/lib/so/filter';
 import { EMPTY_LIST } from '@/lib/so/types';
 
-const fg = (p: Partial<WacRow> = {}): WacRow => ({ Rowid: 1, Matnr: 'A', Maktx: '', Werks: 'UB01', Mtart: 'FERT', Zbrand: '', Prodha: '', Zskugrcodecrs: '', Zskugroupcrs: '', Uom: 'PC', Docs: 1, Batches: 1, DupDocs: 0, Qty: '10', ActRm: '1', ActPm: '1', ActPerf: '1', ActMat: '3', ActConv: '2', ActLanded: '99', ActRecon: '94', ActCogm: '5', VarpSel: '', VarpCmap: '', VarpCon: '', VarpAvg: '', FlagSel: '', FlagCmap: '', FlagCon: '', FlagAvg: '', Status: '', Msg: '', ...p });
+const fg = (p: Partial<WacRow> = {}): WacRow => ({ Rowid: 1, Matnr: 'A', Maktx: '', Werks: 'UB01', Mtart: 'FERT', Zbrand: '', Prodha: '', Zskugrcodecrs: '', Zskugroupcrs: '', Uom: 'PC', Docs: 1, Batches: 1, DupDocs: 0, Qty: '10', ActRm: '3', ActPm: '1', ActPerf: '1', ActMat: '3', ActConv: '2', ActLanded: '99', ActRecon: '94', ActCogm: '5', VarpSel: '', VarpCmap: '', VarpCon: '', VarpAvg: '', FlagSel: '', FlagCmap: '', FlagCon: '', FlagAvg: '', Status: '', Msg: '', ...p });
 const pr = (p: Partial<SoPriceRow> = {}): SoPriceRow => ({ Matnr: 'A', Maktx: '', Vkorg: 'EM01', Vtweg: '10', Auart: 'ZOD1', AuartTxt: '', Segment: 'DOM', SegTxt: '', Kalsm: '', KalsmTxt: '', Curr: 'INR', Uom: 'PC', Werks: '', Mrp: '10', Sp: '8', NetPrice: '', SpCond: '', Vbeln: '1', Posnr: '10', Kunnr: '', Audat: '2026-10-01', DaysOld: 3, NOrders: 1, NSkip: 0, Src: '', Msg: '', ...p } as SoPriceRow);
 const F: PriceFilters = { vkorg: ['EM01', 'EM02'], vtweg: ['10'], segment: ['DOM'], auart: { in: ['ZOD1'], ex: [] }, pstyv: EMPTY_LIST, kdgrp: EMPTY_LIST, kunnr: EMPTY_LIST, days: 90 };
 
-describe('COGM is ActCogm and never ActLanded', () => {
-  it('the COGM of a row is ActCogm; the ratios use it', () => {
+describe('COGM is RM + PM + Perfume and never ActCogm / ActLanded', () => {
+  it('the COGM of a row is RM + PM + Perfume; the ratios use it', () => {
     const r = buildReport([fg()], [pr()], { pct: '', abs: '' })[0];
     expect(r.cogm).toBe('5'); expect(r.rSp!.toFixed()).toBe('37.5'); expect(r.rMrp!.toFixed()).toBe('50'); // (8 - 5) / 8, (10 - 5) / 10
   });
-  it('without ActCogm (SAP not updated) COGM is n/a, ratios are n/a, ActLanded is NOT used', () => {
-    const row = fg({ ActCogm: undefined });
+  it('is the sum even when ActCogm is blank or different (and Overheads are not part of it)', () => {
+    expect(cogmOf(fg({ ActCogm: undefined, ActConv: '2' }))).toBe('5');
+    expect(cogmOf(fg({ ActCogm: '99' }))).toBe('5');
+    expect(cogmOf(fg({ ActRm: '2.5', ActPm: '', ActPerf: '0.25' }))).toBe('2.75'); // a missing part counts as nothing
+  });
+  it('none of the three parts sent (SAP not updated): COGM is n/a, ratios are n/a, ActLanded is NOT used', () => {
+    const row = fg({ ActRm: '', ActPm: '', ActPerf: '' });
     expect(cogmOf(row)).toBe('');
     const r = buildReport([row], [pr()], { pct: '10', abs: '' })[0];
     expect(r.cogm).toBe(''); expect(r.cogmPending).toBe(true); expect(r.rSp).toBeNull(); expect(r.rMrp).toBeNull(); expect(r.sim).toBeNull();
-    expect(ratioWhy(r)).toBe(COGM_PENDING_NOTE);
+    expect(cogmNone(row)).toBe(false);
     expect(cogmPending([row])).toBe(true); expect(cogmPending([fg()])).toBe(false); expect(cogmPending([])).toBe(false);
   });
-  it('ActCogm sent as 0 (no cost documents): n/a with its own note, not "SAP update pending"', () => {
-    const row = fg({ ActCogm: '0.000000' });
+  it('the parts sent as 0 (no cost documents): n/a with its own note, not "SAP update pending"', () => {
+    const row = fg({ ActRm: '0.000000', ActPm: '0', ActPerf: '0' });
     expect(cogmOf(row)).toBe(''); expect(cogmNone(row)).toBe(true); expect(cogmPending([row])).toBe(false);
     const r = buildReport([row], [pr()], { pct: '', abs: '' })[0];
     expect(r.cogmPending).toBe(false); expect(r.rSp).toBeNull(); expect(ratioWhy(r)).toBe(COGM_NONE_NOTE);
   });
-  it('an empty ActCogm string is also pending (never 0)', () => expect(cogmOf(fg({ ActCogm: '' }))).toBe(''));
-  it('the simulation is applied to ActCogm', () => {
+  it('a COGM at a BOM-costing rate type replaces the percentage simulation', () => {
+    const map = new Map([[rateCogmKey('UB01', 'A'), new Decimal('4')]]);
+    const r = buildReport([fg()], [pr()], { pct: '50', abs: '' }, map)[0];
+    expect(r.sim!.toFixed()).toBe('4'); expect(r.variance!.toFixed()).toBe('-1'); expect(r.rSim!.toFixed()).toBe('50'); // (8 - 4) / 8
+    expect(buildReport([fg({ Matnr: 'B' })], [pr({ Matnr: 'B' })], { pct: '', abs: '' }, map)[0].sim).toBeNull(); // not costed: n/a, never 0
+  });
+  it('the simulation is applied to the COGM', () => {
     const r = buildReport([fg()], [pr()], { pct: '10', abs: '' })[0];
     expect(r.sim!.toFixed()).toBe('5.5'); expect(r.variance!.toFixed()).toBe('0.5');
   });

@@ -1,10 +1,10 @@
 'use client';
 /**
  * Cost and margin report (Admin of this app only): Brand / Product / SKU (or WIP) and look-back days, then per finished good (or WIP) and sales area the
- * plant's actual cost per piece (RM, PM, Perfume, Overheads, COGM), the latest MRP and selling price, a simulated COGM and the margins. The variance
+ * plant's actual cost per piece (RM, PM, Perfume, Overheads, COGM), the latest MRP and selling price, the COGM at a BOM-costing rate type and the margins. The variance
  * cell opens the reasons (components that pushed the cost up or down). Read-only; nothing loads until Run; no request has a time limit (Stop ends a run).
  */
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FileSpreadsheet, Lock, Play, RefreshCw, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
 import ReasonsModal from './ReasonsModal';
@@ -29,8 +29,10 @@ import { EMPTY_LIST } from '@/lib/so/types';
 import type { SalesFiltersValue } from '@/lib/so/presets';
 import type { SoAreaRow, SoCondRow, SoFilterRow } from '@/lib/so/types';
 import { NEED_ORG, type PriceFilters } from '@/lib/psum/reportPrices';
-import { COGM_NONE_NOTE, COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, marginText, ratioWhy, simulationOn, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
+import { COGM_NONE_NOTE, COGM_PENDING_NOTE, ageTone, buildReport, cogmPending, filterReportRows, lookbackRange, optionsOf, marginText, ratioWhy, withoutPrice, type ReportKind, type ReportRow } from '@/lib/psum/report';
 import { downloadReport, reportSheet } from '@/lib/psum/reportExport';
+import { COGM_RATE_LABEL, COGM_RATE_TYPES, cogmAtType, costAtRateTypes, pricedNote, type RateCogmResult } from '@/lib/psum/rateCogm';
+import type { RateType } from '@/lib/cost/rateSummary';
 import { useReport } from '@/lib/psum/useReport';
 
 const th = 'px-2 py-1.5 text-left text-2xs font-bold uppercase tracking-wide text-muted align-bottom';
@@ -53,7 +55,7 @@ function Screen() {
 
   const [form, setForm] = useState(() => {
     const url = typeof window === 'undefined' ? {} : parseWacUrl(window.location.search);
-    return { plants: url.plants ?? [], days: 30, kind: 'fg' as ReportKind, brand: '', prodha: '', matnr: '', search: '', pct: '', abs: '', showGr: false,
+    return { plants: url.plants ?? [], days: 30, kind: 'fg' as ReportKind, brand: '', prodha: '', matnr: '', search: '', rateType: 'SELECTED' as RateType, showGr: false,
       vkorg: [] as string[], vtweg: [] as string[], segment: '', priceDays: 90, auart: EMPTY_LIST, pstyv: EMPTY_LIST, kdgrp: EMPTY_LIST, kunnr: EMPTY_LIST };
   });
   const patch = (p: Partial<typeof form>) => setForm((f) => ({ ...f, ...p }));
@@ -67,6 +69,12 @@ function Screen() {
   const plantsState: PlantsState = useMemo(() => ({ plants, loading: pl, error: plErr, reload: loadPlants }), [plants, pl, plErr, loadPlants]);
 
   const rep = useReport();
+
+  // COGM at a BOM-costing rate type: SAP costs the SKUs shown (on the person's button), every rate type comes back at once, the dropdown only picks one.
+  const [costing, setCosting] = useState<{ status: 'idle' | 'running' | 'done' | 'error'; done: number; total: number; res: RateCogmResult | null; error: string }>({ status: 'idle', done: 0, total: 0, res: null, error: '' });
+  const costCtl = useRef<AbortController | null>(null);
+  useEffect(() => { costCtl.current?.abort(); setCosting({ status: 'idle', done: 0, total: 0, res: null, error: '' }); }, [rep.rows]);
+  useEffect(() => () => costCtl.current?.abort(), []);
 
   // Sales areas the person may see (SoAreaVHSet WITHOUT MatnrIn, only areas with orders in the price look-back), loaded on their button; segment texts and
   // "never counted" document types from the rules; the document-type lists from the SKUs of the result (after Run).
@@ -120,9 +128,21 @@ function Screen() {
   const range = rep.q ? lookbackRange(rep.q.days) : null;
   const opts = useMemo(() => (rep.rows ? optionsOf(rep.rows, ranKind, form) : { brands: [], products: [], skus: [] }), [rep.rows, ranKind, form.brand, form.prodha]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = useMemo(() => (rep.rows ? filterReportRows(rep.rows, { kind: ranKind, brand: form.brand, prodha: form.prodha, matnr: form.matnr, search: form.search }) : []), [rep.rows, ranKind, form.brand, form.prodha, form.matnr, form.search]);
-  const sim = useMemo(() => ({ pct: form.pct, abs: form.abs }), [form.pct, form.abs]);
-  const table = useMemo(() => buildReport(shown, rep.prices ?? [], sim), [shown, rep.prices, sim]);
-  const simOn = simulationOn(sim);
+  const rateCogm = useMemo(() => cogmAtType(costing.res, form.rateType), [costing.res, form.rateType]);
+  const table = useMemo(() => buildReport(shown, rep.prices ?? [], { pct: '', abs: '' }, rateCogm), [shown, rep.prices, rateCogm]);
+  const simOn = !!rateCogm;
+  const rateLabel = COGM_RATE_LABEL(form.rateType);
+  const runCosting = () => {
+    costCtl.current?.abort();
+    const c = new AbortController();
+    costCtl.current = c;
+    const targets = shown.map((r) => ({ werks: r.Werks, matnr: r.Matnr }));
+    setCosting({ status: 'running', done: 0, total: targets.length, res: null, error: '' });
+    costAtRateTypes(targets, { signal: c.signal, onProgress: (done, total) => setCosting((s) => (s.status === 'running' ? { ...s, done, total } : s)) })
+      .then((res) => { if (!c.signal.aborted) setCosting({ status: 'done', done: targets.length, total: targets.length, res, error: '' }); })
+      .catch((e) => { if (!c.signal.aborted && (e as Error)?.name !== 'AbortError') setCosting({ status: 'error', done: 0, total: 0, res: null, error: (e as Error)?.message || 'SAP could not cost these materials.' }); });
+  };
+  const stopCosting = () => { costCtl.current?.abort(); setCosting({ status: 'idle', done: 0, total: 0, res: null, error: '' }); };
   const wip = ranKind === 'wip';
   const allMessages = [...(rep.rowsEntry?.messages ?? []), ...(rep.priceEntry?.messages ?? [])];
   const priceErrors = Array.from(new Set((rep.priceEntry?.messages ?? []).filter((m) => m.severity === 'error').map((m) => m.message)));
@@ -137,12 +157,12 @@ function Screen() {
 
   const doExport = async () => {
     if (!rep.q || !range) return;
-    await downloadReport(reportSheet(table, ranKind, simOn), [
+    await downloadReport(reportSheet(table, ranKind, simOn, rateLabel), [
       ['Report', wip ? 'Cost and margin report, WIP (RM and Perfume only)' : 'Cost and margin report'], ['SAP system', system], ['Plants', rep.q.plants.join(', ')], ['Cost look-back', `${rep.q.days} days (${range.from} to ${range.to})`], ['Price look-back', rep.q.price ? `${rep.q.price.days} days, sales organisation(s) ${rep.q.price.vkorg.join(', ')}` : 'no sales organisation chosen: no prices'],
       ['Brand / Product / SKU', [form.brand, form.prodha, form.matnr].filter(Boolean).join(' / ') || 'all'],
-      ['Cost', "SAP's actual COGM per piece (ActCogm = material + conversion) of the cost look-back period; Overheads = conversion; ActLanded is a valuation reference, not the COGM"], ['Prices', "SAP's latest sales order with a selling price within the price look-back days, per sales organisation and channel"],
-      ['Computed here', 'Simulated COGM (COGM x (1 + %) + amount), the variance against COGM and the ratios (price divided by COGM, only when the price is in INR)'],
-      ['Simulation', simOn ? `${form.pct || 0} % and ${form.abs || 0} INR` : 'none'],
+      ['Cost', "COGM per piece = RM + PM + Perfume of SAP's actual cost of the cost look-back period (summed here); Overheads = conversion, shown but not part of the COGM; ActLanded is a valuation reference, not the COGM"], ['Prices', "SAP's latest sales order with a selling price within the price look-back days, per sales organisation and channel"],
+      ['Computed here', 'COGM (RM + PM + Perfume), the variance of the rate-type COGM against it and the margins (price against COGM, only when the price is in INR)'],
+      ['COGM at rate type', simOn ? `${rateLabel}: material cost per piece from BOM costing (same figures as BOM costing > Rate summary)` : 'not costed'],
     ]);
   };
 
@@ -168,7 +188,7 @@ function Screen() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h1 className="text-lg font-extrabold">Cost and margin report</h1>
-          <p className="text-xs text-muted">Actual cost per piece (RM, PM, Perfume, Overheads, COGM) against the latest MRP and selling price, with a simulated COGM and the margins. Click a variance for the reasons.</p>
+          <p className="text-xs text-muted">Actual cost per piece (RM, PM, Perfume, Overheads, COGM) against the latest MRP and selling price, with the COGM at a BOM-costing rate type and the margins. Click a variance for the reasons.</p>
         </div>
         <div className="num text-right text-2xs text-muted">SAP system <span className="font-mono font-bold text-ink">{system || '—'}</span></div>
       </div>
@@ -206,6 +226,9 @@ function Screen() {
       {needOrg && rep.q && <p className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">{NEED_ORG}. The cost columns are shown without prices.</p>}
       {pending && <p className="rounded-xl border border-line bg-sunken px-3 py-2 text-sm text-muted">{COGM_PENDING_NOTE}. COGM and the ratios show n/a until SAP is updated.</p>}
       {severalCost && <p className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">Some goods-receipt documents carry several production-order cost rows (status D); their cost may be counted more than once until SAP is updated.</p>}
+      {costing.status === 'error' && <p role="alert" className="rounded-xl border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">{costing.error}</p>}
+      {costing.status === 'running' && <p className="flex items-center gap-2 text-sm text-muted"><Spinner className="h-4 w-4" /> SAP is costing the BOMs ({costing.done} of {costing.total} SKUs)… this can take a while (no time limit).</p>}
+      {costing.res?.notes.map((n) => <p key={n} className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">{n}</p>)}
       {noOrders && <p className="rounded-xl border border-line bg-sunken px-3 py-2 text-sm text-muted">No sales order with a selling price in the last {rep.q?.price?.days} days for the selected sales area.</p>}
       {messages.length > 0 && <ul className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">{messages.map((m) => <li key={m}>{m}</li>)}</ul>}
 
@@ -216,8 +239,10 @@ function Screen() {
             <Field label="Select Product">{(id) => sel(id, form.prodha, (v) => patch({ prodha: v, matnr: '' }), opts.products, 'All products')}</Field>
             <Field label={wip ? 'Select WIP' : 'Select SKU'}>{(id) => sel(id, form.matnr, (v) => patch({ matnr: v }), opts.skus, wip ? 'All WIP codes' : 'All SKUs')}</Field>
             <Field label="Search">{(id) => <input id={id} className={cx(inputCls, 'w-48')} placeholder="code, description…" value={form.search} onChange={(e) => patch({ search: e.target.value })} />}</Field>
-            <Field label="Simulate COGM: change %" hint="Computed here.">{(id) => <input id={id} inputMode="decimal" className={cx(inputCls, 'w-24')} placeholder="e.g. 5" value={form.pct} onChange={(e) => patch({ pct: e.target.value.replace(',', '.') })} />}</Field>
-            <Field label="and amount / pc (INR)">{(id) => <input id={id} inputMode="decimal" className={cx(inputCls, 'w-24')} placeholder="e.g. -0.5" value={form.abs} onChange={(e) => patch({ abs: e.target.value.replace(',', '.') })} />}</Field>
+            <Field label="COGM at rate type" hint="Runs BOM costing for the SKUs shown.">{(id) => <select id={id} className={cx(inputCls, 'w-44')} value={form.rateType} onChange={(e) => patch({ rateType: e.target.value as RateType })}>{COGM_RATE_TYPES.map((t) => <option key={t} value={t}>{COGM_RATE_LABEL(t)}</option>)}</select>}</Field>
+            {costing.status === 'running'
+              ? <Button size="sm" variant="ghost" onClick={stopCosting}><Square size={14} /> Stop costing ({costing.done}/{costing.total})</Button>
+              : <Button size="sm" onClick={runCosting} disabled={!shown.length}><Play size={14} /> {costing.status === 'done' ? 'Cost again' : 'Cost at rate type'}</Button>}
             <label className="flex items-center gap-2 pb-1 text-sm"><input type="checkbox" checked={form.showGr} onChange={(e) => patch({ showGr: e.target.checked })} /> Show "valued at goods receipt"</label>
             <Button size="sm" onClick={() => void doExport()} disabled={!table.length}><FileSpreadsheet size={14} /> Excel</Button>
           </div>
@@ -237,9 +262,9 @@ function Screen() {
                   <thead className="bg-sunken">
                     <tr>
                       <th className={th}>Material code</th><th className={th}>Description</th><th className={th}>Plant</th><th className={thN}>Qty</th>
-                      <th className={thN}>RM</th>{!wip && <th className={thN}>PM</th>}<th className={thN}>Perfume</th><th className={thN}>Overheads</th><th className={thN} title="SAP's actual COGM per piece (RM + PM + Perfume + conversion)">COGM<br />per pc</th>{form.showGr && <th className={thN} title="Valuation at goods receipt, a reference; not the COGM">Valued at goods<br />receipt per pc</th>}
-                      <th className={thN}>Last MRP<br />per pc</th><th className={thN}>Last selling price<br />per pc</th><th className={th}>Order date</th><th className={thN}>Simulated COGM<br />per pc</th><th className={thN} title="Click for the reasons">Variance</th>
-                      <th className={th}>Sale org</th><th className={th}>Channel / doc type</th><th className={thN} title="(MRP - COGM) / MRP: the amount remaining after manufacturing cost as % of the MRP. Computed here.">Margin %<br />on MRP</th><th className={thN} title="(Selling price - COGM) / selling price. Computed here.">Margin %<br />on selling price</th><th className={thN} title="(Selling price - simulated COGM) / selling price. Computed here.">Margin % at<br />simulated COGM</th>
+                      <th className={thN}>RM</th>{!wip && <th className={thN}>PM</th>}<th className={thN}>Perfume</th><th className={thN}>Overheads</th><th className={thN} title="RM + PM + Perfume per piece (SAP's actual cost of the period), summed here. Overheads are not part of it.">COGM<br />per pc</th>{form.showGr && <th className={thN} title="Valuation at goods receipt, a reference; not the COGM">Valued at goods<br />receipt per pc</th>}
+                      <th className={thN}>Last MRP<br />per pc</th><th className={thN}>Last selling price<br />per pc</th><th className={th}>Order date</th><th className={thN} title={`Material cost per piece from BOM costing at the ${rateLabel} rate (same figures as BOM costing > Rate summary). Press "Cost at rate type" to fill it.`}>COGM at<br />{rateLabel}</th><th className={thN} title="Click for the reasons">Variance</th>
+                      <th className={th}>Sale org</th><th className={th}>Channel / doc type</th><th className={thN} title="(MRP - COGM) / MRP: the amount remaining after manufacturing cost as % of the MRP. Computed here.">Margin %<br />on MRP</th><th className={thN} title="(Selling price - COGM) / selling price. Computed here.">Margin %<br />on selling price</th><th className={thN} title={`(Selling price - COGM at ${rateLabel}) / selling price. Computed here.`}>Margin % at<br />{rateLabel}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -253,7 +278,7 @@ function Screen() {
                         <td className={tdN}>{r.price && dec(r.price.Mrp) && !dec(r.price.Mrp)!.isZero() ? <>{fmtNum(r.price.Mrp, 2, r.price.Curr)} <span className="text-2xs text-muted">{r.price.Curr}</span></> : NA}</td>
                         <td className={tdN} title={r.price ? `Order ${r.price.Vbeln} / ${r.price.Posnr}, ${r.price.Audat ?? ''}` : 'No sales order with a selling price in the look-back days'}>{r.price ? <>{fmtNum(r.price.Sp, 2, r.price.Curr)} <span className="text-2xs text-muted">{r.price.Curr}</span></> : NA}</td>
                         <td className={td}>{r.price?.Audat ? <span title={`Order ${r.price.Vbeln}`}>{r.price.Audat} <span className={cx('ml-1 rounded px-1 text-2xs font-bold', ageTone(r.price.DaysOld, SO_STALE_DAYS) === 'stale' ? 'bg-warn/15 text-warn' : 'bg-sunken text-muted')}>{r.price.DaysOld} d{ageTone(r.price.DaysOld, SO_STALE_DAYS) === 'stale' ? ' · old' : ''}</span></span> : NA}</td>
-                        <td className={tdN}>{r.sim ? fmtNum(r.sim, 4, 'INR') : <span className="text-faint" title="Enter a % or an amount above">—</span>}</td>
+                        <td className={tdN} title={r.sim ? pricedNote(costing.res, r.fg.Werks, r.fg.Matnr, form.rateType) : costing.res ? 'No component has a rate of this type' : 'Press "Cost at rate type"'}>{r.sim ? fmtNum(r.sim, 4, 'INR') : <span className="text-faint">{costing.res ? 'n/a' : '—'}</span>}</td>
                         <td className={tdN}>
                           <button type="button" onClick={() => setOpen(r)} className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-accent hover:bg-sunken" aria-label={`Reasons of the variance of ${r.fg.Matnr}`}>
                             {r.variance ? <>{r.variance.gt(0) ? '▲ ' : r.variance.lt(0) ? '▼ ' : ''}{r.variance.gt(0) ? '+' : ''}{fmtNum(r.variance, 4, 'INR')}</> : 'Reasons ▸'}
@@ -268,7 +293,7 @@ function Screen() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-muted">Cost per piece is SAP&apos;s actual cost of the look-back period (goods receipts; Overheads = conversion). MRP and selling price are the latest sales order within the price look-back days, per sales organisation and channel; the cost is SAP's actual COGM (ActCogm), not the goods-receipt valuation. Simulated COGM, the variance and the margins are computed here. Margin % = (price - COGM) / price, the amount remaining after manufacturing cost as a share of the price; shown only when the price is in INR like the cost.{wip ? ' WIP: RM and Perfume only; WIP codes normally have no sales price.' : ''}</p>
+              <p className="text-xs text-muted">Cost per piece is SAP&apos;s actual cost of the look-back period (goods receipts; Overheads = conversion). MRP and selling price are the latest sales order within the price look-back days, per sales organisation and channel; the COGM is RM + PM + Perfume of SAP's actual cost per piece (summed here; Overheads are shown but not part of it), not the goods-receipt valuation. COGM at a rate type is the material cost per piece from BOM costing at that rate (the figures of BOM costing &gt; Rate summary; a figure is flagged in its tooltip when some components have no rate of that type); the variance and the margins are computed here. Margin % = (price - COGM) / price, the amount remaining after manufacturing cost as a share of the price; shown only when the price is in INR like the cost.{wip ? ' WIP: RM and Perfume only; WIP codes normally have no sales price.' : ''}</p>
             </>
           )}
         </>
