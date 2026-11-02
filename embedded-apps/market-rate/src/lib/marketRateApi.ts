@@ -148,6 +148,16 @@ function parseODataDate(value: unknown): string {
   return value.split('T')[0];
 }
 
+/** SAP's Zmonth is a FISCAL month (1 = April ... 9 = December, 10 = January ... 12 = March), unpadded
+ * ("7"). The UI's month filters/columns key on calendar '01'..'12', so convert here. Confirmed from
+ * live rows: Zmonth 6 with Zdate 2026-09-25, Zmonth 7 with Zdate 2026-10. Zyear stays the fiscal
+ * year (Jan-Mar of the next calendar year still belong to it). */
+function normalizeMonth(value: unknown): string {
+  const m = Number(String(value ?? '').trim());
+  if (!Number.isInteger(m) || m < 1 || m > 12) return '';
+  return String(((m + 2) % 12) + 1).padStart(2, '0');
+}
+
 export async function fetchMarketRates(year: string, opts: { email?: string } = {}): Promise<MarketRateRow[]> {
   const filterParts = [`Zyear eq '${year}'`];
   if (opts.email) filterParts.push(`Email eq '${opts.email}'`);
@@ -259,7 +269,7 @@ export async function fetchSubmissionRecords(year: string, email: string): Promi
     materialCode: li.Matnr || '',
     materialDesc: li.Maktx || '',
     zyear: li.Zyear || '',
-    zmonth: li.Zmonth || '',
+    zmonth: normalizeMonth(li.Zmonth),
     rate: li.Zrate != null ? String(li.Zrate) : '',
     ratePer: li.ZratePer || '',
     submitted: li.SubDone === 'X',
@@ -301,7 +311,7 @@ export async function fetchRateEntryRecords(year: string, email: string): Promis
     materialDesc: li.Maktx || '',
     materialType: li.Mtart || '',
     zyear: li.Zyear || '',
-    zmonth: li.Zmonth || '',
+    zmonth: normalizeMonth(li.Zmonth),
     rate: li.Zrate != null ? String(li.Zrate) : '',
     ratePer: li.ZratePer || '',
     marketName: li.ZmarketName || '',
