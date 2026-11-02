@@ -173,10 +173,6 @@ function DashboardContent() {
           <button type="button" className="back-to-hub back-in-app" onClick={back}>
             <ArrowLeft size={14} /> Back
           </button>
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/" className="back-to-hub">
-            <ArrowLeft size={14} /> Back to Emami Apps
-          </a>
         </div>
         <Topbar onRefresh={() => load(orgFilter)} onExport={doExport} onMenu={() => setNavOpen(true)} busy={busy} isWideScreen={isWideScreen} stamp={stamp} />
         <div className="content">

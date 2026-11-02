@@ -49,8 +49,10 @@ export default function Sidebar({ isOpen, onClose, isWideScreen, live }: Props) 
             <X size={18} />
           </button>
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" className="sidebar-logo" />
+        <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" className="sidebar-logo" />
+        </a>
       </div>
       <nav>
         {NAV.map((n) => (

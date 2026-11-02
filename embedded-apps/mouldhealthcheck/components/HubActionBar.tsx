@@ -46,9 +46,6 @@ export default function HubActionBar({ onTabs }: { onTabs: boolean }) {
     setHubEmail(getHubEmail());
   }, []);
 
-  const goHome = () => {
-    if (typeof window !== "undefined") window.location.href = "/";
-  };
 
   const doLogout = () => {
     const confirmed = typeof window === "undefined" || window.confirm("Log out of Emami Apps entirely?");
@@ -65,10 +62,6 @@ export default function HubActionBar({ onTabs }: { onTabs: boolean }) {
         <Pressable style={styles.backToHubBar} onPress={goBack} accessibilityRole="button" accessibilityLabel="Back">
           <Ionicons name="arrow-back" size={14} color={HUB.white} />
           <Text style={styles.backToHubText}>Back</Text>
-        </Pressable>
-        <Pressable style={styles.backToHubBar} onPress={goHome} accessibilityRole="button" accessibilityLabel="Back to Emami Apps">
-          <Ionicons name="arrow-back" size={14} color={HUB.white} />
-          <Text style={styles.backToHubText}>Back to Emami Apps</Text>
         </Pressable>
       </View>
 

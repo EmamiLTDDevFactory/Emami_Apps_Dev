@@ -116,10 +116,6 @@ function DashboardContent() {
           <button type="button" className="back-to-hub back-in-app" onClick={back}>
             <ArrowLeft size={14} /> Back
           </button>
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/" className="back-to-hub">
-            <ArrowLeft size={14} /> Back to Emami Apps
-          </a>
         </div>
         <TopBar
           freshMinutes={freshMinutes}

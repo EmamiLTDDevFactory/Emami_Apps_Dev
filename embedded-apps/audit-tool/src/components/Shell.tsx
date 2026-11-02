@@ -88,17 +88,21 @@ function SideNav({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
               </button>
             </div>
           )}
-          <Link
-            href="/"
-            onClick={() => !isWideScreen && onClose()}
-            className={`flex flex-col items-center justify-center gap-1 px-4 ${isWideScreen ? 'pt-4' : 'pt-1'} pb-4`}
-            aria-label="Go to Audit Tool home"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={72} height={60} />
-            <span className="text-center text-[12.5px] font-bold leading-tight tracking-tight text-ink">Audit Tool</span>
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-inkSoft">MSD · Internal Audit</span>
-          </Link>
+          <div className={`flex flex-col items-center justify-center gap-1 px-4 ${isWideScreen ? 'pt-4' : 'pt-1'} pb-4`}>
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={72} height={60} />
+            </a>
+            <Link
+              href="/"
+              onClick={() => !isWideScreen && onClose()}
+              className="flex flex-col items-center gap-1"
+              aria-label="Go to Audit Tool home"
+            >
+              <span className="text-center text-[12.5px] font-bold leading-tight tracking-tight text-ink">Audit Tool</span>
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-inkSoft">MSD · Internal Audit</span>
+            </Link>
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2.5">
@@ -160,10 +164,6 @@ function SideNav({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
             <ArrowLeft size={13} />
             Back
           </button>
-          <a href="/" className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
-            <ArrowLeft size={13} />
-            Back to Emami Apps
-          </a>
         </div>
       </aside>
     </>

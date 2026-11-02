@@ -61,15 +61,15 @@ function NavPane({ isOpen, onClose, isWideScreen }: { isOpen: boolean; onClose: 
           {/* Same "Emami Apps" wordmark, sized to fill the sidebar width with no app name beside
               it, as the hub's own sidebar (see src/navigation/CustomDrawerContent.tsx's EmpAppMark
               usage) — one consistent brand mark across the hub and every embedded app. */}
-          <Link
+          <a
             href="/"
-            onClick={() => { if (!isWideScreen) onClose(); }}
+            title="Back to Emami Apps"
             className={`flex items-center justify-center px-4 ${isWideScreen ? 'pt-5' : 'pt-1'} pb-5`}
-            aria-label="Go to PO Approval home"
+            aria-label="Back to Emami Apps"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
-          </Link>
+          </a>
         </div>
         <nav className="p-3 flex flex-col gap-1">
           {NAV_ITEMS.map((item) => {
@@ -140,13 +140,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <ArrowLeft size={14} />
               Back
             </button>
-            <a
-              href="/"
-              className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plumDeep"
-            >
-              <ArrowLeft size={14} />
-              Back to Emami Apps
-            </a>
           </div>
 
           <header className="flex items-center gap-2.5 border-b border-border bg-white px-4 py-2.5">

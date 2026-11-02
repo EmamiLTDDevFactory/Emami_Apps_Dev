@@ -33,8 +33,10 @@ export default function Login() {
 
       <div className="glass-panel relative w-full max-w-sm p-8">
         <div className="mb-6 flex flex-col items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Group" className="h-32 w-32 object-contain" />
+          <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Group" className="h-32 w-32 object-contain" />
+          </a>
           <span className="text-lg font-bold tracking-tight text-ink">TimeSheet</span>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -203,14 +203,6 @@ export default function Layout() {
             <ArrowBackIosNewIcon sx={{ fontSize: 12 }} />
             Back
           </ButtonBase>
-          <ButtonBase
-            type="button"
-            onClick={() => { window.location.href = EMAMI_APPS_URL; }}
-            sx={backBarButtonSx}
-          >
-            <ArrowBackIosNewIcon sx={{ fontSize: 12 }} />
-            Back to Emami Apps
-          </ButtonBase>
         </Box>
         <Navbar />
 

@@ -321,11 +321,12 @@ export default function Explorer() {
   if (!cfg.ok || !session) {
     return (
       <div className="flex min-h-screen flex-col bg-bg">
-        <a href="/" className="bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep">← Back to Emami Apps</a>
         <div className="grid flex-1 place-items-center p-4">
           <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="mx-auto block w-fit">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
+            </a>
             <AlertTriangle size={26} className="mx-auto mt-4 text-warn" />
             <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "BOM Simulator can't start" : 'Please open this app from Emami Apps'}</h1>
             <p className="mt-1 text-sm text-muted">{!cfg.ok ? cfg.error : 'Sign in to the Emami Apps hub first; your session comes from there.'}</p>

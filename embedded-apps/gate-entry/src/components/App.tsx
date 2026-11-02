@@ -58,11 +58,12 @@ export default function App() {
   if (state === 'nohub') {
     return (
       <div className="flex min-h-screen flex-col bg-bg">
-        <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white"><ArrowLeft size={14} /> Back to Emami Apps</a>
         <div className="grid flex-1 place-items-center p-4">
           <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="mx-auto block w-fit">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={140} height={116} className="mx-auto" />
+            </a>
             <h1 className="mt-4 text-lg font-extrabold">Sign in to Emami Apps first</h1>
             <p className="mt-1 text-sm text-muted">Open Gate Entry from the Emami Apps hub - your sign-in comes from there.</p>
             <a href="/" className="mt-5 inline-flex rounded-xl bg-gradient-to-br from-accent to-accent-deep px-5 py-2 text-sm font-bold text-white">Go to Emami Apps</a>
@@ -78,8 +79,10 @@ export default function App() {
       <aside className={cx('z-40 flex w-64 shrink-0 flex-col border-r border-line bg-panel transition-transform', 'fixed inset-y-0 left-0 lg:static', menu ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')}>
         <div className="flex items-center justify-center border-b border-line px-4 pb-5 pt-5">
           <button type="button" className="absolute right-3 top-3 p-1 text-muted lg:hidden" onClick={() => setMenu(false)} aria-label="Close menu"><X size={18} /></button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
+          <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
+          </a>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label="Sections">
           {NAV.map((n) => (
@@ -103,7 +106,6 @@ export default function App() {
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <div className="flex bg-plum">
           <button type="button" onClick={back} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back</button>
-          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Emami Apps</a>
         </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5">
           <button type="button" className="p-1 lg:hidden" onClick={() => setMenu(true)} aria-label="Open menu"><Menu size={22} /></button>

@@ -822,14 +822,13 @@
 <div class="app-shell">
   <aside class="sidebar" id="sidebar" aria-label="Salescode navigation">
     <button type="button" class="sidebar-close-btn" id="closeBtn" aria-label="Close navigation menu"><span data-icon="x" data-size="18"></span></button>
-    <button type="button" class="sidebar-brand" data-nav="home" title="Emami Apps — Salescode">
+    <a class="sidebar-brand" href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
       <img class="sidebar-logo" src="assets/emami-apps-logo.png" alt="Emami Apps">
-    </button>
+    </a>
     <div class="sidebar-app-name">Salescode Data Centre</div>
     <nav class="sidebar-nav" id="nav"></nav>
     <div class="sidebar-footer">
       <button type="button" class="sidebar-hub-link" id="backPrev"><span data-icon="chevronLeft" data-size="15"></span><span>Back</span></button>
-      <button type="button" class="sidebar-hub-link" id="backToHub"><span data-icon="chevronLeft" data-size="15"></span><span>Back to Emami Apps</span></button>
       <div class="sidebar-copyright">© 2026 Emami Limited</div>
     </div>
   </aside>
@@ -2210,7 +2209,6 @@
   $('bellBtn').addEventListener('click', () => toast('No new notifications.'));
   $('userBtn').addEventListener('click', () => setUserMenu($('userMenu').hidden));
   $('signOut').addEventListener('click', signOut);
-  $('backToHub').addEventListener('click', () => { window.location.href = '/'; });
   // "Back": the previous page in this tab's history, or the Emami Apps hub when there is none.
   $('backPrev').addEventListener('click', () => {
     if (window.history.length > 1) window.history.back();

@@ -30,6 +30,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 
 import emamiAppsLogo from "../../assets/emami-apps-logo.png";
 import { EMAMI_APPS_URL } from "./emamiAppsUrl";
+import { EMAMI_APPS_URL } from "./emamiAppsUrl";
 import { isDepotSideUser } from "../../utils/roles";
 
 export default function Sidebar() {
@@ -234,10 +235,16 @@ export default function Sidebar() {
                     component="img"
                     src={emamiAppsLogo}
                     alt="Emami Apps"
+                    title="Back to Emami Apps"
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => { window.location.href = EMAMI_APPS_URL; }}
+                    onKeyDown={(e) => { if (e.key === "Enter") window.location.href = EMAMI_APPS_URL; }}
                     sx={{
                         width: collapsed ? 40 : 110,
                         height: collapsed ? 40 : 110,
                         objectFit: "contain",
+                        cursor: "pointer",
                         transition: "all 0.3s ease",
                     }}
                 />

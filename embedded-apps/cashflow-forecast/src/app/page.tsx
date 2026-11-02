@@ -308,10 +308,6 @@ function DashboardContent() {
           <button type="button" onClick={goBack} className="back-to-hub back-prev">
             <ArrowLeft size={14} /> Back
           </button>
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/" className="back-to-hub">
-            <ArrowLeft size={14} /> Back to Emami Apps
-          </a>
         </div>
         <Topbar
           onRefresh={() => load(filters)}

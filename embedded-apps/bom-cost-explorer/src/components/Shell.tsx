@@ -46,8 +46,6 @@ export function nameFromEmail(email: string): string {
   return local.split(/[._-]+/).filter(Boolean).map((p) => p[0].toUpperCase() + p.slice(1)).join(' ') || email;
 }
 
-/** Hub home: the embedded app lives at /apps/bom-cost-explorer on the hub's own origin. */
-const HUB_HOME = '/';
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
 export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data';
@@ -67,8 +65,10 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
             </div>
           )}
           <div className={cx('flex items-center justify-center px-4 pb-5', wide ? 'pt-5' : 'pt-1')}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
+            </a>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
@@ -188,9 +188,6 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
           <button type="button" onClick={onBack ?? leaveApp} className="flex items-center gap-1.5 border-r border-white/20 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep no-print">
             <ArrowLeft size={14} /> Back
           </button>
-          <a href={HUB_HOME} className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep no-print">
-            <ArrowLeft size={14} /> Back to Emami Apps
-          </a>
         </div>
         <header className="flex items-center gap-2.5 border-b border-line bg-panel px-4 py-2.5 no-print">
           {!wide && (

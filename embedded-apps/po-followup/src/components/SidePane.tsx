@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii } from '../theme/tokens';
+import { useUnsavedChanges } from '../context/UnsavedChangesContext';
 
 export interface SidePaneItem {
   href: string;
@@ -25,6 +26,7 @@ const PANE_WIDTH = 280;
  * src/components/SidePane.tsx. Built on core Animated (no reanimated/haptics dep) since neither
  * app otherwise depends on either. */
 export default function SidePane({ isOpen, onClose, title, subtitle, items, activeHref, onNavigate }: SidePaneProps) {
+  const { confirmLeave } = useUnsavedChanges();
   const translateX = useRef(new Animated.Value(-PANE_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [rendered, setRendered] = React.useState(isOpen);
@@ -55,11 +57,21 @@ export default function SidePane({ isOpen, onClose, title, subtitle, items, acti
       <Animated.View style={[styles.pane, { transform: [{ translateX }] }]}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Image
-              source={require('../../assets/images/emami-apps-logo.png')}
-              style={styles.headerLogo}
-              resizeMode="contain"
-            />
+            <Pressable
+              onPress={() => {
+                // Same unsaved-changes guard as the "Back to Emami Apps" bar.
+                if (!confirmLeave()) return;
+                if (typeof window !== 'undefined') window.location.href = '/';
+              }}
+              accessibilityRole="link"
+              accessibilityLabel="Back to Emami Apps"
+            >
+              <Image
+                source={require('../../assets/images/emami-apps-logo.png')}
+                style={styles.headerLogo}
+                resizeMode="contain"
+              />
+            </Pressable>
             <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close menu">
               <Ionicons name="close" size={20} color={colors.ink} />
             </Pressable>

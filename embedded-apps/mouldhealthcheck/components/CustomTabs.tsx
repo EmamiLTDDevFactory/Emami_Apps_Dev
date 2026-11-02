@@ -62,7 +62,13 @@ export default function CustomTabs({ state, navigation }: BottomTabBarProps) {
     <>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Image source={require("../assets/images/emami-apps-logo.png")} style={styles.headerLogo} resizeMode="contain" />
+          <Pressable
+            onPress={() => { if (typeof window !== "undefined") window.location.href = "/"; }}
+            accessibilityRole="link"
+            accessibilityLabel="Back to Emami Apps"
+          >
+            <Image source={require("../assets/images/emami-apps-logo.png")} style={styles.headerLogo} resizeMode="contain" />
+          </Pressable>
           {showClose && (
             <Pressable onPress={closeNavDrawer} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close menu">
               <Ionicons name="close" size={18} color={HUB.ink} />

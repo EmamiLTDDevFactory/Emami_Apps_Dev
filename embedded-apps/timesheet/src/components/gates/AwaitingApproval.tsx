@@ -43,8 +43,10 @@ export default function AwaitingApproval({ currentUser }: { currentUser: any }) 
 
       <div className="glass-panel relative w-full max-w-sm p-8 text-center">
         <div className="mb-4 flex flex-col items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Group" className="h-20 w-20 object-contain" />
+          <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Group" className="h-20 w-20 object-contain" />
+          </a>
         </div>
         <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-border border-t-rust" aria-hidden="true" />
         <h1 className="text-lg font-bold text-ink">Waiting for approval</h1>

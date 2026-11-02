@@ -5,10 +5,6 @@ import { initialsHome } from './utils.js';
 import { HomeIcon, BoardIcon, DatabaseIcon, ShieldIcon, ClockIcon, UploadCloudIcon, SettingsIcon, LogOutIcon, StarIcon, ListIcon, TimelineIcon, TableIcon, BarChartIcon, CompassIcon, ClipboardIcon, GavelIcon, LandmarkIcon } from './icons.jsx';
 import emamiLogo from './assets/emami-apps-logo.png';
 
-export function backToEmamiApps() {
-  window.location.href = '/';
-}
-
 // "Back": the previous page in this tab's history, or the Emami Apps hub when there is none.
 export function goBack() {
   if (window.history.length > 1) window.history.back();
@@ -79,10 +75,6 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
           <span>CCB & CR Tracker</span>
         </a>
         {activeItem && <span className="sidebar-mobilebar-page">{activeItem.label}</span>}
-        <button type="button" className="sidebar-mobilebar-hub" onClick={backToEmamiApps} title="Back to Emami Apps" aria-label="Back to Emami Apps">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-          <span>Emami Apps</span>
-        </button>
       </div>
 
       {drawerOpen && <div className="sidebar-backdrop" onClick={() => setDrawerOpen(false)} />}
@@ -92,7 +84,7 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
 
-        <a className="sidebar-brand" href={ROUTES.home} title="Emami Apps — Change Control Board & CR Tracker">
+        <a className="sidebar-brand" href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
           <img src={emamiLogo} alt="Emami Apps" className="sidebar-logo" />
         </a>
         <div className="sidebar-app-name">Change Control Board &amp; CR Tracker</div>
@@ -124,10 +116,6 @@ export default function Sidebar({ active, isAdmin, name, email, identityInTopbar
           <button type="button" className="sidebar-hub-link" onClick={goBack}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
             <span>Back</span>
-          </button>
-          <button type="button" className="sidebar-hub-link" onClick={backToEmamiApps}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
-            <span>Back to Emami Apps</span>
           </button>
           {!identityInTopbar && (
             <div className="sidebar-user" onMouseLeave={() => setSignOutOpen(false)}>

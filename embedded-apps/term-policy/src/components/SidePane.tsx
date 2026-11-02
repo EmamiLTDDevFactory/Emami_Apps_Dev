@@ -46,20 +46,24 @@ export default function SidePane({
             </div>
           )}
           {/* The Emami Apps wordmark lives here only — no other place in this app repeats it. */}
-          <Link
-            href="/"
-            onClick={() => {
-              if (!isWideScreen) onClose();
-            }}
-            className={`flex flex-col items-center justify-center gap-1 px-4 ${isWideScreen ? 'pt-4' : 'pt-1'} pb-4`}
-            aria-label="Go to Term Policy home"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={80} height={66} />
-            <span className="text-center text-[12.5px] font-bold leading-tight tracking-tight text-ink">
-              Term Life Policy
-            </span>
-          </Link>
+          <div className={`flex flex-col items-center justify-center gap-1 px-4 ${isWideScreen ? 'pt-4' : 'pt-1'} pb-4`}>
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={80} height={66} />
+            </a>
+            <Link
+              href="/"
+              onClick={() => {
+                if (!isWideScreen) onClose();
+              }}
+              className="flex flex-col items-center gap-1"
+              aria-label="Go to Term Policy home"
+            >
+              <span className="text-center text-[12.5px] font-bold leading-tight tracking-tight text-ink">
+                Term Life Policy
+              </span>
+            </Link>
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2.5">
@@ -94,10 +98,6 @@ export default function SidePane({
             <ArrowLeft size={13} />
             Back
           </button>
-          <a href="/" className="btn-ghost w-full !px-2.5 !py-1.5 text-[11.5px]">
-            <ArrowLeft size={13} />
-            Back to Emami Apps
-          </a>
         </div>
       </aside>
     </>

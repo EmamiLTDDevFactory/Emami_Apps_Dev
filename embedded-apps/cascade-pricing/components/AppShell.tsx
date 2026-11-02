@@ -111,8 +111,10 @@ export default function AppShell() {
             </div>
           )}
           <div className="mx-3 mt-3 flex justify-center rounded-2xl bg-white/70 px-6 py-4 shadow-[inset_0_1px_0_#fff] ring-1 ring-white/80">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} />
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="block">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} />
+            </a>
           </div>
         </div>
         <nav className="scroll-glass flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3 pt-2">
@@ -148,7 +150,6 @@ export default function AppShell() {
           <button type="button" onClick={() => (window.history.length > 1 ? window.history.back() : window.location.assign('/'))} className="flex items-center gap-1.5 border-r border-white/15 px-4 py-2 text-[13px] font-semibold text-white/90 transition hover:bg-white/10 hover:text-white">
             <IconArrowLeft size={14} /> Back
           </button>
-          <a href="/" className="flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white/90 transition hover:bg-white/10 hover:text-white"><IconArrowLeft size={14} /> Back to Emami Apps</a>
           <div className="flex-1" />
           <span className="mr-4 hidden items-center gap-2 text-[11px] font-semibold text-white/70 md:flex"><span className={`h-1.5 w-1.5 rounded-full ${healthDot}`} aria-hidden="true" /> SAP {system}</span>
         </div>

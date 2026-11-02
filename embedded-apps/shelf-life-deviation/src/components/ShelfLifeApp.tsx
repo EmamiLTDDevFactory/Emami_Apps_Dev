@@ -180,7 +180,7 @@ function AppView() {
                 </button>
               </div>
             ) : null}
-            <a href={`${BASE_PATH}/`} className="nav-logo" aria-label="Go to Shelf Life Deviation home">
+            <a href="/" className="nav-logo" title="Back to Emami Apps" aria-label="Back to Emami Apps">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={172} height={142} />
             </a>
@@ -211,10 +211,6 @@ function AppView() {
               <Icon name="arrow-left" size={14} />
               Back
             </button>
-            <a href="/" className="back-bar">
-              <Icon name="arrow-left" size={14} />
-              Back to Emami Apps
-            </a>
           </div>
 
           <header className="shell-header">

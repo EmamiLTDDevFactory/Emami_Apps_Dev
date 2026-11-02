@@ -79,8 +79,10 @@ function NavPane({ isOpen, onClose, isWide }: { isOpen: boolean; onClose: () => 
           <button type="button" onClick={onClose} aria-label="Close menu" className="absolute right-2 top-2 z-10 rounded-full p-1.5 text-inkSoft hover:bg-appBg hover:text-ink"><X size={18} /></button>
         )}
         <div className="mx-3 mt-3 flex justify-center rounded-2xl bg-cream/60 px-6 py-4 ring-1 ring-border">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} className="h-auto w-[150px]" />
+          <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps" className="block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={150} height={124} className="h-auto w-[150px]" />
+          </a>
         </div>
         <div className="px-4 pb-3 pt-3">
           <p className="text-[15px] font-extrabold text-ink">Service PO Automation</p>
@@ -177,9 +179,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             hub link's full-width click area. */}
         <div className="grid grid-cols-[auto_1fr] bg-plum">
           <BackButton />
-          <a href="/" className="flex items-center gap-1.5 bg-plum px-4 py-2 text-xs font-semibold text-white hover:bg-plumDeep">
-            <ArrowLeft size={13} /> Back to Emami Apps
-          </a>
         </div>
         <header className="flex items-center gap-2 border-b border-border bg-white px-4 py-2">
           {!isWide && (

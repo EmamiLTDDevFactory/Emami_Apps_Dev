@@ -75,18 +75,22 @@ export default function SidePane({ isOpen, onClose }: { isOpen: boolean; onClose
               </button>
             </div>
           )}
-          <Link
-            href="/"
-            onClick={() => {
-              if (!isWideScreen) onClose();
-            }}
-            className={`flex flex-col items-center justify-center gap-1.5 px-4 ${isWideScreen ? 'pt-5' : 'pt-1'} pb-5`}
-            aria-label="Go to Timesheet dashboard"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={120} height={99} />
-            <span className="text-sm font-bold tracking-tight text-ink">TimeSheet</span>
-          </Link>
+          <div className={`flex flex-col items-center justify-center gap-1.5 px-4 ${isWideScreen ? 'pt-5' : 'pt-1'} pb-5`}>
+            <a href="/" title="Back to Emami Apps" aria-label="Back to Emami Apps">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={`${BASE_PATH}/emami-apps-logo.png`} alt="Emami Apps" width={120} height={99} />
+            </a>
+            <Link
+              href="/"
+              onClick={() => {
+                if (!isWideScreen) onClose();
+              }}
+              className="flex flex-col items-center gap-1.5"
+              aria-label="Go to Timesheet dashboard"
+            >
+              <span className="text-sm font-bold tracking-tight text-ink">TimeSheet</span>
+            </Link>
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">

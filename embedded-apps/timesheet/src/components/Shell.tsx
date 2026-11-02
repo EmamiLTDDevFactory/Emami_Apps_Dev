@@ -86,11 +86,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             <span className="hidden sm:inline">Back</span>
           </button>
 
-          <a href="/" className="btn-ghost">
-            <ArrowLeft size={16} />
-            <span className="hidden sm:inline">Back to Emami Apps</span>
-          </a>
-
           <div ref={profileRef} className="relative ml-auto">
             <button
               type="button"

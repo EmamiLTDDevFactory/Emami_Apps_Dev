@@ -130,21 +130,6 @@ function MarketRateLayoutContent() {
                   <Ionicons name="arrow-back" size={14} color={colors.white} />
                   <Text style={styles.backToHubText}>Back</Text>
                 </Pressable>
-                <View style={styles.flex1}>
-                  <TouchableOpacity
-                    style={styles.backToHubBar}
-                    onPress={() => {
-                      if (typeof window !== 'undefined') {
-                        window.location.href = '/';
-                      }
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Back to Emami Apps"
-                  >
-                    <Ionicons name="arrow-back" size={14} color={colors.white} />
-                    <Text style={styles.backToHubText}>Back to Emami Apps</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
 
               <View style={styles.titleBar}>
