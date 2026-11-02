@@ -19,7 +19,7 @@ export default function PlanFrame({ active, children, actions }: { active: PlanN
       <div className="grid min-h-screen place-items-center bg-bg p-4">
         <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
           <AlertTriangle size={26} className="mx-auto text-warn" />
-          <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "BOM Simulator can't start" : 'Please open this app from Emami Apps'}</h1>
+          <h1 className="mt-2 text-lg font-extrabold">{!cfg.ok ? "Costing Cockpit can't start" : 'Please open this app from Emami Apps'}</h1>
           <p className="mt-1 text-sm text-muted">{!cfg.ok ? cfg.error : 'Sign in to the Emami Apps hub first; your session comes from there.'}</p>
           <a href="/" className="mt-5 inline-flex rounded-xl bg-gradient-to-br from-accent to-accent-deep px-5 py-2 text-sm font-bold text-white">Go to Emami Apps</a>
         </div>

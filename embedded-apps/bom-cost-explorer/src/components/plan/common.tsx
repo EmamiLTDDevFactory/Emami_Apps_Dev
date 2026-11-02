@@ -77,7 +77,7 @@ export function RoleNote({ ws }: { ws: Pick<PlanWorkspace, 'canWrite' | 'role'> 
   return (
     <div className="flex items-center gap-2 rounded-xl border border-line bg-sunken/60 px-3 py-2 text-xs text-muted">
       <Lock size={13} />
-      {ws.role ? `Your Manage Access role for BOM Simulator is "${ws.role}". ` : 'Checking your role… '}
+      {ws.role ? `Your Manage Access role for Costing Cockpit is "${ws.role}". ` : 'Checking your role… '}
       Uploading and editing plans needs the Planner (or Admin) role. You can still view everything.
     </div>
   );

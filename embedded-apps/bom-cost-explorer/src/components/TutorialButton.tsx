@@ -42,7 +42,7 @@ function TutorialPlayer({ onClose }: { onClose: () => void }) {
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-3 sm:p-6" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="BOM Simulator tutorial" className="flex max-h-full w-[min(1280px,100%)] flex-col overflow-hidden rounded-2xl bg-panel shadow-2xl lg:flex-row" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Costing Cockpit tutorial" className="flex max-h-full w-[min(1280px,100%)] flex-col overflow-hidden rounded-2xl bg-panel shadow-2xl lg:flex-row" onClick={(e) => e.stopPropagation()}>
         <div className="flex min-w-0 flex-1 flex-col bg-black">
           {failed ? (
             <div className="grid aspect-video place-items-center p-6 text-center text-sm text-white">The tutorial video could not be loaded. Try again later.</div>

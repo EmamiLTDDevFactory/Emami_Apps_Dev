@@ -60,7 +60,7 @@ export default function ConnectionPage() {
   }, [cfg]);
 
   if (!cfg || hub === 'checking' || admin === null) return <div className="grid h-screen place-items-center"><div className="h-8 w-8 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
-  if (!admin) return <div className="grid h-screen place-items-center p-6 text-center text-sm text-muted">Connection diagnostics are for BOM Simulator admins (Manage Access role "Admin").</div>;
+  if (!admin) return <div className="grid h-screen place-items-center p-6 text-center text-sm text-muted">Connection diagnostics are for Costing Cockpit admins (Manage Access role "Admin").</div>;
   if (!cfg.ok) return <div className="p-6 text-sm text-bad">{cfg.error}</div>;
   const c = cfg.config;
 
@@ -99,7 +99,7 @@ export default function ConnectionPage() {
 
   return (
     <div className="min-h-screen bg-bg">
-      <a href={`${BASE_PATH}/`} className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to BOM Simulator</a>
+      <a href={`${BASE_PATH}/`} className="flex items-center gap-1.5 bg-plum px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-plum-deep"><ArrowLeft size={14} /> Back to Costing Cockpit</a>
       <div className="mx-auto max-w-6xl space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-lg font-extrabold">SAP connection diagnostics</h1>

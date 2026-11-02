@@ -95,7 +95,7 @@ const stamp = () => { const d = new Date(); const p = (x: number) => String(x).p
 export async function downloadWacWorkbook(sheets: WacSheet[], params: [string, string][], fileBase = 'actual-vs-rate-sources'): Promise<void> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'BOM Simulator';
+  wb.creator = 'Costing Cockpit';
   wb.created = new Date();
   for (const s of sheets) {
     const ws = wb.addWorksheet(s.name, { views: [{ state: 'frozen', ySplit: 1 }] });

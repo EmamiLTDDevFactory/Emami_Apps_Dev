@@ -1,6 +1,6 @@
 import type { Config } from 'tailwindcss';
 
-// Hub palette (same values as the hub's src/theme/tokens.ts and every sibling app, e.g. BOM Simulator), so this app looks
+// Hub palette (same values as the hub's src/theme/tokens.ts and every sibling app, e.g. Costing Cockpit), so this app looks
 // like the rest of Emami Apps. The app's own names map onto it: plum = the hub accent (buttons, selection, active nav),
 // sap-* = the hub's light lines / headers / ink; brand = the hub's plum bar.
 const config: Config = {

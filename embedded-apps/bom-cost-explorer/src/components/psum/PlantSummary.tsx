@@ -129,7 +129,7 @@ function Screen() {
       <div className="mx-auto mt-10 max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
         <Lock size={24} className="mx-auto text-warn" aria-hidden />
         <h1 className="mt-2 text-lg font-extrabold">Plant production summary is for Admins</h1>
-        <p className="mt-1 text-sm text-muted">Ask a BOM Simulator Admin for access (Manage Access in the Emami Apps Admin Center).</p>
+        <p className="mt-1 text-sm text-muted">Ask a Costing Cockpit Admin for access (Manage Access in the Emami Apps Admin Center).</p>
       </div>
     );
   }

@@ -1,7 +1,7 @@
 /*
    DAILY COST WATCH - pure logic (no database, no network), tested in test/costWatchCore.test.js.
 
-   - costLineFilter: the CostLineSet Mode B $filter, built exactly like the BOM Simulator's buildSelectionFilter
+   - costLineFilter: the CostLineSet Mode B $filter, built exactly like the Costing Cockpit's buildSelectionFilter
      (Edm.Decimal "m" suffix, Edm.Boolean flags on CostLineSet, BudgetYr quoted, "or" lists).
    - buildSnapshots: one snapshot per FG header, leaf rows only, one line per component + unit (the app's
      src/lib/snapshots format, plus sel_curr): q = ProdQty / ExplQty, rates quantity-weighted.

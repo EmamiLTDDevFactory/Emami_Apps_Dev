@@ -20,7 +20,7 @@ export const APP_CATALOG: { id: string; name: string; cat: string }[] = [
   { id: 'salescode', name: 'Salescode', cat: 'SD' },
   { id: 'audit-tool', name: 'Audit Tool', cat: 'MSD' },
   { id: 'rate-auction', name: 'Rate Auction', cat: 'CPD' },
-  { id: 'bom-cost-explorer', name: 'BOM Simulator', cat: 'CPD' },
+  { id: 'bom-cost-explorer', name: 'Costing Cockpit', cat: 'CPD' },
   { id: 'sap-agent', name: 'SAP Agent', cat: 'IT' },
   { id: 'gate-entry', name: 'Gate Entry', cat: 'Supply Chain' },
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', cat: 'CPD' },

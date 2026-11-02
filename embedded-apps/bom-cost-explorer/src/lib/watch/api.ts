@@ -1,7 +1,7 @@
 'use client';
 /**
  * Daily cost watch API (hub backend, backend/costWatch.js), mounted at <access api>/me/cost-watch so it rides the
- * existing /api/me proxy. The hub session token goes as Bearer; the server checks the BOM Simulator grant.
+ * existing /api/me proxy. The hub session token goes as Bearer; the server checks the Costing Cockpit grant.
  * NEXT_PUBLIC_WATCH_ENABLED (default false; on for the deployed DEV build) shows the Cost watch pages.
  */
 import { HUB_TOKEN_KEY } from '../client/session';

@@ -80,7 +80,7 @@ try {
 // Emami Apps notifications — one inbox per person across apps (hub bell, in-app bells, Outlook email).
 // Under /me so it rides the existing /api/me proxy rule. See notifications.js.
 apiRouter.use('/me/notifications', require('./notifications').router);
-// Daily cost watch (BOM Simulator): rides the existing nginx /api/me rule; see costWatch.js.
+// Daily cost watch (Costing Cockpit): rides the existing nginx /api/me rule; see costWatch.js.
 apiRouter.use('/me/cost-watch', require('./costWatch'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
@@ -158,7 +158,7 @@ async function requireAccessManager(req, res, next) {
  * (payment-tracking) adds a third role, Finance, on top of the generic pair — see that app's own
  * PaymentTrackingAuthContext.tsx/_layout.tsx for what each role sees. PO Approval
  * (fm-po-deviation) has no Admin/User distinction — everyone granted access gets the single
- * 'User' role. BOM Simulator (bom-cost-explorer) adds Planner: may upload and edit production plans
+ * 'User' role. Costing Cockpit (bom-cost-explorer) adds Planner: may upload and edit production plans
  * (Admin may too; SAP's own authority check still applies). */
 const VALID_ROLES_BY_APP = { 'audit-capa': ['CQA', 'Depot', 'View'], 'payment-tracking': ['User', 'Admin', 'Finance', 'Super Admin'], 'fm-po-deviation': ['User'], 'bom-cost-explorer': ['User', 'Admin', 'Planner'], 'setu': ['Agent', 'Supervisor', 'Admin'] };
 const DEFAULT_VALID_ROLES = ['User', 'Admin'];

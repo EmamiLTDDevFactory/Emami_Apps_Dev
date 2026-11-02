@@ -88,7 +88,7 @@ function PlanView({ plan, werks, email, tab, onTab }: { plan: string; werks: str
       <div className="flex flex-wrap items-center gap-3">
         <Link href="/plan/" className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline"><ArrowLeft size={13} /> Plans</Link>
         <h2 className="text-lg font-extrabold">{plan}</h2>
-        {ws.role && <Pill tone={ws.canWrite ? 'accent' : 'neutral'} title="Your Manage Access role for BOM Simulator">{ws.role}</Pill>}
+        {ws.role && <Pill tone={ws.canWrite ? 'accent' : 'neutral'} title="Your Manage Access role for Costing Cockpit">{ws.role}</Pill>}
         {running && <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Spinner className="h-3.5 w-3.5" /> SAP is costing the plan…</span>}
         <Button size="sm" className="ml-auto" disabled={exporting} onClick={() => void doExport()} title="Excel: Breakup, Requirement, Checks, WIP and Parameters (what you have loaded)">
           {exporting ? <Spinner className="h-3.5 w-3.5" /> : <FileSpreadsheet size={14} />} Excel

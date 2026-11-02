@@ -73,7 +73,7 @@ export async function exportTable(spec: ExportSpec) {
   }
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'BOM Simulator';
+  wb.creator = 'Costing Cockpit';
   wb.created = new Date();
 
   const addSheet = (name: string, cols: XCol[], count: number) => {

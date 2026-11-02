@@ -43,7 +43,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   salescode: '/apps/salescode', // Salescode
   'audit-tool': '/apps/audit-tool', // Audit Tool (MSD internal audit)
   'rate-auction': '/apps/rate-auction', // Rate Auction
-  'bom-cost-explorer': '/apps/bom-cost-explorer', // BOM Simulator
+  'bom-cost-explorer': '/apps/bom-cost-explorer', // Costing Cockpit
   'sap-agent': '/apps/sap-agent', // SAP Agent (admins only)
   'shelf-life-deviation': '/apps/shelf-life-deviation', // Shelf Life Deviation (CPD approval + CADE Z-Report)
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
@@ -72,7 +72,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'salescode', name: 'Salescode', desc: 'SD master and transactional data for Emami products sold through SalesCode.ai.', cat: 'SD', icon: FileSpreadsheet, uses: 0, stage: 'Live' },
   { id: 'audit-tool', name: 'Audit Tool', desc: 'MSD internal audit — masters, checklist, audit scheduling and kickoff, observations workflow and MIS reporting on SAP.', cat: 'MSD', icon: FileSearch, uses: 0 },
   { id: 'rate-auction', name: 'Rate Auction', desc: 'Live reverse auction for material and freight rates — vendors bid anonymously, Central Purchase awards and creates the SAP info record or contract.', cat: 'CPD', icon: Gavel, uses: 0, stage: 'WIP' },
-  { id: 'bom-cost-explorer', name: 'BOM Simulator', desc: 'Multi-level BOM costing from SAP by plant — rate sources, freight, budget and coverage, plant comparison, and what-if scenario simulation.', cat: 'CPD', icon: Calculator, uses: 0, stage: 'Live' },
+  { id: 'bom-cost-explorer', name: 'Costing Cockpit', desc: 'Multi-level BOM costing from SAP by plant — rate sources, freight, budget and coverage, plant comparison, and what-if scenario simulation.', cat: 'CPD', icon: Calculator, uses: 0, stage: 'Live' },
   { id: 'sap-agent', name: 'SAP Agent', desc: 'AI agent that builds, fixes and tests ABAP objects on the SAP development system through ADT, with a policy guard, typed approvals and a full audit log. Admins only.', cat: 'IT', icon: Bot, uses: 0 },
   { id: 'gate-entry', name: 'Gate Entry', desc: 'Inward truck gate entry against purchase orders or ASNs on SAP, with gate pass print, truck out time and cancellation.', cat: 'Supply Chain', icon: DoorOpen, uses: 0, stage: 'UAT' },
   { id: 'access-tracker', name: 'Access Tracker', desc: 'Who has access to which app, every grant and revoke from Manage Access, and sign-in and app-usage activity, with Excel-ready exports. Admins only.', cat: 'IT', icon: UserCog, uses: 0, stage: 'Live' },

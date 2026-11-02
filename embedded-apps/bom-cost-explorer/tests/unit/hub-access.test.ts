@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { effectiveRole } from '@/lib/client/hubAccess';
 import { PLANNER_ROLES } from '@/lib/plan/workspace';
 
-describe('BOM Simulator Admin has all access', () => {
+describe('Costing Cockpit Admin has all access', () => {
   const bom = (role: string) => ({ appId: 'bom-cost-explorer', role });
   it('only this app\'s role counts; the Emami Apps access level does not', () => {
     expect(effectiveRole({ apps: [bom('Admin')] })).toBe('Admin');

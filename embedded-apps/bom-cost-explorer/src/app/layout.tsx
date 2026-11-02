@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'BOM Simulator',
+  title: 'Costing Cockpit',
   description: 'Explore, compare and simulate SAP BOM costing',
 };
 

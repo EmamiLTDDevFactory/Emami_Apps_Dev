@@ -1,6 +1,6 @@
-# BOM Simulator
+# Costing Cockpit
 
-Embedded app (hub tile **BOM Simulator**, category CPD; folder, URL `/apps/bom-cost-explorer` and
+Embedded app (hub tile **Costing Cockpit**, category CPD; folder, URL `/apps/bom-cost-explorer` and
 Manage Access app id `bom-cost-explorer` kept unchanged) on top of the
 SAP ECC OData V2 service `ZMM_BOM_COST_SRV`. **SAP does all costing** (BOM explosion, rate
 resolution, UoM and currency conversion). This app presents, compares, analyses and simulates.
@@ -114,7 +114,7 @@ PlanUploadSet deep insert per plan; Merge (default) or Replace with a confirmati
 (Dryrun true), Step 2 "Save" (only after the check passed); per-row status / message from SAP. Every upload
 is logged in this browser (`plan:audit`; there is no app server for a central log).
 
-**Role.** Uploading and editing need the hub Manage Access role **Planner** (or Admin) on BOM Simulator,
+**Role.** Uploading and editing need the hub Manage Access role **Planner** (or Admin) on Costing Cockpit,
 checked in the UI; SAP's authority check is the real gate. `backend/server.js` accepts the role.
 
 **Entries.** Editable monthly grid, one PUT per changed row, delete per row. The Azure gateway does not

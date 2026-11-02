@@ -1,15 +1,15 @@
 /*
-   DAILY COST WATCH (BOM Simulator) - server side. Pure logic in costWatchCore.js.
+   DAILY COST WATCH (Costing Cockpit) - server side. Pure logic in costWatchCore.js.
 
    Every morning (06:00 Asia/Kolkata) each active watch item costs its SKUs in its plants in SAP (CostLineSet Mode B,
-   the same filter the BOM Simulator sends), stores a snapshot, compares it with yesterday / the 7-day median / 30 days
+   the same filter the Costing Cockpit sends), stores a snapshot, compares it with yesterday / the 7-day median / 30 days
    ago, evaluates rules R1-R9, upserts alerts and sends one digest per item (email via Resend + the hub's bell).
    Read-only towards SAP. The scheduler runs inside this backend (no Azure Functions on this box); the same work can be
    triggered from outside through the internal routes with the shared secret.
 
    Mounted at /api/me/cost-watch (rides the existing nginx /api/me rule, like /api/me/notifications):
      GET    /me                         { canEdit, isAdmin, enabled }
-     GET    /items  POST /items  PUT /items/:id  DELETE /items/:id        (edit: BOM Simulator role Admin or Planner; Admin = all access)
+     GET    /items  POST /items  PUT /items/:id  DELETE /items/:id        (edit: Costing Cockpit role Admin or Planner; Admin = all access)
      POST   /items/:id/run-now          runs that item now in the background (rate limited, 1 per item per 5 minutes)
      GET    /alerts?status=&plant=&rule=&severity=   GET /alerts/:id (with before / after snapshot lines)
      POST   /alerts/:id/ack   POST /alerts/:id/snooze { days: 7 | 30 }
@@ -110,10 +110,10 @@ async function requireUser(req, res, next) {
             pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]),
             pool.query('SELECT is_active FROM emami_apps.authorized_users WHERE email = $1', [email]),
         ]);
-        if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the BOM Simulator.' });
+        if (!grant.rows.length || user.rows[0]?.is_active === false) return res.status(403).json({ success: false, error: 'You do not have access to the Costing Cockpit.' });
         const role = grant.rows[0].role;
         req.email = email;
-        // Only the BOM Simulator role counts. Admin has all access: the admin view and everything a Planner does.
+        // Only the Costing Cockpit role counts. Admin has all access: the admin view and everything a Planner does.
         req.isAdmin = role === 'Admin';
         req.canEdit = req.isAdmin || role === 'Planner';
         next();
@@ -279,9 +279,9 @@ async function digest(watchId) {
     const recipients = [...new Set([...(item.recipients || []), item.owner].map((x) => String(x).toLowerCase()).filter(Boolean))];
     let sent = 0;
     for (const to of recipients) {
-        // every recipient must hold the BOM Simulator grant (the app has no per-plant access yet: all of the item's plants)
+        // every recipient must hold the Costing Cockpit grant (the app has no per-plant access yet: all of the item's plants)
         const ok = (await pool.query('SELECT 1 FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [to, APP_ID])).rows.length > 0;
-        if (!ok) { await logDigest(watchId, to, alerts.length, summary, 'skipped', 'no BOM Simulator access'); continue; }
+        if (!ok) { await logDigest(watchId, to, alerts.length, summary, 'skipped', 'no Costing Cockpit access'); continue; }
         const links = Object.fromEntries(alerts.map((a) => [a.id, {
             ack: `${API_PUBLIC}/me/cost-watch/act?t=${C.signLink(SIGNING, { a: 'ack', id: a.id, by: to })}`,
             snooze: `${API_PUBLIC}/me/cost-watch/act?t=${C.signLink(SIGNING, { a: 'snooze', id: a.id, by: to, days: 7 })}`,
@@ -397,7 +397,7 @@ router.get('/items', async (req, res) => {
 });
 router.post('/items', async (req, res) => {
     try {
-        if (!req.canEdit) throw new HttpError(403, 'Only BOM Simulator Planners or Admins can create watch items.');
+        if (!req.canEdit) throw new HttpError(403, 'Only Costing Cockpit Planners or Admins can create watch items.');
         const f = ITEM_FIELDS(req.body || {}, req.email);
         const id = uuid();
         await pool.query(`INSERT INTO cost_watch.watch_item (id, owner, name, system, skus, plants, qty, settings, thresholds, recipients, plan1, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
@@ -407,7 +407,7 @@ router.post('/items', async (req, res) => {
 });
 router.put('/items/:id', async (req, res) => {
     try {
-        if (!req.canEdit) throw new HttpError(403, 'Only BOM Simulator Planners or Admins can change watch items.');
+        if (!req.canEdit) throw new HttpError(403, 'Only Costing Cockpit Planners or Admins can change watch items.');
         const f = ITEM_FIELDS(req.body || {}, req.email);
         const r = await pool.query(`UPDATE cost_watch.watch_item SET name=$2, skus=$3, plants=$4, qty=$5, settings=$6, thresholds=$7, recipients=$8, plan1=$9, active=$10, updated_at=now() WHERE id=$1`,
             [req.params.id, f.name, f.skus, f.plants, f.qty, JSON.stringify(f.settings), JSON.stringify(f.thresholds), f.recipients, f.plan1, f.active]);
@@ -417,7 +417,7 @@ router.put('/items/:id', async (req, res) => {
 });
 router.delete('/items/:id', async (req, res) => {
     try {
-        if (!req.canEdit) throw new HttpError(403, 'Only BOM Simulator Planners or Admins can delete watch items.');
+        if (!req.canEdit) throw new HttpError(403, 'Only Costing Cockpit Planners or Admins can delete watch items.');
         // Alerts cascade; snapshots and plan checks go too (run_log / digest_log stay as the audit trail).
         await pool.query('DELETE FROM cost_watch.run_snapshot WHERE watch_id = $1', [req.params.id]);
         await pool.query('DELETE FROM cost_watch.plan_checks WHERE watch_id = $1', [req.params.id]);

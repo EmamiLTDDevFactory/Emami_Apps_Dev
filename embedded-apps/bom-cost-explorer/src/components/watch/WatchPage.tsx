@@ -196,7 +196,7 @@ function Items({ canEdit, canRun }: { canEdit: boolean; canRun: boolean }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
         {canEdit && <Button size="sm" variant="primary" onClick={() => setEdit(emptyItem())}><Plus size={14} /> New watch item</Button>}
-        {!canEdit && <span className="text-xs text-muted">Read-only: BOM Simulator Planners or Admins can create and change watch items.</span>}
+        {!canEdit && <span className="text-xs text-muted">Read-only: Costing Cockpit Planners or Admins can create and change watch items.</span>}
         {note && <span className="text-xs text-good">{note}</span>}
       </div>
       <Card bodyClass="p-0">
@@ -293,7 +293,7 @@ function ItemEditor({ item, onClose, onSaved }: { item: Partial<WatchItem>; onCl
             ))}
           </div>
         </details>
-        <label className={field}>Digest recipients (emails; they need BOM Simulator access)<input className={inputCls} value={list.recipients} onChange={(e) => setList({ ...list, recipients: e.target.value })} placeholder="name@emamigroup.com, …" /></label>
+        <label className={field}>Digest recipients (emails; they need Costing Cockpit access)<input className={inputCls} value={list.recipients} onChange={(e) => setList({ ...list, recipients: e.target.value })} placeholder="name@emamigroup.com, …" /></label>
         {err && <p className="text-sm text-bad">{err}</p>}
         <div className="flex gap-2"><Button variant="primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button><Button onClick={onClose}><X size={14} /> Cancel</Button></div>
       </div>

@@ -35,7 +35,7 @@ function Gate({ title, subtitle, need, children }: { title: string; subtitle: st
       <div className="mx-auto mt-10 max-w-md rounded-2xl border border-line bg-panel p-7 text-center shadow-card">
         <Lock size={24} className="mx-auto text-warn" aria-hidden />
         <h1 className="mt-2 text-lg font-extrabold">{title} is not available to you</h1>
-        <p className="mt-1 text-sm text-muted">{need === 'maintain' ? 'Uploading needs the Margin maintenance role (cogm-maint) or Admin.' : 'It needs the Margin display role (cogm), the maintenance role (cogm-maint) or Admin.'} Ask a BOM Simulator Admin (Manage Access in the Emami Apps Admin Center).</p>
+        <p className="mt-1 text-sm text-muted">{need === 'maintain' ? 'Uploading needs the Margin maintenance role (cogm-maint) or Admin.' : 'It needs the Margin display role (cogm), the maintenance role (cogm-maint) or Admin.'} Ask a Costing Cockpit Admin (Manage Access in the Emami Apps Admin Center).</p>
       </div>
     );
   }
