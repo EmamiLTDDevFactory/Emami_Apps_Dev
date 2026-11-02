@@ -224,6 +224,21 @@ async function runMigrations() {
         console.error('[postgres] Pre-registered mobile migration failed:', err.message);
     }
 
+    // First / last name set by an admin (required when adding someone, editable in the Admin Center).
+    // When set, this is the person's name everywhere in the hub — it wins over the name Microsoft
+    // sends at sign-in (userProfile.js upsertLoginProfile) and over Entra ID in the people search.
+    // Older rows have none and keep using the sign-in / directory name.
+    try {
+        await pool.query(`
+            ALTER TABLE emami_apps.authorized_users
+                ADD COLUMN IF NOT EXISTS first_name text,
+                ADD COLUMN IF NOT EXISTS last_name text
+        `);
+        console.log('[postgres] Admin-set name schema up to date (authorized_users.first_name/last_name).');
+    } catch (err) {
+        console.error('[postgres] Admin-set name migration failed:', err.message);
+    }
+
     // Change-history audit trail for Manage Access — every add/remove/activate-deactivate/access-
     // level/app-role/mobile change, who made it, and what changed. Visible per-user or org-wide in
     // the Administration tab (see server.js's GET /access/history). old_value/new_value are kept as

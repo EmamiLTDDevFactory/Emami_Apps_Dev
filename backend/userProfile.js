@@ -45,12 +45,14 @@ async function recordEvent(userId, eventType, appId) {
  * server.js's POST /access/users) — COALESCE means an existing row's own mobile (the person's own
  * later Settings-page edit) always wins over this, so this can never clobber a real edit. */
 async function upsertLoginProfile(email, name) {
-    const displayName = (name || '').trim() || nameFromEmail(email);
     try {
         const { rows: [preReg] } = await pool.query(
-            'SELECT pre_registered_mobile FROM emami_apps.authorized_users WHERE email = $1',
+            `SELECT pre_registered_mobile, NULLIF(btrim(concat_ws(' ', btrim(first_name), btrim(last_name))), '') AS admin_name
+             FROM emami_apps.authorized_users WHERE email = $1`,
             [email]
         );
+        // A name an admin set in the Admin Center wins over the one the sign-in carries.
+        const displayName = preReg?.admin_name || (name || '').trim() || nameFromEmail(email);
         const { rows: [user] } = await pool.query(
             `INSERT INTO emami_apps.users (email, name, mobile, status, last_login_at)
              VALUES ($1, $2, $3, 'Active', now())

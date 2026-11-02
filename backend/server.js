@@ -9,6 +9,7 @@ const { recordAccessChange, listAccessChanges } = require('./accessHistory');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./sessionAuth');
+const { invalidatePeopleDirectory } = require('./orgProfile');
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -85,6 +86,16 @@ apiRouter.use('/me/cost-watch', require('./costWatch'));
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** First and last name from a request body — both required, trimmed, single-spaced, max 60 chars. */
+function parsePersonName(body) {
+    const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+    const firstName = clean(body?.firstName);
+    const lastName = clean(body?.lastName);
+    if (!firstName || !lastName) return { error: 'First name and last name are both required.' };
+    if (firstName.length > 60 || lastName.length > 60) return { error: 'Names can be at most 60 characters.' };
+    if (/[<>]/.test(firstName + lastName)) return { error: 'Names cannot contain < or >.' };
+    return { firstName, lastName };
+}
 
 /** Guards every route that lists users or changes anyone's access. These used to trust whatever
  * `actingEmail` the request carried, with no check on the caller at all, so anyone who knew the
@@ -197,6 +208,8 @@ apiRouter.get('/access/users', requireAccessManagerOrInternal, async (req, res) 
                    au.is_active,
                    au.access_level,
                    au.pre_registered_mobile,
+                   au.first_name,
+                   au.last_name,
                    u.mobile AS profile_mobile,
                    COALESCE(
                        json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
@@ -205,7 +218,7 @@ apiRouter.get('/access/users', requireAccessManagerOrInternal, async (req, res) 
             FROM emami_apps.authorized_users au
             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
             LEFT JOIN emami_apps.users u ON u.email = au.email
-            GROUP BY au.email, au.is_active, au.access_level, au.pre_registered_mobile, u.mobile, au.created_at
+            GROUP BY au.email, au.is_active, au.access_level, au.pre_registered_mobile, au.first_name, au.last_name, u.mobile, au.created_at
             ORDER BY au.created_at ASC
         `);
         res.json({
@@ -218,6 +231,8 @@ apiRouter.get('/access/users', requireAccessManagerOrInternal, async (req, res) 
                 isActive: r.is_active,
                 accessLevel: r.access_level,
                 mobile: r.profile_mobile || r.pre_registered_mobile || null,
+                firstName: r.first_name || null,
+                lastName: r.last_name || null,
                 apps: r.apps,
             })),
         });
@@ -296,7 +311,7 @@ apiRouter.get('/admin/roster', requireAccessManager, async (req, res) => {
                        json_agg(json_build_object('appId', a.app_id, 'role', a.role, 'depot', a.depot)) FILTER (WHERE a.app_id IS NOT NULL),
                        '[]'
                    ) AS apps,
-                   ups.name,
+                   COALESCE(NULLIF(btrim(concat_ws(' ', btrim(au.first_name), btrim(au.last_name))), ''), ups.name) AS name,
                    ups.last_login_at,
                    ups.sessions_total,
                    ups.logins,
@@ -306,7 +321,7 @@ apiRouter.get('/admin/roster', requireAccessManager, async (req, res) => {
             FROM emami_apps.authorized_users au
             LEFT JOIN emami_apps.authorized_user_apps a ON a.email = au.email
             LEFT JOIN emami_apps.user_profile_stats ups ON ups.email = au.email
-            GROUP BY au.email, au.is_active, au.access_level, au.created_at,
+            GROUP BY au.email, au.is_active, au.access_level, au.created_at, au.first_name, au.last_name,
                      ups.name, ups.last_login_at, ups.sessions_total, ups.logins, ups.time_spent,
                      ups.apps_opened, ups.most_used_app
             ORDER BY au.created_at ASC
@@ -591,6 +606,11 @@ apiRouter.post('/access/users', requireAccessManager, async (req, res) => {
     if (!EMAIL_RE.test(email)) {
         return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
     }
+    const names = parsePersonName(req.body);
+    if (names.error) {
+        return res.status(400).json({ success: false, error: names.error });
+    }
+    const { firstName, lastName } = names;
     let mobile = null;
     if (req.body?.mobile) {
         mobile = normalizeIndianMobile(req.body.mobile);
@@ -600,11 +620,11 @@ apiRouter.post('/access/users', requireAccessManager, async (req, res) => {
     }
     try {
         const { rows } = await pool.query(
-            `INSERT INTO emami_apps.authorized_users (email, pre_registered_mobile)
-             VALUES ($1, $2)
+            `INSERT INTO emami_apps.authorized_users (email, pre_registered_mobile, first_name, last_name)
+             VALUES ($1, $2, $3, $4)
              ON CONFLICT (email) DO NOTHING
              RETURNING email, access_level`,
-            [email, mobile]
+            [email, mobile, firstName, lastName]
         );
         if (rows.length === 0) {
             return res.status(409).json({ success: false, error: 'This email already has access.' });
@@ -617,12 +637,51 @@ apiRouter.post('/access/users', requireAccessManager, async (req, res) => {
                 [email, DEFAULT_GRANTED_APPS]
             );
         }
-        recordAccessChange({ targetEmail: email, changedBy: actingEmail, changeType: 'USER_ADDED', newValue: mobile ? `mobile: ${mobile}` : null });
+        // Someone removed and re-added keeps their old emami_apps.users row — give it the new name too.
+        await pool.query('UPDATE emami_apps.users SET name = $2 WHERE email = $1', [email, `${firstName} ${lastName}`]);
+        invalidatePeopleDirectory();
+        recordAccessChange({ targetEmail: email, changedBy: actingEmail, changeType: 'USER_ADDED', newValue: [`${firstName} ${lastName}`, mobile ? `mobile: ${mobile}` : null].filter(Boolean).join(', ') });
         const apps = DEFAULT_GRANTED_APPS.map((appId) => ({ appId, role: 'User' }));
-        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, apps });
+        res.json({ success: true, email, isActive: true, accessLevel: rows[0].access_level, firstName, lastName, apps });
     } catch (err) {
         console.error('[access] Failed to add authorized user:', err.message);
         res.status(500).json({ success: false, error: 'Could not add this user.' });
+    }
+});
+
+/** Admin Center — change someone's first / last name. The new name shows everywhere in the hub
+ * right away (emami_apps.users.name is updated too) and is kept on their next sign-in instead of
+ * the name Microsoft sends (userProfile.js upsertLoginProfile). */
+apiRouter.patch('/access/users/:email/name', requireAccessManager, async (req, res) => {
+    const email = String(req.params.email || '').trim().toLowerCase();
+    const names = parsePersonName(req.body);
+    if (names.error) {
+        return res.status(400).json({ success: false, error: names.error });
+    }
+    const { firstName, lastName } = names;
+    try {
+        const { rows: [before] } = await pool.query(
+            `SELECT au.first_name, au.last_name, u.name
+             FROM emami_apps.authorized_users au
+             LEFT JOIN emami_apps.users u ON u.email = au.email
+             WHERE au.email = $1`,
+            [email]
+        );
+        if (!before) {
+            return res.status(404).json({ success: false, error: 'That user is not authorized.' });
+        }
+        const fullName = `${firstName} ${lastName}`;
+        await pool.query('UPDATE emami_apps.authorized_users SET first_name = $2, last_name = $3 WHERE email = $1', [email, firstName, lastName]);
+        await pool.query('UPDATE emami_apps.users SET name = $2 WHERE email = $1', [email, fullName]);
+        invalidatePeopleDirectory();
+        const oldName = [before.first_name, before.last_name].filter(Boolean).join(' ') || before.name || null;
+        if (oldName !== fullName) {
+            recordAccessChange({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'NAME_SET', oldValue: oldName, newValue: fullName });
+        }
+        res.json({ success: true, firstName, lastName, name: fullName });
+    } catch (err) {
+        console.error('[access] Failed to update name for', email, ':', err.message);
+        res.status(500).json({ success: false, error: 'Could not update the name.' });
     }
 });
 

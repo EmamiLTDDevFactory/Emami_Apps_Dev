@@ -10,7 +10,7 @@ const { pool } = require('./db');
 /** The change types every mutating Manage Access route below can log — kept as one list so the
  * Administration tab's history view has a fixed, known vocabulary to render labels/icons for
  * instead of an arbitrary free-text type. */
-const CHANGE_TYPES = ['USER_ADDED', 'USER_REMOVED', 'ACTIVE_STATUS', 'ACCESS_LEVEL', 'APP_ROLE', 'MOBILE_SET'];
+const CHANGE_TYPES = ['USER_ADDED', 'USER_REMOVED', 'ACTIVE_STATUS', 'ACCESS_LEVEL', 'APP_ROLE', 'MOBILE_SET', 'NAME_SET'];
 
 /**
  * Records one audit row. Never throws into the caller — a missed history entry shouldn't fail (or

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Mail, Phone, Search, UserPlus, Users, X, CheckCircle2 } from 'lucide-react';
+import { Mail, Phone, Search, UserPlus, UserRound, Users, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { AppRole, UserAccessEntry, UserAppGrant } from '../../types';
 import { addAuthorizedUser, setAppAccess } from '../../lib/accessApi';
 import { appColor, colors, fontWeights, fonts, gradients, radii } from '../../theme/tokens';
@@ -22,6 +22,16 @@ function mergeAppGrants(defaults: UserAppGrant[] | undefined, explicit: UserAppG
 function parseBulkEmails(text: string): string[] {
   return Array.from(new Set(text.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)));
 }
+type PersonName = { firstName: string; lastName: string };
+const capitalise = (w: string) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '');
+/** A starting guess from the email (rahul.sharma@… → Rahul / Sharma) — the admin checks and corrects it. */
+function guessName(email: string): PersonName {
+  const parts = email.split('@')[0].split(/[._-]+/).filter((p) => p && !/^\d+$/.test(p));
+  return { firstName: capitalise(parts[0] || ''), lastName: parts.slice(1).map(capitalise).join(' ') };
+}
+const nameComplete = (n: PersonName) => !!n.firstName.trim() && !!n.lastName.trim();
+const cleanName = (n: PersonName): PersonName => ({ firstName: n.firstName.replace(/\s+/g, ' ').trim(), lastName: n.lastName.replace(/\s+/g, ' ').trim() });
+
 function normalizeIndianMobile(raw: string): string | null {
   let digits = raw.replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
@@ -45,6 +55,9 @@ export default function AddUsersDialog({
 }) {
   const [mode, setMode] = useState<'single' | 'bulk'>('single');
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [bulkNames, setBulkNames] = useState<Record<string, PersonName>>({});
   const [mobile, setMobile] = useState('');
   const [bulkText, setBulkText] = useState('');
   const [roles, setRoles] = useState<Record<string, AppRole | null>>({});
@@ -57,6 +70,9 @@ export default function AddUsersDialog({
   const parsed = mode === 'bulk' ? parseBulkEmails(bulkText) : [];
   const bulkValid = parsed.filter((e) => EMAIL_RE.test(e) && !existingEmails.has(e));
   const bulkSkipped = parsed.length - bulkValid.length;
+  const nameFor = (e: string) => bulkNames[e] ?? guessName(e);
+  const bulkMissingNames = bulkValid.filter((e) => !nameComplete(nameFor(e))).length;
+  const setBulkName = (e: string, patch: Partial<PersonName>) => { setBulkNames((p) => ({ ...p, [e]: { ...nameFor(e), ...patch } })); setError(''); };
   const granted = Object.entries(roles).filter((e): e is [string, AppRole] => !!e[1]);
   const visibleApps = useMemo(() => {
     const q = appSearch.trim().toLowerCase();
@@ -76,6 +92,8 @@ export default function AddUsersDialog({
 
   const submitSingle = async () => {
     const value = email.trim().toLowerCase();
+    const names = cleanName({ firstName, lastName });
+    if (!nameComplete(names)) return setError('Enter both the first name and the last name.');
     if (!EMAIL_RE.test(value)) return setError('Enter a valid email address.');
     if (existingEmails.has(value)) return setError('This email already has access.');
     let normalized: string | undefined;
@@ -87,11 +105,12 @@ export default function AddUsersDialog({
     setError('');
     setBusy(true);
     try {
-      const res = await addAuthorizedUser(value, actingEmail || undefined, normalized);
+      const res = await addAuthorizedUser(value, names, actingEmail || undefined, normalized);
       if (!res.ok) return setError(res.error || 'Could not add this user.');
       const { apps, anyFailed } = await grantRoles(value, res.apps);
-      onAdded([{ email: value, isActive: true, accessLevel: 'Viewer', mobile: normalized || null, apps }]);
-      notify(anyFailed ? `${value} added, but some app roles failed — open them to retry` : `${value} added with ${apps.length} app${apps.length === 1 ? '' : 's'}`, anyFailed ? 'error' : 'success');
+      onAdded([{ email: value, isActive: true, accessLevel: 'Viewer', mobile: normalized || null, ...names, apps }]);
+      const who = `${names.firstName} ${names.lastName}`;
+      notify(anyFailed ? `${who} added, but some app roles failed — open them to retry` : `${who} added with ${apps.length} app${apps.length === 1 ? '' : 's'}`, anyFailed ? 'error' : 'success');
       onClose();
     } finally {
       setBusy(false);
@@ -100,6 +119,7 @@ export default function AddUsersDialog({
 
   const submitBulk = async () => {
     if (bulkValid.length === 0) return setError('Paste at least one valid, new email address.');
+    if (bulkMissingNames) return setError(`Enter the first and last name for everyone — ${bulkMissingNames} still missing.`);
     setError('');
     setBusy(true);
     setProgress({ done: 0, total: bulkValid.length });
@@ -109,10 +129,11 @@ export default function AddUsersDialog({
       for (const batch of chunk(bulkValid, 5)) {
         const results = await Promise.all(
           batch.map(async (e) => {
-            const res = await addAuthorizedUser(e, actingEmail || undefined);
+            const names = cleanName(nameFor(e));
+            const res = await addAuthorizedUser(e, names, actingEmail || undefined);
             if (!res.ok) return null;
             const { apps } = await grantRoles(e, res.apps);
-            return { email: e, isActive: true, accessLevel: 'Viewer' as const, apps };
+            return { email: e, isActive: true, accessLevel: 'Viewer' as const, ...names, apps };
           })
         );
         for (const r of results) {
@@ -155,10 +176,24 @@ export default function AddUsersDialog({
           {mode === 'single' ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <span style={labelStyle}>Work email</span>
+                <span style={labelStyle}>First name <span style={{ color: '#E11D48' }}>*</span></span>
+                <div className="ac-input" style={inputWrapStyle}>
+                  <UserRound size={14} color={colors.inkSoft} />
+                  <input autoFocus required maxLength={60} value={firstName} onChange={(e) => { setFirstName(e.target.value); setError(''); }} placeholder="Rahul" style={inputStyle} />
+                </div>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={labelStyle}>Last name <span style={{ color: '#E11D48' }}>*</span></span>
+                <div className="ac-input" style={inputWrapStyle}>
+                  <UserRound size={14} color={colors.inkSoft} />
+                  <input required maxLength={60} value={lastName} onChange={(e) => { setLastName(e.target.value); setError(''); }} placeholder="Sharma" style={inputStyle} />
+                </div>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={labelStyle}>Work email <span style={{ color: '#E11D48' }}>*</span></span>
                 <div className="ac-input" style={inputWrapStyle}>
                   <Mail size={14} color={colors.inkSoft} />
-                  <input autoFocus value={email} onChange={(e) => { setEmail(e.target.value); setError(''); }} onKeyDown={(e) => e.key === 'Enter' && submitSingle()} placeholder="name@emamigroup.com" style={inputStyle} />
+                  <input value={email} onChange={(e) => { setEmail(e.target.value); setError(''); }} onKeyDown={(e) => e.key === 'Enter' && submitSingle()} placeholder="name@emamigroup.com" style={inputStyle} />
                 </div>
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -186,6 +221,33 @@ export default function AddUsersDialog({
                   <CheckCircle2 size={14} color={colors.green} /> <b style={{ color: colors.ink }}>{bulkValid.length}</b> ready to add
                   {bulkSkipped > 0 && <span> · {bulkSkipped} skipped (invalid or already added)</span>}
                 </span>
+              )}
+              {bulkValid.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ ...labelStyle, display: 'block', marginBottom: 6 }}>
+                    Names <span style={{ color: '#E11D48' }}>*</span>{' '}
+                    <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>· filled in from each email — check and correct them</span>
+                  </span>
+                  <div className="ac-scroll" style={{ border: `1px solid ${colors.border}`, borderRadius: radii.xl, maxHeight: 220, overflowY: 'auto' }}>
+                    {bulkValid.map((e, i) => {
+                      const n = nameFor(e);
+                      const missing = !nameComplete(n);
+                      const cell: React.CSSProperties = { ...inputWrapStyle, height: 32, flex: '1 1 110px', minWidth: 0, borderColor: missing ? '#E11D48' : undefined };
+                      return (
+                        <div key={e} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 10px', borderTop: i ? `1px solid ${colors.border}` : 'none' }}>
+                          <span style={{ flex: '1 1 180px', minWidth: 0, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={e}>{e}</span>
+                          <div className="ac-input" style={cell}><input aria-label={`First name for ${e}`} maxLength={60} value={n.firstName} onChange={(ev) => setBulkName(e, { firstName: ev.target.value })} placeholder="First name" style={inputStyle} /></div>
+                          <div className="ac-input" style={cell}><input aria-label={`Last name for ${e}`} maxLength={60} value={n.lastName} onChange={(ev) => setBulkName(e, { lastName: ev.target.value })} placeholder="Last name" style={inputStyle} /></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {bulkMissingNames > 0 && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 12, fontFamily: fonts.sansMedium, fontWeight: fontWeights.sansMedium, color: '#E11D48' }}>
+                      <AlertTriangle size={13} /> {bulkMissingNames} {bulkMissingNames === 1 ? 'person needs' : 'people need'} a first and last name
+                    </span>
+                  )}
+                </div>
               )}
             </label>
           )}
@@ -236,7 +298,7 @@ export default function AddUsersDialog({
             {progress ? `Adding ${progress.done}/${progress.total}…` : 'New people start as Viewer.'}
           </span>
           <button type="button" className="ac-btn" onClick={close} disabled={busy} style={secondaryBtnStyle}>Cancel</button>
-          <button type="button" className="ac-btn" onClick={mode === 'single' ? submitSingle : submitBulk} disabled={busy || (mode === 'single' ? !email.trim() : bulkValid.length === 0)} style={primaryBtnStyle}>
+          <button type="button" className="ac-btn" onClick={mode === 'single' ? submitSingle : submitBulk} disabled={busy || (mode === 'single' ? !email.trim() || !firstName.trim() || !lastName.trim() : bulkValid.length === 0 || bulkMissingNames > 0)} style={primaryBtnStyle}>
             {busy ? <Spinner light size={14} /> : mode === 'single' ? <UserPlus size={15} /> : <Users size={15} />}
             {mode === 'single' ? 'Add person' : `Add ${bulkValid.length || ''} people`}
           </button>

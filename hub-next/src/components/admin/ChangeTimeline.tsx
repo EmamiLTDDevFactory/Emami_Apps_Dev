@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { UserPlus, UserMinus, Power, ShieldCheck, AppWindow, Phone } from 'lucide-react';
+import { UserPlus, UserMinus, Power, ShieldCheck, AppWindow, Phone, PenLine } from 'lucide-react';
 import type { AccessChangeEntry, AccessChangeType } from '../../types';
 import { colors, fonts, fontWeights } from '../../theme/tokens';
 import { TONE_COLOR, changeTone, describeChange } from './adminShared';
@@ -13,6 +13,7 @@ const TYPE_ICON: Record<AccessChangeType, React.ElementType> = {
   ACCESS_LEVEL: ShieldCheck,
   APP_ROLE: AppWindow,
   MOBILE_SET: Phone,
+  NAME_SET: PenLine,
 };
 
 function dayLabel(iso: string): string {

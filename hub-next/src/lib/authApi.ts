@@ -304,3 +304,40 @@ export async function getOrgProfile(): Promise<{ ok: boolean; configured: boolea
     return { ok: false, configured: true, org: null, error: 'Could not reach the server.' };
   }
 }
+
+/** People page — one row of a people search (any signed-in user; active Emami Apps users only). */
+export interface PersonSummary {
+  name: string;
+  email: string;
+  jobTitle: string | null;
+  department: string | null;
+}
+
+/** People page — one person's basic card: name, email, title, department, work phones and managers (Entra ID). */
+export interface PersonCard extends PersonSummary {
+  businessPhones: string[];
+  mobilePhone: string | null;
+  managers: { level: number; displayName: string | null; jobTitle: string | null; mail: string | null }[];
+}
+
+export async function searchPeople(q: string): Promise<{ ok: boolean; people?: PersonSummary[]; error?: string }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/me/people?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not search people right now.' };
+    return { ok: true, people: data.people };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
+export async function getPersonCard(email: string): Promise<{ ok: boolean; person?: PersonCard; error?: string }> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/me/people/${encodeURIComponent(email)}`, { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) return { ok: false, error: data?.error || 'Could not load this person right now.' };
+    return { ok: true, person: data.person };
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}

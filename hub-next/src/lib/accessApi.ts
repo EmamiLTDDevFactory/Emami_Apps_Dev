@@ -57,6 +57,7 @@ export async function listAuthorizedUsers(): Promise<{ ok: boolean; users?: User
  * `actingEmail` is who's doing the adding, recorded on the change-history audit trail. */
 export async function addAuthorizedUser(
   email: string,
+  names: { firstName: string; lastName: string },
   actingEmail?: string,
   mobile?: string
 ): Promise<ApiResult & { apps?: UserAppGrant[] }> {
@@ -64,7 +65,7 @@ export async function addAuthorizedUser(
     const res = await authFetch(`${ACCESS_API_URL}/access/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, actingEmail, mobile: mobile || undefined }),
+      body: JSON.stringify({ email, firstName: names.firstName, lastName: names.lastName, actingEmail, mobile: mobile || undefined }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) {
@@ -88,6 +89,20 @@ export async function removeAuthorizedUser(email: string, actingEmail?: string):
 }
 
 /** Flips a user active/inactive — inactive users keep their app grants but are blocked at login. */
+/** Admin Center — change someone's first and last name (both required). */
+export async function setUserName(email: string, firstName: string, lastName: string): Promise<ApiResult> {
+  try {
+    const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/name`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firstName, lastName }),
+    });
+    return await parseResult(res);
+  } catch {
+    return { ok: false, error: 'Could not reach the server. Please try again.' };
+  }
+}
+
 export async function setUserActive(email: string, isActive: boolean, actingEmail?: string): Promise<ApiResult> {
   try {
     const res = await authFetch(`${ACCESS_API_URL}/access/users/${encodeURIComponent(email)}/active`, {

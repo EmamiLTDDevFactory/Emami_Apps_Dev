@@ -84,6 +84,7 @@ export const navColors: Record<string, string> = {
   Home: colors.rust,
   MyApplications: '#0EA5E9',
   Favorites: colors.amber,
+  People: '#0D9488',
   Help: '#16A34A',
   Settings: '#F59E0B',
   UserAccess: '#E11D48',

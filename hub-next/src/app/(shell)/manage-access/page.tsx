@@ -112,7 +112,15 @@ function AdminCenter() {
     refreshHistory();
   }, [canManage, refreshHistory]);
 
-  const people: AdminUser[] = useMemo(() => users.map((u) => ({ ...u, usage: usage[u.email] ?? null })), [users, usage]);
+  // A name set in the Admin Center (first + last) wins over the sign-in name the roster carries —
+  // also for someone just added, who has no roster row until the next reload.
+  const people: AdminUser[] = useMemo(() => users.map((u) => {
+    const base = usage[u.email] ?? null;
+    const setName = [u.firstName, u.lastName].map((x) => (x || '').trim()).filter(Boolean).join(' ');
+    if (!setName) return { ...u, usage: base };
+    const fallback: AdminRosterUsage = { name: null, lastLogin: null, sessionsTotal: 0, logins: 0, timeSpent: '—', appsOpened: 0, mostUsedApp: null, hasLoggedIn: false };
+    return { ...u, usage: { ...(base ?? fallback), name: setName } };
+  }), [users, usage]);
   const statByApp = useMemo(() => Object.fromEntries(appStats.map((s) => [s.appId, s])), [appStats]);
   const accessCountByApp = useMemo(() => {
     const m: Record<string, number> = {};

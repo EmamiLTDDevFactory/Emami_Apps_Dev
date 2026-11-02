@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, X, Trash2, Lock, Download, Activity, History as HistoryIcon, Save, Info, Phone, AlertTriangle, ChevronDown, ChevronUp, PenLine, Check } from 'lucide-react';
 import type { AccessChangeEntry, AccessLevel, AppRole, UserAccessEntry } from '../../types';
 import { getMyProfile, type UserProfile } from '../../lib/authApi';
 import type { MyActivity } from '../../lib/authApi';
 import { getAdminUserActivity, getAdminUserAppStats, type AdminUserAppStat } from '../../lib/adminApi';
-import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, setAccessLevel, setAppAccess, setCcbRoles, setUserActive } from '../../lib/accessApi';
+import { CCB_APP_ID, getAccessHistory, getCcbRoles, removeAuthorizedUser, setAccessLevel, setAppAccess, setCcbRoles, setUserActive, setUserName } from '../../lib/accessApi';
 import { exportUserReportToExcel } from '../../lib/exportAdminExcel';
 import { appColor, colors, fontWeights, fonts, radii } from '../../theme/tokens';
 import SidePanel, { PanelTabs } from './SidePanel';
@@ -208,7 +208,7 @@ export default function UserDrawer({
       }));
       // Keep any grant for an app id the hub catalog no longer lists, untouched.
       const unknown = user.apps.filter((g) => !SORTED_APPS.some((a) => a.id === g.appId));
-      onSaved({ email: user.email, mobile: user.mobile, isActive: draft.isActive, accessLevel: draft.accessLevel, apps: [...unknown, ...apps] });
+      onSaved({ email: user.email, mobile: user.mobile, firstName: user.firstName, lastName: user.lastName, isActive: draft.isActive, accessLevel: draft.accessLevel, apps: [...unknown, ...apps] });
       setHistoryLoaded(false);
       notify(`Saved ${changeCount} change${changeCount === 1 ? '' : 's'} for ${displayName(user.email, user.usage?.name)}`);
     } finally {
@@ -251,6 +251,31 @@ export default function UserDrawer({
   };
 
   const name = displayName(user.email, user.usage?.name);
+
+  // Edit first / last name in place (header pencil). Starts from the admin-set name, else splits the current one.
+  const [nameEdit, setNameEdit] = useState<{ first: string; last: string } | null>(null);
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState('');
+  useEffect(() => { setNameEdit(null); setNameError(''); }, [user.email]);
+  const startNameEdit = () => {
+    const [first, ...rest] = name.split(' ');
+    setNameEdit({ first: user.firstName || first || '', last: user.lastName || rest.join(' ') });
+    setNameError('');
+  };
+  const saveName = async () => {
+    if (!nameEdit) return;
+    const first = nameEdit.first.replace(/\s+/g, ' ').trim();
+    const last = nameEdit.last.replace(/\s+/g, ' ').trim();
+    if (!first || !last) return setNameError('First name and last name are both required.');
+    setNameSaving(true);
+    const r = await setUserName(user.email, first, last);
+    setNameSaving(false);
+    if (!r.ok) return setNameError(r.error || 'Could not update the name.');
+    onSaved({ email: user.email, mobile: user.mobile, isActive: user.isActive, accessLevel: user.accessLevel, apps: user.apps, firstName: first, lastName: last });
+    setNameEdit(null);
+    notify(`Name updated to ${first} ${last}`);
+    if (historyLoaded) setHistoryLoaded(false);
+  };
   // The full sign-in / session history for this person (My Profile's activity page in admin mode).
 
   const header = (
@@ -258,7 +283,30 @@ export default function UserDrawer({
       <div style={{ padding: '20px 64px 16px 20px', display: 'flex', alignItems: 'center', gap: 14, background: `linear-gradient(135deg, ${colors.rust}0f, transparent 70%)` }}>
         <Initials email={user.email} name={user.usage?.name} size={52} />
         <div style={{ minWidth: 0, flex: 1 }}>
-          <p style={{ margin: 0, fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+          {nameEdit ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 4 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div className="ac-input" style={{ ...inputWrapStyle, height: 34, flex: '1 1 110px', minWidth: 0 }}>
+                  <input autoFocus aria-label="First name" placeholder="First name" maxLength={60} value={nameEdit.first} onChange={(e) => { setNameEdit({ ...nameEdit, first: e.target.value }); setNameError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setNameEdit(null); }} style={inputStyle} />
+                </div>
+                <div className="ac-input" style={{ ...inputWrapStyle, height: 34, flex: '1 1 110px', minWidth: 0 }}>
+                  <input aria-label="Last name" placeholder="Last name" maxLength={60} value={nameEdit.last} onChange={(e) => { setNameEdit({ ...nameEdit, last: e.target.value }); setNameError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setNameEdit(null); }} style={inputStyle} />
+                </div>
+                <button type="button" className="ac-btn" onClick={saveName} disabled={nameSaving} style={{ ...primaryBtnStyle, height: 34, padding: '0 12px' }} aria-label="Save name">
+                  {nameSaving ? <Spinner light size={13} /> : <Check size={14} />} Save
+                </button>
+                <button type="button" className="ac-btn" onClick={() => setNameEdit(null)} disabled={nameSaving} style={{ ...secondaryBtnStyle, height: 34, padding: '0 12px' }}>Cancel</button>
+              </div>
+              {!!nameError && <p style={{ ...errorTextStyle, margin: 0 }}>{nameError}</p>}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 17, fontFamily: fonts.sansBold, fontWeight: fontWeights.sansBold, color: colors.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+              <button type="button" className="ac-btn" onClick={startNameEdit} title="Edit name" aria-label="Edit name" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer' }}>
+                <PenLine size={13} color={colors.inkSoft} />
+              </button>
+            </div>
+          )}
           <p style={{ margin: '2px 0 8px', fontSize: 12.5, fontFamily: fonts.sansRegular, color: colors.inkSoft, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <LevelBadge level={user.accessLevel} compact />

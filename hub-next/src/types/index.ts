@@ -67,6 +67,10 @@ export interface UserAccessEntry {
    * whatever an admin set for them in the Add Users dialog before that (see
    * authorized_users.pre_registered_mobile) — null if neither exists yet. */
   mobile?: string | null;
+  /** First / last name set by an admin (required when adding; editable in the Admin Center). When
+   * set, it is the person's name everywhere in the hub. Older users may have none. */
+  firstName?: string | null;
+  lastName?: string | null;
   /** Per-app grants (see AppItem for appId) — each with its own role, not just a boolean. */
   apps: UserAppGrant[];
 }
@@ -74,7 +78,7 @@ export interface UserAccessEntry {
 /** One row of the Manage Access change-history audit trail (emami_apps.access_change_history) —
  * every add/remove/activate-deactivate/access-level/app-role/mobile change, who made it, and what
  * changed. Shown per-user or org-wide in the Administration tab. */
-export type AccessChangeType = 'USER_ADDED' | 'USER_REMOVED' | 'ACTIVE_STATUS' | 'ACCESS_LEVEL' | 'APP_ROLE' | 'MOBILE_SET';
+export type AccessChangeType = 'USER_ADDED' | 'USER_REMOVED' | 'ACTIVE_STATUS' | 'ACCESS_LEVEL' | 'APP_ROLE' | 'MOBILE_SET' | 'NAME_SET';
 
 export interface AccessChangeEntry {
   id: number;

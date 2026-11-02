@@ -121,6 +121,8 @@ export function describeChange(c: AccessChangeEntry): string {
     }
     case 'MOBILE_SET':
       return 'Mobile number updated';
+    case 'NAME_SET':
+      return c.oldValue ? `Name changed from ${c.oldValue} to ${c.newValue ?? '—'}` : `Name set to ${c.newValue ?? '—'}`;
     default:
       return c.changeType;
   }

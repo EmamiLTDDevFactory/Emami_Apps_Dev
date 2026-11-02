@@ -114,7 +114,8 @@ let userBase = { at: 0, people: [], loading: null };
 /** Active Admin Center users, each with the best name we have (Entra ID, else the hub, else the email). */
 async function loadUserBase() {
     const { rows } = await pool.query(`
-        SELECT lower(a.email) AS email, u.name
+        SELECT lower(a.email) AS email, u.name,
+               NULLIF(btrim(concat_ws(' ', btrim(a.first_name), btrim(a.last_name))), '') AS admin_name
           FROM emami_apps.authorized_users a
           LEFT JOIN emami_apps.users u ON lower(u.email) = lower(a.email)
          WHERE a.is_active = true`);
@@ -140,7 +141,8 @@ async function loadUserBase() {
     const fromEmail = (e) => e.split('@')[0].split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
     return rows.map((r) => {
         const u = ad.get(r.email);
-        return { name: u?.displayName || r.name || fromEmail(r.email), email: r.email, jobTitle: u?.jobTitle || null, department: u?.department || null };
+        // A name set in the Admin Center wins over the directory's and the sign-in's.
+        return { name: r.admin_name || u?.displayName || r.name || fromEmail(r.email), email: r.email, jobTitle: u?.jobTitle || null, department: u?.department || null };
     }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -154,12 +156,20 @@ async function getUserBase() {
     return userBase.loading;
 }
 
-/** Matches every word of the query against the name or the email. */
-async function searchDirectory(q) {
+/** Drops the cached user base, so a name changed or a person added in the Admin Center shows in search at once. */
+function invalidatePeopleDirectory() {
+    userBase.at = 0;
+}
+
+/** Matches every word of the query against the name, email, job title or department. */
+async function searchDirectory(q, limit = 10, { withOrg = false } = {}) {
     const words = q.split(/\s+/).filter(Boolean);
     return (await getUserBase())
-        .filter((p) => { const hay = `${p.name} ${p.email}`.toLowerCase(); return words.every((w) => hay.includes(w)); })
-        .slice(0, 10);
+        .filter((p) => {
+            const hay = (withOrg ? `${p.name} ${p.email} ${p.jobTitle || ''} ${p.department || ''}` : `${p.name} ${p.email}`).toLowerCase();
+            return words.every((w) => hay.includes(w));
+        })
+        .slice(0, limit);
 }
 
 /** The verified email from an Emami Apps session token, or '' (magic-link tokens carry a `purpose` and are refused). */
@@ -187,6 +197,55 @@ router.get('/me/directory-search', async (req, res) => {
     }
 });
 
+/** People page — any signed-in user can find any active Emami Apps user by name, email, title or department.
+ * Basic directory data only (name, email, job title, department); max 50 per search. */
+router.get('/me/people', async (req, res) => {
+    if (!sessionEmail(req)) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
+    const q = String(req.query.q || '').trim().toLowerCase().slice(0, 60);
+    if (q.length < 2) return res.json({ success: true, people: [] });
+    try {
+        res.json({ success: true, people: await searchDirectory(q, 50, { withOrg: true }) });
+    } catch (err) {
+        console.error('[org-profile] People search failed:', err.message);
+        res.status(502).json({ success: false, error: 'Could not search people right now.' });
+    }
+});
+
+/** People page — one active Emami Apps user's basic card: name, email, job title, department, work phones and
+ * manager chain from Entra ID (what Outlook's address book already shows to everyone). Nothing from the hub's
+ * own records beyond the name — no personal mobile, activity or access. */
+router.get('/me/people/:email', async (req, res) => {
+    if (!sessionEmail(req)) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
+    const email = String(req.params.email || '').trim().toLowerCase();
+    try {
+        const person = (await getUserBase()).find((p) => p.email === email);
+        if (!person) return res.status(404).json({ success: false, error: 'No active Emami Apps user with that email.' });
+        let org = null;
+        if (configured() && EMAIL_RE.test(email)) {
+            try {
+                org = await lookup(email);
+            } catch (err) {
+                console.error('[org-profile] People card lookup failed for', email, ':', err.message);
+            }
+        }
+        res.json({
+            success: true,
+            person: {
+                name: person.name,
+                email: person.email,
+                jobTitle: org?.jobTitle || person.jobTitle || null,
+                department: org?.department || person.department || null,
+                businessPhones: org?.businessPhones || [],
+                mobilePhone: org?.mobilePhone || null,
+                managers: (org?.managers || []).map((m) => ({ level: m.level, displayName: m.displayName, jobTitle: m.jobTitle, mail: m.mail })),
+            },
+        });
+    } catch (err) {
+        console.error('[org-profile] People card failed for', email, ':', err.message);
+        res.status(502).json({ success: false, error: 'Could not load this person right now.' });
+    }
+});
+
 router.get('/me/org-profile', async (req, res) => {
     const email = sessionEmail(req);
     if (!email) return res.status(401).json({ success: false, error: 'Sign in to Emami Apps first.' });
@@ -202,3 +261,4 @@ router.get('/me/org-profile', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.invalidatePeopleDirectory = invalidatePeopleDirectory;
