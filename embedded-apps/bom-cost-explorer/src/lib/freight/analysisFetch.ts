@@ -35,7 +35,7 @@ export interface AnalysisInput {
   range: DateRange;
   /** Include freight (InclFrt) */
   inclFrt: boolean;
-  /** Latest only (LatestOnly): sent as 'X' only when the person ticks the box, otherwise not sent at all */
+  /** Latest only (LatestOnly): `LatestOnly eq 'X'` when the person ticks the box, `LatestOnly eq ' '` when not */
   latestOnly: boolean;
   /** FreightDays exactly as the person typed it (a whole number of at least 1); never capped here */
   freightDays: number;
@@ -90,8 +90,8 @@ interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; ran
 
 /**
  * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
- * Flags: InclFrt and LatestOnly are ABAP character flags, sent as `eq 'X'` (NOT `eq true`, the ABAP boolean). InclFrt, StdFrt and
- * LatestOnly are left out when not set (LatestOnly is set only by the person's checkbox; StdFrt is never set) (an `eq false` / `eq ''` on these sets was once refused with "Invalid parametertype").
+ * Flags: InclFrt and LatestOnly are ABAP character flags, sent as `eq 'X'` (NOT `eq true`, the ABAP boolean). InclFrt and StdFrt are
+ * left out when not set (StdFrt is never set); LatestOnly follows the person's checkbox: 'X' ticked, a single blank ' ' unticked (an `eq false` / `eq ''` on these sets was once refused with "Invalid parametertype").
  */
 export function analysisFilter(p: FilterParts): string {
   const set = p.mode === 'F' ? 'FREIGHT' : 'RMPM';
@@ -103,8 +103,9 @@ export function analysisFilter(p: FilterParts): string {
     sapDay('BudatTo', p.range.to),
     p.inclFrt ? "InclFrt eq 'X'" : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
-    // LatestOnly belongs to the Freight analysis tab only and is the user's choice: `LatestOnly eq 'X'` when ticked, nothing otherwise.
-    p.mode === 'F' && p.latestOnly ? "LatestOnly eq 'X'" : null,
+    // LatestOnly belongs to the Freight analysis tab only and is the user's choice: `LatestOnly eq 'X'` when ticked, `LatestOnly eq ' '`
+    // (a single blank) when not. Always sent on the freight request, never on the components request. Checked on NGQ and NWP.
+    p.mode === 'F' ? (p.latestOnly ? "LatestOnly eq 'X'" : "LatestOnly eq ' '") : null,
   ];
   return parts.filter(Boolean).join(' and ');
 }

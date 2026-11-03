@@ -82,18 +82,24 @@ describe('the filter has only what the screen filled in', () => {
     expect(on).not.toContain('InclFrt eq true');
     expect(analysisFilter({ ...base, plant: 'UB01', inclFrt: false })).not.toContain('InclFrt');
   });
-  it('StdFrt is never sent; LatestOnly is not sent unless the person ticks it', () => {
-    for (const mode of ['F', 'M'] as const) {
-      const f = analysisFilter({ ...base, mode, plant: 'UB01' });
-      expect(f).not.toContain('StdFrt');
-      expect(f).not.toContain('LatestOnly');
-      expect(analysisFilter({ ...base, mode, plant: 'UB01', latestOnly: false })).not.toContain('LatestOnly');
+  it('StdFrt is never sent', () => {
+    for (const mode of ['F', 'M'] as const) expect(analysisFilter({ ...base, mode, plant: 'UB01' })).not.toContain('StdFrt');
+  });
+  it("LatestOnly unticked: sent as a single blank, LatestOnly eq ' ' (also when the flag is not given); never eq '' and never omitted", () => {
+    for (const latestOnly of [false, undefined]) {
+      const f = analysisFilter({ ...base, plant: 'UB01', latestOnly });
+      expect(f).toContain("LatestOnly eq ' '");
+      expect(f).not.toContain("LatestOnly eq ''");
     }
   });
-  it("LatestOnly ticked: `LatestOnly eq 'X'` on the freight set only (never eq true, never on the components set)", () => {
+  it("LatestOnly ticked: `LatestOnly eq 'X'` (never eq true)", () => {
     const f = analysisFilter({ ...base, plant: 'UB01', latestOnly: true });
     expect(f).toContain("LatestOnly eq 'X'");
+    expect(f).not.toContain("LatestOnly eq ' '");
     expect(f).not.toContain('LatestOnly eq true');
+  });
+  it('LatestOnly is only on the freight request, never on the components request', () => {
     expect(analysisFilter({ ...base, mode: 'M', plant: 'UB01', latestOnly: true })).not.toContain('LatestOnly');
+    expect(analysisFilter({ ...base, mode: 'M', plant: 'UB01', latestOnly: false })).not.toContain('LatestOnly');
   });
 });
