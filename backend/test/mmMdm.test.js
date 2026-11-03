@@ -67,10 +67,18 @@ test('a batch answer with a failed part raises the SAP error with all its messag
     assert.throws(() => sap.parseBatch(text), (e) => e.status === 400 && e.messages.length === 1 && e.messages[0].target === 'Plant/WERKS');
 });
 
-test('authentication towards SAP lives in one function', () => {
+test('authentication towards SAP lives in one function', async () => {
     delete process.env.MM_SAP_AUTH;
-    assert.deepEqual(sap.sapAuth({ user: 'a@b.c' }), { 'X-Emami-User': 'a@b.c' });
+    assert.deepEqual(await sap.sapAuth({ user: 'a@b.c' }), { 'X-Emami-User': 'a@b.c' });
     process.env.MM_SAP_AUTH = 'basic'; process.env.MM_SAP_USER = 'u'; process.env.MM_SAP_PASSWORD = 'p';
-    assert.equal(sap.sapAuth({ user: 'a@b.c' }).Authorization, `Basic ${Buffer.from('u:p').toString('base64')}`);
-    delete process.env.MM_SAP_AUTH; delete process.env.MM_SAP_USER; delete process.env.MM_SAP_PASSWORD;
+    assert.equal((await sap.sapAuth({ user: 'a@b.c' })).Authorization, `Basic ${Buffer.from('u:p').toString('base64')}`);
+    delete process.env.MM_SAP_USER; delete process.env.MM_SAP_PASSWORD;
+    process.env.MM_SAP_AUTH = 'bearer';
+    await assert.rejects(sap.sapAuth({ user: 'a@b.c' }), (e) => e.status === 503 && /not configured/.test(e.message)); // no provider named yet
+    sap.setTokenProvider(async (c) => `tok-for-${c.user}`);
+    assert.deepEqual(await sap.sapAuth({ user: 'a@b.c' }), { Authorization: 'Bearer tok-for-a@b.c' }); // server side only
+    sap.setTokenProvider(async () => '');
+    await assert.rejects(sap.sapAuth({ user: 'a@b.c' }), (e) => e.status === 401);
+    sap.setTokenProvider(null);
+    delete process.env.MM_SAP_AUTH;
 });

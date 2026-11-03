@@ -5,10 +5,15 @@
    Settings (backend .env):
      MM_SAP_ODATA_BASE   e.g. https://<azure gateway>/api/NGQ/ZMM_MDM_SRV            (required for live mode)
      MM_SAP_CLIENT       sap-client                                                    (optional)
-     MM_SAP_AUTH         gateway (default) | basic
+     MM_SAP_AUTH         gateway (default) | bearer | basic
                            gateway : the Azure SAP gateway signs in itself (same as the other apps); the hub user is passed in
                                      the header named by MM_SAP_USER_HEADER so the SAP side can tell who is calling
-                           basic   : one technical user from MM_SAP_USER / MM_SAP_PASSWORD (development only)
+                           bearer  : the real user reaches SAP with a token SAP accepts (OIDC / SAML provider, not named yet).
+                                     The token is obtained and kept ON THE SERVER by the registered token provider
+                                     (setTokenProvider); the browser never sees it. Until a provider is registered every call
+                                     answers 503 "Bearer sign-in is not configured".
+                           basic   : one technical user from MM_SAP_USER / MM_SAP_PASSWORD (development only, NOT for production:
+                                     SAP workflow and field control depend on the real user)
      MM_SAP_USER_HEADER  header that carries the hub user's e-mail (default X-Emami-User)
 
    Status: written against the contract in embedded-apps/mm-mdm/odata/metadata.xml; the SAP service is not built yet, so
@@ -37,13 +42,26 @@ function sapSystem() {
 }
 
 /**
- * THE one place that decides how a call authenticates to SAP (rule: authentication lives in one function).
- * caller = { user } where user is the signed-in hub user's e-mail. Returns the headers for the SAP request.
+ * Bearer mode: the token of the signed-in user, from the identity provider the project names later. A provider is an async
+ * function (caller) => access token string; it owns the exchange, the refresh and the cache. Tokens stay on the server.
  */
-function sapAuth(caller) {
+let tokenProvider = null;
+function setTokenProvider(fn) { tokenProvider = typeof fn === 'function' ? fn : null; }
+
+/**
+ * THE one place that decides how a call authenticates to SAP (rule: authentication lives in one function).
+ * caller = { user } where user is the signed-in hub user's e-mail. Resolves to the headers for the SAP request.
+ */
+async function sapAuth(caller) {
     const c = config();
     if (c.mode === 'basic') {
         return c.user ? { Authorization: `Basic ${Buffer.from(`${c.user}:${c.password}`).toString('base64')}` } : {};
+    }
+    if (c.mode === 'bearer') {
+        if (!tokenProvider) throw new SapError('Bearer sign-in is not configured on the server (no token provider registered yet).', 503);
+        const token = await tokenProvider(caller);
+        if (!token) throw new SapError('SAP sign-in expired. Sign in to Emami Apps again.', 401);
+        return { Authorization: `Bearer ${token}` };
     }
     return caller && caller.user ? { [c.userHeader]: caller.user } : {};
 }
@@ -54,9 +72,9 @@ function baseUrl() {
     return base;
 }
 
-function headersFor(caller, extra = {}) {
+async function headersFor(caller, extra = {}) {
     const { client } = config();
-    return { Accept: 'application/json', ...(client ? { 'sap-client': client } : {}), ...sapAuth(caller), ...extra };
+    return { Accept: 'application/json', ...(client ? { 'sap-client': client } : {}), ...(await sapAuth(caller)), ...extra };
 }
 
 const sessions = new Map(); // user -> { token, cookies, at }
@@ -68,7 +86,7 @@ async function csrf(caller, force = false) {
     if (!force && cur && Date.now() - cur.at < TTL) return cur;
     let res;
     try {
-        res = await fetch(`${baseUrl()}/`, { method: 'GET', headers: headersFor(caller, { 'x-csrf-token': 'Fetch' }), cache: 'no-store' });
+        res = await fetch(`${baseUrl()}/`, { method: 'GET', headers: await headersFor(caller, { 'x-csrf-token': 'Fetch' }), cache: 'no-store' });
     } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
     await res.arrayBuffer().catch(() => null);
     const token = res.headers.get('x-csrf-token') || '';
@@ -99,7 +117,7 @@ function fail(status, json) {
 async function request(caller, method, path, body, retry = true) {
     const write = method !== 'GET';
     const s = write ? await csrf(caller) : undefined;
-    const headers = headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) } : {}) });
+    const headers = await headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) } : {}) });
     let res;
     try {
         res = await fetch(`${baseUrl()}/${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' });
@@ -143,7 +161,7 @@ async function batchChangeSet(caller, ops, extraHeaders = {}) {
     try {
         res = await fetch(`${baseUrl()}/$batch`, {
             method: 'POST',
-            headers: headersFor(caller, { 'Content-Type': `multipart/mixed; boundary=${b}`, 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}), ...extraHeaders }),
+            headers: await headersFor(caller, { 'Content-Type': `multipart/mixed; boundary=${b}`, 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}), ...extraHeaders }),
             body,
             cache: 'no-store',
         });
@@ -168,4 +186,4 @@ function parseBatch(text) {
     return out;
 }
 
-module.exports = { SapError, isConfigured, sapSystem, sapAuth, mapError, odata, results, batchChangeSet, parseBatch };
+module.exports = { SapError, isConfigured, sapSystem, sapAuth, setTokenProvider, mapError, odata, results, batchChangeSet, parseBatch };
