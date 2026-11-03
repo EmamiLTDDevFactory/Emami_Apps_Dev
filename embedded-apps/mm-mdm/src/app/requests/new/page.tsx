@@ -2,7 +2,9 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
-import { useValueHelp } from '@/components/useValueHelp';
+import { Combobox } from '@/components/Combobox';
+import { useValueHelpState } from '@/components/useValueHelp';
+import { CASCADE_PARENT_HINT, cascadeParams, type HelpParams } from '@/lib/valuehelp';
 import { FORM } from '@/lib/form';
 import type { DuplicateHit, Message } from '@/lib/types';
 
@@ -23,9 +25,14 @@ export default function NewRequest() {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const types = useValueHelp('MTART'); const sectors = useValueHelp('MBRSH');
-  const mgs = useValueHelp('MGRP', { mtart }); const sgs = useValueHelp('SGRP', { mtart, mgrp: mg }); const ssgs = useValueHelp('SSGR', { mtart, mgrp: mg, sgrp: sg });
-  const plants = useValueHelp('WERKS'); const slocs = useValueHelp('LGORT'); const orgs = useValueHelp('VKORG'); const chans = useValueHelp('VTWEG');
+  // Value help lists (searchable comboboxes, one request per list per session). The description groups cascade: each list is
+  // loaded for the material type and the choices above it, and only once those are made.
+  const lists = {
+    mtart: useValueHelpState('MTART'), mbrsh: useValueHelpState('MBRSH'),
+    mgrp: useValueHelpState('MGRP', cascadeParams('MGRP', { mtart })), sgrp: useValueHelpState('SGRP', cascadeParams('SGRP', { mtart, mgrp: mg })), ssgr: useValueHelpState('SSGR', cascadeParams('SSGR', { mtart, mgrp: mg, sgrp: sg })),
+    werks: useValueHelpState('WERKS'), lgort: useValueHelpState('LGORT'), vkorg: useValueHelpState('VKORG'), vtweg: useValueHelpState('VTWEG'),
+  };
+  const [types, sectors, mgs, sgs, ssgs, plants, slocs, orgs, chans] = [lists.mtart, lists.mbrsh, lists.mgrp, lists.sgrp, lists.ssgr, lists.werks, lists.lgort, lists.vkorg, lists.vtweg].map((l) => l.items);
   const text = (list: { key: string; text: string }[], k: string) => list.find((x) => x.key === k)?.text ?? '';
 
   // Description rule runs in SAP (BuildDescription); the screen only shows the result
@@ -51,10 +58,11 @@ export default function NewRequest() {
     } finally { setBusy(false); }
   };
 
-  const sel = (id: string, label: string, v: string, set: (s: string) => void, list: { key: string; text: string }[], req = false) => (
+  const sel = (id: string, label: string, v: string, set: (s: string) => void, state: { items: { key: string; text: string }[]; loading: boolean; error: boolean }, req = false, parentHint = '') => (
     <div className="field"><label className="lbl" htmlFor={id}>{label}{req && <span className="req">*</span>}</label>
-      <select id={id} value={v} onChange={(e) => set(e.target.value)}><option value=""></option>{list.map((o) => <option key={o.key} value={o.key}>{o.key === o.text ? o.key : `${o.key} ${o.text}`}</option>)}</select></div>
+      <Combobox id={id} value={v} onChange={set} items={state.items} loading={state.loading} error={state.error} disabled={!!parentHint} disabledHint={parentHint} /></div>
   );
+  const hint = (name: string, p: HelpParams | null) => (p === null ? CASCADE_PARENT_HINT[name] : '');
 
   return (
     <>
@@ -64,11 +72,11 @@ export default function NewRequest() {
       <div className="grid2">
         <div className="card">
           <h2>Material</h2>
-          {sel('mtart', 'Material type', mtart, (v) => { setMtart(v); setMg(''); setSg(''); setSsg(''); }, types, true)}
-          {sel('mbrsh', 'Industry sector', mbrsh, setMbrsh, sectors, true)}
-          {sel('mg', 'Main group', mg, (v) => { setMg(v); setSg(''); setSsg(''); }, mgs)}
-          {sel('sg', 'Sub group', sg, (v) => { setSg(v); setSsg(''); }, sgs)}
-          {sel('ssg', 'Sub sub group', ssg, setSsg, ssgs)}
+          {sel('mtart', 'Material type', mtart, (v) => { setMtart(v); setMg(''); setSg(''); setSsg(''); }, lists.mtart, true)}
+          {sel('mbrsh', 'Industry sector', mbrsh, setMbrsh, lists.mbrsh, true)}
+          {sel('mg', 'Main group', mg, (v) => { setMg(v); setSg(''); setSsg(''); }, lists.mgrp, false, hint('MGRP', cascadeParams('MGRP', { mtart })))}
+          {sel('sg', 'Sub group', sg, (v) => { setSg(v); setSsg(''); }, lists.sgrp, false, hint('SGRP', cascadeParams('SGRP', { mtart, mgrp: mg })))}
+          {sel('ssg', 'Sub sub group', ssg, setSsg, lists.ssgr, false, hint('SSGR', cascadeParams('SSGR', { mtart, mgrp: mg, sgrp: sg })))}
           <div className="field"><label className="lbl" htmlFor="desc">Description<span className="req">*</span></label><input id="desc" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
           <div className="field"><label className="lbl" htmlFor="mfr">Manufacturer part number</label><input id="mfr" value={mfr} onChange={(e) => setMfr(e.target.value)} /></div>
           <div className="field"><label className="lbl">Material description (40 characters)</label><input readOnly value={preview.text} aria-live="polite" />{preview.truncated && <div className="msg w">The text was cut to 40 characters.</div>}</div>
@@ -83,10 +91,10 @@ export default function NewRequest() {
         </div>
         <div className="card">
           <h2>Organization data</h2>
-          {sel('plant', 'Plant', plant, setPlant, plants)}
-          {sel('sloc', 'Storage location', sloc, setSloc, slocs)}
-          {sel('vkorg', 'Sales organization', vkorg, setVkorg, orgs)}
-          {sel('vtweg', 'Distribution channel', vtweg, setVtweg, chans)}
+          {sel('plant', 'Plant', plant, setPlant, lists.werks)}
+          {sel('sloc', 'Storage location', sloc, setSloc, lists.lgort)}
+          {sel('vkorg', 'Sales organization', vkorg, setVkorg, lists.vkorg)}
+          {sel('vtweg', 'Distribution channel', vtweg, setVtweg, lists.vtweg)}
           <h2 style={{ marginTop: 16 }}>Tabs to fill in</h2>
           <div className="row" style={{ marginBottom: 8 }}><button type="button" onClick={() => setViews(SELECTABLE)}>Select all</button><button type="button" onClick={() => setViews([])}>Select none</button></div>
           <div style={{ columns: 2 }}>

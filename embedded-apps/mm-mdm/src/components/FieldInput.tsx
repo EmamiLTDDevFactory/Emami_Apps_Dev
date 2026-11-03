@@ -3,7 +3,8 @@ import { useId } from 'react';
 import type { FieldMeta } from '@/lib/form';
 import type { UnitRef } from '@/lib/refs';
 import type { Message, Scalar } from '@/lib/types';
-import { useValueHelp } from './useValueHelp';
+import { Combobox } from './Combobox';
+import { useValueHelpState } from './useValueHelp';
 
 const HELP_FIELDS = new Set(['MTART', 'MBRSH', 'WERKS', 'LGORT', 'VKORG', 'VTWEG', 'MEINS', 'GEWEI', 'VOLEH', 'MATKL']);
 
@@ -28,7 +29,7 @@ interface Props {
 export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row, unit }: Props) {
   const id = useId();
   const helpName = meta.fixed.length === 0 && (HELP_FIELDS.has(meta.name) || meta.check) ? meta.name : undefined;
-  const help = useValueHelp(helpName);
+  const help = useValueHelpState(helpName);
   const v = value ?? '';
   const common = { id, 'aria-invalid': message ? true : undefined, 'aria-describedby': message ? `${id}-m` : undefined } as const;
 
@@ -57,14 +58,11 @@ export function FieldInput({ meta, value, onChange, readOnly, required, message,
       </span>
     );
   } else {
-    const listId = help.length ? `${id}-l` : undefined;
-    control = (
-      <>
-        <input {...common} list={listId} maxLength={meta.len || undefined} value={String(v)} readOnly={readOnly} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
-          onChange={(e) => onChange(meta.type === 'UNIT' ? e.target.value.toUpperCase() : e.target.value)} />
-        {listId && <datalist id={listId}>{help.map((h) => <option key={h.key} value={h.key}>{h.text}</option>)}</datalist>}
-      </>
-    );
+    control = helpName
+      ? <Combobox id={id} value={String(v)} readOnly={readOnly} maxLength={meta.len || undefined} items={help.items} loading={help.loading} error={help.error} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
+          invalid={!!message} describedBy={message ? `${id}-m` : undefined} upper={meta.type === 'UNIT'} onChange={(x) => onChange(x)} />
+      : <input {...common} maxLength={meta.len || undefined} value={String(v)} readOnly={readOnly} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
+          onChange={(e) => onChange(meta.type === 'UNIT' ? e.target.value.toUpperCase() : e.target.value)} />;
   }
   return (
     <div className={`field${message ? ' err' : ''}`} data-field={`${meta.entity}.${meta.name}`} data-row={row}>

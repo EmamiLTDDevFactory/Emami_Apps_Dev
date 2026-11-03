@@ -1,22 +1,37 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import type { ValueHelpItem } from '@/lib/types';
+import { cacheKey, createHelpCache, type HelpCache, type HelpParams } from '@/lib/valuehelp';
 
-const cache = new Map<string, ValueHelpItem[]>();
+let cache: HelpCache | undefined;
+/** One cache per browser session (module level, mirrored to sessionStorage); concurrent callers of the same list share one request. */
+export function helpCache(): HelpCache {
+  cache ??= createHelpCache((name, params) => api.valueHelp(name, params), typeof window !== 'undefined' ? safeSession() : undefined);
+  return cache;
+}
+function safeSession(): Storage | undefined { try { return window.sessionStorage; } catch { return undefined; } }
 
-/** Loads a value help list once and shares it; params make a separate list (for example the description cascade). */
-export function useValueHelp(name: string | undefined, params: Record<string, string> = {}): ValueHelpItem[] {
-  const k = name ? `${name}?${new URLSearchParams(params).toString()}` : '';
-  const [items, setItems] = useState<ValueHelpItem[]>(() => (k ? cache.get(k) ?? [] : []));
+export interface HelpState { items: ValueHelpItem[]; loading: boolean; error: boolean }
+
+/** A value help list with its loading state. name undefined or params null = nothing to load (for example a parent field is still empty). */
+export function useValueHelpState(name: string | undefined, params: HelpParams | null = {}): HelpState {
+  const k = name && params ? cacheKey(name, params) : '';
+  const stable = useMemo(() => params ?? {}, [k]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [state, setState] = useState<HelpState>(() => ({ items: (k && name ? helpCache().peek(name, stable) : undefined) ?? [], loading: false, error: false }));
   useEffect(() => {
-    if (!name) return;
-    const hit = cache.get(k);
-    if (hit) { setItems(hit); return; }
+    if (!name || !k) { setState({ items: [], loading: false, error: false }); return; }
+    const hit = helpCache().peek(name, stable);
+    if (hit) { setState({ items: hit, loading: false, error: false }); return; }
     let live = true;
-    api.valueHelp(name, params).then((r) => { cache.set(k, r); if (live) setItems(r); }).catch(() => undefined);
+    setState({ items: [], loading: true, error: false });
+    helpCache().load(name, stable).then((items) => live && setState({ items, loading: false, error: false })).catch(() => live && setState({ items: [], loading: false, error: true }));
     return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [k]);
-  return items;
+  }, [k, name, stable]);
+  return state;
+}
+
+/** Same, only the list (screens that do not show a loading state). */
+export function useValueHelp(name: string | undefined, params: HelpParams | null = {}): ValueHelpItem[] {
+  return useValueHelpState(name, params).items;
 }
