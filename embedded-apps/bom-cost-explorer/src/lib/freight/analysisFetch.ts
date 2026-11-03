@@ -87,8 +87,8 @@ interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; ran
 
 /**
  * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
- * Flags follow the SAP side as of 4 Nov 2026: InclFrt is an Edm.Boolean (`InclFrt eq true`); InclFrt, StdFrt and LatestOnly are
- * left out when false (an `eq false` on these sets was once refused with "Invalid parametertype") (the analysis wants every PO line and the actual rate, which is what omitting them gives).
+ * Flags: InclFrt is the ABAP character flag, sent as `InclFrt eq 'X'` (NOT `eq true`, the ABAP boolean). InclFrt, StdFrt and
+ * LatestOnly are left out when not set (an `eq false` / `eq ''` on these sets was once refused with "Invalid parametertype").
  */
 export function analysisFilter(p: FilterParts): string {
   const set = p.mode === 'F' ? 'FREIGHT' : 'RMPM';
@@ -98,7 +98,7 @@ export function analysisFilter(p: FilterParts): string {
     eqClause('Werks', p.plant, set),
     sapDay('BudatFrom', p.range.from),
     sapDay('BudatTo', p.range.to),
-    p.inclFrt ? 'InclFrt eq true' : null,
+    p.inclFrt ? "InclFrt eq 'X'" : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
   ];
   return parts.filter(Boolean).join(' and ');

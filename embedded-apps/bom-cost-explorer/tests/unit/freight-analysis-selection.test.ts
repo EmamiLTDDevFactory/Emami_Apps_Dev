@@ -76,10 +76,10 @@ describe('the filter has only what the screen filled in', () => {
     expect(f).toContain('FreightDays eq 92');
     expect(analysisFilter({ ...base, mode: 'M', plant: 'UB01' })).not.toContain('FreightDays');
   });
-  it('InclFrt is a boolean when set: eq true, never the character X; omitted when false', () => {
+  it("InclFrt is the ABAP character flag: eq 'X' when set, never eq true; omitted when not set", () => {
     const on = analysisFilter({ ...base, plant: 'UB01', inclFrt: true });
-    expect(on).toContain('InclFrt eq true');
-    expect(on).not.toContain("'X'");
+    expect(on).toContain("InclFrt eq 'X'");
+    expect(on).not.toContain('InclFrt eq true');
     expect(analysisFilter({ ...base, plant: 'UB01', inclFrt: false })).not.toContain('InclFrt');
   });
   it('StdFrt and LatestOnly are left out (false = omitted), on both sets', () => {
