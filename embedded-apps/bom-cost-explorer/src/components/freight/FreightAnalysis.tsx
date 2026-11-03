@@ -47,6 +47,7 @@ export default function FreightAnalysis() {
   const [freightDays, setFreightDays] = useState(String(DEFAULT_FREIGHT_DAYS));
   const [inclTouched, setInclTouched] = useState(false);
   const [inclPicked, setInclPicked] = useState(true);
+  const [latestOnly, setLatestOnly] = useState(false);
   const [touched, setTouched] = useState(false);
   const [ran, setRan] = useState<AnalysisInput | null>(null);
   const [step, setStep] = useState('');
@@ -72,7 +73,7 @@ export default function FreightAnalysis() {
     setFreightDays(String(days));
     const info: AnalysisInput['info'] = {};
     for (const m of materials) { const k = known.current.get(m); if (k) info[m] = { text: k.Maktx, mtart: k.Mtart }; }
-    const input: AnalysisInput = { materials, info, plants: plantCodes, types, range: { from, to }, inclFrt, freightDays: days };
+    const input: AnalysisInput = { materials, info, plants: plantCodes, types, range: { from, to }, inclFrt, latestOnly, freightDays: days };
     setRan(input);
     void runner.run(input);
   };
@@ -102,6 +103,7 @@ export default function FreightAnalysis() {
             {(id) => <input id={id} inputMode="numeric" className={inputCls} value={freightDays} onChange={(e) => setFreightDays(e.target.value.replace(/\D/g, ''))} onBlur={() => setFreightDays(String(freightDaysValue(freightDays || DEFAULT_FREIGHT_DAYS)))} />}
           </Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={inclFrt} onChange={(e) => { setInclTouched(true); setInclPicked(e.target.checked); }} /> Include freight</label>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm" title="Only the latest PO line of each material is read. Leave unticked to analyse every PO line of the range."><input type="checkbox" checked={latestOnly} onChange={(e) => setLatestOnly(e.target.checked)} /> Latest only</label>
           <div className="sm:col-span-2 lg:col-span-4">
             <span className="mb-1 block text-xs font-semibold text-muted">Material types</span>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -180,7 +182,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
       extraParams: [
         ['Report', view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
         ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
-        ['PO date range', `${ran.range.from} to ${ran.range.to}`], ['Alert rule', ruleText(rule)],
+        ['PO date range', `${ran.range.from} to ${ran.range.to}`], ['Latest only', ran.latestOnly ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
         ['Rows', String(view === 'po' ? poRows.length : rows.length)], ['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)],
       ],
       messages: data.messages,

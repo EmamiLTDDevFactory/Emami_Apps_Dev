@@ -95,3 +95,22 @@ test('Freight analysis: the purchase order wise view lists the PO lines behind t
   await page.getByRole('radio', { name: /By component/ }).click();
   await expect(page.getByRole('table', { name: /Purchase order wise/ })).toHaveCount(0);
 });
+
+test('Freight analysis: Latest only is sent only when ticked, otherwise not at all', async ({ page }) => {
+  await asHubUser(page);
+  const sent: string[] = [];
+  page.on('request', (r) => { if (/FreightRowSet/.test(r.url())) sent.push(decodeURIComponent(r.url())); });
+  await page.goto('./freight-analysis/');
+  const box = page.getByRole('checkbox', { name: 'Latest only' });
+  await expect(box).not.toBeChecked(); // off by default
+  await pick(page, /^Plants/, '1000');
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await expect.poll(() => sent.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  expect(sent.every((u) => !u.includes('LatestOnly'))).toBe(true); // unticked: not sent
+
+  sent.length = 0;
+  await expect(page.getByRole('button', { name: 'Execute' })).toBeEnabled({ timeout: 60_000 });
+  await box.check();
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await expect.poll(() => sent.some((u) => u.includes("LatestOnly eq 'X'")), { timeout: 30_000 }).toBe(true);
+});

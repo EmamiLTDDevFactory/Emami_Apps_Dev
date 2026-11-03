@@ -35,6 +35,8 @@ export interface AnalysisInput {
   range: DateRange;
   /** Include freight (InclFrt) */
   inclFrt: boolean;
+  /** Latest only (LatestOnly): sent as 'X' only when the person ticks the box, otherwise not sent at all */
+  latestOnly: boolean;
   /** FreightDays exactly as the person typed it (a whole number of at least 1); never capped here */
   freightDays: number;
 }
@@ -84,12 +86,12 @@ export function sapDay(name: 'BudatFrom' | 'BudatTo', day: string): string | nul
   return m ? `${name} eq datetime'${m[1]}-${m[2]}-${m[3]}T00:00:00'` : null;
 }
 
-interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number }
+interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number; latestOnly?: boolean }
 
 /**
  * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
- * Flags: InclFrt is the ABAP character flag, sent as `InclFrt eq 'X'` (NOT `eq true`, the ABAP boolean). InclFrt, StdFrt and
- * LatestOnly are left out when not set (an `eq false` / `eq ''` on these sets was once refused with "Invalid parametertype").
+ * Flags: InclFrt and LatestOnly are ABAP character flags, sent as `eq 'X'` (NOT `eq true`, the ABAP boolean). InclFrt, StdFrt and
+ * LatestOnly are left out when not set (LatestOnly is set only by the person's checkbox; StdFrt is never set) (an `eq false` / `eq ''` on these sets was once refused with "Invalid parametertype").
  */
 export function analysisFilter(p: FilterParts): string {
   const set = p.mode === 'F' ? 'FREIGHT' : 'RMPM';
@@ -101,6 +103,8 @@ export function analysisFilter(p: FilterParts): string {
     sapDay('BudatTo', p.range.to),
     p.inclFrt ? "InclFrt eq 'X'" : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
+    // LatestOnly belongs to the Freight analysis tab only and is the user's choice: `LatestOnly eq 'X'` when ticked, nothing otherwise.
+    p.mode === 'F' && p.latestOnly ? "LatestOnly eq 'X'" : null,
   ];
   return parts.filter(Boolean).join(' and ');
 }
@@ -141,7 +145,7 @@ export async function fetchFreightAnalysis(input: AnalysisInput, signal: AbortSi
   const worker = async () => {
     while (next < jobs.length) {
       const job = jobs[next++];
-      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days });
+      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days, latestOnly: input.latestOnly });
       try {
         const r = await readSet<RmPmRow & FreightRow>(job.mode, filter, opts);
         ms += r.ms; calls++; messages.push(...r.messages);

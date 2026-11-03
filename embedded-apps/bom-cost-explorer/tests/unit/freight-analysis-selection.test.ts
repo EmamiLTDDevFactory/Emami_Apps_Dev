@@ -82,11 +82,18 @@ describe('the filter has only what the screen filled in', () => {
     expect(on).not.toContain('InclFrt eq true');
     expect(analysisFilter({ ...base, plant: 'UB01', inclFrt: false })).not.toContain('InclFrt');
   });
-  it('StdFrt and LatestOnly are left out (false = omitted), on both sets', () => {
+  it('StdFrt is never sent; LatestOnly is not sent unless the person ticks it', () => {
     for (const mode of ['F', 'M'] as const) {
       const f = analysisFilter({ ...base, mode, plant: 'UB01' });
       expect(f).not.toContain('StdFrt');
       expect(f).not.toContain('LatestOnly');
+      expect(analysisFilter({ ...base, mode, plant: 'UB01', latestOnly: false })).not.toContain('LatestOnly');
     }
+  });
+  it("LatestOnly ticked: `LatestOnly eq 'X'` on the freight set only (never eq true, never on the components set)", () => {
+    const f = analysisFilter({ ...base, plant: 'UB01', latestOnly: true });
+    expect(f).toContain("LatestOnly eq 'X'");
+    expect(f).not.toContain('LatestOnly eq true');
+    expect(analysisFilter({ ...base, mode: 'M', plant: 'UB01', latestOnly: true })).not.toContain('LatestOnly');
   });
 });
