@@ -175,7 +175,7 @@ async function withWrites(c, id, data, fn, extra = {}, validateOnly = false) {
     const ops = data ? writeOps(id, data, cur.data) : [];
     const q = Object.entries({ TransId: id, AppId: cur.header.appId, ...extra }).map(([k, v]) => `${k}=${typeof v === 'string' ? enc(v) : v}`).join('&');
     ops.push({ method: 'POST', path: `${fn}?${q}` });
-    const res = await sap.batchChangeSet(c, ops, validateOnly ? { 'X-MM-Validate-Only': 'true' } : {});
+    const res = await sap.runWrites(c, ops, validateOnly ? { 'X-MM-Validate-Only': 'true' } : {});
     return res[res.length - 1] && res[res.length - 1].json;
 }
 

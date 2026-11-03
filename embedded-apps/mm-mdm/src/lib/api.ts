@@ -176,4 +176,29 @@ const demoApi: Api = {
   addComment: (id, text) => demo((s, c) => s.addComment(c, id, text))
 };
 
-export const api: Api = process.env.NEXT_PUBLIC_MM_MODE === 'live' ? liveApi : demoApi;
+// ---------------------------------------------------------------- which mode runs
+
+/** Hosts where the app talks to the real SAP service (NGD landscape, through the hub backend). Every other host runs the demo. */
+const LIVE_HOSTS = ['dev.emamiapps.in'];
+const MODE_KEY = 'mm_mode';
+
+/**
+ * Decided when a call is made, so one build serves every environment:
+ *   1. a build setting (MM_MODE=live|demo) wins, 2. a ?mm=demo|live link switches (and is remembered in this browser),
+ *   3. otherwise the dev host runs live and everything else (localhost, www, tests) runs the demo.
+ */
+export function resolveMode(): 'demo' | 'live' {
+  const built = process.env.NEXT_PUBLIC_MM_MODE;
+  if (built === 'live' || built === 'demo') return built;
+  if (typeof window === 'undefined') return 'demo';
+  try {
+    const asked = new URLSearchParams(window.location.search).get('mm');
+    if (asked === 'live' || asked === 'demo') window.localStorage.setItem(MODE_KEY, asked);
+    const kept = window.localStorage.getItem(MODE_KEY);
+    if (kept === 'live' || kept === 'demo') return kept;
+  } catch { /* storage blocked: fall through to the host */ }
+  return LIVE_HOSTS.includes(window.location.hostname) ? 'live' : 'demo';
+}
+
+const current = (): Api => (resolveMode() === 'live' ? liveApi : demoApi);
+export const api: Api = new Proxy({} as Api, { get: (_t, key) => Reflect.get(current(), key) });

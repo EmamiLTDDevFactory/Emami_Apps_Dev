@@ -147,3 +147,25 @@ test('the allowed actions include attach and comment, read from SAP flags', () =
     assert.equal(h.comment, false);
     assert.equal(h.approve, false);
 });
+
+test('sequential writes (gateway without $batch): MERGE goes as PUT, a row removal is refused before anything is written', async () => {
+    process.env.MM_SAP_ODATA_BASE = 'https://gw.example/api/NGD/ZMM_MDM_SRV_SRV';
+    process.env.MM_SAP_WRITE = 'sequential';
+    const calls = [];
+    const realFetch = global.fetch;
+    global.fetch = async (url, init = {}) => { calls.push(`${init.method || 'GET'} ${String(url).replace('https://gw.example/api/NGD/ZMM_MDM_SRV_SRV/', '')}`); return new Response('{"d":{"results":[]}}', { status: 200, headers: { 'content-type': 'application/json' } }); };
+    try {
+        await sap.runWrites({ user: 'a@b.c' }, [{ method: 'MERGE', path: "MaterialSet(TransId='1')", body: { Mtart: 'FERT' } }, { method: 'POST', path: 'UnitOfMeasureSet', body: {} }, { method: 'POST', path: "Submit?TransId='1'" }]);
+        assert.deepEqual(calls.filter((c) => !c.endsWith('/')), ["PUT MaterialSet(TransId='1')", 'POST UnitOfMeasureSet', "POST Submit?TransId='1'"]);
+        calls.length = 0;
+        await assert.rejects(sap.runWrites({ user: 'a@b.c' }, [{ method: 'MERGE', path: 'X', body: {} }, { method: 'DELETE', path: "UnitOfMeasureSet(TransId='1',Meinh='PC')" }]), (e) => e.status === 501 && e.messages.length === 1);
+        assert.equal(calls.filter((c) => c.startsWith('PUT')).length, 0); // nothing was written
+    } finally { global.fetch = realFetch; delete process.env.MM_SAP_ODATA_BASE; delete process.env.MM_SAP_WRITE; }
+});
+
+test('an SAP error without a text still carries the transaction id for the SAP team', () => {
+    const m = sap.mapError({ error: { code: 'X', message: { value: '' }, innererror: { transactionid: 'ABC123', timestamp: '20261103120015.9' } } }, 404);
+    assert.match(m.text, /HTTP 404 without a message \(SAP transaction ABC123, 20261103120015\.9\)/);
+    assert.equal(m.messages.length, 1);
+    assert.equal(m.messages[0].severity, 'E');
+});

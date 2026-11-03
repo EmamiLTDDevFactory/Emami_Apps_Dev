@@ -15,6 +15,13 @@
                            basic   : one technical user from MM_SAP_USER / MM_SAP_PASSWORD (development only, NOT for production:
                                      SAP workflow and field control depend on the real user)
      MM_SAP_USER_HEADER  header that carries the hub user's e-mail (default X-Emami-User)
+     MM_SAP_WRITE        batch (default) | sequential
+                           batch      : one $batch change set per action, all writes and the function import succeed or none is stored
+                           sequential : for a gateway that only passes GET, POST and PUT (the Azure gateway proxy of NGD/NGQ/NWP does
+                                        not pass $batch, MERGE or DELETE): single writes one by one (MERGE is sent as PUT: the SAP
+                                        update merges the whole row), then the function import. Not atomic, and Validate then
+                                        stores the entered values in the draft (staging only, never the status). Removing a
+                                        grid row needs DELETE and is refused with a clear message until the gateway passes it.
 
    Status: written against the contract in embedded-apps/mm-mdm/odata/metadata.xml; the SAP service is not built yet, so
    nothing here has run against a real Gateway.
@@ -29,6 +36,7 @@ const config = () => ({
     base: env('MM_SAP_ODATA_BASE').replace(/\/+$/, ''),
     client: env('MM_SAP_CLIENT'),
     mode: env('MM_SAP_AUTH', 'gateway'),
+    write: env('MM_SAP_WRITE', 'batch').toLowerCase(),
     user: env('MM_SAP_USER'),
     password: env('MM_SAP_PASSWORD'),
     userHeader: env('MM_SAP_USER_HEADER', 'X-Emami-User'),
@@ -104,8 +112,11 @@ function mapError(body, status) {
     const details = (e && e.innererror && e.innererror.errordetails) || [];
     const sev = (s) => { const x = String(s || 'error').toLowerCase(); return x.startsWith('w') ? 'W' : x.startsWith('i') ? 'I' : 'E'; };
     const messages = details.filter((d) => d.message).map((d) => ({ code: d.code || '', message: d.message, severity: sev(d.severity), target: d.target || '' }));
-    const text = (e && e.message && e.message.value) || `SAP returned HTTP ${status}`;
-    if (!messages.length && e && e.message && e.message.value) messages.push({ code: e.code || '', message: e.message.value, severity: 'E' });
+    const given = e && e.message && e.message.value;
+    // SAP sometimes fails inside its own code with an empty text: give the SAP team what they need to find it (/IWFND/ERROR_LOG).
+    const ref = e && e.innererror && e.innererror.transactionid ? ` (SAP transaction ${e.innererror.transactionid}${e.innererror.timestamp ? `, ${e.innererror.timestamp}` : ''})` : '';
+    const text = given || `SAP returned HTTP ${status} without a message${ref}. The error is inside SAP's service: see /IWFND/ERROR_LOG on the Gateway.`;
+    if (!messages.length) messages.push({ code: (e && e.code) || '', message: text, severity: 'E' });
     return { text, messages };
 }
 
@@ -117,7 +128,7 @@ function fail(status, json) {
 async function request(caller, method, path, body, retry = true) {
     const write = method !== 'GET';
     const s = write ? await csrf(caller) : undefined;
-    const headers = await headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) } : {}) });
+    const headers = await headersFor(caller, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(s ? { ...(s.token ? { 'x-csrf-token': s.token } : {}), ...(s.cookies ? { Cookie: s.cookies } : {}) } : {}) });
     let res;
     try {
         res = await fetch(`${baseUrl()}/${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, cache: 'no-store' });
@@ -192,7 +203,7 @@ async function batchChangeSet(caller, ops, extraHeaders = {}) {
     try {
         res = await fetch(`${baseUrl()}/$batch`, {
             method: 'POST',
-            headers: await headersFor(caller, { 'Content-Type': `multipart/mixed; boundary=${b}`, 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}), ...extraHeaders }),
+            headers: await headersFor(caller, { 'Content-Type': `multipart/mixed; boundary=${b}`, ...(s.token ? { 'x-csrf-token': s.token } : {}), ...(s.cookies ? { Cookie: s.cookies } : {}), ...extraHeaders }),
             body,
             cache: 'no-store',
         });
@@ -200,6 +211,26 @@ async function batchChangeSet(caller, ops, extraHeaders = {}) {
     const text = await res.text();
     if (!res.ok) throw fail(res.status, safeJson(text));
     return parseBatch(text);
+}
+
+/**
+ * Runs the writes of one action, then its function import (the last op). ops: [{ method, path, body? }]; returns [{ status, json }].
+ * batch mode = one change set (atomic). sequential mode = one call per op, for a gateway without $batch / MERGE / DELETE.
+ */
+async function runWrites(caller, ops, extraHeaders = {}) {
+    if (config().write !== 'sequential') return batchChangeSet(caller, ops, extraHeaders);
+    const del = ops.find((o) => o.method === 'DELETE');
+    if (del) {
+        throw new SapError('Removing a row is not possible through this SAP gateway yet (it does not pass DELETE requests).', 501,
+            [{ code: 'MM501', message: 'Removing a row is not possible through this SAP gateway yet (it does not pass DELETE requests). Ask the gateway team to allow DELETE, or keep the row.', severity: 'E', target: '' }]);
+    }
+    const out = [];
+    for (const op of ops) {
+        const method = op.method === 'MERGE' ? 'PUT' : op.method;
+        const json = await request(caller, method, op.path, op.body);
+        out.push({ status: 200, json });
+    }
+    return out;
 }
 
 function parseBatch(text) {
@@ -217,4 +248,4 @@ function parseBatch(text) {
     return out;
 }
 
-module.exports = { SapError, isConfigured, sapSystem, sapAuth, setTokenProvider, mapError, odata, results, batchChangeSet, parseBatch, postStream, getStream };
+module.exports = { SapError, runWrites, writeMode: () => config().write, isConfigured, sapSystem, sapAuth, setTokenProvider, mapError, odata, results, batchChangeSet, parseBatch, postStream, getStream };

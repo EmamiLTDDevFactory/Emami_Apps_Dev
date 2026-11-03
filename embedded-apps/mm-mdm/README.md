@@ -87,6 +87,18 @@ Responsive down to tablet width (768 px): tabs scroll inside their own box and s
 column, grids scroll inside their box, the action bar stays sticky. Dark mode follows the system setting
 (`prefers-color-scheme`); every colour is a CSS variable in `src/app/globals.css`, and the axe contrast rule is checked in both schemes.
 
+## Live on NGD (ZMM_MDM_SRV_SRV): state of 3 Nov 2026
+
+The dev site (`dev.emamiapps.in`) runs this app **live** against the SAP service `ZMM_MDM_SRV_SRV` on NGD, through the hub backend. Any other host runs the demo; add `?mm=demo` or `?mm=live` to a link to switch in your browser (remembered).
+The dev backend (`emami-hub-backend-dev`) is set with `MM_SAP_ODATA_BASE` = the Azure gateway `/api/NGD/ZMM_MDM_SRV_SRV`, `MM_SAP_AUTH=gateway`, `MM_SAP_WRITE=sequential`.
+
+What was found against NGD (read-only probes, one test run):
+- **Works:** `GetSession`, `RequestSet` with a `Scope` filter, `MaterialTypeVhSet`, `MainGroupSet`, `GenericValueHelpSet` (live data).
+- **The gateway proxy passes only GET, POST and PUT.** `$batch` (answers "unsupported format"), MERGE, PATCH and DELETE never reach SAP, and `X-HTTP-Method` tunnelling is ignored. So writes run one by one (`MM_SAP_WRITE=sequential`: MERGE is sent as PUT, which the SAP update merges), not as one atomic change set. Consequences: Validate stores the entered values in the draft (staging only, never the status); removing a grid row is refused with a clear message until the gateway passes DELETE.
+- **The gateway signs in as one technical user** (`GetSession` answers `WDA_AUDIT`), so workflow steps, field control by department and the initiator are all that user until the gateway or SAP can take the real user (`bearer` mode or the `X-Emami-User` header the backend already sends).
+- **SAP-side errors to fix before requests can be started:** every function import with parameters (`GetFieldControl`, `BuildDescription`, `CheckDuplicate`, `GetRelatedHsn`, `StartRequest`, `Validate`, `Submit`, `DeleteDraft`) answers HTTP 404 with an empty message from inside SAP, while `GetSession` works; `RequestSet` with `Scope eq 'all'` answers 500. The app now shows SAP's transaction id and timestamp in the message, so the SAP team can find each failure in `/IWFND/ERROR_LOG` on the Gateway.
+- The `$metadata` of this service cannot be read through the gateway proxy (it adds query options SAP refuses for `$metadata`).
+
 ## Tests
 
 | Script | What |
