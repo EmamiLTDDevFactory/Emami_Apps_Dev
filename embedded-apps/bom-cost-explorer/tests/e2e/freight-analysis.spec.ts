@@ -24,7 +24,7 @@ test('Freight analysis: nothing picked asks for a plant or a material, then mate
   await expect(page.getByText(/Finished goods \(whose BOM components/)).toHaveCount(0);
   await expect(page.getByText('Materials (comma / space separated)')).toBeVisible();
   await expect(page.getByLabel('Freight look-back (days)')).toHaveValue('92');
-  await expect(page.getByText('max 92 days')).toBeVisible();
+  await expect(page.getByText('days back from today, sent to SAP as typed')).toBeVisible();
   await expect(page.getByRole('checkbox', { name: 'Include freight' })).toBeChecked(); // both dates are filled
 
   // nothing picked: a clear message, no SAP call
@@ -38,16 +38,18 @@ test('Freight analysis: nothing picked asks for a plant or a material, then mate
   await expect(page.getByText(/Reading from SAP|No components|Components/).first()).toBeVisible({ timeout: 60_000 });
 });
 
-test('Freight analysis: the look-back is clamped to 92 and Execute is disabled while a request runs', async ({ page }) => {
+test('Freight analysis: the look-back is not capped (what is typed is what is sent) and Include freight follows the dates', async ({ page }) => {
   await asHubUser(page);
+  const sent: string[] = [];
+  page.on('request', (r) => { if (/FreightRowSet/.test(r.url())) sent.push(decodeURIComponent(r.url())); });
   await page.goto('./freight-analysis/');
   const days = page.getByLabel('Freight look-back (days)');
   await days.fill('500');
   await days.blur();
-  await expect(days).toHaveValue('92');
-  await days.fill('0');
-  await days.blur();
-  await expect(days).toHaveValue('1');
+  await expect(days).toHaveValue('500'); // not cut to 92
+  await pick(page, /^Plants/, '1000');
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await expect.poll(() => sent.some((u) => u.includes('FreightDays eq 500')), { timeout: 30_000 }).toBe(true);
   // clearing both dates: Include freight defaults to unchecked again (until the person decides)
   await page.getByLabel('From date').fill('');
   await expect(page.getByRole('checkbox', { name: 'Include freight' })).not.toBeChecked();

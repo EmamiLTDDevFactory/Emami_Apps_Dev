@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_FREIGHT_DAYS, NEED_PLANT_OR_MATERIAL, analysisFilter, clampFreightDays, defaultInclFrt, selectionProblem } from '@/lib/freight/analysisFetch';
+import { NEED_PLANT_OR_MATERIAL, analysisFilter, defaultInclFrt, freightDaysValue, selectionProblem } from '@/lib/freight/analysisFetch';
 
 const range = { from: '2026-08-01', to: '2026-10-31' };
 const types = ['ROH', 'PKGN', 'VERP'];
@@ -14,18 +14,26 @@ describe('selection: a plant OR materials is enough (no finished goods)', () => 
   it('no type, a wrong date range and a bad look-back are refused', () => {
     expect(selectionProblem({ materials: ['RM-1'], plants: [], types: [], range })).toMatch(/material type/);
     expect(selectionProblem({ materials: ['RM-1'], plants: [], types, range: { from: '2026-11-01', to: '2026-10-01' } })).toMatch(/From date/);
-    expect(selectionProblem({ materials: ['RM-1'], plants: [], types, range, freightDays: 0 })).toMatch(/1 to 92/);
-    expect(selectionProblem({ materials: ['RM-1'], plants: [], types, range, freightDays: 92 })).toBe('');
+    expect(selectionProblem({ materials: ['RM-1'], plants: [], types, range, freightDays: 0 })).toMatch(/at least 1/);
+    expect(selectionProblem({ materials: ['RM-1'], plants: [], types, range, freightDays: 500 })).toBe('');
   });
 });
 
-describe('FreightDays: whole number 1 to 92, clamped before it is sent', () => {
-  it('clamps', () => {
-    expect(clampFreightDays(500)).toBe(MAX_FREIGHT_DAYS);
-    expect(clampFreightDays(0)).toBe(1);
-    expect(clampFreightDays('31')).toBe(31);
-    expect(clampFreightDays('abc')).toBe(92);
-    expect(clampFreightDays(30.9)).toBe(30);
+describe('FreightDays is sent exactly as typed: no upper cap', () => {
+  it('keeps big values, fixes only what is not a usable number of days', () => {
+    expect(freightDaysValue(500)).toBe(500);
+    expect(freightDaysValue('3650')).toBe(3650);
+    expect(freightDaysValue('93')).toBe(93);
+    expect(freightDaysValue('31')).toBe(31);
+    expect(freightDaysValue(30.9)).toBe(30);
+    expect(freightDaysValue(0)).toBe(1);
+    expect(freightDaysValue('')).toBe(92);
+    expect(freightDaysValue('abc')).toBe(92);
+  });
+  it('the filter carries the typed number', () => {
+    const base = { mode: 'F' as const, materials: [] as string[], plant: 'UB01', range, inclFrt: true };
+    expect(analysisFilter({ ...base, freightDays: 500 })).toContain('FreightDays eq 500');
+    expect(analysisFilter({ ...base, freightDays: 3650 })).toContain('FreightDays eq 3650');
   });
 });
 

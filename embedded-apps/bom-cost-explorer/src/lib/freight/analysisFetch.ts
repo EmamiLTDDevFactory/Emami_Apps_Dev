@@ -3,7 +3,7 @@
  * only - a plant, or materials, or both (the SAP side no longer needs a finished good). Nothing else is asked of SAP:
  *
  *   Werks (one plant per request), Matnr (one clause per material, joined with or), BudatFrom / BudatTo (Edm.DateTime, two
- *   separate properties), InclFrt, and on the freight set FreightDays (1 to 92).
+ *   separate properties), InclFrt, and on the freight set FreightDays (as typed: no upper limit here, SAP decides).
  *
  * Why not the shared selection builder (lib/sap/filter.ts buildSelectionFilter): it refuses a query without BOTH a material and a
  * plant, which was the old SAP rule. The literals still come from the same helpers (eqClause), so every value is typed and
@@ -21,7 +21,6 @@ import { FIELDS_BY_SET, type FreightRow, type RmPmRow } from '../sap/fields';
 import type { SapMessage } from '../sap/messages';
 import { componentsOf, type Component, type DateRange } from './analysis';
 
-export const MAX_FREIGHT_DAYS = 92;
 export const DEFAULT_FREIGHT_DAYS = 92;
 
 export interface MaterialInfo { text: string; mtart: string }
@@ -36,7 +35,7 @@ export interface AnalysisInput {
   range: DateRange;
   /** Include freight (InclFrt) */
   inclFrt: boolean;
-  /** FreightDays, clamped to 1..92 before it is sent */
+  /** FreightDays exactly as the person typed it (a whole number of at least 1); never capped here */
   freightDays: number;
 }
 export interface AnalysisData {
@@ -54,11 +53,12 @@ const PAGE = 5000;
 const MAX_ROWS = 100_000;
 const PARALLEL = 3;
 
-/** FreightDays as SAP takes it: a whole number from 1 to 92. */
-export function clampFreightDays(v: number | string): number {
+/** FreightDays as sent to SAP: what the person typed, a whole number of at least 1. There is NO upper limit here: SAP decides what is too large. An empty or unreadable entry falls back to the default. */
+export function freightDaysValue(v: number | string): number {
+  if (String(v).trim() === '') return DEFAULT_FREIGHT_DAYS;
   const n = Math.floor(Number(v));
   if (!Number.isFinite(n)) return DEFAULT_FREIGHT_DAYS;
-  return Math.min(MAX_FREIGHT_DAYS, Math.max(1, n));
+  return Math.max(1, n);
 }
 
 /** Include freight defaults to checked when both dates are filled, unchecked otherwise. */
@@ -72,7 +72,7 @@ export function selectionProblem(i: { materials: string[]; plants: string[]; typ
   if (!i.materials.length && !i.plants.length) return NEED_PLANT_OR_MATERIAL;
   if (!i.types.length) return 'Pick at least one material type';
   if (i.range.from && i.range.to && i.range.from > i.range.to) return 'The From date must not be after the To date';
-  if (i.freightDays !== undefined && (!Number.isInteger(Number(i.freightDays)) || Number(i.freightDays) < 1)) return 'Freight look-back must be a whole number from 1 to 92 days';
+  if (i.freightDays !== undefined && (!Number.isInteger(Number(i.freightDays)) || Number(i.freightDays) < 1)) return 'Freight look-back must be a whole number of days, at least 1';
   return '';
 }
 
@@ -117,7 +117,7 @@ async function readSet<T>(mode: 'M' | 'F', filter: string, opts: SapGetOptions):
 
 export async function fetchFreightAnalysis(input: AnalysisInput, signal: AbortSignal, onStep?: (text: string) => void): Promise<AnalysisData> {
   const opts: SapGetOptions = { signal };
-  const days = clampFreightDays(input.freightDays);
+  const days = freightDaysValue(input.freightDays);
   // One request per plant (SAP takes one plant); no plant chosen = one request without a plant, for the picked materials.
   const plants = input.plants.length ? [...new Set(input.plants.map((p) => p.trim()).filter(Boolean))] : [''];
   const materials = [...new Set(input.materials.map((m) => m.trim()).filter(Boolean))];

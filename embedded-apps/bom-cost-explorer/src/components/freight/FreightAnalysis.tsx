@@ -22,7 +22,7 @@ import {
   DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, ruleText, sortAnalysis,
   type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
-import { DEFAULT_FREIGHT_DAYS, MAX_FREIGHT_DAYS, clampFreightDays, defaultInclFrt, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
+import { DEFAULT_FREIGHT_DAYS, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
 
 const th = 'px-3 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
@@ -67,7 +67,7 @@ export default function FreightAnalysis() {
   const start = () => {
     setTouched(true);
     if (missing || runner.status === 'running') return;
-    const days = clampFreightDays(freightDays);
+    const days = freightDaysValue(freightDays);
     setFreightDays(String(days));
     const info: AnalysisInput['info'] = {};
     for (const m of materials) { const k = known.current.get(m); if (k) info[m] = { text: k.Maktx, mtart: k.Mtart }; }
@@ -97,8 +97,8 @@ export default function FreightAnalysis() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="From date">{(id) => <input id={id} type="date" className={inputCls} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />}</Field>
           <Field label="To date">{(id) => <input id={id} type="date" className={inputCls} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />}</Field>
-          <Field label="Freight look-back (days)" hint={`max ${MAX_FREIGHT_DAYS} days`}>
-            {(id) => <input id={id} inputMode="numeric" className={inputCls} value={freightDays} onChange={(e) => setFreightDays(e.target.value.replace(/\D/g, ''))} onBlur={() => setFreightDays(String(clampFreightDays(freightDays || DEFAULT_FREIGHT_DAYS)))} />}
+          <Field label="Freight look-back (days)" hint="days back from today, sent to SAP as typed">
+            {(id) => <input id={id} inputMode="numeric" className={inputCls} value={freightDays} onChange={(e) => setFreightDays(e.target.value.replace(/\D/g, ''))} onBlur={() => setFreightDays(String(freightDaysValue(freightDays || DEFAULT_FREIGHT_DAYS)))} />}
           </Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={inclFrt} onChange={(e) => { setInclTouched(true); setInclPicked(e.target.checked); }} /> Include freight</label>
           <div className="sm:col-span-2 lg:col-span-4">
