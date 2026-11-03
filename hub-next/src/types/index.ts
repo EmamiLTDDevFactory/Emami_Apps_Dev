@@ -22,6 +22,9 @@ export interface AppItem {
   /** Screenshot of the app shown on its tile, above the title — a path under public/ such as
    * '/app-previews/audit-capa.png'. Omit for a tile without a preview. */
   preview?: string;
+  /** Show a live, scaled-down view of the app itself on its tile (read-only, not clickable) instead
+   * of a static image. Only for same-origin apps, and only for people who have access. */
+  livePreview?: boolean;
 }
 
 export interface RecentEntry {
