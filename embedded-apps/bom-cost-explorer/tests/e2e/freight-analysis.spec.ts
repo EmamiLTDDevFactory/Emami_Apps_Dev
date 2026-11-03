@@ -66,3 +66,32 @@ test('Freight analysis: a plant alone runs without any material picked', async (
   await expect(page.getByText('Components', { exact: true }).first()).toBeVisible({ timeout: 90_000 });
   await expect(page.getByRole('alert').filter({ hasText: /Enter at least one material|Enter a plant or at least one material/ })).toHaveCount(0);
 });
+
+test('Freight analysis: the purchase order wise view lists the PO lines behind the component figures', async ({ page }) => {
+  await asHubUser(page);
+  await page.goto('./freight-analysis/');
+  await pick(page, /^Plants/, '1000');
+  await page.getByRole('button', { name: 'Execute' }).click();
+  await expect(page.getByText('Components', { exact: true }).first()).toBeVisible({ timeout: 90_000 });
+
+  // component view first: the PO count of a component is a link into its PO lines
+  const poLink = page.getByRole('button', { name: /Show the \d+ purchase order line\(s\) of/ }).first();
+  await expect(poLink).toBeVisible();
+  const label = (await poLink.getAttribute('aria-label')) ?? '';
+  const material = /of (\S+) in plant/.exec(label)?.[1] ?? '';
+  expect(material).not.toBe('');
+  await poLink.click();
+
+  // PO view, filtered to that component
+  const table = page.getByRole('table', { name: /Purchase order wise freight lines/ });
+  await expect(table).toBeVisible();
+  for (const h of ['Purchase order', 'Line', 'PO date', 'Condition', 'Actual / unit', 'Standard / unit', 'Variance']) await expect(table.getByRole('columnheader', { name: h, exact: true })).toBeVisible();
+  await expect(page.getByLabel('Search components')).toHaveValue(material);
+  const rows = table.locator('tbody tr');
+  expect(await rows.count()).toBeGreaterThan(0);
+  await expect(table.locator('tbody').getByText(/^\d{10}$/).first()).toBeVisible(); // a purchase order number
+
+  // back to the component summary
+  await page.getByRole('radio', { name: /By component/ }).click();
+  await expect(page.getByRole('table', { name: /Purchase order wise/ })).toHaveCount(0);
+});

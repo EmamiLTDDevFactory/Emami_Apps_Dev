@@ -102,6 +102,71 @@ export function analyseFreight(components: Component[], freight: FreightRow[], r
   });
 }
 
+/* ---------- purchase order wise: one row per PO line (the same lines the component figures are built from) ---------- */
+
+export interface PoLine {
+  key: string;
+  plant: string;
+  material: string;
+  text: string;
+  mtart: string;
+  po: string;
+  line: string;
+  /** YYYY-MM-DD */
+  poDate: string;
+  /** freight condition type of the line (for example ZFR1) */
+  cond: string;
+  unit: string;
+  /** SAP's own source for the line: ACTUAL, STANDARD (no actual delivery yet) */
+  src: string;
+  actualQty: Decimal;
+  /** INR (document amount x FxInr) */
+  actualAmount: Decimal;
+  standardQty: Decimal;
+  standardAmount: Decimal;
+  /** INR per base unit; null when the line has no such delivery */
+  actual: Decimal | null;
+  standard: Decimal | null;
+  variance: Decimal | null;
+  variancePct: Decimal | null;
+}
+
+/** Every PO freight line of the components within the date range (lines SAP marks EXCLUDED are left out), with the same per-unit
+ * figures as the component rows: INR, amount x FxInr divided by the delivered quantity. Newest PO date first. */
+export function poLines(components: Component[], freight: FreightRow[], range: DateRange): PoLine[] {
+  const info = new Map(components.map((c) => [c.key, c]));
+  const out: PoLine[] = [];
+  freight.forEach((r, i) => {
+    if (isExcluded(r)) return;
+    const k = keyOf(r.Plant, r.Material);
+    const c = info.get(k);
+    if (!c) return;
+    const d = day(r.Podate);
+    if (!d || d < range.from || d > range.to) return;
+    const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
+    const aq = D(r.Actualdelvquantity);
+    const sq = D(r.Stddelvquantity);
+    const aa = aq.gt(0) ? D(r.Actualdelvcostamount).times(fx) : ZERO;
+    const sa = sq.gt(0) ? D(r.Stddelvcostamount).times(fx) : ZERO;
+    const actual = aq.gt(0) ? aa.div(aq) : null;
+    const standard = sq.gt(0) ? sa.div(sq) : null;
+    const variance = actual && standard ? actual.minus(standard) : null;
+    out.push({
+      key: `${k}|${r.Purchasedocument}|${r.Purchaseline}|${r.Conditiontype}|${i}`, plant: c.plant, material: c.material, text: c.text, mtart: c.mtart,
+      po: String(r.Purchasedocument ?? '').trim(), line: String(r.Purchaseline ?? '').trim(), poDate: d, cond: String(r.Conditiontype ?? '').trim(),
+      unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
+      actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
+      actual, standard, variance, variancePct: variance && standard && !standard.isZero() ? variance.div(standard).times(100) : null,
+    });
+  });
+  return out.sort((a, b) => b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
+}
+
+/** Alerts first (by the rule chosen on screen), then newest PO date. */
+export function sortPoLines(rows: PoLine[], rule: Rule): PoLine[] {
+  return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
+}
+
 /* ---------- alert / early-watch rule (chosen on screen) ---------- */
 
 export type RuleKind = 'pct_above' | 'abs_above' | 'any_above' | 'pct_both';
@@ -168,6 +233,31 @@ export function freightAnalysisSheet(rows: FreightAnalysisRow[], rule: Rule): { 
       { header: 'Actual quantity', dp: 3, width: 14, get: (i) => n(rows[i].actualQty, 3) },
       { header: 'PO lines', dp: 0, width: 9, get: (i) => rows[i].pos },
       { header: 'Last PO date', width: 12, get: (i) => rows[i].lastPo },
+      { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
+    ],
+  };
+}
+
+export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count: number } {
+  return {
+    count: rows.length,
+    cols: [
+      { header: 'Plant', width: 8, get: (i) => rows[i].plant },
+      { header: 'Component', width: 14, get: (i) => rows[i].material },
+      { header: 'Description', width: 34, get: (i) => rows[i].text },
+      { header: 'Material type', width: 10, get: (i) => rows[i].mtart },
+      { header: 'Purchase order', width: 14, get: (i) => rows[i].po },
+      { header: 'PO line', width: 8, get: (i) => rows[i].line },
+      { header: 'PO date', width: 12, get: (i) => rows[i].poDate },
+      { header: 'Freight condition', width: 10, get: (i) => rows[i].cond },
+      { header: 'Unit', width: 6, get: (i) => rows[i].unit },
+      { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
+      { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
+      { header: 'Actual freight amount (INR)', dp: 2, curr: 'INR', width: 16, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Actual freight / unit (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].actual) },
+      { header: 'Standard freight / unit (INR)', dp: 4, curr: 'INR', width: 18, get: (i) => n(rows[i].standard) },
+      { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
+      { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
       { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
     ],
   };

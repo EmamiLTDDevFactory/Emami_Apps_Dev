@@ -19,7 +19,7 @@ import { MAX_MATERIALS } from '@/lib/query/schema';
 import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { toDay } from '@/lib/wac/dates';
 import {
-  DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, ruleText, sortAnalysis,
+  DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
   type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
 import { DEFAULT_FREIGHT_DAYS, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
@@ -32,6 +32,7 @@ const inr = (v: Parameters<typeof fmtNum>[0]) => fmtNum(v, 4, 'INR');
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return toDay(d); };
 
 type Show = 'all' | 'alerts';
+type View = 'component' | 'po';
 
 export default function FreightAnalysis() {
   const [materials, setMaterials] = useState<string[]>([]);
@@ -152,6 +153,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
   const [show, setShow] = useState<Show>('all');
   const [plant, setPlant] = useState('');
   const [q, setQ] = useState('');
+  const [view, setView] = useState<View>('component');
   const analysed = useMemo(() => analyseFreight(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
   const plantList = useMemo(() => Array.from(new Set(analysed.map((r) => r.plant))).sort(), [analysed]);
   const rows = useMemo(() => {
@@ -160,16 +162,26 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
     return sortAnalysis(list, rule);
   }, [analysed, plant, show, q, rule]);
   const totals = useMemo(() => analysisTotals(analysed, rule), [analysed, rule]);
+  // Purchase order wise: one row per PO freight line of the components, same range, same rule, same filters.
+  const allPo = useMemo(() => poLines(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
+  const poRows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const list = allPo.filter((r) => (!plant || r.plant === plant) && (show === 'all' || breaches(r, rule)) && (!t || `${r.material} ${r.text} ${r.po}`.toLowerCase().includes(t)));
+    return sortPoLines(list, rule);
+  }, [allPo, plant, show, q, rule]);
+  const poFlagged = useMemo(() => allPo.filter((r) => breaches(r, rule)).length, [allPo, rule]);
+  /** the PO lines of one component: switches to the PO view filtered to it */
+  const openPos = (r: { plant: string; material: string }) => { setPlant(r.plant); setQ(r.material); setShow('all'); setView('po'); };
 
   const doExport = async (fmt: 'xlsx' | 'csv') => {
-    const sheet = freightAnalysisSheet(rows, rule);
+    const sheet = view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
     await exportTable({
-      fmt, name: 'Freight analysis', cols: sheet.cols, count: sheet.count,
+      fmt, name: view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
       extraParams: [
-        ['Report', 'Component standard vs actual freight, plant wise, INR per unit'],
+        ['Report', view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
         ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
         ['PO date range', `${ran.range.from} to ${ran.range.to}`], ['Alert rule', ruleText(rule)],
-        ['Rows', String(rows.length)], ['Rows in alert', String(totals.flagged)],
+        ['Rows', String(view === 'po' ? poRows.length : rows.length)], ['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)],
       ],
       messages: data.messages,
     });
@@ -181,7 +193,9 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
       {data.skipped.length > 0 && <p role="status" className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">No {ran.types.join(' / ')} component returned for: {data.skipped.join(', ')}.</p>}
       <div role="status" className={cx('flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold', totals.flagged ? 'border-bad/40 bg-bad/[0.06] text-bad' : 'border-good/40 bg-good/[0.06] text-good')}>
         <BellRing size={15} />
-        {totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`}
+        {view === 'po'
+          ? (poFlagged ? `${poFlagged} of ${allPo.length} purchase order line(s) breach the rule: ${ruleText(rule)}` : `No purchase order line breaches the rule: ${ruleText(rule)}`)
+          : (totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`)}
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Components" value={totals.rows} sub={`${fmtMs(data.ms)} in SAP · ${data.calls} call(s)`} />
@@ -191,16 +205,52 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
         <Stat label="No actual freight" value={totals.noActual} sub="no actual PO delivery in the range" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
+<div className="w-72"><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }]} /></div>
         <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>
         <select aria-label="Plant" className={cx(inputCls, 'w-44')} value={plant} onChange={(e) => setPlant(e.target.value)}>
           <option value="">All plants ({plantList.length})</option>
           {plantList.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder="Search component code or description…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <Button size="sm" onClick={() => doExport('xlsx')} disabled={!rows.length}><FileSpreadsheet size={14} /> Excel</Button>
-        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={!rows.length}>CSV</Button>
+        <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder={view === 'po' ? 'Search component, description or PO number…' : 'Search component code or description…'} value={q} onChange={(e) => setQ(e.target.value)} />
+        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
+        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Alerts first, then the biggest gap.</span>
       </div>
+      {view === 'po' ? (
+      <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
+          <thead className="bg-sunken/60">
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th></tr>
+          </thead>
+          <tbody>
+            {poRows.map((r) => {
+              const hit = breaches(r, rule);
+              const tone = r.variance?.gt('0.000001') ? 'text-bad' : r.variance?.lt('-0.000001') ? 'text-good' : 'text-muted';
+              return (
+                <tr key={r.key} className={cx('border-t border-line/60', hit && 'bg-bad/[0.06]')}>
+                  <td className={cx(td, 'font-mono')}>{r.plant}</td>
+                  <td className={td}><span className="font-mono font-bold text-accent">{r.material}</span> <span className="text-muted">{r.text}</span></td>
+                  <td className={cx(td, 'whitespace-nowrap font-mono font-bold')}>{r.po || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.line || '—'}</td>
+                  <td className={cx(td, 'whitespace-nowrap')}>{r.poDate}</td>
+                  <td className={cx(td, 'font-mono')}>{r.cond || '—'}</td>
+                  <td className={tdN}>{r.actualQty.gt(0) ? <>{fmtNum(r.actualQty, 3)} <span className="text-2xs text-muted">{r.unit}</span></> : <span className="text-faint">—</span>}</td>
+                  <td className={tdN}>{r.actualQty.gt(0) ? fmtNum(r.actualAmount, 2, 'INR') : '—'}</td>
+                  <td className={tdN}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual delivery on this PO line">—</span>}</td>
+                  <td className={tdN}>{r.standard ? inr(r.standard) : '—'}</td>
+                  <td className={cx(tdN, 'font-bold', tone)}>{r.variance ? fmtSigned(r.variance, 4) : '—'}</td>
+                  <td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
+                  <td className={td}>{r.src || '—'}</td>
+                  <td className={td}>{hit ? <Pill tone="bad">Alert</Pill> : r.actual ? <Pill tone="good">OK</Pill> : <Pill tone="neutral" title="No actual delivery on this PO line">No actual</Pill>}</td>
+                </tr>
+              );
+            })}
+            {!poRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      ) : (
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">
           <thead className="bg-sunken/60">
@@ -219,7 +269,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
                   <td className={tdN}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual PO delivery in the date range">—</span>}</td>
                   <td className={cx(tdN, 'font-bold', tone)}>{r.variance ? fmtSigned(r.variance, 4) : '—'}</td>
                   <td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
-                  <td className={tdN}>{r.pos}</td>
+                  <td className={tdN}>{r.pos ? <button type="button" className="font-semibold text-accent underline-offset-2 hover:underline" onClick={() => openPos(r)} aria-label={`Show the ${r.pos} purchase order line(s) of ${r.material} in plant ${r.plant}`}>{r.pos}</button> : r.pos}</td>
                   <td className={cx(td, 'whitespace-nowrap')}>{r.lastPo || '—'}</td>
                   <td className={td}>{hit ? <Pill tone="bad">Alert</Pill> : r.actual ? <Pill tone="good">OK</Pill> : <Pill tone="neutral" title="No actual PO delivery in the range">No actual</Pill>}</td>
                 </tr>
@@ -229,6 +279,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
           </tbody>
         </table>
       </div>
+      )}
       <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {ran.range.from} to {ran.range.to}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
     </div>
   );
