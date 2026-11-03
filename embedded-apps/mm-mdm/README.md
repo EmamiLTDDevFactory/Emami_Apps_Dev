@@ -153,3 +153,7 @@ does not let an app intercept it).
     tests/                   vitest unit tests; tests/e2e Playwright and axe
     ../../backend/mmMdm*.js  the hub backend module (routes, OData client, field map)
     scripts/                 build helpers (rename-export, regenerate backend/mmMdmFields.json)
+
+## Look and feel
+
+The app looks like the other Emami Apps (Cascade Pricing, Costing Cockpit): the hub palette (plum accent, dark brand bar), Inter for text and Sora for headings (the sibling apps' web-font links, with system fonts as the fallback), a slow aurora behind frosted glass panels, and a left side pane with the Emami Apps logo (a link back to the hub), grouped navigation with icons and the page title in a glass header. Below 1024 px the side pane is a drawer opened with the menu button. It is plain CSS with variables in `src/app/globals.css` (a light and a dark set, WCAG AA checked with axe), no CSS framework; the icons are inline SVG (`src/components/icons.tsx`). Nothing functional changed.

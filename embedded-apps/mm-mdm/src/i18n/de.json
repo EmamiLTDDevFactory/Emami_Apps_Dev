@@ -192,5 +192,17 @@
   "file.tooLarge": "Die Datei ist größer als {size}.",
   "file.type": "Dieser Dateityp ist nicht erlaubt. Erlaubt: {types}.",
   "error.network": "Der Materialstamm-Service ist nicht erreichbar. Prüfen Sie Ihre Verbindung.",
-  "nav.skip": "Zum Hauptinhalt springen"
+  "nav.skip": "Zum Hauptinhalt springen",
+  "nav.logo": "Zurück zu Emami Apps",
+  "nav.menuOpen": "Menü öffnen",
+  "nav.menuClose": "Menü schließen",
+  "nav.sections": "Bereiche des Materialstamms",
+  "nav.groupOverview": "Übersicht",
+  "nav.groupRequests": "Anträge",
+  "nav.hintHome": "Ihre Aufgaben und offenen Anträge",
+  "nav.hintRequests": "Anträge suchen und öffnen",
+  "nav.hintNew": "Materialantrag starten",
+  "foot.demo": "Demomodus: Die Daten bleiben in diesem Browser-Tab.",
+  "foot.live": "Verbunden mit dem SAP-Service ZMM_MDM_SRV.",
+  "app.sub": "Emami Apps"
 }

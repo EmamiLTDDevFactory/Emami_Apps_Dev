@@ -192,5 +192,17 @@
   "file.tooLarge": "The file is larger than {size}.",
   "file.type": "This file type is not allowed. Allowed: {types}.",
   "error.network": "Could not reach the material master service. Check your connection.",
-  "nav.skip": "Skip to main content"
+  "nav.skip": "Skip to main content",
+  "nav.logo": "Back to Emami Apps",
+  "nav.menuOpen": "Open menu",
+  "nav.menuClose": "Close menu",
+  "nav.sections": "Material master sections",
+  "nav.groupOverview": "Overview",
+  "nav.groupRequests": "Requests",
+  "nav.hintHome": "Your tasks and open requests",
+  "nav.hintRequests": "Search and open requests",
+  "nav.hintNew": "Start a material request",
+  "foot.demo": "Demo mode: the data stays in this browser tab.",
+  "foot.live": "Connected to the SAP service ZMM_MDM_SRV.",
+  "app.sub": "Emami Apps"
 }

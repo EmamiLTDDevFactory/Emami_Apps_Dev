@@ -5,7 +5,7 @@ test.describe('request workflow in demo mode', () => {
   test('create, validate with errors, fix, submit, review, approve, send back, resubmit, reject', async ({ page }) => {
     page.on('dialog', (d) => d.accept());
     const errors: string[] = [];
-    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); }); // blocked downloads (pictures, web fonts) are not the app's errors
     page.on('pageerror', (e) => errors.push(e.message));
 
     // create: key data page, one tab (Basic data 1) so there are required fields to fix

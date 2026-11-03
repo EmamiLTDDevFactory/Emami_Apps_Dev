@@ -16,7 +16,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: process.env.CI ? 2 : Math.max(2, Math.min(4, Math.floor(os.cpus().length / 2))),
   reporter: [['list']],
-  use: { baseURL: `http://localhost:${APP_PORT}/apps/mm-mdm/`, trace: 'retain-on-failure', video: 'off', screenshot: 'off', ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+  use: { baseURL: `http://localhost:${APP_PORT}/apps/mm-mdm/`, trace: 'retain-on-failure', reducedMotion: 'reduce' /* the cards fade in and the aurora moves: axe must not measure contrast mid-animation */, video: 'off', screenshot: 'off', ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
   webServer: {
     command: `npx next build && node tests/e2e/serve.mjs ${APP_PORT}`,
     url: `http://localhost:${APP_PORT}/apps/mm-mdm/`,
