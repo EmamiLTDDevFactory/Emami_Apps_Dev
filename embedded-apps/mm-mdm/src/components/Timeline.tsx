@@ -1,12 +1,15 @@
-import { ITEM_STATUS_TEXT, type HistoryItem } from '@/lib/types';
+'use client';
+import { useT } from '@/i18n';
+import type { HistoryItem } from '@/lib/types';
 
 export function Timeline({ items }: { items: HistoryItem[] }) {
-  if (!items.length) return <p className="muted">No history yet.</p>;
+  const t = useT();
+  if (!items.length) return <p className="muted">{t('history.empty')}</p>;
   return (
     <ol className="timeline">
       {items.map((h) => (
         <li key={h.serialNo}>
-          <b>{ITEM_STATUS_TEXT[h.status]}</b> · level {h.level} ({h.typeLevel === 'I' ? 'initiator' : h.typeLevel === 'A' ? 'approver' : 'reviewer'})
+          <b>{t(`history.${h.status}` as 'history.I')}</b> · {t('history.level', { level: h.level })} ({t(`history.type${h.typeLevel}` as 'history.typeI')})
           <div className="muted">{h.user} · {h.date}</div>
           {h.comment && <div>{h.comment}</div>}
         </li>

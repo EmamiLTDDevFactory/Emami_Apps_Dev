@@ -20,9 +20,11 @@ export interface UnitRef {
   locked: boolean;
   /** why it is locked, short */
   hint: string;
+  /** label of the reference field (to build the translated hint on screen) */
+  label: string;
 }
 
-const none: UnitRef = { kind: 'none', value: '', known: false, locked: false, hint: '' };
+const none: UnitRef = { kind: 'none', value: '', known: false, locked: false, hint: '', label: '' };
 const filled = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
 
 export function resolveUnit(meta: Pick<FieldMeta, 'type' | 'entity' | 'refTable' | 'refField'>, row: Row, data: RequestData, fields: FieldDefs): UnitRef {
@@ -35,8 +37,8 @@ export function resolveUnit(meta: Pick<FieldMeta, 'type' | 'entity' | 'refTable'
   if (!order.length) return { ...none, kind };
   for (const e of order) {
     const v = filled((e === meta.entity ? row : data.single[e])?.[ref]);
-    if (v) return { kind, value: v, known: true, locked: false, hint: '' };
+    if (v) return { kind, value: v, known: true, locked: false, hint: '', label: '' };
   }
   const label = fields[`${order[0]}.${ref}`].label;
-  return { kind, value: '', known: true, locked: true, hint: `Fill "${label}" first` };
+  return { kind, value: '', known: true, locked: true, hint: `Fill "${label}" first`, label };
 }

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
+import { useT } from '@/i18n';
 import { FORM } from '@/lib/form';
 import { addRow, duplicateRow, nextCell, removeRow, type CellKind } from '@/lib/gridRows';
 import { resolveUnit } from '@/lib/refs';
@@ -25,6 +26,7 @@ export function ViewGrid({ title, controls, rows, data, readOnly, messages, onCh
   /** structural = rows were added, removed or duplicated (messages that point to row numbers are then out of date) */
   onChange: (rows: Row[], structural?: boolean) => void;
 }) {
+  const t = useT();
   const cols = controls.filter((c) => c.shown && FORM.fields[c.field]);
   const keyFields = cols.map((c) => FORM.fields[c.field]).filter((m) => m.key && m.name !== 'TRANSID').map((m) => m.name);
   const help = useId();
@@ -74,12 +76,12 @@ export function ViewGrid({ title, controls, rows, data, readOnly, messages, onCh
   return (
     <div ref={root} className="gridwrap" onKeyDown={onKeyDown}>
       <table className="grid" aria-describedby={help}>
-        <caption>{title}: {rows.length} row{rows.length === 1 ? '' : 's'}</caption>
+        <caption>{rows.length === 1 ? t('grid.rowOne', { title }) : t('grid.rowMany', { title, n: rows.length })}</caption>
         <thead>
           <tr>
             <th scope="col" className="rownum">#</th>
-            {cols.map((c) => <th key={c.field} scope="col">{FORM.fields[c.field].label}{c.required ? <span className="req" aria-hidden="true"> *</span> : null}{c.required && <span className="sr-only"> (required)</span>}</th>)}
-            {!readOnly && <th scope="col"><span className="sr-only">Row actions</span></th>}
+            {cols.map((c) => <th key={c.field} scope="col">{FORM.fields[c.field].label}{c.required ? <span className="req" aria-hidden="true"> *</span> : null}{c.required && <span className="sr-only"> {t('grid.required')}</span>}</th>)}
+            {!readOnly && <th scope="col"><span className="sr-only">{t('grid.rowActions')}</span></th>}
           </tr>
         </thead>
         <tbody>
@@ -91,23 +93,23 @@ export function ViewGrid({ title, controls, rows, data, readOnly, messages, onCh
                 return (
                   <td key={c.field} data-r={i} data-c={ci}>
                     <FieldInput compact row={i} meta={meta} value={r[meta.name]} required={c.required} readOnly={readOnly || c.displayOnly} unit={resolveUnit(meta, r, data, FORM.fields)}
-                      message={messages[`${c.field}#${i}`]} ariaLabel={`${meta.label}, row ${i + 1}`} onChange={(v) => set(i, meta.name, v)} />
+                      message={messages[`${c.field}#${i}`]} ariaLabel={t('grid.cellLabel', { label: meta.label, row: i + 1 })} onChange={(v) => set(i, meta.name, v)} />
                   </td>
                 );
               })}
               {!readOnly && (
                 <td className="rowactions">
-                  <button type="button" onClick={() => dup(i)} aria-label={`Duplicate row ${i + 1}`}>Duplicate</button>{' '}
-                  <button type="button" onClick={() => del(i)} aria-label={`Remove row ${i + 1}`}>Remove</button>
+                  <button type="button" onClick={() => dup(i)} aria-label={t('grid.duplicateRow', { row: i + 1 })}>{t('grid.duplicate')}</button>{' '}
+                  <button type="button" onClick={() => del(i)} aria-label={t('grid.removeRow', { row: i + 1 })}>{t('grid.remove')}</button>
                 </td>
               )}
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={cols.length + 2} className="muted">No rows.</td></tr>}
+          {!rows.length && <tr><td colSpan={cols.length + 2} className="muted">{t('grid.empty')}</td></tr>}
         </tbody>
       </table>
-      {!readOnly && <p><button type="button" onClick={add}>Add row</button></p>}
-      <p className="muted gridhelp" id={help}>Keyboard: Enter or Arrow Up/Down moves to the next or previous row, Arrow Left/Right moves between cells at the edge of the text, Ctrl+Arrow moves from any cell, Ctrl+Enter adds a row, Alt+Delete removes the row.</p>
+      {!readOnly && <p><button type="button" onClick={add}>{t('grid.add')}</button></p>}
+      <p className="muted gridhelp" id={help}>{t('grid.help')}</p>
     </div>
   );
 }

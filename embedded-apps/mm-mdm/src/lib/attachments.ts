@@ -1,6 +1,7 @@
 // Pure helpers of attachments: the transport guards of the front end and the base64 conversion.
 // The guards (size, extension) only stop a useless upload early and protect the server; SAP decides what is accepted in the end.
 import type { Message } from './types';
+import { translate, type Lang } from '../i18n/translate';
 
 /** Upload limit of the live backend (backend/mmMdm.js MAX_UPLOAD_BYTES); the demo service keeps files in the browser and allows less. */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -26,12 +27,12 @@ export function checkFile(fileName: string, size: number, maxBytes: number = MAX
   return null;
 }
 
-export function fileProblemMessage(p: FileProblem): string {
+export function fileProblemMessage(p: FileProblem, lang: Lang = 'en'): string {
   switch (p.kind) {
-    case 'name': return 'The file name is not valid.';
-    case 'empty': return 'The file is empty.';
-    case 'tooLarge': return `The file is larger than ${fmtSize(p.limit ?? MAX_UPLOAD_BYTES)}.`;
-    default: return `This file type is not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}.`;
+    case 'name': return translate(lang, 'file.name');
+    case 'empty': return translate(lang, 'file.empty');
+    case 'tooLarge': return translate(lang, 'file.tooLarge', { size: fmtSize(p.limit ?? MAX_UPLOAD_BYTES) });
+    default: return translate(lang, 'file.type', { types: ALLOWED_EXTENSIONS.join(', ') });
   }
 }
 

@@ -4,6 +4,7 @@
 //                   connection and checks the hub session and the grant. The browser never talks to SAP.
 import type { AttachmentItem, CommentItem, DuplicateHit, FieldControl, ListQuery, Message, RequestData, RequestHeader, RequestView, SessionInfo, StartInput, ValueHelpItem } from './types';
 import { ServiceError, type Caller, type MdmService } from './service';
+import { currentLang, translate } from '../i18n/translate';
 import { DEMO_MAX_UPLOAD_BYTES, MAX_UPLOAD_BYTES, base64ToBytes, bytesToBase64 } from './attachments';
 
 export class ApiError extends Error {
@@ -65,7 +66,7 @@ async function send(path: string, init?: { method?: string; body?: unknown; raw?
       cache: 'no-store'
     });
   } catch {
-    throw new ApiError(0, 'Could not reach the material master service. Check your connection.');
+    throw new ApiError(0, translate(currentLang(), 'error.network'));
   }
 }
 

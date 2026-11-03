@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
+import { useT } from '@/i18n';
 import { FORM, staticFieldControl } from '@/lib/form';
 import type { FieldControl, Message, RequestData, RequestView, Row, Scalar } from '@/lib/types';
 import { groupByTab, indexByField, parseTarget } from '@/lib/messages';
@@ -16,6 +17,7 @@ import { ViewGrid } from './ViewGrid';
 type Dlg = 'approve' | 'sendback' | 'reject' | 'forward' | null;
 
 export function RequestEditor({ initial }: { initial: RequestView }) {
+  const t = useT();
   const router = useRouter();
   const [req, setReq] = useState(initial);
   const [data, setData] = useState<RequestData>(initial.data);
@@ -65,7 +67,7 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setInfo('');
     try { await fn(); } catch (e) {
-      if (e instanceof ApiError) { setMessages(e.messages.length ? e.messages : [{ code: String(e.status), message: e.message, severity: 'E' }]); } else setInfo(e instanceof Error ? e.message : 'Unexpected error');
+      if (e instanceof ApiError) { setMessages(e.messages.length ? e.messages : [{ code: String(e.status), message: e.message, severity: 'E' }]); } else setInfo(e instanceof Error ? e.message : t('common.unexpected'));
     } finally { setBusy(false); }
   };
 
@@ -84,22 +86,22 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
 
   const validate = () => run(async () => {
     const r = await api.validate(req.header.transId, data);
-    setMessages(r.messages); setInfo(r.messages.length ? '' : 'No errors found.');
+    setMessages(r.messages); setInfo(r.messages.length ? '' : t('editor.noErrors'));
   });
   const saveDraft = () => run(async () => {
     const r = await api.save(req.header.transId, data);
-    setReq(r.request); setData(r.request.data); setMessages(r.messages); setDirty(false); setInfo('Saved.');
+    setReq(r.request); setData(r.request.data); setMessages(r.messages); setDirty(false); setInfo(t('editor.saved'));
   });
   const submit = () => run(async () => {
     const r = await api.submit(req.header.transId, data);
-    setReq(r.request); setData(r.request.data); setMessages(r.messages); setDirty(false); setInfo('Submitted for review.');
+    setReq(r.request); setData(r.request.data); setMessages(r.messages); setDirty(false); setInfo(t('editor.submitted'));
   });
   const act = (a: 'approve' | 'sendback' | 'reject' | 'forward') => run(async () => {
     const r = await api.act(req.header.transId, a, { comment, agent, data: al.edit && dirty ? data : undefined });
     setReq(r.request); setData(r.request.data); setMessages(r.messages); setDirty(false); setDlg(null); setComment(''); setAgent('');
-    setInfo(a === 'approve' ? 'Approved.' : a === 'sendback' ? 'Sent back.' : a === 'reject' ? 'Rejected.' : 'Forwarded.');
+    setInfo(a === 'approve' ? t('editor.approved') : a === 'sendback' ? t('editor.sentBack') : a === 'reject' ? t('editor.rejected') : t('editor.forwarded'));
   });
-  const remove = () => { if (!confirm('Delete this draft? This cannot be undone.')) return; void run(async () => { await api.remove(req.header.transId); router.push('/requests'); }); };
+  const remove = () => { if (!confirm(t('editor.deleteConfirm'))) return; void run(async () => { await api.remove(req.header.transId); router.push('/requests'); }); };
 
   const onTabKey = (e: React.KeyboardEvent) => {
     const i = views.findIndex((v) => v.id === active);
@@ -120,31 +122,31 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
       <div className="card actionbar">
         <div className="row">
           <div className="grow">
-            <h1>Request {req.header.transId} <StatusChip status={req.header.status} /></h1>
+            <h1>{t('editor.request', { id: req.header.transId })} <StatusChip status={req.header.status} /></h1>
             <div className="muted">
-              {req.header.description || 'No description'} · material type {mtart || '-'} · initiator {req.header.initiator}
-              {req.header.objValue ? ` · material ${req.header.objValue}` : ''} · level {req.level}
+              {req.header.description || t('editor.noDescription')} · {t('editor.typeLine', { type: mtart || '-' })} · {t('editor.initiator', { user: req.header.initiator })}
+              {req.header.objValue ? ` · ${t('editor.material', { matnr: req.header.objValue })}` : ''} · {t('editor.level', { level: req.level })}
             </div>
           </div>
           <div className="row">
-            {al.validate && <button onClick={validate} disabled={busy}>Validate</button>}
-            {al.saveDraft && <button onClick={saveDraft} disabled={busy}>Save draft</button>}
-            {al.submit && <button className="primary" onClick={submit} disabled={busy}>Submit</button>}
-            {al.approve && <button className="primary" onClick={() => setDlg('approve')} disabled={busy}>Approve</button>}
-            {al.sendBack && <button onClick={() => setDlg('sendback')} disabled={busy}>Send back</button>}
-            {al.forward && <button onClick={() => setDlg('forward')} disabled={busy}>Forward</button>}
-            {al.reject && <button className="danger" onClick={() => setDlg('reject')} disabled={busy}>Reject</button>}
-            {al.deleteDraft && <button className="danger" onClick={remove} disabled={busy}>Delete draft</button>}
+            {al.validate && <button onClick={validate} disabled={busy}>{t('editor.validate')}</button>}
+            {al.saveDraft && <button onClick={saveDraft} disabled={busy}>{t('editor.saveDraft')}</button>}
+            {al.submit && <button className="primary" onClick={submit} disabled={busy}>{t('editor.submit')}</button>}
+            {al.approve && <button className="primary" onClick={() => setDlg('approve')} disabled={busy}>{t('editor.approve')}</button>}
+            {al.sendBack && <button onClick={() => setDlg('sendback')} disabled={busy}>{t('editor.sendBack')}</button>}
+            {al.forward && <button onClick={() => setDlg('forward')} disabled={busy}>{t('editor.forward')}</button>}
+            {al.reject && <button className="danger" onClick={() => setDlg('reject')} disabled={busy}>{t('editor.reject')}</button>}
+            {al.deleteDraft && <button className="danger" onClick={remove} disabled={busy}>{t('editor.deleteDraft')}</button>}
           </div>
         </div>
         <p className="muted" role="status" aria-live="polite">{info}</p>
-        {dirty && <p className="notice">You have unsaved changes.</p>}
+        {dirty && <p className="notice">{t('editor.unsaved')}</p>}
       </div>
 
       <div className="layout">
         <div>
           <div className="card">
-            <div className="tabs" role="tablist" aria-label="Tabs of the request" onKeyDown={onTabKey}>
+            <div className="tabs" role="tablist" aria-label={t('editor.tabs')} onKeyDown={onTabKey}>
               {views.map((v) => {
                 const g = tabMsgs.get(v.id);
                 return (
@@ -152,14 +154,14 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
                     className={v.id === active ? 'on' : ''} onClick={() => setActive(v.id)}>
                     {v.title}
                     {g && <span className={`dot${g.errors ? '' : ' w'}`} aria-hidden="true">●</span>}
-                    {g && <span className="sr-only"> ({g.errors} errors, {g.warnings} warnings)</span>}
+                    {g && <span className="sr-only"> {t('editor.errorsSr', { errors: g.errors, warnings: g.warnings })}</span>}
                   </button>
                 );
               })}
             </div>
             <div id="tabpanel" role="tabpanel" aria-labelledby={`tab-${active}`}>
-            {!view && <p className="muted">No tabs selected for this request.</p>}
-            {view && !fc && <p className="muted">Loading field settings...</p>}
+            {!view && <p className="muted">{t('editor.noTabs')}</p>}
+            {view && !fc && <p className="muted" role="status">{t('editor.loadingFields')}</p>}
             {view && fc && (view.multi
               ? <ViewGrid title={view.title} controls={controls} rows={data.multi[view.entity] ?? []} data={data} readOnly={readOnly} messages={byField} onChange={(rows, structural) => setRows(view.entity, rows, structural)} />
               : <ViewForm controls={controls} row={data.single[view.entity] ?? {}} data={data} readOnly={readOnly} messages={byField} onChange={(n, v) => setCell(view.entity, n, v)} />)}
@@ -168,20 +170,20 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
         </div>
         <div>
           <MessagePanel groups={grouped.groups} general={grouped.general} onPick={pick} />
-          <div className="card"><h2>History</h2><Timeline items={req.history} /></div>
+          <div className="card"><h2>{t('history.title')}</h2><Timeline items={req.history} /></div>
           <RequestExtras transId={req.header.transId} canAttach={al.attach} canComment={al.comment} />
           <div className="card muted">
-            Routing: type {req.header.genType || '-'}, group {req.header.genField || '-'}, business {req.header.genField2 || '-'}, plant {req.header.genField3 || '-'}
-            {req.header.workItemId ? ` · work item ${req.header.workItemId}` : ''}
+            {t('editor.routing', { type: req.header.genType || '-', group: req.header.genField || '-', business: req.header.genField2 || '-', plant: req.header.genField3 || '-' })}
+            {req.header.workItemId ? ` · ${t('editor.workItem', { id: req.header.workItemId })}` : ''}
           </div>
         </div>
       </div>
 
       <dialog ref={dlgRef} onClose={() => setDlg(null)}>
-        <h2>{dlg === 'approve' ? 'Approve request' : dlg === 'sendback' ? 'Send back to initiator' : dlg === 'reject' ? 'Reject request' : 'Forward request'}</h2>
-        {dlg === 'forward' && <div className="field"><label className="lbl" htmlFor="agent">Forward to (user)</label><input id="agent" value={agent} onChange={(e) => setAgent(e.target.value)} /></div>}
-        <div className="field"><label className="lbl" htmlFor="cmt">Comment</label><textarea id="cmt" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} /></div>
-        <div className="row"><button onClick={() => setDlg(null)}>Cancel</button><button className={dlg === 'reject' ? 'danger' : 'primary'} disabled={busy || (dlg === 'forward' && !agent)} onClick={() => dlg && act(dlg)}>Confirm</button></div>
+        <h2>{dlg === 'approve' ? t('dlg.approve') : dlg === 'sendback' ? t('dlg.sendBack') : dlg === 'reject' ? t('dlg.reject') : t('dlg.forward')}</h2>
+        {dlg === 'forward' && <div className="field"><label className="lbl" htmlFor="agent">{t('dlg.forwardTo')}</label><input id="agent" value={agent} onChange={(e) => setAgent(e.target.value)} /></div>}
+        <div className="field"><label className="lbl" htmlFor="cmt">{t('dlg.comment')}</label><textarea id="cmt" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} /></div>
+        <div className="row"><button onClick={() => setDlg(null)}>{t('common.cancel')}</button><button className={dlg === 'reject' ? 'danger' : 'primary'} disabled={busy || (dlg === 'forward' && !agent)} onClick={() => dlg && act(dlg)}>{t('common.confirm')}</button></div>
       </dialog>
     </>
   );

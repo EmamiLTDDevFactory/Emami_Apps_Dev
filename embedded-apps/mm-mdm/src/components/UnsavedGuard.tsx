@@ -1,7 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-
-export const UNSAVED_TEXT = 'You have unsaved changes. If you leave this page they are lost. Leave anyway?';
+import { useT } from '@/i18n';
 
 /**
  * Warns before unsaved changes are lost, while `when` is true:
@@ -11,6 +10,7 @@ export const UNSAVED_TEXT = 'You have unsaved changes. If you leave this page th
  * beforeunload prompt when it leaves the app.
  */
 export function UnsavedGuard({ when }: { when: boolean }) {
+  const t = useT();
   useEffect(() => {
     if (!when) return;
     const beforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
@@ -20,11 +20,11 @@ export function UnsavedGuard({ when }: { when: boolean }) {
       if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
       const url = new URL(a.href, window.location.href);
       if (url.origin === window.location.origin && url.pathname === window.location.pathname && url.search === window.location.search) return; // same page, hash only
-      if (!window.confirm(UNSAVED_TEXT)) { e.preventDefault(); e.stopPropagation(); }
+      if (!window.confirm(t('unsaved.confirm'))) { e.preventDefault(); e.stopPropagation(); }
     };
     window.addEventListener('beforeunload', beforeUnload);
     document.addEventListener('click', onClick, true);
     return () => { window.removeEventListener('beforeunload', beforeUnload); document.removeEventListener('click', onClick, true); };
-  }, [when]);
+  }, [when, t]);
   return null;
 }

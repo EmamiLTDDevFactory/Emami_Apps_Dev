@@ -22,7 +22,8 @@ export function cascadeParams(name: string, sel: { mtart?: string; mgrp?: string
   return out;
 }
 
-export const CASCADE_PARENT_HINT: Record<string, string> = { MGRP: 'Choose the material type first', SGRP: 'Choose the main group first', SSGR: 'Choose the sub group first' };
+/** Text keys (i18n) of the hint shown while the parent of a cascading list is still empty. */
+export const CASCADE_PARENT_HINT: Record<string, 'new.hintMtart' | 'new.hintMg' | 'new.hintSg'> = { MGRP: 'new.hintMtart', SGRP: 'new.hintMg', SSGR: 'new.hintSg' };
 
 export const HELP_LIMIT = 100;
 

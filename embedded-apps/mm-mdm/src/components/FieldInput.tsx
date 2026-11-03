@@ -3,6 +3,7 @@ import { useId } from 'react';
 import type { FieldMeta } from '@/lib/form';
 import type { UnitRef } from '@/lib/refs';
 import type { Message, Scalar } from '@/lib/types';
+import { useT } from '@/i18n';
 import { Combobox } from './Combobox';
 import { useValueHelpState } from './useValueHelp';
 
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row, unit, ariaLabel }: Props) {
+  const t = useT();
   const id = useId();
   const helpName = meta.fixed.length === 0 && (HELP_FIELDS.has(meta.name) || meta.check) ? meta.name : undefined;
   const help = useValueHelpState(helpName);
@@ -55,8 +57,8 @@ export function FieldInput({ meta, value, onChange, readOnly, required, message,
       <span className="withunit">
         <input {...common} inputMode="decimal" value={String(v)} readOnly={readOnly || locked} aria-describedby={[message ? `${id}-m` : '', unit?.value ? `${id}-u` : '', locked ? `${id}-h` : ''].filter(Boolean).join(' ') || undefined}
           onChange={(e) => onChange(e.target.value)} />
-        {unit?.value && <span className="unit" id={`${id}-u`} title={unit.kind === 'currency' ? 'Currency' : 'Unit'}><span className="sr-only">{unit.kind === 'currency' ? 'Currency ' : 'Unit '}</span>{unit.value}</span>}
-        {locked && <span className="hint" id={`${id}-h`}>{unit?.hint}</span>}
+        {unit?.value && <span className="unit" id={`${id}-u`} title={unit.kind === 'currency' ? t('field.currency') : t('field.unit')}><span className="sr-only">{unit.kind === 'currency' ? t('field.currency') : t('field.unit')} </span>{unit.value}</span>}
+        {locked && <span className="hint" id={`${id}-h`}>{unit ? t('field.unitFillFirst', { label: unit.label }) : ''}</span>}
       </span>
     );
   } else {

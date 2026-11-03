@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
+import { useT } from '@/i18n';
 import { Combobox } from '@/components/Combobox';
 import { useValueHelpState } from '@/components/useValueHelp';
 import { CASCADE_PARENT_HINT, cascadeParams, type HelpParams } from '@/lib/valuehelp';
@@ -13,6 +14,7 @@ const SELECTABLE = ['MARA_BASIC1', 'MARA_BASIC2', 'MARA_PLNT1', 'MARA_PLNT2', 'M
   'MVKE_SORG1', 'MVKE_SORG2', 'MVKE_SORG1_TAX', 'MVKE_SORG_TAX', 'MBEW_ACC1', 'MBEW_ACC2', 'MBEW_COST2', 'MARM_UOM', 'MEAN_EAN', 'MLGN_WHM1', 'MLGT_WHM2', 'QMAT_QM', 'PROP_FORC', 'PROP_CONS', 'RMCL_CLASS', 'WORK_SCHEDULE'];
 
 export default function NewRequest() {
+  const t = useT();
   const router = useRouter();
   const [mtart, setMtart] = useState('');
   const [mbrsh, setMbrsh] = useState('F');
@@ -54,7 +56,7 @@ export default function NewRequest() {
       const r = await api.start({ materialType: mtart, industrySector: mbrsh, description: preview.text || desc, mainGroup: text(mgs, mg), subGroup: text(sgs, sg), subSubGroup: text(ssgs, ssg), manufacturerPart: mfr, plant, storageLocation: sloc, salesOrg: vkorg, distributionChannel: vtweg, views, draft });
       router.push(`/requests/view?id=${r.header.transId}`);
     } catch (e) {
-      setMsgs(e instanceof ApiError ? (e.messages.length ? e.messages : [{ code: String(e.status), message: e.message, severity: 'E' }]) : [{ code: '', message: 'Unexpected error', severity: 'E' }]);
+      setMsgs(e instanceof ApiError ? (e.messages.length ? e.messages : [{ code: String(e.status), message: e.message, severity: 'E' }]) : [{ code: '', message: t('common.unexpected'), severity: 'E' }]);
     } finally { setBusy(false); }
   };
 
@@ -62,41 +64,41 @@ export default function NewRequest() {
     <div className="field"><label className="lbl" htmlFor={id}>{label}{req && <span className="req">*</span>}</label>
       <Combobox id={id} value={v} onChange={set} items={state.items} loading={state.loading} error={state.error} disabled={!!parentHint} disabledHint={parentHint} /></div>
   );
-  const hint = (name: string, p: HelpParams | null) => (p === null ? CASCADE_PARENT_HINT[name] : '');
+  const hint = (name: string, p: HelpParams | null) => (p === null ? t(CASCADE_PARENT_HINT[name]) : '');
 
   return (
     <>
-      <h1>New material request</h1>
-      <p className="muted">Step 1 of 2: key data. After you start the request you fill in the selected tabs and submit it.</p>
+      <h1>{t('new.title')}</h1>
+      <p className="muted">{t('new.intro')}</p>
       {msgs.length > 0 && <div className="card" role="alert">{msgs.map((m, i) => <div key={i} style={{ color: 'var(--err)' }}>{m.message}</div>)}</div>}
       <div className="grid2">
         <div className="card">
-          <h2>Material</h2>
-          {sel('mtart', 'Material type', mtart, (v) => { setMtart(v); setMg(''); setSg(''); setSsg(''); }, lists.mtart, true)}
-          {sel('mbrsh', 'Industry sector', mbrsh, setMbrsh, lists.mbrsh, true)}
-          {sel('mg', 'Main group', mg, (v) => { setMg(v); setSg(''); setSsg(''); }, lists.mgrp, false, hint('MGRP', cascadeParams('MGRP', { mtart })))}
-          {sel('sg', 'Sub group', sg, (v) => { setSg(v); setSsg(''); }, lists.sgrp, false, hint('SGRP', cascadeParams('SGRP', { mtart, mgrp: mg })))}
-          {sel('ssg', 'Sub sub group', ssg, setSsg, lists.ssgr, false, hint('SSGR', cascadeParams('SSGR', { mtart, mgrp: mg, sgrp: sg })))}
-          <div className="field"><label className="lbl" htmlFor="desc">Description<span className="req">*</span></label><input id="desc" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
-          <div className="field"><label className="lbl" htmlFor="mfr">Manufacturer part number</label><input id="mfr" value={mfr} onChange={(e) => setMfr(e.target.value)} /></div>
-          <div className="field"><label className="lbl" htmlFor="mdesc">Material description (40 characters)</label><input id="mdesc" readOnly value={preview.text} aria-live="polite" />{preview.truncated && <div className="msg w">The text was cut to 40 characters.</div>}</div>
-          <button type="button" onClick={checkDup} disabled={!desc}>Check for duplicates</button>
+          <h2>{t('new.material')}</h2>
+          {sel('mtart', t('new.mtart'), mtart, (v) => { setMtart(v); setMg(''); setSg(''); setSsg(''); }, lists.mtart, true)}
+          {sel('mbrsh', t('new.mbrsh'), mbrsh, setMbrsh, lists.mbrsh, true)}
+          {sel('mg', t('new.mg'), mg, (v) => { setMg(v); setSg(''); setSsg(''); }, lists.mgrp, false, hint('MGRP', cascadeParams('MGRP', { mtart })))}
+          {sel('sg', t('new.sg'), sg, (v) => { setSg(v); setSsg(''); }, lists.sgrp, false, hint('SGRP', cascadeParams('SGRP', { mtart, mgrp: mg })))}
+          {sel('ssg', t('new.ssg'), ssg, setSsg, lists.ssgr, false, hint('SSGR', cascadeParams('SSGR', { mtart, mgrp: mg, sgrp: sg })))}
+          <div className="field"><label className="lbl" htmlFor="desc">{t('new.desc')}<span className="req">*</span></label><input id="desc" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
+          <div className="field"><label className="lbl" htmlFor="mfr">{t('new.mfr')}</label><input id="mfr" value={mfr} onChange={(e) => setMfr(e.target.value)} /></div>
+          <div className="field"><label className="lbl" htmlFor="mdesc">{t('new.maktx')}</label><input id="mdesc" readOnly value={preview.text} aria-live="polite" />{preview.truncated && <div className="msg w">{t('new.cut')}</div>}</div>
+          <button type="button" onClick={checkDup} disabled={!desc}>{t('new.dup')}</button>
           {dups && (
             <div style={{ marginTop: 10 }}>
-              {dups.length === 0 ? <p className="muted">No similar materials found.</p> : (
-                <table><thead><tr><th>Material</th><th>Description</th><th>Type</th></tr></thead><tbody>{dups.map((d, i) => <tr key={i}><td>{d.matnr}</td><td>{d.description}</td><td>{d.materialType}</td></tr>)}</tbody></table>
+              {dups.length === 0 ? <p className="muted">{t('new.noDup')}</p> : (
+                <table><thead><tr><th scope="col">{t('new.dupMaterial')}</th><th scope="col">{t('new.dupDescription')}</th><th scope="col">{t('new.dupType')}</th></tr></thead><tbody>{dups.map((d, i) => <tr key={i}><td>{d.matnr}</td><td>{d.description}</td><td>{d.materialType}</td></tr>)}</tbody></table>
               )}
             </div>
           )}
         </div>
         <div className="card">
-          <h2>Organization data</h2>
-          {sel('plant', 'Plant', plant, setPlant, lists.werks)}
-          {sel('sloc', 'Storage location', sloc, setSloc, lists.lgort)}
-          {sel('vkorg', 'Sales organization', vkorg, setVkorg, lists.vkorg)}
-          {sel('vtweg', 'Distribution channel', vtweg, setVtweg, lists.vtweg)}
-          <h2 style={{ marginTop: 16 }}>Tabs to fill in</h2>
-          <div className="row" style={{ marginBottom: 8 }}><button type="button" onClick={() => setViews(SELECTABLE)}>Select all</button><button type="button" onClick={() => setViews([])}>Select none</button></div>
+          <h2>{t('new.org')}</h2>
+          {sel('plant', t('new.plant'), plant, setPlant, lists.werks)}
+          {sel('sloc', t('new.sloc'), sloc, setSloc, lists.lgort)}
+          {sel('vkorg', t('new.vkorg'), vkorg, setVkorg, lists.vkorg)}
+          {sel('vtweg', t('new.vtweg'), vtweg, setVtweg, lists.vtweg)}
+          <h2 style={{ marginTop: 16 }}>{t('new.tabs')}</h2>
+          <div className="row" style={{ marginBottom: 8 }}><button type="button" onClick={() => setViews(SELECTABLE)}>{t('new.selectAll')}</button><button type="button" onClick={() => setViews([])}>{t('new.selectNone')}</button></div>
           <div style={{ columns: 2 }}>
             {viewDefs.map((v) => (
               <label key={v.id} style={{ display: 'block' }}><input type="checkbox" checked={views.includes(v.id)} onChange={() => toggle(v.id)} /> {v.title}</label>
@@ -105,8 +107,8 @@ export default function NewRequest() {
         </div>
       </div>
       <div className="row">
-        <button className="primary" disabled={busy || !mtart || !desc || !views.length} onClick={() => start(false)}>Start request</button>
-        <button disabled={busy || !mtart || !desc || !views.length} onClick={() => start(true)}>Save as draft</button>
+        <button className="primary" disabled={busy || !mtart || !desc || !views.length} onClick={() => start(false)}>{t('new.start')}</button>
+        <button disabled={busy || !mtart || !desc || !views.length} onClick={() => start(true)}>{t('new.draft')}</button>
       </div>
     </>
   );

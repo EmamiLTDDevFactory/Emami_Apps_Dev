@@ -67,3 +67,46 @@ test.describe('@a11y pages', () => {
     await expectNoSeriousViolations(page, 'approve dialog');
   });
 });
+
+// Dark mode: the same pages and states under prefers-color-scheme: dark; the color-contrast rule runs in both schemes.
+test.describe('@a11y dark mode', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('home, list and new request', async ({ page }) => {
+    await page.goto('');
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    await expectNoSeriousViolations(page, 'dark home');
+    await page.goto('requests/');
+    await page.getByRole('link', { name: '1000000001' }).waitFor();
+    await expectNoSeriousViolations(page, 'dark requests');
+    await page.goto('requests/new/');
+    await page.getByRole('heading', { name: 'New material request' }).waitFor();
+    await expectNoSeriousViolations(page, 'dark new request');
+  });
+
+  test('request view: tabs, messages, grid and dialog', async ({ page }) => {
+    await page.goto('requests/view/?id=1000000001');
+    await page.getByRole('tablist').waitFor();
+    await expectNoSeriousViolations(page, 'dark request view');
+    for (const tab of await page.getByRole('tab').all()) {
+      await tab.click();
+      await expectNoSeriousViolations(page, `dark request tab ${await tab.innerText()}`, TAB_REGION);
+    }
+    await page.getByRole('button', { name: 'Validate' }).click();
+    await page.getByRole('alert', { name: 'Messages' }).waitFor();
+    await expectNoSeriousViolations(page, 'dark request with messages');
+  });
+
+  test('grid tab and the approve dialog', async ({ page }) => {
+    const id = await startRequest(page, { description: 'E2E DARK GRID', views: ['Sales: tax data'], draft: true });
+    await openRequest(page, id);
+    await page.getByRole('tab', { name: /Sales: tax data/ }).click();
+    await page.getByRole('button', { name: 'Add row' }).click();
+    await expectNoSeriousViolations(page, 'dark grid tab', TAB_REGION);
+    await switchUser(page, 'reviewer');
+    await openRequest(page, '1000000003');
+    await page.getByRole('button', { name: 'Approve' }).click();
+    await page.getByRole('dialog').waitFor();
+    await expectNoSeriousViolations(page, 'dark approve dialog');
+  });
+});

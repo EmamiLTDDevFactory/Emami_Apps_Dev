@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ValueHelpItem } from '@/lib/types';
+import { useT } from '@/i18n';
 import { filterItems, HELP_LIMIT } from '@/lib/valuehelp';
 
 interface Props {
@@ -29,6 +30,7 @@ interface Props {
  * Free text stays possible (SAP checks the value); picking an entry sets the key. The number of results is announced.
  */
 export function Combobox({ id, value, onChange, items, loading, error, readOnly, disabled, disabledHint, maxLength, invalid, describedBy, inputMode, upper, ariaLabel }: Props) {
+  const t = useT();
   const listId = `${id}-list`;
   const hintId = `${id}-vh`;
   const [open, setOpen] = useState(false);
@@ -73,7 +75,8 @@ export function Combobox({ id, value, onChange, items, loading, error, readOnly,
     else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); setTyped(false); }
   };
 
-  const status = loading ? 'Loading the list' : error ? 'The list could not be loaded' : !open ? '' : !items.length ? 'No list available, type the value' : total === 0 ? 'No results' : `${total} result${total === 1 ? '' : 's'}${total > shown.length ? `, first ${shown.length} shown` : ''}`;
+  const base = total === 1 ? t('combo.resultOne') : t('combo.resultMany', { n: total });
+  const status = loading ? t('combo.loading') : error ? t('combo.error') : !open ? '' : !items.length ? t('combo.noList') : total === 0 ? t('combo.noResults') : total > shown.length ? t('combo.firstShown', { base, shown: shown.length }) : base;
 
   return (
     <span className="combo">
@@ -90,17 +93,17 @@ export function Combobox({ id, value, onChange, items, loading, error, readOnly,
       />
       {current && current.text !== current.key && <span className="vh-text" id={hintId}>{current.text}</span>}
       <span className="sr-only" role="status" aria-live="polite">{status}</span>
-      {loading && <span className="vh-note" aria-hidden="true">Loading…</span>}
+      {loading && <span className="vh-note" aria-hidden="true">{t('combo.loadingDots')}</span>}
       {show && pos && (
-        <ul id={listId} role="listbox" aria-label="Suggestions" className="combo-list" style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width }}>
+        <ul id={listId} role="listbox" aria-label={t('combo.suggestions')} className="combo-list" style={{ position: 'fixed', left: pos.left, top: pos.top, width: pos.width }}>
           {shown.map((it, i) => (
             <li key={it.key} id={`${uid}-o${i}`} role="option" aria-selected={i === active || it.key === value} className={i === active ? 'on' : ''}
               onMouseDown={(e) => { e.preventDefault(); pick(it); }} onMouseEnter={() => setActive(i)}>
               <b>{it.key}</b>{it.text && it.text !== it.key ? <span> {it.text}</span> : null}
             </li>
           ))}
-          {!shown.length && <li className="empty" role="presentation">{loading ? 'Loading…' : !items.length ? 'No list available, type the value' : 'No results'}</li>}
-          {total > HELP_LIMIT && <li className="empty" role="presentation">Showing the first {HELP_LIMIT} of {total}. Type more to narrow the list.</li>}
+          {!shown.length && <li className="empty" role="presentation">{loading ? t('combo.loadingDots') : !items.length ? t('combo.noList') : t('combo.noResults')}</li>}
+          {total > HELP_LIMIT && <li className="empty" role="presentation">{t('combo.showing', { limit: HELP_LIMIT, total })}</li>}
         </ul>
       )}
     </span>
