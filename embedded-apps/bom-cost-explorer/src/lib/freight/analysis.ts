@@ -162,6 +162,17 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
   return out.sort((a, b) => b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
 }
 
+/** The whole calendar: every PO line SAP returned, whatever its date. */
+export const ALL_DATES: DateRange = { from: '0000-01-01', to: '9999-12-31' };
+
+/** PO lines of the components that SAP returned but the chosen date range hides (EXCLUDED lines never count). */
+export function linesOutsideRange(components: Component[], freight: FreightRow[], range: DateRange): { returned: number; inRange: number; outside: number; earliest: string; latest: string } {
+  const all = poLines(components, freight, ALL_DATES);
+  const inRange = all.filter((l) => l.poDate >= range.from && l.poDate <= range.to).length;
+  const dates = all.map((l) => l.poDate).sort();
+  return { returned: all.length, inRange, outside: all.length - inRange, earliest: dates[0] ?? '', latest: dates[dates.length - 1] ?? '' };
+}
+
 /** Alerts first (by the rule chosen on screen), then newest PO date. */
 export function sortPoLines(rows: PoLine[], rule: Rule): PoLine[] {
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));

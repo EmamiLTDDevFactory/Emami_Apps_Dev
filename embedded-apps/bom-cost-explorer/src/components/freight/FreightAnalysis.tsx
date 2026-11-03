@@ -19,7 +19,7 @@ import { MAX_MATERIALS } from '@/lib/query/schema';
 import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { toDay } from '@/lib/wac/dates';
 import {
-  DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
+  DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
   type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
 import { DEFAULT_FREIGHT_DAYS, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
@@ -156,7 +156,10 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
   const [plant, setPlant] = useState('');
   const [q, setQ] = useState('');
   const [view, setView] = useState<View>('component');
-  const analysed = useMemo(() => analyseFreight(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
+  // The date range of the run hides PO lines SAP returned outside it; the person can look at all of them.
+  const [allDates, setAllDates] = useState(false);
+  const range = allDates ? ALL_DATES : ran.range;
+  const analysed = useMemo(() => analyseFreight(data.components, data.freight, range), [data.components, data.freight, range]);
   const plantList = useMemo(() => Array.from(new Set(analysed.map((r) => r.plant))).sort(), [analysed]);
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -165,12 +168,13 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
   }, [analysed, plant, show, q, rule]);
   const totals = useMemo(() => analysisTotals(analysed, rule), [analysed, rule]);
   // Purchase order wise: one row per PO freight line of the components, same range, same rule, same filters.
-  const allPo = useMemo(() => poLines(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
+  const allPo = useMemo(() => poLines(data.components, data.freight, range), [data.components, data.freight, range]);
   const poRows = useMemo(() => {
     const t = q.trim().toLowerCase();
     const list = allPo.filter((r) => (!plant || r.plant === plant) && (show === 'all' || breaches(r, rule)) && (!t || `${r.material} ${r.text} ${r.po}`.toLowerCase().includes(t)));
     return sortPoLines(list, rule);
   }, [allPo, plant, show, q, rule]);
+  const hidden = useMemo(() => linesOutsideRange(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
   const poFlagged = useMemo(() => allPo.filter((r) => breaches(r, rule)).length, [allPo, rule]);
   /** the PO lines of one component: switches to the PO view filtered to it */
   const openPos = (r: { plant: string; material: string }) => { setPlant(r.plant); setQ(r.material); setShow('all'); setView('po'); };
@@ -182,7 +186,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
       extraParams: [
         ['Report', view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
         ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
-        ['PO date range', `${ran.range.from} to ${ran.range.to}`], ['Latest only', ran.latestOnly ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
+        ['PO date range', allDates ? `all dates SAP returned (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}`], ['Latest only', ran.latestOnly ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
         ['Rows', String(view === 'po' ? poRows.length : rows.length)], ['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)],
       ],
       messages: data.messages,
@@ -199,6 +203,12 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
           ? (poFlagged ? `${poFlagged} of ${allPo.length} purchase order line(s) breach the rule: ${ruleText(rule)}` : `No purchase order line breaches the rule: ${ruleText(rule)}`)
           : (totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`)}
       </div>
+      {hidden.outside > 0 && (
+        <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
+          <span>SAP returned {hidden.returned} PO line(s) for these components; {allDates ? 'all of them are shown' : `${hidden.inRange} fall in the PO date range ${ran.range.from} to ${ran.range.to} and ${hidden.outside} are hidden`} (PO dates {hidden.earliest} to {hidden.latest}).</span>
+          <Button size="sm" variant="ghost" onClick={() => setAllDates((v) => !v)}>{allDates ? 'Back to the date range' : `Show all ${hidden.returned} lines`}</Button>
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Components" value={totals.rows} sub={`${fmtMs(data.ms)} in SAP · ${data.calls} call(s)`} />
         <Stat label="In alert" value={totals.flagged} tone={totals.flagged ? 'bad' : 'good'} sub="by the chosen rule" />
@@ -282,7 +292,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
         </table>
       </div>
       )}
-      <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {ran.range.from} to {ran.range.to}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
+      <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {allDates ? `${hidden.earliest} to ${hidden.latest} (all lines SAP returned)` : `${ran.range.from} to ${ran.range.to}`}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
     </div>
   );
 }

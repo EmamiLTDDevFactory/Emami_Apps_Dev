@@ -56,3 +56,24 @@ describe('purchase order wise lines', () => {
     expect(String(sheet.cols[sheet.cols.length - 1].get(0))).toBe('ALERT'); // 20 % over, default rule is 10 %
   });
 });
+
+describe('PO lines the date range hides', () => {
+  const nine = [
+    ['6500663150', '2026-09-08'], ['6500658722', '2026-08-08'], ['6500658721', '2026-08-08'], ['6500658462', '2026-08-06'], ['5500597655', '2026-07-29'],
+    ['6500651908', '2026-06-22'], ['6500651314', '2026-06-18'], ['6500649691', '2026-06-06'], ['6500647567', '2026-05-22'],
+  ].map(([po, d]) => row({ Purchasedocument: po, Podate: d, Material: 'RM1' }));
+  it('9 PO lines from SAP, 3 inside 7 Aug to 4 Nov: the other 6 are counted as hidden (the case seen on www)', async () => {
+    const { linesOutsideRange } = await import('@/lib/freight/analysis');
+    const r = linesOutsideRange([comp('RM1')], nine, { from: '2026-08-07', to: '2026-11-04' });
+    expect(r).toMatchObject({ returned: 9, inRange: 3, outside: 6, earliest: '2026-05-22', latest: '2026-09-08' });
+    expect(poLines([comp('RM1')], nine, { from: '2026-08-07', to: '2026-11-04' })).toHaveLength(3);
+  });
+  it('all dates shows every line', async () => {
+    const { ALL_DATES } = await import('@/lib/freight/analysis');
+    expect(poLines([comp('RM1')], nine, ALL_DATES)).toHaveLength(9);
+  });
+  it('a wide enough range hides nothing', async () => {
+    const { linesOutsideRange } = await import('@/lib/freight/analysis');
+    expect(linesOutsideRange([comp('RM1')], nine, { from: '2026-01-01', to: '2026-12-31' }).outside).toBe(0);
+  });
+});
