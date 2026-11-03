@@ -7,7 +7,7 @@
  *
  * Why not the shared selection builder (lib/sap/filter.ts buildSelectionFilter): it refuses a query without BOTH a material and a
  * plant, which was the old SAP rule. The literals still come from the same helpers (eqClause), so every value is typed and
- * escaped exactly as on the other screens (flags are sent the way the live service defines them on these sets).
+ * escaped exactly as on the other screens; the flags are the one exception (see analysisFilter).
  *
  * RmPmRowSet answers with the components (material, description, material type, plant); only the chosen types (ROH, PKGN,
  * VERP) are kept. FreightRowSet answers with every PO freight line; the date range is also applied in the browser on the PO
@@ -78,7 +78,11 @@ export function selectionProblem(i: { materials: string[]; plants: string[]; typ
 
 interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number }
 
-/** The $filter of one request: only the properties that have a value. Both Matnr and Werks are optional, one of them is needed. */
+/**
+ * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
+ * Flags follow the SAP side as of 4 Nov 2026: InclFrt is an Edm.Boolean (`InclFrt eq true`); InclFrt, StdFrt and LatestOnly are
+ * left out when false (an `eq false` on these sets was once refused with "Invalid parametertype") (the analysis wants every PO line and the actual rate, which is what omitting them gives).
+ */
 export function analysisFilter(p: FilterParts): string {
   const set = p.mode === 'F' ? 'FREIGHT' : 'RMPM';
   const parts = [
@@ -87,11 +91,8 @@ export function analysisFilter(p: FilterParts): string {
     eqClause('Werks', p.plant, set),
     eqClause('BudatFrom', p.range.from, set),
     eqClause('BudatTo', p.range.to, set),
-    eqClause('InclFrt', p.inclFrt, set),
+    p.inclFrt ? 'InclFrt eq true' : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
-    // The analysis needs every PO line of the window and the standard rate next to the actual one.
-    p.mode === 'F' ? eqClause('StdFrt', false, set) : null,
-    p.mode === 'F' ? eqClause('LatestOnly', false, set) : null,
   ];
   return parts.filter(Boolean).join(' and ');
 }
