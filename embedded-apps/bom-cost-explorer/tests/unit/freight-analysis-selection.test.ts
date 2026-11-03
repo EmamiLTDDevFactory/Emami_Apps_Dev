@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NEED_PLANT_OR_MATERIAL, analysisFilter, defaultInclFrt, freightDaysValue, selectionProblem } from '@/lib/freight/analysisFetch';
+import { NEED_PLANT_OR_MATERIAL, analysisFilter, defaultInclFrt, freightDaysValue, sapDay, selectionProblem } from '@/lib/freight/analysisFetch';
 
 const range = { from: '2026-08-01', to: '2026-10-31' };
 const types = ['ROH', 'PKGN', 'VERP'];
@@ -57,10 +57,18 @@ describe('the filter has only what the screen filled in', () => {
     expect(f).toContain("(Matnr eq 'RM-1' or Matnr eq 'PM-1')");
     expect(f).not.toContain('Werks');
   });
-  it('dates go as two separate Edm.DateTime properties, never a combined range', () => {
+  it("dates go as two separate plain SAP date strings 'YYYYMMDD', never datetime'...' and never a combined range", () => {
     const f = analysisFilter({ ...base, plant: 'UB01' });
-    expect(f).toContain("BudatFrom eq datetime'2026-08-01T00:00:00'");
-    expect(f).toContain("BudatTo eq datetime'2026-10-31T00:00:00'");
+    expect(f).toContain("BudatFrom eq '20260801'");
+    expect(f).toContain("BudatTo eq '20261031'");
+    expect(f).not.toContain('datetime');
+    expect(f).not.toContain('T00:00:00');
+  });
+  it('sapDay: a quoted YYYYMMDD, nothing for an empty or unreadable date', () => {
+    expect(sapDay('BudatFrom', '2026-08-06')).toBe("BudatFrom eq '20260806'");
+    expect(sapDay('BudatTo', '2026-11-03')).toBe("BudatTo eq '20261103'");
+    expect(sapDay('BudatTo', '')).toBeNull();
+    expect(sapDay('BudatTo', 'soon')).toBeNull();
   });
   it('no dates: no Budat clause; FreightDays only on the freight set', () => {
     const f = analysisFilter({ ...base, plant: 'UB01', range: { from: '', to: '' }, inclFrt: false });

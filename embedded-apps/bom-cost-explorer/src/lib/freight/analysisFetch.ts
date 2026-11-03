@@ -2,8 +2,8 @@
  * Data of the Freight analysis. SAP's RmPmRowSet (mode M) and FreightRowSet (mode F) are read with the filters of this screen
  * only - a plant, or materials, or both (the SAP side no longer needs a finished good). Nothing else is asked of SAP:
  *
- *   Werks (one plant per request), Matnr (one clause per material, joined with or), BudatFrom / BudatTo (Edm.DateTime, two
- *   separate properties), InclFrt, and on the freight set FreightDays (as typed: no upper limit here, SAP decides).
+ *   Werks (one plant per request), Matnr (one clause per material, joined with or), BudatFrom / BudatTo (SAP dates as plain 'YYYYMMDD'
+ *   strings, two separate properties), InclFrt, and on the freight set FreightDays (as typed: no upper limit here, SAP decides).
  *
  * Why not the shared selection builder (lib/sap/filter.ts buildSelectionFilter): it refuses a query without BOTH a material and a
  * plant, which was the old SAP rule. The literals still come from the same helpers (eqClause), so every value is typed and
@@ -76,6 +76,13 @@ export function selectionProblem(i: { materials: string[]; plants: string[]; typ
   return '';
 }
 
+/** A date property as SAP's DATS wants it in a filter: a quoted plain string `'YYYYMMDD'`, NOT `datetime'YYYY-MM-DDT00:00:00'`
+ * (that is refused with "Invalid parametertype"). null when the date is empty. */
+export function sapDay(name: 'BudatFrom' | 'BudatTo', day: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(day ?? '').trim());
+  return m ? `${name} eq '${m[1]}${m[2]}${m[3]}'` : null;
+}
+
 interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number }
 
 /**
@@ -89,8 +96,8 @@ export function analysisFilter(p: FilterParts): string {
     eqClause('Mode', p.mode, set),
     eqClause('Matnr', p.materials, set),
     eqClause('Werks', p.plant, set),
-    eqClause('BudatFrom', p.range.from, set),
-    eqClause('BudatTo', p.range.to, set),
+    sapDay('BudatFrom', p.range.from),
+    sapDay('BudatTo', p.range.to),
     p.inclFrt ? 'InclFrt eq true' : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
   ];
