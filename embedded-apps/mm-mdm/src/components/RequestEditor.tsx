@@ -155,8 +155,8 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
             {!view && <p className="muted">No tabs selected for this request.</p>}
             {view && !fc && <p className="muted">Loading field settings...</p>}
             {view && fc && (view.multi
-              ? <ViewGrid controls={controls} rows={data.multi[view.entity] ?? []} readOnly={readOnly} messages={byField} onChange={(rows) => setRows(view.entity, rows)} />
-              : <ViewForm controls={controls} row={data.single[view.entity] ?? {}} readOnly={readOnly} messages={byField} onChange={(n, v) => setCell(view.entity, n, v)} />)}
+              ? <ViewGrid controls={controls} rows={data.multi[view.entity] ?? []} data={data} readOnly={readOnly} messages={byField} onChange={(rows) => setRows(view.entity, rows)} />
+              : <ViewForm controls={controls} row={data.single[view.entity] ?? {}} data={data} readOnly={readOnly} messages={byField} onChange={(n, v) => setCell(view.entity, n, v)} />)}
             </div>
           </div>
         </div>

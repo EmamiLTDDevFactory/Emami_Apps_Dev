@@ -1,6 +1,7 @@
 'use client';
 import { useId } from 'react';
 import type { FieldMeta } from '@/lib/form';
+import type { UnitRef } from '@/lib/refs';
 import type { Message, Scalar } from '@/lib/types';
 import { useValueHelp } from './useValueHelp';
 
@@ -20,9 +21,11 @@ interface Props {
   compact?: boolean;
   /** 0-based grid row (data-row, so a message can focus this cell) */
   row?: number;
+  /** unit or currency of a quantity or amount, looked up from its reference field (lib/refs.ts) */
+  unit?: UnitRef;
 }
 
-export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row }: Props) {
+export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row, unit }: Props) {
   const id = useId();
   const helpName = meta.fixed.length === 0 && (HELP_FIELDS.has(meta.name) || meta.check) ? meta.name : undefined;
   const help = useValueHelp(helpName);
@@ -44,7 +47,15 @@ export function FieldInput({ meta, value, onChange, readOnly, required, message,
   } else if (meta.type === 'STRG') {
     control = <textarea {...common} rows={4} value={String(v)} readOnly={readOnly} onChange={(e) => onChange(e.target.value)} />;
   } else if (['QUAN', 'DEC', 'CURR'].includes(meta.type)) {
-    control = <input {...common} inputMode="decimal" value={String(v)} readOnly={readOnly} onChange={(e) => onChange(e.target.value)} />;
+    const locked = !!unit?.locked;
+    control = (
+      <span className="withunit">
+        <input {...common} inputMode="decimal" value={String(v)} readOnly={readOnly || locked} aria-describedby={[message ? `${id}-m` : '', unit?.value ? `${id}-u` : '', locked ? `${id}-h` : ''].filter(Boolean).join(' ') || undefined}
+          onChange={(e) => onChange(e.target.value)} />
+        {unit?.value && <span className="unit" id={`${id}-u`} title={unit.kind === 'currency' ? 'Currency' : 'Unit'}><span className="sr-only">{unit.kind === 'currency' ? 'Currency ' : 'Unit '}</span>{unit.value}</span>}
+        {locked && <span className="hint" id={`${id}-h`}>{unit?.hint}</span>}
+      </span>
+    );
   } else {
     const listId = help.length ? `${id}-l` : undefined;
     control = (
