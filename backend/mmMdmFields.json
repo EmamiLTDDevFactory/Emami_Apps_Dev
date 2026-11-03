@@ -1,0 +1,76 @@
+{
+ "views": [
+  "MARA_BASIC1",
+  "MARA_BASIC2",
+  "MARA_BASIC3",
+  "MARA_BASIC_3",
+  "MARA_PLNT1",
+  "MARA_PLNT2",
+  "MARC_GEN",
+  "MARC_PURC",
+  "MARC_MRP1",
+  "MARC_MRP2",
+  "MARC_MRP3",
+  "MARC_MRP4",
+  "MARC_COST1",
+  "MARC_FT_EXP",
+  "MARC_FT_IMP",
+  "MVKE_SORG1",
+  "MVKE_SORG2",
+  "MVKE_SORG1_TAX",
+  "MVKE_SORG_TAX",
+  "MBEW_ACC1",
+  "MBEW_ACC2",
+  "MBEW_COST2",
+  "MARM_UOM",
+  "MEAN_EAN",
+  "MLGN_WHM1",
+  "MLGT_WHM2",
+  "QMAT_QM",
+  "PROP_FORC",
+  "PROP_CONS",
+  "RMCL_CLASS",
+  "WORK_SCHEDULE",
+  "TEXT",
+  "PLNT_STCK",
+  "ST_LOC_STCK"
+ ],
+ "fields": {
+  "Material.MSTDE": {
+   "type": "DATS"
+  },
+  "Plant.MMSTD": {
+   "type": "DATS"
+  },
+  "Plant.AUSDT": {
+   "type": "DATS"
+  },
+  "Plant.PREND": {
+   "type": "DATS"
+  },
+  "Valuation.LAEPR": {
+   "type": "DATS"
+  },
+  "Valuation.ZKDAT": {
+   "type": "DATS"
+  },
+  "Valuation.ZPLD1": {
+   "type": "DATS"
+  },
+  "Valuation.ZPLD2": {
+   "type": "DATS"
+  },
+  "Valuation.ZPLD3": {
+   "type": "DATS"
+  },
+  "SalesOrg.VMSTD": {
+   "type": "DATS"
+  },
+  "UnitOfMeasure.MEINH": {
+   "key": true
+  },
+  "ForecastParameter.PRDAT": {
+   "type": "DATS"
+  }
+ }
+}

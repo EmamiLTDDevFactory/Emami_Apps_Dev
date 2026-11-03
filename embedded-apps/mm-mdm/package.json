@@ -1,0 +1,25 @@
+{
+  "name": "mm-mdm",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Material master requests: create, review and approve material master records on the SAP Gateway service ZMM_MDM_SRV",
+  "scripts": {
+    "dev": "next dev -p 3320",
+    "build": "next build && node scripts/rename-export.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "vitest run tests/smoke.test.ts"
+  },
+  "dependencies": {
+    "next": "^15.5.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

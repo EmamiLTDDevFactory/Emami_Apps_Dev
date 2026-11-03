@@ -84,6 +84,8 @@ apiRouter.use('/me/notifications', require('./notifications').router);
 apiRouter.use('/me/cost-watch', require('./costWatch'));
 // Cascade Pricing -> SAP ZMM_CASCADE_SRV (server side; the app is static). Rides /api/me; see cascadePricing.js.
 apiRouter.use('/me/cascade-pricing', require('./cascadePricing'));
+// Material master requests -> SAP ZMM_MDM_SRV (server side; the app is static). Rides /api/me; see mmMdm.js.
+apiRouter.use('/me/mm-mdm', require('./mmMdm'));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** First and last name from a request body — both required, trimmed, single-spaced, max 60 chars. */

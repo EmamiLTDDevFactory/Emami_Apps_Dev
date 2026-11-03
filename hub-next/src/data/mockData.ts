@@ -50,6 +50,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
   setu: '/apps/setu', // Samadhan (Emami Secondary Support helpdesk)
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
+  'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -79,6 +80,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'shelf-life-deviation', name: 'Shelf Life Deviation', desc: 'CPD Category Head approval of shelf-life deviation inspection lots, plus the CADE deviation report on SAP.', cat: 'CPD', icon: Hourglass, uses: 0, stage: 'Live' },
   { id: 'setu', name: 'Samadhan', desc: 'Emami Secondary Support helpdesk — tickets from email, phone, WhatsApp and the self-service portal, AI insights and action points, severity matrix, SLA timers on business hours, round-robin assignment, board view and the daily report.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
+  { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
