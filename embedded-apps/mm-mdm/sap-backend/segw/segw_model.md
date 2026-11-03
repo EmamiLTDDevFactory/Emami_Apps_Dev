@@ -90,3 +90,7 @@ There is no referential constraint on these associations: the header key is Tran
 | GetRelatedHsn | Text | Collection(HsnResult) | zcl_mm_mdm_functions=>related_hsn |
 | GetFieldControl | MaterialType, Level | Collection(FieldControlItem) | zcl_mm_mdm_field_control=>get |
 | GetSession |  | SessionInfo | DPC (user, department) |
+
+## Added with attachments and comments (not implemented in ABAP yet)
+
+Entity types `Attachment` (media resource, `Request_Attachment` navigation `Attachments`) and `Comment` (`Request_Comment`, navigation `Comments`), entity sets `AttachmentSet` (create, read, delete) and `CommentSet` (create, read), and the derived flags `CanAttach` and `CanComment` on `Request`. See `odata/service-contract.md` ("Attachments and comments") for the behaviour SAP must implement: `CREATE_STREAM` / `GET_STREAM` of the DPC extension for `Attachment`, the storage of files and comments, and the two flags in `GET_ENTITY(SET)` of `Request`. No ABAP is written for them in this package.

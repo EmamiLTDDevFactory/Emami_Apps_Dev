@@ -82,3 +82,68 @@ test('authentication towards SAP lives in one function', async () => {
     sap.setTokenProvider(null);
     delete process.env.MM_SAP_AUTH;
 });
+
+test('attachments: transport guards (name, empty, size, type) answer before SAP is called', () => {
+    const { checkUpload, MAX_UPLOAD_BYTES } = router._test;
+    assert.equal(checkUpload('spec.pdf', 100), null);
+    assert.equal(checkUpload('', 100).status, 400);
+    assert.equal(checkUpload('a/b.pdf', 100).status, 400);
+    assert.equal(checkUpload('spec.pdf', 0).status, 400);
+    assert.equal(checkUpload('spec.pdf', MAX_UPLOAD_BYTES + 1).status, 413);
+    assert.equal(checkUpload('run.exe', 100).status, 415);
+    assert.equal(checkUpload('UPPER.PDF', 100), null);
+});
+
+test('attachments and comments: OData rows become screen items, dates as ISO', () => {
+    const { toAttachment, toComment } = router._test;
+    assert.deepEqual(toAttachment({ AttachId: 'A1', FileName: 'x.pdf', MimeType: 'application/pdf', Size: 12, UploadedBy: 'U', UploadedAt: '/Date(1793232000000)/', Lvl: 'L1' }),
+        { attachId: 'A1', fileName: 'x.pdf', mimeType: 'application/pdf', size: 12, uploadedBy: 'U', uploadedAt: '2026-10-29T00:00:00.000Z', level: 'L1' });
+    assert.deepEqual(toComment({ CommentId: 'C1', Text: 't', UserId: 'U', CreatedAt: '/Date(1793232000000)/', Lvl: 'L2' }),
+        { commentId: 'C1', text: 't', user: 'U', createdAt: '2026-10-29T00:00:00.000Z', level: 'L2' });
+});
+
+test('upload: the file goes to the media resource of the request with the Slug header; the client never supplies uploader, time or level', async () => {
+    process.env.MM_SAP_ODATA_BASE = 'https://gw.example/api/NGQ/ZMM_MDM_SRV';
+    const calls = [];
+    const realFetch = global.fetch;
+    global.fetch = async (url, init = {}) => {
+        calls.push({ url: String(url), method: init.method || 'GET', headers: init.headers || {}, body: init.body });
+        if (String(url).includes('RequestSet?')) return new Response(JSON.stringify({ d: { results: [{ TransId: '0000000001', AppId: 'MC' }] } }), { status: 200 });
+        if (String(url).endsWith('/Attachments')) return new Response(JSON.stringify({ d: { AttachId: 'A1', FileName: 'My file.pdf', Size: 3 } }), { status: 201 });
+        return new Response('{}', { status: 200, headers: { 'x-csrf-token': 't' } });
+    };
+    try {
+        const out = await router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'My file.pdf', 'application/pdf');
+        assert.equal(out.attachId, 'A1');
+        const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/Attachments'));
+        assert.ok(decodeURIComponent(post.url).includes("RequestSet(TransId='0000000001',AppId='MC')/Attachments"));
+        assert.equal(post.headers.Slug, encodeURIComponent('My file.pdf'));
+        assert.equal(post.headers['Content-Type'], 'application/pdf');
+        assert.equal(Buffer.from(post.body).toString(), 'abc');
+        assert.equal(JSON.stringify(post.headers).includes('UploadedBy'), false);
+        await assert.rejects(router._test.service.addAttachment({ user: 'a@b.c' }, '0000000001', Buffer.from('abc'), 'run.exe', 'x'), (e) => e.status === 415);
+    } finally { global.fetch = realFetch; delete process.env.MM_SAP_ODATA_BASE; }
+});
+
+test('comment: only the text is sent', async () => {
+    process.env.MM_SAP_ODATA_BASE = 'https://gw.example/api/NGQ/ZMM_MDM_SRV';
+    let posted;
+    const realFetch = global.fetch;
+    global.fetch = async (url, init = {}) => {
+        if (String(url).endsWith('/CommentSet') && init.method === 'POST') { posted = JSON.parse(init.body); return new Response(JSON.stringify({ d: { CommentId: 'C1', Text: 'hi', UserId: 'U' } }), { status: 201 }); }
+        return new Response('{}', { status: 200, headers: { 'x-csrf-token': 't' } });
+    };
+    try {
+        const c = await router._test.service.addComment({ user: 'a@b.c' }, '0000000001', '  hi  ');
+        assert.deepEqual(posted, { TransId: '0000000001', Text: 'hi' });
+        assert.equal(c.user, 'U');
+        await assert.rejects(router._test.service.addComment({ user: 'a@b.c' }, '0000000001', '   '), (e) => e.status === 400);
+    } finally { global.fetch = realFetch; delete process.env.MM_SAP_ODATA_BASE; }
+});
+
+test('the allowed actions include attach and comment, read from SAP flags', () => {
+    const h = router._test.asAllowed({ CanAttach: true, CanComment: false });
+    assert.equal(h.attach, true);
+    assert.equal(h.comment, false);
+    assert.equal(h.approve, false);
+});

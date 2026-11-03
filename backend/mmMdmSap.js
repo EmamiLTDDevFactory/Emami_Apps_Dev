@@ -133,10 +133,41 @@ async function request(caller, method, path, body, retry = true) {
     return json;
 }
 
+/** Upload a file as the media resource of an entity set (AtomPub convention: body = the bytes, Slug = file name). Returns the created entry. */
+async function postStream(caller, path, bytes, { fileName, mimeType }, retry = true) {
+    const s = await csrf(caller);
+    const headers = await headersFor(caller, { 'Content-Type': mimeType || 'application/octet-stream', Slug: encodeURIComponent(fileName), 'x-csrf-token': s.token, ...(s.cookies ? { Cookie: s.cookies } : {}) });
+    let res;
+    try {
+        res = await fetch(`${baseUrl()}/${path}`, { method: 'POST', headers, body: bytes, cache: 'no-store' });
+    } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
+    if (res.status === 403 && retry && (res.headers.get('x-csrf-token') || '').toLowerCase() === 'required') {
+        await res.arrayBuffer().catch(() => null);
+        await csrf(caller, true);
+        return postStream(caller, path, bytes, { fileName, mimeType }, false);
+    }
+    const text = await res.text();
+    const json = text ? safeJson(text) : {};
+    if (!res.ok) throw fail(res.status, json);
+    return json;
+}
+
+/** Download the media resource of an entity (GET .../$value). Returns { bytes: Buffer, mimeType }. */
+async function getStream(caller, path) {
+    let res;
+    try {
+        res = await fetch(`${baseUrl()}/${path}`, { method: 'GET', headers: await headersFor(caller, { Accept: '*/*' }), cache: 'no-store' });
+    } catch (e) { throw new SapError(`SAP is not reachable: ${e.message}`); }
+    if (!res.ok) throw fail(res.status, safeJson(await res.text()));
+    return { bytes: Buffer.from(await res.arrayBuffer()), mimeType: res.headers.get('content-type') || 'application/octet-stream' };
+}
+
 const results = (json) => (json && json.d && json.d.results) || [];
 
 const odata = {
     get: (caller, path) => request(caller, 'GET', path),
+    post: (caller, path, body) => request(caller, 'POST', path, body),
+    del: (caller, path) => request(caller, 'DELETE', path),
     /** Function import with primitive parameters, e.g. fn(c, 'Submit', { TransId: '0000000001' }). */
     fn: (caller, name, params) => {
         const q = Object.entries(params).map(([k, v]) => `${k}=${typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v}`).join('&');
@@ -186,4 +217,4 @@ function parseBatch(text) {
     return out;
 }
 
-module.exports = { SapError, isConfigured, sapSystem, sapAuth, setTokenProvider, mapError, odata, results, batchChangeSet, parseBatch };
+module.exports = { SapError, isConfigured, sapSystem, sapAuth, setTokenProvider, mapError, odata, results, batchChangeSet, parseBatch, postStream, getStream };

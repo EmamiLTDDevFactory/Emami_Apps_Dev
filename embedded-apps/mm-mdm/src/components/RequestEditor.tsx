@@ -8,6 +8,7 @@ import { groupByTab, indexByField, parseTarget } from '@/lib/messages';
 import { MessagePanel } from './MessagePanel';
 import { UnsavedGuard } from './UnsavedGuard';
 import { StatusChip } from './StatusChip';
+import { RequestExtras } from './RequestExtras';
 import { Timeline } from './Timeline';
 import { ViewForm } from './ViewForm';
 import { ViewGrid } from './ViewGrid';
@@ -168,6 +169,7 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
         <div>
           <MessagePanel groups={grouped.groups} general={grouped.general} onPick={pick} />
           <div className="card"><h2>History</h2><Timeline items={req.history} /></div>
+          <RequestExtras transId={req.header.transId} canAttach={al.attach} canComment={al.comment} />
           <div className="card muted">
             Routing: type {req.header.genType || '-'}, group {req.header.genField || '-'}, business {req.header.genField2 || '-'}, plant {req.header.genField3 || '-'}
             {req.header.workItemId ? ` · work item ${req.header.workItemId}` : ''}

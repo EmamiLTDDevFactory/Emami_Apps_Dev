@@ -1,4 +1,4 @@
-import type { DuplicateHit, FieldControl, ListQuery, Message, RequestData, RequestHeader, RequestView, SessionInfo, StartInput, ValueHelpItem } from '@/lib/types';
+import type { AttachmentItem, CommentItem, DuplicateHit, FilePayload, FieldControl, ListQuery, Message, RequestData, RequestHeader, RequestView, SessionInfo, StartInput, ValueHelpItem } from '@/lib/types';
 
 export interface Caller {
   /** SAP user id (live) or demo user id (mock) */
@@ -30,4 +30,10 @@ export interface MdmService {
   duplicates(c: Caller, input: { description: string; materialType: string }): Promise<DuplicateHit[]>;
   buildDescription(c: Caller, input: { mainGroup?: string; subGroup?: string; subSubGroup?: string; description: string; manufacturerPart?: string }): Promise<{ text: string; truncated: boolean }>;
   relatedHsn(c: Caller, text: string): Promise<Array<{ code: string; text: string; count: number }>>;
+  listAttachments(c: Caller, id: string): Promise<AttachmentItem[]>;
+  addAttachment(c: Caller, id: string, file: FilePayload): Promise<AttachmentItem>;
+  readAttachment(c: Caller, id: string, attachId: string): Promise<FilePayload>;
+  deleteAttachment(c: Caller, id: string, attachId: string): Promise<void>;
+  listComments(c: Caller, id: string): Promise<CommentItem[]>;
+  addComment(c: Caller, id: string, text: string): Promise<CommentItem>;
 }

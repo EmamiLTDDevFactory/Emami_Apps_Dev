@@ -51,6 +51,11 @@ const FN = { startRequest: 'StartRequest', validate: 'Validate', saveDraft: 'Sav
 const VALUE_HELP_SETS = { MTART: 'MaterialTypeVhSet', MGRP: 'MainGroupSet', SGRP: 'SubGroupSet', SSGR: 'SubSubGroupSet' };
 const GENERIC_VALUE_HELP = 'GenericValueHelpSet';
 const STATUS_TEXT = { '00': 'Saved as draft', '01': 'Requested', '02': 'In progress', '03': 'Completed', '04': 'Sent back', '05': 'Rejected' };
+// ---- attachments and comments (OData: AttachmentSet media resource, CommentSet; SAP implements them, see odata/service-contract.md)
+/** Transport guards of the BFF. SAP decides what it accepts in the end. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_COMMENT_LENGTH = 1000;
+const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'gif', 'msg', 'eml', 'zip'];
 const WORKFLOW = { approve: FN.approve, sendback: FN.sendBack, reject: FN.reject, forward: FN.forward };
 
 // ------------------------------------------------------------------ name and value conversion
@@ -103,7 +108,7 @@ function header(o, extra = {}) {
 const EXPAND = [...Object.keys(ENTITY_SETS), 'History', 'ViewSelection'].join(',');
 
 // The allowed actions are SAP's answer for this request and this user; nothing is inferred from the status.
-const asAllowed = (o) => ({ edit: !!o.CanEdit, validate: !!o.CanValidate, saveDraft: !!o.CanSaveDraft, submit: !!o.CanSubmit, approve: !!o.CanApprove, sendBack: !!o.CanSendBack, reject: !!o.CanReject, forward: !!o.CanForward, deleteDraft: !!o.CanDeleteDraft });
+const asAllowed = (o) => ({ edit: !!o.CanEdit, validate: !!o.CanValidate, saveDraft: !!o.CanSaveDraft, submit: !!o.CanSubmit, approve: !!o.CanApprove, sendBack: !!o.CanSendBack, reject: !!o.CanReject, forward: !!o.CanForward, deleteDraft: !!o.CanDeleteDraft, attach: !!o.CanAttach, comment: !!o.CanComment });
 
 function fnResults(json) {
     const r = sap.results(json);
@@ -174,6 +179,29 @@ async function withWrites(c, id, data, fn, extra = {}, validateOnly = false) {
     return res[res.length - 1] && res[res.length - 1].json;
 }
 
+const isoOf = (v) => {
+    const m = typeof v === 'string' ? /\/Date\((-?\d+)/.exec(v) : null;
+    return m ? new Date(Number(m[1])).toISOString() : typeof v === 'string' ? v : '';
+};
+const toAttachment = (o) => ({ attachId: String(o.AttachId ?? ''), fileName: String(o.FileName ?? ''), mimeType: String(o.MimeType ?? ''), size: Number(o.Size ?? 0), uploadedBy: String(o.UploadedBy ?? ''), uploadedAt: isoOf(o.UploadedAt), level: String(o.Lvl ?? '') });
+const toComment = (o) => ({ commentId: String(o.CommentId ?? ''), text: String(o.Text ?? ''), user: String(o.UserId ?? ''), createdAt: isoOf(o.CreatedAt), level: String(o.Lvl ?? '') });
+const extOf = (n) => (n.lastIndexOf('.') < 0 ? '' : n.slice(n.lastIndexOf('.') + 1).toLowerCase());
+const safeName = (n) => String(n || '').replace(/[\u0000-\u001f]/g, '').trim();
+/** null = the upload may go to SAP; otherwise the SapError to answer with (400 / 413 / 415). */
+function checkUpload(fileName, size) {
+    if (!fileName || /[\\/:*?"<>|]/.test(fileName) || fileName.length > 255) return new sap.SapError('The file name is not valid.', 400);
+    if (!size) return new sap.SapError('The file is empty.', 400);
+    if (size > MAX_UPLOAD_BYTES) return new sap.SapError(`The file is larger than ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`, 413);
+    if (!ALLOWED_EXTENSIONS.includes(extOf(fileName))) return new sap.SapError(`This file type is not allowed. Allowed: ${ALLOWED_EXTENSIONS.join(', ')}.`, 415);
+    return null;
+}
+
+async function appIdOf(c, id) {
+    const o = sap.results(await sap.odata.get(c, `${SET.request}?$filter=TransId eq ${enc(id)}&$select=TransId,AppId`))[0];
+    if (!o) throw new sap.SapError(`Request ${id} not found`, 404);
+    return String(o.AppId ?? '');
+}
+
 const service = {
     async session(c) {
         const o = fnSingle(await sap.odata.fn(c, FN.session, {}));
@@ -241,6 +269,35 @@ const service = {
         const o = fnSingle(await sap.odata.fn(c, FN.buildDescription, { MainGroup: i.mainGroup || '', SubGroup: i.subGroup || '', SubSubGroup: i.subSubGroup || '', Description: i.description || '', ManufacturerPart: i.manufacturerPart || '' }));
         return { text: String(o.Text ?? ''), truncated: !!o.Truncated };
     },
+    async listAttachments(c, id) {
+        return sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)}&$orderby=AttachId`)).map(toAttachment);
+    },
+    async addAttachment(c, id, bytes, fileName, mimeType) {
+        const bad = checkUpload(fileName, bytes.length);
+        if (bad) throw bad;
+        // TransId travels in the path of the navigation, never the uploader / time / level: SAP sets those.
+        const json = await sap.postStream(c, `RequestSet(TransId=${enc(id)},AppId=${enc(await appIdOf(c, id))})/Attachments`, bytes, { fileName, mimeType });
+        return toAttachment((json && json.d) || {});
+    },
+    async readAttachment(c, id, attachId) {
+        const meta = sap.results(await sap.odata.get(c, `AttachmentSet?$filter=TransId eq ${enc(id)} and AttachId eq ${enc(attachId)}`))[0];
+        if (!meta) throw new sap.SapError('Attachment not found', 404);
+        const file = await sap.getStream(c, `AttachmentSet(TransId=${enc(id)},AttachId=${enc(attachId)})/$value`);
+        return { fileName: String(meta.FileName ?? 'attachment'), mimeType: String(meta.MimeType || file.mimeType), bytes: file.bytes };
+    },
+    async deleteAttachment(c, id, attachId) {
+        await sap.odata.del(c, `AttachmentSet(TransId=${enc(id)},AttachId=${enc(attachId)})`);
+    },
+    async listComments(c, id) {
+        return sap.results(await sap.odata.get(c, `CommentSet?$filter=TransId eq ${enc(id)}&$orderby=CommentId`)).map(toComment);
+    },
+    async addComment(c, id, text) {
+        const t = String(text || '').trim();
+        if (!t) throw new sap.SapError('The comment is empty.', 400);
+        if (t.length > MAX_COMMENT_LENGTH) throw new sap.SapError(`The comment is longer than ${MAX_COMMENT_LENGTH} characters.`, 400);
+        const json = await sap.odata.post(c, 'CommentSet', { TransId: id, Text: t });
+        return toComment((json && json.d) || {});
+    },
     async relatedHsn(c, text) {
         return fnResults(await sap.odata.fn(c, FN.relatedHsn, { Text: text || '' })).map((o) => ({ code: String(o.Code ?? ''), text: String(o.Text ?? ''), count: Number(o.Count ?? 0) }));
     },
@@ -300,6 +357,30 @@ router.post('/requests', handle('start', async (req) => ({ __status: 201, body: 
 router.get('/requests/:id', handle('get', (req) => service.get(req.caller, req.params.id)));
 router.put('/requests/:id', handle('save', (req) => service.save(req.caller, req.params.id, (req.body || {}).data)));
 router.delete('/requests/:id', handle('delete', async (req) => { await service.deleteDraft(req.caller, req.params.id); return { ok: true }; }));
+// Attachments: the file travels as the raw request body (Slug = URL-encoded file name, Content-Type = MIME type), like the OData media resource.
+// File contents are never logged. Express's JSON parser skips these bodies; express.raw reads them up to the limit + 1 byte (so 413 is ours, not a crash).
+router.get('/requests/:id/attachments', handle('attachments', (req) => service.listAttachments(req.caller, req.params.id)));
+router.post('/requests/:id/attachments', express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES + 1 }), handle('attachment-add', async (req) => {
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const name = safeName((() => { try { return decodeURIComponent(req.get('slug') || ''); } catch { return ''; } })());
+    return { __status: 201, body: await service.addAttachment(req.caller, req.params.id, bytes, name, req.get('content-type') || 'application/octet-stream') };
+}));
+router.get('/requests/:id/attachments/:attId', async (req, res) => {
+    const t0 = Date.now();
+    try {
+        const f = await service.readAttachment(req.caller, req.params.id, req.params.attId);
+        console.info(`[mm-mdm] ${req.caller.user} attachment-get ms=${Date.now() - t0}`);
+        res.set({ 'Content-Type': f.mimeType, 'Content-Length': String(f.bytes.length), 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.fileName)}`, 'X-Content-Type-Options': 'nosniff' });
+        res.send(f.bytes);
+    } catch (e) {
+        const status = e instanceof sap.SapError ? e.status : 500;
+        console.error(`[mm-mdm] ${req.caller.user} attachment-get failed: ${e.message}`);
+        res.status(status).json({ error: status === 500 && !(e instanceof sap.SapError) ? 'Unexpected error.' : e.message, messages: e.messages || [] });
+    }
+});
+router.delete('/requests/:id/attachments/:attId', handle('attachment-delete', async (req) => { await service.deleteAttachment(req.caller, req.params.id, req.params.attId); return { ok: true }; }));
+router.get('/requests/:id/comments', handle('comments', (req) => service.listComments(req.caller, req.params.id)));
+router.post('/requests/:id/comments', handle('comment-add', async (req) => ({ __status: 201, body: await service.addComment(req.caller, req.params.id, (req.body || {}).text) })));
 router.post('/requests/:id/:action', handle('action', async (req) => {
     const { id, action } = req.params;
     const body = req.body || {};
@@ -321,4 +402,4 @@ router.post('/description', handle('description', (req) => service.buildDescript
 router.get('/hsn', handle('hsn', (req) => service.relatedHsn(req.caller, String(req.query.text || ''))));
 
 module.exports = router;
-module.exports._test = { toProp, toName, fromOData, toOData, key, writeOps, header, toMessages, EXPAND };
+module.exports._test = { asAllowed, service, toAttachment, toComment, checkUpload, MAX_UPLOAD_BYTES, ALLOWED_EXTENSIONS, toProp, toName, fromOData, toOData, key, writeOps, header, toMessages, EXPAND };

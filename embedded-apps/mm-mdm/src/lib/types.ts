@@ -84,6 +84,10 @@ export interface AllowedActions {
   reject: boolean;
   forward: boolean;
   deleteDraft: boolean;
+  /** may add and delete attachments (SAP's answer for this request and user, never inferred from the status) */
+  attach: boolean;
+  /** may add comments */
+  comment: boolean;
 }
 
 export interface RequestView {
@@ -147,4 +151,31 @@ export interface ListQuery {
   status?: string;
   materialType?: string;
   text?: string;
+}
+
+/** An attachment of a request. The uploader, the time and the level are set by SAP. */
+export interface AttachmentItem {
+  attachId: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  level: string;
+}
+
+/** A comment of the request's comment thread (not the comment of a workflow step: that is HistoryItem.comment). */
+export interface CommentItem {
+  commentId: string;
+  text: string;
+  user: string;
+  createdAt: string;
+  level: string;
+}
+
+/** File content in transport: base64 in the demo service (the live backend streams bytes). */
+export interface FilePayload {
+  fileName: string;
+  mimeType: string;
+  base64: string;
 }

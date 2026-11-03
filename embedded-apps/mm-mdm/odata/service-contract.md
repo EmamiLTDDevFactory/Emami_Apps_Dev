@@ -11,6 +11,8 @@ Model: `metadata.xml` (OData V2, SEGW import format). Front end constants: `src/
 | ViewSelectionSet | TransId | `/INOWITS/M_VWSEL`, one Boolean per tab. |
 | MaterialSet, DescriptionSet, PlantSet, SalesOrgSet, ValuationSet, StorageLocationSet, WarehouseDataSet, StorageTypeDataSet, EanDataSet, ForecastParameterSet | TransId | One row per request (staging tables keyed by TransId). |
 | UnitOfMeasureSet, TaxClassificationSet, SalesTaxDataSet, InspectionTypeSet, ClassCharacteristicSet, ProductionVersionSet, ConsumptionDataSet, LongTextSet | TransId plus row key | Several rows per request. |
+| AttachmentSet | TransId, AttachId | **New, SAP must implement.** Media resource (`m:HasStream`). Create = POST with the file as body (`Slug` = URL-encoded file name, `Content-Type` = MIME type); read = `GET AttachmentSet(TransId='..',AttachId='..')/$value`; delete allowed, update not. `AttachId`, `Size`, `UploadedBy`, `UploadedAt`, `Lvl` are set by SAP. |
+| CommentSet | TransId, CommentId | **New, SAP must implement.** Create (POST `TransId` + `Text`) and read only. `CommentId`, `UserId`, `CreatedAt`, `Lvl` are set by SAP. Not the comment of a workflow step (that stays `RequestHistory-Comment`). |
 | MaterialTypeVhSet, MainGroupSet, SubGroupSet, SubSubGroupSet, GenericValueHelpSet | see model | Read only value helps. Generic: `GenericValueHelpSet?$filter=Name eq 'WERKS'`. |
 
 Navigation from RequestSet: History, ViewSelection and one per staging entity. There is no referential constraint (the staging tables only have TransId), so the DPC class implements the navigations.
@@ -49,3 +51,17 @@ The front end sends one `$batch` with one change set: entity writes (MERGE for s
 Open questions for the SAP team: does a change keep its own staging copy of every tab (like a create), and which fields does the old `/INOWITS` change app allow for each material type and level?
 
 **Front end once SAP provides these** (a small step, the editor is generic): a search page, a "Start change / extension" action, and in the request view the changed fields marked and the current SAP value shown beside the requested one (a comparison of two `RequestData` objects with the same field names, no business rule involved).
+
+## Attachments and comments (new; added to `metadata.xml`, not yet implemented in SAP)
+
+**Entities.** `AttachmentSet` (media resource) and `CommentSet`, reachable from `RequestSet` by the navigations `Attachments` and `Comments`. Properties are in `metadata.xml`; the model only fixes the shape. How SAP stores the files (GOS, DMS, ArchiveLink or a Z table with RAWSTRING) is the SAP team's decision.
+
+**Allowed actions.** Two new derived flags on `RequestSet`, in the style of the other `Can*` flags: `CanAttach` (may add and delete attachments of this request) and `CanComment` (may add comments). SAP decides them for the calling user and the request; the front end never infers them from the status. The front end shows the upload and the delete buttons only with `CanAttach` and the comment form only with `CanComment`. Reading the list and downloading are open to everyone who may open the request. Deleting is bound to `CanAttach`; SAP should refuse it for an attachment of another user if that is the rule.
+
+**What the client sends.** Upload: the bytes, the file name (`Slug`) and the MIME type. Comment: `TransId` and `Text`. It never sends the uploader, the time, the level or the ID; SAP sets them.
+
+**Guards of the hub backend (before SAP is called; SAP checks again).** Size up to 10 MB per file (413), file types by extension: pdf, doc, docx, xls, xlsx, ppt, pptx, txt, csv, png, jpg, jpeg, gif, msg, eml, zip (415); no executables or scripts. Comment up to 1000 characters. File contents are never logged. Downloads are sent as `Content-Disposition: attachment` with `X-Content-Type-Options: nosniff`.
+
+**Routes of the hub backend** (`/api/me/mm-mdm`): `GET|POST /requests/:id/attachments` (POST body = the file, header `Slug`), `GET|DELETE /requests/:id/attachments/:attId`, `GET|POST /requests/:id/comments`.
+
+**Demo mode.** Files are kept in the browser (base64 in the demo store, 1 MB per file) and comments in the demo store; the demo rule for the two flags is: the initiator of an open or sent-back request and the agent of the current level may add; everyone who sees the request may read.

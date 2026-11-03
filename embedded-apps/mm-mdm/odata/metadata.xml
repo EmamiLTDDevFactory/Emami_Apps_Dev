@@ -36,6 +36,8 @@
         <Property Name="CanReject" Type="Edm.Boolean" Nullable="true" sap:label="CanReject (derived for the calling user)"/>
         <Property Name="CanForward" Type="Edm.Boolean" Nullable="true" sap:label="CanForward (derived for the calling user)"/>
         <Property Name="CanDeleteDraft" Type="Edm.Boolean" Nullable="true" sap:label="CanDeleteDraft (derived for the calling user)"/>
+        <Property Name="CanAttach" Type="Edm.Boolean" Nullable="true" sap:label="CanAttach (derived for the calling user: may add and delete attachments)"/>
+        <Property Name="CanComment" Type="Edm.Boolean" Nullable="true" sap:label="CanComment (derived for the calling user: may add comments)"/>
               <NavigationProperty Name="History" Relationship="ZMM_MDM_SRV.Request_History" FromRole="FromRole_Request_History" ToRole="ToRole_Request_History"/>
         <NavigationProperty Name="ViewSelection" Relationship="ZMM_MDM_SRV.Request_ViewSelection" FromRole="FromRole_Request_ViewSelection" ToRole="ToRole_Request_ViewSelection"/>
         <NavigationProperty Name="Material" Relationship="ZMM_MDM_SRV.Request_Material" FromRole="FromRole_Request_Material" ToRole="ToRole_Request_Material"/>
@@ -56,6 +58,8 @@
         <NavigationProperty Name="ProductionVersion" Relationship="ZMM_MDM_SRV.Request_ProductionVersion" FromRole="FromRole_Request_ProductionVersion" ToRole="ToRole_Request_ProductionVersion"/>
         <NavigationProperty Name="ConsumptionData" Relationship="ZMM_MDM_SRV.Request_ConsumptionData" FromRole="FromRole_Request_ConsumptionData" ToRole="ToRole_Request_ConsumptionData"/>
         <NavigationProperty Name="LongText" Relationship="ZMM_MDM_SRV.Request_LongText" FromRole="FromRole_Request_LongText" ToRole="ToRole_Request_LongText"/>
+        <NavigationProperty Name="Attachments" Relationship="ZMM_MDM_SRV.Request_Attachment" FromRole="FromRole_Request_Attachment" ToRole="ToRole_Request_Attachment"/>
+        <NavigationProperty Name="Comments" Relationship="ZMM_MDM_SRV.Request_Comment" FromRole="FromRole_Request_Comment" ToRole="ToRole_Request_Comment"/>
       </EntityType>
       <EntityType Name="RequestHistory" sap:content-version="1">
         <!-- History: /INOWITS/TRANS_I -->
@@ -71,6 +75,31 @@
         <Property Name="UserId" Type="Edm.String" Nullable="true" MaxLength="30" sap:label="User"/>
         <Property Name="Status" Type="Edm.String" Nullable="true" MaxLength="1" sap:label="Item status"/>
         <Property Name="Comment" Type="Edm.String" Nullable="true" MaxLength="255" sap:label="Comment (from the comment object, not in TRANS_I)"/>
+      </EntityType>
+      <EntityType Name="Attachment" m:HasStream="true" sap:content-version="1">
+        <!-- Attachment of a request (new, to be implemented by SAP: for example GOS / DMS / ArchiveLink object of the request). Media resource:
+             upload = POST AttachmentSet with the file as body, header Slug = URL-encoded file name, Content-Type = MIME type;
+             download = GET AttachmentSet(TransId='..',AttachId='..')/$value. The client never sends the uploader, the time or the level. -->
+        <Key><PropertyRef Name="TransId"/><PropertyRef Name="AttachId"/></Key>
+        <Property Name="TransId" Type="Edm.String" Nullable="false" MaxLength="10" sap:label="Transaction ID"/>
+        <Property Name="AttachId" Type="Edm.String" Nullable="false" MaxLength="32" sap:label="Attachment ID" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="FileName" Type="Edm.String" Nullable="false" MaxLength="255" sap:label="File name"/>
+        <Property Name="MimeType" Type="Edm.String" Nullable="true" MaxLength="128" sap:label="MIME type"/>
+        <Property Name="Size" Type="Edm.Int32" Nullable="true" sap:label="Size in bytes" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="UploadedBy" Type="Edm.String" Nullable="true" MaxLength="30" sap:label="Uploaded by" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="UploadedAt" Type="Edm.DateTime" Nullable="true" Precision="7" sap:label="Uploaded at (UTC)" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="Lvl" Type="Edm.String" Nullable="true" MaxLength="20" sap:label="Workflow level at upload" sap:creatable="false" sap:updatable="false"/>
+      </EntityType>
+      <EntityType Name="Comment" sap:content-version="1">
+        <!-- Comment thread of a request (new, to be implemented by SAP; the comment object of the workflow history is a different thing: RequestHistory-Comment).
+             Create only: POST CommentSet with TransId and Text. The client never sends the user, the time or the level. -->
+        <Key><PropertyRef Name="TransId"/><PropertyRef Name="CommentId"/></Key>
+        <Property Name="TransId" Type="Edm.String" Nullable="false" MaxLength="10" sap:label="Transaction ID"/>
+        <Property Name="CommentId" Type="Edm.String" Nullable="false" MaxLength="10" sap:label="Comment ID" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="Text" Type="Edm.String" Nullable="false" MaxLength="1000" sap:label="Comment"/>
+        <Property Name="UserId" Type="Edm.String" Nullable="true" MaxLength="30" sap:label="User" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="CreatedAt" Type="Edm.DateTime" Nullable="true" Precision="7" sap:label="Created at (UTC)" sap:creatable="false" sap:updatable="false"/>
+        <Property Name="Lvl" Type="Edm.String" Nullable="true" MaxLength="20" sap:label="Workflow level at creation" sap:creatable="false" sap:updatable="false"/>
       </EntityType>
       <EntityType Name="ViewSelection" sap:content-version="1">
         <!-- Selected tabs: /INOWITS/M_VWSEL -->
@@ -966,9 +995,15 @@
       <Association Name="Request_ConsumptionData" sap:content-version="1"><End Type="ZMM_MDM_SRV.Request" Multiplicity="1" Role="FromRole_Request_ConsumptionData"/><End Type="ZMM_MDM_SRV.ConsumptionData" Multiplicity="*" Role="ToRole_Request_ConsumptionData"/></Association>
       <!-- No referential constraint: the Request key is TransId + AppId, the staging tables only have TransId. Navigation is implemented in the DPC class. -->
       <Association Name="Request_LongText" sap:content-version="1"><End Type="ZMM_MDM_SRV.Request" Multiplicity="1" Role="FromRole_Request_LongText"/><End Type="ZMM_MDM_SRV.LongText" Multiplicity="*" Role="ToRole_Request_LongText"/></Association>
+      <!-- No referential constraint: the Request key is TransId + AppId, the staging tables only have TransId. Navigation is implemented in the DPC class. -->
+      <Association Name="Request_Attachment" sap:content-version="1"><End Type="ZMM_MDM_SRV.Request" Multiplicity="1" Role="FromRole_Request_Attachment"/><End Type="ZMM_MDM_SRV.Attachment" Multiplicity="*" Role="ToRole_Request_Attachment"/></Association>
+      <!-- No referential constraint: the Request key is TransId + AppId, the staging tables only have TransId. Navigation is implemented in the DPC class. -->
+      <Association Name="Request_Comment" sap:content-version="1"><End Type="ZMM_MDM_SRV.Request" Multiplicity="1" Role="FromRole_Request_Comment"/><End Type="ZMM_MDM_SRV.Comment" Multiplicity="*" Role="ToRole_Request_Comment"/></Association>
       <EntityContainer Name="ZMM_MDM_SRV_Entities" m:IsDefaultEntityContainer="true" sap:supported-formats="atom json xlsx">
         <EntitySet Name="RequestSet" EntityType="ZMM_MDM_SRV.Request" sap:content-version="1"/>
         <EntitySet Name="RequestHistorySet" EntityType="ZMM_MDM_SRV.RequestHistory" sap:content-version="1" sap:creatable="false" sap:updatable="false" sap:deletable="false"/>
+        <EntitySet Name="AttachmentSet" EntityType="ZMM_MDM_SRV.Attachment" sap:content-version="1" sap:updatable="false"/>
+        <EntitySet Name="CommentSet" EntityType="ZMM_MDM_SRV.Comment" sap:content-version="1" sap:updatable="false" sap:deletable="false"/>
         <EntitySet Name="ViewSelectionSet" EntityType="ZMM_MDM_SRV.ViewSelection" sap:content-version="1"/>
         <EntitySet Name="MaterialSet" EntityType="ZMM_MDM_SRV.Material" sap:content-version="1"/>
         <EntitySet Name="DescriptionSet" EntityType="ZMM_MDM_SRV.Description" sap:content-version="1"/>
@@ -1013,6 +1048,8 @@
         <AssociationSet Name="Request_ProductionVersion_AS" Association="ZMM_MDM_SRV.Request_ProductionVersion" sap:content-version="1"><End EntitySet="RequestSet" Role="FromRole_Request_ProductionVersion"/><End EntitySet="ProductionVersionSet" Role="ToRole_Request_ProductionVersion"/></AssociationSet>
         <AssociationSet Name="Request_ConsumptionData_AS" Association="ZMM_MDM_SRV.Request_ConsumptionData" sap:content-version="1"><End EntitySet="RequestSet" Role="FromRole_Request_ConsumptionData"/><End EntitySet="ConsumptionDataSet" Role="ToRole_Request_ConsumptionData"/></AssociationSet>
         <AssociationSet Name="Request_LongText_AS" Association="ZMM_MDM_SRV.Request_LongText" sap:content-version="1"><End EntitySet="RequestSet" Role="FromRole_Request_LongText"/><End EntitySet="LongTextSet" Role="ToRole_Request_LongText"/></AssociationSet>
+        <AssociationSet Name="Request_Attachment_AS" Association="ZMM_MDM_SRV.Request_Attachment" sap:content-version="1"><End EntitySet="RequestSet" Role="FromRole_Request_Attachment"/><End EntitySet="AttachmentSet" Role="ToRole_Request_Attachment"/></AssociationSet>
+        <AssociationSet Name="Request_Comment_AS" Association="ZMM_MDM_SRV.Request_Comment" sap:content-version="1"><End EntitySet="RequestSet" Role="FromRole_Request_Comment"/><End EntitySet="CommentSet" Role="ToRole_Request_Comment"/></AssociationSet>
         <!-- Generates the TransId under lock (replaces M_TRANSID_GENERATE), creates header and staging rows. Draft true: status 00, else 01. -->
         <FunctionImport Name="StartRequest" ReturnType="ZMM_MDM_SRV.StartResult" m:HttpMethod="POST">
           <Parameter Name="MaterialType" Type="Edm.String" Mode="In" MaxLength="4"/>

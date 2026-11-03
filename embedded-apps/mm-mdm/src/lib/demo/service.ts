@@ -1,6 +1,7 @@
 import { FORM, staticFieldControl } from '@/lib/form';
 import { ITEM_STATUS_TEXT, STATUS_TEXT } from '@/lib/types';
-import type { AllowedActions, DuplicateHit, FieldControl, HistoryItem, ListQuery, Message, RequestData, RequestHeader, RequestView, SessionInfo, StartInput, StatusCode, ValueHelpItem } from '@/lib/types';
+import { DEMO_MAX_UPLOAD_BYTES, MAX_COMMENT_LENGTH, base64Size, checkFile, fileProblemMessage } from '@/lib/attachments';
+import type { AllowedActions, AttachmentItem, CommentItem, FilePayload, DuplicateHit, FieldControl, HistoryItem, ListQuery, Message, RequestData, RequestHeader, RequestView, SessionInfo, StartInput, StatusCode, ValueHelpItem } from '@/lib/types';
 import { ServiceError, type Caller, type MdmService, type WorkflowAction } from '../service';
 import { runRules } from './rules';
 
@@ -17,7 +18,8 @@ const USERS: Record<string, DemoUser> = {
 };
 const LAST_LEVEL = 'L2';
 
-interface Rec { header: RequestHeader; data: RequestData; history: HistoryItem[]; level: string }
+interface DemoAttachment extends AttachmentItem { base64: string }
+interface Rec { header: RequestHeader; data: RequestData; history: HistoryItem[]; level: string; attachments?: DemoAttachment[]; comments?: CommentItem[]; nextExtra?: number }
 interface Store { seq: number; matSeq: number; recs: Map<string, Rec> }
 
 const g = globalThis as unknown as { __mmStore?: Store };
@@ -81,13 +83,14 @@ export function resetDemoStore(): void {
 function userOf(c: Caller): DemoUser { return USERS[c.user] ?? USERS.initiator; }
 
 function allowedFor(u: DemoUser, r: Rec): AllowedActions {
-  const none: AllowedActions = { edit: false, validate: false, saveDraft: false, submit: false, approve: false, sendBack: false, reject: false, forward: false, deleteDraft: false };
+  const none: AllowedActions = { edit: false, validate: false, saveDraft: false, submit: false, approve: false, sendBack: false, reject: false, forward: false, deleteDraft: false, attach: false, comment: false };
   const st = r.header.status;
   if (u.roles.includes('initiator') && r.header.initiator === u.user) {
-    if (st === '00' || st === '01') return { ...none, edit: true, validate: true, saveDraft: true, submit: true, deleteDraft: st === '00' };
-    if (st === '04') return { ...none, edit: true, validate: true, saveDraft: true, submit: true };
+    if (st === '00' || st === '01') return { ...none, edit: true, validate: true, saveDraft: true, submit: true, deleteDraft: st === '00', attach: true, comment: true };
+    if (st === '04') return { ...none, edit: true, validate: true, saveDraft: true, submit: true, attach: true, comment: true };
   }
-  if (st === '02' && u.level && r.level === u.level) return { ...none, edit: true, validate: true, approve: true, sendBack: true, reject: true, forward: true };
+  if (st === '02' && u.level && r.level === u.level) return { ...none, edit: true, validate: true, approve: true, sendBack: true, reject: true, forward: true, attach: true, comment: true };
+  // demo rule only: whoever can see a finished or foreign request may read its attachments and comments but not add to them
   return none;
 }
 
@@ -300,6 +303,58 @@ export class MockService implements MdmService {
     const words = text.toUpperCase().split(/\s+/).filter(Boolean);
     const table = [{ code: '33059090', text: 'Hair preparations, other' }, { code: '33049910', text: 'Skin care preparations' }, { code: '34011190', text: 'Soap, toilet' }];
     return table.map((t) => ({ ...t, count: words.filter((w) => t.text.toUpperCase().includes(w)).length })).filter((t) => t.count > 0);
+  }
+
+  // ---- attachments and comments (demo: kept in the demo store, base64; SAP implements the real thing)
+
+  private toItem(a: DemoAttachment): AttachmentItem {
+    return { attachId: a.attachId, fileName: a.fileName, mimeType: a.mimeType, size: a.size, uploadedBy: a.uploadedBy, uploadedAt: a.uploadedAt, level: a.level };
+  }
+
+  async listAttachments(_c: Caller, id: string): Promise<AttachmentItem[]> {
+    return (rec(id).attachments ?? []).map((a) => this.toItem(a));
+  }
+
+  async addAttachment(c: Caller, id: string, file: FilePayload): Promise<AttachmentItem> {
+    const u = userOf(c); const r = rec(id);
+    if (!allowedFor(u, r).attach) throw new ServiceError(403, 'You cannot add attachments to this request');
+    const size = base64Size(file.base64);
+    const bad = checkFile(file.fileName, size, DEMO_MAX_UPLOAD_BYTES);
+    if (bad) throw new ServiceError(422, fileProblemMessage(bad), [{ code: 'ATT', message: fileProblemMessage(bad), severity: 'E' }]);
+    r.nextExtra = (r.nextExtra ?? 0) + 1;
+    const item: DemoAttachment = { attachId: `A${String(r.nextExtra).padStart(4, '0')}`, fileName: file.fileName, mimeType: file.mimeType || 'application/octet-stream', size, uploadedBy: u.user, uploadedAt: new Date().toISOString(), level: r.level, base64: file.base64 };
+    (r.attachments ??= []).push(item);
+    return this.toItem(item);
+  }
+
+  async readAttachment(_c: Caller, id: string, attachId: string): Promise<FilePayload> {
+    const a = (rec(id).attachments ?? []).find((x) => x.attachId === attachId);
+    if (!a) throw new ServiceError(404, 'Attachment not found');
+    return { fileName: a.fileName, mimeType: a.mimeType, base64: a.base64 };
+  }
+
+  async deleteAttachment(c: Caller, id: string, attachId: string): Promise<void> {
+    const u = userOf(c); const r = rec(id);
+    if (!allowedFor(u, r).attach) throw new ServiceError(403, 'You cannot delete attachments of this request');
+    const list = r.attachments ?? [];
+    if (!list.some((x) => x.attachId === attachId)) throw new ServiceError(404, 'Attachment not found');
+    r.attachments = list.filter((x) => x.attachId !== attachId);
+  }
+
+  async listComments(_c: Caller, id: string): Promise<CommentItem[]> {
+    return (rec(id).comments ?? []).map((x) => ({ ...x }));
+  }
+
+  async addComment(c: Caller, id: string, text: string): Promise<CommentItem> {
+    const u = userOf(c); const r = rec(id);
+    if (!allowedFor(u, r).comment) throw new ServiceError(403, 'You cannot comment on this request');
+    const t = text.trim();
+    if (!t) throw new ServiceError(422, 'The comment is empty', [{ code: 'CMT', message: 'The comment is empty', severity: 'E' }]);
+    if (t.length > MAX_COMMENT_LENGTH) throw new ServiceError(422, `The comment is longer than ${MAX_COMMENT_LENGTH} characters`, [{ code: 'CMT', message: `The comment is longer than ${MAX_COMMENT_LENGTH} characters`, severity: 'E' }]);
+    r.nextExtra = (r.nextExtra ?? 0) + 1;
+    const item: CommentItem = { commentId: `C${String(r.nextExtra).padStart(4, '0')}`, text: t, user: u.user, createdAt: new Date().toISOString(), level: r.level };
+    (r.comments ??= []).push(item);
+    return { ...item };
   }
 }
 
