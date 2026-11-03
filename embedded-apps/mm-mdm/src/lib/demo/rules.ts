@@ -44,7 +44,20 @@ export function runRules(data: RequestData): Message[] {
   const control = staticFieldControl(String(mat['MTART'] ?? ''));
   for (const viewId of data.views) {
     const view = FORM.views.find((v) => v.id === viewId);
-    if (!view || view.multi) continue;
+    if (!view) continue;
+    if (view.multi) {
+      // rows of a grid: the same check per row; the target carries the 1-based row number (SalesTaxData[2]/ALAND)
+      (data.multi[view.entity] ?? []).forEach((row, i) => {
+        for (const f of control[viewId] ?? []) {
+          if (!f.shown || f.displayOnly || !f.required) continue;
+          const meta = fieldMeta(f.field);
+          if (!meta || MANDATORY_EXCLUDED.has(meta.name)) continue;
+          if (meta.type === 'CHAR' && meta.len === 1 && FLAG_DOMAINS.has(meta.domain)) continue;
+          if (isEmptyValue(row[meta.name])) err('WD014', `Please enter ${meta.label} (row ${i + 1})`, `${meta.entity}[${i + 1}]/${meta.name}`);
+        }
+      });
+      continue;
+    }
     for (const f of control[viewId] ?? []) {
       if (!f.shown || f.displayOnly || !f.required) continue;
       const meta = fieldMeta(f.field);

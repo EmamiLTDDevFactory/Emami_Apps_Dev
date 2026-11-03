@@ -62,3 +62,7 @@ button.linkbtn:hover { text-decoration: underline; }
 .combo-list { z-index: 60; list-style: none; margin: 0; padding: 4px 0; max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(15, 39, 66, .18); }
 .combo-list li { padding: 6px 10px; cursor: pointer; } .combo-list li.on { background: #e0ecfb; } .combo-list li[aria-selected=true] b { color: var(--brand); } .combo-list li.empty { color: var(--muted); cursor: default; font-size: 12px; }
 input:disabled::placeholder { color: var(--warn); }
+
+.gridwrap { overflow-x: auto; } table.grid caption { text-align: left; font-weight: 600; padding: 4px 0 8px; }
+table.grid th.rownum { width: 2.5em; text-align: right; color: var(--muted); } table.grid td { min-width: 110px; } table.grid td .field { margin-bottom: 0; }
+td.rowactions { white-space: nowrap; min-width: 0; } td.rowactions button { padding: 4px 8px; font-size: 12px; } .gridhelp { font-size: 12px; }

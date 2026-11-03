@@ -24,14 +24,16 @@ interface Props {
   row?: number;
   /** unit or currency of a quantity or amount, looked up from its reference field (lib/refs.ts) */
   unit?: UnitRef;
+  /** accessible name for compact (label-less) cells, for example 'Unit, row 2' */
+  ariaLabel?: string;
 }
 
-export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row, unit }: Props) {
+export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row, unit, ariaLabel }: Props) {
   const id = useId();
   const helpName = meta.fixed.length === 0 && (HELP_FIELDS.has(meta.name) || meta.check) ? meta.name : undefined;
   const help = useValueHelpState(helpName);
   const v = value ?? '';
-  const common = { id, 'aria-invalid': message ? true : undefined, 'aria-describedby': message ? `${id}-m` : undefined } as const;
+  const common = { id, 'aria-label': compact ? ariaLabel ?? meta.label : undefined, 'aria-invalid': message ? true : undefined, 'aria-describedby': message ? `${id}-m` : undefined } as const;
 
   let control: React.ReactNode;
   if (isFlag(meta)) {
@@ -59,7 +61,7 @@ export function FieldInput({ meta, value, onChange, readOnly, required, message,
     );
   } else {
     control = helpName
-      ? <Combobox id={id} value={String(v)} readOnly={readOnly} maxLength={meta.len || undefined} items={help.items} loading={help.loading} error={help.error} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
+      ? <Combobox id={id} ariaLabel={compact ? ariaLabel ?? meta.label : undefined} value={String(v)} readOnly={readOnly} maxLength={meta.len || undefined} items={help.items} loading={help.loading} error={help.error} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
           invalid={!!message} describedBy={message ? `${id}-m` : undefined} upper={meta.type === 'UNIT'} onChange={(x) => onChange(x)} />
       : <input {...common} maxLength={meta.len || undefined} value={String(v)} readOnly={readOnly} inputMode={meta.type === 'NUMC' ? 'numeric' : undefined}
           onChange={(e) => onChange(meta.type === 'UNIT' ? e.target.value.toUpperCase() : e.target.value)} />;

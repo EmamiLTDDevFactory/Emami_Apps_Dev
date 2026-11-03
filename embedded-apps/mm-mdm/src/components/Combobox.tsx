@@ -20,6 +20,7 @@ interface Props {
   describedBy?: string;
   inputMode?: 'numeric' | 'text';
   upper?: boolean;
+  ariaLabel?: string;
 }
 
 /**
@@ -27,7 +28,7 @@ interface Props {
  * Type to search key and text; Arrow Down/Up open and move, Enter takes the active entry, Escape closes, Tab leaves.
  * Free text stays possible (SAP checks the value); picking an entry sets the key. The number of results is announced.
  */
-export function Combobox({ id, value, onChange, items, loading, error, readOnly, disabled, disabledHint, maxLength, invalid, describedBy, inputMode, upper }: Props) {
+export function Combobox({ id, value, onChange, items, loading, error, readOnly, disabled, disabledHint, maxLength, invalid, describedBy, inputMode, upper, ariaLabel }: Props) {
   const listId = `${id}-list`;
   const hintId = `${id}-vh`;
   const [open, setOpen] = useState(false);
@@ -78,7 +79,7 @@ export function Combobox({ id, value, onChange, items, loading, error, readOnly,
     <span className="combo">
       <input
         ref={inputRef} id={id} type="text" role="combobox" aria-autocomplete="list" aria-expanded={show} aria-controls={listId} aria-haspopup="listbox"
-        aria-activedescendant={show && active >= 0 ? `${uid}-o${active}` : undefined} aria-invalid={invalid ? true : undefined}
+        aria-activedescendant={show && active >= 0 ? `${uid}-o${active}` : undefined} aria-invalid={invalid ? true : undefined} aria-label={ariaLabel}
         aria-describedby={[describedBy, current && current.text !== current.key ? hintId : ''].filter(Boolean).join(' ') || undefined}
         autoComplete="off" value={value} readOnly={readOnly} disabled={disabled} maxLength={maxLength} inputMode={inputMode} placeholder={disabled ? disabledHint : undefined} title={disabled ? disabledHint : undefined}
         onChange={(e) => { onChange(upper ? e.target.value.toUpperCase() : e.target.value); setTyped(true); setOpen(true); }}

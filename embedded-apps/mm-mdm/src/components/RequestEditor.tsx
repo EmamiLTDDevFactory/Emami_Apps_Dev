@@ -54,7 +54,12 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
     setData((d) => ({ ...d, single: { ...d.single, [entity]: { ...(d.single[entity] ?? {}), [name]: v } } }));
     setDirty(true);
   };
-  const setRows = (entity: string, rows: Row[]) => { setData((d) => ({ ...d, multi: { ...d.multi, [entity]: rows } })); setDirty(true); };
+  const setRows = (entity: string, rows: Row[], structural = false) => {
+    setData((d) => ({ ...d, multi: { ...d.multi, [entity]: rows } }));
+    setDirty(true);
+    // messages of this grid name rows by number; after rows were added, removed or copied they would point to the wrong row
+    if (structural) setMessages((m) => m.filter((x) => parseTarget(x.target)?.entity !== entity));
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setInfo('');
@@ -155,7 +160,7 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
             {!view && <p className="muted">No tabs selected for this request.</p>}
             {view && !fc && <p className="muted">Loading field settings...</p>}
             {view && fc && (view.multi
-              ? <ViewGrid controls={controls} rows={data.multi[view.entity] ?? []} data={data} readOnly={readOnly} messages={byField} onChange={(rows) => setRows(view.entity, rows)} />
+              ? <ViewGrid title={view.title} controls={controls} rows={data.multi[view.entity] ?? []} data={data} readOnly={readOnly} messages={byField} onChange={(rows, structural) => setRows(view.entity, rows, structural)} />
               : <ViewForm controls={controls} row={data.single[view.entity] ?? {}} data={data} readOnly={readOnly} messages={byField} onChange={(n, v) => setCell(view.entity, n, v)} />)}
             </div>
           </div>
