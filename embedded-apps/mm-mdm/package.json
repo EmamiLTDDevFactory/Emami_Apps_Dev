@@ -8,7 +8,9 @@
     "build": "next build && node scripts/rename-export.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke": "vitest run tests/smoke.test.ts"
+    "smoke": "vitest run tests/smoke.test.ts",
+    "test:e2e": "playwright test --grep-invert @a11y",
+    "test:a11y": "playwright test --grep @a11y"
   },
   "dependencies": {
     "next": "^15.5.28",
@@ -20,6 +22,8 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "@playwright/test": "1.63.0",
+    "axe-core": "^4.14.0"
   }
 }

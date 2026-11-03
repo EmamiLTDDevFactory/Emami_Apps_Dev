@@ -79,7 +79,7 @@ export default function NewRequest() {
           {sel('ssg', 'Sub sub group', ssg, setSsg, lists.ssgr, false, hint('SSGR', cascadeParams('SSGR', { mtart, mgrp: mg, sgrp: sg })))}
           <div className="field"><label className="lbl" htmlFor="desc">Description<span className="req">*</span></label><input id="desc" value={desc} onChange={(e) => setDesc(e.target.value)} /></div>
           <div className="field"><label className="lbl" htmlFor="mfr">Manufacturer part number</label><input id="mfr" value={mfr} onChange={(e) => setMfr(e.target.value)} /></div>
-          <div className="field"><label className="lbl">Material description (40 characters)</label><input readOnly value={preview.text} aria-live="polite" />{preview.truncated && <div className="msg w">The text was cut to 40 characters.</div>}</div>
+          <div className="field"><label className="lbl" htmlFor="mdesc">Material description (40 characters)</label><input id="mdesc" readOnly value={preview.text} aria-live="polite" />{preview.truncated && <div className="msg w">The text was cut to 40 characters.</div>}</div>
           <button type="button" onClick={checkDup} disabled={!desc}>Check for duplicates</button>
           {dups && (
             <div style={{ marginTop: 10 }}>
