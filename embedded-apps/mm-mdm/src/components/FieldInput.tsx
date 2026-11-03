@@ -18,9 +18,11 @@ interface Props {
   required: boolean;
   message?: Message;
   compact?: boolean;
+  /** 0-based grid row (data-row, so a message can focus this cell) */
+  row?: number;
 }
 
-export function FieldInput({ meta, value, onChange, readOnly, required, message, compact }: Props) {
+export function FieldInput({ meta, value, onChange, readOnly, required, message, compact, row }: Props) {
   const id = useId();
   const helpName = meta.fixed.length === 0 && (HELP_FIELDS.has(meta.name) || meta.check) ? meta.name : undefined;
   const help = useValueHelp(helpName);
@@ -54,7 +56,7 @@ export function FieldInput({ meta, value, onChange, readOnly, required, message,
     );
   }
   return (
-    <div className={`field${message ? ' err' : ''}`} data-field={`${meta.entity}.${meta.name}`}>
+    <div className={`field${message ? ' err' : ''}`} data-field={`${meta.entity}.${meta.name}`} data-row={row}>
       {!compact && <label className="lbl" htmlFor={id}>{meta.label}{required && <span className="req" aria-hidden="true">*</span>}</label>}
       {control}
       {message && <div id={`${id}-m`} className={`msg${message.severity === 'W' ? ' w' : ''}`} role="alert">{message.message}</div>}

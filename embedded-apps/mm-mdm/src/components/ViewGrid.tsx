@@ -23,7 +23,7 @@ export function ViewGrid({ controls, rows, readOnly, messages, onChange }: {
                 const meta = FORM.fields[c.field];
                 return (
                   <td key={c.field}>
-                    <FieldInput compact meta={meta} value={r[meta.name]} required={c.required} readOnly={readOnly || c.displayOnly} message={messages[`${c.field}#${i}`]} onChange={(v) => set(i, meta.name, v)} />
+                    <FieldInput compact row={i} meta={meta} value={r[meta.name]} required={c.required} readOnly={readOnly || c.displayOnly} message={messages[`${c.field}#${i}`]} onChange={(v) => set(i, meta.name, v)} />
                   </td>
                 );
               })}

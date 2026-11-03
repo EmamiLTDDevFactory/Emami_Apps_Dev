@@ -4,19 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, api } from '@/lib/api';
 import { FORM, staticFieldControl } from '@/lib/form';
 import type { FieldControl, Message, RequestData, RequestView, Row, Scalar } from '@/lib/types';
+import { groupByTab, indexByField, parseTarget } from '@/lib/messages';
 import { MessagePanel } from './MessagePanel';
+import { UnsavedGuard } from './UnsavedGuard';
 import { StatusChip } from './StatusChip';
 import { Timeline } from './Timeline';
 import { ViewForm } from './ViewForm';
 import { ViewGrid } from './ViewGrid';
 
 type Dlg = 'approve' | 'sendback' | 'reject' | 'forward' | null;
-
-function targetKey(t?: string): string | undefined {
-  if (!t) return undefined;
-  const m = /^([A-Za-z]+)(?:\[(\d+)\])?\/(.+)$/.exec(t);
-  return m ? `${m[1]}.${m[3]}${m[2] ? `#${Number(m[2])}` : ''}` : undefined;
-}
 
 export function RequestEditor({ initial }: { initial: RequestView }) {
   const router = useRouter();
@@ -45,18 +41,14 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
 
   useEffect(() => { const d = dlgRef.current; if (!d) return; if (dlg && !d.open) d.showModal(); if (!dlg && d.open) d.close(); }, [dlg]);
 
+  // Tab order = the order of the Web Dynpro app: FORM.views keeps the order of the dictionary extract the form definition was
+  // generated from (and SAP's GetFieldControl lists the tabs in the same order). Only the tabs selected for the request show.
   const views = useMemo(() => FORM.views.filter((v) => data.views.includes(v.id)), [data.views]);
   useEffect(() => { if (views.length && !views.some((v) => v.id === active)) setActive(views[0].id); }, [views, active]);
 
-  const byField = useMemo(() => {
-    const m: Record<string, Message> = {};
-    for (const x of messages) { const k = targetKey(x.target); if (k && !m[k]) m[k] = x; }
-    return m;
-  }, [messages]);
-  const viewHasMsg = useCallback((vid: string) => {
-    const v = FORM.views.find((x) => x.id === vid);
-    return !!v && v.fields.some((f) => byField[f] || Object.keys(byField).some((k) => k.startsWith(`${f}#`)));
-  }, [byField]);
+  const byField = useMemo(() => indexByField(messages), [messages]);
+  const grouped = useMemo(() => groupByTab(messages, views.map((v) => ({ id: v.id, title: v.title, entity: v.entity, fields: v.fields }))), [messages, views]);
+  const tabMsgs = useMemo(() => new Map(grouped.groups.map((g) => [g.tab.id, g])), [grouped]);
 
   const setCell = (entity: string, name: string, v: Scalar) => {
     setData((d) => ({ ...d, single: { ...d.single, [entity]: { ...(d.single[entity] ?? {}), [name]: v } } }));
@@ -72,11 +64,16 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
   };
 
   const pick = (m: Message) => {
-    const k = targetKey(m.target);
-    const field = k?.split('#')[0];
-    const v = views.find((x) => field && x.fields.includes(field));
-    if (v) setActive(v.id);
-    setTimeout(() => document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+    const p = parseTarget(m.target);
+    const tab = grouped.groups.find((g) => g.messages.includes(m))?.tab;
+    if (tab) setActive(tab.id);
+    if (!p) return;
+    setTimeout(() => {
+      const sel = `[data-field="${p.entity}.${p.field}"]${p.row !== undefined ? `[data-row="${p.row}"]` : ''}`;
+      const box = document.querySelector(sel);
+      box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      box?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+    }, 60);
   };
 
   const validate = () => run(async () => {
@@ -98,12 +95,23 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
   });
   const remove = () => { if (!confirm('Delete this draft? This cannot be undone.')) return; void run(async () => { await api.remove(req.header.transId); router.push('/requests'); }); };
 
+  const onTabKey = (e: React.KeyboardEvent) => {
+    const i = views.findIndex((v) => v.id === active);
+    const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? views.length - 1 : -1;
+    if (n < 0 || !views.length) return;
+    e.preventDefault();
+    const t = views[(n + views.length) % views.length];
+    setActive(t.id);
+    setTimeout(() => document.getElementById(`tab-${t.id}`)?.focus(), 0);
+  };
+
   const view = views.find((v) => v.id === active);
   const controls = (fc ?? {})[active] ?? [];
 
   return (
     <>
-      <div className="card">
+      <UnsavedGuard when={dirty} />
+      <div className="card actionbar">
         <div className="row">
           <div className="grow">
             <h1>Request {req.header.transId} <StatusChip status={req.header.status} /></h1>
@@ -123,29 +131,37 @@ export function RequestEditor({ initial }: { initial: RequestView }) {
             {al.deleteDraft && <button className="danger" onClick={remove} disabled={busy}>Delete draft</button>}
           </div>
         </div>
-        {info && <p className="muted" role="status">{info}</p>}
+        <p className="muted" role="status" aria-live="polite">{info}</p>
         {dirty && <p className="notice">You have unsaved changes.</p>}
       </div>
 
       <div className="layout">
         <div>
           <div className="card">
-            <div className="tabs" role="tablist">
-              {views.map((v) => (
-                <button key={v.id} role="tab" aria-selected={v.id === active} className={v.id === active ? 'on' : ''} onClick={() => setActive(v.id)}>
-                  {v.title}{viewHasMsg(v.id) && <span className="dot" aria-label="has errors">●</span>}
-                </button>
-              ))}
+            <div className="tabs" role="tablist" aria-label="Tabs of the request" onKeyDown={onTabKey}>
+              {views.map((v) => {
+                const g = tabMsgs.get(v.id);
+                return (
+                  <button key={v.id} id={`tab-${v.id}`} role="tab" type="button" aria-selected={v.id === active} aria-controls="tabpanel" tabIndex={v.id === active ? 0 : -1}
+                    className={v.id === active ? 'on' : ''} onClick={() => setActive(v.id)}>
+                    {v.title}
+                    {g && <span className={`dot${g.errors ? '' : ' w'}`} aria-hidden="true">●</span>}
+                    {g && <span className="sr-only"> ({g.errors} errors, {g.warnings} warnings)</span>}
+                  </button>
+                );
+              })}
             </div>
+            <div id="tabpanel" role="tabpanel" aria-labelledby={`tab-${active}`}>
             {!view && <p className="muted">No tabs selected for this request.</p>}
             {view && !fc && <p className="muted">Loading field settings...</p>}
             {view && fc && (view.multi
               ? <ViewGrid controls={controls} rows={data.multi[view.entity] ?? []} readOnly={readOnly} messages={byField} onChange={(rows) => setRows(view.entity, rows)} />
               : <ViewForm controls={controls} row={data.single[view.entity] ?? {}} readOnly={readOnly} messages={byField} onChange={(n, v) => setCell(view.entity, n, v)} />)}
+            </div>
           </div>
         </div>
         <div>
-          <MessagePanel messages={messages} onPick={pick} />
+          <MessagePanel groups={grouped.groups} general={grouped.general} onPick={pick} />
           <div className="card"><h2>History</h2><Timeline items={req.history} /></div>
           <div className="card muted">
             Routing: type {req.header.genType || '-'}, group {req.header.genField || '-'}, business {req.header.genField2 || '-'}, plant {req.header.genField3 || '-'}

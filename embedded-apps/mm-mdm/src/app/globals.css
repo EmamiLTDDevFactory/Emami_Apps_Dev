@@ -37,13 +37,20 @@ td input, td select { min-width: 90px; }
 .chip.s03 { background: #dff3e7; color: var(--ok); } .chip.s04 { background: #fff0d6; color: var(--warn); } .chip.s05 { background: #fbe0de; color: var(--err); } .chip.s02 { background: #e0ecfb; color: var(--info); }
 .tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 12px; }
-.tabs button.on { border-bottom-color: var(--brand); font-weight: 600; } .tabs button .dot { color: var(--err); margin-left: 4px; }
+.tabs button.on { border-bottom-color: var(--brand); font-weight: 600; } .tabs button .dot { color: var(--err); margin-left: 4px; } .tabs button .dot.w { color: var(--warn); }
 .layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; } @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
-.messages { position: sticky; top: 12px; } .messages ul { list-style: none; margin: 0; padding: 0; }
-.messages li { padding: 8px; border-left: 3px solid var(--err); background: #fdf3f2; margin-bottom: 6px; cursor: pointer; border-radius: 0 6px 6px 0; }
+.messages { position: sticky; top: 96px; max-height: calc(100vh - 110px); overflow-y: auto; } .messages h3 { font-size: 13px; margin: 10px 0 6px; } .messages ul { list-style: none; margin: 0; padding: 0; }
+.messages li { border-left: 3px solid var(--err); background: #fdf3f2; margin-bottom: 6px; border-radius: 0 6px 6px 0; }
+.messages li.i { border-color: var(--info); background: #eef5fd; }
 .messages li.w { border-color: var(--warn); background: #fff8ea; } .messages li small { color: var(--muted); display: block; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line); } .timeline li { margin: 0 0 12px 8px; position: relative; }
 .timeline li::before { content: ''; position: absolute; left: -22px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand); }
 .notice { background: #fff8ea; border: 1px solid #f0d49a; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
 dialog { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: min(480px, 92vw); } dialog::backdrop { background: rgba(15,39,66,.4); }
 .stat { text-align: center; padding: 10px; } .stat b { font-size: 24px; display: block; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+button.linkbtn { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px; border-radius: 0 6px 6px 0; cursor: pointer; }
+button.linkbtn:hover { text-decoration: underline; }
+.actionbar { position: sticky; top: 0; z-index: 30; box-shadow: 0 2px 6px rgba(15, 39, 66, .12); }
+.tabs button[aria-selected=true] { border-bottom-color: var(--brand); font-weight: 600; }

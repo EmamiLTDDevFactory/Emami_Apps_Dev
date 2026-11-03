@@ -6,7 +6,8 @@ import { api } from '@/lib/api';
 import type { SessionInfo } from '@/lib/types';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const path = usePathname();
+  const raw = usePathname() ?? '/';
+  const path = raw.length > 1 ? raw.replace(/\/+$/, '') : raw; // the static export serves pages with a trailing slash
   const [session, setSession] = useState<SessionInfo | null>(null);
   useEffect(() => { api.session().then(setSession).catch(() => setSession(null)); }, []);
   const nav = [['/', 'Home'], ['/requests', 'Requests'], ['/requests/new', 'New material']] as const;
