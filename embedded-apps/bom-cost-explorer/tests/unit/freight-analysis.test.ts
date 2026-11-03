@@ -89,20 +89,17 @@ describe('freightDaysFor', () => {
 });
 
 describe('requests', () => {
-  it('components: mode M for the FGs and plants; freight: mode F per plant, every PO line (LatestOnly off), window back to From', async () => {
-    const { componentQuery, freightQuery } = await import('@/lib/freight/analysisFetch');
-    const { pagedRequest } = await import('@/lib/sap/requests');
-    const m = pagedRequest(componentQuery(['FG1'], ['1000', '2000']), 500, 0);
-    expect(m.entitySet).toBe('RmPmRowSet');
-    expect(m.params.$filter).toContain("Mode eq 'M'");
-    expect(m.params.$filter).toContain("Matnr eq 'FG1'");
-    const f = pagedRequest(freightQuery(['RM1', 'PM1'], '1000', 31), 500, 0);
-    expect(f.entitySet).toBe('FreightRowSet');
-    expect(f.params.$filter).toContain("Mode eq 'F'");
-    expect(f.params.$filter).toContain("(Matnr eq 'RM1' or Matnr eq 'PM1')");
-    expect(f.params.$filter).toContain("Werks eq '1000'");
-    expect(f.params.$filter).toContain('FreightDays eq 31');
-    expect(f.params.$filter).toContain("LatestOnly eq ''");
-    expect(f.params.$filter).not.toContain('+');
+  it('components: mode M; freight: mode F with FreightDays; both filtered by the screen only (no finished good, no forced material or plant)', async () => {
+    const { analysisFilter } = await import('@/lib/freight/analysisFetch');
+    const range = { from: '2026-08-01', to: '2026-10-31' };
+    const m = analysisFilter({ mode: 'M', materials: ['RM1'], plant: '1000', range, inclFrt: true, freightDays: 92 });
+    expect(m).toContain("Mode eq 'M'");
+    expect(m).toContain("Matnr eq 'RM1'");
+    expect(m).toContain("Werks eq '1000'");
+    expect(m).not.toContain('FreightDays');
+    const f = analysisFilter({ mode: 'F', materials: ['RM1', 'PM1'], plant: '1000', range, inclFrt: true, freightDays: 31 });
+    expect(f).toContain("Mode eq 'F'");
+    expect(f).toContain("(Matnr eq 'RM1' or Matnr eq 'PM1')");
+    expect(f).toContain('FreightDays eq 31');
   });
 });

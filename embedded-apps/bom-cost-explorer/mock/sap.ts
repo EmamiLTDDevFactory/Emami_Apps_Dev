@@ -634,6 +634,12 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   if (process.env.MOCK_SAP_NO_FGMATNR === '1' && set === ENTITY_SET.FREIGHT && /FgMatnr/.test(sp.get('$filter') ?? '')) return odataError(400, '/IWBEP/CM_MGW_RT/004', 'Property FgMatnr not found in type FreightRow');
   const f = parseFilter(sp.get('$filter') ?? '');
   const p = params(f);
+  // Like the SAP service after 3 Nov 2026: FreightRowSet and RmPmRowSet take a plant alone, materials alone, or both (no finished good needed).
+  // The other sets keep the old rule (a material AND a plant).
+  const eitherIsEnough = set === ENTITY_SET.FREIGHT || set === ENTITY_SET.RMPM;
+  if (eitherIsEnough && p.mats.length === 0 && p.werks.length === 0) return odataError(400, 'ZBOM/004', 'Enter a plant or at least one material in the filter (Werks / Matnr)');
+  if (eitherIsEnough && p.mats.length === 0) p.mats = MATERIALS.filter((m) => BOMS[m.Matnr]).map((m) => m.Matnr).slice(0, 50); // every finished good: its leaves are the plant's components
+  if (eitherIsEnough && p.werks.length === 0) p.werks = PLANTS.map((x) => x.Werks);
   if (p.mats.length === 0) return odataError(400, 'ZBOM/001', 'Enter at least one material in the filter (Matnr)');
   if (p.werks.length === 0) return odataError(400, 'ZBOM/003', 'Enter at least one plant in the filter (Werks)');
   if (p.mats.length > 50) return odataError(400, 'ZBOM/002', `At most 50 header materials per request (${p.mats.length} sent)`);

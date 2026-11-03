@@ -5,13 +5,13 @@
  * Data: lib/freight/analysisFetch.ts (RmPmRowSet for the components, FreightRowSet for the PO freight). The rule is applied
  * in the browser (lib/freight/analysis.ts), so changing it never calls SAP again.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BellRing, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
-import { MaterialHierarchyPicker, MaterialPicker, PlantPicker } from '../Pickers';
+import { MaterialPicker, PlantPicker } from '../Pickers';
 import type { PlantsState } from '../FilterPanel';
 import { Button, Card, Empty, Field, Pill, Segmented, Stat, cx, inputCls } from '../ui';
-import type { PlantRow } from '@/lib/sap/fields';
+import type { MaterialRow, PlantRow } from '@/lib/sap/fields';
 import { api } from '@/lib/client/api';
 import { useRun } from '@/lib/client/useRun';
 import { exportTable } from '@/lib/client/export';
@@ -22,7 +22,7 @@ import {
   DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, ruleText, sortAnalysis,
   type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
-import { fetchFreightAnalysis, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
+import { DEFAULT_FREIGHT_DAYS, MAX_FREIGHT_DAYS, clampFreightDays, defaultInclFrt, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
 
 const th = 'px-3 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
@@ -34,7 +34,8 @@ const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n
 type Show = 'all' | 'alerts';
 
 export default function FreightAnalysis() {
-  const [fgs, setFgs] = useState<string[]>([]);
+  const [materials, setMaterials] = useState<string[]>([]);
+  const known = useRef(new Map<string, MaterialRow>());
   const [plantCodes, setPlantCodes] = useState<string[]>([]);
   const [plants, setPlants] = useState<PlantRow[]>([]);
   const [plantsLoading, setPlantsLoading] = useState(false);
@@ -42,6 +43,9 @@ export default function FreightAnalysis() {
   const [types, setTypes] = useState<FreightType[]>([...FREIGHT_TYPES]);
   const [from, setFrom] = useState(daysAgo(89));
   const [to, setTo] = useState(daysAgo(0));
+  const [freightDays, setFreightDays] = useState(String(DEFAULT_FREIGHT_DAYS));
+  const [inclTouched, setInclTouched] = useState(false);
+  const [inclPicked, setInclPicked] = useState(true);
   const [touched, setTouched] = useState(false);
   const [ran, setRan] = useState<AnalysisInput | null>(null);
   const [step, setStep] = useState('');
@@ -57,12 +61,17 @@ export default function FreightAnalysis() {
 
   const runner = useRun((signal: AbortSignal, input: AnalysisInput): Promise<AnalysisData> => fetchFreightAnalysis(input, signal, setStep));
 
-  const missing = !fgs.length ? 'Pick at least one finished good' : !plantCodes.length ? 'Pick at least one plant' : !types.length ? 'Pick at least one material type'
-    : !from || !to || from > to ? 'The From date must not be after the To date' : '';
+  // Include freight: checked when both dates are filled, unchecked otherwise, until the person decides.
+  const inclFrt = inclTouched ? inclPicked : defaultInclFrt({ from, to });
+  const missing = selectionProblem({ materials, plants: plantCodes, types, range: { from, to }, freightDays });
   const start = () => {
     setTouched(true);
     if (missing || runner.status === 'running') return;
-    const input: AnalysisInput = { fgs, plants: plantCodes, types, range: { from, to } };
+    const days = clampFreightDays(freightDays);
+    setFreightDays(String(days));
+    const info: AnalysisInput['info'] = {};
+    for (const m of materials) { const k = known.current.get(m); if (k) info[m] = { text: k.Maktx, mtart: k.Mtart }; }
+    const input: AnalysisInput = { materials, info, plants: plantCodes, types, range: { from, to }, inclFrt, freightDays: days };
     setRan(input);
     void runner.run(input);
   };
@@ -78,22 +87,21 @@ export default function FreightAnalysis() {
 
       <Card title="Selection" bodyClass="flex flex-col gap-3">
         <div className="grid gap-3 lg:grid-cols-2">
-          <Field label="Finished goods (whose BOM components are analysed)" hint={`Up to ${MAX_MATERIALS}: pick a Brand / Product to fill the list.`} error={touched && !fgs.length ? missing : undefined}>
-            {(id) => (
-              <>
-                <MaterialPicker id={id} values={fgs} onChange={setFgs} max={MAX_MATERIALS} invalid={touched && !fgs.length} />
-                <MaterialHierarchyPicker values={fgs} onChange={setFgs} max={MAX_MATERIALS} werks={plantCodes} />
-              </>
-            )}
+          <Field label="Materials (comma / space separated)" hint={`Optional, up to ${MAX_MATERIALS}. Leave empty to analyse every component of the chosen plant.`} error={touched && !materials.length && !plantCodes.length ? missing : undefined}>
+            {(id) => <MaterialPicker id={id} values={materials} onChange={setMaterials} max={MAX_MATERIALS} types={types} known={known} invalid={touched && !materials.length && !plantCodes.length} />}
           </Field>
-          <Field label="Plants" error={touched && fgs.length && !plantCodes.length ? missing : undefined}>
-            {(id) => <PlantPicker id={id} values={plantCodes} onChange={setPlantCodes} state={plantsState} invalid={touched && !plantCodes.length} />}
+          <Field label="Plants" hint={materials.length ? 'Optional when materials are entered.' : 'Required unless a material is entered.'}>
+            {(id) => <PlantPicker id={id} values={plantCodes} onChange={setPlantCodes} state={plantsState} invalid={touched && !materials.length && !plantCodes.length} />}
           </Field>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="PO date from">{(id) => <input id={id} type="date" className={inputCls} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />}</Field>
-          <Field label="PO date to">{(id) => <input id={id} type="date" className={inputCls} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />}</Field>
-          <div className="sm:col-span-2">
+          <Field label="From date">{(id) => <input id={id} type="date" className={inputCls} value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />}</Field>
+          <Field label="To date">{(id) => <input id={id} type="date" className={inputCls} value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />}</Field>
+          <Field label="Freight look-back (days)" hint={`max ${MAX_FREIGHT_DAYS} days`}>
+            {(id) => <input id={id} inputMode="numeric" className={inputCls} value={freightDays} onChange={(e) => setFreightDays(e.target.value.replace(/\D/g, ''))} onBlur={() => setFreightDays(String(clampFreightDays(freightDays || DEFAULT_FREIGHT_DAYS)))} />}
+          </Field>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={inclFrt} onChange={(e) => { setInclTouched(true); setInclPicked(e.target.checked); }} /> Include freight</label>
+          <div className="sm:col-span-2 lg:col-span-4">
             <span className="mb-1 block text-xs font-semibold text-muted">Material types</span>
             <div className="flex flex-wrap gap-3 pt-1">
               {FREIGHT_TYPES.map((t) => (
@@ -104,12 +112,9 @@ export default function FreightAnalysis() {
         </div>
         {touched && missing && <p role="alert" className="text-xs font-semibold text-bad">{missing}</p>}
         <div className="flex flex-wrap items-center gap-2">
-          {runner.status === 'running' ? (
-            <Button type="button" variant="ghost" onClick={runner.cancel}><Square size={14} /> Cancel ({fmtMs(runner.elapsed)})</Button>
-          ) : (
-            <Button type="button" onClick={start}><Play size={14} /> Analyse freight</Button>
-          )}
-          <span className="text-xs text-faint">{runner.status === 'running' ? step : 'Reads the components, then every PO freight line of the date range, per plant.'}</span>
+          <Button type="button" onClick={start} disabled={runner.status === 'running'}><Play size={14} /> Execute</Button>
+          {runner.status === 'running' && <Button type="button" variant="ghost" onClick={runner.cancel}><Square size={14} /> Cancel ({fmtMs(runner.elapsed)})</Button>}
+          <span className="text-xs text-faint">{runner.status === 'running' ? step : 'A plant, or materials, or both. Every PO freight line of the date range is read per plant.'}</span>
         </div>
       </Card>
 
@@ -138,7 +143,7 @@ export default function FreightAnalysis() {
       )}
       {runner.status === 'running' && !runner.data && <p className="text-sm text-muted">{step || 'Working…'} {fmtMs(runner.elapsed)}</p>}
       {runner.data && ran && <Results data={runner.data} ran={ran} rule={rule} stale={runner.status === 'running'} />}
-      {runner.status === 'idle' && <Empty title="No analysis yet">Pick finished goods, plants and the PO date range, then choose Analyse freight.</Empty>}
+      {runner.status === 'idle' && <Empty title="No analysis yet">Pick materials (ROH, PKGN, VERP) or plants, set the PO date range, then choose Execute.</Empty>}
     </PlanFrame>
   );
 }
@@ -162,7 +167,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
       fmt, name: 'Freight analysis', cols: sheet.cols, count: sheet.count,
       extraParams: [
         ['Report', 'Component standard vs actual freight, plant wise, INR per unit'],
-        ['Finished goods', ran.fgs.join(', ')], ['Plants', plant || ran.plants.join(', ')], ['Material types', ran.types.join(', ')],
+        ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
         ['PO date range', `${ran.range.from} to ${ran.range.to}`], ['Alert rule', ruleText(rule)],
         ['Rows', String(rows.length)], ['Rows in alert', String(totals.flagged)],
       ],
@@ -170,9 +175,10 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
     });
   };
 
-  if (!data.components.length) return <Empty title="No components">The BOMs of the chosen finished goods have no {ran.types.join(' / ')} component in these plants.</Empty>;
+  if (!data.components.length) return <Empty title="No components">{data.basis === 'materials' ? <>SAP returned no {ran.types.join(' / ')} component for the picked materials{ran.plants.length ? ` in plant ${ran.plants.join(', ')}` : ''}.</> : <>SAP returned no {ran.types.join(' / ')} component for plant {ran.plants.join(', ')}.</>}</Empty>;
   return (
     <div className={cx('flex flex-col gap-3', stale && 'opacity-60')}>
+      {data.skipped.length > 0 && <p role="status" className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">No {ran.types.join(' / ')} component returned for: {data.skipped.join(', ')}.</p>}
       <div role="status" className={cx('flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold', totals.flagged ? 'border-bad/40 bg-bad/[0.06] text-bad' : 'border-good/40 bg-good/[0.06] text-good')}>
         <BellRing size={15} />
         {totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`}

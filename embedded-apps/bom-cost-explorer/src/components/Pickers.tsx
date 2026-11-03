@@ -112,11 +112,15 @@ function ChipInput({
   );
 }
 
-export function MaterialPicker({ id, values, onChange, max, invalid }: { id: string; values: string[]; onChange: (v: string[]) => void; max: number; invalid?: boolean }) {
+/** `types` (optional) keeps only materials of these material types in the search results (for example the freight analysis: ROH, PKGN, VERP);
+ * `known` (optional) receives every material the search has shown so far, so a screen can read the description / type of a picked code. */
+export function MaterialPicker({ id, values, onChange, max, invalid, types, known: knownOut }: { id: string; values: string[]; onChange: (v: string[]) => void; max: number; invalid?: boolean; types?: readonly string[]; known?: { current: Map<string, MaterialRow> } }) {
   const [q, setQ] = useState('');
   const [opts, setOpts] = useState<MaterialRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const known = useRef(new Map<string, MaterialRow>());
+  const own = useRef(new Map<string, MaterialRow>());
+  const known = knownOut ?? own;
+  const allowed = types ? new Set(types.map((t) => t.toUpperCase())) : null;
   useEffect(() => {
     if (q.trim().length < 2) return setOpts([]);
     const c = new AbortController();
@@ -124,14 +128,15 @@ export function MaterialPicker({ id, values, onChange, max, invalid }: { id: str
       setLoading(true);
       api.materials(q, c.signal)
         .then((r) => {
-          r.materials.forEach((m) => known.current.set(m.Matnr, m));
-          setOpts(r.materials);
+          const list = allowed ? r.materials.filter((m) => allowed.has(String(m.Mtart).trim().toUpperCase())) : r.materials;
+          list.forEach((m) => known.current.set(m.Matnr, m));
+          setOpts(list);
         })
         .catch(() => setOpts([]))
         .finally(() => setLoading(false));
     }, 250);
     return () => { clearTimeout(t); c.abort(); };
-  }, [q]);
+  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <ChipInput
       id={id}
