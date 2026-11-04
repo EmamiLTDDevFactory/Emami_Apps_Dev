@@ -227,6 +227,42 @@ router.put('/:id/vendor', async (req, res, next) => {
   }
 })
 
+// Changes the email of someone on the requesting manager's team - e.g. correcting a typo or a
+// changed company address. Scoped to `manager_id = req.user.userId` like /:id/vendor above, so a
+// manager can only edit their own direct reports. Sign-in matches TimeSheet users by email (see
+// upsertHubUser), so the new address must be a valid email, not already used by another TimeSheet
+// user, and granted Timesheet access in the hub's Manage Access - otherwise the employee's next
+// sign-in would land on a fresh, empty account instead of this one.
+router.put('/:id/email', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ error: 'Only managers can change an employee\'s email' })
+    const email = String(req.body?.email || '').trim().toLowerCase()
+    if (!email) return res.status(400).json({ error: 'email is required' })
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' })
+
+    const current = await pool.query('SELECT email FROM users WHERE id = $1 AND manager_id = $2', [req.params.id, req.user.userId])
+    if (!current.rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
+    if (current.rows[0].email === email) return res.json(mapUser((await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id])).rows[0]))
+
+    const hubRole = await fetchHubRoleForTimesheet(email, req)
+    if (!hubRole) {
+      return res.status(400).json({
+        error: 'This email has not been granted Timesheet access yet. Ask a hub admin to add it in Manage Access first.',
+      })
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE users SET email = $1 WHERE id = $2 AND manager_id = $3 RETURNING *`,
+      [email, req.params.id, req.user.userId],
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'This employee is not on your team' })
+    res.json(mapUser(rows[0]))
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Another TimeSheet user already has this email' })
+    next(err)
+  }
+})
+
 // Everyone who could be picked as "my reporting manager" on the first-login screen (see
 // PUT /me/manager below) - open to any signed-in user, not manager-only like most routes here,
 // since it's exactly the employees who haven't been approved by anyone yet who need this list.

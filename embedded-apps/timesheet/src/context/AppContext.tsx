@@ -566,6 +566,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return updated;
   }
 
+  // Changes a direct report's email from Manage Team - the server checks format, uniqueness and
+  // the hub's Timesheet access grant (see PUT /users/:id/email).
+  async function setEmployeeEmail(userId: string, email: string) {
+    const updated = await api(`/users/${userId}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
+    setData((d) => ({ ...d!, users: d!.users.map((u) => (u.id === updated.id ? updated : u)) }));
+    return updated;
+  }
+
   // Everyone who could be picked as "my reporting manager" - see PickManager, the screen a
   // brand-new employee sees before anything else. Fetched on demand rather than in loadAllData
   // since it's only ever needed by that one screen.
@@ -780,6 +788,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchAddEmployeeCandidates,
     claimEmployee,
     setEmployeeVendor,
+    setEmployeeEmail,
     fetchManagers,
     requestManager,
     refreshUser,
