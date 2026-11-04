@@ -1,159 +1,75 @@
-# Material Master (mm-mdm)
+# SAP MDM Portal – Material Master (Create, MC)
 
-Replacement for the SAP Web Dynpro app `/INOWITS/MM_CREATE_PROC`: request, review and approve material master records. One request is one
-material at one plant, one sales organisation and one valuation area. The SAP side is an OData V2 service on the SAP Gateway,
-`ZMM_MDM_SRV` (model: `odata/metadata.xml`, contract: `odata/service-contract.md`, ABAP: `sap-backend/`).
+Next.js 14 + React 18 + TypeScript front end for the Material Master MDM replacement of
+`/INOWITS/MM_CREATE_PROC`, following *Material Master MDM replacement – implementation plan
+and approach*, *Material_view_MDM* and the logic coverage matrix. Runs on demo data.
 
-This is an **embedded app of Emami Apps**: a static Next.js export served by the hub at `/apps/mm-mdm/`. Hub tile "Material Master",
-category Supply Chain, stage WIP.
+```bash
+npm install
+npm run dev     # http://localhost:3320/apps/mm-mdm/, t-code ZMDM_M
+npm run build   # static export to dist/ (what the hub build merges in at /apps/mm-mdm/)
+```
 
-## Run it
+Use the user switch in the top bar to act as the initiator or as the agent of any of the 7 levels.
+**Reset demo data** (sidebar) restores the seed requests.
 
-Demo mode (default). No SAP and no backend: the demo service and its demo rules run in the browser, data is kept in the tab's
-`sessionStorage` (a reload keeps it, a new tab starts fresh).
+## Flow (per the FS)
 
-    npm install
-    npm run dev              # http://localhost:3320/apps/mm-mdm/   (MM_MODE=demo)
-    npm run build            # static export to dist/ (what the hub's Amplify build does)
+| Step | Screen | Replaces | Who |
+| --- | --- | --- | --- |
+| Start | Material creation key data, as on the SAP initial screen: material type, industry sector, material group, business vertical, scheme, product hierarchy (Banner → Brand → Product → SKU → Variant → Scheme pop-up), division, description (40 characters) and long text; organizational data: plant, storage location, sales org, distribution channel, warehouse number, storage type. Every field has an F4 value help; dependent lists follow their parent. Duplicate check, view selection, copy from reference. *Proceed to material creation* or *Save as draft* (both create status 00) are enabled only when all required fields hold valid values | V_INIT | Initiator |
+| Normal view | New material request screen only: key and organizational data, long text, duplicate check; submit straight to level 1 or save as draft. A draft or sent-back request is corrected on the same screen (`/master/material/new/?id=…`). The initiator does not fill any material view. | V_INITIATOR, V_DISPLAY | Initiator |
+| Preliminary view | Request page: only the views the backend assigns to the level (View Visibility); views not flagged read-only are editable; save, check, approve, send back, forward, reject | V_REVIEWER | Levels 1–7 |
+| Final approval | Same, MDM team may edit every tab; *Approve and post* posts the material and assigns the number | V_APPROVER | Level 7 |
+| Forward | Person asked for input returns it (back to the same level) or rejects | V_FORWARD | Any agent |
+| Search | Scope, status, material type, text | V_SEARCH | All |
 
-The header has a demo-user switch (initiator, reviewer level 1, approver level 2) and an EN / DE language switch.
+**Workflow levels for FERT, FRT2 and WIP** (one shared definition, `lib/workflowConfig.ts`): L1 Sales Team, L2 Sales Team CRS, L3 Legal
+Team, L4 Quality Team, L5 Supply Chain, L6 CQA Team, L7 Approver MDM Team. Each level maintains
+its own view; the MDM team can correct all.
 
-Live mode (SAP through the hub backend). The build decides the mode:
+**Status codes**: 00 draft, 01 in approval, 02 sent back, 03 rejected, 04 forwarded, 05 approved and posted.
 
-    MM_MODE=live npm run build              # every call goes to <api>/me/mm-mdm
-    MM_API_BASE=https://host/api/me/mm-mdm  # optional; default: audit-capa-api.emamiapps.in/dev-api/api on dev and localhost, /api on www
+**Rules kept out of the screens.** Field control, allowed actions, validation, routing, duplicate
+check, description builder and posting all live in `lib/service.ts`, named after the function
+imports of ZMM_MDM_SRV (StartRequest, SaveDraft, Submit, Approve, SendBack, Reject, Forward,
+DeleteDraft, CheckDuplicate, GetFieldControl). The service also ignores edits
+to fields the user may not change. Swap these functions for OData calls through the Next.js
+server layer to go live.
 
-## How live mode works (and why the app is built this way)
-
-The brief asked for Next.js route handlers (a BFF). Emami Apps embedded apps are **static exports**, which cannot have route handlers
-(nor a dynamic `[transId]` path segment), so:
-
-- The route handlers became a module of the hub backend: `backend/mmMdm.js` (routes and the screen-model to OData mapping) and
-  `backend/mmMdmSap.js` (OData V2 client: CSRF, `$batch` change set, error mapping). It is mounted at `/api/me/mm-mdm`
-  (nginx already forwards `/api/me/`). The browser never talks to SAP.
-- Request pages are `/requests/view/?id=<TransId>` (query parameter, not a path segment).
-- Every call needs the hub session (Bearer token) and a Material Master grant in Admin Center > Manage Access.
-- Backend settings (`.env` of the hub backend): `MM_SAP_ODATA_BASE` (for example `https://<gateway>/api/NGQ/ZMM_MDM_SRV`),
-  `MM_SAP_CLIENT` (optional), `MM_SAP_AUTH` = `gateway` (default) | `bearer` | `basic`, `MM_SAP_USER_HEADER` (default
-  `X-Emami-User`), `MM_SAP_USER` / `MM_SAP_PASSWORD` (basic only).
-- Deploying backend changes is manual on the PM2 box (see the hub's deploy notes); a git push does not update it.
-
-### Authentication
-
-All authentication towards SAP is in one function, `sapAuth` in `backend/mmMdmSap.js`.
-
-- `gateway`: the Azure SAP gateway signs in itself (like the other apps); the hub user's e-mail is passed in the header named by
-  `MM_SAP_USER_HEADER` so SAP can tell who is calling. The gateway uses one technical SAP user, so SAP cannot treat calls as the real
-  SAP user in this mode.
-- `bearer`: the real user reaches SAP with a token SAP accepts. The identity provider (OIDC or SAML) is not named yet: register a token
-  provider with `setTokenProvider(async (caller) => token)`. Until then every call answers 503 "Bearer sign-in is not configured".
-- `basic`: one fixed technical user, development only. SAP workflow and field control depend on the real user.
-
-Tokens stay on the server and are never sent to the browser. Deviation from the brief: it asked for an HTTP-only cookie session; here
-the browser uses the hub's own session (the hub controls how that is stored), and SAP-bound tokens stay in the backend.
-
-## What the front end decides, and what it does not
-
-No business rule is in the browser. SAP decides validation, field visibility, required and display-only flags, workflow and posting.
-
-- Field behaviour comes from `GetFieldControl` (per tab an ordered list: shown, displayOnly, required, column L or R).
-  `src/data/form_definition.json` is only the demo's field control and the dictionary metadata (types, lengths, fixed values, reference
-  fields for units and currencies).
-- Buttons follow the allowed actions returned for the request (edit, validate, saveDraft, submit, approve, sendBack, reject, forward,
-  deleteDraft, attach, comment), never the status.
-- The client never sends status, routing keys (`genType`, `genField`, `genField2`, `genField3`), initiator or work item id.
-- All messages of a failed action are shown together, grouped by tab, each a button that goes to its field. Targets look like
-  `Material/NTGEW` or `UnitOfMeasure[2]/MEINH` (grid rows count from 1).
-
-## Languages (English, German)
-
-Texts are in `src/i18n/en.json` and `src/i18n/de.json`, used through the typed `t('key')`
-(a key that is not in `en.json` does not compile; `tests/i18n.test.ts` checks that both files have the same keys and placeholders).
-The language comes from the header switch, is remembered in `localStorage`, and defaults to the browser language (`de*` = German).
-To add a language: add `xx.json` with the same keys and register it in `src/i18n/translate.ts`.
-
-Not translated, on purpose: **field and tab labels** (they come from the model / form definition as SAP delivers them) and **messages and
-texts that SAP sends** (the demo service stands in for SAP and its texts are shown as received).
-
-## Loading, empty and error states; optimistic UI
-
-Every list and panel has a loading, an empty and an error state (requests, request view, value helps, history, grids, attachments,
-comments). Optimistic UI is **not used for any workflow action** (save, validate, submit, approve, send back, reject, forward, delete):
-SAP decides the result and the status, so the screen waits for SAP's answer. Nothing else is optimistic either.
-
-## Layout and themes
-
-Responsive down to tablet width (768 px): tabs scroll inside their own box and stay keyboard reachable, the editor collapses to one
-column, grids scroll inside their box, the action bar stays sticky. Dark mode follows the system setting
-(`prefers-color-scheme`); every colour is a CSS variable in `src/app/globals.css`, and the axe contrast rule is checked in both schemes.
-
-## Live on NGD (ZMM_MDM_SRV_SRV): state of 3 Nov 2026
-
-The dev site (`dev.emamiapps.in`) runs this app **live** against the SAP service `ZMM_MDM_SRV_SRV` on NGD, through the hub backend. Any other host runs the demo; add `?mm=demo` or `?mm=live` to a link to switch in your browser (remembered).
-The dev backend (`emami-hub-backend-dev`) is set with `MM_SAP_ODATA_BASE` = the Azure gateway `/api/NGD/ZMM_MDM_SRV_SRV`, `MM_SAP_AUTH=gateway`, `MM_SAP_WRITE=sequential`.
-
-What was found against NGD (read-only probes, one test run):
-- **Works:** `GetSession`, `RequestSet` with a `Scope` filter, `MaterialTypeVhSet`, `MainGroupSet`, `GenericValueHelpSet` (live data).
-- **The gateway proxy passes only GET, POST and PUT.** `$batch` (answers "unsupported format"), MERGE, PATCH and DELETE never reach SAP, and `X-HTTP-Method` tunnelling is ignored. So writes run one by one (`MM_SAP_WRITE=sequential`: MERGE is sent as PUT, which the SAP update merges), not as one atomic change set. Consequences: Validate stores the entered values in the draft (staging only, never the status); removing a grid row is refused with a clear message until the gateway passes DELETE.
-- **The gateway signs in as one technical user** (`GetSession` answers `WDA_AUDIT`), so workflow steps, field control by department and the initiator are all that user until the gateway or SAP can take the real user (`bearer` mode or the `X-Emami-User` header the backend already sends).
-- **SAP-side errors to fix before requests can be started:** every function import with parameters (`GetFieldControl`, `BuildDescription`, `CheckDuplicate`, `GetRelatedHsn`, `StartRequest`, `Validate`, `Submit`, `DeleteDraft`) answers HTTP 404 with an empty message from inside SAP, while `GetSession` works; `RequestSet` with `Scope eq 'all'` answers 500. The app now shows SAP's transaction id and timestamp in the message, so the SAP team can find each failure in `/IWFND/ERROR_LOG` on the Gateway.
-- The `$metadata` of this service cannot be read through the gateway proxy (it adds query options SAP refuses for `$metadata`).
-
-## Tests
-
-| Script | What |
-| --- | --- |
-| `npm run typecheck` | TypeScript strict |
-| `npm test` | Vitest unit tests: demo service and its rules, api mapping, error mapping, units and currencies, value-help cache and cascade, grid rows, attachments, i18n |
-| `npm run smoke` | the 15 original API checks, run against the demo service in memory |
-| `npm run test:e2e` | Playwright, demo mode: create, validate with errors, fix, submit, review, approve, send back, resubmit, reject, delete draft, role switch, attachments and comments, language switch, tablet width. Fails on any console error |
-| `npm run test:a11y` | axe-core on every page, every tab of a request (including grid tabs), messages, combobox and dialogs, in light and dark mode; fails on serious or critical violations |
-
-The e2e tests run against a production static export (`next build`, served by `tests/e2e/serve.mjs`) in parallel workers, because each
-browser context has its own demo data. Backend tests: `cd ../../backend && npm test` (mapping, batch parsing, authentication modes).
-
-Playwright (`@playwright/test`) and `axe-core` are **dev dependencies only**: they run tests and never reach the shipped bundle. No
-runtime dependency was added beyond Next and React.
-
-## Odata contract changes
-
-Added to `odata/metadata.xml` and `odata/service-contract.md` (SAP must implement them; nothing here is invented SAP behaviour):
-
-- `AttachmentSet` (media resource: upload, download, delete; 10 MB limit and an allowed-types list in the backend) and `CommentSet`
-  (read, add), both reachable from `RequestSet`, and the flags `CanAttach` and `CanComment` on `RequestSet` (derived by SAP for the calling user).
-
-## What SAP must implement
-
-- The whole service `ZMM_MDM_SRV` (`sap-backend/` holds ABAP written **without access to SAP**; nothing has been compiled, activated or run).
-- Attachments and comments (above), including `CanAttach` and `CanComment`.
-- For the change (MX) and extension (ME) flows, not built in the front end: `SearchMaterial`, `StartChange`, `GetCurrentValues`, and an
-  `AppId` parameter on `GetFieldControl` (see the last section of `odata/service-contract.md`). The editor itself is already generic
-  over `AppId`.
-
-## Verified and not verified
-
-Verified (automated): type check, unit tests, the demo workflow end to end in a real browser (Chromium), accessibility of every page in
-light and dark mode, tablet width, console errors, the hub backend mapping and authentication functions with unit tests.
-
-Not verified: **live mode has never run against a real Gateway** (the SAP service does not exist yet, the ABAP was never compiled), the
-backend routes have not been called with a real hub session, the German texts have not been reviewed by a native speaker, and the app
-was not tested on other browsers than Chromium. Browser Back inside the app gets no unsaved-changes warning (the Next.js app router
-does not let an app intercept it).
+**Delete** is draft-only (status 00), as agreed in the FS. Change (MX) and extension (ME) are
+shown as phase 2.
 
 ## Structure
 
-    src/app/                 pages (home, requests, requests/new, requests/view)
-    src/components/          editor, form, grid, combobox, messages, timeline, attachments and comments
-    src/lib/                 types, api (demo and live behind one interface), messages, units, value help, grid rows
-    src/lib/demo/            demo service and demo rules (browser)
-    src/i18n/                texts (en, de) and t()
-    src/data/                form definition (dictionary metadata and the demo's field control)
-    odata/                   metadata.xml and the service contract
-    sap-backend/             ABAP of the Gateway service (not compiled)
-    tests/                   vitest unit tests; tests/e2e Playwright and axe
-    ../../backend/mmMdm*.js  the hub backend module (routes, OData client, field map)
-    scripts/                 build helpers (rename-export, regenerate backend/mmMdmFields.json)
+```
+app/master/hierarchy            Product Hierarchy & CRS set-up (ZMDM_PH): product hierarchy creation or CRS product grouping
+app/master/material/            Home (waiting for me, my requests)
+app/master/material/new         New material request (V_INIT)
+app/master/material/requests    Search (V_SEARCH)
+app/master/material/requests/view  Request page, ?id=<TransId> (static export: no dynamic segment) (initiator / reviewer / approver / forward / display)
+app/master/material/data        Posted materials, "use as reference"
+lib/service.ts                  Demo ZMM_MDM_SRV: all rules
+lib/workflowConfig.ts           Levels, users, workflow definition, statuses (WF_DEF, WF_LVL, WF_ROLE, USR_DEP)
+lib/fieldConfig.ts              Key data fields (required flags), field lookup and display helpers
+lib/materialViews.ts            The 24 SAP material views: blocks, fields, value lists, rule defaults
+lib/viewVisibility.ts           MOCK of the backend View Visibility table (which level sees / may change which view)
+lib/valueHelps.ts               MOCK value helps (F4 lists) and product hierarchy – replace with SAP calls to go live
+components/ValueHelp.tsx        F4 field, value help pop-up, product hierarchy pop-up, long text
+lib/mockData.ts                 Posted materials and one request at every stage
+lib/setupData.ts                MOCK CRS value helps, created hierarchy nodes and CRS groupings (localStorage)
+```
 
-## Look and feel
+## Assumptions to confirm (open items)
 
-The app looks like the other Emami Apps (Cascade Pricing, Costing Cockpit): the hub palette (plum accent, dark brand bar), Inter for text and Sora for headings (the sibling apps' web-font links, with system fonts as the fallback), a slow aurora behind frosted glass panels, and a left side pane with the Emami Apps logo (a link back to the hub), grouped navigation with icons and the page title in a glass header. Below 1024 px the side pane is a drawer opened with the menu button. It is plain CSS with variables in `src/app/globals.css` (a light and a dark set, WCAG AA checked with axe), no CSS framework; the icons are inline SVG (`src/components/icons.tsx`). Nothing functional changed.
+1. **Status code meanings** 00–05 above – confirm against M_TRANS / CM_META.
+2. **Resubmit after send back** goes to level 1 (`RESUBMIT_TO` in workflowConfig.ts; can be set to the sending level).
+3. **Forward** = ask another agent for input, work item returns to the same level. Confirm against V_FORWARD / FRD_STS.
+4. **View visibility comes from the backend.** The portal asks `getViewVisibility(materialType, level)` in lib/service.ts and shows only what it returns. The backend must return one row per material type, level and view: `materialType` (MTART), `level` (0 = initiator, 1–7 = reviewer level), `view` (portal view id, see lib/materialViews.ts) and `readOnly` (true = display only). Until then lib/viewVisibility.ts holds a copy of Material_view_MDM.docx for FERT (FRT2 and WIP use the same rows): L1 Sales edits Basic Data, Plant Data Storage 1, Sales Gen/Plant, MRP 1–2, Sales Org 1–2, Sales Tax; L2 CRS reviews its sales views read-only; L3 Legal edits Foreign Trade Export/Import; L4 Quality edits Basic Data, Costing 1–2, MRP 1–4, Purchasing, Accounting 1–2, Quality Management, Text, Work Scheduling (the standard price check runs here); L5 Supply Chain edits Basic Data; L6 CQA edits Plant Data Storage 1 and MRP 1; L7 MDM sees every view and edits Foreign Trade Export only. Forecasting, Warehouse Mgmt 1/2 and Plant Data Storage 2 are editable by no level in the document – to confirm.
+5. **Description** is free text, 40 characters (MAKTX); long text up to 1000 characters.
+6. **TransId format** `MC` + 10 digits – confirm against M_TRANSID_GENERATE.
+7. **FERT, FRT2 and WIP** share one workflow definition; other material types are listed but blocked.
+8. **Product hierarchy** = six 3-digit codes appended in order (Banner + Brand + Product + SKU + Variant + Scheme = 18 characters).
+9. **Required key fields** follow the SAP asterisks (material type, industry sector, material group, division, description, plant, storage location, sales org, distribution channel); change them in `KEY_FIELDS`.
+10. All value-help contents are **mock** (FRT2/WIP texts, material groups 413–414, verticals, schemes, divisions, plants, hierarchy). Sales extension / mass sales extension is planned for later.
+11. **Product Hierarchy & CRS (ZMDM_PH)** runs before material creation. New hierarchy nodes are added under their parent and show up at once in the material request's hierarchy pop-up. The **CRS grouping** key is built as CRS product + product group + SKU group + size and unit (e.g. `CP0001PG1SG2-50G`) – confirm the real format. Attachments keep only the file name and size in the demo.
