@@ -4,7 +4,7 @@ import type { FreightRow } from '@/lib/sap/fields';
 
 const comp = (material: string, plant = '1000'): Component => ({ key: `${plant}|${material}`, material, text: `${material} text`, plant, mtart: 'ROH' });
 const row = (p: Partial<FreightRow>): FreightRow => ({
-  RowId: 'x', Material: 'RM1', Matdesc: '', Plant: '1000', Conditiontype: 'ZFR1', Purchasedocument: '4500000001', Purchaseline: '00010', Podate: '2026-10-10', Baseunit: 'KG', Matuom: 'KG',
+  RowId: 0, Bukrs: '', FgMatnr: '', Lifnr: '', Name1: '', Belnr: '', Xblnr: '', Ztmode: '', GstPart: '', PlcSup: '', Material: 'RM1', Matdesc: '', Plant: '1000', Conditiontype: 'ZFR1', Purchasedocument: '4500000001', Purchaseline: '00010', Podate: '2026-10-10', Baseunit: 'KG', Matuom: 'KG',
   Currency: 'INR', Localcurrency: 'INR', Actualdelvquantity: '100', Actualdelvcostamount: '120', ActRate: '1.2', Stddelvquantity: '100', Stddelvcostamount: '100', StdRate: '1', UsedSrc: 'ACTUAL',
   UsedRate: '1.2', UsedRatePc: '1.2', FxFactor: '1', UsedPcLoc: '1.2', FxInr: '1', UsedPcInr: '1.2', ...p,
 }) as FreightRow;

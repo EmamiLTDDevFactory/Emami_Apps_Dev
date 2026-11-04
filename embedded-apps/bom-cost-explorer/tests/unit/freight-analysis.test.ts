@@ -4,7 +4,7 @@ import type { FreightRow, RmPmRow } from '@/lib/sap/fields';
 
 const rm = (Material: string, Mtart: string, Plant = '1000'): Pick<RmPmRow, 'Material' | 'Matdesc' | 'Mtart' | 'Plant'> => ({ Material, Matdesc: `${Material} text`, Mtart, Plant });
 const po = (o: Partial<FreightRow>): FreightRow => ({
-  RowId: '', Material: 'RM1', Matdesc: '', Plant: '1000', Conditiontype: 'ZFR1', Purchasedocument: '4500000001', Purchaseline: '00010', Podate: '2026-09-10',
+  RowId: 0, Bukrs: '', FgMatnr: '', Lifnr: '', Name1: '', Belnr: '', Xblnr: '', Ztmode: '', GstPart: '', PlcSup: '', Material: 'RM1', Matdesc: '', Plant: '1000', Conditiontype: 'ZFR1', Purchasedocument: '4500000001', Purchaseline: '00010', Podate: '2026-09-10',
   Baseunit: 'KG', Matuom: 'KG', Currency: 'INR', Localcurrency: 'INR', Actualdelvquantity: '100', Actualdelvcostamount: '110', ActRate: '1.1',
   Stddelvquantity: '100', Stddelvcostamount: '100', StdRate: '1', UsedSrc: 'ACTUAL', UsedRate: '1.1', UsedRatePc: '1.1', FxFactor: '1', UsedPcLoc: '1.1', FxInr: '1', UsedPcInr: '1.1', ...o,
 });

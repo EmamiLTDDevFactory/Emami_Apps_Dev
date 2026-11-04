@@ -233,7 +233,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
         <table className="w-full text-sm">
           <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th></tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th></tr>
           </thead>
           <tbody>
             {poRows.map((r) => {
@@ -247,6 +247,14 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
                   <td className={cx(td, 'font-mono')}>{r.line || '—'}</td>
                   <td className={cx(td, 'whitespace-nowrap')}>{r.poDate}</td>
                   <td className={cx(td, 'font-mono')}>{r.cond || '—'}</td>
+                  <td className={td}>{r.vendor || r.vendorName ? <><span className="font-mono font-bold">{r.vendor}</span> <span className="text-muted">{r.vendorName}</span></> : '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.gstPartner || '—'}</td>
+                  <td className={td}>{r.placeOfSupply || '—'}</td>
+                  <td className={td}>{r.transportMode || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.accDoc || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.reference || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.companyCode || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.fgMaterial || '—'}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? <>{fmtNum(r.actualQty, 3)} <span className="text-2xs text-muted">{r.unit}</span></> : <span className="text-faint">—</span>}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? fmtNum(r.actualAmount, 2, 'INR') : '—'}</td>
                   <td className={tdN}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual delivery on this PO line">—</span>}</td>
@@ -258,7 +266,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
                 </tr>
               );
             })}
-            {!poRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
+            {!poRows.length && <tr><td colSpan={22} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
           </tbody>
         </table>
       </div>

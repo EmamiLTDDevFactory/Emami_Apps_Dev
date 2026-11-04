@@ -371,7 +371,9 @@ function freight(p: Params, msgs: Msg[]): Raw[] {
         const id = `${mat}-${w}-${i}`;
         rows.push({
           ...meta('FreightRow', `${ENTITY_SET.FREIGHT}('${id}')`),
-          RowId: id, Material: mat, Matdesc: m.Maktx, Plant: w, Conditiontype: 'ZFR1',
+          Rowid: hash(id) % 1e9, Material: mat, Matdesc: m.Maktx, Plant: w, Conditiontype: 'ZFR1',
+          Bukrs: '1000', FgMatnr: `FG${String(hash(id) % 9000 + 1000)}`, Lifnr: `00${String(10000 + (hash(id + 'v') % 90000))}`, Name1: ['Blue Dart Logistics', 'Safexpress Pvt Ltd', 'VRL Logistics'][hash(id + 'n') % 3],
+          Belnr: `51${String(hash(id + 'b') % 1e8).padStart(8, '0')}`, Xblnr: `INV/${hash(id + 'x') % 99999}`, Ztmode: ['T01', 'T02', 'T03'][hash(id + 't') % 3], GstPart: `19AAAC${String(hash(id + 'g') % 9999).padStart(4, '0')}`.slice(0, 10), PlcSup: 'WB',
           Purchasedocument: `45${String(hash(id) % 1e8).padStart(8, '0')}`, Purchaseline: String((i + 1) * 10).padStart(5, '0'),
           Podate: d(new Date(Date.parse('2026-10-01') - days * 86400000).toISOString().slice(0, 10)), Baseunit: m.Meins, Matuom: m.Meins,
           Currency: loc, Localcurrency: loc, Actualdelvquantity: n(hasAct ? qty : 0, 3), Actualdelvcostamount: n(hasAct ? qty * actRate : 0, 2),

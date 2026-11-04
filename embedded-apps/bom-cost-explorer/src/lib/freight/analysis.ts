@@ -37,6 +37,7 @@ export function componentsOf(rows: Pick<RmPmRow, 'Material' | 'Matdesc' | 'Mtart
 export interface DateRange { from: string; to: string } // YYYY-MM-DD, both days included
 
 const isExcluded = (r: Pick<FreightRow, 'UsedSrc'>) => String(r.UsedSrc ?? '').trim().toUpperCase() === 'EXCLUDED';
+const tx = (v: string | null | undefined) => String(v ?? '').trim();
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 
 /** Days of SAP's freight window needed to reach back to `from` from today (FreightDays counts back from today; max 3650 on the service). */
@@ -112,6 +113,15 @@ export interface PoLine {
   mtart: string;
   po: string;
   line: string;
+  vendor: string;
+  vendorName: string;
+  gstPartner: string;
+  placeOfSupply: string;
+  transportMode: string;
+  accDoc: string;
+  reference: string;
+  companyCode: string;
+  fgMaterial: string;
   /** YYYY-MM-DD */
   poDate: string;
   /** freight condition type of the line (for example ZFR1) */
@@ -154,6 +164,8 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     out.push({
       key: `${k}|${r.Purchasedocument}|${r.Purchaseline}|${r.Conditiontype}|${i}`, plant: c.plant, material: c.material, text: c.text, mtart: c.mtart,
       po: String(r.Purchasedocument ?? '').trim(), line: String(r.Purchaseline ?? '').trim(), poDate: d, cond: String(r.Conditiontype ?? '').trim(),
+      vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode),
+      accDoc: tx(r.Belnr), reference: tx(r.Xblnr), companyCode: tx(r.Bukrs), fgMaterial: tx(r.FgMatnr),
       unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
       actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
       actual, standard, variance, variancePct: variance && standard && !standard.isZero() ? variance.div(standard).times(100) : null,
@@ -261,6 +273,15 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'PO line', width: 8, get: (i) => rows[i].line },
       { header: 'PO date', width: 12, get: (i) => rows[i].poDate },
       { header: 'Freight condition', width: 10, get: (i) => rows[i].cond },
+      { header: 'Vendor', width: 12, get: (i) => rows[i].vendor },
+      { header: 'Vendor name', width: 30, get: (i) => rows[i].vendorName },
+      { header: 'GST partner', width: 18, get: (i) => rows[i].gstPartner },
+      { header: 'Place of supply', width: 14, get: (i) => rows[i].placeOfSupply },
+      { header: 'Transporter', width: 12, get: (i) => rows[i].transportMode },
+      { header: 'Accounting document', width: 16, get: (i) => rows[i].accDoc },
+      { header: 'Reference', width: 16, get: (i) => rows[i].reference },
+      { header: 'Company code', width: 10, get: (i) => rows[i].companyCode },
+      { header: 'FG material', width: 14, get: (i) => rows[i].fgMaterial },
       { header: 'Unit', width: 6, get: (i) => rows[i].unit },
       { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
       { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },

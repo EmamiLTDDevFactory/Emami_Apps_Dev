@@ -204,7 +204,16 @@ export const RATE_ROW = def({
 
 /** FreightRowSet: one row per PO line (Material, Plant, Podate, Conditiontype). */
 export const FREIGHT_ROW = def({
-  RowId: ['RowId', 's'],
+  RowId: ['Rowid', 'i'], // live: Rowid, Edm.Int32 (key)
+  Bukrs: ['Bukrs', 's'],
+  FgMatnr: ['FgMatnr', 's'],
+  Lifnr: ['Lifnr', 's'],
+  Name1: ['Name1', 's'],
+  Belnr: ['Belnr', 's'],
+  Xblnr: ['Xblnr', 's'],
+  Ztmode: ['Ztmode', 's'],
+  GstPart: ['GstPart', 's'],
+  PlcSup: ['PlcSup', 's'],
   Material: ['Material', 's'],
   Matdesc: ['Matdesc', 's'],
   Plant: ['Plant', 's'],
