@@ -34,6 +34,7 @@ export default function ManageTeamPage() {
     unassignedEmployees,
     claimEmployee,
     setEmployeeVendor,
+    setEmployeeEmail,
     fetchPendingRequests,
     approveEmployee,
     rejectEmployee,
@@ -77,6 +78,10 @@ export default function ManageTeamPage() {
   // each row needs its own independent selection before its own "Add to my team" button works.
   const [claimVendorIds, setClaimVendorIds] = useState<Record<string, string>>({});
   const [savingVendorUserId, setSavingVendorUserId] = useState<string | null>(null);
+  // The direct report whose email is being edited inline, and the in-progress value.
+  const [editingEmailUserId, setEditingEmailUserId] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState('');
+  const [savingEmailUserId, setSavingEmailUserId] = useState<string | null>(null);
   // People who've specifically named this manager as theirs and are waiting on a yes/no -
   // distinct from unassignedEmployees below (nobody's picked those people at all yet).
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
@@ -303,6 +308,38 @@ export default function ManageTeamPage() {
       showToast(err.message || 'Failed to update vendor.', 'error');
     } finally {
       setSavingVendorUserId(null);
+    }
+  }
+
+  function startEditEmail(user: any) {
+    setEditingEmailUserId(user.id);
+    setEmailDraft(user.email);
+  }
+
+  function cancelEditEmail() {
+    setEditingEmailUserId(null);
+    setEmailDraft('');
+  }
+
+  async function handleSaveEmail(user: any) {
+    const email = emailDraft.trim().toLowerCase();
+    if (!email || email === user.email) {
+      cancelEditEmail();
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast('Enter a valid email address.', 'error');
+      return;
+    }
+    setSavingEmailUserId(user.id);
+    try {
+      await setEmployeeEmail(user.id, email);
+      showToast('Email updated.', 'success');
+      cancelEditEmail();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update email.', 'error');
+    } finally {
+      setSavingEmailUserId(null);
     }
   }
 
@@ -541,7 +578,57 @@ export default function ManageTeamPage() {
               <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="font-medium text-ink">{user.name}</p>
-                  <p className="text-xs text-inkSoft">{user.email}</p>
+                  {editingEmailUserId === user.id ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSaveEmail(user);
+                      }}
+                      className="mt-0.5 flex flex-wrap items-center gap-1.5"
+                    >
+                      <input
+                        type="email"
+                        autoFocus
+                        value={emailDraft}
+                        disabled={savingEmailUserId === user.id}
+                        onChange={(e) => setEmailDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Escape' && cancelEditEmail()}
+                        aria-label={`Email for ${user.name}`}
+                        className="w-64 max-w-full rounded-md border border-border bg-white px-2 py-0.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-rust disabled:opacity-50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={savingEmailUserId === user.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-green px-2.5 py-0.5 text-xs font-medium text-white hover:bg-green/90 disabled:opacity-50"
+                      >
+                        <Check size={11} />
+                        {savingEmailUserId === user.id ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditEmail}
+                        disabled={savingEmailUserId === user.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-inkSoft hover:bg-appBg disabled:opacity-50"
+                      >
+                        <X size={11} />
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-xs text-inkSoft">
+                      {user.email}
+                      <button
+                        type="button"
+                        onClick={() => startEditEmail(user)}
+                        aria-label={`Edit email for ${user.name}`}
+                        title="Edit email"
+                        className="inline-flex items-center gap-1 rounded-full border border-blue/30 bg-blueBg px-2 py-0.5 text-[11px] font-medium text-blue hover:bg-blue/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue"
+                      >
+                        <Pencil size={10} />
+                        Edit
+                      </button>
+                    </p>
+                  )}
                   <label className="mt-1 flex items-center gap-1.5 text-xs text-inkSoft">
                     Vendor
                     <select
