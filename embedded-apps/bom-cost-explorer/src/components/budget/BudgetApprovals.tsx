@@ -5,15 +5,12 @@
  * everything pending in one go: "Approve all" below does the same, one version after the other). SAP's authority check is the real gate.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, FileSpreadsheet, Lock, RefreshCw } from 'lucide-react';
-import PlanFrame from '../plan/PlanFrame';
+import { CheckCircle2, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { Button, Card, Drawer, Empty, Modal, Pill, Skeleton, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
 import WacMessages from '../wac/WacMessages';
-import { useHubSession } from '@/lib/client/session';
 import { fmtDate, fmtNum } from '@/lib/format';
-import { abortAll } from '@/lib/wac/cache';
 import { approveBudget } from '@/lib/budget/write';
-import { canApproveBudget, useBudgetRole } from '@/lib/budget/roles';
+import { canApproveBudget } from '@/lib/budget/roles';
 import { pendingDetKey, pendingKey, startPending, startPendingDet, useEntry } from '@/lib/budget/useBudget';
 import { groupPending, type PendingGroup } from '@/lib/budget/view';
 import { downloadBudget, pendingDetSheet, pendingSheet } from '@/lib/budget/export';
@@ -22,11 +19,9 @@ import type { BudgetPendingDetRow, BudgetPendingRow } from '@/lib/budget/types';
 const CTX = 'budget-approvals';
 type Tab = 'lines' | 'components';
 
-function Screen() {
-  const hub = useHubSession();
-  const email = hub && hub !== 'checking' ? hub.email : '';
-  const role = useBudgetRole(email);
-  const allowed = typeof role === 'string' && role !== 'checking' && canApproveBudget(role);
+/** The "Approvals" tab of the Budget page (BudgetHub). The hub mounts it on first open, so the pending list loads then and never on page load. */
+export default function BudgetApprovals({ email, role }: { email: string; role: string }) {
+  const allowed = canApproveBudget(role);
   const entry = useEntry<BudgetPendingRow>(email ? pendingKey(email) : null);
   const groups = useMemo(() => groupPending(entry?.status === 'done' ? entry.data ?? [] : []), [entry]);
   const [view, setView] = useState<PendingGroup | null>(null);
@@ -35,10 +30,8 @@ function Screen() {
 
   const load = useCallback((force = false) => { if (email) void startPending(email, CTX, force); }, [email]);
   useEffect(() => { if (allowed) load(false); }, [allowed, load]);
-  useEffect(() => () => abortAll(), []);
 
-  if (hub === 'checking' || role === 'checking') return <div className="grid place-items-center py-24"><Spinner /></div>;
-  if (!allowed) return <Card><Empty title="Budget approvals are not open to you" icon={<Lock size={28} />}>Ask an admin to give you the budget-approve role for Costing Cockpit in Manage Access.</Empty></Card>;
+  if (!allowed) return null; // fail closed: the hub shows this tab only with the budget-approve (or Admin) role
 
   return (
     <>
@@ -172,6 +165,3 @@ function ApproveModal({ groups, email, onClose, onDone }: { groups: PendingGroup
   );
 }
 
-export default function BudgetApprovals() {
-  return <PlanFrame active="budget-approvals"><Screen /></PlanFrame>;
-}

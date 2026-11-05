@@ -11,11 +11,11 @@ describe('budget module switches and contract', () => {
     const { BUDGET_ENABLED } = await import('@/lib/budget/flag');
     expect(BUDGET_ENABLED).toBe(false);
   });
-  it('both routes import their screen only behind the literal flag check (so the build drops it)', () => {
-    for (const f of ['src/app/budget-cost/page.tsx', 'src/app/budget-cost/approvals/page.tsx']) {
-      const src = readFileSync(join(process.cwd(), f), 'utf8');
-      expect(src).toContain("process.env.NEXT_PUBLIC_BUDGET_ENABLED === 'true' ? dynamic(");
-    }
+  it('the Budget route imports its page only behind the literal flag check (so the build drops it); the old approvals route is a plain redirect with no budget code', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/budget-cost/page.tsx'), 'utf8');
+    expect(page).toContain("process.env.NEXT_PUBLIC_BUDGET_ENABLED === 'true' ? dynamic(() => import('@/components/budget/BudgetHub')");
+    const old = readFileSync(join(process.cwd(), 'src/app/budget-cost/approvals/page.tsx'), 'utf8');
+    expect(old).not.toMatch(/components\/budget|BudgetSumSet|startPending/);
   });
   it('the deployed build keeps the module off until SAP publishes the sets', () => {
     const cfg = readFileSync(join(process.cwd(), 'next.config.mjs'), 'utf8');

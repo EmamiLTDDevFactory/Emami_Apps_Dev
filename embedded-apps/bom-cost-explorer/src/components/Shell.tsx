@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, BellRing, Boxes, Calculator, Calendar, CheckCheck, Factory, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BellRing, Boxes, Calculator, Calendar, Factory, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { AI_ENABLED } from '@/lib/ai/config';
 import { WATCH_ENABLED } from '@/lib/watch/api';
@@ -11,7 +11,7 @@ import { COGM_ENABLED } from '@/lib/margin/flag';
 import { canDisplay } from '@/lib/margin/roles';
 import { CK_ENABLED } from '@/lib/ck/flag';
 import { BUDGET_ENABLED } from '@/lib/budget/flag';
-import { canApproveBudget, canDisplayBudget, canInitiateBudget } from '@/lib/budget/roles';
+import { budgetNavItems } from '@/lib/budget/roles';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
 import { fetchAppRole, fetchIsAdmin } from '@/lib/client/hubAccess';
@@ -50,7 +50,7 @@ export function nameFromEmail(email: string): string {
 
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-approvals';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget';
 
 function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '', budgetRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string; budgetRole?: string }) {
   const pane = wide
@@ -96,13 +96,12 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
               <NavLink href={`${BASE_PATH}/margin/data/`} icon={Tags} label="Data" hint="Prices, rules, volumes, budgets, targets" active={planActive === 'margin-data'} />
             </>
           )}
-          {BUDGET_ENABLED && canDisplayBudget(budgetRole) && (
-            <>
+          {budgetNavItems(BUDGET_ENABLED, budgetRole).map((n) => (
+            <div key={n.path}>
               <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Budget</p>
-              {(canInitiateBudget(budgetRole) || budgetRole === 'Admin') && <NavLink href={`${BASE_PATH}/budget-cost/`} icon={Calculator} label="Budget costing" hint="FG budget cost, split, initiate" active={planActive === 'budget'} />}
-              {canApproveBudget(budgetRole) && <NavLink href={`${BASE_PATH}/budget-cost/approvals/`} icon={CheckCheck} label="Budget approvals" hint="Pending versions to approve" active={planActive === 'budget-approvals'} />}
-            </>
-          )}
+              <NavLink href={`${BASE_PATH}${n.path}`} icon={Calculator} label={n.label} hint="Run, BOM checklist, approvals" active={planActive === 'budget'} />
+            </div>
+          ))}
           {PLAN_MODULE_ENABLED && (
             <>
               <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Production plan</p>

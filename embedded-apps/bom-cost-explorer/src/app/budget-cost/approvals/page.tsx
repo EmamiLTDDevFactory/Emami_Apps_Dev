@@ -1,9 +1,10 @@
 'use client';
-import dynamic from 'next/dynamic';
-import { BudgetDisabled } from '@/components/budget/BudgetDisabled';
-
-const Screen = process.env.NEXT_PUBLIC_BUDGET_ENABLED === 'true' ? dynamic(() => import('@/components/budget/BudgetApprovals'), { ssr: false }) : null;
+// The old Budget approvals page: approvals are now a tab of the Budget page, so this only forwards old links and bookmarks.
+import { useEffect } from 'react';
+import { BASE_PATH } from '@/lib/client/session';
+import { budgetApprovalsTarget } from '@/lib/budget/tabs';
 
 export default function Page() {
-  return Screen ? <Screen /> : <BudgetDisabled />;
+  useEffect(() => { window.location.replace(budgetApprovalsTarget(BASE_PATH)); }, []);
+  return <p className="p-6 text-sm text-muted">Opening Budget approvals…</p>;
 }

@@ -120,3 +120,18 @@ export function buildPendingFilter(appUser: string, key?: { gjahr?: string; vers
 
 /** Initiate is only allowed for the report's "exclude division" run (all business lines), exactly like the SAP message. */
 export const INITIATE_BLOCKED = 'Initiate without exclude division is not possible. Tick "All business lines" and run again.';
+
+/** Number of options switched on in a selection: the yes / no options of the form plus each cost override row. */
+export function optionCount(q: BudgetQuery): number {
+  return [q.exclDiv, q.exclManuf, q.onlyOverrides, q.oneSkuPerCrs, q.inclDirect && q.source === 'G', q.bomQtyX10, q.checklist].filter(Boolean).length + q.overrides.filter((o) => s(o.matnr)).length;
+}
+
+/** One line for the collapsed selection bar after a run: period, plants, FG source, business line, number of options. */
+export function selectionSummary(q: BudgetQuery): { period: string; plants: string; source: string; business: string; options: number } {
+  const business = q.exclDiv || !q.business ? 'All business lines' : `${BUSINESS_LABEL[q.business]} (${q.business})`;
+  return {
+    period: `${s(q.budatFrom) || '?'} to ${s(q.budatTo) || 'today'}`,
+    plants: q.plants.map((p) => p.trim().toUpperCase()).filter(Boolean).join(', ') || 'no plant',
+    source: SOURCE_LABEL[q.source], business, options: optionCount(q),
+  };
+}

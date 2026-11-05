@@ -6,44 +6,36 @@
  * selection until Refresh, and leaving the page aborts what is running.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, FileSpreadsheet, Lock, Play, RefreshCw, Send, Square } from 'lucide-react';
-import PlanFrame from '../plan/PlanFrame';
+import { CheckCircle2, FileSpreadsheet, Pencil, Play, RefreshCw, Send, Square } from 'lucide-react';
 import type { PlantsState } from '../FilterPanel';
-import { Button, Card, Empty, Modal, Pill, Skeleton, Spinner, Stat, Tabs, cx, inputCls } from '../ui';
+import { Button, Card, Empty, Modal, Pill, Skeleton, Spinner, Stat, cx, inputCls } from '../ui';
 import WacMessages from '../wac/WacMessages';
 import BudgetForm from './BudgetForm';
 import BudgetTable from './BudgetTable';
 import SplitDrawer from './SplitDrawer';
 import { api } from '@/lib/client/api';
-import { useHubSession, BASE_PATH } from '@/lib/client/session';
 import type { PlantRow } from '@/lib/sap/fields';
 import { fmtMs, fmtNum } from '@/lib/format';
-import { abortAll, invalidate, stop } from '@/lib/wac/cache';
+import { invalidate, stop } from '@/lib/wac/cache';
 import { FilterError } from '@/lib/sap/filter';
-import { buildBudgetFilter, defaultBudgetQuery, INITIATE_BLOCKED, validateBudget, type BudgetQuery } from '@/lib/budget/filter';
-import { checkKey, runKey, startCheck, startRun, useEntry } from '@/lib/budget/useBudget';
+import { buildBudgetFilter, defaultBudgetQuery, INITIATE_BLOCKED, selectionSummary, validateBudget, type BudgetQuery } from '@/lib/budget/filter';
+import { runKey, startRun, useEntry } from '@/lib/budget/useBudget';
 import { initiateBudget } from '@/lib/budget/write';
-import { canDisplayBudget, canInitiateBudget, useBudgetRole } from '@/lib/budget/roles';
+import { canDisplayBudget, canInitiateBudget } from '@/lib/budget/roles';
 import { DEFAULT_GROUPS, GROUP_LABEL, SUMMARY_COLS, colsOf, distinctRunIds, filterIssues, issuesOf, kpis, rowKey, searchRows, type ColGroup } from '@/lib/budget/view';
-import { checkSheet, downloadBudget, paramsOf, summarySheet } from '@/lib/budget/export';
-import type { BudgetCheckRow, BudgetInitResult, BudgetSummaryRow } from '@/lib/budget/types';
+import { downloadBudget, paramsOf, summarySheet } from '@/lib/budget/export';
+import type { BudgetInitResult, BudgetSummaryRow } from '@/lib/budget/types';
 
-type Tab = 'summary' | 'checklist';
 const CTX = 'budget-run';
 const SEARCH_KEYS = ['Matnr', 'Maktx', 'Zskugrcodecrs', 'Zskugroupcrs', 'Zscheme', 'WipCode', 'WipDesc', 'Werks'];
 
-function Locked({ text }: { text: string }) {
-  return <Card><Empty title="Budget costing is not open to you" icon={<Lock size={28} />}>{text}</Empty></Card>;
-}
-
-function Screen() {
-  const hub = useHubSession();
-  const email = hub && hub !== 'checking' ? hub.email : '';
-  const role = useBudgetRole(email);
+/** The "Run and summary" tab of the Budget page (BudgetHub). It lives as long as the page, so a run survives tab switches. */
+export default function BudgetScreen({ email, role, onRun, onOpenApprovals }: { email: string; role: string; /** the selection of the last run, for the BOM checklist tab */ onRun: (q: BudgetQuery) => void; onOpenApprovals?: () => void }) {
   const [form, setForm] = useState<BudgetQuery>(() => defaultBudgetQuery());
   const patch = useCallback((p: Partial<BudgetQuery>) => setForm((f) => ({ ...f, ...p })), []);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [tab, setTab] = useState<Tab>('summary');
+  // After a run the selection card folds into a one-line bar; Edit selection opens it again.
+  const [editing, setEditing] = useState(true);
   const [runQ, setRunQ] = useState<BudgetQuery | null>(null);
   const [progress, setProgress] = useState('');
   const [groups, setGroups] = useState<Set<ColGroup>>(new Set(DEFAULT_GROUPS));
@@ -59,14 +51,12 @@ function Screen() {
     setPlantsLoading(true); setPlantsErr('');
     api.plants().then((r) => setPlants(r.plants)).catch((e) => setPlantsErr(e.message)).finally(() => setPlantsLoading(false));
   }, []);
-  const allowed = typeof role === 'string' && role !== 'checking' && canDisplayBudget(role);
+  const allowed = canDisplayBudget(role);
   useEffect(() => { if (allowed) loadPlants(); }, [allowed, loadPlants]);
   const plantsState: PlantsState = useMemo(() => ({ plants, loading: plantsLoading, error: plantsErr, reload: loadPlants }), [plants, plantsLoading, plantsErr, loadPlants]);
-  useEffect(() => () => abortAll(), []); // leaving the page ends every running request
 
   const key = runKey(runQ, email);
   const entry = useEntry<BudgetSummaryRow>(key);
-  const chkEntry = useEntry<BudgetCheckRow>(runQ ? safe(() => checkKey(runQ, email)) : null);
   const formKey = safe(() => runKey(form, email));
   const stale = !!runQ && formKey !== key;
   const rows = useMemo(() => (entry?.status === 'done' ? entry.data ?? [] : []), [entry]);
@@ -74,7 +64,7 @@ function Screen() {
   const shown = useMemo(() => searchRows(onlyIssues ? filterIssues(rows) : rows, search, SEARCH_KEYS), [rows, onlyIssues, search]);
   const cols = useMemo(() => colsOf(groups), [groups]);
   const running = entry?.status === 'loading';
-  const canInit = typeof role === 'string' && canInitiateBudget(role);
+  const canInit = canInitiateBudget(role);
 
   const run = (force = false) => {
     const e = validateBudget(form);
@@ -82,34 +72,39 @@ function Screen() {
     if (Object.keys(e).length) return;
     try { buildBudgetFilter(form, { werks: form.plants[0] }); } catch (x) { if (x instanceof FilterError) { setErrors({ _: x.message }); return; } throw x; }
     const snap = structuredClone(form);
-    setRunQ(snap); setTab('summary'); setOpen(null);
+    setRunQ(snap); onRun(snap); setEditing(false); setOpen(null);
     if (force) invalidate(CTX);
     setProgress('');
     void startRun(snap, CTX, email, force, (w, i, n) => setProgress(`Plant ${w} (${i + 1} of ${n})`));
   };
-  const runChecklist = (force = false) => { if (runQ) void startCheck(runQ, CTX, email, force); };
 
   const toggleGroup = (g: ColGroup) => setGroups((s) => { const n = new Set(s); if (n.has(g)) n.delete(g); else n.add(g); n.add('core'); return n; });
   const exportXlsx = () => {
     if (!runQ) return;
     const sheets = [summarySheet(shown, cols)];
-    if (chkEntry?.status === 'done') sheets.push(checkSheet(chkEntry.data ?? []));
     void downloadBudget(sheets, paramsOf(runQ, [['Rows', String(shown.length)], ['SAP time', fmtMs(entry?.ms ?? 0)]]));
   };
 
-  if (hub === 'checking' || role === 'checking') return <div className="grid place-items-center py-24"><Spinner /></div>;
-  if (!allowed) return <Locked text="Ask an admin to give you the budget-init or budget-approve role for Costing Cockpit in Manage Access." />;
+  if (!allowed) return null; // the hub only shows this tab to people who may see it; fail closed anyway
+  const sum = runQ ? selectionSummary(runQ) : null;
 
   return (
     <>
-      <Card title="Selection" actions={<span className="text-2xs text-faint">Same rules as the SAP selection screen: * = required</span>}>
-        <BudgetForm q={form} onChange={patch} errors={errors} plants={plantsState} canInitiate={canInit} />
+      <Card title="Selection" actions={editing ? <span className="text-2xs text-faint">Same rules as the SAP selection screen: * = required</span> : undefined}>
+        {sum && !editing && (
+          <p className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-sunken/40 px-3 py-2 text-sm" aria-label="Selection of the last run">
+            <b>{sum.period}</b><span className="text-faint">·</span><span>plants {sum.plants}</span><span className="text-faint">·</span><span>{sum.source}</span><span className="text-faint">·</span><span>{sum.business}</span><span className="text-faint">·</span><span>{sum.options} option{sum.options === 1 ? '' : 's'} on</span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setEditing(true)} disabled={running}><Pencil size={13} /> Edit selection</Button>
+          </p>
+        )}
+        {editing && <BudgetForm q={form} onChange={patch} errors={errors} plants={plantsState} canInitiate={canInit} />}
         {errors._ && <p className="mt-2 text-sm text-bad" role="alert">{errors._}</p>}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className={cx('flex flex-wrap items-center gap-2', editing && 'mt-3')}>
           <Button variant="primary" onClick={() => run(false)} disabled={running}><Play size={14} /> Run in SAP</Button>
           {running && <Button variant="danger" onClick={() => stop(CTX)}><Square size={13} /> Stop</Button>}
           {running && <span className="flex items-center gap-2 text-sm text-muted"><Spinner /> {progress || 'Waiting for SAP…'}</span>}
           {!running && entry?.status === 'done' && <span className="text-xs text-muted">{rows.length} lines · {fmtMs(entry.ms)} in SAP</span>}
+          {runQ && editing && <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={running}>Hide selection</Button>}
         </div>
       </Card>
 
@@ -129,7 +124,6 @@ function Screen() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Tabs<Tab> label="Budget views" value={tab} onChange={setTab} tabs={[{ id: 'summary', label: 'Summary' }, { id: 'checklist', label: 'BOM checklist' }]} />
                 <span className="flex-1" />
                 {stale && <Pill tone="warn" title="The selection above is not the one that produced these rows">Selection changed: run again</Pill>}
                 <Button size="sm" onClick={() => run(true)}><RefreshCw size={13} /> Refresh</Button>
@@ -137,7 +131,7 @@ function Screen() {
                 <Button size="sm" variant="primary" disabled={!canInit || stale || !rows.length} title={!canInit ? 'You need the budget-init role' : stale ? 'Run again with the current selection first' : !runQ.exclDiv ? INITIATE_BLOCKED : 'Save this run as a new version for approval'} onClick={() => setInitOpen(true)}><Send size={13} /> Initiate</Button>
               </div>
 
-              {tab === 'summary' && (
+              {(
                 <>
                   <div className="flex flex-wrap items-center gap-2">
                     <input aria-label="Search the rows" placeholder="Search material, description, CRS, scheme, WIP…" className={cx(inputCls, 'max-w-sm')} value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -155,14 +149,6 @@ function Screen() {
                 </>
               )}
 
-              {tab === 'checklist' && (
-                <Card title="BOM and production version checklist" actions={<Button size="sm" variant="primary" onClick={() => runChecklist(chkEntry?.status === 'done')} disabled={chkEntry?.status === 'loading'}><Play size={13} /> {chkEntry?.status === 'done' ? 'Refresh' : 'Run checklist'}</Button>}>
-                  <p className="mb-2 text-sm text-muted">Finished goods whose BOMs or production versions are inactive, duplicated or out of step. SAP checks them for the selection above (the report's FG-level checklist).</p>
-                  {chkEntry?.status === 'loading' && <Skeleton rows={5} />}
-                  <WacMessages messages={chkEntry?.messages ?? []} error={chkEntry?.status === 'error' ? chkEntry.error : null} />
-                  {chkEntry?.status === 'done' && <CheckTable rows={chkEntry.data ?? []} />}
-                </Card>
-              )}
             </>
           )}
         </>
@@ -170,37 +156,14 @@ function Screen() {
       {!runQ && <Card><Empty title="Pick the period, plants and options, then Run in SAP">SAP costs each finished good: BOM explosion, component cost, activity rates and plan. Nothing is calculated in the browser.</Empty></Card>}
 
       <SplitDrawer q={runQ ?? form} row={open} appUser={email} ctx={CTX} onClose={() => setOpen(null)} />
-      {runQ && <InitiateModal open={initOpen} onClose={() => setInitOpen(false)} q={runQ} rows={rows} email={email} />}
+      {runQ && <InitiateModal open={initOpen} onClose={() => setInitOpen(false)} q={runQ} rows={rows} email={email} onOpenApprovals={onOpenApprovals} />}
     </>
   );
 }
 
 const safe = <T,>(f: () => T): T | null => { try { return f(); } catch { return null; } };
 
-function CheckTable({ rows }: { rows: BudgetCheckRow[] }) {
-  const bad = rows.filter((r) => issuesOf(r).length);
-  if (!rows.length) return <Empty title="Nothing to check">SAP returned no finished goods.</Empty>;
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm"><b>{bad.length}</b> of {rows.length} finished goods have an issue.</p>
-      <div className="scroll-thin max-h-[52vh] overflow-auto rounded-2xl border border-line">
-        <table className="w-full border-separate border-spacing-0 text-[13px]">
-          <thead><tr className="text-left text-2xs font-extrabold uppercase text-muted">{['Material', 'Description', 'Plant', 'All BoM inactive', 'All PVer inactive', 'Multiple BoM active', 'Multiple PVer unlocked', 'Alt. BoM issue'].map((h) => <th key={h} className="sticky top-0 whitespace-nowrap border-b border-line bg-sunken px-2.5 py-2">{h}</th>)}</tr></thead>
-          <tbody>
-            {[...bad, ...rows.filter((r) => !issuesOf(r).length)].map((r) => (
-              <tr key={`${r.Werks}|${r.Matnr}|${r.Rowid}`} className="odd:bg-panel even:bg-sunken/40">
-                <td className="border-b border-line/60 px-2.5 py-1.5 font-mono text-xs font-bold text-accent">{r.Matnr}</td><td className="border-b border-line/60 px-2.5 py-1.5">{r.Maktx}</td><td className="border-b border-line/60 px-2.5 py-1.5">{r.Werks}</td>
-                {[r.AllBomIn, r.AllPverIn, r.MulBom, r.MulUnlock, r.MulProd].map((f, i) => <td key={i} className="border-b border-line/60 px-2.5 py-1.5">{f ? <Pill tone="warn">X</Pill> : <span className="text-faint">–</span>}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function InitiateModal({ open, onClose, q, rows, email }: { open: boolean; onClose: () => void; q: BudgetQuery; rows: BudgetSummaryRow[]; email: string }) {
+function InitiateModal({ open, onClose, q, rows, email, onOpenApprovals }: { open: boolean; onClose: () => void; q: BudgetQuery; rows: BudgetSummaryRow[]; email: string; onOpenApprovals?: () => void }) {
   const [remarks, setRemarks] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -219,7 +182,7 @@ function InitiateModal({ open, onClose, q, rows, email }: { open: boolean; onClo
   const close = () => { ctl.current?.abort(); setDone(null); setRemarks(''); onClose(); };
   return (
     <Modal open={open} onClose={close} title={done ? 'Budget initiated' : 'Initiate budget for approval'}
-      footer={done ? <><a href={`${BASE_PATH}/budget-cost/approvals/`} className="inline-flex h-9 items-center rounded-xl border border-line px-3.5 text-sm font-semibold hover:bg-sunken">Open approvals</a><Button variant="primary" onClick={close}>Close</Button></>
+      footer={done ? <>{onOpenApprovals && <Button onClick={() => { close(); onOpenApprovals(); }}>Open approvals</Button>}<Button variant="primary" onClick={close}>Close</Button></>
         : <><Button onClick={close} disabled={busy}>Cancel</Button><Button variant="primary" onClick={() => void go()} disabled={busy || blocked || !ids.length}>{busy ? <><Spinner /> Saving in SAP…</> : <><Send size={13} /> Initiate</>}</Button></>}>
       {done ? (
         <div className="flex flex-col gap-2 text-sm">
@@ -241,6 +204,3 @@ function InitiateModal({ open, onClose, q, rows, email }: { open: boolean; onClo
   );
 }
 
-export default function BudgetScreen() {
-  return <PlanFrame active="budget"><Screen /></PlanFrame>;
-}
