@@ -18,7 +18,11 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 - Q-B1 remaining baseline builds re-run one at a time, without `CI=true` (Amplify-like plain env), for before/after comparison.
 - Q-E1 solved without your password: a separate throwaway Postgres cluster (`initdb`, trust auth, localhost only,
   port 55432) in `%LOCALAPPDATA%\samadhan-test-pg`, using the installed PostgreSQL 18 binaries. The existing service on 5432 is not touched.
-- **Still open** (needed later, not for Phase 1): Q-D1 (confirm dev DB is not prod; Phase 3), Q-S1 storage (Phase 2),
+- **Q-D1 answered 2026-11-05:** the user confirmed `Devhubfactory` @ `10.17.12.4` is the *Development Environment* DB.
+  The read-only APP-MAPPING SELECTs ran from the dev server (this machine is not in `pg_hba.conf`); the counts are in
+  APP-MAPPING §2. No credentials were stored anywhere new (they are already in `backend/.env` and the SSH helpers). The
+  first **migration** on dev still needs its own "approved" (§C.5).
+- **Still open** (needed later, not for Phase 1): Q-S1 storage (Phase 2),
   Q-G3 (does Amplify publish prod from `main`? asked again before the first merge), Q-M1–M6 (Phase 3), Q-P1 (Phase 2).
 - Pushes: still asked for every time (standing rule).
 
@@ -54,10 +58,26 @@ Verified by hand during the work (not yet as one gate run):
 - E2E: the first test stopped on the loading spinner while the test Postgres was being killed (backend log: DB
   connection timeouts; Postgres: shared memory segment gone; trace truncated). Environmental — E2E still unproven.
 
+**Gate run 3 (2026-11-05 ~20:45):** interrupted by a network drop of the Claude session after the first API suite
+(green). The test Postgres was stopped uncleanly, so `gate.js` now waits up to 5 min for crash recovery (uncommitted
+until run 4; in the next commit).
+
+**Gate run 4 (2026-11-05, after resume): every step before E2E PASSED, then Claude Code stopped the gate and the test
+Postgres for low memory during the Playwright run (the session was idle at the time).**
+- PASS (21): typecheck, lint, production build (94 s), backend syntax 53 files, unit 15/15, shared backend 40/40,
+  API suite **130/130 ×3** (new path + samadhan grants; old `/api/setu` path + setu grants; legacy schema `setu` + old
+  grants). The run-2 scheduler-secret fix is confirmed. Golden byte-identical ×5, migrate up/down ×4, zero-impact smoke,
+  E2E build (284 s), stub build.
+- E2E: no result. The run was stopped while Playwright was running. It left 3 headless Edge processes (≈1.1 GB) behind.
+  Stopping them was refused to Claude by the permission classifier, so the user stops them, or a reboot clears them.
+- Cause in both runs: the machine has 15.7 GB and only ≈3.5–4.5 GB free with the user's normal apps open. The E2E step
+  (Next build + backend + Postgres + Edge) does not fit alongside them.
+
 **Not done yet (blocks the push):**
-- Full gate run: stopped by Claude Code because the machine ran low on memory (2.6 of 15.7 GB free) after typecheck and
-  lint passed. The throwaway Postgres process was stopped the same way. Not restarted, per instructions.
-- E2E suite never ran yet (written, not executed).
+- E2E suite: never completed (runs 2 and 4 were stopped for low memory). Needs more free memory (close Edge/Teams/other
+  apps, or reboot), then the **whole** gate again (§T.1).
+- Zero-impact rebuild of the other 21 apps (baseline partial too).
+- `TEST-REPORT.md` for Phase 1.
 - Zero-impact rebuild of the other 21 apps (baseline partial too).
 - `TEST-REPORT.md` for Phase 1.
 
@@ -127,7 +147,8 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 
 ## Next
 
-**Now:** free memory (close other apps), then say "run the gate". I then restart the test Postgres
+**Now:** free memory (stop the leftover headless Edge processes, close other apps, ideally ≥ 6 GB free), then say
+"run the gate". I then restart the test Postgres
 (`postgres -D %LOCALAPPDATA%\samadhan-test-pg\data -p 55432`, from that folder), run `node backend/samadhan/tests/gate.js`,
 fix anything red and re-run the whole gate, run the zero-impact builds one app at a time, write TEST-REPORT.md, and
 ask before pushing `feature/samadhan-v7` (then `main`, after Q-G3). After the push: STOP for RENAME-FOLLOWUPS.

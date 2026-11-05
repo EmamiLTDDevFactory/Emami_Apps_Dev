@@ -95,7 +95,8 @@ async function ensurePg() {
     const dir = path.join(process.env.LOCALAPPDATA || os.homedir(), 'samadhan-test-pg');
     if (!fs.existsSync(path.join(dir, 'data'))) return false;
     spawn(path.join(PG_BIN, 'postgres'), ['-D', path.join(dir, 'data'), '-p', String(PG_PORT), '-c', 'listen_addresses=localhost'], { cwd: dir, detached: true, stdio: 'ignore' }).unref();
-    for (let i = 0; i < 40 && !pgRunning(); i++) await sleep(500);
+    // After an unclean stop Postgres first recovers (fsync of the data folder): allow up to 5 minutes.
+    for (let i = 0; i < 300 && !pgRunning(); i++) await sleep(1000);
     return pgRunning();
 }
 

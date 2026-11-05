@@ -54,16 +54,26 @@ LEFT JOIN setu.field_choices c ON c."parentId" = p.id
 WHERE p."parentId" IS NULL GROUP BY p.value, p.position ORDER BY p.position;
 ```
 
-The table below will be filled from that result:
+**Result (2026-11-05, dev DB `Devhubfactory` @ `10.17.12.4`, schema `setu`, read-only transaction).** Run from the dev
+server (172.17.2.21) with the dev hub backend's own config. This machine is not in the DB's `pg_hba.conf`. These are
+**dev** figures. Prod counts will differ, so re-run the same SELECT on prod before the Phase-3 backfill (by the release
+process, not by Claude).
 
-| Code | Rule hits (type) | Rule hits (category) | Total |
-|---|---|---|---|
-| MSFA | … | … | … |
-| DMS | … | … | … |
-| MR | … | … | … |
-| SUP | … | … | … |
-| B2B | … | … | … |
-| SS | … | … | … (incl. fallback) |
+1,333 tickets, 0 spam or deleted.
+
+| Code | Rule hits (type) | Rule hits (category) | Fallback | Total | Rows behind open questions |
+|---|---|---|---|---|---|
+| MSFA | 604 (`mSFA` 448, `Rural mSFA` 156) | 0 | 0 | **604** | Q-M2: 156 |
+| DMS | 424 (`CDMS` 400, `SalesCode DMS` 24) | 2 | 0 | **426** | Q-M3: 400 |
+| MR | 11 (`SalesCode SFA`) | 0 | 0 | **11** | Q-M4: 11 |
+| SUP | 0 | 0 | 0 | **0** | — |
+| B2B | 0 | 0 | 0 | **0** | Q-M5: 0 (no `Salescode B2B App` tickets yet) |
+| SS | 287 (`Wrong ticket`) | 0 | 5 | **292** | — |
+
+`type` values present: `mSFA` 448, `CDMS` 400, `Wrong ticket` 287, `Rural mSFA` 156, `SalesCode DMS` 24, `SalesCode SFA` 11,
+empty 7. Of the 7 empty-type rows, 2 map by category (`SalesCode …` → DMS) and 5 fall back to SS. No ticket would leave
+the Secondary Sales desk. The live category tree has 48 top-level categories and matches §1. The `mSecSales Asset
+Missing /Stolen Issues` category exists twice, once with a double space; both are under "mSecSales" and map the same way.
 
 ## 3. Questions to confirm
 
