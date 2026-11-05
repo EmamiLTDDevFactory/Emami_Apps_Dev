@@ -20,11 +20,11 @@ import { MAX_MATERIALS } from '@/lib/query/schema';
 import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { toDay } from '@/lib/wac/dates';
 import {
-  DEFAULT_RULE, FREIGHT_TYPES, applyBasis, groupPoLines, postings, postingsSheet, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
+  DEFAULT_RULE, FREIGHT_TYPES, applyBasis, filterPurchOrgs, materialWeighted, materialWeightedSheet, sortMaterials, groupPoLines, postings, postingsSheet, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
   type Basis, type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
 import type { PoLineKey } from '@/lib/freight/poBreakup';
-import { DEFAULT_FREIGHT_DAYS, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
+import { DEFAULT_FREIGHT_DAYS, parsePurchOrgs, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
 
 const th = 'px-3 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
 const thN = `${th} text-right`;
@@ -34,7 +34,7 @@ const inr = (v: Parameters<typeof fmtNum>[0]) => fmtNum(v, 4, 'INR');
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return toDay(d); };
 
 type Show = 'all' | 'alerts';
-type View = 'component' | 'po' | 'posting';
+type View = 'component' | 'po' | 'posting' | 'material';
 
 // Literal check, so the build replaces it and drops every branch below when the flag is off (no new code or text in the bundle).
 const FREIGHT_ALL_ITEMS = process.env.NEXT_PUBLIC_FREIGHT_ALL_ITEMS === 'true';
@@ -56,6 +56,7 @@ export default function FreightAnalysis() {
   const [inclTouched, setInclTouched] = useState(false);
   const [inclPicked, setInclPicked] = useState(true);
   const [latestOnly, setLatestOnly] = useState(false);
+  const [purchOrgText, setPurchOrgText] = useState('');
   const [touched, setTouched] = useState(false);
   const [ran, setRan] = useState<AnalysisInput | null>(null);
   const [step, setStep] = useState('');
@@ -73,7 +74,7 @@ export default function FreightAnalysis() {
 
   // Include freight: checked when both dates are filled, unchecked otherwise, until the person decides.
   const inclFrt = inclTouched ? inclPicked : defaultInclFrt({ from, to });
-  const missing = selectionProblem({ materials, plants: plantCodes, types, range: { from, to }, freightDays });
+  const missing = selectionProblem({ materials, plants: plantCodes, types, range: { from, to }, freightDays, purchOrgs: parsePurchOrgs(purchOrgText) });
   const start = () => {
     setTouched(true);
     if (missing || runner.status === 'running') return;
@@ -81,7 +82,7 @@ export default function FreightAnalysis() {
     setFreightDays(String(days));
     const info: AnalysisInput['info'] = {};
     for (const m of materials) { const k = known.current.get(m); if (k) info[m] = { text: k.Maktx, mtart: k.Mtart }; }
-    const input: AnalysisInput = { materials, info, plants: plantCodes, types, range: { from, to }, inclFrt, latestOnly, freightDays: days };
+    const input: AnalysisInput = { materials, info, plants: plantCodes, types, range: { from, to }, inclFrt, latestOnly, freightDays: days, purchOrgs: parsePurchOrgs(purchOrgText) };
     setRan(input);
     void runner.run(input);
   };
@@ -112,6 +113,9 @@ export default function FreightAnalysis() {
           </Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={inclFrt} onChange={(e) => { setInclTouched(true); setInclPicked(e.target.checked); }} /> Include freight</label>
           <label className="flex items-center gap-2 self-end pb-2 text-sm" title={FREIGHT_ALL_ITEMS ? 'Only the latest PO date of each material, plant and freight condition. Applied here, no new SAP call.' : 'Only the latest PO line of each material is read. Leave unticked to analyse every PO line of the range.'}><input type="checkbox" checked={latestOnly} onChange={(e) => setLatestOnly(e.target.checked)} /> Latest only</label>
+          <Field label="Purchase organisation(s)" hint="Optional: only the POs of these purchasing organisations, e.g. 1000, 2000">
+            {(id) => <input id={id} className={inputCls} value={purchOrgText} placeholder="all" onChange={(e) => setPurchOrgText(e.target.value.toUpperCase())} />}
+          </Field>
           <div className="sm:col-span-2 lg:col-span-4">
             <span className="mb-1 block text-xs font-semibold text-muted">Material types</span>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -172,10 +176,12 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
   const [basis, setBasis] = useState<Basis>('all');
   const [openLine, setOpenLine] = useState<PoLineKey | null>(null);
   const closeLine = useCallback(() => setOpenLine(null), []);
-  const based = useMemo(() => (FREIGHT_ALL_ITEMS ? applyBasis(data.freight, { basis, latestOnly }) : null), [data.freight, basis, latestOnly]);
-  const fallback = !!based && based.fallback && data.freight.length > 0;
+  // Purchase organisation: SAP got it as a filter; when the rows carry Ekorg the same choice is applied here as well
+  const scoped = useMemo(() => filterPurchOrgs(data.freight, ran.purchOrgs ?? []), [data.freight, ran.purchOrgs]);
+  const based = useMemo(() => (FREIGHT_ALL_ITEMS ? applyBasis(scoped, { basis, latestOnly }) : null), [scoped, basis, latestOnly]);
+  const fallback = !!based && based.fallback && scoped.length > 0;
   const enhanced = !!based && !fallback;
-  const freightRows = useMemo(() => (enhanced && based ? groupPoLines(based.rows) : data.freight), [enhanced, based, data.freight]);
+  const freightRows = useMemo(() => (enhanced && based ? groupPoLines(based.rows) : scoped), [enhanced, based, scoped]);
   const analysed = useMemo(() => analyseFreight(data.components, freightRows, range), [data.components, freightRows, range]);
   const plantList = useMemo(() => Array.from(new Set(analysed.map((r) => r.plant))).sort(), [analysed]);
   const rows = useMemo(() => {
@@ -199,20 +205,27 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
   }, [allPo, plant, show, q, rule]);
   const hidden = useMemo(() => linesOutsideRange(data.components, freightRows, ran.range), [data.components, freightRows, ran.range]);
   const poFlagged = useMemo(() => allPo.filter((r) => breaches(r, rule)).length, [allPo, rule]);
+  // Material wise: the weighted average freight per unit of each material over every plant and PO line (net of debit and credit)
+  const allMat = useMemo(() => materialWeighted(plant ? data.components.filter((c) => c.plant === plant) : data.components, freightRows, range), [data.components, freightRows, range, plant]);
+  const matRows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return sortMaterials(allMat.filter((r) => (show === 'all' || breaches(r, rule)) && (!t || `${r.material} ${r.text}`.toLowerCase().includes(t))), rule);
+  }, [allMat, show, q, rule]);
+  const matFlagged = useMemo(() => allMat.filter((r) => breaches(r, rule)).length, [allMat, rule]);
   /** the PO lines of one component: switches to the PO view filtered to it */
   const openPos = (r: { plant: string; material: string }) => { setPlant(r.plant); setQ(r.material); setShow('all'); setView('po'); };
 
   const doExport = async (fmt: 'xlsx' | 'csv') => {
-    const sheet = view === 'posting' ? postingsSheet(postingRows) : view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
+    const sheet = view === 'material' ? materialWeightedSheet(matRows, rule) : view === 'posting' ? postingsSheet(postingRows) : view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
     const basisText = !(FREIGHT_ALL_ITEMS && enhanced) ? [] : [['Basis', basis === 'all' ? 'All line items' : 'Max date per PO line'], ['Postings', String(allPostings.length)], ['PO lines', String(allPo.length)], ['Components', String(totals.rows)]];
     await exportTable({
-      fmt, name: view === 'posting' ? 'Freight analysis by posting' : view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
+      fmt, name: view === 'material' ? 'Freight analysis material wise' : view === 'posting' ? 'Freight analysis by posting' : view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
       extraParams: [
-        ['Report', view === 'posting' ? 'One row per posting of the components, INR' : view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
+        ['Report', view === 'material' ? 'Material wise weighted average freight per unit (net of debit and credit), INR' : view === 'posting' ? 'One row per posting of the components, INR' : view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
         ...(basisText as [string, string][]),
-        ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
+        ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Purchase organisation', ran.purchOrgs?.length ? ran.purchOrgs.join(', ') : 'all'], ['Amounts', 'net of debit (S) and credit (H)'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
         ['PO date range', allDates ? `all dates SAP returned (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}`], ['Latest only', (FREIGHT_ALL_ITEMS ? latestOnly : ran.latestOnly) ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
-        ['Rows', String(view === 'posting' ? postingRows.length : view === 'po' ? poRows.length : rows.length)], ...(view === 'posting' ? [] : [['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)] as [string, string]]),
+        ['Rows', String(view === 'material' ? matRows.length : view === 'posting' ? postingRows.length : view === 'po' ? poRows.length : rows.length)], ...(view === 'posting' ? [] : [['Rows in alert', String(view === 'material' ? matFlagged : view === 'po' ? poFlagged : totals.flagged)] as [string, string]]),
       ],
       messages: data.messages,
     });
@@ -224,7 +237,9 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
       {data.skipped.length > 0 && <p role="status" className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">No {ran.types.join(' / ')} component returned for: {data.skipped.join(', ')}.</p>}
       <div role="status" className={cx('flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold', totals.flagged ? 'border-bad/40 bg-bad/[0.06] text-bad' : 'border-good/40 bg-good/[0.06] text-good')}>
         <BellRing size={15} />
-        {view === 'po'
+        {view === 'material'
+          ? (matFlagged ? `${matFlagged} of ${allMat.length} material(s) breach the rule: ${ruleText(rule)}` : `No material breaches the rule: ${ruleText(rule)}`)
+          : view === 'po'
           ? (poFlagged ? `${poFlagged} of ${allPo.length} purchase order line(s) breach the rule: ${ruleText(rule)}` : `No purchase order line breaches the rule: ${ruleText(rule)}`)
           : (totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`)}
       </div>
@@ -248,19 +263,53 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <Stat label="No actual freight" value={totals.noActual} sub="no actual PO delivery in the range" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-<div className={FREIGHT_ALL_ITEMS && enhanced ? 'w-[34rem]' : 'w-72'}><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }, ...(FREIGHT_ALL_ITEMS && enhanced ? [{ value: 'posting' as View, label: `By posting (${allPostings.length})` }] : [])]} /></div>
+<div className={FREIGHT_ALL_ITEMS && enhanced ? 'w-[48rem]' : 'w-[34rem]'}><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }, { value: 'material' as View, label: `Material wise (${allMat.length})` }, ...(FREIGHT_ALL_ITEMS && enhanced ? [{ value: 'posting' as View, label: `By posting (${allPostings.length})` }] : [])]} /></div>
         {FREIGHT_ALL_ITEMS && enhanced && <div className="w-80"><Segmented<Basis> size="sm" label="Basis" value={basis} onChange={setBasis} options={[{ value: 'all', label: 'All line items' }, { value: 'maxdate', label: 'Max date per PO line' }]} /></div>}
         {view !== 'posting' && <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>}
         <select aria-label="Plant" className={cx(inputCls, 'w-44')} value={plant} onChange={(e) => setPlant(e.target.value)}>
           <option value="">All plants ({plantList.length})</option>
           {plantList.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
-        <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder={view === 'po' ? 'Search component, description or PO number…' : 'Search component code or description…'} value={q} onChange={(e) => setQ(e.target.value)} />
-        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
-        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
+        <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder={view === 'po' ? 'Search component, description or PO number…' : view === 'material' ? 'Search material code or description…' : 'Search component code or description…'} value={q} onChange={(e) => setQ(e.target.value)} />
+        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
+        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'material' ? !matRows.length : view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Alerts first, then the biggest gap.</span>
       </div>
-      {FREIGHT_ALL_ITEMS && view === 'posting' ? (
+      {view === 'material' ? (
+      <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Material wise weighted average freight per unit, INR, net of debit and credit</caption>
+          <thead className="bg-sunken/60">
+            <tr><th className={th}>Material</th><th className={th}>Type</th><th className={th}>Plants</th><th className={thN}>PO lines</th><th className={thN}>Actual qty</th><th className={thN} title="Debit minus credit, INR">Net actual amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg actual / unit</th><th className={thN}>Std qty</th><th className={thN} title="Debit minus credit, INR">Net std amount (INR)</th><th className={thN} title="Net amount / delivered quantity">Weighted avg standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>Last PO</th><th className={th}>Alert</th></tr>
+          </thead>
+          <tbody>
+            {matRows.map((r) => {
+              const hit = breaches(r, rule);
+              const tone = r.variance?.gt('0.000001') ? 'text-bad' : r.variance?.lt('-0.000001') ? 'text-good' : 'text-muted';
+              return (
+                <tr key={r.key} className={cx('border-t border-line/60', hit && 'bg-bad/[0.06]')}>
+                  <td className={td}><span className="font-mono font-bold text-accent">{r.material}</span> <span className="text-muted">{r.text}</span></td>
+                  <td className={td}>{r.mtart}</td>
+                  <td className={cx(td, 'font-mono')}>{r.plants.join(', ') || '—'}</td>
+                  <td className={tdN}>{r.poLines}</td>
+                  <td className={tdN}>{r.actualQty.gt(0) ? <>{fmtNum(r.actualQty, 3)} <span className="text-2xs text-muted">{r.unit}</span></> : <span className="text-faint">—</span>}</td>
+                  <td className={tdN}>{r.actualQty.gt(0) ? fmtNum(r.actualAmount, 2, 'INR') : '—'}</td>
+                  <td className={cx(tdN, 'font-bold')}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual delivery in the range">—</span>}</td>
+                  <td className={tdN}>{r.standardQty.gt(0) ? fmtNum(r.standardQty, 3) : '—'}</td>
+                  <td className={tdN}>{r.standardQty.gt(0) ? fmtNum(r.standardAmount, 2, 'INR') : '—'}</td>
+                  <td className={cx(tdN, 'font-bold')}>{r.standard ? inr(r.standard) : '—'}</td>
+                  <td className={cx(tdN, 'font-bold', tone)}>{r.variance ? fmtSigned(r.variance, 4) : '—'}</td>
+                  <td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
+                  <td className={cx(td, 'whitespace-nowrap')}>{r.lastPo || '—'}</td>
+                  <td className={td}>{hit ? <Pill tone="bad">Alert</Pill> : r.actual ? <Pill tone="good">OK</Pill> : <Pill tone="neutral" title="No actual delivery in the range">No actual</Pill>}</td>
+                </tr>
+              );
+            })}
+            {!matRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allMat.length ? 'Nothing matches the filter.' : 'No material to show.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      ) : FREIGHT_ALL_ITEMS && view === 'posting' ? (
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">
           <caption className="sr-only">Every posting of the PO freight lines: quantity and INR amount per posting</caption>
@@ -296,7 +345,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <table className="w-full text-sm">
           <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>Purch. org</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN} title="Debit minus credit, INR">Net actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Std qty</th><th className={thN} title="Debit minus credit, INR">Net std amount (INR)</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
           </thead>
           <tbody>
             {poRows.map((r) => {
@@ -318,10 +367,13 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                   <td className={cx(td, 'font-mono')}>{r.accDoc || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.reference || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.companyCode || '—'}</td>
+                  <td className={cx(td, 'font-mono')}>{r.purchOrg || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.fgMaterial || '—'}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? <>{fmtNum(r.actualQty, 3)} <span className="text-2xs text-muted">{r.unit}</span></> : <span className="text-faint">—</span>}</td>
                   <td className={tdN}>{r.actualQty.gt(0) ? fmtNum(r.actualAmount, 2, 'INR') : '—'}</td>
                   <td className={tdN}>{r.actual ? inr(r.actual) : <span className="text-faint" title="No actual delivery on this PO line">—</span>}</td>
+                  <td className={tdN}>{r.standardQty.gt(0) ? fmtNum(r.standardQty, 3) : '—'}</td>
+                  <td className={tdN}>{r.standardQty.gt(0) ? fmtNum(r.standardAmount, 2, 'INR') : '—'}</td>
                   <td className={tdN}>{r.standard ? inr(r.standard) : '—'}</td>
                   <td className={cx(tdN, 'font-bold', tone)}>{r.variance ? fmtSigned(r.variance, 4) : '—'}</td>
                   <td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
@@ -331,7 +383,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                 </tr>
               );
             })}
-            {!poRows.length && <tr><td colSpan={enhanced ? 24 : 23} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
+            {!poRows.length && <tr><td colSpan={enhanced ? 28 : 27} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -365,7 +417,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         </table>
       </div>
       )}
-      {FREIGHT_ALL_ITEMS && PoBreakupDrawer && enhanced && <PoBreakupDrawer rows={data.freight} target={openLine} text={openLine ? textOf(openLine.material) : ''} onClose={closeLine} />}
+      {FREIGHT_ALL_ITEMS && PoBreakupDrawer && enhanced && <PoBreakupDrawer rows={scoped} target={openLine} text={openLine ? textOf(openLine.material) : ''} onClose={closeLine} />}
       <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {allDates ? `${hidden.earliest} to ${hidden.latest} (all lines SAP returned)` : `${ran.range.from} to ${ran.range.to}`}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
     </div>
   );

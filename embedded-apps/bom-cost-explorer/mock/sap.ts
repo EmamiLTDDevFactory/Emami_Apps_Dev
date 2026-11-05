@@ -52,7 +52,7 @@ const plantOf = (w: string) => PLANTS.find((p) => p.Werks === w);
 interface Params {
   mode: string; mats: string[]; werks: string[]; cplnt: string[]; explQty: number; maxLevel: number;
   lookback: number; freightDays: number; prio: string[]; donor: string; inclFrt: boolean; stdFrt: boolean;
-  latestOnly: boolean; allItems: boolean; inclBudget: boolean; budgetYr: number; inclCover: boolean; hor: number[];
+  latestOnly: boolean; allItems: boolean; ekorg: string[]; inclBudget: boolean; budgetYr: number; inclCover: boolean; hor: number[];
   budatFrom: string; asof: string;
 }
 
@@ -76,6 +76,7 @@ function params(f: Map<string, string[]>): Params {
     stdFrt: b('StdFrt', false),
     latestOnly: b('LatestOnly', true),
     allItems: b('AllItems', false),
+    ekorg: s('Ekorg'),
     inclBudget: b('InclBudget', false),
     budgetYr: Number(one('BudgetYr', '2026')),
     inclCover: b('InclCover', false),
@@ -351,7 +352,13 @@ function rates(p: Params, msgs: Msg[]): Raw[] {
   return rows;
 }
 
+/** FreightRowSet with the optional Ekorg (purchasing organisation) selection, like SAP once it has the property. */
 function freight(p: Params, msgs: Msg[]): Raw[] {
+  const rows = freightAll(p, msgs);
+  return p.ekorg.length ? rows.filter((r) => p.ekorg.includes(String(r.Ekorg))) : rows;
+}
+
+function freightAll(p: Params, msgs: Msg[]): Raw[] {
   const mats = leafMaterials(validateMats(p, msgs));
   const plants = validatePlants(p, p.werks, msgs);
   const rows: Raw[] = [];
@@ -373,7 +380,7 @@ function freight(p: Params, msgs: Msg[]): Raw[] {
         const id = `${mat}-${w}-${i}`;
         rows.push({
           ...meta('FreightRow', `${ENTITY_SET.FREIGHT}('${id}')`),
-          Rowid: hash(id) % 1e9, Material: mat, Matdesc: m.Maktx, Plant: w, Conditiontype: 'ZFR1',
+          Rowid: hash(id) % 1e9, Ekorg: ['1000', '2000'][hash(id + 'o') % 2], Material: mat, Matdesc: m.Maktx, Plant: w, Conditiontype: 'ZFR1',
           Bukrs: '1000', FgMatnr: `FG${String(hash(id) % 9000 + 1000)}`, Lifnr: `00${String(10000 + (hash(id + 'v') % 90000))}`, Name1: ['Blue Dart Logistics', 'Safexpress Pvt Ltd', 'VRL Logistics'][hash(id + 'n') % 3],
           Belnr: `51${String(hash(id + 'b') % 1e8).padStart(8, '0')}`, Xblnr: `INV/${hash(id + 'x') % 99999}`, Ztmode: ['T01', 'T02', 'T03'][hash(id + 't') % 3], GstPart: `19AAAC${String(hash(id + 'g') % 9999).padStart(4, '0')}`.slice(0, 10), PlcSup: 'WB',
           Purchasedocument: `45${String(hash(id) % 1e8).padStart(8, '0')}`, Purchaseline: String((i + 1) * 10).padStart(5, '0'),

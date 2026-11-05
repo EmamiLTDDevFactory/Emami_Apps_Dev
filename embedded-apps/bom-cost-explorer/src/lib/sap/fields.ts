@@ -45,6 +45,7 @@ export const SELECTION = def({
   InclFrt: ['InclFrt', 'b'],
   StdFrt: ['StdFrt', 'b'],
   LatestOnly: ['LatestOnly', 'b'],
+  Ekorg: ['Ekorg', 's'], // FreightRowSet: purchasing organisation of the PO (filter and row property; not on an older SAP)
   AllItems: ['AllItems', 'b'], // FreightRowSet only: one row per posting (ABAP char flag, 'X' only when on)
   InclBudget: ['InclBudget', 'b'],
   InclCover: ['InclCover', 'b'],
@@ -240,6 +241,7 @@ export const FREIGHT_ROW = def({
   FxInr: ['FxInr', 'd'],
   UsedPcInr: ['UsedPcInr', 'd'],
   // With AllItems eq 'X' (NEXT_PUBLIC_FREIGHT_ALL_ITEMS): one row per posting. All of these are absent on an older SAP.
+  Ekorg: ['Ekorg', 's'], // purchasing organisation of the PO
   Cpudt: ['Cpudt', 't'], // posting date (Edm.DateTime)
   Vgabe: ['Vgabe', 's'], // 1 goods receipt, 2 or 3 invoice
   Buzei: ['Buzei', 's'],
@@ -341,7 +343,7 @@ export function selectionField(set: EntitySetKey, k: keyof typeof SELECTION): re
  * requested", and check:metadata reports them as a warning instead of failing.
  */
 export const OPTIONAL_PROPS: ReadonlySet<string> = new Set([
-  'StockQty', 'Eisbe', 'OpenpoQty', 'OpenprQty', 'TotalAvail', 'ReqH1', 'ReqH2', 'ReqH3', 'CovH1', 'CovH2', 'CovH3',
+  'Ekorg', 'StockQty', 'Eisbe', 'OpenpoQty', 'OpenprQty', 'TotalAvail', 'ReqH1', 'ReqH2', 'ReqH3', 'CovH1', 'CovH2', 'CovH3',
 ]);
 
 /** SAP name of a selection field. */
@@ -356,7 +358,7 @@ export type RateOption = RowOf<typeof RATE_OPTION>;
 export type CostLine = RowOf<typeof COST_LINE> & { RateOptions?: RateOption[] };
 export type RateRow = RowOf<typeof RATE_ROW>;
 /** The posting fields only exist on a SAP service with the AllItems change; the normaliser fills them in, but a row built by hand may leave them out. */
-type FreightPostingKeys = 'Cpudt' | 'Vgabe' | 'Buzei' | 'Gjahr' | 'Shkzg' | 'IsMaxDate' | 'IsLatestPo';
+type FreightPostingKeys = 'Ekorg' | 'Cpudt' | 'Vgabe' | 'Buzei' | 'Gjahr' | 'Shkzg' | 'IsMaxDate' | 'IsLatestPo';
 export type FreightRow = Omit<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys> & Partial<Pick<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys>>;
 export type RmPmRow = RowOf<typeof RMPM_ROW>;
 export type PlantRow = RowOf<typeof PLANT>;

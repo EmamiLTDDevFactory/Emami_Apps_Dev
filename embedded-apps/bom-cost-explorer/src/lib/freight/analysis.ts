@@ -41,6 +41,17 @@ const tx = (v: string | null | undefined) => String(v ?? '').trim();
 const n = (v: Decimal | null, dp = 6): number | null => (v ? Number(v.toFixed(dp)) : null);
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 
+/** Debit / credit netting: a credit (Shkzg H) takes its amount off, a debit (S, or no Shkzg) adds it. A credit uses its magnitude, so it nets the same
+ * whether SAP sends the credit amount positive or negative; a summed PO line (groupPoLines) is already net and passes through unchanged. */
+export const signedAmount = (x: Decimal, shkzg: string | null | undefined): Decimal => (tx(shkzg).toUpperCase() === 'H' ? x.abs().neg() : x);
+
+/** Keep the rows of the chosen purchasing organisations. Rows without Ekorg (an SAP that does not send it) are kept as they are: SAP has already applied the selection. */
+export function filterPurchOrgs<T extends { Ekorg?: string }>(rows: T[], orgs: readonly string[]): T[] {
+  const want = new Set(orgs.map((o) => o.trim().toUpperCase()).filter(Boolean));
+  if (!want.size || !rows.some((r) => tx(r.Ekorg))) return rows;
+  return rows.filter((r) => want.has(tx(r.Ekorg).toUpperCase()));
+}
+
 /** Days of SAP's freight window needed to reach back to `from` from today (FreightDays counts back from today; max 3650 on the service). */
 export function freightDaysFor(from: string, now: Date = new Date()): number {
   const start = Date.parse(`${from}T00:00:00Z`);
@@ -84,8 +95,8 @@ export function analyseFreight(components: Component[], freight: FreightRow[], r
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    if (aq.gt(0)) { a.aq = a.aq.plus(aq); a.aa = a.aa.plus(D(r.Actualdelvcostamount).times(fx)); }
-    if (sq.gt(0)) { a.sq = a.sq.plus(sq); a.sa = a.sa.plus(D(r.Stddelvcostamount).times(fx)); }
+    if (aq.gt(0)) { a.aq = a.aq.plus(aq); a.aa = a.aa.plus(signedAmount(D(r.Actualdelvcostamount), r.Shkzg).times(fx)); }
+    if (sq.gt(0)) { a.sq = a.sq.plus(sq); a.sa = a.sa.plus(signedAmount(D(r.Stddelvcostamount), r.Shkzg).times(fx)); }
     a.pos.add(`${r.Purchasedocument}|${r.Purchaseline}`);
     if (d > a.last) a.last = d;
     a.unit = a.unit || r.Baseunit || r.Matuom || '';
@@ -119,6 +130,8 @@ export interface PoLine {
   gstPartner: string;
   placeOfSupply: string;
   transportMode: string;
+  /** purchasing organisation of the PO ('' when SAP does not send it) */
+  purchOrg: string;
   /** Shkzg: S debit, H credit; 'H/S' when the postings of a summed PO line carry both; '' when SAP does not send it */
   shkzg: string;
   accDoc: string;
@@ -159,15 +172,15 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    const aa = aq.gt(0) ? D(r.Actualdelvcostamount).times(fx) : ZERO;
-    const sa = sq.gt(0) ? D(r.Stddelvcostamount).times(fx) : ZERO;
+    const aa = aq.gt(0) ? signedAmount(D(r.Actualdelvcostamount), r.Shkzg).times(fx) : ZERO;
+    const sa = sq.gt(0) ? signedAmount(D(r.Stddelvcostamount), r.Shkzg).times(fx) : ZERO;
     const actual = aq.gt(0) ? aa.div(aq) : null;
     const standard = sq.gt(0) ? sa.div(sq) : null;
     const variance = actual && standard ? actual.minus(standard) : null;
     out.push({
       key: `${k}|${r.Purchasedocument}|${r.Purchaseline}|${r.Conditiontype}|${i}`, plant: c.plant, material: c.material, text: c.text, mtart: c.mtart,
       po: String(r.Purchasedocument ?? '').trim(), line: String(r.Purchaseline ?? '').trim(), poDate: d, cond: String(r.Conditiontype ?? '').trim(),
-      vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode), shkzg: tx(r.Shkzg).toUpperCase(),
+      vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode), purchOrg: tx(r.Ekorg), shkzg: tx(r.Shkzg).toUpperCase(),
       accDoc: tx(r.Belnr), reference: tx(r.Xblnr), companyCode: tx(r.Bukrs), fgMaterial: tx(r.FgMatnr),
       unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
       actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
@@ -193,6 +206,59 @@ export function sortPoLines(rows: PoLine[], rule: Rule): PoLine[] {
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
 }
 
+/* ---------- material wise weighted average (all plants and PO lines of a material together) ---------- */
+
+export interface MaterialWeighted {
+  key: string;
+  material: string;
+  text: string;
+  mtart: string;
+  unit: string;
+  /** plants that have PO lines of the material in the range */
+  plants: string[];
+  /** PO lines in the range */
+  poLines: number;
+  actualQty: Decimal;
+  /** net of debit and credit, INR */
+  actualAmount: Decimal;
+  standardQty: Decimal;
+  standardAmount: Decimal;
+  /** INR per base unit: net amount / delivered quantity (weighted by quantity); null without such a delivery */
+  actual: Decimal | null;
+  standard: Decimal | null;
+  variance: Decimal | null;
+  variancePct: Decimal | null;
+  lastPo: string;
+}
+
+/** One row per material over every plant and PO line in the range: weighted average freight per unit = sum of the net INR amounts / sum of the delivered
+ * quantities, for the actual and the standard side. Built from poLines, so exclusions, FxInr and the debit / credit netting are the same as everywhere else. */
+export function materialWeighted(components: Component[], freight: FreightRow[], range: DateRange): MaterialWeighted[] {
+  const lines = poLines(components, freight, range);
+  const byMat = new Map<string, MaterialWeighted>();
+  for (const c of components) {
+    if (!byMat.has(c.material)) byMat.set(c.material, { key: c.material, material: c.material, text: c.text, mtart: c.mtart, unit: '', plants: [], poLines: 0, actualQty: ZERO, actualAmount: ZERO, standardQty: ZERO, standardAmount: ZERO, actual: null, standard: null, variance: null, variancePct: null, lastPo: '' });
+  }
+  for (const l of lines) {
+    const m = byMat.get(l.material);
+    if (!m) continue;
+    m.actualQty = m.actualQty.plus(l.actualQty); m.actualAmount = m.actualAmount.plus(l.actualAmount);
+    m.standardQty = m.standardQty.plus(l.standardQty); m.standardAmount = m.standardAmount.plus(l.standardAmount);
+    m.poLines += 1;
+    if (!m.plants.includes(l.plant)) m.plants.push(l.plant);
+    m.unit = m.unit || l.unit;
+    if (l.poDate > m.lastPo) m.lastPo = l.poDate;
+  }
+  for (const m of byMat.values()) {
+    m.plants.sort();
+    m.actual = m.actualQty.gt(0) ? m.actualAmount.div(m.actualQty) : null;
+    m.standard = m.standardQty.gt(0) ? m.standardAmount.div(m.standardQty) : null;
+    m.variance = m.actual && m.standard ? m.actual.minus(m.standard) : null;
+    m.variancePct = m.variance && m.standard && !m.standard.isZero() ? m.variance.div(m.standard).times(100) : null;
+  }
+  return [...byMat.values()].sort((a, b) => a.material.localeCompare(b.material));
+}
+
 /* ---------- all postings (FreightRowSet with AllItems): basis, grouping, one row per posting ---------- */
 
 /** What the person sees: every posting ('all'), or only the postings on the max posting date of their PO line and side ('maxdate', the old behaviour). */
@@ -209,12 +275,14 @@ export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'>): Sid
   return D(r.Actualdelvquantity).gt(0) ? 'actual' : 'standard';
 }
 
-/** Quantity and INR amount of one posting on its side; same rule as poLines: an amount counts only together with a positive quantity. */
+/** Quantity and INR amount of one posting on its side. The amount is NET of debit and credit (a credit, Shkzg H, is negative). Same rule as poLines: an amount
+ * counts together with a positive quantity; a subsequent debit / credit (Vgabe 3) has no quantity of its own and its amount counts all the same. */
 export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amount: Decimal } {
   const side = sideOf(r);
   const q = D(side === 'actual' ? r.Actualdelvquantity : r.Stddelvquantity);
   const a = D(side === 'actual' ? r.Actualdelvcostamount : r.Stddelvcostamount);
-  return q.gt(0) ? { side, qty: q, amount: a.times(fxOf(r)) } : { side, qty: ZERO, amount: ZERO };
+  if (q.gt(0) || tx(r.Vgabe) === '3') return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
+  return { side, qty: ZERO, amount: ZERO };
 }
 
 export interface BasisResult { rows: FreightRow[]; /** the data has no IsMaxDate at all (SAP without the AllItems change): rows are returned as they came */ fallback: boolean }
@@ -429,15 +497,48 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'Accounting document', width: 16, get: (i) => rows[i].accDoc },
       { header: 'Reference', width: 16, get: (i) => rows[i].reference },
       { header: 'Company code', width: 10, get: (i) => rows[i].companyCode },
+      { header: 'Purchase org', width: 10, get: (i) => rows[i].purchOrg },
       { header: 'FG material', width: 14, get: (i) => rows[i].fgMaterial },
       { header: 'Unit', width: 6, get: (i) => rows[i].unit },
       { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
       { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
-      { header: 'Actual freight amount (INR)', dp: 2, curr: 'INR', width: 16, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Net actual freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Delivered quantity (standard)', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
+      { header: 'Net standard freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
       { header: 'Actual freight / unit (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].actual) },
       { header: 'Standard freight / unit (INR)', dp: 4, curr: 'INR', width: 18, get: (i) => n(rows[i].standard) },
       { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
       { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
+      { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
+    ],
+  };
+}
+
+/** Flagged first, then the biggest gap (by %, then by amount). */
+export function sortMaterials(rows: MaterialWeighted[], rule: Rule): MaterialWeighted[] {
+  const mag = (r: MaterialWeighted) => r.variancePct ?? r.variance ?? D('-1e9');
+  return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || mag(b).cmp(mag(a)) || a.material.localeCompare(b.material));
+}
+
+export function materialWeightedSheet(rows: MaterialWeighted[], rule: Rule): { cols: XCol[]; count: number } {
+  return {
+    count: rows.length,
+    cols: [
+      { header: 'Material', width: 14, get: (i) => rows[i].material },
+      { header: 'Description', width: 34, get: (i) => rows[i].text },
+      { header: 'Material type', width: 10, get: (i) => rows[i].mtart },
+      { header: 'Unit', width: 6, get: (i) => rows[i].unit },
+      { header: 'Plants', width: 18, get: (i) => rows[i].plants.join(', ') },
+      { header: 'PO lines', dp: 0, width: 9, get: (i) => rows[i].poLines },
+      { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
+      { header: 'Net actual freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Weighted avg actual freight / unit (INR)', dp: 4, curr: 'INR', width: 20, get: (i) => n(rows[i].actual) },
+      { header: 'Delivered quantity (standard)', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
+      { header: 'Net standard freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
+      { header: 'Weighted avg standard freight / unit (INR)', dp: 4, curr: 'INR', width: 20, get: (i) => n(rows[i].standard) },
+      { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
+      { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
+      { header: 'Last PO date', width: 12, get: (i) => rows[i].lastPo },
       { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
     ],
   };

@@ -36,6 +36,8 @@ export interface AnalysisInput {
   plants: string[];
   types: string[];
   range: DateRange;
+  /** purchasing organisations the PO lines are limited to (empty = all); sent as Ekorg and applied again in the browser when the rows carry Ekorg */
+  purchOrgs?: string[];
   /** Include freight (InclFrt) */
   inclFrt: boolean;
   /** Latest only (LatestOnly): `LatestOnly eq 'X'` when the person ticks the box, `LatestOnly eq ' '` when not */
@@ -74,10 +76,18 @@ export const defaultInclFrt = (range: DateRange): boolean => !!(range.from && ra
 export const NEED_PLANT_OR_MATERIAL = 'Enter a plant or at least one material';
 
 /** The selection problem in words, or '' when the analysis can run. A plant OR a material is enough. */
-export function selectionProblem(i: { materials: string[]; plants: string[]; types: string[]; range: DateRange; freightDays?: number | string }): string {
+/** A purchasing organisation code: up to 4 letters or digits. */
+export const PURCH_ORG_RE = /^[A-Za-z0-9]{1,4}$/;
+/** The codes typed in the Purchase organisation box: upper case, de-duplicated, split on comma, semicolon or space. */
+export function parsePurchOrgs(text: string): string[] {
+  return Array.from(new Set(String(text ?? '').split(/[\s,;]+/).map((x) => x.trim().toUpperCase()).filter(Boolean)));
+}
+
+export function selectionProblem(i: { materials: string[]; plants: string[]; types: string[]; range: DateRange; freightDays?: number | string; purchOrgs?: string[] }): string {
   if (!i.materials.length && !i.plants.length) return NEED_PLANT_OR_MATERIAL;
   if (!i.types.length) return 'Pick at least one material type';
   if (i.range.from && i.range.to && i.range.from > i.range.to) return 'The From date must not be after the To date';
+  if (i.purchOrgs?.some((o) => !PURCH_ORG_RE.test(o))) return 'A purchase organisation is up to 4 letters or digits, for example 1000';
   if (i.freightDays !== undefined && (!Number.isInteger(Number(i.freightDays)) || Number(i.freightDays) < 1)) return 'Freight look-back must be a whole number of days, at least 1';
   return '';
 }
@@ -90,7 +100,7 @@ export function sapDay(name: 'BudatFrom' | 'BudatTo', day: string): string | nul
   return m ? `${name} eq datetime'${m[1]}-${m[2]}-${m[3]}T00:00:00'` : null;
 }
 
-interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number; latestOnly?: boolean; allItems?: boolean }
+interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; purchOrgs?: string[]; range: DateRange; inclFrt: boolean; freightDays: number; latestOnly?: boolean; allItems?: boolean }
 
 /**
  * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
@@ -107,6 +117,8 @@ export function analysisFilter(p: FilterParts): string {
     sapDay('BudatTo', p.range.to),
     p.inclFrt ? "InclFrt eq 'X'" : null,
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
+    // Purchasing organisation(s) of the PO, freight request only (one clause per org, joined with or)
+    p.mode === 'F' ? eqClause('Ekorg', p.purchOrgs ?? [], set) : null,
     // LatestOnly belongs to the Freight analysis tab only and is the user's choice: `LatestOnly eq 'X'` when ticked, `LatestOnly eq ' '`
     // (a single blank) when not. Always sent on the freight request, never on the components request. Checked on NGQ and NWP.
     // AllItems (freight request only): one row per posting. Latest only then moves to the browser (IsLatestPo), so SAP always gets a blank.
@@ -153,7 +165,7 @@ export async function fetchFreightAnalysis(input: AnalysisInput, signal: AbortSi
   const worker = async () => {
     while (next < jobs.length) {
       const job = jobs[next++];
-      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days, latestOnly: input.latestOnly, allItems: FREIGHT_ALL_ITEMS });
+      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days, purchOrgs: input.purchOrgs, latestOnly: input.latestOnly, allItems: FREIGHT_ALL_ITEMS });
       try {
         const r = await readSet<RmPmRow & FreightRow>(job.mode, filter, opts);
         ms += r.ms; calls++; messages.push(...r.messages);
