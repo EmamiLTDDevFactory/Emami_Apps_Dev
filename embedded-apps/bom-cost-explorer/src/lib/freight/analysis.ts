@@ -44,8 +44,9 @@ const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 /** The condition value is taken as ABSOLUTE; only the Shkzg indicator gives the sign: H (credit) takes the amount off, S (debit, or no Shkzg) adds it. So the
  * netting is the same whatever sign SAP puts on the value. */
 export const signedAmount = (x: Decimal, shkzg: string | null | undefined): Decimal => (tx(shkzg).toUpperCase() === 'H' ? x.abs().neg() : x.abs());
-/** A summed PO line (groupPoLines, IsNet) already holds the net amount and passes through unchanged. */
-const netAmount = (x: Decimal, r: Pick<FreightRow, 'Shkzg' | 'IsNet'>): Decimal => (r.IsNet ? x : signedAmount(x, r.Shkzg));
+/** A summed PO line (groupPoLines, IsNet) already holds the net amount and passes through unchanged. A row that is NOT summed is read as an absolute value: on a
+ * live answer (NWP) the Standard side comes as its own row with Shkzg H, so the indicator only gives a sign when postings of the same side are netted. */
+const netAmount = (x: Decimal, r: Pick<FreightRow, 'Shkzg' | 'IsNet'>): Decimal => (r.IsNet ? x : x.abs());
 
 /** Keep the rows of the chosen purchasing organisations. Rows without Ekorg (an SAP that does not send it) are kept as they are: SAP has already applied the selection. */
 export function filterPurchOrgs<T extends { Ekorg?: string }>(rows: T[], orgs: readonly string[]): T[] {
@@ -279,11 +280,12 @@ export type Side = 'actual' | 'standard';
 const fxOf = (r: Pick<FreightRow, 'FxInr'>) => (D(r.FxInr).gt(0) ? D(r.FxInr) : D(1));
 
 /** The side of a posting comes from Vgabe (1 = goods receipt = Standard, 2 or 3 = invoice = Actual), never from UsedSrc. Without Vgabe (an older SAP) the side with a quantity. */
-export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'>): Side {
+export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'> & Partial<Pick<FreightRow, 'Actualdelvcostamount'>>): Side {
   const v = tx(r.Vgabe);
   if (v === '1') return 'standard';
   if (v === '2' || v === '3') return 'actual';
-  return D(r.Actualdelvquantity).gt(0) ? 'actual' : 'standard';
+  // Vgabe empty (as on NWP today): the side is the pair the row fills - an Actual row carries Actualdelv*, a Standard row carries Stddelv*
+  return D(r.Actualdelvquantity).gt(0) || !D(r.Actualdelvcostamount ?? 0).isZero() ? 'actual' : 'standard';
 }
 
 /** Quantity and INR amount of one posting on its side. The amount is NET of debit and credit (a credit, Shkzg H, is negative). Same rule as poLines: an amount
@@ -298,8 +300,8 @@ export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amoun
   return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
 }
 
-/** The rows are postings (one per Vgabe 1 / 2 / 3 posting), not one row per PO line. */
-export const hasPostings = (rows: readonly Pick<FreightRow, 'Vgabe'>[]): boolean => rows.some((r) => tx(r.Vgabe) !== '');
+/** The rows are postings (one per posting, with Vgabe 1 / 2 / 3 and / or Shkzg), not one row per PO line. NWP sends Shkzg but leaves Vgabe empty, so either one counts. */
+export const hasPostings = (rows: readonly Pick<FreightRow, 'Vgabe'>[] & readonly Partial<Pick<FreightRow, 'Shkzg'>>[]): boolean => rows.some((r) => tx(r.Vgabe) !== '' || tx((r as Partial<FreightRow>).Shkzg) !== '');
 
 export interface BasisResult { rows: FreightRow[]; /** the data has no IsMaxDate at all (SAP without the AllItems change): rows are returned as they came */ fallback: boolean }
 

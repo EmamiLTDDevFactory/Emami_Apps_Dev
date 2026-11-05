@@ -247,8 +247,9 @@ export const FREIGHT_ROW = def({
   Buzei: ['Buzei', 's'],
   Gjahr: ['Gjahr', 's'],
   Shkzg: ['Shkzg', 's'], // S debit, H credit
-  IsMaxDate: ['IsMaxDate', 'f'], // 'X' = on the max posting date of its PO line and side
-  IsLatestPo: ['IsLatestPo', 'f'], // 'X' = newest PO date for material, plant and condition type
+  // NWP spells these Ismaxdate / Islatestpo (checked on a live answer, 5 Nov 2026); OData names are case sensitive
+  IsMaxDate: ['Ismaxdate', 'f'], // 'X' = on the max posting date of its PO line and side
+  IsLatestPo: ['Islatestpo', 'f'], // 'X' = newest PO date for material, plant and condition type
 });
 
 /** RmPmRowSet: key Material + Plant. */
