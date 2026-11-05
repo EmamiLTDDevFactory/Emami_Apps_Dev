@@ -17,9 +17,9 @@ describe('budget module switches and contract', () => {
     const old = readFileSync(join(process.cwd(), 'src/app/budget-cost/approvals/page.tsx'), 'utf8');
     expect(old).not.toMatch(/components\/budget|BudgetSumSet|startPending/);
   });
-  it('the deployed build keeps the module off until SAP publishes the sets', () => {
+  it('the deployed build has the module switched on', () => {
     const cfg = readFileSync(join(process.cwd(), 'next.config.mjs'), 'utf8');
-    expect(cfg).toContain("const DEPLOYED_BUDGET_ENABLED = 'false'");
+    expect(cfg).toContain("const DEPLOYED_BUDGET_ENABLED = 'true'");
   });
   it('every column of the table is a property of the contract (a typo would show an empty column)', () => {
     for (const c of SUMMARY_COLS) expect(Object.keys(BUDGET_SUMMARY), c.key).toContain(c.key);

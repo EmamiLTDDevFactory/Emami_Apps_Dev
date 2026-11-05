@@ -43,8 +43,8 @@ const DEPLOYED_COGM_ENABLED = 'true';
 // FREIGHT_ALL_ITEMS / NEXT_PUBLIC_FREIGHT_ALL_ITEMS win; on for deployed builds (an SAP without the change shows the lines as before).
 const DEPLOYED_FREIGHT_ALL_ITEMS = 'true';
 // Budget costing (FG budget cost, initiate / approve; ZMM_BOM_COST_SRV Budget* sets, contract in docs/budget-cost-odata-spec.md). Off until SAP publishes the sets:
-// set to 'true' once `npm run check:budget-metadata` passes. BUDGET_ENABLED / NEXT_PUBLIC_BUDGET_ENABLED win.
-const DEPLOYED_BUDGET_ENABLED = 'false';
+// switched on for deployed builds; the screens show SAP's own message until the sets are published (`npm run check:budget-metadata`). BUDGET_ENABLED / NEXT_PUBLIC_BUDGET_ENABLED win.
+const DEPLOYED_BUDGET_ENABLED = 'true';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
