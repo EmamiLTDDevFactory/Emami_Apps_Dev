@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, ChevronRight, Copy, Eye, Folder, FolderOpen, Library, Pencil, Plus, RefreshCw, Search, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 import { articleFeedback, deleteArticle, getArticle, listArticles, saveArticle } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, fmtNum, relative } from '@/lib/format';
 import type { Article, ArticleRow, ArticleStatus } from '@/lib/types';
 import { Button, Card, Drawer, Empty, Field, Modal, Notice, Pill, Select, Skeleton, Spinner, cx, inputCls, textareaCls } from './ui';
@@ -61,7 +61,7 @@ function buildTree(items: ArticleRow[]): Tree {
 
 /** Knowledge base: categories and folders on the left, articles on the right, reader in a drawer. */
 export default function Solutions() {
-  const { isSupervisor } = useSetu();
+  const { isSupervisor } = useSamadhan();
   const [all, setAll] = useState<ArticleRow[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

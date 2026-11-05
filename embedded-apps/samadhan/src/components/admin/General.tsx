@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Building2, LayoutDashboard, ListChecks, Radio, Smile, Users, Zap } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { SEVERITY_LABEL } from '@/lib/format';
 import { DASHBOARD_WIDGETS, type DashboardWidget, type Severity, type UiOptions } from '@/lib/types';
 import { Button, Card, Field, Notice, Skeleton, cx, inputBase, inputCls, textareaCls } from '../ui';
@@ -70,7 +70,7 @@ function toDraft(s: Record<string, unknown>, o: UiOptions): Draft {
 
 /** Admin > General: helpdesk identity, survey wording, list and export defaults, severity → priority, sources, collaboration, dashboard. */
 export function GeneralTab() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.settings);
   const [base, setBase] = useState<Draft | null>(null);
   const [d, setD] = useState<Draft | null>(null);

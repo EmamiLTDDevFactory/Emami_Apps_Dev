@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Phone, PhoneCall, PhoneIncoming, X } from 'lucide-react';
 import { logCall } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { CallMode, Ticket } from '@/lib/types';
 import { Button, Field, Modal, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
@@ -31,7 +31,7 @@ type Form = { phone: string; direction: 'OUTBOUND' | 'INBOUND'; outcome: string;
  * call, and "Log call" records the outcome, length and notes on the ticket (shown in the conversation and activity).
  */
 export function CallPanel({ ticket: t, reload }: { ticket: Ticket; reload: () => Promise<void> }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const numbers = useMemo(() => numbersOf(t), [t]);
   const [active, setActive] = useState<{ phone: string; startedAt: number } | null>(null);
   const [now, setNow] = useState(Date.now());

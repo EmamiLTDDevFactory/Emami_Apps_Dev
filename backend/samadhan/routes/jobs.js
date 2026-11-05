@@ -2,8 +2,8 @@
 const crypto = require('crypto');
 const express = require('express');
 const { ready } = require('../db/ready');
-const { pool } = require('../../db');
-const { APP_ID } = require('../constants');
+const { pool } = require('../db/pool');
+const { APP_ID, APP_IDS } = require('../constants');
 const { runJobs } = require('../lib/jobs');
 const { fail, wrap } = require('../lib/util');
 const { verifiedHubEmail } = require('../middleware/auth');
@@ -19,13 +19,14 @@ router.post('/jobs/run', rateLimit, wrap(async (req, res) => {
     const internal = expected.length > 0 && given.length === expected.length && crypto.timingSafeEqual(given, expected);
     if (!internal) {
         const email = verifiedHubEmail(req);
-        // An Admin grant, and not deactivated in Setu.
+        // An Admin grant, and not deactivated in Samadhan.
         const grant = email
             ? await pool.query(
                 `SELECT g.role FROM emami_apps.authorized_user_apps g
-                 LEFT JOIN setu.agents a ON a.email = g.email
-                 WHERE g.email = $1 AND g.app_id = $2 AND COALESCE(a.active, true)`,
-                [email, APP_ID],
+                 LEFT JOIN samadhan.agents a ON a.email = g.email
+                 WHERE g.email = $1 AND g.app_id = ANY($2::text[]) AND COALESCE(a.active, true)
+                 ORDER BY (g.app_id = $3) DESC LIMIT 1`,
+                [email, APP_IDS, APP_ID],
             )
             : { rows: [] };
         if (grant.rows[0]?.role !== 'Admin') throw fail(403, 'Admins only.');

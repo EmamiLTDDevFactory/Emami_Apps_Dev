@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LayoutGrid, PieChart, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { getDashboard, getMe, getOverview, savePrefs } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtTime } from '@/lib/format';
 import { DASHBOARD_WIDGETS, type Dashboard as Data, type DashboardWidget, type Overview } from '@/lib/types';
 import { ByGroup, Csat, Recent, Todos } from './DashboardExtras';
@@ -31,7 +31,7 @@ function readDays(): Period {
 const msg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
 export default function Dashboard() {
-  const { meta, me, go } = useSetu();
+  const { meta, me, go } = useSamadhan();
   const [data, setData] = useState<Data | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState('');

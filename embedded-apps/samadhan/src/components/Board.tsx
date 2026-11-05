@@ -2,14 +2,14 @@
 import { useCallback, useEffect, useState, type DragEvent } from 'react';
 import { MoreVertical, RefreshCw } from 'lucide-react';
 import { getBoard, updateTicket } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { SEVERITY_EDGE } from '@/lib/format';
 import type { TicketRow } from '@/lib/types';
 import { PriorityPill, SlaBadge } from './badges';
 import { Button, Notice, Select, Skeleton, cx } from './ui';
 
 export default function Board() {
-  const { meta, openTicket } = useSetu();
+  const { meta, openTicket } = useSamadhan();
   const [items, setItems] = useState<TicketRow[] | null>(null);
   const [mine, setMine] = useState('');
   const [groupId, setGroupId] = useState('');

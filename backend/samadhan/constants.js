@@ -1,6 +1,11 @@
 'use strict';
 
-const APP_ID = 'setu';
+// Manage Access app id. Formerly Setu: grants made before v7 carry the id 'setu' and are still accepted (lib/access.js).
+const APP_ID = 'samadhan';
+const LEGACY_APP_ID = 'setu';
+const APP_IDS = [APP_ID, LEGACY_APP_ID];
+/** Environment setting SAMADHAN_<name>, falling back to the pre-v7 SETU_<name>. */
+const env = (name, fallback = '') => process.env[`SAMADHAN_${name}`] || process.env[`SETU_${name}`] || fallback;
 const MIN = 60_000;
 
 const ROLES = ['Agent', 'Supervisor', 'Admin'];
@@ -39,21 +44,21 @@ const EDITABLE_FIELDS = [
     'callerContactNumber', 'category', 'function', 'l2Agent', 'helpdeskAnalysis', 'rcaSolution', 'type',
 ];
 const PATCHABLE = ['subject', 'statusId', 'priority', 'groupId', 'agentId', 'tags', ...EDITABLE_FIELDS];
-const MAIL_ENABLED = String(process.env.SETU_MAIL_ENABLED || 'false').toLowerCase() === 'true';
+const MAIL_ENABLED = String(env('MAIL_ENABLED', 'false') || 'false').toLowerCase() === 'true';
 const WHATSAPP = {
-    enabled: String(process.env.SETU_WHATSAPP_ENABLED || 'false').toLowerCase() === 'true',
-    verifyToken: process.env.SETU_WHATSAPP_VERIFY_TOKEN || '',
-    appSecret: process.env.SETU_WHATSAPP_APP_SECRET || '',
-    token: process.env.SETU_WHATSAPP_TOKEN || '',
-    phoneNumberId: process.env.SETU_WHATSAPP_PHONE_NUMBER_ID || '',
-    apiVersion: process.env.SETU_WHATSAPP_API_VERSION || 'v21.0',
+    enabled: String(env('WHATSAPP_ENABLED', 'false') || 'false').toLowerCase() === 'true',
+    verifyToken: env('WHATSAPP_VERIFY_TOKEN'),
+    appSecret: env('WHATSAPP_APP_SECRET'),
+    token: env('WHATSAPP_TOKEN'),
+    phoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
+    apiVersion: env('WHATSAPP_API_VERSION') || 'v21.0',
 };
-const MAILBOX = String(process.env.SETU_MAILBOX || 'emami.helpdesk@emamigroup.com').trim().toLowerCase();
+const MAILBOX = String(env('MAILBOX') || 'emami.helpdesk@emamigroup.com').trim().toLowerCase();
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
 const sqlList = (arr) => arr.map((v) => `'${v}'`).join(', ');
 const q = (col) => `"${col}"`;
 
 module.exports = {
-    AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
+    AGENT_EMAIL_TEMPLATES, ACTIVITY_KINDS, AGENT_STATUSES, APP_ID, APP_IDS, LEGACY_APP_ID, env, BELL_EVENTS, BELL_SCOPES, CALL_MODES, CALL_OUTCOMES, CONVERSATION_KINDS, CUSTOMER_SOURCES, EDITABLE_FIELDS,
     EMAIL_RE, MAILBOX, MAIL_ENABLED, MIN, PATCHABLE, PHONE_RE, PRIORITIES, ROLES, SEVERITIES, SEVERITY_PRIORITY, SOURCES, STATUS, TRIGGERS, WHATSAPP, q, sqlList,
 };

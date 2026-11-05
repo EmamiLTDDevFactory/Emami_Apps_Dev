@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Bell, Copy, Globe, MessageCircle, PhoneCall, Smile } from 'lucide-react';
-import { admin, setuApiUrl } from '@/lib/api';
+import { admin, samadhanApiUrl } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { BELL_EVENT_LABEL } from '@/lib/format';
 import type { BellEvent, BellScope, CallMode } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Skeleton, cx, inputBase, inputCls } from '../ui';
@@ -40,7 +40,7 @@ function CopyLine({ value }: { value: string }) {
 
 /** Admin > Channels & bell: the in-app bell, the requester portal, calling, WhatsApp. */
 export function ChannelsTab() {
-  const { whatsappEnabled, reloadMeta, meta } = useSetu();
+  const { whatsappEnabled, reloadMeta, meta } = useSamadhan();
   const eventList = meta.bellEventList?.length ? meta.bellEventList : FALLBACK_EVENTS;
   const { data, error, reload } = useLoad(admin.settings);
   const [events, setEvents] = useState<BellEvent[]>(['requester_reply']);
@@ -157,11 +157,11 @@ export function ChannelsTab() {
           <Field label="Keep a conversation on one ticket for (days)" hint="A message joins the sender's open WhatsApp ticket updated within this time; otherwise it starts a new ticket.">
             <input type="number" min={1} max={60} className={cx(inputCls, 'w-28')} value={threadDays} onChange={(e) => setThreadDays(e.target.value)} />
           </Field>
-          <Field label="Webhook URL (give this to Meta)"><CopyLine value={setuApiUrl('/whatsapp/webhook')} /></Field>
+          <Field label="Webhook URL (give this to Meta)"><CopyLine value={samadhanApiUrl('/whatsapp/webhook')} /></Field>
           {!whatsappEnabled && (
             <ol className="list-decimal space-y-1 pl-4 text-2xs text-muted">
               <li>In Meta Business Manager, create a WhatsApp Business app and register the helpdesk number.</li>
-              <li>On the backend server set <code>SETU_WHATSAPP_ENABLED=true</code>, <code>SETU_WHATSAPP_TOKEN</code>, <code>SETU_WHATSAPP_PHONE_NUMBER_ID</code>, <code>SETU_WHATSAPP_APP_SECRET</code> and a <code>SETU_WHATSAPP_VERIFY_TOKEN</code> of your choice, then restart it.</li>
+              <li>On the backend server set <code>SAMADHAN_WHATSAPP_ENABLED=true</code>, <code>SAMADHAN_WHATSAPP_TOKEN</code>, <code>SAMADHAN_WHATSAPP_PHONE_NUMBER_ID</code>, <code>SAMADHAN_WHATSAPP_APP_SECRET</code> and a <code>SAMADHAN_WHATSAPP_VERIFY_TOKEN</code> of your choice, then restart it.</li>
               <li>In the Meta app, add the webhook URL above with the same verify token and subscribe to <em>messages</em>.</li>
             </ol>
           )}

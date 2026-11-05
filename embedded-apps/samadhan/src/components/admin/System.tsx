@@ -1,14 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDateTime } from '@/lib/format';
 import type { AutomationRule } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Skeleton, Table, cx, inputBase, inputCls } from '../ui';
 import { checkboxCls, useAction, useLoad } from './shared';
 
 export function SettingsTab() {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.settings);
   const [groupId, setGroupId] = useState('0');
   const [emails, setEmails] = useState('');
@@ -58,7 +58,7 @@ const FIELD_LABEL: Record<string, string> = {
 const fieldWords = (f: string) => FIELD_LABEL[f] ?? f.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase();
 
 function RuleText({ r, edit, onEdit }: { r: AutomationRule; edit?: Thresholds; onEdit?: (key: string, v: string) => void }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const val = (field: string, v: unknown): string => {
     const one = (x: unknown) => (field === 'statusId' ? meta.statuses.find((s) => s.id === x)?.name ?? String(x) : field === 'groupId' ? meta.groups.find((g) => g.id === x)?.name ?? String(x) : String(x));
     return Array.isArray(v) ? v.map(one).join(', ') : v === undefined ? '' : one(v);

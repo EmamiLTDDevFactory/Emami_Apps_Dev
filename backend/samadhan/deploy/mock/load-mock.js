@@ -1,27 +1,27 @@
 'use strict';
 /*
-   Loads setu-mock-data.json (Emami's real Setu configuration + 30 anonymised sample tickets) into Setu.
+   Loads samadhan-mock-data.json (or the older setu-mock-data.json) (Emami's real Samadhan configuration + 30 anonymised sample tickets) into Samadhan.
 
-     node load-mock.js load <path/to/setu-mock-data.json>
+     node load-mock.js load <path/to/samadhan-mock-data.json>
      node load-mock.js remove            sample tickets (tag "mock") and their sample contacts only
      node load-mock.js restore-config    put back the configuration saved just before the last load
 
    Safe by design:
-   - Writes only to Setu's own `setu` schema, directly (no Setu business logic runs, so no notifications, emails or
+   - Writes only to Samadhan's own schema (`samadhan`, or `setu` before the v7.0 rename), directly (no Samadhan business logic runs, so no notifications, emails or
      automations). Manage Access and every other app are untouched.
    - One transaction: either everything loads or nothing changes.
    - Before replacing configuration (statuses, field choices, severity matrix, groups, SLA, business hours, canned
-     replies) the current values are saved in setu.settings 'mock.configBackup' for restore-config.
+     replies) the current values are saved in samadhan.settings 'mock.configBackup' for restore-config.
    - Sample people use @example.com addresses and 90000... numbers; tickets are tagged "mock".
 */
 const fs = require('fs');
 
-const APP = process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
+const APP = process.env.SAMADHAN_APP_DIR || process.env.SETU_APP_DIR || '/home/emamiadmin/apps/emami-apps-hub-backend-dev';
 require(`${APP}/node_modules/dotenv`).config({ path: `${APP}/.env`, quiet: true });
-const { pool } = require(`${APP}/db`);
+const { pool, resolveSchema, sharedPool } = require(`${APP}/samadhan/db/pool`);
 
 const MIN = 60_000;
-// Export field name -> Setu field-definition key / ticket column
+// Export field name -> Samadhan field-definition key / ticket column
 const KEY = {
   cf_call_subject: 'callSubject', cf_region: 'region', cf_distributor_code: 'distributorCode', cf_distributor_name: 'distributorName',
   cf_sales_org669095: 'salesOrg', cf_state: 'state', cf_depot: 'depot', cf_asm_name: 'asmName', cf_depot_coordinator: 'depotCoordinator',
@@ -56,14 +56,14 @@ async function snapshot(c) {
   const q = async (sql) => (await c.query(sql)).rows;
   return {
     savedAt: new Date().toISOString(),
-    statuses: await q('SELECT * FROM setu.ticket_statuses'),
-    fieldDefinitions: await q('SELECT * FROM setu.field_definitions'),
-    fieldChoices: await q('SELECT * FROM setu.field_choices ORDER BY id'),
-    severityRules: await q('SELECT category, "function", severity FROM setu.severity_rules'),
-    groups: await q('SELECT name, assignment FROM setu.groups'),
-    slaTargets: await q('SELECT p.name AS policy, t.priority, t."firstResponseMins", t."nextResponseMins", t."resolutionMins", t."businessHours", t.escalate FROM setu.sla_targets t JOIN setu.sla_policies p ON p.id = t."policyId"'),
-    businessHours: await q('SELECT name, days FROM setu.business_hours'),
-    canned: await q('SELECT folder, title, "shortCode", body FROM setu.canned_responses'),
+    statuses: await q('SELECT * FROM samadhan.ticket_statuses'),
+    fieldDefinitions: await q('SELECT * FROM samadhan.field_definitions'),
+    fieldChoices: await q('SELECT * FROM samadhan.field_choices ORDER BY id'),
+    severityRules: await q('SELECT category, "function", severity FROM samadhan.severity_rules'),
+    groups: await q('SELECT name, assignment FROM samadhan.groups'),
+    slaTargets: await q('SELECT p.name AS policy, t.priority, t."firstResponseMins", t."nextResponseMins", t."resolutionMins", t."businessHours", t.escalate FROM samadhan.sla_targets t JOIN samadhan.sla_policies p ON p.id = t."policyId"'),
+    businessHours: await q('SELECT name, days FROM samadhan.business_hours'),
+    canned: await q('SELECT folder, title, "shortCode", body FROM samadhan.canned_responses'),
   };
 }
 
@@ -72,20 +72,20 @@ async function load(file) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
-    const existing = await c.query(`SELECT count(*)::int AS n FROM setu.tickets WHERE 'mock' = ANY(tags)`);
+    const existing = await c.query(`SELECT count(*)::int AS n FROM samadhan.tickets WHERE 'mock' = ANY(tags)`);
     if (existing.rows[0].n > 0) throw new Error(`Sample data is already loaded (${existing.rows[0].n} tickets tagged "mock"). Run "remove" first.`);
 
     // Save the configuration being replaced (kept from the first load, so restore-config returns to the original)
-    const prior = await c.query(`SELECT 1 FROM setu.settings WHERE key = 'mock.configBackup'`);
+    const prior = await c.query(`SELECT 1 FROM samadhan.settings WHERE key = 'mock.configBackup'`);
     if (!prior.rows.length) {
-      await c.query(`INSERT INTO setu.settings (key, value) VALUES ('mock.configBackup', $1)`, [JSON.stringify(await snapshot(c))]);
+      await c.query(`INSERT INTO samadhan.settings (key, value) VALUES ('mock.configBackup', $1)`, [JSON.stringify(await snapshot(c))]);
     }
 
     // Statuses
     const status = m.fields.find((f) => f.fdName === 'status');
     for (const [i, s] of (status ? status.choices : []).entries()) {
       await c.query(
-        `INSERT INTO setu.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO samadhan.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, "pausesSla" = EXCLUDED."pausesSla", "isResolved" = EXCLUDED."isResolved",
            "isClosed" = EXCLUDED."isClosed", position = EXCLUDED.position`,
         [s.id, String(s.label).slice(0, 200), s.pausesSla ?? s.id !== 2, [4, 5].includes(s.id), s.id === 5, i],
@@ -100,7 +100,7 @@ async function load(file) {
       if (!key) continue;
       const type = f.tree ? 'nested' : f.choices ? 'dropdown' : /paragraph/.test(f.type) ? 'paragraph' : 'text';
       const def = await c.query(
-        `INSERT INTO setu.field_definitions (key, label, type, required, position) VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO samadhan.field_definitions (key, label, type, required, position) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (key) DO UPDATE SET label = EXCLUDED.label, type = EXCLUDED.type, required = EXCLUDED.required, position = EXCLUDED.position
          RETURNING id`,
         [key, String(f.label).slice(0, 100), type, Boolean(f.required), pos],
@@ -108,20 +108,20 @@ async function load(file) {
       const fieldId = def.rows[0].id;
       fields++;
       if (!f.tree && !f.choices) continue;
-      await c.query('DELETE FROM setu.field_choices WHERE "fieldId" = $1', [fieldId]);
+      await c.query('DELETE FROM samadhan.field_choices WHERE "fieldId" = $1', [fieldId]);
       if (f.tree) {
         let p = 0;
         for (const [parent, kids] of Object.entries(f.tree)) {
-          const row = await c.query('INSERT INTO setu.field_choices ("fieldId", value, position) VALUES ($1, $2, $3) RETURNING id', [fieldId, parent, p++]);
+          const row = await c.query('INSERT INTO samadhan.field_choices ("fieldId", value, position) VALUES ($1, $2, $3) RETURNING id', [fieldId, parent, p++]);
           choices++;
           for (const [i, kid] of (kids || []).entries()) {
-            await c.query('INSERT INTO setu.field_choices ("fieldId", "parentId", value, position) VALUES ($1, $2, $3, $4)', [fieldId, row.rows[0].id, kid, i]);
+            await c.query('INSERT INTO samadhan.field_choices ("fieldId", "parentId", value, position) VALUES ($1, $2, $3, $4)', [fieldId, row.rows[0].id, kid, i]);
             choices++;
           }
         }
       } else {
         for (const [i, v] of f.choices.entries()) {
-          await c.query('INSERT INTO setu.field_choices ("fieldId", value, position) VALUES ($1, $2, $3)', [fieldId, String(typeof v === 'object' ? v.label : v), i]);
+          await c.query('INSERT INTO samadhan.field_choices ("fieldId", value, position) VALUES ($1, $2, $3)', [fieldId, String(typeof v === 'object' ? v.label : v), i]);
           choices++;
         }
       }
@@ -133,7 +133,7 @@ async function load(file) {
       const sev = String(s.severity || '').toUpperCase();
       if (!SEVERITIES.includes(sev) || !s.category) continue;
       await c.query(
-        `INSERT INTO setu.severity_rules (category, "function", severity) VALUES ($1, $2, $3)
+        `INSERT INTO samadhan.severity_rules (category, "function", severity) VALUES ($1, $2, $3)
          ON CONFLICT (category, "function") DO UPDATE SET severity = EXCLUDED.severity`,
         [s.category, s.function || '*', sev],
       );
@@ -144,14 +144,14 @@ async function load(file) {
     const groupIds = {};
     for (const g of m.groups) {
       const r = await c.query(
-        `INSERT INTO setu.groups (name, assignment) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET assignment = EXCLUDED.assignment RETURNING id`,
+        `INSERT INTO samadhan.groups (name, assignment) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET assignment = EXCLUDED.assignment RETURNING id`,
         [g.name, g.assignment === 'ROUND_ROBIN' ? 'ROUND_ROBIN' : 'MANUAL'],
       );
       groupIds[g.name] = r.rows[0].id;
     }
     for (const [pos, p] of m.slaPolicies.entries()) {
       const r = await c.query(
-        `INSERT INTO setu.sla_policies (name, "isDefault", position) VALUES ($1, $2, $3)
+        `INSERT INTO samadhan.sla_policies (name, "isDefault", position) VALUES ($1, $2, $3)
          ON CONFLICT (name) DO UPDATE SET "isDefault" = EXCLUDED."isDefault", position = EXCLUDED.position RETURNING id`,
         [p.name, Boolean(p.isDefault), pos],
       );
@@ -160,7 +160,7 @@ async function load(file) {
         const priority = Number(String(k).replace('priority_', ''));
         if (!(priority >= 1 && priority <= 4)) continue;
         await c.query(
-          `INSERT INTO setu.sla_targets ("policyId", priority, "firstResponseMins", "nextResponseMins", "resolutionMins", "businessHours", escalate)
+          `INSERT INTO samadhan.sla_targets ("policyId", priority, "firstResponseMins", "nextResponseMins", "resolutionMins", "businessHours", escalate)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
            ON CONFLICT ("policyId", priority) DO UPDATE SET "firstResponseMins" = EXCLUDED."firstResponseMins", "nextResponseMins" = EXCLUDED."nextResponseMins",
              "resolutionMins" = EXCLUDED."resolutionMins", "businessHours" = EXCLUDED."businessHours", escalate = EXCLUDED.escalate`,
@@ -168,7 +168,7 @@ async function load(file) {
         );
       }
       for (const g of p.groups) {
-        if (groupIds[g]) await c.query('INSERT INTO setu.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [policyId, groupIds[g]]);
+        if (groupIds[g]) await c.query('INSERT INTO samadhan.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [policyId, groupIds[g]]);
       }
     }
 
@@ -176,44 +176,44 @@ async function load(file) {
     const days = Object.entries(m.businessHours.hours || {}).filter(([d]) => d in DAYS).map(([d, v]) => ({ day: DAYS[d], start: hhmm(v.start_time), end: hhmm(v.end_time) }));
     if (days.length) {
       await c.query(
-        `INSERT INTO setu.business_hours (name, timezone, days) VALUES ('Default', 'Asia/Kolkata', $1)
+        `INSERT INTO samadhan.business_hours (name, timezone, days) VALUES ('Default', 'Asia/Kolkata', $1)
          ON CONFLICT (name) DO UPDATE SET days = EXCLUDED.days`, [JSON.stringify(days)],
       );
     }
-    const bh = (await c.query(`SELECT id FROM setu.business_hours WHERE name = 'Default'`)).rows[0];
+    const bh = (await c.query(`SELECT id FROM samadhan.business_hours WHERE name = 'Default'`)).rows[0];
     for (const h of m.businessHours.holidays || []) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(h.date))) continue;
-      await c.query(`INSERT INTO setu.holidays ("businessHoursId", date, name) VALUES ($1, $2, $3) ON CONFLICT ("businessHoursId", date) DO UPDATE SET name = EXCLUDED.name`, [bh.id, h.date, h.name]);
+      await c.query(`INSERT INTO samadhan.holidays ("businessHoursId", date, name) VALUES ($1, $2, $3) ON CONFLICT ("businessHoursId", date) DO UPDATE SET name = EXCLUDED.name`, [bh.id, h.date, h.name]);
     }
 
     // Canned replies (update by folder + title; a short code already in use is left off)
     for (const cr of m.cannedResponses) {
       const body = html(cr.body);
-      const found = await c.query('SELECT id FROM setu.canned_responses WHERE folder = $1 AND title = $2', [cr.folder || 'General', cr.title]);
+      const found = await c.query('SELECT id FROM samadhan.canned_responses WHERE folder = $1 AND title = $2', [cr.folder || 'General', cr.title]);
       if (found.rows.length) {
-        await c.query('UPDATE setu.canned_responses SET body = $2, "updatedAt" = now() WHERE id = $1', [found.rows[0].id, body]);
+        await c.query('UPDATE samadhan.canned_responses SET body = $2, "updatedAt" = now() WHERE id = $1', [found.rows[0].id, body]);
         continue;
       }
       const code = cr.shortCode ? String(cr.shortCode).replace(/^\//, '').toLowerCase().slice(0, 30) : null;
-      const taken = code ? (await c.query('SELECT 1 FROM setu.canned_responses WHERE "shortCode" = $1', [code])).rows.length > 0 : false;
-      await c.query('INSERT INTO setu.canned_responses (folder, title, "shortCode", body) VALUES ($1, $2, $3, $4)', [cr.folder || 'General', cr.title, taken ? null : code, body]);
+      const taken = code ? (await c.query('SELECT 1 FROM samadhan.canned_responses WHERE "shortCode" = $1', [code])).rows.length > 0 : false;
+      await c.query('INSERT INTO samadhan.canned_responses (folder, title, "shortCode", body) VALUES ($1, $2, $3, $4)', [cr.folder || 'General', cr.title, taken ? null : code, body]);
     }
 
     // Sample tickets (tag "mock")
-    const sev = new Map((await c.query('SELECT category, "function", severity FROM setu.severity_rules')).rows.map((r) => [`${r.category}\u0000${r.function}`, r.severity]));
+    const sev = new Map((await c.query('SELECT category, "function", severity FROM samadhan.severity_rules')).rows.map((r) => [`${r.category}\u0000${r.function}`, r.severity]));
     const severityOf = (cat, fn) => (cat ? sev.get(`${cat}\u0000${fn ?? ''}`) ?? sev.get(`${cat}\u0000*`) ?? 'NORMAL' : 'NORMAL');
-    const validStatus = new Set((await c.query('SELECT id FROM setu.ticket_statuses')).rows.map((r) => r.id));
+    const validStatus = new Set((await c.query('SELECT id FROM samadhan.ticket_statuses')).rows.map((r) => r.id));
     let tickets = 0;
     for (const s of m.sampleTickets) {
       const contact = await c.query(
-        `INSERT INTO setu.contacts (name, email, mobile) VALUES ($1, $2, $3)
+        `INSERT INTO samadhan.contacts (name, email, mobile) VALUES ($1, $2, $3)
          ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
         [s.requester.name, String(s.requester.email).toLowerCase(), s.requester.mobile],
       );
       const createdAt = at(s.createdMinutesAgo);
       const due = (mins) => (mins === null || mins === undefined ? null : new Date(Date.now() + mins * MIN));
       const t = await c.query(
-        `INSERT INTO setu.tickets (subject, description, "requesterId", "statusId", priority, severity, source, type, "groupId", tags,
+        `INSERT INTO samadhan.tickets (subject, description, "requesterId", "statusId", priority, severity, source, type, "groupId", tags,
             category, "function", region, "salesOrg", state, depot, "asmName", "depotCoordinator", "l2Agent", "distributorCode", "distributorName",
             "mobileNo", "helpdeskAnalysis", "rcaSolution", "createdAt", "updatedAt", "statusChangedAt", "firstResponseDueAt", "resolutionDueAt",
             "firstRespondedAt", "resolvedAt", "closedAt", "frViolated", "resViolated")
@@ -228,20 +228,20 @@ async function load(file) {
       );
       const id = t.rows[0].id;
       await c.query(
-        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "messageId", "createdAt") VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6)`,
+        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "messageId", "createdAt") VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6)`,
         [id, html(s.description), s.description, String(s.requester.email).toLowerCase(), `mock-${s.sample}-in`, createdAt],
       );
-      await c.query(`INSERT INTO setu.activities ("ticketId", action, details, "createdAt") VALUES ($1, 'created', $2, $3)`, [id, JSON.stringify({ source: SOURCE[s.source] || 'Email', sample: true }), createdAt]);
+      await c.query(`INSERT INTO samadhan.activities ("ticketId", action, details, "createdAt") VALUES ($1, 'created', $2, $3)`, [id, JSON.stringify({ source: SOURCE[s.source] || 'Email', sample: true }), createdAt]);
       if (s.firstRespondedMinutesAgo !== null && s.firstRespondedMinutesAgo !== undefined) {
         const text = 'Thank you for reaching out. We are looking into this and will update you shortly.';
         await c.query(
-          `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "toEmails", "messageId", "createdAt") VALUES ($1, 'REPLY', $2, $3, $4, $5, $6)`,
+          `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "toEmails", "messageId", "createdAt") VALUES ($1, 'REPLY', $2, $3, $4, $5, $6)`,
           [id, html(text), text, [String(s.requester.email).toLowerCase()], `mock-${s.sample}-reply`, at(s.firstRespondedMinutesAgo)],
         );
       }
       tickets++;
     }
-    await c.query(`DELETE FROM setu.ai_insights WHERE key = 'dashboard'`);
+    await c.query(`DELETE FROM samadhan.ai_insights WHERE key = 'dashboard'`);
     await c.query('COMMIT');
     console.log(`Loaded: ${tickets} sample tickets (tag "mock"), ${fields} fields with ${choices} choices, ${rules} severity rules, ${m.groups.length} groups, ${m.slaPolicies.length} SLA policies, ${m.cannedResponses.length} canned replies.`);
   } catch (e) {
@@ -256,9 +256,9 @@ async function remove() {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
-    const t = await c.query(`DELETE FROM setu.tickets WHERE 'mock' = ANY(tags) RETURNING id`); // conversations, activities cascade
-    const k = await c.query(`DELETE FROM setu.contacts x WHERE x.email LIKE '%@example.com' AND NOT EXISTS (SELECT 1 FROM setu.tickets y WHERE y."requesterId" = x.id)`);
-    await c.query(`DELETE FROM setu.ai_insights WHERE key = 'dashboard' OR key = ANY($1)`, [t.rows.map((r) => `ticket:${r.id}`)]);
+    const t = await c.query(`DELETE FROM samadhan.tickets WHERE 'mock' = ANY(tags) RETURNING id`); // conversations, activities cascade
+    const k = await c.query(`DELETE FROM samadhan.contacts x WHERE x.email LIKE '%@example.com' AND NOT EXISTS (SELECT 1 FROM samadhan.tickets y WHERE y."requesterId" = x.id)`);
+    await c.query(`DELETE FROM samadhan.ai_insights WHERE key = 'dashboard' OR key = ANY($1)`, [t.rows.map((r) => `ticket:${r.id}`)]);
     await c.query('COMMIT');
     console.log(`Removed ${t.rowCount} sample tickets and ${k.rowCount} sample contacts. Configuration kept (use restore-config to undo it).`);
   } catch (e) {
@@ -272,45 +272,45 @@ async function remove() {
 async function restoreConfig() {
   const c = await pool.connect();
   try {
-    const row = (await c.query(`SELECT value FROM setu.settings WHERE key = 'mock.configBackup'`)).rows[0];
+    const row = (await c.query(`SELECT value FROM samadhan.settings WHERE key = 'mock.configBackup'`)).rows[0];
     if (!row) throw new Error('No saved configuration found (nothing was replaced, or it was already restored).');
     const b = row.value;
     await c.query('BEGIN');
     for (const s of b.statuses) {
       await c.query(
-        `INSERT INTO setu.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1,$2,$3,$4,$5,$6)
+        `INSERT INTO samadhan.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, "pausesSla" = EXCLUDED."pausesSla", "isResolved" = EXCLUDED."isResolved", "isClosed" = EXCLUDED."isClosed", position = EXCLUDED.position`,
         [s.id, s.name, s.pausesSla, s.isResolved, s.isClosed, s.position],
       );
     }
     // Statuses the load added are removed unless a ticket still uses them
-    await c.query(`DELETE FROM setu.ticket_statuses s WHERE s.id <> ALL($1::int[]) AND NOT EXISTS (SELECT 1 FROM setu.tickets t WHERE t."statusId" = s.id)`, [b.statuses.map((s) => s.id)]);
+    await c.query(`DELETE FROM samadhan.ticket_statuses s WHERE s.id <> ALL($1::int[]) AND NOT EXISTS (SELECT 1 FROM samadhan.tickets t WHERE t."statusId" = s.id)`, [b.statuses.map((s) => s.id)]);
     for (const d of b.fieldDefinitions) {
-      await c.query('UPDATE setu.field_definitions SET label = $2, type = $3, required = $4, position = $5 WHERE key = $1', [d.key, d.label, d.type, d.required, d.position]);
+      await c.query('UPDATE samadhan.field_definitions SET label = $2, type = $3, required = $4, position = $5 WHERE key = $1', [d.key, d.label, d.type, d.required, d.position]);
     }
-    await c.query('DELETE FROM setu.field_choices');
+    await c.query('DELETE FROM samadhan.field_choices');
     const idMap = new Map();
     for (const ch of b.fieldChoices.filter((x) => x.parentId === null)) {
-      const r = await c.query('INSERT INTO setu.field_choices ("fieldId", value, position, active) VALUES ($1,$2,$3,$4) RETURNING id', [ch.fieldId, ch.value, ch.position, ch.active]);
+      const r = await c.query('INSERT INTO samadhan.field_choices ("fieldId", value, position, active) VALUES ($1,$2,$3,$4) RETURNING id', [ch.fieldId, ch.value, ch.position, ch.active]);
       idMap.set(ch.id, r.rows[0].id);
     }
     for (const ch of b.fieldChoices.filter((x) => x.parentId !== null)) {
-      await c.query('INSERT INTO setu.field_choices ("fieldId", "parentId", value, position, active) VALUES ($1,$2,$3,$4,$5)', [ch.fieldId, idMap.get(ch.parentId) ?? null, ch.value, ch.position, ch.active]);
+      await c.query('INSERT INTO samadhan.field_choices ("fieldId", "parentId", value, position, active) VALUES ($1,$2,$3,$4,$5)', [ch.fieldId, idMap.get(ch.parentId) ?? null, ch.value, ch.position, ch.active]);
     }
-    await c.query('DELETE FROM setu.severity_rules');
-    for (const r of b.severityRules) await c.query('INSERT INTO setu.severity_rules (category, "function", severity) VALUES ($1,$2,$3)', [r.category, r.function, r.severity]);
-    for (const g of b.groups) await c.query('UPDATE setu.groups SET assignment = $2 WHERE name = $1', [g.name, g.assignment]);
+    await c.query('DELETE FROM samadhan.severity_rules');
+    for (const r of b.severityRules) await c.query('INSERT INTO samadhan.severity_rules (category, "function", severity) VALUES ($1,$2,$3)', [r.category, r.function, r.severity]);
+    for (const g of b.groups) await c.query('UPDATE samadhan.groups SET assignment = $2 WHERE name = $1', [g.name, g.assignment]);
     for (const t of b.slaTargets) {
       await c.query(
-        `UPDATE setu.sla_targets t SET "firstResponseMins" = $3, "nextResponseMins" = $4, "resolutionMins" = $5, "businessHours" = $6, escalate = $7
-         FROM setu.sla_policies p WHERE p.id = t."policyId" AND p.name = $1 AND t.priority = $2`,
+        `UPDATE samadhan.sla_targets t SET "firstResponseMins" = $3, "nextResponseMins" = $4, "resolutionMins" = $5, "businessHours" = $6, escalate = $7
+         FROM samadhan.sla_policies p WHERE p.id = t."policyId" AND p.name = $1 AND t.priority = $2`,
         [t.policy, t.priority, t.firstResponseMins, t.nextResponseMins, t.resolutionMins, t.businessHours, t.escalate],
       );
     }
-    for (const h of b.businessHours) await c.query('UPDATE setu.business_hours SET days = $2 WHERE name = $1', [h.name, JSON.stringify(h.days)]);
-    await c.query('DELETE FROM setu.canned_responses');
-    for (const cr of b.canned) await c.query('INSERT INTO setu.canned_responses (folder, title, "shortCode", body) VALUES ($1,$2,$3,$4)', [cr.folder, cr.title, cr.shortCode, cr.body]);
-    await c.query(`DELETE FROM setu.settings WHERE key = 'mock.configBackup'`);
+    for (const h of b.businessHours) await c.query('UPDATE samadhan.business_hours SET days = $2 WHERE name = $1', [h.name, JSON.stringify(h.days)]);
+    await c.query('DELETE FROM samadhan.canned_responses');
+    for (const cr of b.canned) await c.query('INSERT INTO samadhan.canned_responses (folder, title, "shortCode", body) VALUES ($1,$2,$3,$4)', [cr.folder, cr.title, cr.shortCode, cr.body]);
+    await c.query(`DELETE FROM samadhan.settings WHERE key = 'mock.configBackup'`);
     await c.query('COMMIT');
     console.log(`Configuration restored to how it was on ${b.savedAt}.`);
   } catch (e) {
@@ -322,7 +322,10 @@ async function restoreConfig() {
 }
 
 const [cmd, file] = process.argv.slice(2);
-const run = cmd === 'load' ? load(file || `${__dirname}/setu-mock-data.json`) : cmd === 'remove' ? remove() : cmd === 'restore-config' ? restoreConfig() : Promise.reject(new Error('usage: node load-mock.js load <file> | remove | restore-config'));
+// Data file: samadhan-mock-data.json, or setu-mock-data.json copied to the server before v7 (formerly Setu).
+const defaultFile = ['samadhan-mock-data.json', 'setu-mock-data.json'].map((n) => `${__dirname}/${n}`).find((p) => require('fs').existsSync(p)) || `${__dirname}/samadhan-mock-data.json`;
+// samadhan, or the legacy setu schema before the v7.0 rename
+const run = resolveSchema().then(() => (cmd === 'load' ? load(file || defaultFile) : cmd === 'remove' ? remove() : cmd === 'restore-config' ? restoreConfig() : Promise.reject(new Error('usage: node load-mock.js load <file> | remove | restore-config'))));
 run
   .catch((e) => { console.error('ERROR (nothing was changed):', e.message); process.exitCode = 1; })
-  .finally(() => pool.end().then(() => process.exit()));
+  .finally(() => sharedPool.end().then(() => process.exit()));

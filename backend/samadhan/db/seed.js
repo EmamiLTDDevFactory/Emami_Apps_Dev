@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('./pool');
 
 // Base configuration agreed for Emami Secondary Support (statuses, fields, severity matrix, SLA policies,
 // business hours, groups, automations, email wording). Inserts only what is missing, so changes made in
@@ -130,57 +130,57 @@ const SEED_SCENARIOS = [
 async function seed() {
     for (const [i, s] of SEED_STATUSES.entries()) {
         await pool.query(
-            `INSERT INTO setu.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position)
+            `INSERT INTO samadhan.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position)
              VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING`,
             [s.id, s.name, s.pausesSla ?? true, s.isResolved ?? false, s.isClosed ?? false, i],
         );
     }
     for (const [i, f] of SEED_FIELDS.entries()) {
         const { rows } = await pool.query(
-            `INSERT INTO setu.field_definitions (key, label, type, required, position) VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO samadhan.field_definitions (key, label, type, required, position) VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (key) DO NOTHING RETURNING id`,
             [f.key, f.label, f.type, f.required ?? false, i],
         );
         const starter = SEED_CHOICES[f.key];
         if (rows.length && starter) {
             for (const [p, value] of starter.entries()) {
-                await pool.query('INSERT INTO setu.field_choices ("fieldId", value, position) VALUES ($1, $2, $3)', [rows[0].id, value, p]);
+                await pool.query('INSERT INTO samadhan.field_choices ("fieldId", value, position) VALUES ($1, $2, $3)', [rows[0].id, value, p]);
             }
         }
     }
     for (const [category, fn] of SEED_FATAL) {
         await pool.query(
-            `INSERT INTO setu.severity_rules (category, "function", severity) VALUES ($1, $2, 'FATAL') ON CONFLICT DO NOTHING`,
+            `INSERT INTO samadhan.severity_rules (category, "function", severity) VALUES ($1, $2, 'FATAL') ON CONFLICT DO NOTHING`,
             [category, fn],
         );
     }
     const days = [1, 2, 3, 4, 5, 6].map((day) => ({ day, start: '09:00', end: '20:00' }));
     await pool.query(
-        `INSERT INTO setu.business_hours (name, timezone, days) VALUES ('Default', 'Asia/Kolkata', $1) ON CONFLICT (name) DO NOTHING`,
+        `INSERT INTO samadhan.business_hours (name, timezone, days) VALUES ('Default', 'Asia/Kolkata', $1) ON CONFLICT (name) DO NOTHING`,
         [JSON.stringify(days)],
     );
     // Customer Support: round robin; L2 Support: manual assignment
     for (const [name, assignment] of [['Customer Support', 'ROUND_ROBIN'], ['L2 Support', 'MANUAL']]) {
-        await pool.query('INSERT INTO setu.groups (name, assignment) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [name, assignment]);
+        await pool.query('INSERT INTO samadhan.groups (name, assignment) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING', [name, assignment]);
     }
-    const groupIds = Object.fromEntries((await pool.query('SELECT id, name FROM setu.groups')).rows.map((g) => [g.name, g.id]));
+    const groupIds = Object.fromEntries((await pool.query('SELECT id, name FROM samadhan.groups')).rows.map((g) => [g.name, g.id]));
 
     for (const p of SEED_SLA) {
         const ins = await pool.query(
-            `INSERT INTO setu.sla_policies (name, "isDefault", position) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING RETURNING id`,
+            `INSERT INTO samadhan.sla_policies (name, "isDefault", position) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING RETURNING id`,
             [p.name, p.isDefault, p.position],
         );
         if (!ins.rows.length) continue;
         const policyId = ins.rows[0].id;
         for (const t of p.targets) {
             await pool.query(
-                `INSERT INTO setu.sla_targets ("policyId", priority, "firstResponseMins", "nextResponseMins", "resolutionMins", "businessHours")
+                `INSERT INTO samadhan.sla_targets ("policyId", priority, "firstResponseMins", "nextResponseMins", "resolutionMins", "businessHours")
                  VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
                 [policyId, t.priority, t.firstResponseMins, t.nextResponseMins, t.resolutionMins, t.businessHours],
             );
         }
         for (const g of p.groups) {
-            if (groupIds[g]) await pool.query('INSERT INTO setu.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [policyId, groupIds[g]]);
+            if (groupIds[g]) await pool.query('INSERT INTO samadhan.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [policyId, groupIds[g]]);
         }
     }
 
@@ -194,20 +194,20 @@ async function seed() {
     ];
     for (const r of rules) {
         await pool.query(
-            `INSERT INTO setu.automation_rules (name, trigger, position, conditions, actions) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (name) DO NOTHING`,
+            `INSERT INTO samadhan.automation_rules (name, trigger, position, conditions, actions) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (name) DO NOTHING`,
             [r.name, r.trigger, r.position, JSON.stringify(r.conditions), JSON.stringify(r.actions)],
         );
     }
     for (const [i, s] of SEED_SCENARIOS.entries()) {
         const actions = s.actions.map(({ group, ...a }) => (group ? { ...a, value: groupIds[group] ?? null } : a));
         await pool.query(
-            'INSERT INTO setu.scenarios (name, description, actions, position) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO NOTHING',
+            'INSERT INTO samadhan.scenarios (name, description, actions, position) VALUES ($1, $2, $3, $4) ON CONFLICT (name) DO NOTHING',
             [s.name, s.description, JSON.stringify(actions), i],
         );
     }
     for (const t of SEED_TEMPLATES) {
         await pool.query(
-            'INSERT INTO setu.email_templates (key, audience, subject, body) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING',
+            'INSERT INTO samadhan.email_templates (key, audience, subject, body) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING',
             [t.key, t.audience, t.subject, t.body],
         );
     }
@@ -219,7 +219,7 @@ async function seed() {
         ['bell.events', ['requester_reply']], ['bell.scope', 'assignee'], ['portal.enabled', true], ['call.mode', 'tel'], ['whatsapp.threadDays', 7],
         ['csat.enabled', true],
     ]) {
-        await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, JSON.stringify(value)]);
+        await pool.query('INSERT INTO samadhan.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, JSON.stringify(value)]);
     }
 }
 

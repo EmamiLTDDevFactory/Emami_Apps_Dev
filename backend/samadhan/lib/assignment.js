@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 
 // ---------- Round robin ----------
 
@@ -9,13 +9,13 @@ async function roundRobinAgent(groupId) {
     try {
         await client.query('BEGIN');
         // lock the group row so two new tickets cannot pick the same agent
-        const g = await client.query('SELECT assignment, "lastAssignedAgentId" FROM setu.groups WHERE id = $1 FOR UPDATE', [groupId]);
+        const g = await client.query('SELECT assignment, "lastAssignedAgentId" FROM samadhan.groups WHERE id = $1 FOR UPDATE', [groupId]);
         if (!g.rows.length || g.rows[0].assignment !== 'ROUND_ROBIN') {
             await client.query('ROLLBACK');
             return null;
         }
         const members = await client.query(
-            `SELECT m."agentId" FROM setu.group_members m JOIN setu.agents a ON a.id = m."agentId"
+            `SELECT m."agentId" FROM samadhan.group_members m JOIN samadhan.agents a ON a.id = m."agentId"
              WHERE m."groupId" = $1 AND a.active AND a.availability = 'AVAILABLE' ORDER BY m."agentId"`,
             [groupId],
         );
@@ -25,7 +25,7 @@ async function roundRobinAgent(groupId) {
             return null;
         }
         const next = ids.find((id) => id > (g.rows[0].lastAssignedAgentId ?? 0)) ?? ids[0];
-        await client.query('UPDATE setu.groups SET "lastAssignedAgentId" = $2 WHERE id = $1', [groupId, next]);
+        await client.query('UPDATE samadhan.groups SET "lastAssignedAgentId" = $2 WHERE id = $1', [groupId, next]);
         await client.query('COMMIT');
         return next;
     } catch (err) {

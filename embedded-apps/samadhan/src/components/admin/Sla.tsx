@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDate, fmtMins, PRIORITY_LABEL } from '@/lib/format';
 import type { DayWindow, SlaPolicy, SlaTarget } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Skeleton, Table, cx, inputCls } from '../ui';
@@ -53,7 +53,7 @@ function TargetRow({ t, onSaved }: { t: SlaTarget; onSaved: () => void }) {
 }
 
 function PolicyCard({ p, onSaved }: { p: SlaPolicy; onSaved: () => void }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const [groups, setGroups] = useState(p.groupIds);
   const act = useAction();
   useEffect(() => setGroups(p.groupIds), [p.groupIds]);

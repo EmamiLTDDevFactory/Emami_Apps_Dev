@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { PlusCircle, UserSearch } from 'lucide-react';
 import { createTicket, searchContacts } from '@/lib/api';
 import type { ContactMatch } from '@/lib/types';
-import { useSetu, type NewTicketPreset } from '@/lib/context';
+import { useSamadhan, type NewTicketPreset } from '@/lib/context';
 import TicketFields, { type Values } from './TicketFields';
 import { Button, Card, Field, Notice, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
@@ -14,7 +14,7 @@ const EMPTY_TOP = { requesterName: '', requesterEmail: '', requesterPhone: '', s
 const TOP_KEYS = Object.keys(EMPTY_TOP);
 
 export default function NewTicket({ preset }: { preset?: NewTicketPreset }) {
-  const { meta, openTicket } = useSetu();
+  const { meta, openTicket } = useSamadhan();
   const parentId = preset?.parentId;
   const [top, setTop] = useState({ ...EMPTY_TOP, ...Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => TOP_KEYS.includes(k) && typeof v === 'string')) });
   const [fields, setFields] = useState<Values>(Object.fromEntries(Object.entries(preset ?? {}).filter(([k, v]) => !TOP_KEYS.includes(k) && k !== 'parentId' && typeof v === 'string' && v)) as Values);

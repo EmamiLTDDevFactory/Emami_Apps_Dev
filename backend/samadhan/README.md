@@ -1,13 +1,16 @@
-# Setu backend
+# Samadhan backend
 
-API for **Samadhan** (Emami Secondary Support helpdesk), mounted at `/api/setu` by `backend/server.js`.
-Users see the app as **Samadhan**; `setu` stays the internal name (app id in Manage Access, schema, routes, folders).
-The frontend lives in `embedded-apps/setu`. Data lives in its own `setu` Postgres schema.
+API for **Samadhan** (Emami helpdesk), mounted at `/api/samadhan` by `backend/server.js`.
+The frontend lives in `embedded-apps/samadhan`. Data lives in its own `samadhan` Postgres schema.
+
+> **Formerly Setu.** Before v7 the internal name was `setu` (folder `backend/setu`, `/api/setu`, schema `setu`,
+> `SETU_*` settings). Everything was renamed to `samadhan` in v7 Phase 1, with compatibility kept — see
+> "Samadhan v7 (schema v7)" below.
 
 ## Layout
 
 ```
-backend/setu/
+backend/samadhan/
   index.js               router: scheduler route, then sign-in + rate limit, then the feature routes
   constants.js           roles, statuses, priorities, editable fields, mail settings
   db/
@@ -34,7 +37,7 @@ backend/setu/
     jobs.js              scheduled checks: SLA reminders / violations, time automations, mailbox intake
     queries.js, util.js  shared SQL fragments, helpers, error handling
   middleware/
-    auth.js              hub session token + 'setu' grant + role; deactivated agents blocked
+    auth.js              hub session token + Samadhan grant + role; deactivated agents blocked
     rateLimit.js         per-person request limits
     bell.js              in-app bell: which events, who sees them, per-agent mute
     canned.js            shared (Admin) and personal (one agent only) canned responses
@@ -52,7 +55,7 @@ backend/setu/
 
 ## Access
 
-Sign-in is the Emami Apps hub session (no separate login). Access is the **setu** grant in Manage Access; the
+Sign-in is the Emami Apps hub session (no separate login). Access is the **Samadhan** grant in Manage Access (app id `samadhan`; grants made before v7 under `setu` still count); the
 grant's role decides what a person can do:
 
 | Role | Can |
@@ -61,16 +64,16 @@ grant's role decides what a person can do:
 | Supervisor | Agent + daily report (it contains requester phone numbers and emails) |
 | Admin | Supervisor + Admin screens and "Run scheduled checks now" |
 
-An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is refused even with a grant.
+An Admin can deactivate a Samadhan agent (Admin > Agents); a deactivated agent is refused even with a grant.
 
 ## Channels, last activity, bell, calls
 
-- **Ways in**: email (support mailbox), the **requester portal** (`/apps/setu/portal/`, no Emami Apps login: name + email
+- **Ways in**: email (support mailbox), the **requester portal** (`/apps/samadhan/portal/`, no Emami Apps login: name + email
   required, acknowledgement emailed, status check by ticket number + email), **WhatsApp** (Meta Cloud API webhook,
   replies go back on WhatsApp), and agents logging a ticket on someone's behalf (requester email required).
 - **Last activity** on every ticket (created, status change, assignment, agent / requester reply, note, forward, call):
   shown in the list, filterable and sortable.
-- **Bell** in the Setu header: Admin > Channels & bell picks the events (default: requester replies only) and who sees
+- **Bell** in the Samadhan header: Admin > Channels & bell picks the events (default: requester replies only) and who sees
   them (the ticket's agent, its group, or everyone); each agent can mute events for themselves. Kept 30 days.
 - **Calls**: Call buttons (tel: or Microsoft Teams, Admin's choice) on every number on the ticket, and a call log
   (direction, outcome, length, notes) shown in the conversation.
@@ -80,11 +83,11 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
 
 ## Insights and action points
 
-- **Dashboard** (`GET /api/setu/insights/dashboard`): a headline, themes, risks and prioritised action points for the
+- **Dashboard** (`GET /api/samadhan/insights/dashboard`): a headline, themes, risks and prioritised action points for the
   whole queue, from live numbers (overdue, unassigned per group, agent availability, category spikes week on week,
   distributors with repeat tickets, tickets waiting on requesters, SLA breach rate). Shared by everyone and kept for
   30 minutes; a Supervisor or Admin can refresh it.
-- **Ticket** (`GET /api/setu/tickets/:id/insights`): live checks (first response / resolution due or overdue,
+- **Ticket** (`GET /api/samadhan/tickets/:id/insights`): live checks (first response / resolution due or overdue,
   unassigned, requester waiting for a reply, fatal not escalated, fields missing before resolving, repeat
   distributor). With `?generate=1` (the "Analyse ticket" button): summary, sentiment, a Category -> Function
   suggestion from the configured list only (one click to apply), likely root cause, next steps and a draft reply the
@@ -93,7 +96,7 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
   same key the rest of the backend uses). Without a key, or if the AI declines or is unavailable, the same screens
   are filled by built-in rules and marked "Built-in" - nothing breaks. Answers are constrained to a JSON schema;
   email addresses and phone numbers are masked before anything is sent; ticket text is treated as data, not
-  instructions; suggestions are always checked against Setu's own lists before they are shown. Nothing the AI
+  instructions; suggestions are always checked against Samadhan's own lists before they are shown. Nothing the AI
   writes is sent or saved on a ticket without an agent choosing to.
 - **Cost control**: analysis runs only when an agent asks; results are cached (ticket until it changes, dashboard
   30 minutes); the stable system prompt is prompt-cached; new AI requests are limited to 20 per person per minute.
@@ -124,7 +127,7 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
 - **Personal canned responses** and the **bell** are scoped to the signed-in agent on the server.
 - **Privacy**: Admin > Contacts removes a person's name, email and phone, their words on their tickets, and their
   address from conversations, activity and parked mail. Logs never contain email addresses or message text.
-- **Audit**: admin changes, report downloads and contact removal are written to `setu.audit_events`
+- **Audit**: admin changes, report downloads and contact removal are written to `samadhan.audit_events`
   (Admin > Audit log); every ticket change, automation and email is in the ticket's activity log.
 - **Errors**: unexpected errors return a generic message; details go to the server log only.
 
@@ -143,31 +146,33 @@ An Admin can deactivate a Setu agent (Admin > Agents); a deactivated agent is re
 
 ## Scale and reliability
 
-- Stateless request handling: any number of backend copies (Lambda instances) can serve Setu at once.
+- Stateless request handling: any number of backend copies (Lambda instances) can serve Samadhan at once.
 - Scheduled checks run under a Postgres advisory lock and a shared "last run" time, so only one copy runs them
   and nobody gets duplicate reminders or double automation actions.
 - Round-robin assignment locks the group row, so two simultaneous new tickets never go to the same agent by race.
 - Indexes on status, agent, group, created time, requester and Category / Function; lists are paginated (max 200),
   the board is capped at 600 open tickets.
-- Each Lambda copy holds up to 10 database connections (`backend/db.js`). If Setu traffic grows to many
+- Each Lambda copy holds up to 10 database connections (`backend/db.js`). If Samadhan traffic grows to many
   concurrent copies, put RDS Proxy / PgBouncer in front of Postgres.
 
 ## Configuration (backend environment)
+
+Every `SAMADHAN_<X>` setting falls back to the pre-v7 `SETU_<X>` when it is not set, so existing server settings keep working.
 
 | Variable | Purpose |
 | --- | --- |
 | `PGHOST` `PGPORT` `PGDATABASE` `PGUSER` `PGPASSWORD` | shared Emami Apps Postgres (already set for the backend) |
 | `HUB_AUTH_JWT_SECRET` | hub session signing secret (already set) |
-| `HUB_INTERNAL_API_SECRET` | lets a scheduler call `POST /api/setu/jobs/run` with header `x-internal-secret` |
-| `SETU_MAIL_ENABLED` | `true` to read the support mailbox and email requesters; default `false` (replies are saved, no mail) |
-| `SETU_MAILBOX` | support mailbox address (default `emami.helpdesk@emamigroup.com`) |
+| `HUB_INTERNAL_API_SECRET` | lets a scheduler call `POST /api/samadhan/jobs/run` with header `x-internal-secret` |
+| `SAMADHAN_MAIL_ENABLED` | `true` to read the support mailbox and email requesters; default `false` (replies are saved, no mail) |
+| `SAMADHAN_MAILBOX` | support mailbox address (default `emami.helpdesk@emamigroup.com`) |
 | `ANTHROPIC_API_KEY` | turns on AI analysis (already used by other backend modules); unset = built-in insights only |
-| `SETU_AI_ENABLED` | `false` switches Setu's AI off even when a key is set (default on) |
-| `SETU_WHATSAPP_ENABLED` | `true` to connect WhatsApp (default off: WhatsApp replies are saved on the ticket only) |
-| `SETU_WHATSAPP_TOKEN` / `SETU_WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Cloud API access token and the helpdesk number's id |
-| `SETU_WHATSAPP_APP_SECRET` | Meta app secret - webhook signatures are checked with it |
-| `SETU_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/setu/whatsapp/webhook` |
-| `SETU_WHATSAPP_API_VERSION` | Graph API version (default `v21.0`) |
+| `SAMADHAN_AI_ENABLED` | `false` switches Samadhan's AI off even when a key is set (default on) |
+| `SAMADHAN_WHATSAPP_ENABLED` | `true` to connect WhatsApp (default off: WhatsApp replies are saved on the ticket only) |
+| `SAMADHAN_WHATSAPP_TOKEN` / `SAMADHAN_WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Cloud API access token and the helpdesk number's id |
+| `SAMADHAN_WHATSAPP_APP_SECRET` | Meta app secret - webhook signatures are checked with it |
+| `SAMADHAN_WHATSAPP_VERIFY_TOKEN` | any string; enter the same one in Meta when adding the webhook `https://<api>/api/samadhan/whatsapp/webhook` (the old `/api/setu/...` URL keeps working) |
+| `SAMADHAN_WHATSAPP_API_VERSION` | Graph API version (default `v21.0`) |
 
 Mail uses the Microsoft Graph app registration from `backend/ccbTeams.js`; it needs the **Mail.ReadWrite** and
 **Mail.Send** application permissions, ideally limited to the support mailbox with an Exchange application
@@ -175,7 +180,7 @@ access policy. Agent notifications go through `backend/notifications.js` (hub be
 
 ## Database
 
-On first start the backend creates the `setu` schema, tables and base configuration itself. If the backend's
+On first start the backend creates the `samadhan` schema, tables and base configuration itself. If the backend's
 database user may not create schemas, or the database is not reachable from where you are, a DBA can run
 `db/install.sql` once instead (it refuses to run twice). Ticket numbers start at 100000.
 
@@ -185,10 +190,39 @@ They run on normal traffic at most every 5 minutes, and every 5 minutes in a lon
 schedule, have EventBridge (or any scheduler) call:
 
 ```
-POST https://<api>/api/setu/jobs/run
+POST https://<api>/api/samadhan/jobs/run
 x-internal-secret: <HUB_INTERNAL_API_SECRET>
 ```
 
 ## Tests
 
-See `tests/README.md`. Unit tests: `node --test backend/setu/tests/unit.test.js`.
+See `tests/README.md`. Unit tests: `node --test backend/samadhan/tests/unit.test.js`.
+
+## Samadhan v7 (schema v7)
+
+Phase 1 renamed the internal name `setu` to `samadhan` (formerly Setu) without changing any behaviour:
+
+| What | Now | Kept for compatibility |
+| --- | --- | --- |
+| Folder | `backend/samadhan/` | — |
+| API | `/api/samadhan/*` | `/api/setu/*` answers the same, with `Deprecation`, `Sunset` (`SAMADHAN_LEGACY_SUNSET`, default 2027-05-31) and `Link` headers; callers are logged once a minute per path |
+| Schema | `samadhan` (`SAMADHAN_DB_SCHEMA`, one place: `db/pool.js`) | if only `setu` exists the backend uses it and logs a warning, until the rename is run |
+| Manage Access app id | `samadhan` | grants under `setu` are accepted; new grants follow the id in use (`lib/access.js`) |
+| Settings | `SAMADHAN_*` | `SETU_*` read when the new name is not set |
+| Links | `/apps/samadhan/?ticket=`, `/apps/samadhan/portal/?csat=` | `/apps/setu/...` forwards (`embedded-apps/setu` stub) |
+| Scheduler lock | `hashtext('samadhan.scheduled_jobs')` | the old lock is taken too |
+| Not renamed (stored keys) | hub inbox de-duplication key `setu:<id>:<template>`; the old-text migration strings in `db/schema.js` / `install.sql` | — |
+
+### Migrations
+
+`db/migrate.js` runs v7 steps, each in one transaction with a down script, recorded in `samadhan.schema_migrations`:
+
+```
+node backend/samadhan/db/migrate.js status
+node backend/samadhan/db/migrate.js up 7.0-rename --yes     # ALTER SCHEMA setu RENAME TO samadhan
+node backend/samadhan/db/migrate.js down 7.0-rename --yes   # back to setu
+```
+
+`7.0-rename` is explicit: the backend never renames the schema by itself. Stop (or restart right after) the backend
+around it. It refuses if anything outside the tables refers to `setu.` by name. A new database is created as
+`samadhan` directly.

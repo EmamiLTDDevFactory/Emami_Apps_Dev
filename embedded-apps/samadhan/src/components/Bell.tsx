@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell as BellIcon, BellOff, CheckCheck, Settings2, Trash2 } from 'lucide-react';
 import { clearReadBell, getBell, markBellRead } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { BELL_EVENT_SHORT, fmtDateTime, relative } from '@/lib/format';
 import type { BellEvent, BellItem } from '@/lib/types';
 import { cx } from './ui';
@@ -14,7 +14,7 @@ const POLL_MS = 60_000;
  * in My preferences (gear). The list filters by unread and by event type; it polls every minute while the tab is visible.
  */
 export default function Bell({ events, muted, onSettings }: { events: BellEvent[]; muted: BellEvent[]; onSettings: () => void }) {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<BellItem[]>([]);
   const [more, setMore] = useState(false);

@@ -1,7 +1,7 @@
 'use strict';
 const { LIST_COLUMNS, LIST_FROM } = require('../lib/queries');
 const express = require('express');
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { CALL_OUTCOMES, EMAIL_RE, PATCHABLE, PHONE_RE, PRIORITIES } = require('../constants');
 const { option, sources } = require('../lib/config');
 const { loadTicket } = require('../lib/notify');
@@ -31,10 +31,10 @@ router.get('/tickets/counts', wrap(async (req, res) => {
     const [builtIn, saved] = await Promise.all([
         pool.query(
             `SELECT ${VIEW_IDS.map((v) => `count(*) FILTER (WHERE ${VIEWS[v]('$1')})::int AS "${v}"`).join(', ')}, count(*) FILTER (WHERE ${LIVE})::int AS "all"
-             FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`,
+             FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`,
             [req.agent.id],
         ),
-        pool.query('SELECT id, query FROM setu.saved_views WHERE "ownerAgentId" = $1 OR shared ORDER BY id LIMIT 30', [req.agent.id]),
+        pool.query('SELECT id, query FROM samadhan.saved_views WHERE "ownerAgentId" = $1 OR shared ORDER BY id LIMIT 30', [req.agent.id]),
     ]);
     const counts = { ...builtIn.rows[0] };
     await Promise.all(saved.rows.map(async (v) => {
@@ -73,7 +73,7 @@ router.get('/tickets/export', wrap(async (req, res) => {
     const columns = wanted.length ? wanted : Object.keys(EXPORT_COLUMNS);
     const { rows } = await pool.query(
         `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", a.name AS "agentName", g.name AS "groupName", s.name AS "statusName",
-                (SELECT rating FROM setu.csat_responses r WHERE r."ticketId" = t.id ORDER BY r.id DESC LIMIT 1) AS "csatRating"
+                (SELECT rating FROM samadhan.csat_responses r WHERE r."ticketId" = t.id ORDER BY r.id DESC LIMIT 1) AS "csatRating"
          ${LIST_FROM} ${where} ORDER BY ${order}, t.id DESC LIMIT ${maxRows + 1}`,
         params,
     );
@@ -148,33 +148,33 @@ router.get('/tickets/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) throw fail(400, 'Invalid ticket number.');
     const t = await loadTicket(id);
-    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt" FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"`;
+    const related = `SELECT t.id, t.subject, s.name AS "statusName", s."isResolved", t."createdAt" FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"`;
     const [conversations, activities, timeLogs, others, calls, watchers, links, children, parent, csat, todos] = await Promise.all([
         pool.query(
-            `SELECT cv.*, a.name AS "agentName" FROM setu.conversations cv LEFT JOIN setu.agents a ON a.id = cv."agentId"
+            `SELECT cv.*, a.name AS "agentName" FROM samadhan.conversations cv LEFT JOIN samadhan.agents a ON a.id = cv."agentId"
              WHERE cv."ticketId" = $1 ORDER BY cv."createdAt", cv.id`,
             [id],
         ),
         pool.query(
-            `SELECT ac.*, a.name AS "actorName" FROM setu.activities ac LEFT JOIN setu.agents a ON a.id = ac."actorAgentId"
+            `SELECT ac.*, a.name AS "actorName" FROM samadhan.activities ac LEFT JOIN samadhan.agents a ON a.id = ac."actorAgentId"
              WHERE ac."ticketId" = $1 ORDER BY ac."createdAt" DESC, ac.id DESC LIMIT 200`,
             [id],
         ),
         pool.query(
-            `SELECT tl.*, a.name AS "agentName" FROM setu.time_logs tl JOIN setu.agents a ON a.id = tl."agentId" WHERE tl."ticketId" = $1 ORDER BY tl."createdAt" DESC`,
+            `SELECT tl.*, a.name AS "agentName" FROM samadhan.time_logs tl JOIN samadhan.agents a ON a.id = tl."agentId" WHERE tl."ticketId" = $1 ORDER BY tl."createdAt" DESC`,
             [id],
         ),
         pool.query(`${related} WHERE t."requesterId" = $1 AND t.id <> $2 AND ${LIVE} ORDER BY t."createdAt" DESC LIMIT 10`, [t.requesterId, id]),
         pool.query(
-            `SELECT cl.*, a.name AS "agentName" FROM setu.call_logs cl JOIN setu.agents a ON a.id = cl."agentId" WHERE cl."ticketId" = $1 ORDER BY cl."createdAt"`,
+            `SELECT cl.*, a.name AS "agentName" FROM samadhan.call_logs cl JOIN samadhan.agents a ON a.id = cl."agentId" WHERE cl."ticketId" = $1 ORDER BY cl."createdAt"`,
             [id],
         ),
-        pool.query('SELECT a.id, a.name FROM setu.ticket_watchers w JOIN setu.agents a ON a.id = w."agentId" WHERE w."ticketId" = $1 ORDER BY a.name', [id]),
-        pool.query(`${related} JOIN setu.ticket_links l ON l."linkedId" = t.id WHERE l."ticketId" = $1 ORDER BY t.id`, [id]),
+        pool.query('SELECT a.id, a.name FROM samadhan.ticket_watchers w JOIN samadhan.agents a ON a.id = w."agentId" WHERE w."ticketId" = $1 ORDER BY a.name', [id]),
+        pool.query(`${related} JOIN samadhan.ticket_links l ON l."linkedId" = t.id WHERE l."ticketId" = $1 ORDER BY t.id`, [id]),
         pool.query(`${related} WHERE t."parentId" = $1 AND t."deletedAt" IS NULL ORDER BY t.id`, [id]),
         t.parentId ? pool.query(`${related} WHERE t.id = $1`, [t.parentId]) : { rows: [] },
-        pool.query('SELECT rating, comment, "createdAt" FROM setu.csat_responses WHERE "ticketId" = $1 ORDER BY id DESC LIMIT 1', [id]),
-        pool.query('SELECT * FROM setu.todos WHERE "ticketId" = $1 AND "agentId" = $2 ORDER BY done, "dueAt" NULLS LAST, id', [id, req.agent.id]),
+        pool.query('SELECT rating, comment, "createdAt" FROM samadhan.csat_responses WHERE "ticketId" = $1 ORDER BY id DESC LIMIT 1', [id]),
+        pool.query('SELECT * FROM samadhan.todos WHERE "ticketId" = $1 AND "agentId" = $2 ORDER BY done, "dueAt" NULLS LAST, id', [id, req.agent.id]),
     ]);
     res.json({
         success: true, ticket: t, conversations: conversations.rows, activities: activities.rows, timeLogs: timeLogs.rows,
@@ -244,7 +244,7 @@ router.post('/tickets/bulk', wrap(async (req, res) => {
         const patch = {};
         const p = b.patch ?? {};
         if (action === 'close') {
-            const closed = (await pool.query('SELECT id FROM setu.ticket_statuses WHERE "isClosed" ORDER BY position LIMIT 1')).rows[0];
+            const closed = (await pool.query('SELECT id FROM samadhan.ticket_statuses WHERE "isClosed" ORDER BY position LIMIT 1')).rows[0];
             patch.statusId = closed.id;
         }
         for (const k of ['statusId', 'priority', 'groupId', 'agentId']) {
@@ -328,7 +328,7 @@ router.post('/tickets/:id/messages', wrap(async (req, res) => {
 router.post('/tickets/:id/time-logs', wrap(async (req, res) => {
     const minutes = Number(req.body?.minutes);
     if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 24 * 60) throw fail(400, 'Enter minutes between 1 and 1440.');
-    await pool.query('INSERT INTO setu.time_logs ("ticketId", "agentId", minutes, note) VALUES ($1, $2, $3, $4)', [Number(req.params.id), req.agent.id, minutes, String(req.body?.note || '').slice(0, 500) || null]);
+    await pool.query('INSERT INTO samadhan.time_logs ("ticketId", "agentId", minutes, note) VALUES ($1, $2, $3, $4)', [Number(req.params.id), req.agent.id, minutes, String(req.body?.note || '').slice(0, 500) || null]);
     res.status(201).json({ success: true });
 }));
 
@@ -345,7 +345,7 @@ router.post('/tickets/:id/calls', wrap(async (req, res) => {
     const notes = String(b.notes || '').trim().slice(0, 5000) || null;
     await loadTicket(id);
     await pool.query(
-        'INSERT INTO setu.call_logs ("ticketId", "agentId", phone, direction, outcome, "durationSecs", notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        'INSERT INTO samadhan.call_logs ("ticketId", "agentId", phone, direction, outcome, "durationSecs", notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
         [id, req.agent.id, phone, direction, b.outcome, Math.round(mins * 60), notes],
     );
     const now = new Date();

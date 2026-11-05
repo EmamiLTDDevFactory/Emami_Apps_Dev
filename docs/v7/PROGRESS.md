@@ -8,7 +8,7 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 |---|---|
 | C (working agreement) | done |
 | 0 (discovery, baseline, plan) | done — **approved 2026-11-05** ("approved", no individual answers) |
-| 1 (rename + harness) | in progress |
+| 1 (rename + harness) | **code done, committed locally; full gate NOT yet green** (gate run stopped by Claude Code for low memory — see Phase 1 status) |
 | 2 – 9 | not started |
 
 ### Decisions taken at the Phase-0 STOP (approval without individual answers → recommended options)
@@ -23,9 +23,35 @@ Resume here in a new session: read this file and `docs/SAMADHAN_MASTER_PROMPT_FI
 - Pushes: still asked for every time (standing rule).
 
 Branch: `feature/samadhan-v7` (local only, not pushed; created from `origin/main` @ `4e8a551`; upstream unset on purpose).
-Commits: Phase 0 docs are committed locally once you approve (see "Next").
+Commits (local only, nothing pushed): `43f8640` Phase 0 docs · `9090e09` golden files from v6 code · `3075d8a` pure `git mv` of both folders · next commit = Phase 1 wiring (see `git log`).
 
-## Done
+## Phase 1 status (2026-11-05)
+
+Done (details: `PHASE-1-NOTES.md`, follow-ups for you: `RENAME-FOLLOWUPS.md`):
+- Rename with compatibility layer: `/api/samadhan` + `/api/setu` alias (Deprecation/Sunset/Link headers), schema name in
+  `db/pool.js` with legacy `setu` fallback, explicit `db/migrate.js` step `7.0-rename` (up/down, transactional), grants on
+  `samadhan` or `setu` (`lib/access.js`), `SAMADHAN_*` → `SETU_*` fallback, frontend `/apps/samadhan` + API-prefix
+  fallback, `/apps/setu` redirect stub, deploy/demo/mock scripts, READMEs, `.env.example` names.
+- Test harness: throwaway Postgres on localhost:55432 (`%LOCALAPPDATA%\samadhan-test-pg`), golden files, `rename.test.js`,
+  parametrised API suite, Playwright E2E (Edge, desktop + 360 px), ESLint, gate runner `backend/samadhan/tests/gate.js`.
+
+Verified by hand during the work (not yet as one gate run):
+- API suite **130/130** on `/api/samadhan` (samadhan grants) and **130/130** on `/api/setu` (setu grants).
+- Golden daily report (2222 bytes) and export **byte-identical** on: a real v6 DB in fallback mode, after `migrate up`,
+  after `migrate down`, and on a fresh DB. Golden files re-captured from the v6 code (worktree of `9090e09`) after a
+  fixture fix (rows made by the app always have `lastActivityAt`).
+- Unit 9/9, rename tests 6/6, frontend typecheck 0 errors, lint 0 errors (2 pre-existing warnings = baseline budget),
+  deploy-script `server.js` patch tested on the v6 server.js, today's server.js (no-op) and one without a Setu block.
+- Lockfile: only additions (308 packages: eslint 8.57.1, eslint-config-next 14.2.35, @playwright/test 1.49.1).
+
+**Not done yet (blocks the push):**
+- Full gate run: stopped by Claude Code because the machine ran low on memory (2.6 of 15.7 GB free) after typecheck and
+  lint passed. The throwaway Postgres process was stopped the same way. Not restarted, per instructions.
+- E2E suite never ran yet (written, not executed).
+- Zero-impact rebuild of the other 21 apps (baseline partial too).
+- `TEST-REPORT.md` for Phase 1.
+
+## Done (Phase 0)
 
 - §C.1 Located code (DISCOVERY §1). No `backend/setu.js`; mount is inline in `backend/server.js`.
 - §C.2 Git: clean tree; no `dev` branch; `feature/samadhan-v7` created.
@@ -91,6 +117,13 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 
 ## Next
 
+**Now:** free memory (close other apps), then say "run the gate". I then restart the test Postgres
+(`postgres -D %LOCALAPPDATA%\samadhan-test-pg\data -p 55432`, from that folder), run `node backend/samadhan/tests/gate.js`,
+fix anything red and re-run the whole gate, run the zero-impact builds one app at a time, write TEST-REPORT.md, and
+ask before pushing `feature/samadhan-v7` (then `main`, after Q-G3). After the push: STOP for RENAME-FOLLOWUPS.
+
+Earlier plan (kept for reference):
+
 1. On "approved" (with answers): commit Phase 0 docs (`samadhan(v7-phase0): discovery, baseline, rename inventory, plan`),
    run Q-D1 queries if allowed and fill APP-MAPPING counts.
 2. Phase 1: golden daily-report file from the unchanged v6 code on `samadhan_test`; test harness; then the rename.
@@ -101,5 +134,10 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 ## Test status
 Baseline only (BASELINE.md). No code changed, so no gate run yet.
 
-## Shared-file changes
-None yet.
+## Shared-file changes (Phase 1, Samadhan lines only)
+- `backend/server.js`: the Setu mount block → Samadhan mount at `/samadhan` + `/setu` alias (12 lines); `VALID_ROLES_BY_APP` gains `'samadhan'` (keeps `'setu'`).
+- `backend/notifications.js`: `APP_NAMES` gains `samadhan: 'Samadhan'`.
+- `backend/.env.example`: 13 new lines, `SAMADHAN_*` names with empty values.
+- `hub-next/src/data/mockData.ts`: `setu: '/apps/setu'` → `setu: '/apps/samadhan'` (tile id unchanged).
+- `hub-next/src/components/admin/adminShared.tsx`: role list also for app id `samadhan`.
+- Not changed (needs your OK at the app-id switch): `embedded-apps/access-tracker/src/lib/apps.ts`.

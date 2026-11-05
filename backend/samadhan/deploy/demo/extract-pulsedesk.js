@@ -1,5 +1,5 @@
 // On a PC (not the server): node extract-pulsedesk.js "D:\downloads\pulsedesk-ver1" pulsedesk-data.json
-// then copy pulsedesk-data.json to ~/setu-demo/ on the server and run: bash ~/setu-demo/run.sh load-pulsedesk
+// then copy pulsedesk-data.json to ~/samadhan-demo/ on the server and run: bash ~/samadhan-demo/run.sh load-pulsedesk
 // Runs PulseDesk's deterministic data generator (src/server/seed.ts) and dumps its output plus the
 // configuration lists (src/lib/config.ts) as JSON. Usage: node extract-pulsedesk.js <pulsedesk folder> <out.json>
 const fs = require('fs');

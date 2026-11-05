@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BarChart3, BookOpen, Calendar, Columns3, FileSpreadsheet, Headset, Inbox, Keyboard, LayoutDashboard, Menu, PieChart, PlusCircle, RefreshCw, Settings, ShieldX, SlidersHorizontal, Users, X, type LucideIcon } from 'lucide-react';
 import { ApiError, getMe, getMeta, setAvailability, setUnauthorizedHandler, type TicketQuery } from '@/lib/api';
 import { BASE_PATH } from '@/lib/config';
-import { SetuContext, type NewTicketPreset, type Screen, type Setu } from '@/lib/context';
+import { SamadhanContext, type NewTicketPreset, type Screen, type Samadhan } from '@/lib/context';
 import { hasHubSession } from '@/lib/hub';
 import type { AgentPrefs, Availability, BellEvent, Me, Meta } from '@/lib/types';
 import MyPreferences from './MyPreferences';
@@ -130,7 +130,7 @@ export default function App() {
     setState((s) => (s.kind === 'ready' ? { ...s, meta } : s));
   }, []);
 
-  const ctx: Setu | null = useMemo(() => {
+  const ctx: Samadhan | null = useMemo(() => {
     if (state.kind !== 'ready') return null;
     const sup = state.me.role === 'Supervisor' || state.me.role === 'Admin';
     return {
@@ -203,7 +203,7 @@ export default function App() {
   };
 
   return (
-    <SetuContext.Provider value={ctx}>
+    <SamadhanContext.Provider value={ctx}>
       <div className="flex h-screen overflow-clip bg-plum">
         {menu && <div className="fixed inset-0 z-30 bg-plum-deep/50 backdrop-blur-sm lg:hidden" onClick={() => setMenu(false)} />}
         <aside className={cx('z-40 flex w-64 shrink-0 flex-col border-r border-line bg-panel transition-transform', 'fixed inset-y-0 left-0 lg:static', menu ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')}>
@@ -264,13 +264,13 @@ export default function App() {
             <span className="hidden text-2xs text-muted sm:inline">Emami Secondary Support</span>
             <div className="flex-1" />
             {!state.mailEnabled && (
-              <span className="hidden rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-bold text-warn md:inline" title="SETU_MAIL_ENABLED is off on the server: replies are saved but no email is sent, and the mailbox is not read.">
+              <span className="hidden rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-bold text-warn md:inline" title="SAMADHAN_MAIL_ENABLED is off on the server: replies are saved but no email is sent, and the mailbox is not read.">
                 Mail off
               </span>
             )}
             <GlobalSearch />
             <Bell events={state.bellEvents} muted={state.prefs.bellMuted ?? []} onSettings={() => setPrefsOpen('notifications')} />
-            <button type="button" onClick={() => window.dispatchEvent(new Event('setu:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
+            <button type="button" onClick={() => window.dispatchEvent(new Event('samadhan:shortcuts'))} className="hidden h-8 items-center gap-1 rounded-lg border border-line px-2 text-2xs font-semibold text-muted hover:text-ink md:flex" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><Keyboard size={13} /> ?</button>
             <Button size="sm" variant="primary" onClick={() => ctx.go('new')}><PlusCircle size={14} /> <span className="hidden sm:inline">New ticket</span></Button>
             <div className="hidden items-center gap-1.5 rounded-full border border-line bg-bg px-2.5 py-1 md:flex"><Calendar size={13} className="text-accent" /><span className="text-[11.5px] font-bold">{today}</span></div>
           </header>
@@ -300,6 +300,6 @@ export default function App() {
           </main>
         </div>
       </div>
-    </SetuContext.Provider>
+    </SamadhanContext.Provider>
   );
 }

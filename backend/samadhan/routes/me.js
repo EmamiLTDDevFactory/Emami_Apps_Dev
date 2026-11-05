@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { AGENT_EMAIL_TEMPLATES, AGENT_STATUSES, BELL_EVENTS, CALL_MODES, CALL_OUTCOMES, MAIL_ENABLED, PRIORITIES, SEVERITIES } = require('../constants');
 const { bellConfig } = require('../lib/bell');
 const { DEFAULTS, sources, uiOptions } = require('../lib/config');
@@ -14,7 +14,7 @@ const router = express.Router();
 // ---------- Routes: me & reference data ----------
 
 router.get('/me', wrap(async (req, res) => {
-    const [prefs, bell] = await Promise.all([pool.query('SELECT prefs FROM setu.agents WHERE id = $1', [req.agent.id]), bellConfig()]);
+    const [prefs, bell] = await Promise.all([pool.query('SELECT prefs FROM samadhan.agents WHERE id = $1', [req.agent.id]), bellConfig()]);
     res.json({
         success: true, me: req.agent, agentStatuses: AGENT_STATUSES, mailEnabled: MAIL_ENABLED, whatsappEnabled: whatsappReady(),
         prefs: prefs.rows[0]?.prefs ?? {}, bellEvents: bell.events, bellAudience: bell.audience,
@@ -47,12 +47,12 @@ router.put('/me/preferences', wrap(async (req, res) => {
     if (b.defaultVariants !== undefined) {
         const report = b.defaultVariants?.report == null ? null : Number(b.defaultVariants.report);
         if (report !== null) {
-            const ok = await pool.query('SELECT 1 FROM setu.variants WHERE id = $1 AND kind = $2 AND ("ownerAgentId" = $3 OR shared)', [report, 'report', req.agent.id]);
+            const ok = await pool.query('SELECT 1 FROM samadhan.variants WHERE id = $1 AND kind = $2 AND ("ownerAgentId" = $3 OR shared)', [report, 'report', req.agent.id]);
             if (!ok.rows.length) throw fail(404, 'Variant not found.');
         }
         patch.defaultVariants = { report };
     }
-    const { rows } = await pool.query('UPDATE setu.agents SET prefs = prefs || $2::jsonb WHERE id = $1 RETURNING prefs', [req.agent.id, JSON.stringify(patch)]);
+    const { rows } = await pool.query('UPDATE samadhan.agents SET prefs = prefs || $2::jsonb WHERE id = $1 RETURNING prefs', [req.agent.id, JSON.stringify(patch)]);
     res.json({ success: true, prefs: rows[0].prefs });
 }));
 
@@ -68,12 +68,12 @@ router.get('/notifications', wrap(async (req, res) => {
     if (Number(req.query.before) > 0) { params.push(Number(req.query.before)); where.push(`n.id < $${params.length}`); }
     const [items, unread, byEvent] = await Promise.all([
         pool.query(
-            `SELECT n.id, n."ticketId", n.event, n.title, n.body, n."createdAt", n."readAt" FROM setu.notifications n
+            `SELECT n.id, n."ticketId", n.event, n.title, n.body, n."createdAt", n."readAt" FROM samadhan.notifications n
              WHERE ${where.join(' AND ')} ORDER BY n.id DESC LIMIT 31`,
             params,
         ),
-        pool.query('SELECT count(*)::int AS n FROM setu.notifications WHERE "agentId" = $1 AND "readAt" IS NULL', [req.agent.id]),
-        pool.query('SELECT event, count(*)::int AS n FROM setu.notifications WHERE "agentId" = $1 AND "readAt" IS NULL GROUP BY event', [req.agent.id]),
+        pool.query('SELECT count(*)::int AS n FROM samadhan.notifications WHERE "agentId" = $1 AND "readAt" IS NULL', [req.agent.id]),
+        pool.query('SELECT event, count(*)::int AS n FROM samadhan.notifications WHERE "agentId" = $1 AND "readAt" IS NULL GROUP BY event', [req.agent.id]),
     ]);
     res.json({
         success: true, items: items.rows.slice(0, 30), more: items.rows.length > 30, unread: unread.rows[0].n,
@@ -83,15 +83,15 @@ router.get('/notifications', wrap(async (req, res) => {
 
 /** Removes the agent's notifications that are already read (the bell keeps 30 days anyway). */
 router.post('/notifications/clear', wrap(async (req, res) => {
-    const { rowCount } = await pool.query('DELETE FROM setu.notifications WHERE "agentId" = $1 AND "readAt" IS NOT NULL', [req.agent.id]);
+    const { rowCount } = await pool.query('DELETE FROM samadhan.notifications WHERE "agentId" = $1 AND "readAt" IS NOT NULL', [req.agent.id]);
     res.json({ success: true, cleared: rowCount });
 }));
 
 /** Body: { ids: number[] } or { all: true }. Only the caller's own notifications. */
 router.post('/notifications/read', wrap(async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isInteger).slice(0, 200) : [];
-    if (req.body?.all === true) await pool.query('UPDATE setu.notifications SET "readAt" = now() WHERE "agentId" = $1 AND "readAt" IS NULL', [req.agent.id]);
-    else if (ids.length) await pool.query('UPDATE setu.notifications SET "readAt" = now() WHERE "agentId" = $1 AND id = ANY($2::int[]) AND "readAt" IS NULL', [req.agent.id, ids]);
+    if (req.body?.all === true) await pool.query('UPDATE samadhan.notifications SET "readAt" = now() WHERE "agentId" = $1 AND "readAt" IS NULL', [req.agent.id]);
+    else if (ids.length) await pool.query('UPDATE samadhan.notifications SET "readAt" = now() WHERE "agentId" = $1 AND id = ANY($2::int[]) AND "readAt" IS NULL', [req.agent.id, ids]);
     res.json({ success: true });
 }));
 
@@ -112,7 +112,7 @@ router.get('/contacts/search', wrap(async (req, res) => {
     const term = String(req.query.q || '').trim().slice(0, 100);
     if (term.length < 2) return res.json({ success: true, items: [] });
     const { rows } = await pool.query(
-        `SELECT id, name, email, phone, mobile FROM setu.contacts
+        `SELECT id, name, email, phone, mobile FROM samadhan.contacts
          WHERE "anonymizedAt" IS NULL AND (email ILIKE $1 OR name ILIKE $1 OR mobile ILIKE $1 OR phone ILIKE $1)
          ORDER BY (email ILIKE $2) DESC, name LIMIT 8`,
         [`%${term.replace(/[%_\\]/g, '\\$&')}%`, `${term.replace(/[%_\\]/g, '\\$&')}%`],
@@ -123,13 +123,13 @@ router.get('/contacts/search', wrap(async (req, res) => {
 router.patch('/me/availability', wrap(async (req, res) => {
     const availability = String(req.body?.availability || '');
     if (!AGENT_STATUSES[availability]) throw fail(400, 'Unknown status.');
-    await pool.query('UPDATE setu.agents SET availability = $2 WHERE id = $1', [req.agent.id, availability]);
+    await pool.query('UPDATE samadhan.agents SET availability = $2 WHERE id = $1', [req.agent.id, availability]);
     res.json({ success: true, availability });
 }));
 
 async function loadFields() {
-    const defs = (await pool.query('SELECT * FROM setu.field_definitions ORDER BY position, id')).rows;
-    const choices = (await pool.query('SELECT * FROM setu.field_choices WHERE active ORDER BY position, id')).rows;
+    const defs = (await pool.query('SELECT * FROM samadhan.field_definitions ORDER BY position, id')).rows;
+    const choices = (await pool.query('SELECT * FROM samadhan.field_choices WHERE active ORDER BY position, id')).rows;
     const fields = defs.map((d) => ({ ...d, choices: choices.filter((c) => c.fieldId === d.id && c.parentId === null).map((c) => c.value) }));
     const category = defs.find((d) => d.key === 'category');
     const tree = category
@@ -141,19 +141,19 @@ async function loadFields() {
 
 router.get('/meta', wrap(async (req, res) => {
     const [statuses, groups, agents, canned, { fields, tree }, callMode, portalEnabled, scenarios, sourceList, options] = await Promise.all([
-        pool.query('SELECT * FROM setu.ticket_statuses ORDER BY position, id'),
-        pool.query('SELECT id, name, assignment FROM setu.groups ORDER BY name'),
-        pool.query('SELECT id, name, email, role, active, availability FROM setu.agents ORDER BY name'),
+        pool.query('SELECT * FROM samadhan.ticket_statuses ORDER BY position, id'),
+        pool.query('SELECT id, name, assignment FROM samadhan.groups ORDER BY name'),
+        pool.query('SELECT id, name, email, role, active, availability FROM samadhan.agents ORDER BY name'),
         // Shared responses plus the caller's own personal ones - never another agent's.
         pool.query(
-            `SELECT id, folder, title, "shortCode", body, "ownerAgentId" FROM setu.canned_responses
+            `SELECT id, folder, title, "shortCode", body, "ownerAgentId" FROM samadhan.canned_responses
              WHERE "ownerAgentId" IS NULL OR "ownerAgentId" = $1 ORDER BY ("ownerAgentId" IS NULL), folder, title`,
             [req.agent.id],
         ),
         loadFields(),
         setting('call.mode'),
         setting('portal.enabled'),
-        pool.query('SELECT id, name, description FROM setu.scenarios ORDER BY position, name'),
+        pool.query('SELECT id, name, description FROM samadhan.scenarios ORDER BY position, name'),
         sources(),
         uiOptions(),
     ]);
@@ -182,7 +182,7 @@ router.get('/meta', wrap(async (req, res) => {
 router.get('/distributors/lookup', wrap(async (req, res) => {
     const code = String(req.query.code || '').trim();
     if (!code) return res.json({ success: true, distributor: null });
-    const { rows } = await pool.query('SELECT * FROM setu.distributors WHERE upper(code) = upper($1) LIMIT 1', [code]);
+    const { rows } = await pool.query('SELECT * FROM samadhan.distributors WHERE upper(code) = upper($1) LIMIT 1', [code]);
     res.json({ success: true, distributor: rows[0] ?? null });
 }));
 

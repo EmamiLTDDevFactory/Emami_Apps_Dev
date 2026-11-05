@@ -2,13 +2,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Inbox, Search, User } from 'lucide-react';
 import { globalSearch } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { SearchResults } from '@/lib/types';
 import { cx } from './ui';
 
 /** Header search across tickets (number, subject, requester, DB code, MR UID), contacts and knowledge-base articles. */
 export default function GlobalSearch() {
-  const { openTicket, openList, go } = useSetu();
+  const { openTicket, openList, go } = useSamadhan();
   const [q, setQ] = useState('');
   const [res, setRes] = useState<SearchResults | null>(null);
   const [open, setOpen] = useState(false);

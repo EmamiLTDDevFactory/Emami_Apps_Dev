@@ -1,0 +1,9 @@
+{
+  "name": "samadhan-legacy-redirect",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Samadhan was called Setu before v7 and lived at /apps/setu. This stub keeps every old link working (ticket deep links, CSAT survey links, the requester portal, bookmarks): it publishes tiny pages at /apps/setu/ and /apps/setu/portal/ that forward to the same place under /apps/samadhan/, keeping the query string and hash. No framework or dependencies; build.js writes dist/.",
+  "scripts": {
+    "build": "node build.js"
+  }
+}

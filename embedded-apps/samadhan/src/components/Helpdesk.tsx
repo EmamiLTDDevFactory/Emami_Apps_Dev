@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertOctagon, Inbox, LayoutGrid, RefreshCw, Ticket } from 'lucide-react';
 import { getBreakdown, type TicketQuery } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDate, fmtNum, istToday, SEVERITY_LABEL, SEVERITY_TONE } from '@/lib/format';
 import type { Breakdown, NameValue } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
@@ -23,7 +23,7 @@ const rowsOf = (list: NameValue[]): BarRow[] =>
 
 /** Ticket counts by region, status, type, source ... (Freshdesk's "Emami Secondary Helpdesk Dashboard"). */
 export default function Helpdesk() {
-  const { meta, openList, openTicket } = useSetu();
+  const { meta, openList, openTicket } = useSamadhan();
   const [days, setDays] = useState('30');
   const [groupId, setGroupId] = useState('');
   const [data, setData] = useState<Breakdown | null>(null);

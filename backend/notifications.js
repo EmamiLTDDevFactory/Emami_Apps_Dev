@@ -24,7 +24,7 @@ const router = express.Router();
 const EMAIL_ENABLED = String(process.env.NOTIFY_EMAIL_ENABLED || 'true').toLowerCase() !== 'false';
 const SENDER = String(process.env.NOTIFY_MAIL_SENDER || process.env.CCB_TEAMS_ORGANIZER || '').trim().toLowerCase();
 const EMAIL_RE = /^[^\s@']+@[^\s@']+\.[^\s@']+$/;
-const APP_NAMES = { 'dev-tracker': 'Change Control Board & CR Tracker', setu: 'Samadhan' };
+const APP_NAMES = { 'dev-tracker': 'Change Control Board & CR Tracker', setu: 'Samadhan', samadhan: 'Samadhan' };
 
 async function initSchema() {
     await pool.query(`

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Keyboard, X } from 'lucide-react';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 
 const KEYS: { key: string; label: string }[] = [
   { key: '/', label: 'Search tickets' },
@@ -20,7 +20,7 @@ const typing = (el: EventTarget | null) => {
 
 /** Single-key shortcuts for the main screens (ignored while typing in a field). */
 export default function Shortcuts() {
-  const { go } = useSetu();
+  const { go } = useSamadhan();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -41,8 +41,8 @@ export default function Shortcuts() {
     };
     const onOpen = () => setOpen(true);
     window.addEventListener('keydown', onKey);
-    window.addEventListener('setu:shortcuts', onOpen);
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('setu:shortcuts', onOpen); };
+    window.addEventListener('samadhan:shortcuts', onOpen);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('samadhan:shortcuts', onOpen); };
   }, [go]);
 
   if (!open) return null;

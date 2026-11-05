@@ -49,5 +49,7 @@ INSERT INTO {{S}}.tickets (id, subject, description, "requesterId", "statusId", 
   (900007, 'Outside the range', '', 9101, 2, 1, 'NORMAL', 'Email', NULL, NULL,
    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
    NULL, NULL, NULL, NULL, NULL, '2026-11-01 00:00:00+05:30', '2026-11-01 00:00:00+05:30', '2026-11-01 00:00:00+05:30', false, false, false, NULL);
+-- Rows made by the app always carry their last activity (tickets.js touchActivity); set it the same way here.
+UPDATE {{S}}.tickets SET "lastActivityAt" = "updatedAt", "lastActivityKind" = 'created' WHERE id BETWEEN 900001 AND 900007;
 INSERT INTO {{S}}.csat_responses ("ticketId", rating, comment, "createdAt") VALUES (900001, 3, 'Great', '2026-10-03 13:00:00+05:30');
 COMMIT;

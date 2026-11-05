@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { MIN } = require('../constants');
 
 // ---------- Severity matrix ----------
@@ -10,7 +10,7 @@ const clearSeverityCache = () => { rulesCache = { at: 0, value: null }; };
 
 async function loadRules() {
     if (rulesCache.value && Date.now() - rulesCache.at < MIN) return rulesCache.value;
-    const { rows } = await pool.query('SELECT category, "function", severity FROM setu.severity_rules');
+    const { rows } = await pool.query('SELECT category, "function", severity FROM samadhan.severity_rules');
     const map = new Map(rows.map((r) => [`${r.category}\u0000${r.function}`, r.severity]));
     rulesCache = { at: Date.now(), value: map };
     return map;

@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { fail, intOrNull } = require('./util');
 
 // ---------- Canned responses ----------
@@ -23,21 +23,21 @@ async function saveCanned(b, ownerAgentId) {
     const c = cleanCanned(b);
     if (c.id) {
         const { rowCount } = await pool.query(
-            `UPDATE setu.canned_responses SET folder = $3, title = $4, "shortCode" = $5, body = $6, "updatedAt" = now()
+            `UPDATE samadhan.canned_responses SET folder = $3, title = $4, "shortCode" = $5, body = $6, "updatedAt" = now()
              WHERE id = $1 AND "ownerAgentId" IS NOT DISTINCT FROM $2`,
             [c.id, ownerAgentId, c.folder, c.title, c.shortCode, c.body],
         );
         if (!rowCount) throw fail(404, 'Canned response not found.');
     } else {
         await pool.query(
-            'INSERT INTO setu.canned_responses (folder, title, "shortCode", body, "ownerAgentId") VALUES ($1, $2, $3, $4, $5)',
+            'INSERT INTO samadhan.canned_responses (folder, title, "shortCode", body, "ownerAgentId") VALUES ($1, $2, $3, $4, $5)',
             [c.folder, c.title, c.shortCode, c.body, ownerAgentId],
         );
     }
 }
 
 async function deleteCanned(id, ownerAgentId) {
-    const { rowCount } = await pool.query('DELETE FROM setu.canned_responses WHERE id = $1 AND "ownerAgentId" IS NOT DISTINCT FROM $2', [Number(id), ownerAgentId]);
+    const { rowCount } = await pool.query('DELETE FROM samadhan.canned_responses WHERE id = $1 AND "ownerAgentId" IS NOT DISTINCT FROM $2', [Number(id), ownerAgentId]);
     if (!rowCount) throw fail(404, 'Canned response not found.');
 }
 

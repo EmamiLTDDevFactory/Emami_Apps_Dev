@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Building2, ChevronLeft, ChevronRight, ListFilter, Pencil, PhoneIncoming, PhoneOutgoing, Plus, RefreshCw, Search, Users, X } from 'lucide-react';
 import { getContact, listCompanies, listContacts, saveCompany, updateContact } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { SEVERITY_EDGE, fmtDateTime, fmtNum, relative } from '@/lib/format';
 import type { Company, ContactDetail, ContactRow } from '@/lib/types';
 import { PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
@@ -174,7 +174,7 @@ function ContactList({ company, onClearCompany, companies }: { company: { id: nu
 }
 
 function ContactDrawer({ id, companies, onClose, onSaved }: { id: number; companies: Company[]; onClose: () => void; onSaved: () => void }) {
-  const { openTicket, openList } = useSetu();
+  const { openTicket, openList } = useSamadhan();
   const [data, setData] = useState<ContactDetail | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
@@ -392,7 +392,7 @@ function ContactForm({ contact, companies, onCancel, onSaved }: { contact: Conta
 type CompanyDraft = { id?: number; name: string; description: string; domains: string };
 
 function CompanyList({ companies, error, onError, reload, onPick }: { companies: Company[] | null; error: string; onError: (m: string) => void; reload: () => Promise<void>; onPick: (c: Company) => void }) {
-  const { isSupervisor } = useSetu();
+  const { isSupervisor } = useSamadhan();
   const [edit, setEdit] = useState<CompanyDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');

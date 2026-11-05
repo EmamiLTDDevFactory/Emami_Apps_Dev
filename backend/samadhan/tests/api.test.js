@@ -1,12 +1,16 @@
 'use strict';
 /*
-   Setu API test suite - end-to-end checks against a running backend and its Postgres.
+   Samadhan (formerly Setu) API test suite - end-to-end checks against a running backend and its Postgres.
 
    ONLY for a throwaway local database: it creates tickets, contacts, groups and grants. It refuses to run unless
-   SETU_TEST_ALLOW=1 and the database host is localhost. Run it on a fresh database (the counts assume no tickets).
+   SAMADHAN_TEST_ALLOW=1 (or the old SETU_TEST_ALLOW=1) and the database host is localhost. Run it on a fresh database (the counts assume no tickets).
    See tests/README.md for the full setup.
 
-     SETU_TEST_ALLOW=1 SETU_TEST_API=http://localhost:4100/api/setu      SETU_TEST_PG=postgres://postgres@localhost:55432/devhub2 node backend/setu/tests/api.test.js
+     SAMADHAN_TEST_ALLOW=1 SAMADHAN_TEST_API=http://localhost:4191/api/samadhan SAMADHAN_TEST_PG=postgres://postgres@localhost:55432/samadhan_test node backend/samadhan/tests/api.test.js
+
+   SAMADHAN_TEST_APP_ID (default samadhan) is the Manage Access app id the test grants use; SAMADHAN_TEST_SCHEMA
+   (default samadhan) the schema the direct checks read. Run it with /api/setu, app id setu and schema setu to prove the
+   pre-rename compatibility layer.
 */
 const path = require('path');
 const BACKEND = path.join(__dirname, '..', '..');
@@ -14,11 +18,15 @@ require(path.join(BACKEND, 'node_modules/dotenv')).config({ path: path.join(BACK
 const jwt = require(path.join(BACKEND, 'node_modules/jsonwebtoken'));
 const { Client } = require(path.join(BACKEND, 'node_modules/pg'));
 
-const API = process.env.SETU_TEST_API || 'http://localhost:4100/api/setu';
-const PG = process.env.SETU_TEST_PG || 'postgres://postgres@localhost:55432/devhub2';
+const T = (name, fallback) => process.env[`SAMADHAN_TEST_${name}`] || process.env[`SETU_TEST_${name}`] || fallback;
+const API = T('API', 'http://localhost:4191/api/samadhan');
+const PG = T('PG', 'postgres://postgres@localhost:55432/samadhan_test');
+const APP = T('APP_ID', 'samadhan');
+const S = T('SCHEMA', 'samadhan');
+if (!/^[a-z_]+$/.test(S) || !/^[a-z_-]+$/.test(APP)) { console.error('bad SAMADHAN_TEST_SCHEMA / SAMADHAN_TEST_APP_ID'); process.exit(2); }
 const SECRET = process.env.HUB_AUTH_JWT_SECRET;
-if (process.env.SETU_TEST_ALLOW !== '1' || !/@(localhost|127\.0\.0\.1)[:/]/.test(PG) || !/\/\/(localhost|127\.0\.0\.1)[:/]/.test(API)) {
-  console.error('Refusing to run: set SETU_TEST_ALLOW=1 and point SETU_TEST_PG / SETU_TEST_API at localhost only.');
+if (T('ALLOW') !== '1' || !/@(localhost|127\.0\.0\.1)[:/]/.test(PG) || !/\/\/(localhost|127\.0\.0\.1)[:/]/.test(API)) {
+  console.error('Refusing to run: set SAMADHAN_TEST_ALLOW=1 and point SAMADHAN_TEST_PG / SAMADHAN_TEST_API at localhost only.');
   process.exit(2);
 }
 if (!SECRET) { console.error('HUB_AUTH_JWT_SECRET must be set (backend/.env) - the same value the backend under test uses.'); process.exit(2); }
@@ -37,7 +45,7 @@ async function rawCall(token, method, url, body) {
   const db = new Client({ connectionString: PG });
   await db.connect();
   for (const [email, role] of [['admin@emamigroup.com', 'Admin'], ['agent1@emamigroup.com', 'Agent'], ['agent2@emamigroup.com', 'Agent'], ['sup@emamigroup.com', 'Supervisor']]) {
-    await db.query(`INSERT INTO emami_apps.authorized_user_apps (email, app_id, role) VALUES ($1, 'setu', $2) ON CONFLICT DO NOTHING`, [email, role]);
+    await db.query(`INSERT INTO emami_apps.authorized_user_apps (email, app_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [email, APP, role]);
   }
   let r = await call(null, 'GET', '/me'); check(r.status === 401, 'no token -> 401');
   r = await call('stranger@emamigroup.com', 'GET', '/me'); check(r.status === 403, 'no grant -> 403');
@@ -129,10 +137,10 @@ async function rawCall(token, method, url, body) {
   r = await call('admin@emamigroup.com', 'GET', '/admin/agents'); check(r.body.agents.length === 4, 'agents list');
   r = await fetch(API + '/jobs/run', { method: 'POST', headers: { 'x-internal-secret': 'localtest' } }); const jb = await r.json(); check(r.status === 200, 'jobs/run via internal secret', jb.result);
   r = await call('admin@emamigroup.com', 'GET', '/admin/audit'); check(r.body.events.length >= 5, 'audit trail', r.body.events.length);
-  const notes = await db.query(`SELECT count(*)::int n FROM emami_apps.notifications WHERE app_id = 'setu'`); check(notes.rows[0].n > 0, 'agent notifications written to hub inbox', notes.rows[0].n);
+  const notes = await db.query(`SELECT count(*)::int n FROM emami_apps.notifications WHERE app_id = $1`, [APP]); check(notes.rows[0].n > 0, 'agent notifications written to hub inbox', notes.rows[0].n);
 
   // ---------- Insights and action points ----------
-  const aiMode = process.env.SETU_TEST_AI === '1';
+  const aiMode = T('AI') === '1';
   const expectSource = aiMode ? 'ai' : 'rules';
   r = await call('agent1@emamigroup.com', 'GET', '/insights/dashboard');
   const di = r.body.insights;
@@ -184,8 +192,8 @@ async function rawCall(token, method, url, body) {
   r = await call('agent1@emamigroup.com', 'PATCH', `/tickets/${t2.id}`, { agentId: 999999 }); check(r.status === 400, 'assign to unknown agent -> 400');
   // Removing a contact scrubs the address from conversations and activity too
   r = await call('admin@emamigroup.com', 'POST', '/admin/contacts/anonymize', { email: 'ravi@example.com' }); check(r.status === 200, 'anonymize contact');
-  const leftovers = await db.query(`SELECT (SELECT count(*) FROM setu.conversations WHERE "fromEmail" = $1 OR $1 = ANY("toEmails") OR $1 = ANY("ccEmails"))::int
-      + (SELECT count(*) FROM setu.activities WHERE details->>'to' = $1)::int + (SELECT count(*) FROM setu.contacts WHERE email = $1)::int AS n`, ['ravi@example.com']);
+  const leftovers = await db.query(`SELECT (SELECT count(*) FROM ${S}.conversations WHERE "fromEmail" = $1 OR $1 = ANY("toEmails") OR $1 = ANY("ccEmails"))::int
+      + (SELECT count(*) FROM ${S}.activities WHERE details->>'to' = $1)::int + (SELECT count(*) FROM ${S}.contacts WHERE email = $1)::int AS n`, ['ravi@example.com']);
   check(leftovers.rows[0].n === 0, 'no trace of the removed address remains', leftovers.rows[0].n);
   const scrubbed = (await call('admin@emamigroup.com', 'GET', `/tickets/${t1.id}`)).body.ticket;
   check(/Removed at the requester/.test(scrubbed.description) && !scrubbed.mobileNo && !scrubbed.callerName, 'their ticket text and phone numbers are removed too');
@@ -234,9 +242,9 @@ async function rawCall(token, method, url, body) {
   // Portal (no sign-in) + bell
   r = await call(null, 'GET', '/portal/config'); check(r.status === 200 && r.body.enabled === true && Array.isArray(r.body.categories), 'portal config without sign-in');
   r = await call(null, 'POST', '/portal/tickets', { name: 'Dist User', subject: 'Help', description: 'x' }); check(r.status === 400, 'portal needs an email');
-  const before = (await db.query('SELECT count(*)::int AS n FROM setu.tickets')).rows[0].n;
+  const before = (await db.query(`SELECT count(*)::int AS n FROM ${S}.tickets`)).rows[0].n;
   r = await call(null, 'POST', '/portal/tickets', { name: 'Bot', email: 'bot@example.com', subject: 'spam', description: 'spam', website: 'http://spam' });
-  check(r.status === 201 && (await db.query('SELECT count(*)::int AS n FROM setu.tickets')).rows[0].n === before, 'portal honeypot: no ticket');
+  check(r.status === 201 && (await db.query(`SELECT count(*)::int AS n FROM ${S}.tickets`)).rows[0].n === before, 'portal honeypot: no ticket');
   r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'bell.events': ['requester_reply', 'nonsense'] }); check(r.status === 400, 'unknown bell event -> 400');
   r = await call('admin@emamigroup.com', 'PUT', '/admin/settings', { 'bell.events': ['requester_reply', 'new_ticket'], 'bell.scope': 'all' }); check(r.status === 200, 'admin configures the bell');
   r = await call('agent2@emamigroup.com', 'PUT', '/me/preferences', { bellMuted: ['new_ticket'] }); check(r.status === 200, 'agent mutes an event for themselves');

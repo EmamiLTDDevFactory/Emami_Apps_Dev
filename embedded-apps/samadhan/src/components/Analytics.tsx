@@ -5,7 +5,7 @@ import {
   PhoneOutgoing, PhoneCall, RefreshCw, Repeat, Smile, Timer, Users, XCircle, Clock,
 } from 'lucide-react';
 import { getAnalytics, type TicketQuery } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, fmtMins, fmtNum, istToday } from '@/lib/format';
 import type { AgentPerformance, Analytics as Data, NameValue } from '@/lib/types';
 import { BarList, type BarRow } from './charts';
@@ -39,13 +39,13 @@ const dayLabel = (day: string) => new Date(`${day.slice(0, 10)}T00:00:00Z`).toLo
 const rowsOf = (list: NameValue[]): BarRow[] => list.map((r) => ({ key: r.name, label: r.name, value: r.value }));
 
 export default function Analytics() {
-  const { isSupervisor } = useSetu();
+  const { isSupervisor } = useSamadhan();
   if (!isSupervisor) return <Card><Empty icon={Lock} title="Supervisors and admins only">Ask an admin if you need team analytics.</Empty></Card>;
   return <AnalyticsScreen />;
 }
 
 function AnalyticsScreen() {
-  const { meta, openList, openTicket } = useSetu();
+  const { meta, openList, openTicket } = useSamadhan();
   const [days, setDays] = useState('30');
   const [groupId, setGroupId] = useState('');
   const [tab, setTab] = useState<Tab>('overview');

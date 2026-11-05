@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { EMAIL_RE, PHONE_RE, WHATSAPP } = require('../constants');
 const { ready } = require('../db/ready');
 const { createTicket } = require('../lib/tickets');
@@ -33,7 +33,7 @@ const portalEnabled = async () => (await setting('portal.enabled')) !== false;
 
 async function categories() {
     const { rows } = await pool.query(
-        `SELECT c.value FROM setu.field_choices c JOIN setu.field_definitions d ON d.id = c."fieldId"
+        `SELECT c.value FROM samadhan.field_choices c JOIN samadhan.field_definitions d ON d.id = c."fieldId"
          WHERE d.key = 'category' AND c."parentId" IS NULL AND c.active ORDER BY c.position, c.id`,
     );
     return rows.map((r) => r.value);
@@ -70,11 +70,11 @@ router.post('/portal/tickets', wrap(async (req, res) => {
 
     const [perEmail, total] = await Promise.all([
         pool.query(
-            `SELECT count(*)::int AS n FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId"
+            `SELECT count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId"
              WHERE c.email = $1 AND t.source = 'Portal' AND t."createdAt" >= now() - interval '1 day'`,
             [email],
         ),
-        pool.query(`SELECT count(*)::int AS n FROM setu.tickets WHERE source = 'Portal' AND "createdAt" >= now() - interval '1 hour'`),
+        pool.query(`SELECT count(*)::int AS n FROM samadhan.tickets WHERE source = 'Portal' AND "createdAt" >= now() - interval '1 hour'`),
     ]);
     if (perEmail.rows[0].n >= 10) throw fail(429, 'You have raised 10 tickets today. Please reply on an existing ticket, or email the helpdesk.');
     if (total.rows[0].n >= 300) throw fail(429, 'The portal is very busy. Please try again shortly, or email the helpdesk.');
@@ -82,7 +82,7 @@ router.post('/portal/tickets', wrap(async (req, res) => {
     // The distributor master fills in the distributor details, as on the agent screen.
     const fields = { category: category || undefined, distributorCode: distributorCode || undefined, mobileNo: phone || undefined };
     if (distributorCode) {
-        const d = (await pool.query('SELECT * FROM setu.distributors WHERE upper(code) = upper($1) LIMIT 1', [distributorCode])).rows[0];
+        const d = (await pool.query('SELECT * FROM samadhan.distributors WHERE upper(code) = upper($1) LIMIT 1', [distributorCode])).rows[0];
         if (d) Object.assign(fields, { distributorCode: d.code, distributorName: d.name, region: d.region ?? undefined, state: d.state ?? undefined, depot: d.depot ?? undefined, asmName: d.asmName ?? undefined, depotCoordinator: d.depotCoordinator ?? undefined });
     }
     const t = await createTicket({
@@ -106,7 +106,7 @@ router.post('/portal/status', wrap(async (req, res) => {
     if (!Number.isInteger(id) || id < 1 || !EMAIL_RE.test(email)) throw fail(400, 'Enter your ticket number and the email you used.');
     const { rows } = await pool.query(
         `SELECT t.id, t.subject, t."createdAt", t."lastActivityAt", t."resolvedAt", s.name AS status, s."isResolved", s."isClosed"
-         FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId" JOIN setu.ticket_statuses s ON s.id = t."statusId"
+         FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId" JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
          WHERE t.id = $1 AND c.email = $2`,
         [id, email],
     );
@@ -122,7 +122,7 @@ router.get('/portal/articles', wrap(async (req, res) => {
     const term = String(req.query.q || '').trim().slice(0, 100);
     const params = term ? [`%${term}%`] : [];
     const { rows } = await pool.query(
-        `SELECT id, category, folder, title, body, tags FROM setu.articles WHERE status = 'published'
+        `SELECT id, category, folder, title, body, tags FROM samadhan.articles WHERE status = 'published'
          ${term ? 'AND (title ILIKE $1 OR body ILIKE $1 OR array_to_string(tags, \' \') ILIKE $1)' : ''}
          ORDER BY ${term ? 'views DESC' : 'category, folder, title'} LIMIT ${term ? 8 : 60}`,
         params,
@@ -135,7 +135,7 @@ async function csatRequest(token) {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(String(token))) throw fail(404, 'This survey link is not valid.');
     const { rows } = await pool.query(
         `SELECT r."ticketId", r."answeredAt", t.subject, t."agentId", a.name AS "agentName"
-         FROM setu.csat_requests r JOIN setu.tickets t ON t.id = r."ticketId" LEFT JOIN setu.agents a ON a.id = t."agentId" WHERE r.token = $1`,
+         FROM samadhan.csat_requests r JOIN samadhan.tickets t ON t.id = r."ticketId" LEFT JOIN samadhan.agents a ON a.id = t."agentId" WHERE r.token = $1`,
         [token],
     );
     if (!rows.length) throw fail(404, 'This survey link is not valid or has expired.');
@@ -161,10 +161,10 @@ router.post('/portal/csat/:token', wrap(async (req, res) => {
     const rating = Number(req.body?.rating);
     if (![1, 2, 3].includes(rating)) throw fail(400, 'Pick a rating.');
     const comment = String(req.body?.comment || '').trim().slice(0, 1000) || null;
-    const done = await pool.query('UPDATE setu.csat_requests SET "answeredAt" = now() WHERE token = $1 AND "answeredAt" IS NULL RETURNING "ticketId"', [req.params.token]);
+    const done = await pool.query('UPDATE samadhan.csat_requests SET "answeredAt" = now() WHERE token = $1 AND "answeredAt" IS NULL RETURNING "ticketId"', [req.params.token]);
     if (!done.rows.length) throw fail(409, 'Thank you - we already have your rating for this ticket.');
-    await pool.query('INSERT INTO setu.csat_responses ("ticketId", rating, comment, "agentId") VALUES ($1, $2, $3, $4)', [r.ticketId, rating, comment, r.agentId]);
-    await pool.query('INSERT INTO setu.activities ("ticketId", action, details) VALUES ($1, $2, $3)', [r.ticketId, 'csat_received', JSON.stringify({ rating })]);
+    await pool.query('INSERT INTO samadhan.csat_responses ("ticketId", rating, comment, "agentId") VALUES ($1, $2, $3, $4)', [r.ticketId, rating, comment, r.agentId]);
+    await pool.query('INSERT INTO samadhan.activities ("ticketId", action, details) VALUES ($1, $2, $3)', [r.ticketId, 'csat_received', JSON.stringify({ rating })]);
     // The ticket's agent (or the configured audience) hears about the rating.
     const { ring } = require('../lib/bell');
     const { loadTicket } = require('../lib/notify');
@@ -188,10 +188,10 @@ router.post('/whatsapp/webhook', async (req, res) => {
         await ready;
         for (const m of inboundMessages(req.body)) {
             // One message never blocks the rest.
-            await processWhatsApp(m).catch((err) => console.error('[setu] whatsapp message skipped:', err.message));
+            await processWhatsApp(m).catch((err) => console.error('[samadhan] whatsapp message skipped:', err.message));
         }
     } catch (err) {
-        console.error('[setu] whatsapp webhook:', err.message);
+        console.error('[samadhan] whatsapp webhook:', err.message);
     }
     // Always 200 once the signature is good: Meta retries anything else, which would only repeat the same failure.
     res.sendStatus(200);

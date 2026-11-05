@@ -1,10 +1,10 @@
 /**
- * Static export at /apps/setu, merged into the hub's dist/ by scripts/build-embedded-apps.js like every
- * sibling embedded app. No server: the browser calls the shared Emami Apps backend (backend/setu.js, /api/setu).
+ * Static export at /apps/samadhan (formerly /apps/setu - the embedded-apps/setu stub redirects old links), merged into the hub's dist/ by scripts/build-embedded-apps.js like every
+ * sibling embedded app. No server: the browser calls the shared Emami Apps backend (backend/samadhan/, /api/samadhan).
  *
  * @type {import('next').NextConfig}
  */
-const basePath = '/apps/setu';
+const basePath = '/apps/samadhan';
 
 export default {
   output: 'export',

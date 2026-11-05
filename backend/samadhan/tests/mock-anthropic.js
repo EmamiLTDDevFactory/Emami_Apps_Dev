@@ -1,9 +1,9 @@
 'use strict';
 /*
-   Local stand-in for the Anthropic Messages API, for testing Setu's AI insights without a key or any cost.
-   It checks every request Setu sends and answers with JSON in the requested schema.
+   Local stand-in for the Anthropic Messages API, for testing Samadhan's AI insights without a key or any cost.
+   It checks every request Samadhan sends and answers with JSON in the requested schema.
 
-     node backend/setu/tests/mock-anthropic.js [port=4199] [mode=ok|refusal|error]
+     node backend/samadhan/tests/mock-anthropic.js [port=4199] [mode=ok|refusal|error]
    then start the backend with  ANTHROPIC_API_KEY=test-key  ANTHROPIC_BASE_URL=http://localhost:4199
 
    GET /_requests returns what was received (with any problems found), for the test to assert on.

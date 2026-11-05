@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { SEVERITY_PRIORITY, SOURCES } = require('../constants');
 
 // ---------- Admin-configurable options (Admin > General) with their defaults ----------
@@ -26,7 +26,7 @@ let cachedAt = 0;
 /** All settings (30 s cache; cleared when an Admin saves). */
 async function settings() {
     if (cache && Date.now() - cachedAt < 30_000) return cache;
-    const { rows } = await pool.query('SELECT key, value FROM setu.settings');
+    const { rows } = await pool.query('SELECT key, value FROM samadhan.settings');
     cache = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     cachedAt = Date.now();
     return cache;

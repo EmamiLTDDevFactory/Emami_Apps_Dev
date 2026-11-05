@@ -1,10 +1,11 @@
 /**
- * Client for the Setu routes of the shared Emami Apps backend (backend/setu/, mounted at /api/setu).
+ * Client for the Samadhan routes of the shared Emami Apps backend (backend/samadhan/, mounted at /api/samadhan;
+ * formerly Setu - the backend still answers on /api/setu as an alias).
  * The caller's hub session JWT (same-origin localStorage, written by the hub at sign-in) goes as a Bearer
- * token; the backend checks the 'setu' grant in Manage Access and its role (Agent / Supervisor / Admin).
+ * token; the backend checks the Samadhan grant in Manage Access and its role (Agent / Supervisor / Admin).
  *
  * Same dev/prod split as access-tracker's api.ts: a dev.emamiapps.in page reads the dev database through
- * the /dev-api prefix. NEXT_PUBLIC_SETU_API_URL overrides it (local development).
+ * the /dev-api prefix. NEXT_PUBLIC_SAMADHAN_API_URL (or the older NEXT_PUBLIC_SETU_API_URL) overrides it (local development).
  */
 import { getHubToken } from './hub';
 import type {
@@ -17,12 +18,13 @@ import type {
 const API_HOST = 'https://audit-capa-api.emamiapps.in';
 
 function apiBase(): string {
-  if (process.env.NEXT_PUBLIC_SETU_API_URL) return process.env.NEXT_PUBLIC_SETU_API_URL.replace(/\/+$/, '');
+  const override = process.env.NEXT_PUBLIC_SAMADHAN_API_URL || process.env.NEXT_PUBLIC_SETU_API_URL;
+  if (override) return override.replace(/\/+$/, '');
   const isDev = typeof window !== 'undefined' && window.location.hostname.includes('dev');
   return `${API_HOST}${isDev ? '/dev-api' : ''}/api`;
 }
 
-/** 401 = no/expired hub session, 403 = signed in but no Setu access (or not allowed for that action). */
+/** 401 = no/expired hub session, 403 = signed in but no Samadhan access (or not allowed for that action). */
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -35,15 +37,25 @@ export const setUnauthorizedHandler = (fn: (message: string) => void) => { onUna
 
 type Json = Record<string, unknown>;
 
+// Route prefix on the backend. A backend from before the rename has no /samadhan routes and answers 404 with a plain
+// (non-JSON) page; the app then uses the old /setu prefix for the rest of the visit, so the frontend and the backend can
+// be deployed in either order.
+let prefix: 'samadhan' | 'setu' = 'samadhan';
+
 async function request<T = Json>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
+  const send = () => fetch(`${apiBase()}/${prefix}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${getHubToken()}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  });
   try {
-    res = await fetch(`${apiBase()}/setu${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${getHubToken()}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      cache: 'no-store',
-    });
+    res = await send();
+    if (res.status === 404 && prefix === 'samadhan' && !(res.headers.get('content-type') || '').includes('json')) {
+      prefix = 'setu';
+      res = await send();
+    }
   } catch {
     throw new ApiError('Could not reach the Emami Apps server. Check the network and try again.', 0);
   }
@@ -56,8 +68,8 @@ async function request<T = Json>(method: string, path: string, body?: unknown): 
   return data as T;
 }
 
-/** Full URL of a Setu API path (shown to admins, e.g. the WhatsApp webhook address to give Meta). */
-export const setuApiUrl = (path: string) => `${apiBase()}/setu${path}`;
+/** Full URL of a Samadhan API path (shown to admins, e.g. the WhatsApp webhook address to give Meta). */
+export const samadhanApiUrl = (path: string) => `${apiBase()}/samadhan${path}`;
 
 const get = <T>(p: string) => request<T & Json>('GET', p);
 const qs = (o: Record<string, string | number | undefined | null>) => {

@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { BELL_EVENTS, BELL_SCOPES } = require('../constants');
 const { setting } = require('./util');
 
@@ -23,7 +23,7 @@ async function bellConfig() {
 
 async function groupMembers(groupId) {
     if (!groupId) return [];
-    const { rows } = await pool.query('SELECT "agentId" FROM setu.group_members WHERE "groupId" = $1', [groupId]);
+    const { rows } = await pool.query('SELECT "agentId" FROM samadhan.group_members WHERE "groupId" = $1', [groupId]);
     return rows.map((r) => r.agentId);
 }
 
@@ -37,14 +37,14 @@ async function ring(t, event, { title, body = '', only = null, except = null } =
     let ids;
     const scope = cfg.audience[event];
     if (only) ids = only;
-    else if (scope === 'all') ids = (await pool.query('SELECT id FROM setu.agents WHERE active')).rows.map((r) => r.id);
+    else if (scope === 'all') ids = (await pool.query('SELECT id FROM samadhan.agents WHERE active')).rows.map((r) => r.id);
     else if (scope === 'group') ids = [...(t.agentId ? [t.agentId] : []), ...(await groupMembers(t.groupId))];
     else ids = t.agentId ? [t.agentId] : await groupMembers(t.groupId);
     ids = [...new Set(ids.filter((id) => id && id !== except))];
     if (!ids.length) return;
     await pool.query(
-        `INSERT INTO setu.notifications ("agentId", "ticketId", event, title, body)
-         SELECT a.id, $2, $3, $4, $5 FROM setu.agents a
+        `INSERT INTO samadhan.notifications ("agentId", "ticketId", event, title, body)
+         SELECT a.id, $2, $3, $4, $5 FROM samadhan.agents a
          WHERE a.id = ANY($1::int[]) AND a.active AND NOT (COALESCE(a.prefs -> 'bellMuted', '[]'::jsonb) ? $3)`,
         [ids, t.id, event, String(title).slice(0, 300), String(body).slice(0, 500)],
     );
@@ -52,7 +52,7 @@ async function ring(t, event, { title, body = '', only = null, except = null } =
 
 /** Agents watching a ticket (optionally leaving some out). */
 async function watchersOf(ticketId, except = []) {
-    const { rows } = await pool.query('SELECT "agentId" FROM setu.ticket_watchers WHERE "ticketId" = $1', [ticketId]);
+    const { rows } = await pool.query('SELECT "agentId" FROM samadhan.ticket_watchers WHERE "ticketId" = $1', [ticketId]);
     return rows.map((r) => r.agentId).filter((a) => !except.includes(a));
 }
 
@@ -64,7 +64,7 @@ async function mentionedAgents(text) {
     const tags = [...new Set([...String(text).matchAll(/(?:^|[\s(])@([\w.+-]+(?:@[\w.-]+)?)/g)].map((m) => m[1].toLowerCase().replace(/[.,;:]+$/, '')))];
     if (!tags.length) return [];
     const { rows } = await pool.query(
-        `SELECT DISTINCT a.id FROM setu.agents a, unnest($1::text[]) AS tag
+        `SELECT DISTINCT a.id FROM samadhan.agents a, unnest($1::text[]) AS tag
          WHERE a.active AND (lower(a.email) = tag OR split_part(lower(a.email), '@', 1) = tag
             OR lower(replace(a.name, ' ', '.')) = tag OR lower(split_part(a.name, ' ', 1)) = tag)`,
         [tags.slice(0, 20)],

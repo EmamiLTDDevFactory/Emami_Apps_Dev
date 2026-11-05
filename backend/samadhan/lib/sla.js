@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { MIN } = require('../constants');
 const { addMinutes, loadCalendar, minutesBetween } = require('./businessHours');
 
@@ -13,9 +13,9 @@ const clearSlaCache = () => { slaCache = { at: 0, value: null }; };
 async function loadSlaConfig() {
     if (slaCache.value && Date.now() - slaCache.at < MIN) return slaCache.value;
     const [policies, targets, links] = await Promise.all([
-        pool.query('SELECT id, "isDefault", position FROM setu.sla_policies ORDER BY position, id'),
-        pool.query('SELECT * FROM setu.sla_targets'),
-        pool.query('SELECT "policyId", "groupId" FROM setu.sla_policy_groups'),
+        pool.query('SELECT id, "isDefault", position FROM samadhan.sla_policies ORDER BY position, id'),
+        pool.query('SELECT * FROM samadhan.sla_targets'),
+        pool.query('SELECT "policyId", "groupId" FROM samadhan.sla_policy_groups'),
     ]);
     slaCache = { at: Date.now(), value: { policies: policies.rows, targets: targets.rows, links: links.rows } };
     return slaCache.value;

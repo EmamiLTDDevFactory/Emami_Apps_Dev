@@ -1,8 +1,8 @@
 'use strict';
 
 /*
-   Claude for Setu's insights (lib/insights.js). Optional: without ANTHROPIC_API_KEY (the same key the rest of the
-   backend uses) - or with SETU_AI_ENABLED=false - every insight falls back to the built-in rules, so Setu works
+   Claude for Samadhan's insights (lib/insights.js). Optional: without ANTHROPIC_API_KEY (the same key the rest of the
+   backend uses) - or with SAMADHAN_AI_ENABLED=false (formerly SETU_AI_ENABLED) - every insight falls back to the built-in rules, so Samadhan works
    the same, just without the AI wording.
 
    - Structured output: the answer is constrained to a JSON schema (output_config.format), so it is always parseable.
@@ -12,7 +12,7 @@
    - Privacy: email addresses and phone numbers are replaced before any text leaves Emami (redact below).
 */
 
-// The SDK is loaded on first use, never at backend start: Setu's AI can not stop the shared backend (and every
+// The SDK is loaded on first use, never at backend start: Samadhan's AI can not stop the shared backend (and every
 // other app on it) from starting, whatever happens to this package.
 let Anthropic = null;
 function sdk() {
@@ -23,7 +23,7 @@ function sdk() {
     return Anthropic;
 }
 const MODEL = 'claude-opus-5-5';
-const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY) && String(process.env.SETU_AI_ENABLED || 'true').toLowerCase() !== 'false';
+const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY) && String(require('../constants').env('AI_ENABLED', 'true') || 'true').toLowerCase() !== 'false';
 
 let client = null;
 function getClient() {

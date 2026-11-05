@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Search, ShieldCheck, Trash2, Users } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { relative } from '@/lib/format';
 import type { AccessUser, Role } from '@/lib/types';
 import { Button, Card, Empty, Notice, Person, Pill, Skeleton, Table, cx, inputBase, inputCls } from '../ui';
@@ -23,9 +23,9 @@ const FILTERS: { id: Filter; label: string; test: (u: AccessUser) => boolean }[]
   { id: 'none', label: 'No access', test: (u) => u.role === null },
 ];
 
-/** Admin > Roles & access: who can open Samadhan and as what. Same data as Emami Apps Manage Access (app 'setu'). */
+/** Admin > Roles & access: who can open Samadhan and as what. Same data as Emami Apps Manage Access (app 'samadhan', formerly 'setu'). */
 export function AccessTab() {
-  const { me, reloadMeta } = useSetu();
+  const { me, reloadMeta } = useSamadhan();
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const [users, setUsers] = useState<AccessUser[] | null>(null);

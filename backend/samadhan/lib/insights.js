@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { PRIORITIES } = require('../constants');
 const { AiUnavailable, MODEL, aiEnabled, redact, structured } = require('./ai');
 const { loadTicket } = require('./notify');
@@ -11,7 +11,7 @@ const { stripTags } = require('./util');
      - Analysis: Claude (lib/ai.js) reads the case and writes a summary, a Category -> Function suggestion from the
        configured list, the likely root cause, action points and a draft reply. When AI is off or unavailable the
        same fields come from built-in rules, marked source: 'rules'.
-   Results are cached in setu.ai_insights: a ticket's until it changes (or 24 h), the dashboard's for 30 minutes,
+   Results are cached in samadhan.ai_insights: a ticket's until it changes (or 24 h), the dashboard's for 30 minutes,
    so the same question is never sent twice and opening a ticket stays instant.
 */
 
@@ -21,12 +21,12 @@ const TICKET_TTL_MS = 24 * 3_600_000;
 const inflight = new Map(); // key -> promise, so concurrent viewers trigger one generation
 
 async function cached(key) {
-    const { rows } = await pool.query('SELECT payload, "createdAt" FROM setu.ai_insights WHERE key = $1', [key]);
+    const { rows } = await pool.query('SELECT payload, "createdAt" FROM samadhan.ai_insights WHERE key = $1', [key]);
     return rows[0] ?? null;
 }
 async function store(key, payload) {
     await pool.query(
-        `INSERT INTO setu.ai_insights (key, payload, "createdAt") VALUES ($1, $2, now())
+        `INSERT INTO samadhan.ai_insights (key, payload, "createdAt") VALUES ($1, $2, now())
          ON CONFLICT (key) DO UPDATE SET payload = EXCLUDED.payload, "createdAt" = now()`,
         [key, JSON.stringify(payload)],
     );
@@ -40,7 +40,7 @@ function once(key, fn) {
 
 async function categoryTree() {
     const { rows } = await pool.query(
-        `SELECT c.id, c.value, c."parentId" FROM setu.field_choices c JOIN setu.field_definitions d ON d.id = c."fieldId"
+        `SELECT c.id, c.value, c."parentId" FROM samadhan.field_choices c JOIN samadhan.field_definitions d ON d.id = c."fieldId"
          WHERE d.key = 'category' AND c.active ORDER BY c.position, c.id`,
     );
     return rows.filter((r) => r.parentId === null).map((p) => ({ value: p.value, children: rows.filter((r) => r.parentId === p.id).map((r) => r.value) }));
@@ -74,10 +74,10 @@ const hoursSince = (d) => (d ? (Date.now() - new Date(d).getTime()) / 3_600_000 
 async function ticketFacts(id) {
     const t = await loadTicket(id);
     const [conversations, required, repeats] = await Promise.all([
-        pool.query(`SELECT kind, "bodyText", "createdAt" FROM setu.conversations WHERE "ticketId" = $1 ORDER BY "createdAt" DESC, id DESC LIMIT 20`, [id]),
-        pool.query('SELECT key, label FROM setu.field_definitions WHERE required ORDER BY position'),
+        pool.query(`SELECT kind, "bodyText", "createdAt" FROM samadhan.conversations WHERE "ticketId" = $1 ORDER BY "createdAt" DESC, id DESC LIMIT 20`, [id]),
+        pool.query('SELECT key, label FROM samadhan.field_definitions WHERE required ORDER BY position'),
         t.distributorCode
-            ? pool.query(`SELECT count(*)::int AS n FROM setu.tickets WHERE "distributorCode" = $1 AND "createdAt" >= now() - interval '7 days'`, [t.distributorCode])
+            ? pool.query(`SELECT count(*)::int AS n FROM samadhan.tickets WHERE "distributorCode" = $1 AND "createdAt" >= now() - interval '7 days'`, [t.distributorCode])
             : Promise.resolve({ rows: [{ n: 0 }] }),
     ]);
     const missing = required.rows.filter((f) => (f.key === 'category' ? !t.category || !t.function : !t[f.key])).map((f) => f.label);
@@ -218,7 +218,7 @@ async function generateTicket(id) {
             else if (cat.children.length && !cat.children.includes(analysis.suggestedFunction)) analysis.suggestedFunction = '';
             analysis.actionPoints = (analysis.actionPoints || []).slice(0, 6);
         } catch (err) {
-            if (!(err instanceof AiUnavailable)) console.error('[setu] ticket insight:', err.message);
+            if (!(err instanceof AiUnavailable)) console.error('[samadhan] ticket insight:', err.message);
             aiNote = err instanceof AiUnavailable ? `${err.message} Showing built-in suggestions.` : 'AI analysis failed; showing built-in suggestions.';
         }
     }
@@ -252,7 +252,7 @@ async function ticketInsights(id, { generate = false } = {}) {
 async function dashboardStats() {
     const q = (sql, params = []) => pool.query(sql, params).then((r) => r.rows);
     // Spam and trashed tickets never count.
-    const OPEN = `JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isResolved" AND NOT t.spam AND t."deletedAt" IS NULL`;
+    const OPEN = `JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE NOT s."isResolved" AND NOT t.spam AND t."deletedAt" IS NULL`;
     const [totals, byCategory, prevCategory, byGroup, repeatDistributors, oldest, agents, waiting, daily, sources] = await Promise.all([
         q(`SELECT count(*) FILTER (WHERE NOT s."isResolved")::int AS open,
                   count(*) FILTER (WHERE NOT s."isResolved" AND (t."resolutionDueAt" < now() OR (t."firstRespondedAt" IS NULL AND t."firstResponseDueAt" < now())))::int AS overdue,
@@ -261,29 +261,29 @@ async function dashboardStats() {
                   count(*) FILTER (WHERE t."resolvedAt" >= now() - interval '7 days')::int AS "resolvedLast7d",
                   count(*) FILTER (WHERE t."resolvedAt" >= now() - interval '7 days' AND (t."resViolated" OR t."resolvedAt" > t."resolutionDueAt"))::int AS "resolvedLateLast7d",
                   count(*) FILTER (WHERE t."firstRespondedAt" >= now() - interval '7 days' AND t."frViolated")::int AS "firstResponseLateLast7d"
-           FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId" WHERE NOT t.spam AND t."deletedAt" IS NULL`),
+           FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId" WHERE NOT t.spam AND t."deletedAt" IS NULL`),
         q(`SELECT coalesce(category, 'Uncategorised') AS category, coalesce("function", '') AS "function", count(*)::int AS n,
                   count(*) FILTER (WHERE "resolvedAt" IS NULL AND "resolutionDueAt" < now())::int AS overdue
-           FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1, 2 ORDER BY n DESC LIMIT 12`),
-        q(`SELECT coalesce(category, 'Uncategorised') AS category, count(*)::int AS n FROM setu.tickets
+           FROM samadhan.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1, 2 ORDER BY n DESC LIMIT 12`),
+        q(`SELECT coalesce(category, 'Uncategorised') AS category, count(*)::int AS n FROM samadhan.tickets
            t WHERE "createdAt" >= now() - interval '14 days' AND "createdAt" < now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1`),
         q(`SELECT coalesce(g.name, 'No group') AS "group", count(*)::int AS open,
                   count(*) FILTER (WHERE t."resolutionDueAt" < now())::int AS overdue,
                   count(*) FILTER (WHERE t."agentId" IS NULL)::int AS unassigned
-           FROM setu.tickets t ${OPEN.replace('WHERE', 'LEFT JOIN setu.groups g ON g.id = t."groupId" WHERE')} GROUP BY 1 ORDER BY open DESC`),
+           FROM samadhan.tickets t ${OPEN.replace('WHERE', 'LEFT JOIN samadhan.groups g ON g.id = t."groupId" WHERE')} GROUP BY 1 ORDER BY open DESC`),
         q(`SELECT "distributorCode" AS code, max("distributorName") AS name, count(*)::int AS n, string_agg(DISTINCT coalesce(category, '?'), ', ') AS categories
-           FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND "distributorCode" IS NOT NULL AND NOT t.spam AND t."deletedAt" IS NULL
+           FROM samadhan.tickets t WHERE "createdAt" >= now() - interval '7 days' AND "distributorCode" IS NOT NULL AND NOT t.spam AND t."deletedAt" IS NULL
            GROUP BY 1 HAVING count(*) >= 3 ORDER BY n DESC LIMIT 8`),
         q(`SELECT t.id, t.subject, s.name AS status, t.severity, t.priority, round(extract(epoch FROM now() - t."createdAt") / 3600)::int AS "ageHours"
-           FROM setu.tickets t ${OPEN} ORDER BY t."createdAt" ASC LIMIT 5`),
-        q(`SELECT a.name, a.availability, count(t.id)::int AS open FROM setu.agents a
-           LEFT JOIN setu.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM setu.ticket_statuses WHERE NOT "isResolved") AND NOT t.spam AND t."deletedAt" IS NULL
+           FROM samadhan.tickets t ${OPEN} ORDER BY t."createdAt" ASC LIMIT 5`),
+        q(`SELECT a.name, a.availability, count(t.id)::int AS open FROM samadhan.agents a
+           LEFT JOIN samadhan.tickets t ON t."agentId" = a.id AND t."statusId" IN (SELECT id FROM samadhan.ticket_statuses WHERE NOT "isResolved") AND NOT t.spam AND t."deletedAt" IS NULL
            WHERE a.active GROUP BY a.id ORDER BY open DESC`),
-        q(`SELECT count(*)::int AS n FROM setu.tickets t JOIN setu.ticket_statuses s ON s.id = t."statusId"
+        q(`SELECT count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
            WHERE NOT s."isResolved" AND s."pausesSla" AND t."statusChangedAt" < now() - interval '48 hours' AND NOT t.spam AND t."deletedAt" IS NULL`),
         q(`SELECT to_char(t."createdAt" AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day, count(*)::int AS n
-           FROM setu.tickets t WHERE t."createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY 1`),
-        q(`SELECT source, count(*)::int AS n FROM setu.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY n DESC`),
+           FROM samadhan.tickets t WHERE t."createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY 1`),
+        q(`SELECT source, count(*)::int AS n FROM samadhan.tickets t WHERE "createdAt" >= now() - interval '7 days' AND NOT t.spam AND t."deletedAt" IS NULL GROUP BY 1 ORDER BY n DESC`),
     ]);
     const prev = Object.fromEntries(prevCategory.map((r) => [r.category, r.n]));
     const thisWeek = {};
@@ -362,7 +362,7 @@ async function generateDashboard() {
             const analysis = await structured({ system: DASHBOARD_SYSTEM, user: JSON.stringify(data), schema: DASHBOARD_SCHEMA });
             return { ...base, ...analysis, actionPoints: (analysis.actionPoints || []).slice(0, 8), source: 'ai', model: MODEL, aiNote: null };
         } catch (err) {
-            if (!(err instanceof AiUnavailable)) console.error('[setu] dashboard insight:', err.message);
+            if (!(err instanceof AiUnavailable)) console.error('[samadhan] dashboard insight:', err.message);
             aiNote = err instanceof AiUnavailable ? `${err.message} Showing built-in insights.` : 'AI analysis failed; showing built-in insights.';
         }
     }

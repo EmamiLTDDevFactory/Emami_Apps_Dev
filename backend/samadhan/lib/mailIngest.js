@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { MAILBOX, MAIL_ENABLED } = require('../constants');
 const { graph, noiseReason, senderUnverified, ticketNumberFromSubject } = require('./mail');
 const { addRequesterReply, createTicket } = require('./tickets');
@@ -12,7 +12,7 @@ const { addRequesterReply, createTicket } = require('./tickets');
 
 async function park(m, reason) {
     await pool.query(
-        `INSERT INTO setu.parked_mail ("messageId", "fromEmail", subject, reason, "receivedAt") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        `INSERT INTO samadhan.parked_mail ("messageId", "fromEmail", subject, reason, "receivedAt") VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
         [
             m.internetMessageId,
             (m.from?.emailAddress?.address ?? 'unknown@invalid').toLowerCase().slice(0, 320),
@@ -26,7 +26,7 @@ async function park(m, reason) {
 /** Turns one mailbox message into a new ticket, a reply on an existing ticket, or a parked mail. */
 async function processMessage(m) {
     const seen = await pool.query(
-        `SELECT 1 FROM setu.conversations WHERE "messageId" = $1 UNION ALL SELECT 1 FROM setu.parked_mail WHERE "messageId" = $1`,
+        `SELECT 1 FROM samadhan.conversations WHERE "messageId" = $1 UNION ALL SELECT 1 FROM samadhan.parked_mail WHERE "messageId" = $1`,
         [m.internetMessageId],
     );
     if (seen.rows.length) return 'seen';
@@ -39,8 +39,8 @@ async function processMessage(m) {
     // A reply quoting a merged ticket's number goes to the ticket it was merged into.
     const existing = number
         ? (await pool.query(
-            `SELECT t.id, c.email FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId"
-             WHERE t.id = (SELECT COALESCE("mergedIntoId", id) FROM setu.tickets WHERE id = $1)`,
+            `SELECT t.id, c.email FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId"
+             WHERE t.id = (SELECT COALESCE("mergedIntoId", id) FROM samadhan.tickets WHERE id = $1)`,
             [number],
         )).rows[0]
         : null;
@@ -48,7 +48,7 @@ async function processMessage(m) {
     let onThread = false;
     if (existing) {
         onThread = existing.email === fromEmail || (await pool.query(
-            `SELECT 1 FROM setu.conversations WHERE "ticketId" = $1 AND ("fromEmail" = $2 OR $2 = ANY("toEmails") OR $2 = ANY("ccEmails")) LIMIT 1`,
+            `SELECT 1 FROM samadhan.conversations WHERE "ticketId" = $1 AND ("fromEmail" = $2 OR $2 = ANY("toEmails") OR $2 = ANY("ccEmails")) LIMIT 1`,
             [existing.id, fromEmail],
         )).rows.length > 0;
     }
@@ -57,7 +57,7 @@ async function processMessage(m) {
     if (existing && onThread && senderUnverified(m)) { await park(m, 'sender_not_verified'); return 'parked'; }
     // Flood guard: more than 20 new tickets from one sender in an hour are parked for review.
     const recent = await pool.query(
-        `SELECT count(*)::int AS n FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId"
+        `SELECT count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId"
          WHERE c.email = $1 AND t."createdAt" >= now() - interval '1 hour'`,
         [fromEmail],
     );
@@ -84,7 +84,7 @@ async function processMessage(m) {
 
 async function ingestMail() {
     if (!MAIL_ENABLED) return { skipped: 'mail disabled' };
-    const state = await pool.query('SELECT "deltaLink" FROM setu.mail_state WHERE mailbox = $1', [MAILBOX]);
+    const state = await pool.query('SELECT "deltaLink" FROM samadhan.mail_state WHERE mailbox = $1', [MAILBOX]);
     let url = state.rows[0]?.deltaLink ?? `/users/${encodeURIComponent(MAILBOX)}/mailFolders/inbox/messages/delta?$select=id`;
     const ids = [];
     let deltaLink = null;
@@ -106,13 +106,13 @@ async function ingestMail() {
             if (counts[outcome] !== undefined) counts[outcome]++;
         } catch (err) {
             counts.failed++;
-            console.error('[setu] mail intake - message skipped:', err.message);
+            console.error('[samadhan] mail intake - message skipped:', err.message);
             if (m?.internetMessageId) await park(m, 'intake_error').catch(() => {});
         }
     }
     if (deltaLink) {
         await pool.query(
-            `INSERT INTO setu.mail_state (mailbox, "deltaLink", "updatedAt") VALUES ($1, $2, now())
+            `INSERT INTO samadhan.mail_state (mailbox, "deltaLink", "updatedAt") VALUES ($1, $2, now())
              ON CONFLICT (mailbox) DO UPDATE SET "deltaLink" = EXCLUDED."deltaLink", "updatedAt" = now()`,
             [MAILBOX, deltaLink],
         );

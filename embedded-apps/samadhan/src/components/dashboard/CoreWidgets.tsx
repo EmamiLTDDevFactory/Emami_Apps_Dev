@@ -1,6 +1,6 @@
 'use client';
 import { AlarmClock, AlertTriangle, CalendarClock, CheckCircle2, Clock3, Hourglass, Inbox, PauseCircle, Timer, User, UserX, Users } from 'lucide-react';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtMins, fmtNum, SEVERITY_LABEL } from '@/lib/format';
 import type { Dashboard as Data } from '@/lib/types';
 import { BarList, HourChart } from '../charts';
@@ -12,7 +12,7 @@ type P = { data: Data };
 
 /** The queue counters; every tile opens the matching list. */
 export function KpiRow({ data }: P) {
-  const { openList, meta } = useSetu();
+  const { openList, meta } = useSamadhan();
   const { counts } = data;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7">
@@ -80,7 +80,7 @@ export function TrendsWidget({ data }: P) {
 }
 
 export function ByStatusWidget({ data }: P) {
-  const { openList, meta } = useSetu();
+  const { openList, meta } = useSamadhan();
   const rows = data.byStatus.filter((s) => s.n > 0 || !meta.statuses.find((x) => x.id === s.id)?.isResolved).map((s) => ({ key: String(s.id), label: s.name, value: s.n }));
   return (
     <WCard sub="Click a status to see its tickets">
@@ -90,7 +90,7 @@ export function ByStatusWidget({ data }: P) {
 }
 
 export function BySeverityWidget({ data }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const total = SEVERITIES.reduce((s, k) => s + data.bySeverity[k], 0);
   return (
     <WCard sub="From the Category → Function matrix · click to open">
@@ -108,7 +108,7 @@ export function BySeverityWidget({ data }: P) {
 const AVAIL_TONE = (a: string) => (a === 'AVAILABLE' ? 'good' : a === 'UNAVAILABLE' ? 'neutral' : 'warn') as 'good' | 'neutral' | 'warn';
 
 export function AgentLoadWidget({ data }: P) {
-  const { openList, meta } = useSetu();
+  const { openList, meta } = useSamadhan();
   const max = Math.max(1, ...data.byAgent.map((a) => a.open));
   return (
     <WCard title={<span className="inline-flex items-center gap-1.5"><Users size={15} className="text-accent" /> Agent load</span>} sub="Open tickets per agent and current status">

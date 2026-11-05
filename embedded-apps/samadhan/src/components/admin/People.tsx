@@ -2,14 +2,14 @@
 import { useState } from 'react';
 import { Pencil, Plus, Users } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { relative } from '@/lib/format';
 import type { AdminAgent, AdminGroup } from '@/lib/types';
 import { Button, Card, Empty, Field, Modal, Notice, Person, Pill, Skeleton, Table, cx, inputCls, textareaCls } from '../ui';
 import { checkboxCls, useAction, useLoad } from './shared';
 
 export function AgentsTab() {
-  const { meta, reloadMeta, me } = useSetu();
+  const { meta, reloadMeta, me } = useSamadhan();
   const { data, error, reload } = useLoad(admin.agents);
   const [edit, setEdit] = useState<{ email: string; name: string; active: boolean; groupIds: number[]; isNew: boolean } | null>(null);
   const act = useAction();
@@ -87,7 +87,7 @@ export function AgentsTab() {
 }
 
 export function GroupsTab() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.groups);
   const [edit, setEdit] = useState<{ id?: number; name: string; description: string; assignment: string; agentIds: number[] } | null>(null);
   const act = useAction();

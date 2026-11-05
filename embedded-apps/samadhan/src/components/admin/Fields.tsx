@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Pencil, Trash2, X } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { SEVERITY_LABEL } from '@/lib/format';
 import type { AdminChoice, AdminField, Severity } from '@/lib/types';
 import { SeverityPill } from '../badges';
@@ -10,7 +10,7 @@ import { Button, Card, Field, Notice, Pill, Skeleton, Table, cx, inputBase, inpu
 import { checkboxCls, useAction, useLoad } from './shared';
 
 export function SeverityTab() {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.severityRules);
   const [category, setCategory] = useState('');
   const [fn, setFn] = useState('*');
@@ -153,7 +153,7 @@ function FieldEditor({ f, onSaved }: { f: AdminField; onSaved: () => void }) {
 }
 
 export function FieldsTab() {
-  const { reloadMeta } = useSetu();
+  const { reloadMeta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.fields);
   const [sel, setSel] = useState<number | null>(null);
   const current = useMemo(() => data?.find((f) => f.id === sel) ?? data?.[0] ?? null, [data, sel]);

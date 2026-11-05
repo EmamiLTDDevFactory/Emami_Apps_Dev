@@ -1,6 +1,6 @@
 import type { Severity, TicketRow } from './types';
 
-// Every date in Setu is shown in IST, wherever the viewer is.
+// Every date in Samadhan is shown in IST, wherever the viewer is.
 const TZ = 'Asia/Kolkata';
 
 export const fmtDate = (iso: string | null) =>

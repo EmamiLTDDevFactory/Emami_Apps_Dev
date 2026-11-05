@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { addRequesterReply, createTicket } = require('./tickets');
 const { setting, textToHtml } = require('./util');
 
@@ -15,13 +15,13 @@ const subjectFrom = (text, name) => {
 };
 
 async function processWhatsApp(m) {
-    const seen = await pool.query('SELECT 1 FROM setu.conversations WHERE "messageId" = $1', [m.id]);
+    const seen = await pool.query('SELECT 1 FROM samadhan.conversations WHERE "messageId" = $1', [m.id]);
     if (seen.rows.length) return 'seen';
     const days = Number(await setting('whatsapp.threadDays')) || 7;
     const open = await pool.query(
-        `SELECT t.id FROM setu.tickets t
-         JOIN setu.contacts c ON c.id = t."requesterId"
-         JOIN setu.ticket_statuses s ON s.id = t."statusId"
+        `SELECT t.id FROM samadhan.tickets t
+         JOIN samadhan.contacts c ON c.id = t."requesterId"
+         JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
          WHERE (c.mobile = $1 OR c.phone = $1) AND t.source = 'WhatsApp' AND NOT s."isClosed"
            AND t."updatedAt" >= now() - make_interval(days => $2)
          ORDER BY t."updatedAt" DESC LIMIT 1`,
@@ -34,12 +34,12 @@ async function processWhatsApp(m) {
     }
     // Flood guard, as for email: more than 20 new tickets an hour from one number are dropped (and logged).
     const recent = await pool.query(
-        `SELECT count(*)::int AS n FROM setu.tickets t JOIN setu.contacts c ON c.id = t."requesterId"
+        `SELECT count(*)::int AS n FROM samadhan.tickets t JOIN samadhan.contacts c ON c.id = t."requesterId"
          WHERE (c.mobile = $1 OR c.phone = $1) AND t.source = 'WhatsApp' AND t."createdAt" >= now() - interval '1 hour'`,
         [m.from],
     );
     if (recent.rows[0].n >= 20) {
-        console.warn('[setu] whatsapp: more than 20 new tickets in an hour from one number - message dropped');
+        console.warn('[samadhan] whatsapp: more than 20 new tickets in an hour from one number - message dropped');
         return 'dropped';
     }
     await createTicket({

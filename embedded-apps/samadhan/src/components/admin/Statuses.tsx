@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { Status } from '@/lib/types';
 import { Button, Card, Field, Notice, Pill, Table, cx, inputCls } from '../ui';
 import { checkboxCls, useAction } from './shared';
@@ -35,7 +35,7 @@ function NameCell({ s, busy, onSave }: { s: Status; busy: boolean; onSave: (name
 
 /** Admin > Statuses: rename, SLA pause, resolved meaning, order, custom statuses. */
 export function StatusesTab() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const act = useAction();
   const [newName, setNewName] = useState('');
   const [newPauses, setNewPauses] = useState(true);

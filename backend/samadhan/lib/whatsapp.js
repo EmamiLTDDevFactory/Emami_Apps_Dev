@@ -3,9 +3,9 @@ const crypto = require('crypto');
 const { WHATSAPP } = require('../constants');
 
 // ---------- WhatsApp Business (Meta WhatsApp Cloud API) ----------
-// Inbound: Meta calls POST /api/setu/whatsapp/webhook, signed with the app secret (whatsappIngest.js turns the
+// Inbound: Meta calls POST /api/samadhan/whatsapp/webhook (or the pre-v7 /api/setu/... URL already registered in Meta), signed with the app secret (whatsappIngest.js turns the
 // messages into tickets). Outbound: an agent's reply on a WhatsApp ticket goes back as a WhatsApp text message.
-// Off unless SETU_WHATSAPP_ENABLED=true and all four keys are set; while off, replies are saved on the ticket only.
+// Off unless SAMADHAN_WHATSAPP_ENABLED=true (or the older SETU_WHATSAPP_ENABLED) and all four keys are set; while off, replies are saved on the ticket only.
 
 const whatsappReady = () => WHATSAPP.enabled && Boolean(WHATSAPP.token && WHATSAPP.phoneNumberId && WHATSAPP.appSecret && WHATSAPP.verifyToken);
 
@@ -17,7 +17,7 @@ function validSignature(rawBody, header) {
     return given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
-/** WhatsApp ids are the number with country code ("919830012345"); Setu stores "+919830012345". */
+/** WhatsApp ids are the number with country code ("919830012345"); Samadhan stores "+919830012345". */
 const toE164 = (waId) => `+${String(waId).replace(/\D/g, '')}`;
 
 /** Text of one inbound message. Media is not downloaded: a placeholder (with the caption) says what arrived. */
@@ -69,7 +69,7 @@ function htmlToWhatsAppText(html) {
 
 /**
  * The webhook body exactly as Meta signed it. The shared backend's JSON parser has already read the request (and
- * Setu does not change the shared server), so the body is re-serialised the way Meta writes it: compact JSON with
+ * Samadhan does not change the shared server), so the body is re-serialised the way Meta writes it: compact JSON with
  * "/" and every non-ASCII character escaped (é, emoji as surrogate pairs).
  */
 function metaJson(body) {
@@ -95,10 +95,10 @@ async function sendWhatsApp(to, text) {
         const code = err?.error?.code;
         // 131047: the requester last wrote more than 24 hours ago - WhatsApp then accepts approved templates only.
         const reason = code === 131047 ? 'more than 24 hours since the requester last wrote on WhatsApp' : `WhatsApp refused the message (${code ?? res.status})`;
-        console.error('[setu] whatsapp send failed:', reason);
+        console.error('[samadhan] whatsapp send failed:', reason);
         return { sent: false, reason };
     } catch (err) {
-        console.error('[setu] whatsapp send failed:', err.message);
+        console.error('[samadhan] whatsapp send failed:', err.message);
         return { sent: false, reason: 'WhatsApp could not be reached' };
     }
 }

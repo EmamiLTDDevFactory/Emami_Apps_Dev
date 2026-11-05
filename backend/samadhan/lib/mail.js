@@ -20,7 +20,7 @@ async function sendMail({ to, cc = [], subject, html }) {
     const rcpt = (list) => list.filter((a) => EMAIL_RE.test(a)).map((address) => ({ emailAddress: { address } }));
     if (!rcpt(to).length) return;
     if (!MAIL_ENABLED) {
-        console.info(`[setu] mail disabled - would send "${String(subject).slice(0, 60)}" to ${to.length} recipient(s)`);
+        console.info(`[samadhan] mail disabled - would send "${String(subject).slice(0, 60)}" to ${to.length} recipient(s)`);
         return;
     }
     try {
@@ -32,7 +32,7 @@ async function sendMail({ to, cc = [], subject, html }) {
             }),
         });
     } catch (err) {
-        console.error('[setu] send mail failed:', err.message);
+        console.error('[samadhan] send mail failed:', err.message);
     }
 }
 

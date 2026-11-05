@@ -1,7 +1,7 @@
 'use strict';
 
 /*
-   Per-person request limits for Setu, on top of the API Gateway throttling in front of the backend.
+   Per-person request limits for Samadhan, on top of the API Gateway throttling in front of the backend.
    A sliding one-minute window per signed-in person and bucket:
      read    normal screens                       300 / min
      write   creating / changing / replying         60 / min

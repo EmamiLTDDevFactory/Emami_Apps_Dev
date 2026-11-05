@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, CheckSquare, ListTodo, Plus, Smile, Square, X } from 'lucide-react';
 import { addTodo, deleteTodo, getTodos, updateTodo } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { ACTION_LABEL, fmtNum, relative } from '@/lib/format';
 import type { Dashboard as Data, Todo } from '@/lib/types';
 import { EmptyLine, WCard } from './dashboard/frame';
@@ -14,7 +14,7 @@ import { Button, Notice, cx, inputCls } from './ui';
  */
 
 export function ByGroup({ data }: { data: Data }) {
-  const { meta, openList } = useSetu();
+  const { meta, openList } = useSamadhan();
   // Only the statuses that occur, in the configured order.
   const statuses = useMemo(() => meta.statuses.filter((s) => data.byGroup.some((r) => r.statusId === s.id)), [meta.statuses, data.byGroup]);
   const groups = useMemo(() => {
@@ -61,7 +61,7 @@ export function ByGroup({ data }: { data: Data }) {
 }
 
 export function Todos() {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   const [items, setItems] = useState<Todo[] | null>(null);
   const [text, setText] = useState('');
   const [error, setError] = useState('');
@@ -124,7 +124,7 @@ export function Csat({ data }: { data: Data }) {
 }
 
 export function Recent({ data }: { data: Data }) {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   return (
     <WCard title={<span className="inline-flex items-center gap-1.5"><Activity size={15} className="text-accent" /> Recent activity</span>} sub="Across all tickets, last 3 days">
       {data.recent.length === 0 ? <EmptyLine>Nothing yet.</EmptyLine> : (

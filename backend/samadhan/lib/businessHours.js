@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { MIN } = require('../constants');
 
 // ---------- Business hours ----------
@@ -91,9 +91,9 @@ async function loadCalendar() {
 }
 
 async function readCalendar() {
-    const { rows } = await pool.query('SELECT id, timezone, days FROM setu.business_hours ORDER BY id LIMIT 1');
+    const { rows } = await pool.query('SELECT id, timezone, days FROM samadhan.business_hours ORDER BY id LIMIT 1');
     if (!rows.length) return FALLBACK_CALENDAR;
-    const hol = await pool.query(`SELECT to_char(date, 'YYYY-MM-DD') AS d FROM setu.holidays WHERE "businessHoursId" = $1`, [rows[0].id]);
+    const hol = await pool.query(`SELECT to_char(date, 'YYYY-MM-DD') AS d FROM samadhan.holidays WHERE "businessHoursId" = $1`, [rows[0].id]);
     return { timezone: rows[0].timezone, days: rows[0].days, holidays: hol.rows.map((h) => h.d) };
 }
 

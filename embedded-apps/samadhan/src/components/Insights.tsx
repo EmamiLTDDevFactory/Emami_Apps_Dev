@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Lightbulb, ListChecks, MessageSquareText, RefreshCw, ShieldAlert, Sparkles, Tag, Wand2 } from 'lucide-react';
 import { getDashboardInsights, getTicketInsights, updateTicket } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, relative } from '@/lib/format';
 import type { ActionPoint, DashboardInsights as DashData, InsightCheck, Ticket, TicketInsights } from '@/lib/types';
 import { Button, Card, Notice, Pill, Skeleton, Spinner, cx } from './ui';
@@ -46,7 +46,7 @@ function ActionList({ items }: { items: ActionPoint[] }) {
 // ---------- Dashboard ----------
 
 export function DashboardInsights() {
-  const { isSupervisor } = useSetu();
+  const { isSupervisor } = useSamadhan();
   const [data, setData] = useState<DashData | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -129,7 +129,7 @@ export function DashboardInsights() {
 // ---------- Ticket ----------
 
 /** Puts a suggested reply into the ticket's reply box (TicketView's composer listens for this event). */
-export const INSERT_REPLY_EVENT = 'setu:insert-reply';
+export const INSERT_REPLY_EVENT = 'samadhan:insert-reply';
 
 export function TicketAssist({ ticket, reload }: { ticket: Ticket; reload: () => Promise<void> }) {
   const [data, setData] = useState<TicketInsights | null>(null);

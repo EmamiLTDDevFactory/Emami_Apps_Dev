@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronRight, CircleDashed, LineChart, ShieldCheck, Table2, type LucideIcon } from 'lucide-react';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtMins, fmtNum, SEVERITY_LABEL } from '@/lib/format';
 import type { Overview, Severity } from '@/lib/types';
 import { SeverityPill } from '../badges';
@@ -43,7 +43,7 @@ function Gauge({ label, value, sub, action }: { label: string; value: number | n
 }
 
 export function SlaWidget({ ov, stale }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const s = ov.sla;
   return (
     <WCard
@@ -69,7 +69,7 @@ export function SlaWidget({ ov, stale }: P) {
 // ---------- Backlog ----------
 
 export function BacklogWidget({ ov, stale }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const [table, setTable] = useState(false);
   const rows = ov.backlog;
   const first = rows[0], last = rows[rows.length - 1];
@@ -131,7 +131,7 @@ const BUCKETS: { id: Overview['ageing'][number]['bucket']; label: string }[] = [
 type AgeCell = { bucket: string; severity: Severity; n: number };
 
 export function AgeingWidget({ ov, stale }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const t = useTip<AgeCell>();
   const rows = useMemo(() => BUCKETS.map((b) => {
     const by = Object.fromEntries(SEVERITIES.map((s) => [s, ov.ageing.filter((a) => a.bucket === b.id && a.severity === s).reduce((x, a) => x + a.n, 0)])) as Record<Severity, number>;
@@ -202,7 +202,7 @@ const countdown = (ms: number) => {
 };
 
 export function RiskWidget({ ov, stale }: P) {
-  const { openTicket, openList } = useSetu();
+  const { openTicket, openList } = useSamadhan();
   const now = useNow();
   const items = useMemo(() => ov.risk.map((r) => {
     const res = r.resolutionDueAt ? new Date(r.resolutionDueAt).getTime() : Infinity;
@@ -266,7 +266,7 @@ export function RiskWidget({ ov, stale }: P) {
 const AVAIL_DOT: Record<string, string> = { AVAILABLE: 'bg-good', UNAVAILABLE: 'bg-faint' };
 
 export function LeaderboardWidget({ ov, stale }: P) {
-  const { openList, meta } = useSetu();
+  const { openList, meta } = useSamadhan();
   const rows = ov.leaderboard;
   const max = Math.max(1, ...rows.map((r) => r.resolved));
   return (
@@ -337,7 +337,7 @@ export function LeaderboardWidget({ ov, stale }: P) {
 type HeatCell = { region: string; status: string; n: number };
 
 export function RegionStatusWidget({ ov, stale }: P) {
-  const { openList, meta } = useSetu();
+  const { openList, meta } = useSamadhan();
   const t = useTip<HeatCell>();
   const { regions, statuses, cell, max } = useMemo(() => {
     const order = new Map(meta.statuses.map((s, i) => [s.id, i]));
@@ -421,7 +421,7 @@ export function RegionStatusWidget({ ov, stale }: P) {
 type Cat = { name: string; value: number };
 
 export function CategoriesWidget({ ov, stale }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const [ref, w, el] = useWidth<HTMLDivElement>();
   const t = useTip<Cat>();
   const setBox = t.setBox;
@@ -480,7 +480,7 @@ export function CategoriesWidget({ ov, stale }: P) {
 // ---------- Sources ----------
 
 export function SourcesWidget({ ov, stale }: P) {
-  const { openList } = useSetu();
+  const { openList } = useSamadhan();
   const total = ov.sources.reduce((s, x) => s + x.value, 0);
   // Five named slices at most, the rest folded into "Other" (never a generated sixth hue).
   const slices: Slice[] = useMemo(() => {

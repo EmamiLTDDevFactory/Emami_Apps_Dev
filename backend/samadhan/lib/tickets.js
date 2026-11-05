@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { CUSTOMER_SOURCES, EDITABLE_FIELDS, PATCHABLE, STATUS, q } = require('../constants');
 const { mentionedAgents, ring, watchersOf } = require('./bell');
 const { severityPriority } = require('./config');
@@ -36,14 +36,14 @@ async function runActions(ticketId, actions, ruleName) {
                 if (msg && t.requesterEmail) {
                     await sendMail({ to: [t.requesterEmail], subject: msg.subject, html: msg.html });
                     await pool.query(
-                        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "toEmails") VALUES ($1, 'REPLY', $2, $3, $4)`,
+                        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "toEmails") VALUES ($1, 'REPLY', $2, $3, $4)`,
                         [ticketId, msg.html, stripTags(msg.html), [t.requesterEmail]],
                     );
                 }
                 break;
             }
             case 'markEscalated':
-                await pool.query('UPDATE setu.tickets SET "escalatedAt" = now() WHERE id = $1', [ticketId]);
+                await pool.query('UPDATE samadhan.tickets SET "escalatedAt" = now() WHERE id = $1', [ticketId]);
                 break;
             case 'notifyAgents': {
                 const t = await loadTicket(ticketId);
@@ -60,7 +60,7 @@ async function runActions(ticketId, actions, ruleName) {
 
 async function runRules(trigger, ticketId, changed = []) {
     for (const r of await rulesFor(trigger)) {
-        const { rows } = await pool.query('SELECT * FROM setu.tickets WHERE id = $1', [ticketId]);
+        const { rows } = await pool.query('SELECT * FROM samadhan.tickets WHERE id = $1', [ticketId]);
         if (rows.length && ruleMatches(r.conditions, { ticket: rows[0], changed })) await runActions(ticketId, r.actions, r.name);
     }
 }
@@ -71,8 +71,8 @@ async function findOrCreateContact(r) {
     if (r.email) {
         const email = r.email.toLowerCase();
         const { rows } = await pool.query(
-            `INSERT INTO setu.contacts (email, name, phone) VALUES ($1, $2, $3)
-             ON CONFLICT (email) DO UPDATE SET phone = COALESCE(setu.contacts.phone, EXCLUDED.phone)
+            `INSERT INTO samadhan.contacts (email, name, phone) VALUES ($1, $2, $3)
+             ON CONFLICT (email) DO UPDATE SET phone = COALESCE(samadhan.contacts.phone, EXCLUDED.phone)
              RETURNING id, "companyId", email`,
             [email, r.name || email, r.phone || null],
         );
@@ -82,13 +82,13 @@ async function findOrCreateContact(r) {
     const number = r.mobile || r.phone;
     if (number) {
         const found = await pool.query(
-            'SELECT id, "companyId", email FROM setu.contacts WHERE (mobile = $1 OR phone = $1) AND "anonymizedAt" IS NULL ORDER BY id DESC LIMIT 1',
+            'SELECT id, "companyId", email FROM samadhan.contacts WHERE (mobile = $1 OR phone = $1) AND "anonymizedAt" IS NULL ORDER BY id DESC LIMIT 1',
             [number],
         );
         if (found.rows.length) return found.rows[0];
     }
     const { rows } = await pool.query(
-        'INSERT INTO setu.contacts (name, phone, mobile) VALUES ($1, $2, $3) RETURNING id, "companyId", email',
+        'INSERT INTO samadhan.contacts (name, phone, mobile) VALUES ($1, $2, $3) RETURNING id, "companyId", email',
         [r.name, r.phone || null, r.mobile || null],
     );
     return rows[0];
@@ -121,13 +121,13 @@ async function createTicket(input) {
     };
     const keys = Object.keys(data);
     const { rows } = await pool.query(
-        `INSERT INTO setu.tickets (${keys.map(q).join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
+        `INSERT INTO samadhan.tickets (${keys.map(q).join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`,
         keys.map((k) => data[k]),
     );
     const id = rows[0].id;
     if (input.messageId) {
         await pool.query(
-            `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
+            `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
              VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6, $7, $8)`,
             [id, data.description, stripTags(data.description), contact.email, input.fromPhone ?? null, input.channel ?? 'email', input.messageId, createdAt],
         );
@@ -136,11 +136,11 @@ async function createTicket(input) {
     await runRules('ON_CREATE', id);
 
     // Round-robin after routing, then SLA (routing may set the group)
-    let routed = (await pool.query('SELECT * FROM setu.tickets WHERE id = $1', [id])).rows[0];
+    let routed = (await pool.query('SELECT * FROM samadhan.tickets WHERE id = $1', [id])).rows[0];
     if (routed.groupId && !routed.agentId) {
         const agentId = await roundRobinAgent(routed.groupId);
         if (agentId) {
-            await pool.query('UPDATE setu.tickets SET "agentId" = $2 WHERE id = $1', [id, agentId]);
+            await pool.query('UPDATE samadhan.tickets SET "agentId" = $2 WHERE id = $1', [id, agentId]);
             routed = { ...routed, agentId };
         }
     }
@@ -181,7 +181,7 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     // Status: pause / resume the SLA clock, stamp resolved and closed times.
     let pausedMins = before.slaPausedMins;
     if (changed.includes('statusId')) {
-        const next = (await pool.query('SELECT * FROM setu.ticket_statuses WHERE id = $1', [patch.statusId])).rows[0];
+        const next = (await pool.query('SELECT * FROM samadhan.ticket_statuses WHERE id = $1', [patch.statusId])).rows[0];
         if (!next) throw Object.assign(new Error('Unknown status'), { status: 400 });
         data.statusChangedAt = now;
         if (!before.pausesSla && next.pausesSla) data.slaPausedAt = now;
@@ -219,7 +219,7 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
 
     const t = await loadTicket(id);
     if (changed.includes('statusId') || changed.includes('agentId')) {
-        const actor = actorAgentId ? (await pool.query('SELECT name FROM setu.agents WHERE id = $1', [actorAgentId])).rows[0]?.name : 'Automation';
+        const actor = actorAgentId ? (await pool.query('SELECT name FROM samadhan.agents WHERE id = $1', [actorAgentId])).rows[0]?.name : 'Automation';
         if (changed.includes('statusId')) await touchActivity(id, 'status', actor, `${before.statusName} → ${t.statusName}`, now);
         else await touchActivity(id, 'assigned', actor, t.agentName ? `Assigned to ${t.agentName}` : 'Unassigned', now);
     }
@@ -228,7 +228,7 @@ async function updateTicket(id, patch, actorAgentId, opts = {}) {
     }
     if (changed.includes('agentId') && t.agentId && t.agentId !== actorAgentId) await notifyAgents(t, 'agent.assigned_agent', 'assignee');
     if (changed.includes('statusId')) {
-        const by = actorAgentId ? (await pool.query('SELECT name FROM setu.agents WHERE id = $1', [actorAgentId])).rows[0]?.name ?? 'An agent' : 'Automation';
+        const by = actorAgentId ? (await pool.query('SELECT name FROM samadhan.agents WHERE id = $1', [actorAgentId])).rows[0]?.name ?? 'An agent' : 'Automation';
         const title = `#${t.id} is now ${t.statusName}`;
         // The ticket's agent hears when someone else (or an automation) changes the status.
         if (t.agentId && t.agentId !== actorAgentId) await ring(t, 'status_changed', { title, body: `${by}: ${before.statusName} → ${t.statusName}`, only: [t.agentId] });
@@ -271,7 +271,7 @@ async function addAgentMessage(ticketId, m, agent) {
     }
 
     await pool.query(
-        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails", channel) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "agentId", "toEmails", "ccEmails", channel) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [ticketId, m.kind, html, stripTags(html), agent.id, to, cc, viaWhatsApp ? 'whatsapp' : 'email'],
     );
 
@@ -304,10 +304,10 @@ async function addAgentMessage(ticketId, m, agent) {
 
 /** A requester's reply on an existing ticket (email, or WhatsApp with channel / fromPhone). Reopens resolved / waiting tickets. */
 async function addRequesterReply(ticketId, m) {
-    const exists = await pool.query('SELECT 1 FROM setu.conversations WHERE "messageId" = $1', [m.messageId]);
+    const exists = await pool.query('SELECT 1 FROM samadhan.conversations WHERE "messageId" = $1', [m.messageId]);
     if (exists.rows.length) return;
     await pool.query(
-        `INSERT INTO setu.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
+        `INSERT INTO samadhan.conversations ("ticketId", kind, "bodyHtml", "bodyText", "fromEmail", "fromPhone", channel, "messageId", "createdAt")
          VALUES ($1, 'INCOMING', $2, $3, $4, $5, $6, $7, $8)`,
         [ticketId, m.html, stripTags(m.html), m.fromEmail ?? null, m.fromPhone ?? null, m.channel ?? 'email', m.messageId, m.receivedAt],
     );

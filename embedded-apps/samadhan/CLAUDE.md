@@ -1,6 +1,6 @@
 # Samadhan (formerly Setu) — conventions for Claude Code
 
-Scope: this file covers **Samadhan only** (frontend here, backend in `backend/setu/` → `backend/samadhan/` from v7 Phase 1).
+Scope: this file covers **Samadhan only** (frontend here, backend in `backend/samadhan/`; both were `setu` before v7).
 Other apps in this monorepo have their own rules; never change them.
 
 ## Current work
@@ -22,14 +22,14 @@ and wait for "approved".
 
 ## Build / test commands
 - Frontend: `npm run dev` (port 3250), `npm run typecheck`, `npm run build` (static export → `dist/`).
-- Backend unit tests: `node --test backend/setu/tests/unit.test.js` (no DB). Shared backend tests: `cd backend && npm test`.
-- API suite: see `backend/setu/tests/README.md` (local throwaway DB only). The v7 gate runner arrives in Phase 1.
+- Backend unit tests: `node --test backend/samadhan/tests/unit.test.js` (no DB). Shared backend tests: `cd backend && npm test`.
+- API suite: see `backend/samadhan/tests/README.md` (local throwaway DB only). Full gate: `npm run test:gate` (see `docs/v7/TEST-PLAN.md`).
 - Windows: port 4190 is unusable on this machine; use 4191+ for a local backend.
 
 ## Code conventions
 - Line endings: CRLF in the working tree (`core.autocrlf=true`), LF in git; `*.sh` always LF. Minimal diffs, no reformatting.
 - Moves with `git mv`.
-- Time: IST (Asia/Kolkata), en-IN formats; helpers in `src/lib/format.ts` and `backend/setu/lib/util.js`.
+- Time: IST (Asia/Kolkata), en-IN formats; helpers in `src/lib/format.ts` and `backend/samadhan/lib/util.js`.
 - UI: only `src/components/ui.tsx` components, Tailwind tokens (`bg-plum`, `accent`, `panel`, `line`, `muted`, `sunken`, …),
   lucide icons. No new UI / CSS / state library. Screens must work at 360 px.
 - Backend: parameterised SQL only; quoted camelCase columns; editable fields go through `EDITABLE_FIELDS` (backend

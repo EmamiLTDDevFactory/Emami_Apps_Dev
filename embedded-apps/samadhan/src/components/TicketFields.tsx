@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { lookupDistributor } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { FieldDef } from '@/lib/types';
 import { Button, Field, Spinner, cx, inputBase, inputCls, textareaCls } from './ui';
 
@@ -24,7 +24,7 @@ function ChoiceSelect({ value, choices, onChange, label, placeholder = 'Select',
  * nested Category -> Function pair. A Distributor Code lookup fills the distributor fields from the DB master.
  */
 export default function TicketFields({ values, onChange, required = true, compact = false }: { values: Values; onChange: (patch: Values) => void; required?: boolean; compact?: boolean }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const [looking, setLooking] = useState(false);
   const [lookupMsg, setLookupMsg] = useState('');
 

@@ -1,8 +1,8 @@
 'use strict';
 const { notify } = require('../../notifications');
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 const { APP_URL } = require('../../ccbTeams');
-const { APP_ID } = require('../constants');
+const { grantAppId } = require('./access');
 const { sendMail } = require('./mail');
 const { esc, fmtIst, logActivity, stripTags, ticketLink } = require('./util');
 
@@ -14,11 +14,11 @@ async function loadTicket(id) {
         `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", c.phone AS "requesterPhone", c.mobile AS "requesterMobile",
                 g.name AS "groupName", a.name AS "agentName", a.email AS "agentEmail", a.active AS "agentActive",
                 s.name AS "statusName", s."pausesSla", s."isResolved", s."isClosed"
-         FROM setu.tickets t
-         JOIN setu.contacts c ON c.id = t."requesterId"
-         JOIN setu.ticket_statuses s ON s.id = t."statusId"
-         LEFT JOIN setu.groups g ON g.id = t."groupId"
-         LEFT JOIN setu.agents a ON a.id = t."agentId"
+         FROM samadhan.tickets t
+         JOIN samadhan.contacts c ON c.id = t."requesterId"
+         JOIN samadhan.ticket_statuses s ON s.id = t."statusId"
+         LEFT JOIN samadhan.groups g ON g.id = t."groupId"
+         LEFT JOIN samadhan.agents a ON a.id = t."agentId"
          WHERE t.id = $1`,
         [id],
     );
@@ -62,7 +62,7 @@ function render(text, values, html) {
 const fillPlaceholders = (text, t, extra = {}) => render(String(text), placeholders(t, extra), false);
 
 async function renderTemplate(key, t, extra = {}) {
-    const { rows } = await pool.query('SELECT subject, body, enabled FROM setu.email_templates WHERE key = $1', [key]);
+    const { rows } = await pool.query('SELECT subject, body, enabled FROM samadhan.email_templates WHERE key = $1', [key]);
     if (!rows.length || !rows[0].enabled) return null;
     const values = placeholders(t, { helpdesk_name: await require('./config').option('general.helpdeskName'), ...extra });
     return { subject: render(rows[0].subject, values, false), html: render(rows[0].body, values, true) };
@@ -82,7 +82,7 @@ async function notifyAgents(t, template, to, extra = {}) {
     if (to === 'assignee') recipients = t.agentActive && t.agentEmail ? [t.agentEmail] : [];
     else if (to === 'group' && t.groupId) {
         const { rows } = await pool.query(
-            'SELECT a.email FROM setu.group_members m JOIN setu.agents a ON a.id = m."agentId" WHERE m."groupId" = $1 AND a.active',
+            'SELECT a.email FROM samadhan.group_members m JOIN samadhan.agents a ON a.id = m."agentId" WHERE m."groupId" = $1 AND a.active',
             [t.groupId],
         );
         recipients = rows.map((r) => r.email);
@@ -90,7 +90,7 @@ async function notifyAgents(t, template, to, extra = {}) {
     // Agents who switched this notification off for themselves (My notifications) are left out.
     if (recipients.length) {
         const muted = await pool.query(
-            `SELECT lower(email) AS email FROM setu.agents WHERE lower(email) = ANY($1::text[]) AND COALESCE(prefs -> 'emailMuted', '[]'::jsonb) ? $2`,
+            `SELECT lower(email) AS email FROM samadhan.agents WHERE lower(email) = ANY($1::text[]) AND COALESCE(prefs -> 'emailMuted', '[]'::jsonb) ? $2`,
             [recipients.map((r) => String(r).toLowerCase()), template],
         );
         const skip = new Set(muted.rows.map((r) => r.email));
@@ -100,8 +100,11 @@ async function notifyAgents(t, template, to, extra = {}) {
     const msg = await renderTemplate(template, t, extra);
     if (!msg) return;
     const body = stripTags(msg.html.replace(/<br\s*\/?>/gi, '\n')).slice(0, 1500);
+    // Hub inbox rows carry the app id in use (formerly 'setu'); the de-duplication key keeps its pre-v7 'setu:' prefix
+    // so a notification already sent before the rename is never sent twice.
+    const appId = await grantAppId();
     await Promise.all([...new Set(recipients)].map((email) =>
-        notify({ email, appId: APP_ID, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `setu:${t.id}:${template}` })));
+        notify({ email, appId, kind: template.replace(/^agent\./, ''), title: msg.subject, body, link: ticketLink(t.id), refKey: `setu:${t.id}:${template}` })));
 }
 
 module.exports = { emailRequester, fillPlaceholders, loadTicket, notifyAgents, renderTemplate };

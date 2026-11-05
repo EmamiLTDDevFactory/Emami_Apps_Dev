@@ -48,7 +48,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   'shelf-life-deviation': '/apps/shelf-life-deviation', // Shelf Life Deviation (CPD approval + CADE Z-Report)
   'gate-entry': '/apps/gate-entry', // Gate Entry (truck in against PO/ASN, replaces WD ZGATE_ENTRY)
   'access-tracker': '/apps/access-tracker', // Access Tracker (who has access, change log, sign-in activity - admins only)
-  setu: '/apps/setu', // Samadhan (Emami Secondary Support helpdesk)
+  setu: '/apps/samadhan', // Samadhan (Emami helpdesk; formerly Setu at /apps/setu, which now forwards here). Hub id stays 'setu' until the Manage Access switch (docs/v7/RENAME-FOLLOWUPS.md)
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
 };

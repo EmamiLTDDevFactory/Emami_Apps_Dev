@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { savePrefs } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { BELL_EVENT_LABEL, EMAIL_NOTICE_LABEL } from '@/lib/format';
 import type { AgentPrefs, BellEvent } from '@/lib/types';
 import { Button, Field, Modal, Notice, Tabs, cx } from './ui';
@@ -19,7 +19,7 @@ const VIEWS: { value: string; label: string }[] = [
 export default function MyPreferences({ open, onClose, prefs, events, onSaved, start = 'notifications' }: {
   open: boolean; onClose: () => void; prefs: AgentPrefs; events: BellEvent[]; onSaved: (p: AgentPrefs) => void; start?: 'notifications' | 'list';
 }) {
-  const { meta, mailEnabled } = useSetu();
+  const { meta, mailEnabled } = useSamadhan();
   const [tab, setTab] = useState<'notifications' | 'list'>(start);
   const [bellMuted, setBellMuted] = useState<BellEvent[]>([]);
   const [emailMuted, setEmailMuted] = useState<string[]>([]);

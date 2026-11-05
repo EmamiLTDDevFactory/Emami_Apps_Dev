@@ -1,5 +1,5 @@
 'use strict';
-const { pool } = require('../../db');
+const { pool } = require('../db/pool');
 
 // ---------- Automations ----------
 
@@ -40,7 +40,7 @@ function ruleMatches(set, ctx) {
 }
 
 async function rulesFor(trigger) {
-    const { rows } = await pool.query('SELECT * FROM setu.automation_rules WHERE trigger = $1 AND active ORDER BY position, id', [trigger]);
+    const { rows } = await pool.query('SELECT * FROM samadhan.automation_rules WHERE trigger = $1 AND active ORDER BY position, id', [trigger]);
     return rows;
 }
 

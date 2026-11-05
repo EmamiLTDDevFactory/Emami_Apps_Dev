@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Bookmark, BookmarkPlus, ChevronDown, Columns3, Download, FileSpreadsheet, Filter, RefreshCw, RotateCcw, Save, Star, StarOff, Trash2, X } from 'lucide-react';
 import { deleteVariant, getDailyReport, getMe, getVariants, savePrefs, saveVariant } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtNum, istToday } from '@/lib/format';
 import type { ReportVariantConfig, Variant } from '@/lib/types';
 import { Button, Card, Field, Modal, MultiSelect, Notice, Spinner, cx, inputCls } from './ui';
@@ -81,7 +81,7 @@ const errText = (e: unknown, fallback: string) => (e instanceof Error ? e.messag
  * a variant; the agent's default variant is applied and loaded on opening the screen.
  */
 export default function Reports() {
-  const { me, isSupervisor, isAdmin } = useSetu();
+  const { me, isSupervisor, isAdmin } = useSamadhan();
   const [range, setRange] = useState<Range>('today');
   const [from, setFrom] = useState(istToday());
   const [to, setTo] = useState(istToday());

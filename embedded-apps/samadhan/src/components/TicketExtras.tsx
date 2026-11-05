@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckSquare, ChevronLeft, ChevronRight, Eye, EyeOff, GitBranch, Link2, ListTodo, Merge, MoreHorizontal, Plus, Printer, RotateCcw, ShieldAlert, Smile, Square, Trash2, Users, Wand2, X } from 'lucide-react';
 import { addTodo, bulkTickets, deleteTodo, linkTickets, mergeTickets, reportPresence, runScenario, updateTodo, watchTicket } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { fmtDateTime, relative } from '@/lib/format';
 import type { PresenceAgent, RelatedTicket, Ticket, TicketDetail } from '@/lib/types';
 import { Button, Card, Field, Modal, Notice, Pill, cx, inputCls } from './ui';
@@ -22,7 +22,7 @@ export function fillCanned(text: string, t: Ticket, agentName: string): string {
 /** Watch, previous / next in the list the agent came from, scenarios and the More menu (merge, link, child, print, spam, trash). */
 export function TicketToolbar({ data, reload }: { data: TicketDetail; reload: Reload }) {
   const { ticket: t } = data;
-  const { meta, openTicket, listIds, newTicket, go } = useSetu();
+  const { meta, openTicket, listIds, newTicket, go } = useSamadhan();
   const [menu, setMenu] = useState<'scenarios' | 'more' | null>(null);
   const [dialog, setDialog] = useState<'merge' | 'link' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -146,7 +146,7 @@ function NumbersDialog({ open, onClose, title, hint, action, onSubmit }: { open:
 
 /** Merged / spam / trash notices with the way back. */
 export function TicketBanners({ ticket: t, reload }: { ticket: Ticket; reload: Reload }) {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   const [error, setError] = useState('');
   const restore = async (action: 'restore' | 'unspam') => {
     try { await bulkTickets([t.id], action); await reload(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not restore.'); }
@@ -192,7 +192,7 @@ export function PresenceBar({ ticketId, replying }: { ticketId: number; replying
 }
 
 function RelatedRow({ r, rel, onUnlink }: { r: RelatedTicket; rel: string; onUnlink?: () => void }) {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   return (
     <li className="group flex items-center gap-2 py-1.5">
       <button type="button" onClick={() => openTicket(r.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px] hover:text-accent">

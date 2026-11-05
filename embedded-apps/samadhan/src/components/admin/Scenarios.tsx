@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2, Wand2, X } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { EDITABLE_FIELDS, type Meta, type Scenario, type ScenarioAction } from '@/lib/types';
 import { Button, Card, Empty, Field, Modal, Notice, Skeleton, Table, cx, inputBase, inputCls, textareaCls } from '../ui';
 import { useAction, useLoad } from './shared';
@@ -136,7 +136,7 @@ function ValueInput({ row, meta, onChange }: { row: Row; meta: Meta; onChange: (
 
 /** Admin > Scenarios: named sets of actions an agent runs on a ticket in one click (Ticket > Scenarios). */
 export default function ScenariosTab() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const { data, error, reload } = useLoad(admin.scenarios);
   const [edit, setEdit] = useState<Draft | null>(null);
   const act = useAction();

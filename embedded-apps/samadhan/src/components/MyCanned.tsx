@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { BookUser, Pencil, Plus, Trash2 } from 'lucide-react';
 import { deleteMyCanned, saveMyCanned } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { CannedResponse } from '@/lib/types';
 import { Button, Empty, Field, Modal, Notice, Spinner, inputCls, textareaCls } from './ui';
 
@@ -13,7 +13,7 @@ type Draft = { id?: number; folder: string; title: string; shortCode: string; bo
  * them. Shared responses for everyone stay in Admin > Canned responses.
  */
 export function MyCannedButton() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);

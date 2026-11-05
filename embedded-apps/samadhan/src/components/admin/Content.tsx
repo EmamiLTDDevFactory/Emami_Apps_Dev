@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { MessageSquareText, Pencil, Plus, Trash2 } from 'lucide-react';
 import { admin } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import type { CannedResponse, EmailTemplate } from '@/lib/types';
 import { Button, Card, Empty, Field, Modal, Notice, Pill, Skeleton, Table, cx, inputCls, textareaCls } from '../ui';
 import { checkboxCls, useAction, useLoad } from './shared';
@@ -76,7 +76,7 @@ export function TemplatesTab() {
 }
 
 export function CannedTab() {
-  const { meta, reloadMeta } = useSetu();
+  const { meta, reloadMeta } = useSamadhan();
   const [edit, setEdit] = useState<{ id?: number; folder: string; title: string; shortCode: string; body: string } | null>(null);
   const [filter, setFilter] = useState('');
   const act = useAction();

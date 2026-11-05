@@ -5,7 +5,7 @@ import type { AgentPrefs, Me, Meta } from './types';
 
 export type Screen = 'dashboard' | 'tickets' | 'board' | 'new' | 'reports' | 'admin' | 'ticket' | 'helpdesk' | 'analytics' | 'contacts' | 'solutions';
 
-export interface Setu {
+export interface Samadhan {
   me: Me;
   meta: Meta;
   mailEnabled: boolean;
@@ -29,10 +29,10 @@ export interface Setu {
 
 export type NewTicketPreset = { parentId?: number; [key: string]: string | number | undefined };
 
-export const SetuContext = createContext<Setu | null>(null);
+export const SamadhanContext = createContext<Samadhan | null>(null);
 
-export function useSetu(): Setu {
-  const ctx = useContext(SetuContext);
-  if (!ctx) throw new Error('useSetu outside SetuContext');
+export function useSamadhan(): Samadhan {
+  const ctx = useContext(SamadhanContext);
+  if (!ctx) throw new Error('useSamadhan outside SamadhanContext');
   return ctx;
 }

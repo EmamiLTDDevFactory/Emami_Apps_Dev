@@ -1,4 +1,4 @@
-// Shapes of the JSON the shared backend returns (backend/setu/, routes under /api/setu).
+// Shapes of the JSON the shared backend returns (backend/samadhan/, routes under /api/samadhan).
 // Dates arrive as ISO strings.
 
 export type Role = 'Agent' | 'Supervisor' | 'Admin';

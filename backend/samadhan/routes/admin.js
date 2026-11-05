@@ -3,11 +3,12 @@ const { clearCalendarCache } = require('../lib/businessHours');
 const { clearSeverityCache } = require('../lib/severity');
 const { clearSlaCache } = require('../lib/sla');
 const express = require('express');
-const { pool } = require('../../db');
-const { APP_ID, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EDITABLE_FIELDS, EMAIL_RE, ROLES, SEVERITIES, SOURCES } = require('../constants');
+const { pool } = require('../db/pool');
+const { APP_IDS, BELL_EVENTS, BELL_SCOPES, CALL_MODES, EDITABLE_FIELDS, EMAIL_RE, ROLES, SEVERITIES, SOURCES } = require('../constants');
 const { DEFAULTS, clearConfigCache } = require('../lib/config');
 const { VIEW_IDS } = require('../lib/ticketQuery');
 const { deleteCanned, saveCanned } = require('../lib/canned');
+const { adminCount, clearGrantCache, grantAppId, grantFor } = require('../lib/access');
 const { audit, fail, intOrNull, wrap } = require('../lib/util');
 const { isAdmin } = require('../middleware/auth');
 
@@ -19,8 +20,9 @@ admin.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ su
 admin.get('/agents', wrap(async (req, res) => {
     const { rows } = await pool.query(
         `SELECT a.*, COALESCE(array_agg(m."groupId") FILTER (WHERE m."groupId" IS NOT NULL), '{}') AS "groupIds",
-                EXISTS (SELECT 1 FROM emami_apps.authorized_user_apps g WHERE g.email = a.email AND g.app_id = '${APP_ID}') AS "hasAccess"
-         FROM setu.agents a LEFT JOIN setu.group_members m ON m."agentId" = a.id GROUP BY a.id ORDER BY a.active DESC, a.name`,
+                EXISTS (SELECT 1 FROM emami_apps.authorized_user_apps g WHERE g.email = a.email AND g.app_id = ANY($1::text[])) AS "hasAccess"
+         FROM samadhan.agents a LEFT JOIN samadhan.group_members m ON m."agentId" = a.id GROUP BY a.id ORDER BY a.active DESC, a.name`,
+        [APP_IDS],
     );
     res.json({ success: true, agents: rows });
 }));
@@ -36,14 +38,14 @@ admin.post('/agents', wrap(async (req, res) => {
     try {
         await client.query('BEGIN');
         const { rows } = await client.query(
-            `INSERT INTO setu.agents (email, name, active) VALUES ($1, $2, $3)
+            `INSERT INTO samadhan.agents (email, name, active) VALUES ($1, $2, $3)
              ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, active = EXCLUDED.active RETURNING id`,
             [email, name.slice(0, 200), b.active !== false],
         );
         if (Array.isArray(b.groupIds)) {
-            await client.query('DELETE FROM setu.group_members WHERE "agentId" = $1', [rows[0].id]);
+            await client.query('DELETE FROM samadhan.group_members WHERE "agentId" = $1', [rows[0].id]);
             for (const g of b.groupIds.map(Number).filter(Number.isInteger)) {
-                await client.query('INSERT INTO setu.group_members ("agentId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [rows[0].id, g]);
+                await client.query('INSERT INTO samadhan.group_members ("agentId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [rows[0].id, g]);
             }
         }
         await client.query('COMMIT');
@@ -60,7 +62,7 @@ admin.post('/agents', wrap(async (req, res) => {
 admin.get('/groups', wrap(async (req, res) => {
     const { rows } = await pool.query(
         `SELECT g.*, COALESCE(array_agg(m."agentId") FILTER (WHERE m."agentId" IS NOT NULL), '{}') AS "agentIds"
-         FROM setu.groups g LEFT JOIN setu.group_members m ON m."groupId" = g.id GROUP BY g.id ORDER BY g.name`,
+         FROM samadhan.groups g LEFT JOIN samadhan.group_members m ON m."groupId" = g.id GROUP BY g.id ORDER BY g.name`,
     );
     res.json({ success: true, groups: rows });
 }));
@@ -72,12 +74,12 @@ admin.post('/groups', wrap(async (req, res) => {
     const assignment = b.assignment === 'ROUND_ROBIN' ? 'ROUND_ROBIN' : 'MANUAL';
     const id = intOrNull(b.id);
     let groupId = id;
-    if (id) await pool.query('UPDATE setu.groups SET name = $2, description = $3, assignment = $4 WHERE id = $1', [id, name, b.description || null, assignment]);
-    else groupId = (await pool.query('INSERT INTO setu.groups (name, description, assignment) VALUES ($1, $2, $3) RETURNING id', [name, b.description || null, assignment])).rows[0].id;
+    if (id) await pool.query('UPDATE samadhan.groups SET name = $2, description = $3, assignment = $4 WHERE id = $1', [id, name, b.description || null, assignment]);
+    else groupId = (await pool.query('INSERT INTO samadhan.groups (name, description, assignment) VALUES ($1, $2, $3) RETURNING id', [name, b.description || null, assignment])).rows[0].id;
     if (Array.isArray(b.agentIds)) {
-        await pool.query('DELETE FROM setu.group_members WHERE "groupId" = $1', [groupId]);
+        await pool.query('DELETE FROM samadhan.group_members WHERE "groupId" = $1', [groupId]);
         for (const a of b.agentIds.map(Number).filter(Number.isInteger)) {
-            await pool.query('INSERT INTO setu.group_members ("agentId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [a, groupId]);
+            await pool.query('INSERT INTO samadhan.group_members ("agentId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [a, groupId]);
         }
     }
     await audit(req.verifiedEmail, 'group_saved', { id: groupId, name, assignment });
@@ -85,7 +87,7 @@ admin.post('/groups', wrap(async (req, res) => {
 }));
 
 admin.get('/settings', wrap(async (req, res) => {
-    const { rows } = await pool.query('SELECT key, value FROM setu.settings');
+    const { rows } = await pool.query('SELECT key, value FROM samadhan.settings');
     res.json({ success: true, settings: Object.fromEntries(rows.map((r) => [r.key, r.value])) });
 }));
 
@@ -183,7 +185,7 @@ admin.put('/settings', wrap(async (req, res) => {
         updates.push(['whatsapp.threadDays', n]);
     }
     for (const [key, value] of updates) {
-        await pool.query('INSERT INTO setu.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, JSON.stringify(value)]);
+        await pool.query('INSERT INTO samadhan.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, JSON.stringify(value)]);
     }
     clearConfigCache();
     await audit(req.verifiedEmail, 'settings_saved', Object.fromEntries(updates));
@@ -215,7 +217,7 @@ function cleanScenarioActions(list) {
 }
 
 admin.get('/scenarios', wrap(async (req, res) => {
-    res.json({ success: true, scenarios: (await pool.query('SELECT * FROM setu.scenarios ORDER BY position, name')).rows });
+    res.json({ success: true, scenarios: (await pool.query('SELECT * FROM samadhan.scenarios ORDER BY position, name')).rows });
 }));
 
 admin.post('/scenarios', wrap(async (req, res) => {
@@ -227,10 +229,10 @@ admin.post('/scenarios', wrap(async (req, res) => {
     const id = intOrNull(b.id);
     try {
         if (id) {
-            const { rowCount } = await pool.query('UPDATE setu.scenarios SET name = $2, description = $3, actions = $4 WHERE id = $1', [id, name, description, actions]);
+            const { rowCount } = await pool.query('UPDATE samadhan.scenarios SET name = $2, description = $3, actions = $4 WHERE id = $1', [id, name, description, actions]);
             if (!rowCount) throw fail(404, 'Scenario not found.');
         } else {
-            await pool.query('INSERT INTO setu.scenarios (name, description, actions, position) VALUES ($1, $2, $3, (SELECT coalesce(max(position), 0) + 1 FROM setu.scenarios))', [name, description, actions]);
+            await pool.query('INSERT INTO samadhan.scenarios (name, description, actions, position) VALUES ($1, $2, $3, (SELECT coalesce(max(position), 0) + 1 FROM samadhan.scenarios))', [name, description, actions]);
         }
     } catch (e) {
         if (e.code === '23505') throw fail(409, 'A scenario with that name already exists.');
@@ -241,19 +243,19 @@ admin.post('/scenarios', wrap(async (req, res) => {
 }));
 
 admin.delete('/scenarios/:id', wrap(async (req, res) => {
-    await pool.query('DELETE FROM setu.scenarios WHERE id = $1', [Number(req.params.id)]);
+    await pool.query('DELETE FROM samadhan.scenarios WHERE id = $1', [Number(req.params.id)]);
     await audit(req.verifiedEmail, 'scenario_deleted', { id: Number(req.params.id) });
     res.json({ success: true });
 }));
 
 admin.get('/templates', wrap(async (req, res) => {
-    res.json({ success: true, templates: (await pool.query('SELECT * FROM setu.email_templates ORDER BY audience DESC, key')).rows });
+    res.json({ success: true, templates: (await pool.query('SELECT * FROM samadhan.email_templates ORDER BY audience DESC, key')).rows });
 }));
 
 admin.put('/templates/:key', wrap(async (req, res) => {
     const b = req.body ?? {};
     const { rowCount } = await pool.query(
-        'UPDATE setu.email_templates SET subject = $2, body = $3, enabled = $4 WHERE key = $1',
+        'UPDATE samadhan.email_templates SET subject = $2, body = $3, enabled = $4 WHERE key = $1',
         [req.params.key, String(b.subject || '').slice(0, 500), String(b.body || '').slice(0, 20000), b.enabled !== false],
     );
     if (!rowCount) throw fail(404, 'Template not found.');
@@ -277,8 +279,8 @@ admin.get('/distributors', wrap(async (req, res) => {
     const params = term ? [`%${term}%`] : [];
     const where = term ? 'WHERE code ILIKE $1 OR name ILIKE $1 OR depot ILIKE $1' : '';
     const [items, total] = await Promise.all([
-        pool.query(`SELECT * FROM setu.distributors ${where} ORDER BY code LIMIT 100`, params),
-        pool.query('SELECT count(*)::int AS n, max("updatedAt") AS "lastUpdated" FROM setu.distributors'),
+        pool.query(`SELECT * FROM samadhan.distributors ${where} ORDER BY code LIMIT 100`, params),
+        pool.query('SELECT count(*)::int AS n, max("updatedAt") AS "lastUpdated" FROM samadhan.distributors'),
     ]);
     res.json({ success: true, items: items.rows, total: total.rows[0].n, lastUpdated: total.rows[0].lastUpdated });
 }));
@@ -314,7 +316,7 @@ admin.post('/distributors/import', wrap(async (req, res) => {
         await client.query('BEGIN');
         for (const r of mapped) {
             await client.query(
-                `INSERT INTO setu.distributors (code, name, region, state, depot, "asmName", "depotCoordinator", category, active, "updatedAt")
+                `INSERT INTO samadhan.distributors (code, name, region, state, depot, "asmName", "depotCoordinator", category, active, "updatedAt")
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
                  ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, region = EXCLUDED.region, state = EXCLUDED.state, depot = EXCLUDED.depot,
                    "asmName" = EXCLUDED."asmName", "depotCoordinator" = EXCLUDED."depotCoordinator", category = EXCLUDED.category,
@@ -340,55 +342,55 @@ admin.post('/contacts/anonymize', wrap(async (req, res) => {
     const phone = String(req.body?.phone || '').trim();
     if (!email && !phone) throw fail(400, 'Give an email address or a phone number.');
     const { rows } = await pool.query(
-        `UPDATE setu.contacts SET name = 'Removed contact', email = NULL, phone = NULL, mobile = NULL, "anonymizedAt" = now()
+        `UPDATE samadhan.contacts SET name = 'Removed contact', email = NULL, phone = NULL, mobile = NULL, "anonymizedAt" = now()
          WHERE ${email ? 'email = $1' : '(mobile = $1 OR phone = $1)'} RETURNING id`,
         [email || phone],
     );
     if (!rows.length) throw fail(404, email ? 'No contact with that email address.' : 'No contact with that phone number.');
     // The address also appears on email conversations, activity entries and parked mail: remove it there too.
     await pool.query(
-        `UPDATE setu.conversations SET "fromEmail" = CASE WHEN "fromEmail" = $1 THEN NULL ELSE "fromEmail" END,
+        `UPDATE samadhan.conversations SET "fromEmail" = CASE WHEN "fromEmail" = $1 THEN NULL ELSE "fromEmail" END,
                 "toEmails" = array_remove("toEmails", $1), "ccEmails" = array_remove("ccEmails", $1)
          WHERE "fromEmail" = $1 OR $1 = ANY("toEmails") OR $1 = ANY("ccEmails")`,
         [email],
     );
-    await pool.query(`UPDATE setu.activities SET details = details - 'to' WHERE details->>'to' = $1`, [email]);
+    await pool.query(`UPDATE samadhan.activities SET details = details - 'to' WHERE details->>'to' = $1`, [email]);
     // Their own words and phone numbers on their tickets go too (agents' replies and notes stay as the record of work).
     const REMOVED_TEXT = "[Removed at the requester's request]";
     await pool.query(
-        `UPDATE setu.tickets SET description = $2, "callerName" = NULL, "callerContactNumber" = NULL, "mobileNo" = NULL,
+        `UPDATE samadhan.tickets SET description = $2, "callerName" = NULL, "callerContactNumber" = NULL, "mobileNo" = NULL,
                 "alternateMobileNo" = NULL, "updatedAt" = now()
          WHERE "requesterId" = ANY($1::int[])`,
         [rows.map((r) => r.id), `<p>${REMOVED_TEXT}</p>`],
     );
     await pool.query(
-        `UPDATE setu.conversations SET "bodyHtml" = $2, "bodyText" = $3
-         WHERE kind = 'INCOMING' AND "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`,
+        `UPDATE samadhan.conversations SET "bodyHtml" = $2, "bodyText" = $3
+         WHERE kind = 'INCOMING' AND "ticketId" IN (SELECT id FROM samadhan.tickets WHERE "requesterId" = ANY($1::int[]))`,
         [rows.map((r) => r.id), `<p>${REMOVED_TEXT}</p>`, REMOVED_TEXT],
     );
     const ids = rows.map((r) => r.id);
     await pool.query(
-        `UPDATE setu.conversations SET "fromPhone" = NULL WHERE "fromPhone" IS NOT NULL AND "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`,
+        `UPDATE samadhan.conversations SET "fromPhone" = NULL WHERE "fromPhone" IS NOT NULL AND "ticketId" IN (SELECT id FROM samadhan.tickets WHERE "requesterId" = ANY($1::int[]))`,
         [ids],
     );
-    await pool.query(`UPDATE setu.call_logs SET phone = 'removed' WHERE "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))`, [ids]);
+    await pool.query(`UPDATE samadhan.call_logs SET phone = 'removed' WHERE "ticketId" IN (SELECT id FROM samadhan.tickets WHERE "requesterId" = ANY($1::int[]))`, [ids]);
     // Bell entries quote the requester's name and words.
-    await pool.query('DELETE FROM setu.notifications WHERE "ticketId" IN (SELECT id FROM setu.tickets WHERE "requesterId" = ANY($1::int[]))', [ids]);
+    await pool.query('DELETE FROM samadhan.notifications WHERE "ticketId" IN (SELECT id FROM samadhan.tickets WHERE "requesterId" = ANY($1::int[]))', [ids]);
     await pool.query(
-        `UPDATE setu.tickets SET "lastActivityBy" = 'Removed contact'
+        `UPDATE samadhan.tickets SET "lastActivityBy" = 'Removed contact'
          WHERE "requesterId" = ANY($1::int[]) AND ("lastActivityKind" = 'requester_reply' OR ("lastActivityKind" = 'created' AND source IN ('Email', 'Portal', 'WhatsApp')))`,
         [ids],
     );
-    if (email) await pool.query(`UPDATE setu.parked_mail SET "fromEmail" = 'removed' WHERE "fromEmail" = $1`, [email]);
+    if (email) await pool.query(`UPDATE samadhan.parked_mail SET "fromEmail" = 'removed' WHERE "fromEmail" = $1`, [email]);
     await audit(req.verifiedEmail, 'contact_anonymized', { contactIds: rows.map((r) => r.id) });
     res.json({ success: true });
 }));
 
 admin.get('/sla', wrap(async (req, res) => {
     const [policies, targets, links] = await Promise.all([
-        pool.query('SELECT * FROM setu.sla_policies ORDER BY position, id'),
-        pool.query('SELECT * FROM setu.sla_targets ORDER BY "policyId", priority DESC'),
-        pool.query('SELECT * FROM setu.sla_policy_groups'),
+        pool.query('SELECT * FROM samadhan.sla_policies ORDER BY position, id'),
+        pool.query('SELECT * FROM samadhan.sla_targets ORDER BY "policyId", priority DESC'),
+        pool.query('SELECT * FROM samadhan.sla_policy_groups'),
     ]);
     res.json({
         success: true,
@@ -409,7 +411,7 @@ admin.put('/sla/targets/:id', wrap(async (req, res) => {
         return x;
     };
     await pool.query(
-        `UPDATE setu.sla_targets SET "firstResponseMins" = $2, "nextResponseMins" = $3, "resolutionMins" = $4, "businessHours" = $5, escalate = $6 WHERE id = $1`,
+        `UPDATE samadhan.sla_targets SET "firstResponseMins" = $2, "nextResponseMins" = $3, "resolutionMins" = $4, "businessHours" = $5, escalate = $6 WHERE id = $1`,
         [Number(req.params.id), n(b.firstResponseMins), n(b.nextResponseMins, true), n(b.resolutionMins), b.businessHours !== false, b.escalate !== false],
     );
     clearSlaCache();
@@ -420,14 +422,14 @@ admin.put('/sla/targets/:id', wrap(async (req, res) => {
 admin.put('/sla/policies/:id/groups', wrap(async (req, res) => {
     const id = Number(req.params.id);
     const groupIds = (Array.isArray(req.body?.groupIds) ? req.body.groupIds : []).map(Number).filter(Number.isInteger);
-    await pool.query('DELETE FROM setu.sla_policy_groups WHERE "policyId" = $1', [id]);
-    for (const g of groupIds) await pool.query('INSERT INTO setu.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, g]);
+    await pool.query('DELETE FROM samadhan.sla_policy_groups WHERE "policyId" = $1', [id]);
+    for (const g of groupIds) await pool.query('INSERT INTO samadhan.sla_policy_groups ("policyId", "groupId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, g]);
     clearSlaCache();
     res.json({ success: true });
 }));
 
 admin.get('/severity-rules', wrap(async (req, res) => {
-    res.json({ success: true, rules: (await pool.query('SELECT * FROM setu.severity_rules ORDER BY severity, category, "function"')).rows });
+    res.json({ success: true, rules: (await pool.query('SELECT * FROM samadhan.severity_rules ORDER BY severity, category, "function"')).rows });
 }));
 
 admin.post('/severity-rules', wrap(async (req, res) => {
@@ -436,7 +438,7 @@ admin.post('/severity-rules', wrap(async (req, res) => {
     const severity = String(req.body?.severity || '');
     if (!category || !SEVERITIES.includes(severity)) throw fail(400, 'Category and severity are needed.');
     await pool.query(
-        `INSERT INTO setu.severity_rules (category, "function", severity) VALUES ($1, $2, $3)
+        `INSERT INTO samadhan.severity_rules (category, "function", severity) VALUES ($1, $2, $3)
          ON CONFLICT (category, "function") DO UPDATE SET severity = EXCLUDED.severity`,
         [category, fn, severity],
     );
@@ -446,22 +448,22 @@ admin.post('/severity-rules', wrap(async (req, res) => {
 }));
 
 admin.delete('/severity-rules/:id', wrap(async (req, res) => {
-    await pool.query('DELETE FROM setu.severity_rules WHERE id = $1', [Number(req.params.id)]);
+    await pool.query('DELETE FROM samadhan.severity_rules WHERE id = $1', [Number(req.params.id)]);
     clearSeverityCache();
     res.json({ success: true });
 }));
 
 admin.get('/fields', wrap(async (req, res) => {
     const [defs, choices] = await Promise.all([
-        pool.query('SELECT * FROM setu.field_definitions ORDER BY position, id'),
-        pool.query('SELECT * FROM setu.field_choices ORDER BY position, id'),
+        pool.query('SELECT * FROM samadhan.field_definitions ORDER BY position, id'),
+        pool.query('SELECT * FROM samadhan.field_choices ORDER BY position, id'),
     ]);
     res.json({ success: true, fields: defs.rows.map((d) => ({ ...d, choices: choices.rows.filter((c) => c.fieldId === d.id) })) });
 }));
 
 admin.patch('/fields/:id', wrap(async (req, res) => {
     const b = req.body ?? {};
-    await pool.query('UPDATE setu.field_definitions SET label = COALESCE($2, label), required = COALESCE($3, required) WHERE id = $1',
+    await pool.query('UPDATE samadhan.field_definitions SET label = COALESCE($2, label), required = COALESCE($3, required) WHERE id = $1',
         [Number(req.params.id), b.label ? String(b.label).slice(0, 100) : null, typeof b.required === 'boolean' ? b.required : null]);
     res.json({ success: true });
 }));
@@ -472,12 +474,12 @@ admin.post('/fields/:id/choices', wrap(async (req, res) => {
     const parentId = intOrNull(req.body?.parentId);
     const values = String(req.body?.values || '').split('\n').map((v) => v.trim()).filter(Boolean).slice(0, 500);
     if (!values.length) throw fail(400, 'Enter at least one value.');
-    const existing = (await pool.query('SELECT value FROM setu.field_choices WHERE "fieldId" = $1 AND "parentId" IS NOT DISTINCT FROM $2', [fieldId, parentId])).rows.map((r) => r.value);
+    const existing = (await pool.query('SELECT value FROM samadhan.field_choices WHERE "fieldId" = $1 AND "parentId" IS NOT DISTINCT FROM $2', [fieldId, parentId])).rows.map((r) => r.value);
     const base = existing.length;
     let added = 0;
     for (const v of values) {
         if (existing.includes(v)) continue;
-        await pool.query('INSERT INTO setu.field_choices ("fieldId", "parentId", value, position) VALUES ($1, $2, $3, $4)', [fieldId, parentId, v.slice(0, 300), base + added]);
+        await pool.query('INSERT INTO samadhan.field_choices ("fieldId", "parentId", value, position) VALUES ($1, $2, $3, $4)', [fieldId, parentId, v.slice(0, 300), base + added]);
         existing.push(v);
         added++;
     }
@@ -486,14 +488,14 @@ admin.post('/fields/:id/choices', wrap(async (req, res) => {
 
 admin.patch('/choices/:id', wrap(async (req, res) => {
     const b = req.body ?? {};
-    await pool.query('UPDATE setu.field_choices SET value = COALESCE($2, value), active = COALESCE($3, active) WHERE id = $1',
+    await pool.query('UPDATE samadhan.field_choices SET value = COALESCE($2, value), active = COALESCE($3, active) WHERE id = $1',
         [Number(req.params.id), b.value ? String(b.value).trim().slice(0, 300) : null, typeof b.active === 'boolean' ? b.active : null]);
     res.json({ success: true });
 }));
 
 admin.get('/business-hours', wrap(async (req, res) => {
-    const bh = (await pool.query('SELECT * FROM setu.business_hours ORDER BY id LIMIT 1')).rows[0] ?? null;
-    const holidays = bh ? (await pool.query(`SELECT id, to_char(date, 'YYYY-MM-DD') AS date, name FROM setu.holidays WHERE "businessHoursId" = $1 ORDER BY date`, [bh.id])).rows : [];
+    const bh = (await pool.query('SELECT * FROM samadhan.business_hours ORDER BY id LIMIT 1')).rows[0] ?? null;
+    const holidays = bh ? (await pool.query(`SELECT id, to_char(date, 'YYYY-MM-DD') AS date, name FROM samadhan.holidays WHERE "businessHoursId" = $1 ORDER BY date`, [bh.id])).rows : [];
     res.json({ success: true, businessHours: bh, holidays });
 }));
 
@@ -504,7 +506,7 @@ admin.put('/business-hours', wrap(async (req, res) => {
         throw fail(400, 'Each working day needs a start time before its end time.');
     }
     if (!days.length) throw fail(400, 'Keep at least one working day.');
-    await pool.query('UPDATE setu.business_hours SET days = $1 WHERE id = (SELECT id FROM setu.business_hours ORDER BY id LIMIT 1)', [JSON.stringify(days)]);
+    await pool.query('UPDATE samadhan.business_hours SET days = $1 WHERE id = (SELECT id FROM samadhan.business_hours ORDER BY id LIMIT 1)', [JSON.stringify(days)]);
     clearCalendarCache();
     await audit(req.verifiedEmail, 'business_hours_saved', { days });
     res.json({ success: true });
@@ -515,7 +517,7 @@ admin.post('/holidays', wrap(async (req, res) => {
     const name = String(req.body?.name || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name) throw fail(400, 'Date and name are needed.');
     await pool.query(
-        `INSERT INTO setu.holidays ("businessHoursId", date, name) VALUES ((SELECT id FROM setu.business_hours ORDER BY id LIMIT 1), $1, $2)
+        `INSERT INTO samadhan.holidays ("businessHoursId", date, name) VALUES ((SELECT id FROM samadhan.business_hours ORDER BY id LIMIT 1), $1, $2)
          ON CONFLICT ("businessHoursId", date) DO UPDATE SET name = EXCLUDED.name`,
         [date, name.slice(0, 100)],
     );
@@ -524,13 +526,13 @@ admin.post('/holidays', wrap(async (req, res) => {
 }));
 
 admin.delete('/holidays/:id', wrap(async (req, res) => {
-    await pool.query('DELETE FROM setu.holidays WHERE id = $1', [Number(req.params.id)]);
+    await pool.query('DELETE FROM samadhan.holidays WHERE id = $1', [Number(req.params.id)]);
     clearCalendarCache();
     res.json({ success: true });
 }));
 
 admin.get('/automations', wrap(async (req, res) => {
-    res.json({ success: true, rules: (await pool.query('SELECT * FROM setu.automation_rules ORDER BY trigger, position, id')).rows });
+    res.json({ success: true, rules: (await pool.query('SELECT * FROM samadhan.automation_rules ORDER BY trigger, position, id')).rows });
 }));
 
 /**
@@ -540,11 +542,11 @@ admin.get('/automations', wrap(async (req, res) => {
 admin.patch('/automations/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     const b = req.body ?? {};
-    const rule = (await pool.query('SELECT * FROM setu.automation_rules WHERE id = $1', [id])).rows[0];
+    const rule = (await pool.query('SELECT * FROM samadhan.automation_rules WHERE id = $1', [id])).rows[0];
     if (!rule) throw fail(404, 'Rule not found.');
     if (b.active !== undefined) {
         if (typeof b.active !== 'boolean') throw fail(400, 'Send active: true or false.');
-        await pool.query('UPDATE setu.automation_rules SET active = $2 WHERE id = $1', [id, b.active]);
+        await pool.query('UPDATE samadhan.automation_rules SET active = $2 WHERE id = $1', [id, b.active]);
     }
     if (Array.isArray(b.thresholds)) {
         // thresholds: [{ group: 'all' | 'any', index, value }]
@@ -556,7 +558,7 @@ admin.patch('/automations/:id', wrap(async (req, res) => {
             if (!Number.isFinite(n) || n < 0 || n > 24 * 365) throw fail(400, 'Thresholds must be between 0 and 8,760 hours.');
             c.value = n;
         }
-        await pool.query('UPDATE setu.automation_rules SET conditions = $2 WHERE id = $1', [id, JSON.stringify(conditions)]);
+        await pool.query('UPDATE samadhan.automation_rules SET conditions = $2 WHERE id = $1', [id, JSON.stringify(conditions)]);
     }
     await audit(req.verifiedEmail, 'automation_saved', { id, active: b.active, thresholds: b.thresholds });
     res.json({ success: true });
@@ -573,17 +575,17 @@ admin.post('/statuses', wrap(async (req, res) => {
     const id = intOrNull(b.id);
     try {
         if (id) {
-            const cur = (await pool.query('SELECT * FROM setu.ticket_statuses WHERE id = $1', [id])).rows[0];
+            const cur = (await pool.query('SELECT * FROM samadhan.ticket_statuses WHERE id = $1', [id])).rows[0];
             if (!cur) throw fail(404, 'Status not found.');
             const core = CORE_STATUSES.includes(id);
             await pool.query(
-                'UPDATE setu.ticket_statuses SET name = $2, "pausesSla" = $3, "isResolved" = $4 WHERE id = $1',
+                'UPDATE samadhan.ticket_statuses SET name = $2, "pausesSla" = $3, "isResolved" = $4 WHERE id = $1',
                 [id, name, id === 2 ? false : b.pausesSla === true, core ? cur.isResolved : b.isResolved === true],
             );
         } else {
-            const next = (await pool.query('SELECT GREATEST(100, coalesce(max(id), 0) + 1) AS id, coalesce(max(position), 0) + 1 AS pos FROM setu.ticket_statuses')).rows[0];
+            const next = (await pool.query('SELECT GREATEST(100, coalesce(max(id), 0) + 1) AS id, coalesce(max(position), 0) + 1 AS pos FROM samadhan.ticket_statuses')).rows[0];
             await pool.query(
-                'INSERT INTO setu.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, $4, false, $5)',
+                'INSERT INTO samadhan.ticket_statuses (id, name, "pausesSla", "isResolved", "isClosed", position) VALUES ($1, $2, $3, $4, false, $5)',
                 [next.id, name, b.pausesSla !== false, b.isResolved === true, next.pos],
             );
         }
@@ -598,7 +600,7 @@ admin.post('/statuses', wrap(async (req, res) => {
 
 admin.put('/statuses/order', wrap(async (req, res) => {
     const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
-    for (const [i, sid] of ids.entries()) await pool.query('UPDATE setu.ticket_statuses SET position = $2 WHERE id = $1', [sid, i]);
+    for (const [i, sid] of ids.entries()) await pool.query('UPDATE samadhan.ticket_statuses SET position = $2 WHERE id = $1', [sid, i]);
     await audit(req.verifiedEmail, 'statuses_reordered', { ids });
     res.json({ success: true });
 }));
@@ -606,15 +608,15 @@ admin.put('/statuses/order', wrap(async (req, res) => {
 admin.delete('/statuses/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (CORE_STATUSES.includes(id) || id < 100) throw fail(400, 'Built-in statuses cannot be deleted - rename them instead.');
-    const used = await pool.query('SELECT count(*)::int AS n FROM setu.tickets WHERE "statusId" = $1', [id]);
+    const used = await pool.query('SELECT count(*)::int AS n FROM samadhan.tickets WHERE "statusId" = $1', [id]);
     if (used.rows[0].n) throw fail(400, `${used.rows[0].n} tickets have this status - move them to another status first.`);
-    await pool.query('DELETE FROM setu.ticket_statuses WHERE id = $1', [id]);
+    await pool.query('DELETE FROM samadhan.ticket_statuses WHERE id = $1', [id]);
     await audit(req.verifiedEmail, 'status_deleted', { id });
     res.json({ success: true });
 }));
 
 // ---------- People & roles: Samadhan access for people in the Emami Apps hub ----------
-// The grant lives in Manage Access (emami_apps.authorized_user_apps, app 'setu'); changing it here is the same change,
+// The grant lives in Manage Access (emami_apps.authorized_user_apps, app 'samadhan', formerly 'setu' - lib/access.js); changing it here is the same change,
 // recorded in the same access history. The person must already be an authorized Emami Apps user.
 function accessHistory(entry) {
     try { require('../../accessHistory').recordAccessChange(entry); } catch { /* history is best-effort, never blocks the change */ }
@@ -622,15 +624,16 @@ function accessHistory(entry) {
 
 admin.get('/access', wrap(async (req, res) => {
     const term = String(req.query.q || '').trim().toLowerCase().slice(0, 100);
-    const params = [APP_ID];
+    const params = [APP_IDS];
     let where = '';
     if (term) { params.push(`%${term}%`); where = `AND (lower(u.email) LIKE $2 OR lower(coalesce(p.name, '')) LIKE $2)`; }
     const { rows } = await pool.query(
         `SELECT u.email, u.is_active AS "hubActive", coalesce(p.name, a.name) AS name, g.role, a.id AS "agentId", a.active AS "agentActive", a."lastSeenAt"
          FROM emami_apps.authorized_users u
-         LEFT JOIN emami_apps.authorized_user_apps g ON g.email = u.email AND g.app_id = $1
+         LEFT JOIN LATERAL (SELECT role FROM emami_apps.authorized_user_apps x WHERE x.email = u.email AND x.app_id = ANY($1::text[])
+                            ORDER BY (x.app_id = 'samadhan') DESC LIMIT 1) g ON true
          LEFT JOIN LATERAL (SELECT name FROM emami_apps.users x WHERE lower(x.email) = lower(u.email) LIMIT 1) p ON true
-         LEFT JOIN setu.agents a ON lower(a.email) = lower(u.email)
+         LEFT JOIN samadhan.agents a ON lower(a.email) = lower(u.email)
          WHERE true ${where}
          ORDER BY (g.role IS NULL), g.role, coalesce(p.name, u.email) LIMIT 300`,
         params,
@@ -644,19 +647,20 @@ admin.put('/access/:email', wrap(async (req, res) => {
     if (!ROLES.includes(role)) throw fail(400, `Role must be one of: ${ROLES.join(', ')}.`);
     const user = await pool.query('SELECT 1 FROM emami_apps.authorized_users WHERE email = $1', [email]);
     if (!user.rows.length) throw fail(404, 'That person is not an Emami Apps user yet - add them in Manage Access first.');
-    const before = (await pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID])).rows[0];
+    const before = await grantFor(email);
+    const appId = before?.app_id ?? await grantAppId();
     if (email === req.verifiedEmail && role !== 'Admin') throw fail(400, 'You cannot take away your own Admin role - ask another admin.');
     if (before?.role === 'Admin' && role !== 'Admin') {
-        const admins = await pool.query('SELECT count(*)::int AS n FROM emami_apps.authorized_user_apps WHERE app_id = $1 AND role = $2', [APP_ID, 'Admin']);
-        if (admins.rows[0].n <= 1) throw fail(400, 'Samadhan needs at least one admin.');
+        if ((await adminCount()) <= 1) throw fail(400, 'Samadhan needs at least one admin.');
     }
     await pool.query(
         `INSERT INTO emami_apps.authorized_user_apps (email, app_id, role) VALUES ($1, $2, $3)
          ON CONFLICT (email, app_id) DO UPDATE SET role = EXCLUDED.role`,
-        [email, APP_ID, role],
+        [email, appId, role],
     );
-    await pool.query('UPDATE setu.agents SET role = $2 WHERE lower(email) = $1', [email, role]);
-    if (before?.role !== role) accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: APP_ID, oldValue: before?.role ?? null, newValue: role });
+    await pool.query('UPDATE samadhan.agents SET role = $2 WHERE lower(email) = $1', [email, role]);
+    if (before?.role !== role) accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId, oldValue: before?.role ?? null, newValue: role });
+    clearGrantCache();
     await audit(req.verifiedEmail, 'access_role_set', { email, from: before?.role ?? null, to: role });
     res.json({ success: true });
 }));
@@ -664,24 +668,25 @@ admin.put('/access/:email', wrap(async (req, res) => {
 admin.delete('/access/:email', wrap(async (req, res) => {
     const email = String(req.params.email || '').trim().toLowerCase();
     if (email === req.verifiedEmail) throw fail(400, 'You cannot remove your own access.');
-    const before = (await pool.query('SELECT role FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID])).rows[0];
+    const before = await grantFor(email);
     if (!before) return res.json({ success: true });
     if (before.role === 'Admin') {
-        const admins = await pool.query('SELECT count(*)::int AS n FROM emami_apps.authorized_user_apps WHERE app_id = $1 AND role = $2', [APP_ID, 'Admin']);
-        if (admins.rows[0].n <= 1) throw fail(400, 'Samadhan needs at least one admin.');
+        if ((await adminCount()) <= 1) throw fail(400, 'Samadhan needs at least one admin.');
     }
-    await pool.query('DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = $2', [email, APP_ID]);
-    accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: APP_ID, oldValue: before.role, newValue: null });
+    // Removing access removes the grant under either id (formerly Setu).
+    await pool.query('DELETE FROM emami_apps.authorized_user_apps WHERE email = $1 AND app_id = ANY($2::text[])', [email, APP_IDS]);
+    clearGrantCache();
+    accessHistory({ targetEmail: email, changedBy: req.verifiedEmail, changeType: 'APP_ROLE', appId: before.app_id, oldValue: before.role, newValue: null });
     await audit(req.verifiedEmail, 'access_removed', { email, role: before.role });
     res.json({ success: true });
 }));
 
 admin.get('/audit', wrap(async (req, res) => {
-    res.json({ success: true, events: (await pool.query('SELECT * FROM setu.audit_events ORDER BY "createdAt" DESC LIMIT 200')).rows });
+    res.json({ success: true, events: (await pool.query('SELECT * FROM samadhan.audit_events ORDER BY "createdAt" DESC LIMIT 200')).rows });
 }));
 
 admin.get('/parked-mail', wrap(async (req, res) => {
-    res.json({ success: true, items: (await pool.query('SELECT * FROM setu.parked_mail ORDER BY "receivedAt" DESC LIMIT 200')).rows });
+    res.json({ success: true, items: (await pool.query('SELECT * FROM samadhan.parked_mail ORDER BY "receivedAt" DESC LIMIT 200')).rows });
 }));
 
 module.exports = admin;

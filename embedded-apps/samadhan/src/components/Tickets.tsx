@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bookmark, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Download, Eye, Filter, Inbox, Merge, RefreshCw, RotateCcw, Search, ShieldAlert, Square, Trash2, X } from 'lucide-react';
 import { bulkTickets, deleteView, exportColumns, exportTickets, getCounts, getViews, listTickets, saveView, type BulkAction, type TicketQuery } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { ACTIVITY_LABEL, fmtDateTime, fmtNum, relative, SEVERITY_EDGE } from '@/lib/format';
 import type { Counts, SavedView, TicketRow } from '@/lib/types';
 import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
@@ -37,7 +37,7 @@ const SORTS = [
 const EXPORT_PREF = 'samadhan.exportColumns';
 
 export default function Tickets({ preset }: { preset: TicketQuery }) {
-  const { me, meta, openTicket, isSupervisor, isAdmin, setListIds, prefs } = useSetu();
+  const { me, meta, openTicket, isSupervisor, isAdmin, setListIds, prefs } = useSamadhan();
   // Where the list opens and how long a page is: the agent's own choice, else the Admin default.
   const startView = prefs.listView ?? meta.options['list.defaultView'] ?? 'open';
   const pageSize = Number(prefs.pageSize || meta.options['list.pageSize']) || 50;
@@ -306,7 +306,7 @@ function BulkBar({ count, view, busy, onAction, onMerge, isAdmin }: {
   count: number; view: string; busy: boolean; isAdmin: boolean;
   onAction: (a: BulkAction, patch?: Record<string, unknown>, confirm?: string) => void; onMerge: () => void;
 }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const [tag, setTag] = useState('');
   const n = `${count} ticket${count === 1 ? '' : 's'}`;
   if (view === 'trash') {

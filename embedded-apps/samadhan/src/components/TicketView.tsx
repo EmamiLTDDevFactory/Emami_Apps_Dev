@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import DOMPurify from 'dompurify';
 import { ArrowRightLeft, Clock, Forward, Lock, Mail, MessageCircle, MessageSquare, Pencil, Phone, PhoneIncoming, PhoneOutgoing, Reply, Save, Send, User, Zap } from 'lucide-react';
 import { addMessage, addTimeLog, getTicket, updateTicket } from '@/lib/api';
-import { useSetu } from '@/lib/context';
+import { useSamadhan } from '@/lib/context';
 import { ACTION_LABEL, fmtDateTime, fmtMins, fmtSecs, htmlToText, relative } from '@/lib/format';
 import { EDITABLE_FIELDS, type ActivityItem, type CallLog, type Conversation, type Ticket, type TicketDetail } from '@/lib/types';
 import { ActivityLine, PriorityPill, SeverityPill, SlaBadge, StatusPill } from './badges';
@@ -85,7 +85,7 @@ export default function TicketView({ id }: { id: number }) {
 
 function TicketScreen({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
   const { ticket: t } = data;
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const [replying, setReplying] = useState(false);
   return (
     <div className="space-y-4">
@@ -251,7 +251,7 @@ function Message({ kind, who, sub, at, html, whatsapp }: { kind: Conversation['k
 }
 
 function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promise<void>; onTyping: (typing: boolean) => void }) {
-  const { me, meta, mailEnabled, whatsappEnabled } = useSetu();
+  const { me, meta, mailEnabled, whatsappEnabled } = useSamadhan();
   const viaWhatsApp = t.source === 'WhatsApp' && Boolean(t.requesterMobile || t.requesterPhone);
   const [kind, setKind] = useState<'REPLY' | 'NOTE' | 'FORWARD'>('REPLY');
   const [text, setText] = useState('');
@@ -417,7 +417,7 @@ function Composer({ ticket: t, reload, onTyping }: Props & { reload: () => Promi
 }
 
 function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void> }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const original = useMemo(() => toForm(t), [t]);
   const [form, setForm] = useState<Editable>(original);
   const [busy, setBusy] = useState(false);
@@ -492,7 +492,7 @@ function Properties({ ticket: t, reload }: Props & { reload: () => Promise<void>
 }
 
 function Requester({ data, reload }: { data: TicketDetail; reload: () => Promise<void> }) {
-  const { openTicket } = useSetu();
+  const { openTicket } = useSamadhan();
   const t = data.ticket;
   return (
     <Card title="Requester">
@@ -564,7 +564,7 @@ const FIELD_LABEL: Record<string, string> = {
 };
 
 function ActivityLog({ items }: { items: ActivityItem[] }) {
-  const { meta } = useSetu();
+  const { meta } = useSamadhan();
   const name = (field: string, v: unknown): string => {
     if (v === null || v === undefined || v === '') return '—';
     if (field === 'statusId') return meta.statuses.find((s) => s.id === v)?.name ?? String(v);
