@@ -42,6 +42,9 @@ const DEPLOYED_COGM_ENABLED = 'true';
 // Freight analysis: every posting of a PO line (AllItems), Basis and the PO-line breakup. Needs the FreightRowSet AllItems / IsMaxDate / IsLatestPo change on SAP.
 // FREIGHT_ALL_ITEMS / NEXT_PUBLIC_FREIGHT_ALL_ITEMS win; on for deployed builds (an SAP without the change shows the lines as before).
 const DEPLOYED_FREIGHT_ALL_ITEMS = 'true';
+// Budget costing (FG budget cost, initiate / approve; ZMM_BOM_COST_SRV Budget* sets, contract in docs/budget-cost-odata-spec.md). Off until SAP publishes the sets:
+// set to 'true' once `npm run check:budget-metadata` passes. BUDGET_ENABLED / NEXT_PUBLIC_BUDGET_ENABLED win.
+const DEPLOYED_BUDGET_ENABLED = 'false';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
@@ -76,6 +79,7 @@ const nextConfig = {
     NEXT_PUBLIC_ALL_COSTS_ENABLED: pick('ALL_COSTS_ENABLED') || (isBuild ? DEPLOYED_ALL_COSTS_ENABLED : 'false'),
     NEXT_PUBLIC_COGM_ENABLED: pick('COGM_ENABLED') || (isBuild ? DEPLOYED_COGM_ENABLED : 'false'), NEXT_PUBLIC_MARGIN_SELECT: pick('MARGIN_SELECT') || 'false',
     NEXT_PUBLIC_FREIGHT_ALL_ITEMS: pick('FREIGHT_ALL_ITEMS') || (isBuild ? DEPLOYED_FREIGHT_ALL_ITEMS : 'false'),
+    NEXT_PUBLIC_BUDGET_ENABLED: pick('BUDGET_ENABLED') || (isBuild ? DEPLOYED_BUDGET_ENABLED : 'false'),
     NEXT_PUBLIC_PSUM_ENABLED: pick('PSUM_ENABLED') || (isBuild ? DEPLOYED_PSUM_ENABLED : 'false'),
     NEXT_PUBLIC_PLANT_WIDE_ENABLED: pick('PLANT_WIDE_ENABLED') || (isBuild ? DEPLOYED_PLANT_WIDE_ENABLED : 'false'),
     NEXT_PUBLIC_VH_CAP: pick('VH_CAP', '500'), NEXT_PUBLIC_PLANT_WIDE_BATCH: pick('PLANT_WIDE_BATCH', '25'), NEXT_PUBLIC_PLANT_WIDE_MTART: pick('PLANT_WIDE_MTART', 'FERT'),

@@ -289,6 +289,22 @@ answers, on Stop, or when the page is left), nothing loads before the person pre
 - `Role` scoping by market (`cogm`, `cogm-maint`) is not in this app (there is no server): access is this app's Admin role, and SAP applies its own authorisation.
 - Wording: "Amount remaining after manufacturing cost", never "profit"; every amount shows its own currency; nothing is converted in the browser.
 
+## Budget costing (initiate / approve; behind a flag, SAP sets not published yet)
+
+Pages **Budget costing** (`/budget-cost/`) and **Budget approvals** (`/budget-cost/approvals/`): the OData rebuild of the SAP report `ZMM_FG_BOMEXPLR_COST`
+(initiate and approve modes). SAP computes every figure (BOM explosion, component cost, activity rates, plan); the browser sends the selection, shows
+budget / projected / actual cost per piece with the 17 origin groups (budget priced from `zcomponent` / `zcomponent_n`, the CPD rates; the latest info-record rate is shown for information only), the split of one finished good, the BOM checklist, and lets an initiator save a run
+as a new version that an approver then approves.
+
+- **Flag:** `NEXT_PUBLIC_BUDGET_ENABLED` (also `BUDGET_ENABLED`); off by default and in the deployed build (`DEPLOYED_BUDGET_ENABLED` in `next.config.mjs`) until SAP publishes the sets.
+  Off = no nav item, no request, and no budget code in any bundle (routes import their screen behind the literal flag check).
+- **Roles** (Manage Access, this app): `budget-init` (run and initiate), `budget-approve` (approve), `Admin` (both). SAP's authority check is the real gate.
+- **Contract and open questions for SAP:** `docs/budget-cost-odata-spec.md`. Names live in `src/lib/budget/fields.ts` only; `npm run check:budget-metadata` checks them against `$metadata`.
+- **Initiate never sends an amount:** it sends the `RunId`s SAP returned with the run; SAP saves what it computed. One plant per request (230 s gateway limit), no client time limit, Stop ends it.
+- **Files:** `src/lib/budget/**`, `src/components/budget/**`, `src/app/budget-cost/**`, `mock/budget.ts`, `tests/unit/budget-*.test.ts`; shared files got only the nav items (`Shell.tsx`), the flag (`next.config.mjs`), one dispatch line in `mock/sap.ts` and an npm script.
+- **FG options:** "Latest process order" (per plant + CRS SKU + business line + scheme + material type), "Latest FG" (FG code level), NPD.
+- **Try it:** `npm run dev:mock` with `NEXT_PUBLIC_BUDGET_ENABLED=true`. Mock cases: FG1002 actual 12 % over budget, FG1003 no actual, FG2001 checklist issues, `FAILFG` SAP error, plant `EMPT` no rows; a pending version 03 is seeded for the approver.
+
 ## Not in scope / open points
 
 - SAP `$metadata` has not been checked against the real service yet. Run `npm run check:metadata`

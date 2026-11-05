@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
 import TutorialButton from './TutorialButton';
-import { ArrowLeft, BellRing, Boxes, Calendar, Factory, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, BellRing, Boxes, Calculator, Calendar, CheckCheck, Factory, ClipboardList, Layers, GitCompareArrows, Menu, Scale, Tags, Truck, Upload, User, X, type LucideIcon } from 'lucide-react';
 import { PLAN_MODULE_ENABLED } from '@/lib/plan/flag';
 import { AI_ENABLED } from '@/lib/ai/config';
 import { WATCH_ENABLED } from '@/lib/watch/api';
@@ -10,6 +10,8 @@ import { PSUM_ENABLED } from '@/lib/psum/flag';
 import { COGM_ENABLED } from '@/lib/margin/flag';
 import { canDisplay } from '@/lib/margin/roles';
 import { CK_ENABLED } from '@/lib/ck/flag';
+import { BUDGET_ENABLED } from '@/lib/budget/flag';
+import { canApproveBudget, canDisplayBudget, canInitiateBudget } from '@/lib/budget/roles';
 import { PriceContextBar, PriceContextProvider } from './price-context/slots';
 import { COGM_SO_ENABLED } from '@/lib/so/flag';
 import { fetchAppRole, fetchIsAdmin } from '@/lib/client/hubAccess';
@@ -48,9 +50,9 @@ export function nameFromEmail(email: string): string {
 
 
 /** Production Plan pages (only when PLAN_MODULE_ENABLED): which plan nav item is active. */
-export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data';
+export type PlanNav = 'plans' | 'upload' | 'watch' | 'freight' | 'freight-analysis' | 'wac' | 'ck' | 'so' | 'psum' | 'psum-report' | 'margin' | 'margin-whatif' | 'margin-alerts' | 'margin-portfolio' | 'margin-history' | 'margin-data' | 'budget' | 'budget-approvals';
 
-function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string }) {
+function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = false, ckVisible = false, soVisible = false, psumVisible = false, marginRole = '', budgetRole = '' }: { mode: Mode; onMode: (m: Mode) => void; open: boolean; onClose: () => void; wide: boolean; planActive?: PlanNav; wacVisible?: boolean; ckVisible?: boolean; soVisible?: boolean; psumVisible?: boolean; marginRole?: string; budgetRole?: string }) {
   const pane = wide
     ? 'relative w-64 shrink-0 border-r border-line bg-panel'
     : cx('fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-panel shadow-pop transition-transform duration-200', open ? 'translate-x-0' : '-translate-x-full');
@@ -92,6 +94,13 @@ function NavPane({ mode, onMode, open, onClose, wide, planActive, wacVisible = f
               <NavLink href={`${BASE_PATH}/margin/portfolio/`} icon={Boxes} label="Portfolio" hint="Groups, weighted ratios, impact" active={planActive === 'margin-portfolio'} />
               <NavLink href={`${BASE_PATH}/margin/history/`} icon={Calendar} label="History" hint="Cost scenarios over time" active={planActive === 'margin-history'} />
               <NavLink href={`${BASE_PATH}/margin/data/`} icon={Tags} label="Data" hint="Prices, rules, volumes, budgets, targets" active={planActive === 'margin-data'} />
+            </>
+          )}
+          {BUDGET_ENABLED && canDisplayBudget(budgetRole) && (
+            <>
+              <p className="px-3 pb-1 pt-4 text-[10px] font-extrabold uppercase tracking-[0.12em] text-faint">Budget</p>
+              {(canInitiateBudget(budgetRole) || budgetRole === 'Admin') && <NavLink href={`${BASE_PATH}/budget-cost/`} icon={Calculator} label="Budget costing" hint="FG budget cost, split, initiate" active={planActive === 'budget'} />}
+              {canApproveBudget(budgetRole) && <NavLink href={`${BASE_PATH}/budget-cost/approvals/`} icon={CheckCheck} label="Budget approvals" hint="Pending versions to approve" active={planActive === 'budget-approvals'} />}
             </>
           )}
           {PLAN_MODULE_ENABLED && (
@@ -174,6 +183,9 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   // Margin module: the person's role of this app (one lookup per session); with the flag off no request is made.
   const [marginRole, setMarginRole] = useState('');
   useEffect(() => { if (COGM_ENABLED && email) void fetchAppRole(email).then(setMarginRole); }, [email]);
+  // Budget costing: the person's role of this app; with the flag off no request is made.
+  const [budgetRole, setBudgetRole] = useState('');
+  useEffect(() => { if (BUDGET_ENABLED && email) void fetchAppRole(email).then(setBudgetRole); }, [email]);
   const wide = useIsWide();
   const [open, setOpen] = useState(false);
   const [today, setToday] = useState('');
@@ -182,7 +194,7 @@ export default function Shell({ mode, onMode, email, actions, children, env, onB
   return (
     <PriceContextProvider email={email}>
     <div className="flex h-screen overflow-clip bg-plum">
-      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} psumVisible={wacNavVisible(PSUM_ENABLED, wacAdmin)} marginRole={marginRole} />
+      <NavPane mode={mode} onMode={onMode} open={open} onClose={() => setOpen(false)} wide={wide} planActive={planActive} wacVisible={wacNavVisible(WAC_ENABLED, wacAdmin)} ckVisible={wacNavVisible(CK_ENABLED, wacAdmin)} soVisible={wacNavVisible(COGM_SO_ENABLED, wacAdmin)} psumVisible={wacNavVisible(PSUM_ENABLED, wacAdmin)} marginRole={marginRole} budgetRole={budgetRole} />
       <div className="flex min-w-0 flex-1 flex-col overflow-clip bg-bg">
         <div className="flex bg-plum no-print">
           {/* In-app "Back" to the previous screen; without a screen history it leaves the app. */}

@@ -9,6 +9,7 @@
  */
 import { handleHier } from './hier';
 import { handleWac } from './wac';
+import { handleBudget } from './budget';
 import {
   COST_LINE, ENTITY_TYPE_RATE_OPTION, FIELDS_BY_SET, FREIGHT_ROW, MATERIAL, PLANT, RATE_OPTION, RATE_ROW, RMPM_ROW,
   SELECTION, CONFIG, selectionField, type FieldKind,
@@ -587,6 +588,9 @@ export async function mockSapFetch(input: string | URL | Request, init?: Request
   if (hierRes) { await sleep(60, signal); return hierRes; }
   // Weighted average actual cost sets (mock/wac.ts).
   const wacRes = handleWac(set, sp, { json, odataError, parseFilter });
+  // Budget costing sets (mock/budget.ts).
+  const budRes = handleBudget(set, sp, init, { json, odataError, parseFilter });
+  if (budRes) { await sleep(60, signal); return budRes; }
   if (wacRes) { await sleep(60, signal); return wacRes; }
   if (set === ENTITY_SET.MATERIALS) {
     await sleep(80, signal);

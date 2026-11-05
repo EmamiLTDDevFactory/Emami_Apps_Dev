@@ -16,6 +16,7 @@
     "check:wac-metadata": "tsx scripts/check-wac-metadata.ts",
     "check:ck-so-metadata": "tsx scripts/check-ck-so-metadata.ts",
     "check:margin-metadata": "tsx scripts/check-margin-metadata.ts",
+    "check:budget-metadata": "tsx scripts/check-budget-metadata.ts",
     "eval": "tsx evals/run.ts"
   },
   "dependencies": {
