@@ -77,9 +77,12 @@ describe('(b) max date basis equals the one-row-per-line answer', () => {
 });
 
 describe('(c) groupPoLines', () => {
-  it('sums equal the postings; standard-only PO lines are dropped', () => {
+  it('sums equal the postings; a PO line with a standard but no invoice yet stays, without an actual figure', () => {
     const g = groupPoLines([...rows, std('2026-09-01', '10', '9', { Purchasedocument: '4500000003', Podate: '2026-09-01' })]);
-    expect(g).toHaveLength(2);
+    expect(g).toHaveLength(3);
+    const open = g.find((r) => r.Purchasedocument === '4500000003')!;
+    expect(open.Actualdelvquantity).toBe('0');
+    expect(open.Stddelvcostamount).toBe('9');
     const l1 = g.find((r) => r.Purchasedocument === '4500000001')!;
     expect(l1.Actualdelvquantity).toBe('100');
     expect(l1.Actualdelvcostamount).toBe('132');

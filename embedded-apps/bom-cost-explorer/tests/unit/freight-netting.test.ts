@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_DATES, DEFAULT_RULE, analyseFreight, breaches, filterPurchOrgs, groupPoLines, materialWeighted, materialWeightedSheet, poLines, poLinesSheet, signedAmount, sortMaterials, type Component } from '@/lib/freight/analysis';
+import { ALL_DATES, DEFAULT_RULE, analyseFreight, breaches, breachesLine, hasPostings, filterPurchOrgs, groupPoLines, materialWeighted, materialWeightedSheet, poLines, poLinesSheet, signedAmount, sortMaterials, type Component } from '@/lib/freight/analysis';
 import { analysisFilter, parsePurchOrgs, selectionProblem } from '@/lib/freight/analysisFetch';
 import { poLineBreakup } from '@/lib/freight/poBreakup';
 import { D } from '@/lib/cost/decimal';
@@ -58,7 +58,7 @@ describe('debit / credit netting', () => {
   it('the PO line exports carry the net standard side and the purchase org', () => {
     const lines = poLines(comps, [act('10', '12', { Ekorg: '1000' }), std('10', '9', { Ekorg: '1000' })], range);
     const h = poLinesSheet(lines, DEFAULT_RULE).cols.map((c) => c.header);
-    for (const need of ['Net actual freight amount (INR)', 'Net standard freight amount (INR)', 'Purchase org']) expect(h).toContain(need);
+    for (const need of ['Net actual condition value (INR)', 'Net standard condition value (INR)', 'Variance amount (Actual - Standard, INR)', 'Purchase org']) expect(h).toContain(need);
     expect(lines[0].purchOrg).toBe('1000');
   });
 });
@@ -133,5 +133,52 @@ describe('purchase organisation selection', () => {
     expect(filterPurchOrgs(rs, [])).toHaveLength(2);
     const bare = [act('1', '1'), act('1', '1')];
     expect(filterPurchOrgs(bare, ['1000'])).toHaveLength(2);
+  });
+});
+
+describe('standard and actual on ONE line per PO, item and condition; condition value absolute', () => {
+  // SAP posting rows WITHOUT IsMaxDate (the backend returns Vgabe and Shkzg first): standard = Vgabe 1, actual = Vgabe 2 and 3
+  const rows = [
+    std('100', '1000', { Shkzg: 'S' }), // standard condition value at PO creation
+    act('100', '800', { Shkzg: 'S' }),  // invoice
+    act('0', '-50', { Shkzg: 'S', Vgabe: '3' }), // subsequent debit sent with a negative sign: the value is absolute, S adds
+    act('0', '-100', { Shkzg: 'H', Vgabe: '3' }), // credit: takes off, whatever sign SAP puts on it
+    act('100', '700', { Shkzg: 'S', Purchaseline: '00020' }), // another PO line, actual only
+  ];
+  it('rows with Vgabe are postings; plain per-line rows are not', () => {
+    expect(hasPostings(rows)).toBe(true);
+    expect(hasPostings([row({ Vgabe: '' })])).toBe(false);
+  });
+  it('one row per PO + line + condition holding both sides, no IsMaxDate needed', () => {
+    const g = groupPoLines(rows);
+    expect(g).toHaveLength(2);
+    const l = poLines(comps, g, range).find((x) => x.line === '00010')!;
+    expect(l.standardAmount.toFixed(2)).toBe('1000.00');
+    expect(l.actualAmount.toFixed(2)).toBe('750.00'); // 800 + |-50| - |-100|
+    expect(l.standardQty.toFixed(3)).toBe('100.000');
+    expect(l.actualQty.toFixed(3)).toBe('100.000');
+  });
+  it('the variance is Actual - Standard on the line amount, and the rule is tested on it', () => {
+    const l = poLines(comps, groupPoLines(rows), range).find((x) => x.line === '00010')!;
+    expect(l.amountVariance!.toFixed(2)).toBe('-250.00');
+    expect(l.amountVariancePct!.toFixed(2)).toBe('-25.00');
+    expect(breachesLine(l, { kind: 'pct_both', threshold: '20' })).toBe(true);
+    expect(breachesLine(l, { kind: 'pct_above', threshold: '5' })).toBe(false); // below standard is not "above"
+    expect(breachesLine(l, DEFAULT_RULE)).toBe(false);
+  });
+  it('a line with a standard but no actual yet is shown and never flagged', () => {
+    const [l] = poLines(comps, groupPoLines([std('10', '99', { Purchaseline: '00030' })]), range);
+    expect(l.standardAmount.toFixed(2)).toBe('99.00');
+    expect(l.actual).toBeNull();
+    expect(l.amountVariance).toBeNull();
+    expect(breachesLine(l, { kind: 'any_above', threshold: '' })).toBe(false);
+  });
+  it('a value that lands on the other side\'s field (backend quirk) is still read for its Vgabe', () => {
+    const [l] = poLines(comps, groupPoLines([row({ Vgabe: '1', Actualdelvquantity: '10', Actualdelvcostamount: '55', Stddelvquantity: '0', Stddelvcostamount: '0' })]), range);
+    expect(l.standardAmount.toFixed(2)).toBe('55.00');
+  });
+  it('signedAmount: absolute value, H negative', () => {
+    expect(signedAmount(D('-100'), 'S').toFixed(2)).toBe('100.00');
+    expect(signedAmount(D('-100'), '').toFixed(2)).toBe('100.00');
   });
 });

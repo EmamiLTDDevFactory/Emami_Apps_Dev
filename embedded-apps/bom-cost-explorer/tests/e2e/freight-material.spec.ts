@@ -28,7 +28,9 @@ test('Freight analysis: purchase organisation selection and the material wise we
   await expect(page.getByRole('columnheader', { name: /Net actual amount/ })).toBeVisible();
   await expect(page.locator('tbody tr').first()).toBeVisible();
   await page.getByRole('radio', { name: /By purchase order/ }).click();
-  await expect(page.getByRole('columnheader', { name: /Net std amount/ })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /Net std value/ })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /Net actual value/ })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: /Variance \(INR\)/ })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Purch. org' })).toBeVisible();
   expect(sent.length).toBe(calls); // switching views asks SAP for nothing
 });

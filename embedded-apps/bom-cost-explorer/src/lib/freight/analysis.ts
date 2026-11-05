@@ -41,9 +41,11 @@ const tx = (v: string | null | undefined) => String(v ?? '').trim();
 const n = (v: Decimal | null, dp = 6): number | null => (v ? Number(v.toFixed(dp)) : null);
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 
-/** Debit / credit netting: a credit (Shkzg H) takes its amount off, a debit (S, or no Shkzg) adds it. A credit uses its magnitude, so it nets the same
- * whether SAP sends the credit amount positive or negative; a summed PO line (groupPoLines) is already net and passes through unchanged. */
-export const signedAmount = (x: Decimal, shkzg: string | null | undefined): Decimal => (tx(shkzg).toUpperCase() === 'H' ? x.abs().neg() : x);
+/** The condition value is taken as ABSOLUTE; only the Shkzg indicator gives the sign: H (credit) takes the amount off, S (debit, or no Shkzg) adds it. So the
+ * netting is the same whatever sign SAP puts on the value. */
+export const signedAmount = (x: Decimal, shkzg: string | null | undefined): Decimal => (tx(shkzg).toUpperCase() === 'H' ? x.abs().neg() : x.abs());
+/** A summed PO line (groupPoLines, IsNet) already holds the net amount and passes through unchanged. */
+const netAmount = (x: Decimal, r: Pick<FreightRow, 'Shkzg' | 'IsNet'>): Decimal => (r.IsNet ? x : signedAmount(x, r.Shkzg));
 
 /** Keep the rows of the chosen purchasing organisations. Rows without Ekorg (an SAP that does not send it) are kept as they are: SAP has already applied the selection. */
 export function filterPurchOrgs<T extends { Ekorg?: string }>(rows: T[], orgs: readonly string[]): T[] {
@@ -95,8 +97,8 @@ export function analyseFreight(components: Component[], freight: FreightRow[], r
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    if (aq.gt(0)) { a.aq = a.aq.plus(aq); a.aa = a.aa.plus(signedAmount(D(r.Actualdelvcostamount), r.Shkzg).times(fx)); }
-    if (sq.gt(0)) { a.sq = a.sq.plus(sq); a.sa = a.sa.plus(signedAmount(D(r.Stddelvcostamount), r.Shkzg).times(fx)); }
+    if (aq.gt(0)) { a.aq = a.aq.plus(aq); a.aa = a.aa.plus(netAmount(D(r.Actualdelvcostamount), r).times(fx)); }
+    if (sq.gt(0)) { a.sq = a.sq.plus(sq); a.sa = a.sa.plus(netAmount(D(r.Stddelvcostamount), r).times(fx)); }
     a.pos.add(`${r.Purchasedocument}|${r.Purchaseline}`);
     if (d > a.last) a.last = d;
     a.unit = a.unit || r.Baseunit || r.Matuom || '';
@@ -155,6 +157,10 @@ export interface PoLine {
   standard: Decimal | null;
   variance: Decimal | null;
   variancePct: Decimal | null;
+  /** Actual - Standard in INR for the whole line (both sides present); null otherwise. This is the figure the alert rule is tested on in the PO view. */
+  amountVariance: Decimal | null;
+  /** (Actual - Standard) / Standard x 100 on the amounts; null when the standard amount is 0 or missing */
+  amountVariancePct: Decimal | null;
 }
 
 /** Every PO freight line of the components within the date range (lines SAP marks EXCLUDED are left out), with the same per-unit
@@ -172,8 +178,8 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    const aa = aq.gt(0) ? signedAmount(D(r.Actualdelvcostamount), r.Shkzg).times(fx) : ZERO;
-    const sa = sq.gt(0) ? signedAmount(D(r.Stddelvcostamount), r.Shkzg).times(fx) : ZERO;
+    const aa = aq.gt(0) ? netAmount(D(r.Actualdelvcostamount), r).times(fx) : ZERO;
+    const sa = sq.gt(0) ? netAmount(D(r.Stddelvcostamount), r).times(fx) : ZERO;
     const actual = aq.gt(0) ? aa.div(aq) : null;
     const standard = sq.gt(0) ? sa.div(sq) : null;
     const variance = actual && standard ? actual.minus(standard) : null;
@@ -185,6 +191,7 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
       unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
       actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
       actual, standard, variance, variancePct: variance && standard && !standard.isZero() ? variance.div(standard).times(100) : null,
+      amountVariance: aq.gt(0) && sq.gt(0) ? aa.minus(sa) : null, amountVariancePct: aq.gt(0) && sq.gt(0) && !sa.isZero() ? aa.minus(sa).div(sa).times(100) : null,
     });
   });
   return out.sort((a, b) => b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
@@ -201,9 +208,12 @@ export function linesOutsideRange(components: Component[], freight: FreightRow[]
   return { returned: all.length, inRange, outside: all.length - inRange, earliest: dates[0] ?? '', latest: dates[dates.length - 1] ?? '' };
 }
 
+/** Whether a PO line breaches the rule, tested on the AMOUNT variance of the line (Actual - Standard, INR, and its %); a line without both sides is never flagged. */
+export const breachesLine = (l: Pick<PoLine, 'amountVariance' | 'amountVariancePct'>, rule: Rule): boolean => breaches({ variance: l.amountVariance, variancePct: l.amountVariancePct }, rule);
+
 /** Alerts first (by the rule chosen on screen), then newest PO date. */
 export function sortPoLines(rows: PoLine[], rule: Rule): PoLine[] {
-  return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
+  return [...rows].sort((a, b) => Number(breachesLine(b, rule)) - Number(breachesLine(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
 }
 
 /* ---------- material wise weighted average (all plants and PO lines of a material together) ---------- */
@@ -279,11 +289,16 @@ export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'>): Sid
  * counts together with a positive quantity; a subsequent debit / credit (Vgabe 3) has no quantity of its own and its amount counts all the same. */
 export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amount: Decimal } {
   const side = sideOf(r);
-  const q = D(side === 'actual' ? r.Actualdelvquantity : r.Stddelvquantity);
-  const a = D(side === 'actual' ? r.Actualdelvcostamount : r.Stddelvcostamount);
+  const own = (s: Side) => ({ q: D(s === 'actual' ? r.Actualdelvquantity : r.Stddelvquantity), a: D(s === 'actual' ? r.Actualdelvcostamount : r.Stddelvcostamount) });
+  let { q, a } = own(side);
+  // A posting row (Vgabe given) whose own side is empty but the other side holds the value (the backend filled the "wrong" pair): use that pair.
+  if (tx(r.Vgabe) && q.isZero() && a.isZero()) { const o = own(side === 'actual' ? 'standard' : 'actual'); if (!o.q.isZero() || !o.a.isZero()) { q = o.q; a = o.a; } }
   if (q.gt(0) || tx(r.Vgabe) === '3') return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
   return { side, qty: ZERO, amount: ZERO };
 }
+
+/** The rows are postings (one per Vgabe 1 / 2 / 3 posting), not one row per PO line. */
+export const hasPostings = (rows: readonly Pick<FreightRow, 'Vgabe'>[]): boolean => rows.some((r) => tx(r.Vgabe) !== '');
 
 export interface BasisResult { rows: FreightRow[]; /** the data has no IsMaxDate at all (SAP without the AllItems change): rows are returned as they came */ fallback: boolean }
 
@@ -298,9 +313,10 @@ export function applyBasis(rows: FreightRow[], opt: { basis: Basis; latestOnly: 
 
 const postingStamp = (r: Pick<FreightRow, 'Cpudt' | 'Belnr'>) => `${day(r.Cpudt)}|${tx(r.Belnr)}`;
 
-/** One row per PO line (plant + material + purchase document + line + condition type): quantities and INR amounts summed over the postings,
- * descriptive fields of the newest posting, PO date unchanged. PO lines with no actual posting are dropped (standard-only is not freight).
- * The amounts of the result are already INR (FxInr = 1), so poLines / analyseFreight give the same figures as for a one-row-per-line answer. */
+/** One row per PO line (plant + material + purchase document + line + condition type): the Standard side (Vgabe 1) and the Actual side (Vgabe 2, 3) summed
+ * into the SAME row, each NET of debit and credit on the absolute condition value (S adds, H takes off). Descriptive fields come from the newest posting, PO date
+ * unchanged. A line with a standard but no invoice yet stays (no actual figure). The result is marked IsNet and its amounts are already INR (FxInr = 1), so poLines /
+ * analyseFreight give the same figures as for a one-row-per-line answer. */
 export function groupPoLines(rows: FreightRow[]): FreightRow[] {
   type Acc = { newest: FreightRow; aq: Decimal; aa: Decimal; sq: Decimal; sa: Decimal; hasActual: boolean; max: boolean; latest: boolean; shkzg: Set<string> };
   const groups = new Map<string, Acc>();
@@ -318,9 +334,8 @@ export function groupPoLines(rows: FreightRow[]): FreightRow[] {
   }
   const out: FreightRow[] = [];
   for (const g of groups.values()) {
-    if (!g.hasActual) continue;
     out.push({
-      ...g.newest, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
+      ...g.newest, IsNet: true, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
       FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest, Shkzg: [...g.shkzg].sort().join('/'),
     });
   }
@@ -501,15 +516,17 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'FG material', width: 14, get: (i) => rows[i].fgMaterial },
       { header: 'Unit', width: 6, get: (i) => rows[i].unit },
       { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
-      { header: 'Delivered quantity (actual)', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
-      { header: 'Net actual freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].actualAmount, 2) },
-      { header: 'Delivered quantity (standard)', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
-      { header: 'Net standard freight amount (INR)', dp: 2, curr: 'INR', width: 18, get: (i) => n(rows[i].standardAmount, 2) },
-      { header: 'Actual freight / unit (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].actual) },
+      { header: 'Standard delivered quantity', dp: 3, width: 16, get: (i) => n(rows[i].standardQty, 3) },
+      { header: 'Net standard condition value (INR)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].standardAmount, 2) },
+      { header: 'Actual delivered quantity', dp: 3, width: 16, get: (i) => n(rows[i].actualQty, 3) },
+      { header: 'Net actual condition value (INR)', dp: 2, curr: 'INR', width: 20, get: (i) => n(rows[i].actualAmount, 2) },
+      { header: 'Variance amount (Actual - Standard, INR)', dp: 2, curr: 'INR', width: 22, get: (i) => n(rows[i].amountVariance, 2) },
+      { header: 'Variance amount %', dp: 2, width: 14, get: (i) => n(rows[i].amountVariancePct, 4) },
       { header: 'Standard freight / unit (INR)', dp: 4, curr: 'INR', width: 18, get: (i) => n(rows[i].standard) },
+      { header: 'Actual freight / unit (INR)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].actual) },
       { header: 'Variance (INR / unit)', dp: 4, curr: 'INR', width: 16, get: (i) => n(rows[i].variance) },
-      { header: 'Variance %', dp: 2, width: 12, get: (i) => n(rows[i].variancePct, 4) },
-      { header: `Alert (${ruleText(rule)})`, width: 28, get: (i) => (breaches(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
+      { header: 'Variance % (per unit)', dp: 2, width: 14, get: (i) => n(rows[i].variancePct, 4) },
+      { header: `Alert on the line amount (${ruleText(rule)})`, width: 30, get: (i) => (breachesLine(rows[i], rule) ? 'ALERT' : rows[i].actual ? 'ok' : 'no actual freight') },
     ],
   };
 }

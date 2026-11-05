@@ -359,7 +359,8 @@ export type CostLine = RowOf<typeof COST_LINE> & { RateOptions?: RateOption[] };
 export type RateRow = RowOf<typeof RATE_ROW>;
 /** The posting fields only exist on a SAP service with the AllItems change; the normaliser fills them in, but a row built by hand may leave them out. */
 type FreightPostingKeys = 'Ekorg' | 'Cpudt' | 'Vgabe' | 'Buzei' | 'Gjahr' | 'Shkzg' | 'IsMaxDate' | 'IsLatestPo';
-export type FreightRow = Omit<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys> & Partial<Pick<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys>>;
+/** IsNet is not a SAP property: groupPoLines sets it on a summed PO line whose amounts are already net of debit and credit. */
+export type FreightRow = Omit<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys> & Partial<Pick<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys>> & { IsNet?: boolean };
 export type RmPmRow = RowOf<typeof RMPM_ROW>;
 export type PlantRow = RowOf<typeof PLANT>;
 export type MaterialRow = RowOf<typeof MATERIAL>;

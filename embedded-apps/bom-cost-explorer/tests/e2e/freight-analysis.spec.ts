@@ -85,7 +85,7 @@ test('Freight analysis: the purchase order wise view lists the PO lines behind t
   // PO view, filtered to that component
   const table = page.getByRole('table', { name: /Purchase order wise freight lines/ });
   await expect(table).toBeVisible();
-  for (const h of ['Purchase order', 'Line', 'PO date', 'Condition', 'Actual / unit', 'Standard / unit', 'Variance']) await expect(table.getByRole('columnheader', { name: h, exact: true })).toBeVisible();
+  for (const h of ['Purchase order', 'Line', 'PO date', 'Condition', 'Std / unit', 'Actual / unit', 'Variance (INR)', 'Var / unit']) await expect(table.getByRole('columnheader', { name: h, exact: true })).toBeVisible();
   await expect(page.getByLabel('Search components')).toHaveValue(material);
   const rows = table.locator('tbody tr');
   expect(await rows.count()).toBeGreaterThan(0);
