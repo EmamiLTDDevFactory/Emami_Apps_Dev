@@ -52,7 +52,8 @@ export interface PoLineBreakup {
 
 const sub = (items: BreakupItem[]): Subtotal => {
   const qty = items.reduce((a, i) => a.plus(i.qty), ZERO);
-  const amount = items.reduce((a, i) => a.plus(i.amount), ZERO);
+  // the subtotal of a side is the ABSOLUTE of its net (S minus H), the same figure as on the PO line
+  const amount = items.reduce((a, i) => a.plus(i.amount), ZERO).abs();
   return { qty, amount, rate: qty.gt(0) ? amount.div(qty) : null, count: items.length };
 };
 

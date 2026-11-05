@@ -97,8 +97,9 @@ export function analyseFreight(components: Component[], freight: FreightRow[], r
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    if (aq.gt(0)) { a.aq = a.aq.plus(aq); a.aa = a.aa.plus(netAmount(D(r.Actualdelvcostamount), r).times(fx)); }
-    if (sq.gt(0)) { a.sq = a.sq.plus(sq); a.sa = a.sa.plus(netAmount(D(r.Stddelvcostamount), r).times(fx)); }
+    // a summed PO line (IsNet) carries its net value even when the quantity of that side is 0
+    if (aq.gt(0) || r.IsNet) { if (aq.gt(0)) a.aq = a.aq.plus(aq); a.aa = a.aa.plus(netAmount(D(r.Actualdelvcostamount), r).times(fx)); }
+    if (sq.gt(0) || r.IsNet) { if (sq.gt(0)) a.sq = a.sq.plus(sq); a.sa = a.sa.plus(netAmount(D(r.Stddelvcostamount), r).times(fx)); }
     a.pos.add(`${r.Purchasedocument}|${r.Purchaseline}`);
     if (d > a.last) a.last = d;
     a.unit = a.unit || r.Baseunit || r.Matuom || '';
@@ -178,8 +179,8 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     const fx = D(r.FxInr).gt(0) ? D(r.FxInr) : D(1);
     const aq = D(r.Actualdelvquantity);
     const sq = D(r.Stddelvquantity);
-    const aa = aq.gt(0) ? netAmount(D(r.Actualdelvcostamount), r).times(fx) : ZERO;
-    const sa = sq.gt(0) ? netAmount(D(r.Stddelvcostamount), r).times(fx) : ZERO;
+    const aa = aq.gt(0) || r.IsNet ? netAmount(D(r.Actualdelvcostamount), r).times(fx) : ZERO;
+    const sa = sq.gt(0) || r.IsNet ? netAmount(D(r.Stddelvcostamount), r).times(fx) : ZERO;
     const actual = aq.gt(0) ? aa.div(aq) : null;
     const standard = sq.gt(0) ? sa.div(sq) : null;
     const variance = actual && standard ? actual.minus(standard) : null;
@@ -293,8 +294,8 @@ export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amoun
   let { q, a } = own(side);
   // A posting row (Vgabe given) whose own side is empty but the other side holds the value (the backend filled the "wrong" pair): use that pair.
   if (tx(r.Vgabe) && q.isZero() && a.isZero()) { const o = own(side === 'actual' ? 'standard' : 'actual'); if (!o.q.isZero() || !o.a.isZero()) { q = o.q; a = o.a; } }
-  if (q.gt(0) || tx(r.Vgabe) === '3') return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
-  return { side, qty: ZERO, amount: ZERO };
+  // A posting's value always counts (a reversal or a subsequent debit / credit may carry no quantity of its own); its quantity counts when positive.
+  return { side, qty: q.gt(0) ? q : ZERO, amount: signedAmount(a, r.Shkzg).times(fxOf(r)) };
 }
 
 /** The rows are postings (one per Vgabe 1 / 2 / 3 posting), not one row per PO line. */
@@ -335,7 +336,8 @@ export function groupPoLines(rows: FreightRow[]): FreightRow[] {
   const out: FreightRow[] = [];
   for (const g of groups.values()) {
     out.push({
-      ...g.newest, IsNet: true, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
+      // each side is the ABSOLUTE of its net (S minus H): a side whose postings are mostly credits still reads as a positive condition value
+      ...g.newest, IsNet: true, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.abs().toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.abs().toFixed(),
       FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest, Shkzg: [...g.shkzg].sort().join('/'),
     });
   }

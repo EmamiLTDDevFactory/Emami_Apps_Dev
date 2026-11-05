@@ -182,3 +182,28 @@ describe('standard and actual on ONE line per PO, item and condition; condition 
     expect(signedAmount(D('-100'), '').toFixed(2)).toBe('100.00');
   });
 });
+
+describe('a side that is netted to a negative reads as its absolute (standard showed negative)', () => {
+  it('standard postings that carry H come out positive; the actual side stays as netted', () => {
+    const rows = [
+      std('100', '1000', { Shkzg: 'H' }), // standard (Vgabe 1) posted as credit
+      std('0', '200', { Shkzg: 'S' }),    // part of it reversed
+      act('100', '900', { Shkzg: 'S' }),
+    ];
+    const [l] = poLines(comps, groupPoLines(rows), range);
+    expect(l.standardAmount.toFixed(2)).toBe('800.00'); // |200 - 1000|
+    expect(l.actualAmount.toFixed(2)).toBe('900.00');
+    expect(l.amountVariance!.toFixed(2)).toBe('100.00'); // Actual - Standard
+    expect(l.standard!.toFixed(4)).toBe('8.0000');
+  });
+  it('the breakup subtotal is the same absolute net as the PO line', () => {
+    const b = poLineBreakup([std('100', '1000', { Shkzg: 'H' }), act('100', '900')], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
+    expect(b.standard.amount.toFixed(2)).toBe('1000.00');
+    expect(b.standard.rate!.toFixed(4)).toBe('10.0000');
+  });
+  it('the material weighted average uses the absolute nets too', () => {
+    const m = materialWeighted(comps, groupPoLines([std('100', '1000', { Shkzg: 'H' }), act('100', '900')]), range).find((r) => r.material === 'RM1')!;
+    expect(m.standard!.toFixed(4)).toBe('10.0000');
+    expect(m.actual!.toFixed(4)).toBe('9.0000');
+  });
+});
