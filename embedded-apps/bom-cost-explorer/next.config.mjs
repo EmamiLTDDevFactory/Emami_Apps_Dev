@@ -40,8 +40,8 @@ const DEPLOYED_ALL_COSTS_ENABLED = 'true';
 // Margin module (cost simulator: Board, What-if, Alerts, Portfolio, History, Upload; ZMM_BOM_COST_SRV Cogm* sets). COGM_ENABLED / NEXT_PUBLIC_COGM_ENABLED win.
 const DEPLOYED_COGM_ENABLED = 'true';
 // Freight analysis: every posting of a PO line (AllItems), Basis and the PO-line breakup. Needs the FreightRowSet AllItems / IsMaxDate / IsLatestPo change on SAP.
-// FREIGHT_ALL_ITEMS / NEXT_PUBLIC_FREIGHT_ALL_ITEMS win; off everywhere until SAP has it.
-const DEPLOYED_FREIGHT_ALL_ITEMS = 'false';
+// FREIGHT_ALL_ITEMS / NEXT_PUBLIC_FREIGHT_ALL_ITEMS win; on for deployed builds (an SAP without the change shows the lines as before).
+const DEPLOYED_FREIGHT_ALL_ITEMS = 'true';
 const pick = (k, d = '') => process.env[`NEXT_PUBLIC_${k}`] ?? process.env[k] ?? d;
 const sapEnv = isBuild
   ? {
