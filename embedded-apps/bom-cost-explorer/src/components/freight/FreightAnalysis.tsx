@@ -265,7 +265,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <table className="w-full text-sm">
           <caption className="sr-only">Every posting of the PO freight lines: quantity and INR amount per posting</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Posting date</th><th className={th}>Side</th><th className={th}>Posting type</th><th className={th}>Document</th><th className={th}>Dr / Cr</th><th className={thN}>Quantity</th><th className={thN}>Amount (INR)</th><th className={th}>SAP used</th><th className={th}>Max date</th></tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Posting date</th><th className={th}>Side</th><th className={th}>Posting type</th><th className={th}>Document</th><th className={th}>Dr / Cr</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={thN}>Quantity</th><th className={thN}>Amount (INR)</th><th className={th}>SAP used</th><th className={th}>Max date</th></tr>
           </thead>
           <tbody>
             {postingRows.map((r) => (
@@ -280,13 +280,14 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                 <td className={td}>{r.typeText}</td>
                 <td className={cx(td, 'font-mono')}>{r.document || '—'}</td>
                 <td className={td}>{r.drCr || '—'}</td>
+                <td className={cx(td, 'font-mono')}>{r.shkzg || '—'}</td>
                 <td className={tdN}>{fmtNum(r.qty, 3)}</td>
                 <td className={tdN}>{fmtNum(r.amount, 2, 'INR')}</td>
                 <td className={td}>{r.src || '—'}</td>
                 <td className={td}>{r.isMaxDate ? <Pill tone="accent">Max date</Pill> : ''}</td>
               </tr>
             ))}
-            {!postingRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allPostings.length ? 'Nothing matches the filter.' : 'SAP returned no postings for these components in the date range.'}</td></tr>}
+            {!postingRows.length && <tr><td colSpan={15} className="px-3 py-6 text-center text-muted">{allPostings.length ? 'Nothing matches the filter.' : 'SAP returned no postings for these components in the date range.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -295,7 +296,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
         <table className="w-full text-sm">
           <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th} title="S = debit, H = credit">Shkzg</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
           </thead>
           <tbody>
             {poRows.map((r) => {
@@ -313,6 +314,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                   <td className={cx(td, 'font-mono')}>{r.gstPartner || '—'}</td>
                   <td className={td}>{r.placeOfSupply || '—'}</td>
                   <td className={td}>{r.transportMode || '—'}</td>
+                  <td className={cx(td, 'font-mono')} title={r.shkzg === 'S' ? 'Debit' : r.shkzg === 'H' ? 'Credit' : r.shkzg === 'H/S' ? 'Debit and credit postings' : undefined}>{r.shkzg || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.accDoc || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.reference || '—'}</td>
                   <td className={cx(td, 'font-mono')}>{r.companyCode || '—'}</td>
@@ -329,7 +331,7 @@ function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; r
                 </tr>
               );
             })}
-            {!poRows.length && <tr><td colSpan={enhanced ? 23 : 22} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
+            {!poRows.length && <tr><td colSpan={enhanced ? 24 : 23} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
           </tbody>
         </table>
       </div>

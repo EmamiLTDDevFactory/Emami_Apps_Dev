@@ -32,8 +32,10 @@ test('Freight analysis with all postings: basis, By posting, PO-line breakup, no
   await page.getByRole('checkbox', { name: 'Latest only' }).check();
   await page.getByRole('radio', { name: /By posting/ }).click();
   await expect(page.getByText('Max date').first()).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Shkzg' })).toBeVisible();
 
   await page.getByRole('radio', { name: /By purchase order/ }).click();
+  await expect(page.getByRole('columnheader', { name: 'Shkzg' })).toBeVisible();
   await page.getByRole('button', { name: /Show every posting of PO/ }).first().click();
   const drawer = page.getByRole('dialog');
   await expect(drawer.getByText('Actual total')).toBeVisible();

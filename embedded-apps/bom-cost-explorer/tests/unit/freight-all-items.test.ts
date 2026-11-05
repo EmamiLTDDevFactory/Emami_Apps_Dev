@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetSapConfig } from '@/lib/sap/config';
 import { mockRequestLog } from '../../mock/sap';
 import { analysisFilter } from '@/lib/freight/analysisFetch';
-import { ALL_DATES, analyseFreight, applyBasis, groupPoLines, poLines, postings, type Component } from '@/lib/freight/analysis';
+import { ALL_DATES, analyseFreight, applyBasis, groupPoLines, poLines, poLinesSheet, postings, postingsSheet, DEFAULT_RULE, type Component } from '@/lib/freight/analysis';
 import { poLineBreakup } from '@/lib/freight/poBreakup';
 import { compareFreight } from '@/lib/freight/compare';
 import { buildSelectionFilter } from '@/lib/sap/filter';
@@ -211,5 +211,31 @@ describe('(h) other screens keep their filters', () => {
   });
   it('compareFreight is untouched by the new row fields', () => {
     expect(compareFreight([], [], '1')).toEqual([]);
+  });
+});
+
+describe('Shkzg (S debit / H credit) in the Freight analysis tables', () => {
+  it('a PO line shows the Shkzg of its posting; absent on an older SAP is empty', () => {
+    const [l] = poLines([comp], [act('2026-09-20', '10', '12', { Shkzg: 'h' })], ALL_DATES);
+    expect(l.shkzg).toBe('H');
+    const [o] = poLines([comp], [act('2026-09-20', '10', '12', { Shkzg: '' })], ALL_DATES);
+    expect(o.shkzg).toBe('');
+  });
+  it('summing postings keeps one value when they agree and H/S when a line has both', () => {
+    const same = groupPoLines([act('2026-09-01', '10', '10', { Shkzg: 'S' }), act('2026-09-02', '5', '5', { Shkzg: 'S' })]);
+    expect(same[0].Shkzg).toBe('S');
+    const mixed = groupPoLines([act('2026-09-01', '10', '10', { Shkzg: 'S' }), act('2026-09-02', '5', '5', { Shkzg: 'H' })]);
+    expect(mixed[0].Shkzg).toBe('H/S');
+    expect(poLines([comp], mixed, ALL_DATES)[0].shkzg).toBe('H/S');
+  });
+  it('the By posting rows and both exports carry a Shkzg column', () => {
+    const [p] = postings([comp], [act('2026-09-20', '10', '12', { Shkzg: 'H' })], ALL_DATES);
+    expect(p.shkzg).toBe('H');
+    const ps = postingsSheet([p]);
+    const col = ps.cols.find((c) => c.header === 'Shkzg')!;
+    expect(col.get(0)).toBe('H');
+    const lines = poLines([comp], [act('2026-09-20', '10', '12', { Shkzg: 'S' })], ALL_DATES);
+    const ls = poLinesSheet(lines, DEFAULT_RULE);
+    expect(ls.cols.find((c) => c.header.startsWith('Shkzg'))!.get(0)).toBe('S');
   });
 });

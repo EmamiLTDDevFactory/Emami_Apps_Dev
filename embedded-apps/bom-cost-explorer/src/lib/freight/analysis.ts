@@ -119,6 +119,8 @@ export interface PoLine {
   gstPartner: string;
   placeOfSupply: string;
   transportMode: string;
+  /** Shkzg: S debit, H credit; 'H/S' when the postings of a summed PO line carry both; '' when SAP does not send it */
+  shkzg: string;
   accDoc: string;
   reference: string;
   companyCode: string;
@@ -165,7 +167,7 @@ export function poLines(components: Component[], freight: FreightRow[], range: D
     out.push({
       key: `${k}|${r.Purchasedocument}|${r.Purchaseline}|${r.Conditiontype}|${i}`, plant: c.plant, material: c.material, text: c.text, mtart: c.mtart,
       po: String(r.Purchasedocument ?? '').trim(), line: String(r.Purchaseline ?? '').trim(), poDate: d, cond: String(r.Conditiontype ?? '').trim(),
-      vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode),
+      vendor: tx(r.Lifnr), vendorName: tx(r.Name1), gstPartner: tx(r.GstPart), placeOfSupply: tx(r.PlcSup), transportMode: tx(r.Ztmode), shkzg: tx(r.Shkzg).toUpperCase(),
       accDoc: tx(r.Belnr), reference: tx(r.Xblnr), companyCode: tx(r.Bukrs), fgMaterial: tx(r.FgMatnr),
       unit: r.Baseunit || r.Matuom || '', src: String(r.UsedSrc ?? '').trim().toUpperCase(),
       actualQty: aq.gt(0) ? aq : ZERO, actualAmount: aa, standardQty: sq.gt(0) ? sq : ZERO, standardAmount: sa,
@@ -232,15 +234,16 @@ const postingStamp = (r: Pick<FreightRow, 'Cpudt' | 'Belnr'>) => `${day(r.Cpudt)
  * descriptive fields of the newest posting, PO date unchanged. PO lines with no actual posting are dropped (standard-only is not freight).
  * The amounts of the result are already INR (FxInr = 1), so poLines / analyseFreight give the same figures as for a one-row-per-line answer. */
 export function groupPoLines(rows: FreightRow[]): FreightRow[] {
-  type Acc = { newest: FreightRow; aq: Decimal; aa: Decimal; sq: Decimal; sa: Decimal; hasActual: boolean; max: boolean; latest: boolean };
+  type Acc = { newest: FreightRow; aq: Decimal; aa: Decimal; sq: Decimal; sa: Decimal; hasActual: boolean; max: boolean; latest: boolean; shkzg: Set<string> };
   const groups = new Map<string, Acc>();
   for (const r of rows) {
     if (isExcluded(r)) continue;
     const k = [keyOf(r.Plant, r.Material), tx(r.Purchasedocument), tx(r.Purchaseline), tx(r.Conditiontype)].join('|');
     const f = postingFigures(r);
-    const g = groups.get(k) ?? { newest: r, aq: ZERO, aa: ZERO, sq: ZERO, sa: ZERO, hasActual: false, max: false, latest: false };
+    const g = groups.get(k) ?? { newest: r, aq: ZERO, aa: ZERO, sq: ZERO, sa: ZERO, hasActual: false, max: false, latest: false, shkzg: new Set<string>() };
     if (f.side === 'actual') { g.aq = g.aq.plus(f.qty); g.aa = g.aa.plus(f.amount); g.hasActual = true; } else { g.sq = g.sq.plus(f.qty); g.sa = g.sa.plus(f.amount); }
     if (postingStamp(r) > postingStamp(g.newest)) g.newest = r;
+    if (tx(r.Shkzg)) g.shkzg.add(tx(r.Shkzg).toUpperCase());
     g.max = g.max || !!r.IsMaxDate;
     g.latest = g.latest || !!r.IsLatestPo;
     groups.set(k, g);
@@ -250,7 +253,7 @@ export function groupPoLines(rows: FreightRow[]): FreightRow[] {
     if (!g.hasActual) continue;
     out.push({
       ...g.newest, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
-      FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest,
+      FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest, Shkzg: [...g.shkzg].sort().join('/'),
     });
   }
   return out;
@@ -279,6 +282,8 @@ export interface PostingRow {
   fiscalYear: string;
   item: string;
   drCr: string;
+  /** Shkzg as SAP sends it (S / H) */
+  shkzg: string;
   cond: string;
   qty: Decimal;
   /** INR (document amount x FxInr, FxInr 1 when missing) */
@@ -302,7 +307,7 @@ export function postings(components: Component[], freight: FreightRow[], range: 
     out.push({
       key: `${k}|${tx(r.Purchasedocument)}|${tx(r.Purchaseline)}|${tx(r.Conditiontype)}|${i}`, plant: c.plant, material: c.material, text: c.text,
       po: tx(r.Purchasedocument), line: tx(r.Purchaseline), poDate: d, postingDate: day(r.Cpudt), side: f.side, typeText: postingTypeText(r.Vgabe),
-      document: tx(r.Belnr), fiscalYear: tx(r.Gjahr), item: tx(r.Buzei), drCr: drCr(r.Shkzg), cond: tx(r.Conditiontype), qty: f.qty, amount: f.amount,
+      document: tx(r.Belnr), fiscalYear: tx(r.Gjahr), item: tx(r.Buzei), drCr: drCr(r.Shkzg), shkzg: tx(r.Shkzg).toUpperCase(), cond: tx(r.Conditiontype), qty: f.qty, amount: f.amount,
       src: String(r.UsedSrc ?? '').trim().toUpperCase(), isMaxDate: !!r.IsMaxDate,
     });
   });
@@ -324,6 +329,7 @@ export function postingsSheet(rows: PostingRow[]): { cols: XCol[]; count: number
       { header: 'Posting type', width: 22, get: (i) => rows[i].typeText },
       { header: 'Document', width: 16, get: (i) => rows[i].document },
       { header: 'Dr / Cr', width: 8, get: (i) => rows[i].drCr },
+      { header: 'Shkzg', width: 8, get: (i) => rows[i].shkzg },
       { header: 'Quantity', dp: 3, width: 14, get: (i) => n(rows[i].qty, 3) },
       { header: 'Amount (INR)', dp: 2, curr: 'INR', width: 16, get: (i) => n(rows[i].amount, 2) },
       { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
@@ -419,6 +425,7 @@ export function poLinesSheet(rows: PoLine[], rule: Rule): { cols: XCol[]; count:
       { header: 'GST partner', width: 18, get: (i) => rows[i].gstPartner },
       { header: 'Place of supply', width: 14, get: (i) => rows[i].placeOfSupply },
       { header: 'Transporter', width: 12, get: (i) => rows[i].transportMode },
+      { header: 'Shkzg (S debit / H credit)', width: 14, get: (i) => rows[i].shkzg },
       { header: 'Accounting document', width: 16, get: (i) => rows[i].accDoc },
       { header: 'Reference', width: 16, get: (i) => rows[i].reference },
       { header: 'Company code', width: 10, get: (i) => rows[i].companyCode },
