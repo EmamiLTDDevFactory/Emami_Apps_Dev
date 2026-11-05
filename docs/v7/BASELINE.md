@@ -19,6 +19,7 @@ build failure. It was not restarted. The remaining 21 need a re-run, ideally 1�
 | audit-tool | ✔ 211 s | ✔ 88 s | 144 | |
 | bom-cost-explorer | ✔ 228 s | ✔ 150 s | 138 | |
 | dev-tracker | ✔ 26 s | ✔ 9 s | 49 | |
+| setu (Samadhan) | existing node_modules | ✔ typecheck 0 errors, build OK | 34 | run separately on the v6 code before the rename |
 | audit-capa | ✔ 1170 s | ✖ exit 1 | 18 (partial) | **environment**: with `CI=true`, react-scripts turns existing `no-unused-vars` warnings into errors. Pre-existing; untouched code. Re-run without `CI=true` to compare like for like |
 | cascade-pricing | ✖ exit 1 | — | — | **environment**: local npm config refuses remote tarballs (`EALLOWREMOTE`, `xlsx@https://cdn.sheetjs.com/…`). Pre-existing |
 | cashflow-forecast, credit-risk-advisory, dispatch-tracker | started, not finished | | | killed |
@@ -33,7 +34,7 @@ The working tree stayed clean: `dist/`, `out/` and `node_modules/` are git-ignor
 |---|---|---|
 | Shared backend | `cd backend && npm test` (`backend/test/*.test.js`) | **40 / 40 pass** |
 | Samadhan unit | `node --test backend/setu/tests/unit.test.js` | **9 / 9 pass** |
-| Samadhan API | `backend/setu/tests/api.test.js` | not run: needs the local test DB (Q-E1) |
+| Samadhan API | `backend/setu/tests/api.test.js` on a fresh throwaway DB (localhost:55432) | **130 / 130 pass** (v6 code) |
 
 ## 3. Backend start-up smoke (no database)
 
@@ -60,6 +61,6 @@ and keeps serving. Port 4190 cannot be used on this machine (connections fail).
 
 After Phase 1 the same table must match, with `/api/samadhan/*` added (same statuses) and `/api/setu/*` unchanged.
 
-## 4. Not yet captured (Phase 1, before the first code change)
-- Golden daily report (`/reports/daily` JSON + sheet XML), export, `/meta`, counts on a seeded `samadhan_test` (needs Q-E1).
-- Frontend `typecheck` / `build` for Samadhan (in the unfinished build run).
+## 4. Golden files (captured from the v6 code)
+- `backend/setu/tests/golden/daily-report.json` (2222 bytes) and `export-default.json` (2127 bytes), data from
+  `fixture.sql` (scheduler paused via `jobs.lastRunAt`); byte-identical on two fresh databases.
