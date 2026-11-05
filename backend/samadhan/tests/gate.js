@@ -61,7 +61,8 @@ function freshDb(name, template) {
 }
 
 const SAFE_ENV = {
-    HUB_AUTH_JWT_SECRET: SECRET, HUB_INTERNAL_API_SECRET: 'gate-internal',
+    // 'localtest' is the scheduler secret api.test.js sends (tests/README.md); test-only, never a real value.
+    HUB_AUTH_JWT_SECRET: SECRET, HUB_INTERNAL_API_SECRET: 'localtest',
     PGHOST: 'localhost', PGPORT: String(PG_PORT), PGUSER: 'postgres', PGPASSWORD: 'x',
     SAMADHAN_MAIL_ENABLED: 'false', SETU_MAIL_ENABLED: 'false', SAMADHAN_WHATSAPP_ENABLED: 'false', SETU_WHATSAPP_ENABLED: 'false',
     NOTIFY_EMAIL_ENABLED: 'false', NOTIFY_MAIL_SENDER: '', CCB_TEAMS_ORGANIZER: '', ANTHROPIC_API_KEY: '', RESEND_API_KEY: '',

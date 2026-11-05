@@ -44,6 +44,16 @@ Verified by hand during the work (not yet as one gate run):
   deploy-script `server.js` patch tested on the v6 server.js, today's server.js (no-op) and one without a Setu block.
 - Lockfile: only additions (308 packages: eslint 8.57.1, eslint-config-next 14.2.35, @playwright/test 1.49.1).
 
+**Gate run 2 (2026-11-05 ~20:30, stopped by Claude Code for low memory during E2E, 2.5 of 15.7 GB free):**
+- PASS: typecheck, lint, production build, backend syntax (53 files), unit 15/15, shared backend 40/40, golden
+  byte-identical ×5 (new DB; v6 DB before rename; after up; after down; after up again), migrate up/down ×4, zero-impact
+  no-DB smoke (all routes = baseline, `/api/samadhan` = `/api/setu`), E2E build, stub build.
+- FAIL (fixed): API suites 129/130 ×3 — the only failure was `jobs/run via internal secret`: the gate started the backend
+  with a different scheduler secret than the documented `localtest` the suite sends. Gate config bug, not a Samadhan
+  bug; fixed in `gate.js`, the test itself unchanged (verified 130/130 by hand earlier with `localtest`).
+- E2E: the first test stopped on the loading spinner while the test Postgres was being killed (backend log: DB
+  connection timeouts; Postgres: shared memory segment gone; trace truncated). Environmental — E2E still unproven.
+
 **Not done yet (blocks the push):**
 - Full gate run: stopped by Claude Code because the machine ran low on memory (2.6 of 15.7 GB free) after typecheck and
   lint passed. The throwaway Postgres process was stopped the same way. Not restarted, per instructions.
