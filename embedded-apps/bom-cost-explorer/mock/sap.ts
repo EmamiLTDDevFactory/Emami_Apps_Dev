@@ -51,7 +51,7 @@ const plantOf = (w: string) => PLANTS.find((p) => p.Werks === w);
 interface Params {
   mode: string; mats: string[]; werks: string[]; cplnt: string[]; explQty: number; maxLevel: number;
   lookback: number; freightDays: number; prio: string[]; donor: string; inclFrt: boolean; stdFrt: boolean;
-  latestOnly: boolean; inclBudget: boolean; budgetYr: number; inclCover: boolean; hor: number[];
+  latestOnly: boolean; allItems: boolean; inclBudget: boolean; budgetYr: number; inclCover: boolean; hor: number[];
   budatFrom: string; asof: string;
 }
 
@@ -74,6 +74,7 @@ function params(f: Map<string, string[]>): Params {
     inclFrt: b('InclFrt', true),
     stdFrt: b('StdFrt', false),
     latestOnly: b('LatestOnly', true),
+    allItems: b('AllItems', false),
     inclBudget: b('InclBudget', false),
     budgetYr: Number(one('BudgetYr', '2026')),
     inclCover: b('InclCover', false),
@@ -386,6 +387,7 @@ function freight(p: Params, msgs: Msg[]): Raw[] {
   }
   const ts = (r: Raw) => Number(/\d+/.exec(String(r.Podate))?.[0] ?? 0);
   rows.sort((a, b) => String(a.Material).localeCompare(String(b.Material)) || String(a.Plant).localeCompare(String(b.Plant)) || ts(b) - ts(a));
+  if (p.allItems) return postingRows(rows);
   if (!p.latestOnly) return rows;
   const seen = new Set<string>();
   return rows.filter((r) => {
@@ -394,6 +396,66 @@ function freight(p: Params, msgs: Msg[]): Raw[] {
     seen.add(k);
     return true;
   });
+}
+
+/**
+ * FreightRowSet with AllItems eq 'X' (the SAP change behind NEXT_PUBLIC_FREIGHT_ALL_ITEMS): one row per POSTING instead of one per PO line.
+ * Each PO line of the old answer becomes 2 to 4 postings on different dates. The LAST posting of a side (the max posting date) carries
+ * the old row's full quantity and amount, so keeping only IsMaxDate postings gives back exactly the old answer; earlier postings are
+ * extra receipts / invoices. Vgabe 1 = goods receipt = standard side, 2 / 3 = invoice = actual side; an actual posting carries only
+ * actual quantity / amount, a standard posting only standard ones. The first PO line with an actual delivery has exactly 2 actual and
+ * 2 standard postings, and one posting is a credit (Shkzg H). IsLatestPo marks the newest PO line of each material, plant and condition.
+ */
+function postingRows(lines: Raw[]): Raw[] {
+  const out: Raw[] = [];
+  const latest = new Set<string>();
+  const seen = new Set<string>();
+  const sorted = [...lines].sort((a, b) => String(a.Material).localeCompare(String(b.Material)) || String(a.Plant).localeCompare(String(b.Plant)) || (Number(/\d+/.exec(String(b.Podate))?.[0] ?? 0) - Number(/\d+/.exec(String(a.Podate))?.[0] ?? 0)));
+  for (const l of sorted) {
+    const k = `${l.Material}|${l.Plant}|${l.Conditiontype}`;
+    if (!seen.has(k)) { seen.add(k); latest.add(`${l.Material}|${l.Plant}|${l.Purchasedocument}|${l.Purchaseline}|${l.Conditiontype}`); }
+  }
+  let seq = 0;
+  let exact = false;
+  let credit = false;
+  for (const l of sorted) {
+    const id = `${l.Material}|${l.Plant}|${l.Purchasedocument}|${l.Purchaseline}`;
+    const aq = Number(l.Actualdelvquantity);
+    const sq = Number(l.Stddelvquantity);
+    const hasAct = aq > 0;
+    const twoTwo = hasAct && !exact;
+    if (twoTwo) exact = true;
+    const kAct = hasAct ? (twoTwo ? 2 : 1 + (hash(id + 'ka') % 2)) : 0;
+    const kStd = twoTwo || !hasAct ? 2 : 1 + (hash(id + 'ks') % 2); // 2 to 4 postings per PO line
+    const poMs = Number(/\d+/.exec(String(l.Podate))?.[0] ?? 0);
+    const isLatest = latest.has(`${id}|${l.Conditiontype}`);
+    const emit = (side: 'actual' | 'standard', count: number) => {
+      for (let j = 0; j < count; j++) {
+        const last = j === count - 1;
+        const frac = last ? 1 : 0.2 + 0.15 * j; // earlier postings: smaller extra receipts / invoices
+        const qty = (side === 'actual' ? aq : sq) * frac;
+        const amt = Number(side === 'actual' ? l.Actualdelvcostamount : l.Stddelvcostamount) * frac * (last ? 1 : 0.97 + 0.02 * j);
+        const vgabe = side === 'standard' ? '1' : last && count > 1 && hash(id + 'v3') % 3 === 0 ? '3' : '2';
+        const isCredit = side === 'actual' && !last && !credit;
+        if (isCredit) credit = true;
+        const offset = (side === 'standard' ? 2 : 5) + j * 6 + (hash(`${id}${side}${j}`) % 3); // days after the PO date, different per posting
+        seq++;
+        out.push({
+          ...l, __metadata: { ...(l.__metadata as object) } as never,
+          Rowid: 1_000_000 + seq,
+          Cpudt: d(new Date(poMs + offset * 86400000).toISOString().slice(0, 10)),
+          Vgabe: vgabe, Buzei: String(j + 1).padStart(3, '0'), Gjahr: '2026', Shkzg: isCredit ? 'H' : 'S',
+          Belnr: `5${vgabe === '1' ? '0' : '1'}${String(hash(`${id}${side}${j}b`) % 1e8).padStart(8, '0')}`,
+          Actualdelvquantity: n(side === 'actual' ? qty : 0, 3), Actualdelvcostamount: n(side === 'actual' ? amt : 0, 2), ActRate: n(side === 'actual' ? Number(l.ActRate) : 0, 6),
+          Stddelvquantity: n(side === 'standard' ? qty : 0, 3), Stddelvcostamount: n(side === 'standard' ? amt : 0, 2), StdRate: n(side === 'standard' ? Number(l.StdRate) : 0, 6),
+          IsMaxDate: last ? 'X' : '', IsLatestPo: isLatest ? 'X' : '',
+        });
+      }
+    };
+    emit('actual', kAct);
+    emit('standard', kStd);
+  }
+  return out;
 }
 
 function rmpm(p: Params, msgs: Msg[]): Raw[] {

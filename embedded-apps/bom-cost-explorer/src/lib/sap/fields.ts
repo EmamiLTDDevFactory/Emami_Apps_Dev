@@ -45,6 +45,7 @@ export const SELECTION = def({
   InclFrt: ['InclFrt', 'b'],
   StdFrt: ['StdFrt', 'b'],
   LatestOnly: ['LatestOnly', 'b'],
+  AllItems: ['AllItems', 'b'], // FreightRowSet only: one row per posting (ABAP char flag, 'X' only when on)
   InclBudget: ['InclBudget', 'b'],
   InclCover: ['InclCover', 'b'],
   BudgetYr: ['BudgetYr', 's'], // NUMC 4 on the live service: sent quoted ('2026')
@@ -238,6 +239,14 @@ export const FREIGHT_ROW = def({
   UsedPcLoc: ['UsedPcLoc', 'd'],
   FxInr: ['FxInr', 'd'],
   UsedPcInr: ['UsedPcInr', 'd'],
+  // With AllItems eq 'X' (NEXT_PUBLIC_FREIGHT_ALL_ITEMS): one row per posting. All of these are absent on an older SAP.
+  Cpudt: ['Cpudt', 't'], // posting date (Edm.DateTime)
+  Vgabe: ['Vgabe', 's'], // 1 goods receipt, 2 or 3 invoice
+  Buzei: ['Buzei', 's'],
+  Gjahr: ['Gjahr', 's'],
+  Shkzg: ['Shkzg', 's'], // S debit, H credit
+  IsMaxDate: ['IsMaxDate', 'f'], // 'X' = on the max posting date of its PO line and side
+  IsLatestPo: ['IsLatestPo', 'f'], // 'X' = newest PO date for material, plant and condition type
 });
 
 /** RmPmRowSet: key Material + Plant. */
@@ -313,7 +322,7 @@ export const FIELDS_BY_SET = {
  * NGD 2026-10-04): the flags are Edm.Boolean on CostLineSet but ABAP char flags ('X' / '') on the
  * row sets - sending `StdFrt eq false` there fails with "Invalid parametertype used at function 'eq'".
  */
-const FLAGS_AS_CHAR = { UseAsof: 'f', InclFrt: 'f', StdFrt: 'f', LatestOnly: 'f', InclBudget: 'f', InclCover: 'f' } as const;
+const FLAGS_AS_CHAR = { UseAsof: 'f', InclFrt: 'f', StdFrt: 'f', LatestOnly: 'f', AllItems: 'f', InclBudget: 'f', InclCover: 'f' } as const;
 export const SELECTION_KIND_BY_SET: Partial<Record<EntitySetKey, Partial<Record<keyof typeof SELECTION, FieldKind>>>> = {
   RATES: FLAGS_AS_CHAR,
   FREIGHT: FLAGS_AS_CHAR,
@@ -346,7 +355,9 @@ export type RateOption = RowOf<typeof RATE_OPTION>;
 /** RateOptions is present only when the line came from CostLineSet?$expand=RateOptions (mode B). */
 export type CostLine = RowOf<typeof COST_LINE> & { RateOptions?: RateOption[] };
 export type RateRow = RowOf<typeof RATE_ROW>;
-export type FreightRow = RowOf<typeof FREIGHT_ROW>;
+/** The posting fields only exist on a SAP service with the AllItems change; the normaliser fills them in, but a row built by hand may leave them out. */
+type FreightPostingKeys = 'Cpudt' | 'Vgabe' | 'Buzei' | 'Gjahr' | 'Shkzg' | 'IsMaxDate' | 'IsLatestPo';
+export type FreightRow = Omit<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys> & Partial<Pick<RowOf<typeof FREIGHT_ROW>, FreightPostingKeys>>;
 export type RmPmRow = RowOf<typeof RMPM_ROW>;
 export type PlantRow = RowOf<typeof PLANT>;
 export type MaterialRow = RowOf<typeof MATERIAL>;

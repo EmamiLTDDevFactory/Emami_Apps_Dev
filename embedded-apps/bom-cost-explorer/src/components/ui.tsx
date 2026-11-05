@@ -158,19 +158,29 @@ export function Empty({ title, children, icon = '∅' }: { title: string; childr
 }
 
 /** Side drawer with Esc to close and focus moved in/back. */
-export function Drawer({ open, onClose, title, children, width = 720 }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; width?: number }) {
+export function Drawer({ open, onClose, title, children, width = 720, trapFocus = false }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; width?: number; /** keep Tab inside the drawer (default off: the other drawers behave as before) */ trapFocus?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return onClose();
+      if (e.key !== 'Tab' || !trapFocus || !ref.current) return;
+      const f = Array.from(ref.current.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (!f.length) return e.preventDefault();
+      const first = f[0];
+      const last = f[f.length - 1];
+      const at = document.activeElement;
+      if (e.shiftKey && (at === first || at === ref.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, onClose, trapFocus]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end no-print" role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : 'Details'}>

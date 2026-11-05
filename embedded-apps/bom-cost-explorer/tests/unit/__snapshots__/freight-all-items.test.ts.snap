@@ -1,0 +1,7 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`(h) other screens keep their filters > buildSelectionFilter (Explorer / compare / breakup) has no AllItems 1`] = `"Mode eq 'B' and Matnr eq 'RM1' and Werks eq '1000' and ExplQty eq 1m and Lookback eq 365 and Prio eq 'CONTRACT,INFOREC,MARKT,CONSUMP,MBEW' and InclFrt eq true and StdFrt eq false and InclBudget eq false and InclCover eq false"`;
+
+exports[`(h) other screens keep their filters > buildSelectionFilter (Explorer / compare / breakup) has no AllItems 2`] = `"Mode eq 'F' and Matnr eq 'RM1' and Werks eq '1000' and FreightDays eq 180 and StdFrt eq '' and LatestOnly eq 'X'"`;
+
+exports[`(h) other screens keep their filters > buildSelectionFilter (Explorer / compare / breakup) has no AllItems 3`] = `"Mode eq 'R' and Matnr eq 'RM1' and Werks eq '1000' and Lookback eq 365"`;

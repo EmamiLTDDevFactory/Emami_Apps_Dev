@@ -38,6 +38,7 @@ export interface DateRange { from: string; to: string } // YYYY-MM-DD, both days
 
 const isExcluded = (r: Pick<FreightRow, 'UsedSrc'>) => String(r.UsedSrc ?? '').trim().toUpperCase() === 'EXCLUDED';
 const tx = (v: string | null | undefined) => String(v ?? '').trim();
+const n = (v: Decimal | null, dp = 6): number | null => (v ? Number(v.toFixed(dp)) : null);
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 
 /** Days of SAP's freight window needed to reach back to `from` from today (FreightDays counts back from today; max 3650 on the service). */
@@ -190,6 +191,147 @@ export function sortPoLines(rows: PoLine[], rule: Rule): PoLine[] {
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || b.poDate.localeCompare(a.poDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line));
 }
 
+/* ---------- all postings (FreightRowSet with AllItems): basis, grouping, one row per posting ---------- */
+
+/** What the person sees: every posting ('all'), or only the postings on the max posting date of their PO line and side ('maxdate', the old behaviour). */
+export type Basis = 'all' | 'maxdate';
+
+export type Side = 'actual' | 'standard';
+const fxOf = (r: Pick<FreightRow, 'FxInr'>) => (D(r.FxInr).gt(0) ? D(r.FxInr) : D(1));
+
+/** The side of a posting comes from Vgabe (1 = goods receipt = Standard, 2 or 3 = invoice = Actual), never from UsedSrc. Without Vgabe (an older SAP) the side with a quantity. */
+export function sideOf(r: Pick<FreightRow, 'Vgabe' | 'Actualdelvquantity'>): Side {
+  const v = tx(r.Vgabe);
+  if (v === '1') return 'standard';
+  if (v === '2' || v === '3') return 'actual';
+  return D(r.Actualdelvquantity).gt(0) ? 'actual' : 'standard';
+}
+
+/** Quantity and INR amount of one posting on its side; same rule as poLines: an amount counts only together with a positive quantity. */
+export function postingFigures(r: FreightRow): { side: Side; qty: Decimal; amount: Decimal } {
+  const side = sideOf(r);
+  const q = D(side === 'actual' ? r.Actualdelvquantity : r.Stddelvquantity);
+  const a = D(side === 'actual' ? r.Actualdelvcostamount : r.Stddelvcostamount);
+  return q.gt(0) ? { side, qty: q, amount: a.times(fxOf(r)) } : { side, qty: ZERO, amount: ZERO };
+}
+
+export interface BasisResult { rows: FreightRow[]; /** the data has no IsMaxDate at all (SAP without the AllItems change): rows are returned as they came */ fallback: boolean }
+
+/** Basis and Latest only, in the browser (no SAP request). 'maxdate' keeps the IsMaxDate postings, latestOnly the IsLatestPo ones. */
+export function applyBasis(rows: FreightRow[], opt: { basis: Basis; latestOnly: boolean }): BasisResult {
+  if (!rows.some((r) => r.IsMaxDate)) return { rows, fallback: true };
+  let out = rows;
+  if (opt.basis === 'maxdate') out = out.filter((r) => r.IsMaxDate);
+  if (opt.latestOnly && rows.some((r) => r.IsLatestPo)) out = out.filter((r) => r.IsLatestPo);
+  return { rows: out, fallback: false };
+}
+
+const postingStamp = (r: Pick<FreightRow, 'Cpudt' | 'Belnr'>) => `${day(r.Cpudt)}|${tx(r.Belnr)}`;
+
+/** One row per PO line (plant + material + purchase document + line + condition type): quantities and INR amounts summed over the postings,
+ * descriptive fields of the newest posting, PO date unchanged. PO lines with no actual posting are dropped (standard-only is not freight).
+ * The amounts of the result are already INR (FxInr = 1), so poLines / analyseFreight give the same figures as for a one-row-per-line answer. */
+export function groupPoLines(rows: FreightRow[]): FreightRow[] {
+  type Acc = { newest: FreightRow; aq: Decimal; aa: Decimal; sq: Decimal; sa: Decimal; hasActual: boolean; max: boolean; latest: boolean };
+  const groups = new Map<string, Acc>();
+  for (const r of rows) {
+    if (isExcluded(r)) continue;
+    const k = [keyOf(r.Plant, r.Material), tx(r.Purchasedocument), tx(r.Purchaseline), tx(r.Conditiontype)].join('|');
+    const f = postingFigures(r);
+    const g = groups.get(k) ?? { newest: r, aq: ZERO, aa: ZERO, sq: ZERO, sa: ZERO, hasActual: false, max: false, latest: false };
+    if (f.side === 'actual') { g.aq = g.aq.plus(f.qty); g.aa = g.aa.plus(f.amount); g.hasActual = true; } else { g.sq = g.sq.plus(f.qty); g.sa = g.sa.plus(f.amount); }
+    if (postingStamp(r) > postingStamp(g.newest)) g.newest = r;
+    g.max = g.max || !!r.IsMaxDate;
+    g.latest = g.latest || !!r.IsLatestPo;
+    groups.set(k, g);
+  }
+  const out: FreightRow[] = [];
+  for (const g of groups.values()) {
+    if (!g.hasActual) continue;
+    out.push({
+      ...g.newest, Actualdelvquantity: g.aq.toFixed(), Actualdelvcostamount: g.aa.toFixed(), Stddelvquantity: g.sq.toFixed(), Stddelvcostamount: g.sa.toFixed(),
+      FxInr: '1', IsMaxDate: g.max, IsLatestPo: g.latest,
+    });
+  }
+  return out;
+}
+
+export function postingTypeText(vgabe: string | null | undefined): string {
+  const v = tx(vgabe);
+  return v === '1' ? 'Goods receipt' : v === '2' ? 'Invoice receipt' : v === '3' ? 'Subsequent debit / credit' : v ? `Type ${v}` : '—';
+}
+/** Dr / Cr from Shkzg (S debit, H credit). */
+export const drCr = (shkzg: string | null | undefined) => (tx(shkzg).toUpperCase() === 'H' ? 'Cr' : tx(shkzg).toUpperCase() === 'S' ? 'Dr' : '');
+
+export interface PostingRow {
+  key: string;
+  plant: string;
+  material: string;
+  text: string;
+  po: string;
+  line: string;
+  /** YYYY-MM-DD */
+  poDate: string;
+  postingDate: string;
+  side: Side;
+  typeText: string;
+  document: string;
+  fiscalYear: string;
+  item: string;
+  drCr: string;
+  cond: string;
+  qty: Decimal;
+  /** INR (document amount x FxInr, FxInr 1 when missing) */
+  amount: Decimal;
+  src: string;
+  isMaxDate: boolean;
+}
+
+/** One row per posting of the components within the PO date range (EXCLUDED lines left out). Newest posting first. */
+export function postings(components: Component[], freight: FreightRow[], range: DateRange): PostingRow[] {
+  const info = new Map(components.map((c) => [c.key, c]));
+  const out: PostingRow[] = [];
+  freight.forEach((r, i) => {
+    if (isExcluded(r)) return;
+    const k = keyOf(r.Plant, r.Material);
+    const c = info.get(k);
+    if (!c) return;
+    const d = day(r.Podate);
+    if (!d || d < range.from || d > range.to) return;
+    const f = postingFigures(r);
+    out.push({
+      key: `${k}|${tx(r.Purchasedocument)}|${tx(r.Purchaseline)}|${tx(r.Conditiontype)}|${i}`, plant: c.plant, material: c.material, text: c.text,
+      po: tx(r.Purchasedocument), line: tx(r.Purchaseline), poDate: d, postingDate: day(r.Cpudt), side: f.side, typeText: postingTypeText(r.Vgabe),
+      document: tx(r.Belnr), fiscalYear: tx(r.Gjahr), item: tx(r.Buzei), drCr: drCr(r.Shkzg), cond: tx(r.Conditiontype), qty: f.qty, amount: f.amount,
+      src: String(r.UsedSrc ?? '').trim().toUpperCase(), isMaxDate: !!r.IsMaxDate,
+    });
+  });
+  return out.sort((a, b) => b.postingDate.localeCompare(a.postingDate) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material) || a.po.localeCompare(b.po) || a.line.localeCompare(b.line) || a.document.localeCompare(b.document));
+}
+
+export function postingsSheet(rows: PostingRow[]): { cols: XCol[]; count: number } {
+  return {
+    count: rows.length,
+    cols: [
+      { header: 'Plant', width: 8, get: (i) => rows[i].plant },
+      { header: 'Component', width: 14, get: (i) => rows[i].material },
+      { header: 'Description', width: 34, get: (i) => rows[i].text },
+      { header: 'Purchase order', width: 14, get: (i) => rows[i].po },
+      { header: 'PO line', width: 8, get: (i) => rows[i].line },
+      { header: 'PO date', width: 12, get: (i) => rows[i].poDate },
+      { header: 'Posting date', width: 12, get: (i) => rows[i].postingDate },
+      { header: 'Side', width: 10, get: (i) => (rows[i].side === 'actual' ? 'Actual' : 'Standard') },
+      { header: 'Posting type', width: 22, get: (i) => rows[i].typeText },
+      { header: 'Document', width: 16, get: (i) => rows[i].document },
+      { header: 'Dr / Cr', width: 8, get: (i) => rows[i].drCr },
+      { header: 'Quantity', dp: 3, width: 14, get: (i) => n(rows[i].qty, 3) },
+      { header: 'Amount (INR)', dp: 2, curr: 'INR', width: 16, get: (i) => n(rows[i].amount, 2) },
+      { header: 'Source used by SAP', width: 12, get: (i) => rows[i].src },
+      { header: 'Max date', width: 9, get: (i) => (rows[i].isMaxDate ? 'yes' : 'no') },
+    ],
+  };
+}
+
 /* ---------- alert / early-watch rule (chosen on screen) ---------- */
 
 export type RuleKind = 'pct_above' | 'abs_above' | 'any_above' | 'pct_both';
@@ -239,7 +381,6 @@ export function sortAnalysis(rows: FreightAnalysisRow[], rule: Rule): FreightAna
   return [...rows].sort((a, b) => Number(breaches(b, rule)) - Number(breaches(a, rule)) || mag(b).cmp(mag(a)) || a.plant.localeCompare(b.plant) || a.material.localeCompare(b.material));
 }
 
-const n = (v: Decimal | null, dp = 6): number | null => (v ? Number(v.toFixed(dp)) : null);
 export function freightAnalysisSheet(rows: FreightAnalysisRow[], rule: Rule): { cols: XCol[]; count: number } {
   return {
     count: rows.length,

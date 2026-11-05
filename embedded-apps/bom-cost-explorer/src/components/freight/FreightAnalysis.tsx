@@ -6,6 +6,7 @@
  * in the browser (lib/freight/analysis.ts), so changing it never calls SAP again.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { AlertTriangle, BellRing, FileSpreadsheet, Play, Square } from 'lucide-react';
 import PlanFrame from '../plan/PlanFrame';
 import { MaterialPicker, PlantPicker } from '../Pickers';
@@ -19,9 +20,10 @@ import { MAX_MATERIALS } from '@/lib/query/schema';
 import { fmtMs, fmtNum, fmtPct, fmtSigned } from '@/lib/format';
 import { toDay } from '@/lib/wac/dates';
 import {
-  DEFAULT_RULE, FREIGHT_TYPES, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
-  type FreightType, type Rule, type RuleKind,
+  DEFAULT_RULE, FREIGHT_TYPES, applyBasis, groupPoLines, postings, postingsSheet, FREIGHT_TYPE_LABEL, RULE_OPTIONS, ALL_DATES, analyseFreight, analysisTotals, breaches, freightAnalysisSheet, linesOutsideRange, poLines, poLinesSheet, ruleText, sortAnalysis, sortPoLines,
+  type Basis, type FreightType, type Rule, type RuleKind,
 } from '@/lib/freight/analysis';
+import type { PoLineKey } from '@/lib/freight/poBreakup';
 import { DEFAULT_FREIGHT_DAYS, defaultInclFrt, freightDaysValue, fetchFreightAnalysis, selectionProblem, type AnalysisData, type AnalysisInput } from '@/lib/freight/analysisFetch';
 
 const th = 'px-3 py-2 text-left text-2xs font-bold uppercase tracking-wide text-muted';
@@ -32,7 +34,13 @@ const inr = (v: Parameters<typeof fmtNum>[0]) => fmtNum(v, 4, 'INR');
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return toDay(d); };
 
 type Show = 'all' | 'alerts';
-type View = 'component' | 'po';
+type View = 'component' | 'po' | 'posting';
+
+// Literal check, so the build replaces it and drops every branch below when the flag is off (no new code or text in the bundle).
+const FREIGHT_ALL_ITEMS = process.env.NEXT_PUBLIC_FREIGHT_ALL_ITEMS === 'true';
+// The breakup drawer exists only when the flag is on.
+const PoBreakupDrawer = process.env.NEXT_PUBLIC_FREIGHT_ALL_ITEMS === 'true' ? dynamic(() => import('./PoBreakupDrawer'), { ssr: false }) : null;
+const FALLBACK_TEXT = 'This SAP service does not return posting dates yet; showing the lines as before.';
 
 export default function FreightAnalysis() {
   const [materials, setMaterials] = useState<string[]>([]);
@@ -103,7 +111,7 @@ export default function FreightAnalysis() {
             {(id) => <input id={id} inputMode="numeric" className={inputCls} value={freightDays} onChange={(e) => setFreightDays(e.target.value.replace(/\D/g, ''))} onBlur={() => setFreightDays(String(freightDaysValue(freightDays || DEFAULT_FREIGHT_DAYS)))} />}
           </Field>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={inclFrt} onChange={(e) => { setInclTouched(true); setInclPicked(e.target.checked); }} /> Include freight</label>
-          <label className="flex items-center gap-2 self-end pb-2 text-sm" title="Only the latest PO line of each material is read. Leave unticked to analyse every PO line of the range."><input type="checkbox" checked={latestOnly} onChange={(e) => setLatestOnly(e.target.checked)} /> Latest only</label>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm" title={FREIGHT_ALL_ITEMS ? 'Only the latest PO date of each material, plant and freight condition. Applied here, no new SAP call.' : 'Only the latest PO line of each material is read. Leave unticked to analyse every PO line of the range.'}><input type="checkbox" checked={latestOnly} onChange={(e) => setLatestOnly(e.target.checked)} /> Latest only</label>
           <div className="sm:col-span-2 lg:col-span-4">
             <span className="mb-1 block text-xs font-semibold text-muted">Material types</span>
             <div className="flex flex-wrap gap-3 pt-1">
@@ -145,13 +153,13 @@ export default function FreightAnalysis() {
         </div>
       )}
       {runner.status === 'running' && !runner.data && <p className="text-sm text-muted">{step || 'Working…'} {fmtMs(runner.elapsed)}</p>}
-      {runner.data && ran && <Results data={runner.data} ran={ran} rule={rule} stale={runner.status === 'running'} />}
+      {runner.data && ran && <Results data={runner.data} ran={ran} rule={rule} latestOnly={latestOnly} stale={runner.status === 'running'} />}
       {runner.status === 'idle' && <Empty title="No analysis yet">Pick materials (ROH, PKGN, VERP) or plants, set the PO date range, then choose Execute.</Empty>}
     </PlanFrame>
   );
 }
 
-function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: AnalysisInput; rule: Rule; stale: boolean }) {
+function Results({ data, ran, rule, latestOnly, stale }: { data: AnalysisData; ran: AnalysisInput; rule: Rule; latestOnly: boolean; stale: boolean }) {
   const [show, setShow] = useState<Show>('all');
   const [plant, setPlant] = useState('');
   const [q, setQ] = useState('');
@@ -159,7 +167,16 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
   // The date range of the run hides PO lines SAP returned outside it; the person can look at all of them.
   const [allDates, setAllDates] = useState(false);
   const range = allDates ? ALL_DATES : ran.range;
-  const analysed = useMemo(() => analyseFreight(data.components, data.freight, range), [data.components, data.freight, range]);
+  // All postings (AllItems): Basis and Latest only are applied here, in the browser (no SAP request); the PO lines are then summed per line,
+  // so analyseFreight / poLines work on the same one-row-per-line shape as before. Without the flag the rows are used exactly as SAP sent them.
+  const [basis, setBasis] = useState<Basis>('all');
+  const [openLine, setOpenLine] = useState<PoLineKey | null>(null);
+  const closeLine = useCallback(() => setOpenLine(null), []);
+  const based = useMemo(() => (FREIGHT_ALL_ITEMS ? applyBasis(data.freight, { basis, latestOnly }) : null), [data.freight, basis, latestOnly]);
+  const fallback = !!based && based.fallback && data.freight.length > 0;
+  const enhanced = !!based && !fallback;
+  const freightRows = useMemo(() => (enhanced && based ? groupPoLines(based.rows) : data.freight), [enhanced, based, data.freight]);
+  const analysed = useMemo(() => analyseFreight(data.components, freightRows, range), [data.components, freightRows, range]);
   const plantList = useMemo(() => Array.from(new Set(analysed.map((r) => r.plant))).sort(), [analysed]);
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -168,26 +185,34 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
   }, [analysed, plant, show, q, rule]);
   const totals = useMemo(() => analysisTotals(analysed, rule), [analysed, rule]);
   // Purchase order wise: one row per PO freight line of the components, same range, same rule, same filters.
-  const allPo = useMemo(() => poLines(data.components, data.freight, range), [data.components, data.freight, range]);
+  const allPo = useMemo(() => poLines(data.components, freightRows, range), [data.components, freightRows, range]);
+  const allPostings = useMemo(() => (enhanced && based ? postings(data.components, based.rows, range) : []), [enhanced, based, data.components, range]);
+  const postingRows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return allPostings.filter((r) => (!plant || r.plant === plant) && (!t || `${r.material} ${r.text} ${r.po}`.toLowerCase().includes(t)));
+  }, [allPostings, plant, q]);
+  const textOf = (material: string) => data.components.find((c) => c.material === material)?.text ?? '';
   const poRows = useMemo(() => {
     const t = q.trim().toLowerCase();
     const list = allPo.filter((r) => (!plant || r.plant === plant) && (show === 'all' || breaches(r, rule)) && (!t || `${r.material} ${r.text} ${r.po}`.toLowerCase().includes(t)));
     return sortPoLines(list, rule);
   }, [allPo, plant, show, q, rule]);
-  const hidden = useMemo(() => linesOutsideRange(data.components, data.freight, ran.range), [data.components, data.freight, ran.range]);
+  const hidden = useMemo(() => linesOutsideRange(data.components, freightRows, ran.range), [data.components, freightRows, ran.range]);
   const poFlagged = useMemo(() => allPo.filter((r) => breaches(r, rule)).length, [allPo, rule]);
   /** the PO lines of one component: switches to the PO view filtered to it */
   const openPos = (r: { plant: string; material: string }) => { setPlant(r.plant); setQ(r.material); setShow('all'); setView('po'); };
 
   const doExport = async (fmt: 'xlsx' | 'csv') => {
-    const sheet = view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
+    const sheet = view === 'posting' ? postingsSheet(postingRows) : view === 'po' ? poLinesSheet(poRows, rule) : freightAnalysisSheet(rows, rule);
+    const basisText = !(FREIGHT_ALL_ITEMS && enhanced) ? [] : [['Basis', basis === 'all' ? 'All line items' : 'Max date per PO line'], ['Postings', String(allPostings.length)], ['PO lines', String(allPo.length)], ['Components', String(totals.rows)]];
     await exportTable({
-      fmt, name: view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
+      fmt, name: view === 'posting' ? 'Freight analysis by posting' : view === 'po' ? 'Freight analysis PO wise' : 'Freight analysis', cols: sheet.cols, count: sheet.count,
       extraParams: [
-        ['Report', view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
+        ['Report', view === 'posting' ? 'One row per posting of the components, INR' : view === 'po' ? 'Purchase order wise freight lines of the components, INR per unit' : 'Component standard vs actual freight, plant wise, INR per unit'],
+        ...(basisText as [string, string][]),
         ['Materials', ran.materials.length ? ran.materials.join(', ') : 'all components of the chosen plants'], ['Plants', plant || (ran.plants.length ? ran.plants.join(', ') : 'all plants you can use')], ['Material types', ran.types.join(', ')],
-        ['PO date range', allDates ? `all dates SAP returned (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}`], ['Latest only', ran.latestOnly ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
-        ['Rows', String(view === 'po' ? poRows.length : rows.length)], ['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)],
+        ['PO date range', allDates ? `all dates SAP returned (${hidden.earliest} to ${hidden.latest})` : `${ran.range.from} to ${ran.range.to}`], ['Latest only', (FREIGHT_ALL_ITEMS ? latestOnly : ran.latestOnly) ? 'yes' : 'no'], ['Alert rule', ruleText(rule)],
+        ['Rows', String(view === 'posting' ? postingRows.length : view === 'po' ? poRows.length : rows.length)], ...(view === 'posting' ? [] : [['Rows in alert', String(view === 'po' ? poFlagged : totals.flagged)] as [string, string]]),
       ],
       messages: data.messages,
     });
@@ -203,6 +228,12 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
           ? (poFlagged ? `${poFlagged} of ${allPo.length} purchase order line(s) breach the rule: ${ruleText(rule)}` : `No purchase order line breaches the rule: ${ruleText(rule)}`)
           : (totals.flagged ? `${totals.flagged} of ${totals.rows} component(s) breach the rule: ${ruleText(rule)}` : `No component breaches the rule: ${ruleText(rule)}`)}
       </div>
+      {FREIGHT_ALL_ITEMS && fallback && <p role="status" className="rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">{FALLBACK_TEXT}</p>}
+      {FREIGHT_ALL_ITEMS && enhanced && (
+        <p role="status" className="rounded-xl border border-line bg-sunken/40 px-3 py-2 text-sm text-muted">
+          {basis === 'all' ? 'All line items' : 'Max date per PO line (the last posting date of each PO line and side)'}{latestOnly ? ', latest PO date only' : ''}: {allPostings.length} posting(s), {allPo.length} PO line(s), {totals.rows} component(s).
+        </p>
+      )}
       {hidden.outside > 0 && (
         <p role="status" className="flex flex-wrap items-center gap-2 rounded-xl border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
           <span>SAP returned {hidden.returned} PO line(s) for these components; {allDates ? 'all of them are shown' : `${hidden.inRange} fall in the PO date range ${ran.range.from} to ${ran.range.to} and ${hidden.outside} are hidden`} (PO dates {hidden.earliest} to {hidden.latest}).</span>
@@ -217,23 +248,54 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
         <Stat label="No actual freight" value={totals.noActual} sub="no actual PO delivery in the range" />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-<div className="w-72"><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }]} /></div>
-        <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>
+<div className={FREIGHT_ALL_ITEMS && enhanced ? 'w-[34rem]' : 'w-72'}><Segmented<View> size="sm" label="View" value={view} onChange={setView} options={[{ value: 'component', label: 'By component' }, { value: 'po', label: `By purchase order (${allPo.length})` }, ...(FREIGHT_ALL_ITEMS && enhanced ? [{ value: 'posting' as View, label: `By posting (${allPostings.length})` }] : [])]} /></div>
+        {FREIGHT_ALL_ITEMS && enhanced && <div className="w-80"><Segmented<Basis> size="sm" label="Basis" value={basis} onChange={setBasis} options={[{ value: 'all', label: 'All line items' }, { value: 'maxdate', label: 'Max date per PO line' }]} /></div>}
+        {view !== 'posting' && <div className="w-56"><Segmented<Show> size="sm" label="Show" value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'alerts', label: 'Alerts only' }]} /></div>}
         <select aria-label="Plant" className={cx(inputCls, 'w-44')} value={plant} onChange={(e) => setPlant(e.target.value)}>
           <option value="">All plants ({plantList.length})</option>
           {plantList.map((p) => <option key={p} value={p}>{p}</option>)}
         </select>
         <input aria-label="Search components" className={cx(inputCls, 'w-64')} placeholder={view === 'po' ? 'Search component, description or PO number…' : 'Search component code or description…'} value={q} onChange={(e) => setQ(e.target.value)} />
-        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
-        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
+        <Button size="sm" onClick={() => doExport('xlsx')} disabled={view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}><FileSpreadsheet size={14} /> Excel</Button>
+        <Button size="sm" variant="ghost" onClick={() => doExport('csv')} disabled={view === 'posting' ? !postingRows.length : view === 'po' ? !poRows.length : !rows.length}>CSV</Button>
         <span className="ml-auto text-xs text-faint">Alerts first, then the biggest gap.</span>
       </div>
-      {view === 'po' ? (
+      {FREIGHT_ALL_ITEMS && view === 'posting' ? (
+      <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Every posting of the PO freight lines: quantity and INR amount per posting</caption>
+          <thead className="bg-sunken/60">
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Posting date</th><th className={th}>Side</th><th className={th}>Posting type</th><th className={th}>Document</th><th className={th}>Dr / Cr</th><th className={thN}>Quantity</th><th className={thN}>Amount (INR)</th><th className={th}>SAP used</th><th className={th}>Max date</th></tr>
+          </thead>
+          <tbody>
+            {postingRows.map((r) => (
+              <tr key={r.key} className={cx('cursor-pointer border-t border-line/60 border-l-4 hover:bg-sunken/40', r.side === 'actual' ? 'border-l-accent' : 'border-l-warn')} onClick={() => setOpenLine({ plant: r.plant, material: r.material, po: r.po, line: r.line, cond: r.cond })}>
+                <td className={cx(td, 'font-mono')}>{r.plant}</td>
+                <td className={td}><span className="font-mono font-bold text-accent">{r.material}</span> <span className="text-muted">{r.text}</span></td>
+                <td className={td}><button type="button" className="whitespace-nowrap font-mono font-bold text-accent underline-offset-2 hover:underline" onClick={(e) => { e.stopPropagation(); setOpenLine({ plant: r.plant, material: r.material, po: r.po, line: r.line, cond: r.cond }); }} aria-label={`Show every posting of PO ${r.po} line ${r.line}`}>{r.po || '—'}</button></td>
+                <td className={cx(td, 'font-mono')}>{r.line || '—'}</td>
+                <td className={cx(td, 'whitespace-nowrap')}>{r.poDate}</td>
+                <td className={cx(td, 'whitespace-nowrap')}>{r.postingDate || '—'}</td>
+                <td className={td}>{r.side === 'actual' ? 'Actual' : 'Standard'}</td>
+                <td className={td}>{r.typeText}</td>
+                <td className={cx(td, 'font-mono')}>{r.document || '—'}</td>
+                <td className={td}>{r.drCr || '—'}</td>
+                <td className={tdN}>{fmtNum(r.qty, 3)}</td>
+                <td className={tdN}>{fmtNum(r.amount, 2, 'INR')}</td>
+                <td className={td}>{r.src || '—'}</td>
+                <td className={td}>{r.isMaxDate ? <Pill tone="accent">Max date</Pill> : ''}</td>
+              </tr>
+            ))}
+            {!postingRows.length && <tr><td colSpan={14} className="px-3 py-6 text-center text-muted">{allPostings.length ? 'Nothing matches the filter.' : 'SAP returned no postings for these components in the date range.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      ) : view === 'po' ? (
       <div className="overflow-x-auto rounded-2xl border border-line bg-panel shadow-card">
         <table className="w-full text-sm">
           <caption className="sr-only">Purchase order wise freight lines: standard and actual freight per unit, INR</caption>
           <thead className="bg-sunken/60">
-            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th></tr>
+            <tr><th className={th}>Plant</th><th className={th}>Component</th><th className={th}>Purchase order</th><th className={th}>Line</th><th className={th}>PO date</th><th className={th}>Condition</th><th className={th}>Vendor</th><th className={th}>GST partner</th><th className={th}>Place of supply</th><th className={th}>Transporter</th><th className={th}>Acc. document</th><th className={th}>Reference</th><th className={th}>Co. code</th><th className={th}>FG material</th><th className={thN}>Delivered qty</th><th className={thN}>Actual amount (INR)</th><th className={thN}>Actual / unit</th><th className={thN}>Standard / unit</th><th className={thN}>Variance</th><th className={thN}>Var %</th><th className={th}>SAP used</th><th className={th}>Status</th>{FREIGHT_ALL_ITEMS && enhanced && <th className={th}>Breakup</th>}</tr>
           </thead>
           <tbody>
             {poRows.map((r) => {
@@ -263,10 +325,11 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
                   <td className={cx(tdN, tone)}>{r.variancePct ? fmtPct(r.variancePct) : '—'}</td>
                   <td className={td}>{r.src || '—'}</td>
                   <td className={td}>{hit ? <Pill tone="bad">Alert</Pill> : r.actual ? <Pill tone="good">OK</Pill> : <Pill tone="neutral" title="No actual delivery on this PO line">No actual</Pill>}</td>
+                  {FREIGHT_ALL_ITEMS && enhanced && <td className={td}><Button size="sm" variant="ghost" onClick={() => setOpenLine({ plant: r.plant, material: r.material, po: r.po, line: r.line, cond: r.cond })} aria-label={`Show every posting of PO ${r.po} line ${r.line}`}>Breakup</Button></td>}
                 </tr>
               );
             })}
-            {!poRows.length && <tr><td colSpan={22} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
+            {!poRows.length && <tr><td colSpan={enhanced ? 23 : 22} className="px-3 py-6 text-center text-muted">{allPo.length ? 'Nothing matches the filter.' : 'SAP returned no purchase order freight lines for these components in the date range.'}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -300,6 +363,7 @@ function Results({ data, ran, rule, stale }: { data: AnalysisData; ran: Analysis
         </table>
       </div>
       )}
+      {FREIGHT_ALL_ITEMS && PoBreakupDrawer && enhanced && <PoBreakupDrawer rows={data.freight} target={openLine} text={openLine ? textOf(openLine.material) : ''} onClose={closeLine} />}
       <p className="text-xs text-muted">INR per base unit, weighted by delivered quantity over the PO lines dated {allDates ? `${hidden.earliest} to ${hidden.latest} (all lines SAP returned)` : `${ran.range.from} to ${ran.range.to}`}; delivery costs are taken as local currency and converted at SAP&apos;s FxInr. A component with no actual delivery in the range has no actual figure and is not flagged. Lines SAP excludes are left out.</p>
     </div>
   );

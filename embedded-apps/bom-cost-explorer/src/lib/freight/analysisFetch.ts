@@ -23,6 +23,9 @@ import { componentsOf, type Component, type DateRange } from './analysis';
 
 export const DEFAULT_FREIGHT_DAYS = 92;
 
+/** NEXT_PUBLIC_FREIGHT_ALL_ITEMS (default false): ask SAP for every posting of a PO line (AllItems) and do Basis / Latest only in the browser. */
+export const FREIGHT_ALL_ITEMS = String(process.env.NEXT_PUBLIC_FREIGHT_ALL_ITEMS ?? 'false').toLowerCase() === 'true';
+
 export interface MaterialInfo { text: string; mtart: string }
 export interface AnalysisInput {
   /** materials the person picked (empty = every component of the plants) */
@@ -52,7 +55,8 @@ export interface AnalysisData {
 }
 
 const PAGE = 5000;
-const MAX_ROWS = 100_000;
+export const MAX_ROWS = 100_000;
+export const TRUNCATED_TEXT = 'Only the first 100,000 postings were read; narrow the plant, materials or dates.';
 const PARALLEL = 3;
 
 /** FreightDays as sent to SAP: what the person typed, a whole number of at least 1. There is NO upper limit here: SAP decides what is too large. An empty or unreadable entry falls back to the default. */
@@ -86,7 +90,7 @@ export function sapDay(name: 'BudatFrom' | 'BudatTo', day: string): string | nul
   return m ? `${name} eq datetime'${m[1]}-${m[2]}-${m[3]}T00:00:00'` : null;
 }
 
-interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number; latestOnly?: boolean }
+interface FilterParts { mode: 'M' | 'F'; materials: string[]; plant: string; range: DateRange; inclFrt: boolean; freightDays: number; latestOnly?: boolean; allItems?: boolean }
 
 /**
  * The $filter of one request: only the properties that have a value. Matnr and Werks are both optional, one of them is needed.
@@ -105,12 +109,14 @@ export function analysisFilter(p: FilterParts): string {
     p.mode === 'F' ? eqClause('FreightDays', p.freightDays, set) : eqClause('ExplQty', '1', set),
     // LatestOnly belongs to the Freight analysis tab only and is the user's choice: `LatestOnly eq 'X'` when ticked, `LatestOnly eq ' '`
     // (a single blank) when not. Always sent on the freight request, never on the components request. Checked on NGQ and NWP.
-    p.mode === 'F' ? (p.latestOnly ? "LatestOnly eq 'X'" : "LatestOnly eq ' '") : null,
+    // AllItems (freight request only): one row per posting. Latest only then moves to the browser (IsLatestPo), so SAP always gets a blank.
+    p.mode === 'F' && p.allItems ? "AllItems eq 'X'" : null,
+    p.mode === 'F' ? (p.latestOnly && !p.allItems ? "LatestOnly eq 'X'" : "LatestOnly eq ' '") : null,
   ];
   return parts.filter(Boolean).join(' and ');
 }
 
-async function readSet<T>(mode: 'M' | 'F', filter: string, opts: SapGetOptions): Promise<{ rows: T[]; ms: number; messages: SapMessage[] }> {
+async function readSet<T>(mode: 'M' | 'F', filter: string, opts: SapGetOptions): Promise<{ rows: T[]; ms: number; messages: SapMessage[]; truncated: boolean }> {
   const entitySet = mode === 'F' ? ENTITY_SET.FREIGHT : ENTITY_SET.RMPM;
   const fields = mode === 'F' ? FIELDS_BY_SET.FREIGHT : FIELDS_BY_SET.RMPM;
   const rows: T[] = [];
@@ -125,7 +131,8 @@ async function readSet<T>(mode: 'M' | 'F', filter: string, opts: SapGetOptions):
     rows.push(...r.rows.map((raw) => normalizeEntity<T>(raw, fields as never)));
     if (r.rows.length < PAGE || (total !== null && rows.length >= total)) break;
   }
-  return { rows, ms, messages };
+  const truncated = rows.length >= MAX_ROWS && (total === null || total > rows.length);
+  return { rows, ms, messages, truncated };
 }
 
 export async function fetchFreightAnalysis(input: AnalysisInput, signal: AbortSignal, onStep?: (text: string) => void): Promise<AnalysisData> {
@@ -146,10 +153,11 @@ export async function fetchFreightAnalysis(input: AnalysisInput, signal: AbortSi
   const worker = async () => {
     while (next < jobs.length) {
       const job = jobs[next++];
-      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days, latestOnly: input.latestOnly });
+      const filter = analysisFilter({ mode: job.mode, materials, plant: job.plant, range: input.range, inclFrt: input.inclFrt, freightDays: days, latestOnly: input.latestOnly, allItems: FREIGHT_ALL_ITEMS });
       try {
         const r = await readSet<RmPmRow & FreightRow>(job.mode, filter, opts);
         ms += r.ms; calls++; messages.push(...r.messages);
+        if (r.truncated && job.mode === 'F') messages.push({ code: 'FA/004', severity: 'warning', message: TRUNCATED_TEXT });
         (job.mode === 'M' ? rm : freight).push(...(r.rows as never[]));
       } catch (e) {
         if (signal.aborted) throw e;
