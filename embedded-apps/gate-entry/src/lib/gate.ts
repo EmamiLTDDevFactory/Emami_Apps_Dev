@@ -192,8 +192,8 @@ function reqNoOf(r: any): string {
 
 /* ------------------------ search / read / actions ------------------------ */
 
-export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: string; asnNo?: string }): Promise<EntrySummary[]> {
-  const rows = await list('/GateSummarySet', f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo));
+export async function searchEntries(f: { year?: string; poNo?: string; reqNo?: string; asnNo?: string; truckNo?: string }): Promise<EntrySummary[]> {
+  const rows = await list('/GateSummarySet', f.year && eq('Year', f.year), f.poNo && eq('PoNo', f.poNo), f.reqNo && eq('ReqNo', f.reqNo.toUpperCase()), f.asnNo && eq('AsnNo', f.asnNo), f.truckNo && eq('TruckNo', f.truckNo.trim().toUpperCase()));
   return (rows ?? [])
     .map((r) => ({
       reqNo: str(r.ReqNo),

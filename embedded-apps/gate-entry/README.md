@@ -47,7 +47,7 @@ there exists (checked with `$select`), and every call below reaches the DPC.
 | ASN value help | `GET AsnSet[?$filter=Ebeln eq '<po>']` |
 | ASN chosen | `GET AsnSet(ShipId='<id>',Email='<login email>')` + `GET AsnItemSet?$filter=Email eq .. and ShipId eq '<id>'` |
 | Save (PO or ASN) | `POST GateEntrySet` deep insert, `Pos` = one element per PO (one for an ASN), each with `Items`; response `ReqNo` |
-| Search | `GET GateSummarySet?$filter=Year/PoNo/ReqNo/AsnNo eq ..` |
+| Search | `GET GateSummarySet?$filter=Year/PoNo/ReqNo/AsnNo/TruckNo eq ..` (TruckNo = Vehicle number; wildcards such as `MH12*` or `*5521` are sent as typed) |
 | Open an entry | `GET GateRequestSet` + `GateRequestItemSet?$filter=ReqNo eq '..'` |
 | PO history | `GET GateRequestItemSet?$filter=Ebeln eq '..'` |
 | Print | `GET GateRequestPdfSet('<ReqNo>')/$value` (see gaps) |
