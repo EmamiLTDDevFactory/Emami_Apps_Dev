@@ -6,7 +6,8 @@ Tick each one off here (edit this file) so the next session knows.
 
 ## 1. Dev backend server (172.17.2.21) — deploy the renamed backend
 
-- [ ] Copy `backend/samadhan` to `~/samadhan-upload` and run `deploy-dev-server.sh` (`backend/samadhan/deploy/README.md`
+- [x] **Done 2026-11-06 15:50** (backups suffix `.bak-preSamadhan-20261106-155036`; `/api/samadhan/me` 401, `/api/setu/me` 401,
+      `/portal/config` 200 on both, change-control 401; log: legacy schema `setu` in use). Copy `backend/samadhan` to `~/samadhan-upload` and run `deploy-dev-server.sh` (`backend/samadhan/deploy/README.md`
       steps 1–3). It replaces the server's old `setu/` folder (kept as a backup) and the old mount in its `server.js`.
       Check: `/api/samadhan/me` → 401 and `/api/setu/me` → 401 on `localhost:4001`.
 - [ ] nginx: run `add-samadhan-nginx-route.sh` once (sudo). It adds `/dev-api/api/samadhan/` and keeps

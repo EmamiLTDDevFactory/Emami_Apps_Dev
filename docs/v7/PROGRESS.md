@@ -152,9 +152,13 @@ update reminder «30» min; problem detection «3» incidents / 7 days; external
 
 ## Next
 
-**Now:** waiting for the user's OK on the push plan (target branch: there is no `dev` branch on origin). Before pushing:
-merge latest `origin/main` (6 new commits on 2026-11-06, no conflicts in a dry run; `backend/server.js` and
-`hub-next/src/data/mockData.ts` changed on both sides), re-run the full gate, then push. After the push: STOP for RENAME-FOLLOWUPS.
+**2026-11-06:** merged latest `origin/main` twice (7 commits, no conflicts), gate GREEN 23/23 on the merged code (shared
+backend tests 51/51), pushed `Feature/Animesh` (fast-forward `d3d2d72..9cda884`) and `main` (`--no-ff`, `4b5a1f3..51e246e`).
+Dev backend deployed (RENAME-FOLLOWUPS §1, first box): `/api/samadhan` and `/api/setu` both live on port 4001, legacy
+schema `setu` in use, only `emami-hub-backend-dev` restarted. Production untouched (user: "do not push production").
+
+**Now (STOP, each needs the user's OK):** nginx route `/dev-api/api/samadhan/` (sudo; public URL is 404 until then, the
+app falls back to `/api/setu`); schema rename `7.0-rename` on the dev DB; then Phase 2 (needs Q-S1 storage, Q-P1).
 
 Earlier plan (kept for reference):
 
