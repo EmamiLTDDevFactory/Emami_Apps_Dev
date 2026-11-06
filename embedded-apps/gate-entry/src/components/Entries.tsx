@@ -9,10 +9,10 @@ import { openPdf } from './print';
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
-interface Filters { year: string; reqNo: string; poNo: string; asnNo: string }
+interface Filters { year: string; reqNo: string; poNo: string; asnNo: string; truckNo: string }
 
 export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | 'out'; openReq: string | null; onCloseReq: () => void }) {
-  const [f, setF] = useState<Filters>({ year: String(new Date().getFullYear()), reqNo: openReq ?? '', poNo: '', asnNo: '' });
+  const [f, setF] = useState<Filters>({ year: String(new Date().getFullYear()), reqNo: openReq ?? '', poNo: '', asnNo: '', truckNo: '' });
   const [rows, setRows] = useState<EntrySummary[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -22,7 +22,7 @@ export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | '
     setBusy(true);
     setErr('');
     try {
-      setRows(await searchEntries({ year: q.year || undefined, reqNo: q.reqNo.trim() || undefined, poNo: q.poNo.trim() || undefined, asnNo: q.asnNo.trim() || undefined }));
+      setRows(await searchEntries({ year: q.year || undefined, reqNo: q.reqNo.trim() || undefined, poNo: q.poNo.trim() || undefined, asnNo: q.asnNo.trim() || undefined, truckNo: q.truckNo.trim() || undefined }));
     } catch (e) {
       setErr(errText(e));
       setRows(null);
@@ -45,14 +45,15 @@ export default function Entries({ mode, openReq, onCloseReq }: { mode: 'all' | '
   return (
     <div className="flex flex-col gap-3">
       <Card title={mode === 'out' ? 'Trucks inside - record the out time' : 'Gate entries'}>
-        <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={(e) => { e.preventDefault(); void load(f); }}>
+        <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6" onSubmit={(e) => { e.preventDefault(); void load(f); }}>
           <Field label="Year">{(id) => <input id={id} className={inputCls} inputMode="numeric" maxLength={4} value={f.year} onChange={(e) => setF({ ...f, year: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="Request number">{(id) => <input id={id} className={cx(inputCls, 'uppercase')} maxLength={12} value={f.reqNo} onChange={(e) => setF({ ...f, reqNo: e.target.value.toUpperCase() })} />}</Field>
           <Field label="PO number">{(id) => <input id={id} className={inputCls} inputMode="numeric" maxLength={10} value={f.poNo} onChange={(e) => setF({ ...f, poNo: e.target.value.replace(/\D/g, '') })} />}</Field>
           <Field label="ASN number">{(id) => <input id={id} className={inputCls} inputMode="numeric" value={f.asnNo} onChange={(e) => setF({ ...f, asnNo: e.target.value.replace(/\D/g, '') })} />}</Field>
+          <Field label="Vehicle number">{(id) => <input id={id} className={cx(inputCls, 'uppercase')} maxLength={20} placeholder="MH12* or *5521" value={f.truckNo} onChange={(e) => setF({ ...f, truckNo: e.target.value.toUpperCase() })} />}</Field>
           <div className="flex items-end gap-2">
             <Button variant="primary" type="submit" className="flex-1" disabled={busy}>{busy ? <Spinner /> : <Search size={14} />} Search</Button>
-            <Button aria-label="Clear filters" onClick={() => { const c = { year: String(new Date().getFullYear()), reqNo: '', poNo: '', asnNo: '' }; setF(c); void load(c); }}><RefreshCw size={14} /></Button>
+            <Button aria-label="Clear filters" onClick={() => { const c = { year: String(new Date().getFullYear()), reqNo: '', poNo: '', asnNo: '', truckNo: '' }; setF(c); void load(c); }}><RefreshCw size={14} /></Button>
           </div>
         </form>
       </Card>

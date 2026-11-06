@@ -13,6 +13,7 @@ import PlanFrame from '../plan/PlanFrame';
 import { Card, Empty, Spinner, Tabs } from '../ui';
 import BudgetScreen from './BudgetScreen';
 import BudgetChecklist from './BudgetChecklist';
+import BudgetHierarchy from './BudgetHierarchy';
 import BudgetApprovals from './BudgetApprovals';
 import { useHubSession } from '@/lib/client/session';
 import { abortAll } from '@/lib/wac/cache';
@@ -55,6 +56,7 @@ function Hub() {
         <Tabs<BudgetTab> label="Budget" value={tab} onChange={select} tabs={tabs.map((id) => ({ id, label: BUDGET_TAB_LABEL[id] }))} />
       </div>
       {panel('run', <BudgetScreen email={email} role={role} onRun={setRunQ} onOpenApprovals={tabs.includes('approvals') ? openApprovals : undefined} />)}
+      {panel('hierarchy', opened.has('hierarchy') && <BudgetHierarchy runQ={runQ} email={email} />)}
       {panel('checklist', opened.has('checklist') && <BudgetChecklist runQ={runQ} email={email} />)}
       {panel('approvals', opened.has('approvals') && <BudgetApprovals email={email} role={role} />)}
     </>

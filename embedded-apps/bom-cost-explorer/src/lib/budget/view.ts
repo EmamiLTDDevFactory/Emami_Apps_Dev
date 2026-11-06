@@ -128,3 +128,28 @@ export function groupPending(rows: BudgetPendingRow[]): PendingGroup[] {
   return Array.from(m.values()).sort((a, b) => b.gjahr.localeCompare(a.gjahr) || b.version.localeCompare(a.version, undefined, { numeric: true }));
 }
 export const checkRowIssues = (r: BudgetCheckRow) => issuesOf(r);
+
+
+/* ---------- split rows grouped as the FG header groups them: RM / Perfume / PM ---------- */
+
+/** RM = raw material (type ROH) that is not perfume; PERF = raw material (ROH) of a perfume origin group; PM = every other type (VERP, PKGN ...). */
+export type SplitBucket = 'RM' | 'PERF' | 'PM';
+export const SPLIT_BUCKETS: readonly SplitBucket[] = ['RM', 'PERF', 'PM'];
+/** Origin codes (HRKFT) of perfume. The live data was seen with PRFM; PERF is the code the business uses: both count. */
+export const PERFUME_ORIGINS: readonly string[] = ['PERF', 'PRFM'];
+export const BUCKET_LABEL: Record<SplitBucket, string> = { RM: 'RM', PERF: 'Perfume', PM: 'PM' };
+export const BUCKET_HINT: Record<SplitBucket, string> = {
+  RM: 'Raw material: type ROH, origin not perfume. Sums to the header B-RM / pc.',
+  PERF: 'Perfume: type ROH with a perfume origin (PERF / PRFM). Sums to the header B-Perfume / pc.',
+  PM: 'Packing: every other type (VERP, PKGN ...). Sums to the header B-PM / pc.',
+};
+/** Row tint and marker colours, one per group. */
+export const BUCKET_COLOR: Record<SplitBucket, string> = { RM: '#2563eb', PERF: '#9333ea', PM: '#d97706' };
+
+export function bucketOf(r: Pick<BudgetSplitRow, 'Mtart' | 'Hrkft'>): SplitBucket {
+  if (String(r.Mtart ?? '').trim().toUpperCase() === 'ROH') return PERFUME_ORIGINS.includes(String(r.Hrkft ?? '').trim().toUpperCase()) ? 'PERF' : 'RM';
+  return 'PM';
+}
+
+/** Rows in header order (RM, Perfume, PM), keeping SAP's order inside each group. */
+export const groupedSplitRows = (rows: BudgetSplitRow[]): BudgetSplitRow[] => SPLIT_BUCKETS.flatMap((b) => rows.filter((r) => bucketOf(r) === b));

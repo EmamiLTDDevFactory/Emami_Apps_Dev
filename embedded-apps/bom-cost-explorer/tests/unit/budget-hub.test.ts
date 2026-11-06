@@ -8,9 +8,9 @@ import { defaultBudgetQuery, selectionSummary, type BudgetQuery } from '@/lib/bu
 const src = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
 
 describe('Budget tabs by role', () => {
-  it('Admin sees all three, budget-init the first two, budget-approve Approvals only, anyone else nothing', () => {
-    expect(budgetTabsFor('Admin')).toEqual(['run', 'checklist', 'approvals']);
-    expect(budgetTabsFor('budget-init')).toEqual(['run', 'checklist']);
+  it('Admin sees all four, budget-init the first three, budget-approve Approvals only, anyone else nothing', () => {
+    expect(budgetTabsFor('Admin')).toEqual(['run', 'hierarchy', 'checklist', 'approvals']);
+    expect(budgetTabsFor('budget-init')).toEqual(['run', 'hierarchy', 'checklist']);
     expect(budgetTabsFor('budget-approve')).toEqual(['approvals']);
     for (const r of ['', 'User', 'Planner', 'admin', 'checking']) expect(budgetTabsFor(r)).toEqual([]);
   });

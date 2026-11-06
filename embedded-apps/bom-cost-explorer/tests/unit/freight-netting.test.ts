@@ -44,11 +44,12 @@ describe('debit / credit netting', () => {
     expect(lines[0].Actualdelvcostamount).toBe('70');
     expect(lines[0].Actualdelvquantity).toBe('50');
   });
-  it('rows without Shkzg (an older SAP) are summed as before; a credit row netted directly in analyseFreight and poLines', () => {
+  it('rows without Shkzg (an older SAP) are read as they are; an unsummed row is an absolute value, a credit nets only after the postings are summed', () => {
     expect(analyseFreight([comps[0]], [act('100', '110', { Shkzg: '' })], range)[0].actual!.toFixed(4)).toBe('1.1000');
     const rows = [act('100', '110'), act('20', '22', { Shkzg: 'H' })];
-    const a = analyseFreight([comps[0]], rows, range)[0];
-    expect(a.actual!.toFixed(4)).toBe('0.7333'); // (110 - 22) / 120
+    expect(analyseFreight([comps[0]], rows, range)[0].actual!.toFixed(4)).toBe('1.1000'); // unsummed: 132 / 120 (each row absolute)
+    const g = groupPoLines(rows);
+    expect(analyseFreight([comps[0]], g, range)[0].actual!.toFixed(4)).toBe('0.7333'); // summed: (110 - 22) / 120
   });
   it('the PO-line breakup subtotals are net too', () => {
     const b = poLineBreakup([act('100', '130'), act('0', '20', { Shkzg: 'H', Vgabe: '3' })], { plant: '1000', material: 'RM1', po: '4500000001', line: '00010' });
@@ -147,7 +148,8 @@ describe('standard and actual on ONE line per PO, item and condition; condition 
   ];
   it('rows with Vgabe are postings; plain per-line rows are not', () => {
     expect(hasPostings(rows)).toBe(true);
-    expect(hasPostings([row({ Vgabe: '' })])).toBe(false);
+    expect(hasPostings([row({ Vgabe: '', Shkzg: '' })])).toBe(false);
+    expect(hasPostings([row({ Vgabe: '', Shkzg: 'H' })])).toBe(true); // NWP: Vgabe empty, Shkzg given
   });
   it('one row per PO + line + condition holding both sides, no IsMaxDate needed', () => {
     const g = groupPoLines(rows);
@@ -205,5 +207,39 @@ describe('a side that is netted to a negative reads as its absolute (standard sh
     const m = materialWeighted(comps, groupPoLines([std('100', '1000', { Shkzg: 'H' }), act('100', '900')]), range).find((r) => r.material === 'RM1')!;
     expect(m.standard!.toFixed(4)).toBe('10.0000');
     expect(m.actual!.toFixed(4)).toBe('9.0000');
+  });
+});
+
+describe('the live NWP answer (HAR 5 Nov 2026): Vgabe empty, Standard row = Shkzg H, Actual row = Shkzg S, two rows per PO line', () => {
+  // PO 6500660302 line 00020, ZFR4, as SAP returned it
+  const nwp = [
+    row({ Vgabe: '', Cpudt: null, Shkzg: 'S', Material: 'RM1', Purchasedocument: '6500660302', Purchaseline: '00020', Conditiontype: 'ZFR4', Podate: '2026-08-20', Belnr: '5106055743', Actualdelvquantity: '50.000', Actualdelvcostamount: '3266.670', Stddelvquantity: '0.000', Stddelvcostamount: '0.000', Ekorg: 'CPD', IsMaxDate: true }),
+    row({ Vgabe: '', Cpudt: null, Shkzg: 'H', Material: 'RM1', Purchasedocument: '6500660302', Purchaseline: '00020', Conditiontype: 'ZFR4', Podate: '2026-08-20', Belnr: '5005918553', Actualdelvquantity: '0.000', Actualdelvcostamount: '0.000', Stddelvquantity: '50.000', Stddelvcostamount: '1250.000', Ekorg: 'CPD', IsMaxDate: true }),
+  ];
+  it('is recognised as postings and summed into ONE line with a POSITIVE standard', () => {
+    expect(hasPostings(nwp)).toBe(true);
+    const g = groupPoLines(nwp);
+    expect(g).toHaveLength(1);
+    const [l] = poLines(comps, g, range);
+    expect(l.standardAmount.toFixed(2)).toBe('1250.00');
+    expect(l.actualAmount.toFixed(2)).toBe('3266.67');
+    expect(l.standardQty.toFixed(3)).toBe('50.000');
+    expect(l.actualQty.toFixed(3)).toBe('50.000');
+    expect(l.standard!.toFixed(4)).toBe('25.0000');
+    expect(l.amountVariance!.toFixed(2)).toBe('2016.67'); // Actual - Standard
+    expect(l.amountVariancePct!.toFixed(2)).toBe('161.33');
+    expect(breachesLine(l, DEFAULT_RULE)).toBe(true);
+  });
+  it('the component and material figures are positive too', () => {
+    const g = groupPoLines(nwp);
+    expect(analyseFreight([comps[0]], g, range)[0].standard!.toFixed(4)).toBe('25.0000');
+    expect(materialWeighted(comps, g, range).find((m) => m.material === 'RM1')!.standard!.toFixed(4)).toBe('25.0000');
+  });
+  it('NWP spells the flags Ismaxdate / Islatestpo: they are read', async () => {
+    const { normalizeEntity } = await import('@/lib/sap/normalize');
+    const { FREIGHT_ROW } = await import('@/lib/sap/fields');
+    const r = normalizeEntity<FreightRow>({ Ismaxdate: 'X', Islatestpo: '', Shkzg: 'H' }, FREIGHT_ROW as never);
+    expect(r.IsMaxDate).toBe(true);
+    expect(r.IsLatestPo).toBe(false);
   });
 });

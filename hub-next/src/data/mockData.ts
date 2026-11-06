@@ -2,7 +2,7 @@ import {
   Landmark, Truck, Activity, Receipt, Home, LayoutGrid, Star,
   HelpCircle, CircleUserRound, ShieldCheck, ClipboardCheck, TrendingUp, Code2, PackageSearch, Wallet,
   CalendarClock, FileCheck2, HeartPulse, LineChart, ScanSearch, ShieldAlert, FileSpreadsheet, FileSearch, Gavel, Calculator, Hourglass,
-  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact,
+  Bot, DoorOpen, UserCog, LifeBuoy, Layers, Contact, MessageSquareReply,
 } from 'lucide-react';
 import type { AppItem, NavItem, CategoryFilter } from '../types';
 
@@ -51,6 +51,7 @@ export const EMBEDDED_APP_URLS: Record<string, string> = {
   setu: '/apps/samadhan', // Samadhan (Emami helpdesk; formerly Setu at /apps/setu, which now forwards here). Hub id stays 'setu' until the Manage Access switch (docs/v7/RENAME-FOLLOWUPS.md)
   'cascade-pricing': '/apps/cascade-pricing', // Cascade Pricing (ZMM_CASCADE_PRICING, export price cascade)
   'mm-mdm': '/apps/mm-mdm', // Material Master (ZMM_MDM_SRV, material master requests)
+  'auditee-response': '/apps/auditee-response', // Auditee Response (replaces WDs ZAUDIT_TOOL + ZMSD_MIS_OBSERVATION; open to all, see OPEN_TO_ALL_APPS in backend/server.js)
 };
 
 const RAW_APPS: AppItem[] = [
@@ -81,6 +82,7 @@ const RAW_APPS: AppItem[] = [
   { id: 'setu', name: 'Samadhan', desc: 'Emami Secondary Support helpdesk — tickets from email, phone, WhatsApp and the self-service portal, AI insights and action points, severity matrix, SLA timers on business hours, round-robin assignment, board view and the daily report.', cat: 'IT', icon: LifeBuoy, uses: 0, stage: 'IAT' },
   { id: 'cascade-pricing', name: 'Cascade Pricing', desc: 'Export price cascade from RRP to CIF by market and customer — rate upload, pricing simulation, approval, SAP condition creation and pricing KPIs.', cat: 'IBD', icon: Layers, uses: 0, stage: 'WIP' },
   { id: 'mm-mdm', name: 'Material Master', desc: 'Request, review and approve material master records — key data, tabs, validation by SAP, workflow with send back and approval.', cat: 'Supply Chain', icon: PackageSearch, uses: 0, stage: 'WIP' },
+  { id: 'auditee-response', name: 'Auditee Response', desc: 'Answer the internal audit and MIS observations assigned to you and submit your response to the reviewer, with attachments.', cat: 'Cross-Function', icon: MessageSquareReply, uses: 0, stage: 'WIP' },
 ];
 
 export const APPS: AppItem[] = RAW_APPS.map((app) => ({
