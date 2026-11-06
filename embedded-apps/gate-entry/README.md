@@ -34,7 +34,7 @@ The user can always correct the field. Any signed-in hub user may call it (30 ph
 not stored. Code: `src/lib/vision.ts`, `src/components/VehiclePhoto.tsx`, server `sap_agent_web/vision.py`.
 
 ## How it reaches SAP
-Browser -> shared Azure SAP gateway -> `NGD` -> OData V2 service **`ZMM_GATE_ENTRY_SRV`** (SEGW `ZMM_GATE_ENTRY_MDL`,
+Browser -> shared Azure SAP gateway -> `NGQ` (Quality; was NGD until 2026-11-06, contract checked live on NGD) -> OData V2 service **`ZMM_GATE_ENTRY_SRV`** (SEGW `ZMM_GATE_ENTRY_MDL`,
 `src/lib/config.ts`). The gateway logs on with its technical user, does the CSRF handshake and appends
 `$format=json` to every URL - same as Shelf Life Deviation, PO Approval and the other SAP apps. No server of our own.
 The contract below follows `UI5_CONVERSION_PROMPT.md` (written for a UI5 app; this app is Next.js, so manifest /
