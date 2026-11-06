@@ -6,11 +6,12 @@
 import { useMemo, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import Shell, { type PlanNav } from '../Shell';
+import type { SectionId } from '@/lib/nav/sections';
 import { loadSapConfig } from '@/lib/sap/config';
 import { BASE_PATH, useHubSession } from '@/lib/client/session';
 import { leaveApp } from '@/lib/useScreenHistory';
 
-export default function PlanFrame({ active, children, actions }: { active: PlanNav; children: ReactNode; actions?: ReactNode }) {
+export default function PlanFrame({ active, section, children, actions }: { active: PlanNav; /** the section page showing (active 'section') */ section?: SectionId; children: ReactNode; actions?: ReactNode }) {
   const hub = useHubSession();
   const cfg = useMemo(() => (typeof window === 'undefined' ? null : loadSapConfig()), []);
   if (hub === 'checking' || !cfg) return <div className="grid h-screen place-items-center bg-bg"><div className="h-9 w-9 animate-spin rounded-full border-[3px] border-accent border-t-transparent" /></div>;
@@ -30,11 +31,11 @@ export default function PlanFrame({ active, children, actions }: { active: PlanN
     <Shell
       env={{ system: cfg.config.system, appEnv: cfg.config.appEnv }}
       mode="B"
-      onMode={() => { window.location.href = `${BASE_PATH}/`; }}
       email={hub.email}
       actions={actions}
       onBack={leaveApp}
       planActive={active}
+      section={section}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4 [&>*]:shrink-0">{children}</div>
     </Shell>

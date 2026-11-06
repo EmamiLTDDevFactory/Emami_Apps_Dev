@@ -22,7 +22,7 @@ import RateSources from './rates/RateSources';
 import RateCoverage from './rates/RateCoverage';
 import { prioLabel } from '@/lib/rates/priority';
 import type { PlantRow } from '@/lib/sap/fields';
-import { defaultQuery, MODE_LABEL, type CostQuery, type Mode } from '@/lib/query/schema';
+import { defaultQuery, MODE_LABEL, MODES, type CostQuery, type Mode } from '@/lib/query/schema';
 import { decodeQuery, encodeQuery } from '@/lib/query/url';
 import { api, type CostResult } from '@/lib/client/api';
 import { ls } from '@/lib/client/storage';
@@ -40,6 +40,8 @@ import type { SapMessage } from '@/lib/sap/messages';
 import { AlertTriangle, Check, Download, FileSpreadsheet, FlaskConical, Link2, Printer } from 'lucide-react';
 import FilterPanel, { type PlantsState } from './FilterPanel';
 import Shell from './Shell';
+import SectionHome from './SectionHome';
+import type { SectionId } from '@/lib/nav/sections';
 import { FgStrips } from './price-context/slots';
 import { fgsOfLines, fgsOfSelection } from '@/lib/price-context/fgs';
 import { useScreenHistory } from '@/lib/useScreenHistory';
@@ -91,9 +93,12 @@ export default function Explorer() {
   const [booted, setBooted] = useState(false);
   // In-app "Back": the screen is the side-pane mode, the result tab and the open row drawer. A
   // drawer is remembered with the result it belongs to, so it is only reopened on that result.
+  // The section page (tiles of Costing / Analysis) shows over the costing screens without closing them, so a run is kept.
+  const [home, setHome] = useState<SectionId | null>(null);
   const { back } = useScreenHistory(
-    booted ? { mode: query.mode, tab, drawer: drawer === null ? null : [drawer, resultAt] } : null,
+    booted ? { mode: query.mode, tab, drawer: drawer === null ? null : [drawer, resultAt], home } : null,
     (s) => {
+      setHome(s.home ?? null);
       setQuery((q) => (q.mode === s.mode ? q : { ...q, mode: s.mode }));
       setTab(s.tab);
       setDrawer(s.drawer && s.drawer[1] === resultAt ? s.drawer[0] : null);
@@ -124,7 +129,9 @@ export default function Explorer() {
     loadPlants();
     const fromUrl = decodeQuery(new URLSearchParams(window.location.search).get('q'));
     const q = fromUrl ?? ls.get<CostQuery | null>(lastQueryKey(user), null);
-    if (q) setQuery({ ...defaultQuery(q.mode), ...q });
+    const pick = new URLSearchParams(window.location.search).get('mode') as Mode | null; // a tile of a section page on another route
+    if (pick && (MODES as readonly string[]).includes(pick) && q?.mode !== pick) { setQuery(defaultQuery(pick)); setTab(pick === 'C' ? 'compare' : pick === 'B' ? 'tree' : 'table'); }
+    else if (q) setQuery({ ...defaultQuery(q.mode), ...q });
     setBooted(true);
   }, [user]);
 
@@ -359,8 +366,9 @@ export default function Explorer() {
   const hasResult = !!result || (isPaged && ranQuery?.mode === mode);
 
   return (
-    <Shell env={{ system: sap.system, appEnv: sap.appEnv }} mode={mode} onMode={(m) => { setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} email={user} actions={headerActions} onBack={back}>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4">
+    <Shell env={{ system: sap.system, appEnv: sap.appEnv }} mode={mode} section={home ?? undefined} onHome={setHome} email={user} actions={headerActions} onBack={back}>
+      {home && <SectionHome id={home} onMode={(m) => { setHome(null); setQuery({ ...query, mode: m }); setCollapsed(false); setTab(m === 'C' ? 'compare' : m === 'B' ? 'tree' : 'table'); }} />}
+      <div className={cx('flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:p-4', home && 'hidden')}>
         <FilterPanel
           query={query}
           onChange={setQuery}
@@ -514,7 +522,7 @@ export default function Explorer() {
         </div>
       </div>
 
-      {drawer !== null && rows[drawer] && (
+      {drawer !== null && !home && rows[drawer] && (
         <RowDrawer
           row={rows[drawer]}
           sim={simRows[drawer]}

@@ -44,9 +44,9 @@ describe('side pane: exactly one Budget item', () => {
     for (const r of ['', 'User', 'Planner']) expect(budgetNavItems(true, r)).toEqual([]);
   });
   it('the Shell has no separate approvals item or PlanNav value any more', () => {
-    const shell = src('src/components/Shell.tsx');
+    const shell = src('src/components/Shell.tsx') + src('src/lib/nav/sections.ts');
     expect(shell).not.toMatch(/budget-approvals|Budget approvals|budget-cost\/approvals/);
-    expect(shell).toContain('budgetNavItems(BUDGET_ENABLED, budgetRole)');
+    expect(src('src/lib/nav/sections.ts')).toContain('budgetNavItems(BUDGET_ENABLED, f.budgetRole)');
   });
 });
 
