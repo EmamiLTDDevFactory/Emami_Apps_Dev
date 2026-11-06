@@ -45,6 +45,9 @@ const RULES = [
     // reports.js
     ['GET', '/board', 'screen.board'], ['GET', '/dashboard', 'screen.dashboard'], ['GET', '/dashboard/overview', 'screen.dashboard'],
     ['GET', '/dashboard/breakdown', 'screen.dashboard'], ['GET', '/analytics', 'screen.analytics'], ['GET', '/reports/daily', 'screen.reports'],
+    // attachments.js (v7 Phase 2; deleting someone else's file also needs attachment.delete - checked in the route)
+    ['GET', '/tickets/:id/attachments', 'ticket.view'], ['POST', '/tickets/:id/attachments', 'attachment.upload'],
+    ['POST', '/tickets/:id/attachments/:aid/link', 'attachment.download'], ['DELETE', '/tickets/:id/attachments/:aid', 'attachment.upload'],
     // insights.js
     ['GET', '/insights/dashboard', 'insights.dashboard'], ['GET', '/tickets/:id/insights', 'insights.ticket'],
     // admin.js (Admin base role only - admin.* keys exist nowhere else; admin.js keeps its own Admin check too)

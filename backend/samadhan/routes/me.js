@@ -20,6 +20,8 @@ router.get('/me', wrap(async (req, res) => {
         prefs: prefs.rows[0]?.prefs ?? {}, bellEvents: bell.events, bellAudience: bell.audience,
         // v7: effective permission keys and data scope (middleware/permission.js); the frontend's can() reads these.
         permissions: [...req.permissions].sort(), scope: req.scope,
+        // v7 attachments: on / off for this server, and the limits the upload boxes enforce before sending.
+        attachments: { ...require('../lib/storage').storageInfo(), limits: await require('../lib/attachments').limits() },
     });
 }));
 

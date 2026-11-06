@@ -61,6 +61,9 @@ const EXPORT_COLUMNS = {
     'Resolution SLA': (t) => (t.resolutionDueAt ? (t.resViolated || (t.resolvedAt ?? new Date()) > t.resolutionDueAt ? 'SLA violated' : 'Within SLA') : ''),
     CSAT: (t) => ({ 3: 'Extremely satisfied', 2: 'Neither satisfied nor dissatisfied', 1: 'Extremely dissatisfied' })[t.csatRating] ?? '',
 };
+// v7 columns that can be picked but are not in the default export (so the default file stays exactly as before).
+const OPTIONAL_EXPORT_COLUMNS = { Attachments: (t) => t.attachmentCount ?? 0 };
+const exportColumn = (c) => EXPORT_COLUMNS[c] || OPTIONAL_EXPORT_COLUMNS[c];
 const safeCell = (v) => (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
 const istCell = (v) => (v instanceof Date ? v.toLocaleString('sv-SE', { timeZone: 'Asia/Kolkata' }) : v ?? '');
 
@@ -68,7 +71,7 @@ router.get('/tickets/export', wrap(async (req, res) => {
     if (!req.can('ticket.export')) throw fail(403, 'Supervisors and admins only.');
     const { where, params, order } = ticketFilter(req.query, req.agent.id, req.scope);
     const maxRows = Number(await option('export.maxRows')) || 5000;
-    const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => EXPORT_COLUMNS[c]);
+    const wanted = String(req.query.columns || '').split(',').map((c) => c.trim()).filter((c) => exportColumn(c));
     const columns = wanted.length ? wanted : Object.keys(EXPORT_COLUMNS);
     const { rows } = await pool.query(
         `SELECT t.*, c.name AS "requesterName", c.email AS "requesterEmail", a.name AS "agentName", g.name AS "groupName", s.name AS "statusName",
@@ -77,11 +80,11 @@ router.get('/tickets/export', wrap(async (req, res) => {
         params,
     );
     if (rows.length > maxRows) throw fail(400, `More than ${maxRows.toLocaleString('en-IN')} tickets match. Narrow the filters (for example a date range) and export again.`);
-    const out = rows.map((t) => columns.map((c) => safeCell(istCell(EXPORT_COLUMNS[c](t)))));
+    const out = rows.map((t) => columns.map((c) => safeCell(istCell(exportColumn(c)(t)))));
     await audit(req.verifiedEmail, 'tickets_exported', { rows: out.length, view: req.query.view ?? '', columns: columns.length });
     res.json({ success: true, columns, rows: out });
 }));
-router.get('/tickets/export/columns', wrap(async (req, res) => res.json({ success: true, columns: Object.keys(EXPORT_COLUMNS) })));
+router.get('/tickets/export/columns', wrap(async (req, res) => res.json({ success: true, columns: [...Object.keys(EXPORT_COLUMNS), ...Object.keys(OPTIONAL_EXPORT_COLUMNS)] })));
 
 function cleanFields(body) {
     const out = {};
@@ -181,6 +184,8 @@ router.get('/tickets/:id', wrap(async (req, res) => {
         watchers: watchers.rows, watching: watchers.rows.some((w) => w.id === req.agent.id),
         links: links.rows, children: children.rows, parent: parent.rows[0] ?? null,
         csat: csat.rows[0] ?? null, todos: todos.rows,
+        // v7: files on the ticket (empty when attachments are not set up on this database).
+        attachments: await require('../lib/attachments').listAttachments(id).catch((err) => { if (err.code === '42P01') return []; throw err; }),
     });
 }));
 

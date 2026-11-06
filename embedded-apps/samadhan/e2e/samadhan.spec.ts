@@ -173,7 +173,8 @@ test('Admin: the Authorization cockpit opens and every tab loads', async ({ page
   await page.getByRole('tab', { name: 'Role profiles', exact: true }).click();
   await expect(page.getByText('Auditor (read-only)')).toBeVisible();
   await page.getByRole('tab', { name: 'User access', exact: true }).click();
-  await page.getByRole('button', { name: 'Open' }).first().click();
+  // exact: on the phone layout the header also has an "Open menu" button.
+  await page.getByRole('button', { name: 'Open', exact: true }).first().click();
   await expect(page.getByText('Effective access (saved)')).toBeVisible();
   expect(problems).toEqual([]);
 });

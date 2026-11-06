@@ -153,6 +153,20 @@ admin.put('/settings', wrap(async (req, res) => {
         if (!VIEW_IDS.includes(b['list.defaultView']) && b['list.defaultView'] !== '') throw fail(400, 'Unknown view.');
         updates.push(['list.defaultView', b['list.defaultView']]);
     }
+    // v7 attachments (lib/attachments.js): per-channel limits, never above the hard ceilings (agent 25, portal 10, email 25 MB).
+    if (b['attachments.limits'] !== undefined) {
+        const { CEILING_MB } = require('../lib/attachments');
+        const v = b['attachments.limits'] ?? {};
+        const num = (x, lo, hi, what) => { const n = Number(x); if (!Number.isFinite(n) || n < lo || n > hi) throw fail(400, `${what} must be ${lo} to ${hi}.`); return n; };
+        const out = {};
+        for (const ch of ['agent', 'portal', 'email']) {
+            const c = v[ch] ?? {};
+            out[ch] = { perFileMb: num(c.perFileMb, 1, CEILING_MB[ch], `${ch} file size (MB)`), perTicketMb: num(c.perTicketMb, 1, 500, `${ch} total per ticket (MB)`) };
+            if (ch !== 'email') out[ch].filesPerAction = num(c.filesPerAction, 1, 20, `${ch} files at a time`);
+        }
+        out.outboundMb = num(v.outboundMb, 1, 25, 'Outbound email attachments (MB)');
+        updates.push(['attachments.limits', out]);
+    }
     if (b['list.pageSize'] !== undefined) {
         if (![25, 50, 100].includes(Number(b['list.pageSize']))) throw fail(400, 'Page size must be 25, 50 or 100.');
         updates.push(['list.pageSize', Number(b['list.pageSize'])]);
@@ -382,7 +396,10 @@ admin.post('/contacts/anonymize', wrap(async (req, res) => {
         [ids],
     );
     if (email) await pool.query(`UPDATE samadhan.parked_mail SET "fromEmail" = 'removed' WHERE "fromEmail" = $1`, [email]);
-    await audit(req.verifiedEmail, 'contact_anonymized', { contactIds: rows.map((r) => r.id) });
+    // v7: files the contact sent (portal / email) are deleted too (§L).
+    let filesRemoved = 0;
+    try { filesRemoved = await require('../lib/attachments').purgeForContacts(ids); } catch (err) { if (err.code !== '42P01') throw err; }
+    await audit(req.verifiedEmail, 'contact_anonymized', { contactIds: rows.map((r) => r.id), filesRemoved });
     res.json({ success: true });
 }));
 

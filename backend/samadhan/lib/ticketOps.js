@@ -5,6 +5,8 @@ const { EDITABLE_FIELDS, PRIORITIES } = require('../constants');
 const { emailRequester, fillPlaceholders, loadTicket } = require('./notify');
 const { addAgentMessage, updateTicket } = require('./tickets');
 const { fail, logActivity, setting, textToHtml, updateRow } = require('./util');
+// v7 attachments (lib/attachments.js); loaded lazily to keep the require graph simple.
+const softly = (p) => p.catch((err) => { if (err.code !== '42P01' && err.code !== '42703') throw err; });
 
 // ---------- Ticket operations beyond create / update: resolve checks, watch, link, merge, spam / trash,
 // scenarios, collision detection and the CSAT survey link. ----------
@@ -106,6 +108,8 @@ async function mergeTickets(primaryId, secondaryIds, agent) {
         await logActivity(sid, 'merged_into', { ticket: primaryId }, agent.id);
         await logActivity(primaryId, 'merged_from', { ticket: sid }, agent.id);
     }
+    // v7: the merged tickets' files move to the primary ticket (§L).
+    await softly(require('./attachments').moveOnMerge(primaryId, ids));
     await updateRow('tickets', primaryId, { updatedAt: new Date() });
     return ids;
 }
@@ -124,6 +128,9 @@ async function hideTickets(ids, action, agentId) {
         // Child / merged tickets point at these; clear the pointers first so the delete is not blocked.
         await pool.query('UPDATE samadhan.tickets SET "parentId" = NULL WHERE "parentId" = ANY($1::int[])', [ids]);
         await pool.query('UPDATE samadhan.tickets SET "mergedIntoId" = NULL WHERE "mergedIntoId" = ANY($1::int[])', [ids]);
+        // v7: their files are deleted from storage first (the rows would otherwise vanish with the tickets) (§L).
+        const trashed = (await pool.query('SELECT id FROM samadhan.tickets WHERE id = ANY($1::int[]) AND "deletedAt" IS NOT NULL', [ids])).rows.map((r) => r.id);
+        if (trashed.length) await softly(require('./attachments').purgeForTickets(trashed));
     }
     const done = (await pool.query(SQL[action], [ids])).rows.map((r) => r.id);
     if (action !== 'purge') for (const id of done) await logActivity(id, action === 'trash' ? 'trashed' : action === 'restore' ? 'restored' : action, {}, agentId);

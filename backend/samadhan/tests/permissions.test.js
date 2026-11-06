@@ -20,11 +20,12 @@ const { RULES, ruleFor } = require('../middleware/permission');
 const { SEED_PROFILES } = require('../lib/authSeed');
 
 // Routers mounted after requireAccess in index.js, with their mount prefix.
-const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['/admin', 'admin'], ['/admin/authz', 'authz']];
+const MOUNTS = [['', 'me'], ['', 'tickets'], ['', 'work'], ['', 'reports'], ['', 'insights'], ['', 'attachments'], ['/admin', 'admin'], ['/admin/authz', 'authz']];
 function registered() {
     const out = [];
     for (const [prefix, file] of MOUNTS) {
-        const router = require(path.join(__dirname, '..', 'routes', `${file}.js`));
+        const mod = require(path.join(__dirname, '..', 'routes', `${file}.js`));
+        const router = mod.stack ? mod : mod.router;
         for (const layer of router.stack) {
             if (!layer.route) continue;
             for (const m of Object.keys(layer.route.methods)) out.push([m.toUpperCase(), prefix + layer.route.path]);

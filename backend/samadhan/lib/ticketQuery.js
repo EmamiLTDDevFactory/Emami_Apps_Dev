@@ -106,6 +106,8 @@ function ticketFilter(qy, agentId, scope = null) {
         if (qy[key]) where.push(`t.${col} = ANY(${p(texts(qy[key]))}::text[])`);
     }
     if (qy.activity) where.push(`t."lastActivityKind" = ANY(${p(texts(qy.activity).filter((k) => ACTIVITY_KINDS.includes(k)))}::text[])`);
+    // v7: "Has attachments" filter.
+    if (qy.hasAttachments === '1') where.push('t."attachmentCount" > 0');
     if (qy.tag) where.push(`t.tags && ${p(texts(qy.tag))}::text[]`);
     if (qy.requesterId) where.push(`t."requesterId" = ${p(Number(qy.requesterId) || 0)}`);
     if (qy.companyId) where.push(`t."companyId" = ${p(Number(qy.companyId) || 0)}`);

@@ -145,10 +145,49 @@ const MIGRATIONS = [
         },
         async down(client) {
             const S = ident(activeSchema());
-            for (const t of ['auth_permission_usage', 'auth_change_log','auth_permission_overrides', 'auth_user_scope', 'auth_user_profiles', 'auth_profiles']) {
+            for (const t of ['auth_permission_usage', 'auth_change_log', 'auth_permission_overrides', 'auth_user_scope', 'auth_user_profiles', 'auth_profiles']) {
                 await q(client, `DROP TABLE IF EXISTS ${S}.${t}`);
             }
             return 'cockpit tables dropped';
+        },
+    },
+    {
+        // Phase 2: attachments (master prompt §L). A new table plus one new counter column on tickets (default 0, so
+        // existing rows and every existing query are unaffected). The unused v1 table "attachments" is left untouched.
+        // Down drops the metadata only - the files on the SAP application server stay where they are (list them first
+        // with: SELECT "storageRef" FROM <schema>.ticket_attachments if they should be removed too).
+        id: '7.1-attachments',
+        describe: 'ticket_attachments table + tickets."attachmentCount"',
+        async up(client) {
+            const S = ident(activeSchema());
+            await q(client, `CREATE TABLE IF NOT EXISTS ${S}.ticket_attachments (
+                id serial PRIMARY KEY,
+                "ticketId" int NOT NULL REFERENCES ${S}.tickets(id) ON DELETE CASCADE,
+                "conversationId" int REFERENCES ${S}.conversations(id) ON DELETE SET NULL,
+                "fileName" text NOT NULL,
+                "contentType" text NOT NULL,
+                size bigint NOT NULL CHECK (size >= 0),
+                sha256 text,
+                "storageAdapter" text NOT NULL,
+                "storageKey" text NOT NULL,
+                "storageRef" text NOT NULL,
+                channel text NOT NULL CHECK (channel IN ('agent', 'portal', 'email')),
+                "uploadedByAgentId" int REFERENCES ${S}.agents(id) ON DELETE SET NULL,
+                "inlineCid" text,
+                "scanStatus" text NOT NULL DEFAULT 'not_scanned' CHECK ("scanStatus" IN ('not_scanned', 'clean', 'infected', 'failed')),
+                "createdAt" timestamptz NOT NULL DEFAULT now(),
+                "deletedAt" timestamptz,
+                "deletedReason" text)`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_attachments_ticket_idx ON ${S}.ticket_attachments ("ticketId") WHERE "deletedAt" IS NULL`);
+            await q(client, `CREATE INDEX IF NOT EXISTS ticket_attachments_conv_idx ON ${S}.ticket_attachments ("conversationId") WHERE "conversationId" IS NOT NULL`);
+            await q(client, `ALTER TABLE ${S}.tickets ADD COLUMN IF NOT EXISTS "attachmentCount" int NOT NULL DEFAULT 0`);
+            return 'ticket_attachments created, tickets."attachmentCount" added';
+        },
+        async down(client) {
+            const S = ident(activeSchema());
+            await q(client, `DROP TABLE IF EXISTS ${S}.ticket_attachments`);
+            await q(client, `ALTER TABLE ${S}.tickets DROP COLUMN IF EXISTS "attachmentCount"`);
+            return 'ticket_attachments dropped, tickets."attachmentCount" dropped (files on the storage server are not touched)';
         },
     },
 ];

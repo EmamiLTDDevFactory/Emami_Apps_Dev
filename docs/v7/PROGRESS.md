@@ -162,7 +162,25 @@ nginx route: not done — `emamiadmin` has no sudo rights; the server admin runs
 (public `/dev-api/api/samadhan/` is 404 until then; the app falls back to `/api/setu`).
 Master prompt `docs/SAMADHAN_MASTER_PROMPT_FINAL.md` added to git (user).
 
-**Now (STOP):** Phase 2 needs Q-S1 (storage) and Q-P1 (permission defaults).
+**Phase 2 (started 2026-11-06; Q-P1 = PLAN §7 defaults; Q-S1 = SFTP server, host-to-host - see below):**
+- DONE, committed locally (`8675596`): permission catalogue + middleware on every route (fail closed), data scope
+  all/groups/own, Authorization cockpit API + UI (6 tabs), migration `7.1-auth` (up/down), tests. Gate run on it:
+  28/29 - the only failure was an E2E selector bug ("Open" also matched "Open menu" on 360 px), fixed since.
+- IN PROGRESS, committed locally as WIP: attachments - `lib/storage.js` (adapter interface; `local` for tests),
+  `lib/fileCheck.js` (allow-list + content sniffing), `lib/attachments.js` (limits, signed 5-min links, lifecycle),
+  `routes/attachments.js` (agent upload/list/link/delete, public /files/:token, portal upload with 30-min token),
+  `lib/mailAttachments.js` (inbound mail files), migration `7.1-attachments`, setting `attachments.limits`,
+  hooks in merge / purge / anonymise, list column + "Has attachments" filter + optional export column.
+- **User decision 2026-11-06: store attachments on an SFTP server (host-to-host); NOT SAP / OData.** The `sap` adapter
+  in lib/storage.js must be replaced by an `sftp` adapter. Credentials come later from the admin team.
+- **OPEN QUESTION (ask on resume):** where to install the SFTP client library (ssh2-sftp-client; none in the repo):
+  (1) Samadhan-only package.json in backend/samadhan, installed by the Samadhan deploy script (recommended - no shared
+  file touched); (2) shared backend/package.json; (3) no library, server's sftp command with an SSH key only.
+- TODO after that: sftp adapter + env names (SAMADHAN_SFTP_HOST/PORT/USER/PASSWORD or KEY/BASE_DIR), outbound reply
+  attachments (20 MB, larger as sign-in links), frontend (Attachments card, paperclip, upload with paste / drag-drop /
+  client-side compression, preview modal, list icon, filter, Admin > General limits, portal upload), API + E2E tests
+  for attachments (local adapter), full gate, PHASE-2-NOTES / CHANGELOG / READMEs / TEST-REPORT, then ask to push.
+- Delete the draft SAP spec idea: no docs/v7/SAP-ATTACHMENT-SERVICE.md is needed any more.
 
 Earlier plan (kept for reference):
 

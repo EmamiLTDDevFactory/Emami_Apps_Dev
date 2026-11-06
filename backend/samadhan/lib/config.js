@@ -15,6 +15,8 @@ const DEFAULTS = {
     'export.maxRows': 5000,
     'list.defaultView': 'open',
     'list.pageSize': 50,
+    // v7 attachments (master prompt §L); hard ceilings in lib/attachments.js.
+    'attachments.limits': { agent: { perFileMb: 10, filesPerAction: 10, perTicketMb: 100 }, portal: { perFileMb: 5, filesPerAction: 5, perTicketMb: 25 }, email: { perFileMb: 20, perTicketMb: 100 }, outboundMb: 20 },
     'severity.priority': SEVERITY_PRIORITY,
     'sources.extra': [],
     'presence.enabled': true,
