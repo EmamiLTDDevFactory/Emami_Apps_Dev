@@ -10,6 +10,12 @@ describe('budget filter: the SAP selection-screen rules', () => {
     expect(Object.keys(e).sort()).toEqual(['budatFrom', 'budgetYr', 'mtart', 'rateYr']);
     expect(() => buildBudgetFilter(q({ budatFrom: '' }))).toThrow(FilterError);
   });
+  it('several material types go to SAP as one OR group, in upper case', () => {
+    const f = buildBudgetFilter(q({ mtart: ['fert', 'HALB'] }));
+    expect(f).toContain("Mtart eq 'FERT'");
+    expect(f).toContain("Mtart eq 'HALB'");
+    expect(f).toMatch(/\(Mtart eq 'FERT' or Mtart eq 'HALB'\)/);
+  });
   it('end date before start date is refused', () => { expect(validateBudget(q({ budatFrom: '2026-10-01', budatTo: '2026-04-01' })).budatTo).toBeTruthy(); });
   it('a plant is needed, and a request takes exactly one plant', () => {
     expect(validateBudget(q({ plants: [] })).plants).toBeTruthy();
